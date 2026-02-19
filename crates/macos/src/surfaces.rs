@@ -67,10 +67,20 @@ mod imp {
         None
     }
 
-    /// Fallback: some apps (Electron, etc.) expose right-click context menus
-    /// as a direct AXMenu child of the application element.
+    /// Find a right-click context menu. After AXShowMenu, the menu appears
+    /// as a child of the focused element (the one that was right-clicked).
+    /// Falls back to scanning direct app children for Electron-style apps.
     fn context_menu_from_app(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);
+        if let Some(focused) = copy_element_attr(&app, "AXFocusedUIElement") {
+            if let Some(children) = copy_ax_array(&focused, "AXChildren") {
+                if let Some(menu) = children.into_iter().find(|ch| {
+                    copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu")
+                }) {
+                    return Some(menu);
+                }
+            }
+        }
         let children = copy_ax_array(&app, "AXChildren")?;
         children.into_iter().find(|ch| {
             copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu")
@@ -150,9 +160,22 @@ mod imp {
                         let title = copy_string_attr(ch, "AXTitle")
                             .or_else(|| copy_string_attr(ch, "AXDescription"));
                         let item_count = copy_ax_array(ch, "AXChildren").map(|v| v.len());
-                        surfaces.push(SurfaceInfo { kind: "menu".into(), title, item_count });
+                        surfaces.push(SurfaceInfo { kind: "context_menu".into(), title, item_count });
                     }
                     _ => {}
+                }
+            }
+        }
+
+        if let Some(focused) = copy_element_attr(&app, "AXFocusedUIElement") {
+            if let Some(children) = copy_ax_array(&focused, "AXChildren") {
+                for ch in &children {
+                    if copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu") {
+                        let title = copy_string_attr(ch, "AXTitle")
+                            .or_else(|| copy_string_attr(ch, "AXDescription"));
+                        let item_count = copy_ax_array(ch, "AXChildren").map(|v| v.len());
+                        surfaces.push(SurfaceInfo { kind: "context_menu".into(), title, item_count });
+                    }
                 }
             }
         }

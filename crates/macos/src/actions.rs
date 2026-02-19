@@ -33,7 +33,11 @@ mod imp {
             }
 
             Action::RightClick => {
-                cg_mouse_click(el, 1, CGEventType::RightMouseDown, CGEventType::RightMouseUp, CGMouseButton::Right)?;
+                let ax_action = CFString::new("AXShowMenu");
+                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                if err != kAXErrorSuccess {
+                    cg_mouse_click(el, 1, CGEventType::RightMouseDown, CGEventType::RightMouseUp, CGMouseButton::Right)?;
+                }
             }
 
             Action::Toggle => {
