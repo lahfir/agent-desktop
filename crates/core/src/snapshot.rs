@@ -8,6 +8,7 @@ use crate::{
 const INTERACTIVE_ROLES: &[&str] = &[
     "button", "textfield", "checkbox", "link", "menuitem", "tab", "slider",
     "combobox", "treeitem", "cell", "radiobutton", "incrementor",
+    "menubutton", "switch", "colorwell", "dockitem",
 ];
 
 pub struct SnapshotResult {
@@ -129,7 +130,14 @@ fn allocate_refs(
     node.children = node
         .children
         .into_iter()
-        .map(|child| allocate_refs(child, refmap, include_bounds, interactive_only, window_pid, source_app))
+        .filter_map(|child| {
+            let child = allocate_refs(child, refmap, include_bounds, interactive_only, window_pid, source_app);
+            if interactive_only && child.ref_id.is_none() && child.children.is_empty() {
+                None
+            } else {
+                Some(child)
+            }
+        })
         .collect();
 
     node

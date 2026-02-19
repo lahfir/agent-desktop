@@ -44,11 +44,11 @@ fn wait_for_element(
 
     loop {
         if let Ok(refmap) = RefMap::load() {
-            if refmap.get(&ref_id).is_some()
-                && adapter.resolve_element(refmap.get(&ref_id).unwrap()).is_ok()
-            {
-                let elapsed = start.elapsed().as_millis();
-                return Ok(json!({ "found": true, "ref": ref_id, "elapsed_ms": elapsed }));
+            if let Some(entry) = refmap.get(&ref_id) {
+                if adapter.resolve_element(entry).is_ok() {
+                    let elapsed = start.elapsed().as_millis();
+                    return Ok(json!({ "found": true, "ref": ref_id, "elapsed_ms": elapsed }));
+                }
             }
         }
 

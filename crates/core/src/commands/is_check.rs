@@ -14,6 +14,9 @@ pub enum IsProperty {
     Expanded,
 }
 
+/// States are read from the last snapshot's RefMap. `resolve_ref` verifies the element
+/// is still live before returning, but the state values themselves are not re-queried
+/// from the AX API. Run `snapshot` to refresh state before calling `is`.
 pub fn execute(args: IsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     let (entry, _handle) = resolve_ref(&args.ref_id, adapter)?;
 

@@ -1,5 +1,4 @@
 pub mod batch;
-pub mod clipboard;
 pub mod clipboard_get;
 pub mod clipboard_set;
 pub mod click;

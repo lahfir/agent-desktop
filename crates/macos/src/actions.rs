@@ -22,14 +22,13 @@ mod imp {
         let label = action_label(action);
         match action {
             Action::Click => {
-                // Try AXPress first (works for native controls).
-                // Always follow up with a CGEvent click to handle Electron/web elements.
-                let _ = ax_press(el);
-                cg_mouse_click(el, 1, CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)?;
+                let err = ax_press(el);
+                if err != kAXErrorSuccess {
+                    cg_mouse_click(el, 1, CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)?;
+                }
             }
 
             Action::DoubleClick => {
-                let _ = ax_press(el);
                 cg_mouse_click(el, 2, CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)?;
             }
 
@@ -80,6 +79,14 @@ mod imp {
             }
 
             Action::TypeText(text) => {
+                let cf_attr = CFString::new(kAXFocusedAttribute);
+                unsafe {
+                    AXUIElementSetAttributeValue(
+                        el.0,
+                        cf_attr.as_concrete_TypeRef(),
+                        CFBoolean::true_value().as_CFTypeRef(),
+                    )
+                };
                 crate::input::synthesize_text(text)?;
             }
 
@@ -163,7 +170,7 @@ mod imp {
         let center = element_center(el).ok_or_else(|| {
             AdapterError::new(
                 agent_desktop_core::error::ErrorCode::ActionFailed,
-                "Cannot click: element has no position/size. Run snapshot --include-bounds first.",
+                "Cannot click: element has no accessible position or size",
             )
         })?;
 

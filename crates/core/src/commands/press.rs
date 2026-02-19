@@ -34,11 +34,12 @@ pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, 
 
 fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
     let parts: Vec<&str> = s.split('+').collect();
-    if parts.is_empty() {
-        return Err(AppError::invalid_input("Empty key combo"));
-    }
-
-    let key = parts.last().unwrap().to_string();
+    let key = parts
+        .last()
+        .copied()
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| AppError::invalid_input("Empty key combo"))?
+        .to_string();
     let mut modifiers = Vec::new();
 
     for &part in &parts[..parts.len() - 1] {

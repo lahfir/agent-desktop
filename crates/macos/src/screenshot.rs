@@ -53,7 +53,17 @@ mod imp {
         let data = std::fs::read(path)
             .map_err(|e| AdapterError::internal(format!("read screenshot: {e}")))?;
         let _ = std::fs::remove_file(path);
-        Ok(ImageBuffer { data, format: ImageFormat::Png, width: 0, height: 0 })
+        let (width, height) = png_dimensions(&data);
+        Ok(ImageBuffer { data, format: ImageFormat::Png, width, height })
+    }
+
+    fn png_dimensions(data: &[u8]) -> (u32, u32) {
+        if data.len() < 24 {
+            return (0, 0);
+        }
+        let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
+        let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+        (w, h)
     }
 
     fn find_cg_window_id_for_pid(pid: i32) -> Option<u32> {
@@ -116,12 +126,12 @@ mod imp {
                         bounds_val.as_concrete_TypeRef() as _,
                     )
                 };
-                let w = bounds_dict.find(&CFString::new("Width")).and_then(|v| {
+                let w = bounds_dict.find(CFString::new("Width")).and_then(|v| {
                     let n =
                         unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
                     n.to_f64()
                 });
-                let h = bounds_dict.find(&CFString::new("Height")).and_then(|v| {
+                let h = bounds_dict.find(CFString::new("Height")).and_then(|v| {
                     let n =
                         unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
                     n.to_f64()

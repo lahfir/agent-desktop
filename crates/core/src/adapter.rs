@@ -153,4 +153,8 @@ pub trait PlatformAdapter: Send + Sync {
     fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {
         Err(AdapterError::not_supported("focused_window"))
     }
+
+    fn get_live_value(&self, _handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
+        Err(AdapterError::not_supported("get_live_value"))
+    }
 }
