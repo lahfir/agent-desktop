@@ -1,0 +1,27 @@
+[workspace]
+members  = ["crates/core", "crates/macos", "crates/windows", "crates/linux", "src"]
+resolver = "2"
+
+[workspace.package]
+edition      = "2021"
+rust-version = "1.78"
+license      = "Apache-2.0"
+version      = "0.1.0"
+
+[workspace.dependencies]
+clap               = { version = "4.5", features = ["derive"] }
+serde              = { version = "1.0", features = ["derive"] }
+serde_json         = "1.0"
+thiserror          = "2.0"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+base64             = "0.22"
+rustc-hash         = "2.1"
+agent-desktop-core = { path = "crates/core" }
+
+[profile.release]
+opt-level     = "z"
+lto           = true
+codegen-units = 1
+strip         = true
+panic         = "abort"

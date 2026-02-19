@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ hashFiles('**/Cargo.toml') }}-
+            ${{ runner.os }}-build-
+
+      - name: Check dependency isolation
+        run: |
+          if cargo tree -p agent-desktop-core 2>/dev/null | grep -E 'agent-desktop-(macos|windows|linux)'; then
+            echo "FAIL: core crate depends on platform crates"
+            exit 1
+          fi
+          echo "OK: core crate has no platform dependencies"
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --lib --workspace
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Check binary size
+        run: |
+          SIZE=$(stat -f%z target/release/agent-desktop)
+          LIMIT=$((15 * 1024 * 1024))
+          echo "Binary size: $(du -sh target/release/agent-desktop | cut -f1)"
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "FAIL: binary exceeds 15MB limit (${SIZE} bytes)"
+            exit 1
+          fi
+          echo "OK: binary within 15MB limit"
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all -- --check

@@ -1,0 +1,63 @@
+# Build
+/target/
+**/*.rs.bk
+
+# Cargo
+Cargo.lock
+!crates/*/Cargo.lock
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vim/
+
+# Claude Code
+.claude/
+.agents/
+
+# Environment
+.env
+.env.*
+
+# Logs
+*.log
+logs/
+
+# Runtime
+*.pid
+*.sock
+
+# RefMap (generated at runtime)
+.agent-desktop/
+
+# Coverage
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.html
+coverage/
+
+# Binary artifacts
+*.dylib
+*.so
+*.dll
+*.exe
+
+# Package distribution
+dist/
+*.tar.gz
+*.zip
+*.dmg
+*.msi
+*.deb
+*.rpm
+*.snap

@@ -1,0 +1,27 @@
+[package]
+name    = "agent-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+agent-desktop-core.workspace = true
+clap.workspace               = true
+serde.workspace              = true
+serde_json.workspace         = true
+thiserror.workspace          = true
+tracing.workspace            = true
+tracing-subscriber.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+agent-desktop-macos = { path = "../crates/macos" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+agent-desktop-windows = { path = "../crates/windows" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+agent-desktop-linux = { path = "../crates/linux" }
+
+[[bin]]
+name = "agent-desktop"
+path = "main.rs"
