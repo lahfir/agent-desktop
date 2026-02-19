@@ -8,6 +8,7 @@ pub struct BatchArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct BatchCommand {
     command: String,
     #[serde(default)]
