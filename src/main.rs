@@ -72,7 +72,7 @@ fn main() {
                     "ok": false,
                     "command": cmd_name,
                     "error": {
-                        "code": "PERMISSION_DENIED",
+                        "code": "PERM_DENIED",
                         "message": "Accessibility permission not granted",
                         "suggestion": suggestion
                     }

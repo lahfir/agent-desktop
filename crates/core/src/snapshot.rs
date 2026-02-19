@@ -47,7 +47,7 @@ pub fn build(
             })
             .ok_or_else(|| {
                 AppError::Adapter(crate::error::AdapterError::new(
-                    crate::error::ErrorCode::ApplicationNotFound,
+                    crate::error::ErrorCode::AppNotFound,
                     format!("No window found for app '{app}'"),
                 ))
             })?

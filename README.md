@@ -143,7 +143,7 @@ Errors follow the same envelope with a structured error object:
 |------|---------|
 | `PERM_DENIED` | Accessibility permission not granted |
 | `ELEMENT_NOT_FOUND` | No element matched the given ref or query |
-| `APP_NOT_FOUND` | Target application is not running |
+| `APP_NOT_FOUND` | Application is not running or has no open windows |
 | `ACTION_FAILED` | The OS rejected the action |
 | `ACTION_NOT_SUPPORTED` | Element does not support the requested action |
 | `STALE_REF` | Ref is from a previous snapshot |

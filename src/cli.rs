@@ -103,7 +103,7 @@ pub struct SnapshotArgs {
     pub max_depth: u8,
     #[arg(long)]
     pub include_bounds: bool,
-    #[arg(long)]
+    #[arg(long, short = 'i')]
     pub interactive_only: bool,
     #[arg(long)]
     pub compact: bool,

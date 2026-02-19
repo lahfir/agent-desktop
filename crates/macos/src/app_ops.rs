@@ -62,7 +62,7 @@ pub fn launch_app_impl(id: &str, wait: bool) -> Result<WindowInfo, AdapterError>
             }
         }
         return Err(AdapterError::new(
-            agent_desktop_core::error::ErrorCode::ApplicationNotFound,
+            agent_desktop_core::error::ErrorCode::AppNotFound,
             format!("App '{id}' launched but no window found within timeout"),
         )
         .with_suggestion(

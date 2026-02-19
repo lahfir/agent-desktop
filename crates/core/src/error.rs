@@ -4,9 +4,9 @@ use thiserror::Error;
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
-    PermissionDenied,
+    PermDenied,
     ElementNotFound,
-    ApplicationNotFound,
+    AppNotFound,
     ActionFailed,
     ActionNotSupported,
     StaleRef,
@@ -20,9 +20,9 @@ pub enum ErrorCode {
 impl ErrorCode {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ErrorCode::PermissionDenied => "PERMISSION_DENIED",
+            ErrorCode::PermDenied => "PERM_DENIED",
             ErrorCode::ElementNotFound => "ELEMENT_NOT_FOUND",
-            ErrorCode::ApplicationNotFound => "APPLICATION_NOT_FOUND",
+            ErrorCode::AppNotFound => "APP_NOT_FOUND",
             ErrorCode::ActionFailed => "ACTION_FAILED",
             ErrorCode::ActionNotSupported => "ACTION_NOT_SUPPORTED",
             ErrorCode::StaleRef => "STALE_REF",
@@ -99,7 +99,7 @@ impl AdapterError {
     }
 
     pub fn permission_denied() -> Self {
-        Self::new(ErrorCode::PermissionDenied, "Accessibility permission not granted")
+        Self::new(ErrorCode::PermDenied, "Accessibility permission not granted")
             .with_suggestion(
                 "Open System Settings > Privacy & Security > Accessibility and add your terminal",
             )
