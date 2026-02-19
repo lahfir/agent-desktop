@@ -5,7 +5,11 @@ use agent_desktop_core::node::SurfaceInfo;
 mod imp {
     use super::*;
     use accessibility_sys::{kAXErrorSuccess, AXUIElementCopyAttributeValue, AXUIElementRef};
-    use core_foundation::{base::{CFTypeRef, TCFType}, string::CFString};
+    use core_foundation::{
+        base::{CFType, CFTypeRef, TCFType},
+        boolean::CFBoolean,
+        string::CFString,
+    };
 
     fn copy_element_attr(el: &AXElement, attr: &str) -> Option<AXElement> {
         let cf_attr = CFString::new(attr);
@@ -19,14 +23,62 @@ mod imp {
         Some(AXElement(value as AXUIElementRef))
     }
 
+    fn copy_bool_attr(el: &AXElement, attr: &str) -> Option<bool> {
+        let cf_attr = CFString::new(attr);
+        let mut value: CFTypeRef = std::ptr::null_mut();
+        let err = unsafe {
+            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
+        };
+        if err != kAXErrorSuccess || value.is_null() {
+            return None;
+        }
+        let cf_type = unsafe { CFType::wrap_under_create_rule(value) };
+        cf_type.downcast::<CFBoolean>().map(|b| b.into())
+    }
+
     fn focused_window_element(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);
         copy_element_attr(&app, "AXFocusedWindow")
     }
 
-    pub fn menu_element_for_pid(pid: i32) -> Option<AXElement> {
+    /// Find an open menu bar menu by looking for AXMenuBarItem with AXSelected=true.
+    /// This is the correct macOS mechanism — menus are always children of their bar item,
+    /// not direct children of the application.
+    fn open_menubar_menu(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);
-        copy_ax_array(&app, "AXMenus")?.into_iter().next()
+        let app_children = copy_ax_array(&app, "AXChildren")?;
+        let menubar = app_children.into_iter().find(|ch| {
+            copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenuBar")
+        })?;
+        let items = copy_ax_array(&menubar, "AXChildren")?;
+        for item in &items {
+            if copy_string_attr(item, "AXRole").as_deref() != Some("AXMenuBarItem") {
+                continue;
+            }
+            if !copy_bool_attr(item, "AXSelected").unwrap_or(false) {
+                continue;
+            }
+            if let Some(children) = copy_ax_array(item, "AXChildren") {
+                return children.into_iter().find(|ch| {
+                    copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu")
+                });
+            }
+        }
+        None
+    }
+
+    /// Fallback: some apps (Electron, etc.) expose right-click context menus
+    /// as a direct AXMenu child of the application element.
+    fn context_menu_from_app(pid: i32) -> Option<AXElement> {
+        let app = element_for_pid(pid);
+        let children = copy_ax_array(&app, "AXChildren")?;
+        children.into_iter().find(|ch| {
+            copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu")
+        })
+    }
+
+    pub fn menu_element_for_pid(pid: i32) -> Option<AXElement> {
+        open_menubar_menu(pid).or_else(|| context_menu_from_app(pid))
     }
 
     pub fn focused_surface_for_pid(pid: i32) -> Option<AXElement> {
@@ -59,20 +111,49 @@ mod imp {
     }
 
     pub fn is_menu_open(pid: i32) -> bool {
-        let app = element_for_pid(pid);
-        copy_ax_array(&app, "AXMenus").map(|v| !v.is_empty()).unwrap_or(false)
+        open_menubar_menu(pid).is_some() || context_menu_from_app(pid).is_some()
     }
 
     pub fn list_surfaces_for_pid(pid: i32) -> Vec<SurfaceInfo> {
         let mut surfaces = Vec::new();
         let app = element_for_pid(pid);
 
-        if let Some(menus) = copy_ax_array(&app, "AXMenus") {
-            for menu in &menus {
-                let title = copy_string_attr(menu, "AXTitle")
-                    .or_else(|| copy_string_attr(menu, "AXDescription"));
-                let item_count = copy_ax_array(menu, "AXChildren").map(|v| v.len());
-                surfaces.push(SurfaceInfo { kind: "menu".into(), title, item_count });
+        if let Some(app_children) = copy_ax_array(&app, "AXChildren") {
+            for ch in &app_children {
+                match copy_string_attr(ch, "AXRole").as_deref() {
+                    Some("AXMenuBar") => {
+                        if let Some(items) = copy_ax_array(ch, "AXChildren") {
+                            for item in &items {
+                                if copy_string_attr(item, "AXRole").as_deref() != Some("AXMenuBarItem") {
+                                    continue;
+                                }
+                                if !copy_bool_attr(item, "AXSelected").unwrap_or(false) {
+                                    continue;
+                                }
+                                let title = copy_string_attr(item, "AXTitle");
+                                if let Some(menu_children) = copy_ax_array(item, "AXChildren") {
+                                    for menu in &menu_children {
+                                        if copy_string_attr(menu, "AXRole").as_deref() == Some("AXMenu") {
+                                            let item_count = copy_ax_array(menu, "AXChildren").map(|v| v.len());
+                                            surfaces.push(SurfaceInfo {
+                                                kind: "menu".into(),
+                                                title: title.clone(),
+                                                item_count,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Some("AXMenu") => {
+                        let title = copy_string_attr(ch, "AXTitle")
+                            .or_else(|| copy_string_attr(ch, "AXDescription"));
+                        let item_count = copy_ax_array(ch, "AXChildren").map(|v| v.len());
+                        surfaces.push(SurfaceInfo { kind: "menu".into(), title, item_count });
+                    }
+                    _ => {}
+                }
             }
         }
 
