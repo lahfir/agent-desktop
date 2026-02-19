@@ -1696,11 +1696,11 @@ From the Agent-Native Reviewer (score: 26/30, 4 structural gaps):
 
 ### Must-Fix (before Phase 1 ships)
 
-- [ ] **Batch command** — single process invocation for multi-step workflows
-- [ ] **Envelope consistency** — `ref_count`/`tree` inside `data`, not top-level
-- [ ] **Post-action state** — every action returns element state after the action
-- [ ] **Exit code contract** — 0=ok, 1=structured error, 2=argument error
-- [ ] **Default snapshot** — no args = focused window of frontmost app
+- [x] **Batch command** — single process invocation for multi-step workflows
+- [x] **Envelope consistency** — `ref_count`/`tree` inside `data`, not top-level
+- [x] **Post-action state** — every action returns element state after the action
+- [x] **Exit code contract** — 0=ok, 1=structured error, 2=argument error
+- [x] **Default snapshot** — no args = focused window of frontmost app
 
 ### Should-Fix (Phase 1)
 
