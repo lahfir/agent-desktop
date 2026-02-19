@@ -170,12 +170,191 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
 fn dispatch_batch_command(
     command: &str,
-    _args: serde_json::Value,
-    _adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
-) -> Result<serde_json::Value, agent_desktop_core::error::AppError> {
-    Err(agent_desktop_core::error::AppError::invalid_input(format!(
-        "Batch dispatch for '{command}' not yet implemented. Use individual commands."
-    )))
+    args: serde_json::Value,
+    adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
+) -> Result<serde_json::Value, AppError> {
+    fn str_field(v: &serde_json::Value, key: &str) -> Option<String> {
+        v.get(key).and_then(|v| v.as_str()).map(String::from)
+    }
+
+    fn req_str(v: &serde_json::Value, key: &str) -> Result<String, AppError> {
+        str_field(v, key)
+            .ok_or_else(|| AppError::invalid_input(format!("Batch: missing required field '{key}'")))
+    }
+
+    match command {
+        "snapshot" => snapshot::execute(
+            snapshot::SnapshotArgs {
+                app: str_field(&args, "app"),
+                window_id: str_field(&args, "window_id"),
+                max_depth: args.get("max_depth").and_then(|v| v.as_u64()).map(|v| v as u8).unwrap_or(10),
+                include_bounds: args.get("include_bounds").and_then(|v| v.as_bool()).unwrap_or(false),
+                interactive_only: args.get("interactive_only").and_then(|v| v.as_bool()).unwrap_or(false),
+                compact: args.get("compact").and_then(|v| v.as_bool()).unwrap_or(false),
+            },
+            adapter,
+        ),
+
+        "find" => find::execute(
+            find::FindArgs {
+                app: str_field(&args, "app"),
+                role: str_field(&args, "role"),
+                name: str_field(&args, "name"),
+                value: str_field(&args, "value"),
+            },
+            adapter,
+        ),
+
+        "screenshot" => screenshot::execute(
+            screenshot::ScreenshotArgs {
+                app: str_field(&args, "app"),
+                window_id: str_field(&args, "window_id"),
+                output_path: str_field(&args, "output_path").map(std::path::PathBuf::from),
+            },
+            adapter,
+        ),
+
+        "get" => get::execute(
+            get::GetArgs {
+                ref_id: req_str(&args, "ref_id")?,
+                property: parse_get_property(
+                    args.get("property").and_then(|v| v.as_str()).unwrap_or("text"),
+                )?,
+            },
+            adapter,
+        ),
+
+        "is" => is_check::execute(
+            is_check::IsArgs {
+                ref_id: req_str(&args, "ref_id")?,
+                property: parse_is_property(
+                    args.get("property").and_then(|v| v.as_str()).unwrap_or("visible"),
+                )?,
+            },
+            adapter,
+        ),
+
+        "click" => click::execute(click::ClickArgs { ref_id: req_str(&args, "ref_id")? }, adapter),
+        "double-click" => double_click::execute(
+            double_click::DoubleClickArgs { ref_id: req_str(&args, "ref_id")? },
+            adapter,
+        ),
+        "right-click" => right_click::execute(
+            right_click::RightClickArgs { ref_id: req_str(&args, "ref_id")? },
+            adapter,
+        ),
+        "focus" => focus::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter),
+        "toggle" => {
+            toggle::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
+        }
+        "expand" => {
+            expand::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
+        }
+        "collapse" => {
+            collapse::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
+        }
+
+        "type" => type_text::execute(
+            type_text::TypeArgs {
+                ref_id: req_str(&args, "ref_id")?,
+                text: req_str(&args, "text")?,
+            },
+            adapter,
+        ),
+
+        "set-value" => set_value::execute(
+            set_value::SetValueArgs {
+                ref_id: req_str(&args, "ref_id")?,
+                value: req_str(&args, "value")?,
+            },
+            adapter,
+        ),
+
+        "select" => select::execute(
+            select::SelectArgs {
+                ref_id: req_str(&args, "ref_id")?,
+                value: req_str(&args, "value")?,
+            },
+            adapter,
+        ),
+
+        "scroll" => scroll::execute(
+            scroll::ScrollArgs {
+                ref_id: req_str(&args, "ref_id")?,
+                direction: parse_direction(
+                    args.get("direction").and_then(|v| v.as_str()).unwrap_or("down"),
+                )?,
+                amount: args.get("amount").and_then(|v| v.as_u64()).map(|v| v as u32).unwrap_or(3),
+            },
+            adapter,
+        ),
+
+        "press" => press::execute(press::PressArgs { combo: req_str(&args, "combo")? }, adapter),
+
+        "launch" => launch::execute(
+            launch::LaunchArgs {
+                app: req_str(&args, "app")?,
+                wait: args.get("wait").and_then(|v| v.as_bool()).unwrap_or(false),
+            },
+            adapter,
+        ),
+
+        "close-app" => close_app::execute(
+            close_app::CloseAppArgs {
+                app: req_str(&args, "app")?,
+                force: args.get("force").and_then(|v| v.as_bool()).unwrap_or(false),
+            },
+            adapter,
+        ),
+
+        "list-windows" => {
+            list_windows::execute(list_windows::ListWindowsArgs { app: str_field(&args, "app") }, adapter)
+        }
+
+        "list-apps" => list_apps::execute(adapter),
+
+        "focus-window" => focus_window::execute(
+            focus_window::FocusWindowArgs {
+                window_id: str_field(&args, "window_id"),
+                app: str_field(&args, "app"),
+                title: str_field(&args, "title"),
+            },
+            adapter,
+        ),
+
+        "clipboard-get" => clipboard_get::execute(adapter),
+        "clipboard-set" => clipboard_set::execute(req_str(&args, "text")?, adapter),
+
+        "wait" => wait::execute(
+            wait::WaitArgs {
+                ms: args.get("ms").and_then(|v| v.as_u64()),
+                element: str_field(&args, "element"),
+                window: str_field(&args, "window"),
+                timeout_ms: args.get("timeout_ms").and_then(|v| v.as_u64()).unwrap_or(30000),
+            },
+            adapter,
+        ),
+
+        "status" => status::execute(adapter),
+
+        "permissions" => permissions::execute(
+            permissions::PermissionsArgs {
+                request: args.get("request").and_then(|v| v.as_bool()).unwrap_or(false),
+            },
+            adapter,
+        ),
+
+        "version" => version::execute(version::VersionArgs {
+            json: args.get("json").and_then(|v| v.as_bool()).unwrap_or(false),
+        }),
+
+        other => Err(AppError::invalid_input(format!(
+            "Unknown batch command '{other}'. Supported: snapshot, find, screenshot, get, is, \
+             click, double-click, right-click, type, set-value, focus, select, toggle, expand, \
+             collapse, scroll, press, launch, close-app, list-windows, list-apps, focus-window, \
+             clipboard-get, clipboard-set, wait, status, permissions, version"
+        ))),
+    }
 }
 
 fn parse_get_property(s: &str) -> Result<get::GetProperty, AppError> {

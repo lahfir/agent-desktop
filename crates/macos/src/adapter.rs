@@ -35,7 +35,7 @@ impl PlatformAdapter for MacOSAdapter {
         opts: &TreeOptions,
     ) -> Result<AccessibilityNode, AdapterError> {
         let mut visited = FxHashSet::default();
-        let el = crate::tree::element_for_pid(win.pid);
+        let el = crate::tree::window_element_for(win.pid, &win.title);
         crate::tree::build_subtree(&el, 0, opts.max_depth, opts.include_bounds, &mut visited)
             .ok_or_else(|| AdapterError::internal("Empty AX tree for window"))
     }
@@ -74,15 +74,7 @@ impl PlatformAdapter for MacOSAdapter {
 
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         match target {
-            ScreenshotTarget::Window(id) => {
-                let window_id = id.parse::<u32>().map_err(|_| {
-                    AdapterError::new(
-                        agent_desktop_core::error::ErrorCode::InvalidArgs,
-                        format!("Invalid window ID: {id}"),
-                    )
-                })?;
-                crate::screenshot::capture_window(window_id)
-            }
+            ScreenshotTarget::Window(pid) => crate::screenshot::capture_app(pid),
             ScreenshotTarget::Screen(idx) => crate::screenshot::capture_screen(idx),
             ScreenshotTarget::FullScreen => crate::screenshot::capture_screen(0),
         }

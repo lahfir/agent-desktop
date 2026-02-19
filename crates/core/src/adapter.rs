@@ -31,7 +31,8 @@ impl Default for TreeOptions {
 
 pub enum ScreenshotTarget {
     Screen(usize),
-    Window(String),
+    /// Capture the frontmost window owned by this process ID.
+    Window(i32),
     FullScreen,
 }
 

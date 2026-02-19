@@ -1,5 +1,6 @@
 pub fn ax_role_to_str(ax_role: &str) -> &'static str {
     match ax_role {
+        "AXApplication" => "application",
         "AXButton" => "button",
         "AXTextField" | "AXTextArea" | "AXSearchField" => "textfield",
         "AXCheckBox" => "checkbox",
@@ -22,7 +23,7 @@ pub fn ax_role_to_str(ax_role: &str) -> &'static str {
         "AXList" => "list",
         "AXOutline" => "outline",
         "AXScrollArea" | "AXScrollBar" => "scrollarea",
-        "AXSplitter" => "splitter",
+        "AXSplitter" | "AXSplitGroup" => "splitter",
         "AXMenu" | "AXMenuBar" => "menu",
         "AXIncrementor" | "AXStepper" => "incrementor",
         "AXDisclosureTriangle" => "disclosure",

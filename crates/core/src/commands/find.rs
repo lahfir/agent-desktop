@@ -10,7 +10,7 @@ pub struct FindArgs {
 
 pub fn execute(args: FindArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     let opts = crate::adapter::TreeOptions::default();
-    let result = snapshot::build(adapter, &opts, args.app.as_deref(), None)?;
+    let result = snapshot::run(adapter, &opts, args.app.as_deref(), None)?;
 
     let mut matches = Vec::new();
     search_tree(&result.tree, &args, &mut Vec::new(), &mut matches);

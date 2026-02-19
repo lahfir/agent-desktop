@@ -7,10 +7,11 @@ pub const ABSOLUTE_MAX_DEPTH: u8 = 50;
 mod imp {
     use super::*;
     use accessibility_sys::{
-        kAXChildrenAttribute, kAXDescriptionAttribute, kAXEnabledAttribute,
-        kAXErrorSuccess, kAXFocusedAttribute, kAXRoleAttribute,
-        kAXTitleAttribute, kAXValueAttribute,
-        AXUIElementCopyAttributeValue, AXUIElementCreateApplication, AXUIElementRef,
+        kAXChildrenAttribute, kAXContentsAttribute, kAXDescriptionAttribute,
+        kAXEnabledAttribute, kAXErrorSuccess, kAXFocusedAttribute, kAXRoleAttribute,
+        kAXTitleAttribute, kAXValueAttribute, kAXWindowsAttribute,
+        AXUIElementCopyAttributeValue, AXUIElementCopyMultipleAttributeValues,
+        AXUIElementCreateApplication, AXUIElementRef,
     };
     use core_foundation::{
         array::CFArray,
@@ -42,6 +43,93 @@ mod imp {
         AXElement(unsafe { AXUIElementCreateApplication(pid) })
     }
 
+    /// Find the AXWindow element whose title matches `win_title`.
+    /// Falls back to the first window, then to the app element if no windows.
+    pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
+        let app = element_for_pid(pid);
+
+        // Try kAXWindowsAttribute
+        if let Some(windows) = copy_ax_array(&app, kAXWindowsAttribute) {
+            // Exact title match
+            for win in &windows {
+                let title = copy_string_attr(win, kAXTitleAttribute);
+                if title.as_deref() == Some(win_title) {
+                    let matched = win.clone();
+                    return matched;
+                }
+            }
+            // Partial match
+            for win in &windows {
+                let title = copy_string_attr(win, kAXTitleAttribute);
+                if title.as_deref().is_some_and(|t| t.contains(win_title) || win_title.contains(t)) {
+                    let matched = win.clone();
+                    return matched;
+                }
+            }
+            // First available window
+            if let Some(first) = windows.into_iter().next() {
+                return first;
+            }
+        }
+
+        // Fallback: app root
+        app
+    }
+
+    /// Batch-fetch the six most-used attributes in a single AX API call.
+    /// Returns (role, title, description, value, enabled, focused).
+    fn fetch_node_attrs(el: &AXElement) -> (Option<String>, Option<String>, Option<String>, Option<String>, bool, bool) {
+        let attr_names = [
+            kAXRoleAttribute,
+            kAXTitleAttribute,
+            kAXDescriptionAttribute,
+            kAXValueAttribute,
+            kAXEnabledAttribute,
+            kAXFocusedAttribute,
+        ];
+        let cf_names: Vec<CFString> = attr_names.iter().map(|a| CFString::new(a)).collect();
+        let cf_refs: Vec<_> = cf_names.iter().map(|s| s.as_concrete_TypeRef()).collect();
+        let names_arr = CFArray::from_copyable(&cf_refs);
+
+        let mut result_ref: CFTypeRef = std::ptr::null_mut();
+        let err = unsafe {
+            AXUIElementCopyMultipleAttributeValues(
+                el.0,
+                names_arr.as_concrete_TypeRef(),
+                0,
+                &mut result_ref as *mut _ as *mut _,
+            )
+        };
+
+        if err != kAXErrorSuccess || result_ref.is_null() {
+            // Fallback to individual calls
+            let role  = copy_string_attr(el, kAXRoleAttribute);
+            let title = copy_string_attr(el, kAXTitleAttribute);
+            let desc  = copy_string_attr(el, kAXDescriptionAttribute);
+            let val   = copy_string_attr(el, kAXValueAttribute);
+            let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
+            let focused = copy_bool_attr(el, kAXFocusedAttribute).unwrap_or(false);
+            return (role, title, desc, val, enabled, focused);
+        }
+
+        let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(result_ref as _) };
+        let items: Vec<Option<String>> = arr.into_iter().map(|item| {
+            item.downcast::<CFString>().map(|s| s.to_string())
+        }).collect();
+
+        let get = |i: usize| items.get(i).and_then(|v| v.clone());
+        let role    = get(0);
+        let title   = get(1);
+        let desc    = get(2);
+        let val     = get(3);
+        // enabled/focused are CFBoolean not CFString, so they'll be None from downcast
+        // re-read them individually (cheap since it's only 2 attrs)
+        let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
+        let focused = copy_bool_attr(el, kAXFocusedAttribute).unwrap_or(false);
+
+        (role, title, desc, val, enabled, focused)
+    }
+
     pub fn build_subtree(
         el: &AXElement,
         depth: u8,
@@ -56,21 +144,22 @@ mod imp {
             return None;
         }
 
-        let role = copy_string_attr(el, kAXRoleAttribute)?;
-        let normalized_role = crate::roles::ax_role_to_str(&role).to_string();
+        let (ax_role, title, ax_desc, value, enabled, focused) = fetch_node_attrs(el);
 
-        let title = copy_string_attr(el, kAXTitleAttribute);
-        let ax_desc = copy_string_attr(el, kAXDescriptionAttribute);
+        let role = ax_role
+            .as_deref()
+            .map(crate::roles::ax_role_to_str)
+            .unwrap_or("unknown")
+            .to_string();
+
         let name = title.clone().or_else(|| ax_desc.clone());
         let description = if title.is_some() { ax_desc } else { None };
 
-        let value = copy_string_attr(el, kAXValueAttribute);
-
         let mut states = Vec::new();
-        if copy_bool_attr(el, kAXFocusedAttribute) == Some(true) {
+        if focused {
             states.push("focused".into());
         }
-        if copy_bool_attr(el, kAXEnabledAttribute) == Some(false) {
+        if !enabled {
             states.push("disabled".into());
         }
 
@@ -86,7 +175,7 @@ mod imp {
 
         Some(AccessibilityNode {
             ref_id: None,
-            role: normalized_role,
+            role,
             name,
             value,
             description,
@@ -130,21 +219,19 @@ mod imp {
         cf_type.downcast::<CFBoolean>().map(|b| b.into())
     }
 
-    fn copy_children(el: &AXElement) -> Option<Vec<AXElement>> {
-        let cf_attr = CFString::new(kAXChildrenAttribute);
+    /// Read an array-typed AX attribute, retaining each AXUIElement so they
+    /// stay alive past CFArray deallocation.
+    pub fn copy_ax_array(el: &AXElement, attr: &str) -> Option<Vec<AXElement>> {
+        let cf_attr = CFString::new(attr);
         let mut value: CFTypeRef = std::ptr::null_mut();
         let err = unsafe {
-            AXUIElementCopyAttributeValue(
-                el.0,
-                cf_attr.as_concrete_TypeRef(),
-                &mut value,
-            )
+            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
         };
         if err != kAXErrorSuccess || value.is_null() {
             return None;
         }
         let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(value as _) };
-        let children = arr
+        let children: Vec<AXElement> = arr
             .into_iter()
             .filter_map(|item| {
                 let ptr = item.as_concrete_TypeRef() as AXUIElementRef;
@@ -159,10 +246,24 @@ mod imp {
         Some(children)
     }
 
-    fn read_bounds(el: &AXElement) -> Option<Rect> {
+    fn copy_children(el: &AXElement) -> Option<Vec<AXElement>> {
+        for attr in &[
+            kAXChildrenAttribute,
+            kAXContentsAttribute,
+            "AXChildrenInNavigationOrder",
+        ] {
+            if let Some(v) = copy_ax_array(el, attr) {
+                if !v.is_empty() {
+                    return Some(v);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn read_bounds(el: &AXElement) -> Option<Rect> {
         use accessibility_sys::{
-            kAXPositionAttribute, kAXSizeAttribute,
-            AXValueGetValue,
+            kAXPositionAttribute, kAXSizeAttribute, AXValueGetValue,
             kAXValueTypeCGPoint, kAXValueTypeCGSize,
         };
         use core_graphics::geometry::{CGPoint, CGSize};
@@ -178,11 +279,7 @@ mod imp {
         }
         let mut point = CGPoint::new(0.0, 0.0);
         let got_pos = unsafe {
-            AXValueGetValue(
-                pos_ref as _,
-                kAXValueTypeCGPoint,
-                &mut point as *mut _ as *mut c_void,
-            )
+            AXValueGetValue(pos_ref as _, kAXValueTypeCGPoint, &mut point as *mut _ as *mut c_void)
         };
         unsafe { CFRelease(pos_ref) };
         if !got_pos {
@@ -199,11 +296,7 @@ mod imp {
         }
         let mut size = CGSize::new(0.0, 0.0);
         let got_size = unsafe {
-            AXValueGetValue(
-                size_ref as _,
-                kAXValueTypeCGSize,
-                &mut size as *mut _ as *mut c_void,
-            )
+            AXValueGetValue(size_ref as _, kAXValueTypeCGSize, &mut size as *mut _ as *mut c_void)
         };
         unsafe { CFRelease(size_ref) };
         if !got_size {
@@ -234,6 +327,14 @@ mod imp {
         AXElement(std::ptr::null())
     }
 
+    pub fn window_element_for(_pid: i32, _win_title: &str) -> AXElement {
+        AXElement(std::ptr::null())
+    }
+
+    pub fn copy_ax_array(_el: &AXElement, _attr: &str) -> Option<Vec<AXElement>> {
+        None
+    }
+
     pub fn build_subtree(
         _el: &AXElement,
         _depth: u8,
@@ -247,6 +348,10 @@ mod imp {
     pub fn copy_string_attr(_el: &AXElement, _attr: &str) -> Option<String> {
         None
     }
+
+    pub fn read_bounds(_el: &AXElement) -> Option<agent_desktop_core::node::Rect> {
+        None
+    }
 }
 
-pub use imp::{build_subtree, copy_string_attr, element_for_pid, AXElement};
+pub use imp::{build_subtree, copy_ax_array, copy_string_attr, element_for_pid, read_bounds, window_element_for, AXElement};

@@ -1,7 +1,7 @@
 use crate::{
     adapter::{PlatformAdapter, TreeOptions, WindowFilter},
     error::AppError,
-    node::AccessibilityNode,
+    node::{AccessibilityNode, WindowInfo},
     refs::{RefEntry, RefMap},
 };
 
@@ -13,6 +13,7 @@ const INTERACTIVE_ROLES: &[&str] = &[
 pub struct SnapshotResult {
     pub tree: AccessibilityNode,
     pub refmap: RefMap,
+    pub window: WindowInfo,
 }
 
 pub fn build(
@@ -63,9 +64,8 @@ pub fn build(
             })?
     };
 
-    let capped_depth = opts.max_depth;
     let tree_opts = TreeOptions {
-        max_depth: capped_depth,
+        max_depth: opts.max_depth,
         include_bounds: opts.include_bounds,
         interactive_only: opts.interactive_only,
         compact: opts.compact,
@@ -83,7 +83,7 @@ pub fn build(
         Some(window.app.as_str()),
     );
 
-    Ok(SnapshotResult { tree, refmap })
+    Ok(SnapshotResult { tree, refmap, window })
 }
 
 pub fn run(

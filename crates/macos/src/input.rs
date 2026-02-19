@@ -45,6 +45,8 @@ mod imp {
             let key_up = CGEvent::new_keyboard_event(source.clone(), 0, false)
                 .map_err(|_| AdapterError::internal("Failed to create keyboard event"))?;
             key_up.post(CGEventTapLocation::HID);
+
+            std::thread::sleep(std::time::Duration::from_millis(8));
         }
         Ok(())
     }

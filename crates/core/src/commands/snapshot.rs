@@ -27,8 +27,14 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
 
     let ref_count = result.refmap.len();
     let tree = serde_json::to_value(&result.tree)?;
+    let win = &result.window;
 
     Ok(json!({
+        "app": win.app,
+        "window": {
+            "id": win.id,
+            "title": win.title
+        },
         "ref_count": ref_count,
         "tree": tree
     }))
