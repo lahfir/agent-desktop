@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
     about = "Desktop automation for AI agents",
     after_help = "\
 CATEGORIES:
-  Observation:  snapshot, find, screenshot, get, is
+  Observation:  snapshot, find, screenshot, get, is, list-surfaces
   Interaction:  click, double-click, right-click, type, set-value, focus, select,
                 toggle, expand, collapse, scroll, press
   App/Window:   launch, close-app, list-windows, list-apps, focus-window
@@ -22,6 +22,17 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum Surface {
+    #[default]
+    Window,
+    Focused,
+    Menu,
+    Sheet,
+    Popover,
+    Alert,
 }
 
 #[derive(Subcommand, Debug)]
@@ -48,6 +59,7 @@ pub enum Commands {
     ListWindows(ListWindowsArgs),
     ListApps,
     FocusWindow(FocusWindowArgs),
+    ListSurfaces(ListSurfacesArgs),
     ClipboardGet,
     ClipboardSet(ClipboardSetArgs),
     Wait(WaitArgs),
@@ -82,6 +94,7 @@ impl Commands {
             Self::ListWindows(_) => "list-windows",
             Self::ListApps => "list-apps",
             Self::FocusWindow(_) => "focus-window",
+            Self::ListSurfaces(_) => "list-surfaces",
             Self::ClipboardGet => "clipboard-get",
             Self::ClipboardSet(_) => "clipboard-set",
             Self::Wait(_) => "wait",
@@ -107,6 +120,8 @@ pub struct SnapshotArgs {
     pub interactive_only: bool,
     #[arg(long)]
     pub compact: bool,
+    #[arg(long, value_enum, default_value_t = Surface::Window)]
+    pub surface: Surface,
 }
 
 #[derive(Parser, Debug)]
@@ -241,6 +256,18 @@ pub struct WaitArgs {
     pub window: Option<String>,
     #[arg(long, default_value = "30000")]
     pub timeout: u64,
+    #[arg(long)]
+    pub menu: bool,
+    #[arg(long)]
+    pub menu_closed: bool,
+    #[arg(long)]
+    pub app: Option<String>,
+}
+
+#[derive(Parser, Debug)]
+pub struct ListSurfacesArgs {
+    #[arg(long)]
+    pub app: Option<String>,
 }
 
 #[derive(Parser, Debug)]

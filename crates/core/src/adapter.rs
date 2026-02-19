@@ -1,7 +1,7 @@
 use crate::{
     action::{Action, ActionResult},
     error::AdapterError,
-    node::{AccessibilityNode, AppInfo, WindowInfo},
+    node::{AccessibilityNode, AppInfo, SurfaceInfo, WindowInfo},
     refs::RefEntry,
 };
 use std::marker::PhantomData;
@@ -11,11 +11,23 @@ pub struct WindowFilter {
     pub app: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub enum SnapshotSurface {
+    #[default]
+    Window,
+    Focused,
+    Menu,
+    Sheet,
+    Popover,
+    Alert,
+}
+
 pub struct TreeOptions {
     pub max_depth: u8,
     pub include_bounds: bool,
     pub interactive_only: bool,
     pub compact: bool,
+    pub surface: SnapshotSurface,
 }
 
 impl Default for TreeOptions {
@@ -25,6 +37,7 @@ impl Default for TreeOptions {
             include_bounds: false,
             interactive_only: false,
             compact: false,
+            surface: SnapshotSurface::Window,
         }
     }
 }
@@ -156,5 +169,13 @@ pub trait PlatformAdapter: Send + Sync {
 
     fn get_live_value(&self, _handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         Err(AdapterError::not_supported("get_live_value"))
+    }
+
+    fn wait_for_menu(&self, _pid: i32, _open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("wait_for_menu"))
+    }
+
+    fn list_surfaces(&self, _pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> {
+        Err(AdapterError::not_supported("list_surfaces"))
     }
 }

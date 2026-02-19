@@ -79,7 +79,6 @@ mod imp {
             fn CGWindowListCopyWindowInfo(option: u32, window_id: u32) -> CFTypeRef;
         }
 
-        // kCGWindowListOptionOnScreenOnly (1) | kCGWindowListExcludeDesktopElements (16) = 17
         let info_ref = unsafe { CGWindowListCopyWindowInfo(17, 0) };
         if info_ref.is_null() {
             return None;
@@ -108,7 +107,6 @@ mod imp {
             if int_field("kCGWindowOwnerPID") != Some(pid) {
                 continue;
             }
-            // Skip non-normal layers (menus, panels, overlays)
             if int_field("kCGWindowLayer").unwrap_or(99) != 0 {
                 continue;
             }
@@ -118,7 +116,6 @@ mod imp {
                 None => continue,
             };
 
-            // Pick the window with the largest area (the main window)
             let bounds_key = CFString::new("kCGWindowBounds");
             let area = if let Some(bounds_val) = dict.find(&bounds_key) {
                 let bounds_dict = unsafe {

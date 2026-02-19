@@ -1,11 +1,11 @@
 use agent_desktop_core::{
     action::{Action, ActionResult},
     adapter::{
-        ImageBuffer, NativeHandle, PermissionStatus, PlatformAdapter, ScreenshotTarget, TreeOptions,
-        WindowFilter,
+        ImageBuffer, NativeHandle, PermissionStatus, PlatformAdapter, ScreenshotTarget,
+        SnapshotSurface, TreeOptions, WindowFilter,
     },
     error::AdapterError,
-    node::{AccessibilityNode, AppInfo, WindowInfo},
+    node::{AccessibilityNode, AppInfo, SurfaceInfo, WindowInfo},
     refs::RefEntry,
 };
 use rustc_hash::FxHashSet;
@@ -34,10 +34,22 @@ impl PlatformAdapter for MacOSAdapter {
         win: &WindowInfo,
         opts: &TreeOptions,
     ) -> Result<AccessibilityNode, AdapterError> {
+        let el = match opts.surface {
+            SnapshotSurface::Window => crate::tree::window_element_for(win.pid, &win.title),
+            SnapshotSurface::Focused => crate::surfaces::focused_surface_for_pid(win.pid)
+                .ok_or_else(|| AdapterError::internal("No focused surface found"))?,
+            SnapshotSurface::Menu => crate::surfaces::menu_element_for_pid(win.pid)
+                .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?,
+            SnapshotSurface::Sheet => crate::surfaces::sheet_for_pid(win.pid)
+                .ok_or_else(|| AdapterError::element_not_found("No open sheet"))?,
+            SnapshotSurface::Popover => crate::surfaces::popover_for_pid(win.pid)
+                .ok_or_else(|| AdapterError::element_not_found("No visible popover"))?,
+            SnapshotSurface::Alert => crate::surfaces::alert_for_pid(win.pid)
+                .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
+        };
         let mut visited = FxHashSet::default();
-        let el = crate::tree::window_element_for(win.pid, &win.title);
         crate::tree::build_subtree(&el, 0, opts.max_depth, opts.include_bounds, &mut visited)
-            .ok_or_else(|| AdapterError::internal("Empty AX tree for window"))
+            .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
     }
 
     fn execute_action(
@@ -86,6 +98,14 @@ impl PlatformAdapter for MacOSAdapter {
 
     fn set_clipboard(&self, text: &str) -> Result<(), AdapterError> {
         crate::clipboard::set(text)
+    }
+
+    fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
+        crate::wait::wait_for_menu(pid, open, timeout_ms)
+    }
+
+    fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> {
+        Ok(crate::surfaces::list_surfaces_for_pid(pid))
     }
 
     fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {

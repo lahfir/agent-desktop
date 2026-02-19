@@ -1,4 +1,8 @@
-use crate::{adapter::PlatformAdapter, error::AppError, snapshot};
+use crate::{
+    adapter::{PlatformAdapter, SnapshotSurface},
+    error::AppError,
+    snapshot,
+};
 use serde_json::{json, Value};
 
 pub struct SnapshotArgs {
@@ -8,6 +12,7 @@ pub struct SnapshotArgs {
     pub include_bounds: bool,
     pub interactive_only: bool,
     pub compact: bool,
+    pub surface: SnapshotSurface,
 }
 
 pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
@@ -16,6 +21,7 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         include_bounds: args.include_bounds,
         interactive_only: args.interactive_only,
         compact: args.compact,
+        surface: args.surface,
     };
 
     let result = snapshot::run(

@@ -65,14 +65,7 @@ pub fn build(
             })?
     };
 
-    let tree_opts = TreeOptions {
-        max_depth: opts.max_depth,
-        include_bounds: opts.include_bounds,
-        interactive_only: opts.interactive_only,
-        compact: opts.compact,
-    };
-
-    let raw_tree = adapter.get_tree(&window, &tree_opts)?;
+    let raw_tree = adapter.get_tree(&window, opts)?;
 
     let mut refmap = RefMap::new();
     let tree = allocate_refs(

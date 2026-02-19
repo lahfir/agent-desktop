@@ -43,7 +43,6 @@ mod imp {
     pub fn element_for_pid(pid: i32) -> AXElement {
         let el = AXElement(unsafe { AXUIElementCreateApplication(pid) });
         if !el.0.is_null() {
-            // 2-second timeout prevents hung/slow processes from blocking the tree walk
             unsafe { AXUIElementSetMessagingTimeout(el.0, 2.0) };
         }
         el
@@ -118,7 +117,6 @@ mod imp {
                 return Some(s.to_string());
             }
             match idx {
-                // value: may be CFBoolean (checkbox) or CFNumber (slider, stepper)
                 3 => {
                     if let Some(b) = item.downcast::<CFBoolean>() { return Some(bool::from(b).to_string()); }
                     if let Some(n) = item.downcast::<CFNumber>() {
@@ -127,7 +125,6 @@ mod imp {
                     }
                     None
                 }
-                // enabled / focused are always CFBoolean
                 4 | 5 => item.downcast::<CFBoolean>().map(|b| bool::from(b).to_string()),
                 _ => None,
             }
@@ -188,7 +185,6 @@ mod imp {
         let name = title.clone().or_else(|| ax_desc.clone());
         let description = if title.is_some() { ax_desc } else { None };
 
-        // AXStaticText stores its visible text in kAXValueAttribute, not title/description
         let name = if name.is_none() && ax_role.as_deref() == Some("AXStaticText") {
             value.clone().or(name)
         } else {
@@ -201,11 +197,7 @@ mod imp {
 
         let bounds = if include_bounds { read_bounds(el) } else { None };
 
-        // Children fetched before name resolution so we can extract labels from them
         let children_raw = copy_children(el, ax_role.as_deref()).unwrap_or_default();
-
-        // Last-resort name: walk immediate children for AXStaticText or AXCell→AXStaticText
-        // This resolves AXRow (sidebar items, list rows) whose label lives in a child text node
         let name = name.or_else(|| label_from_children(&children_raw));
 
         let children = children_raw

@@ -69,3 +69,13 @@ pub struct AppInfo {
     pub pid: i32,
     pub bundle_id: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SurfaceInfo {
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_count: Option<usize>,
+}

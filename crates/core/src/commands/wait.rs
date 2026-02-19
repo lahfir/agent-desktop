@@ -1,6 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::helpers::validate_ref_id,
+    commands::helpers::{resolve_app_pid, validate_ref_id},
     error::AppError,
     refs::RefMap,
 };
@@ -12,12 +12,23 @@ pub struct WaitArgs {
     pub element: Option<String>,
     pub window: Option<String>,
     pub timeout_ms: u64,
+    pub menu: bool,
+    pub menu_closed: bool,
+    pub app: Option<String>,
 }
 
 pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     if let Some(ms) = args.ms {
         std::thread::sleep(Duration::from_millis(ms));
         return Ok(json!({ "waited_ms": ms }));
+    }
+
+    if args.menu || args.menu_closed {
+        let pid = resolve_app_pid(args.app.as_deref(), adapter)?;
+        let start = Instant::now();
+        adapter.wait_for_menu(pid, args.menu, args.timeout_ms).map_err(AppError::Adapter)?;
+        let elapsed = start.elapsed().as_millis();
+        return Ok(json!({ "found": true, "elapsed_ms": elapsed }));
     }
 
     if let Some(ref_id) = args.element {
@@ -30,7 +41,7 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
     }
 
     Err(AppError::invalid_input(
-        "Provide a duration (ms), --element <ref>, or --window <title>",
+        "Provide a duration (ms), --menu, --element <ref>, or --window <title>",
     ))
 }
 

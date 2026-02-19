@@ -3,9 +3,9 @@ use agent_desktop_core::{
     adapter::PlatformAdapter,
     commands::{
         batch, click, clipboard_get, clipboard_set, close_app, collapse, double_click, expand,
-        find, focus, focus_window, get, helpers, is_check, launch, list_apps, list_windows,
-        permissions, press, right_click, screenshot, scroll, select, set_value, snapshot, status,
-        toggle, type_text, version, wait,
+        find, focus, focus_window, get, helpers, is_check, launch, list_apps, list_surfaces,
+        list_windows, permissions, press, right_click, screenshot, scroll, select, set_value,
+        snapshot, status, toggle, type_text, version, wait,
     },
     error::AppError,
 };
@@ -23,6 +23,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 include_bounds: a.include_bounds,
                 interactive_only: a.interactive_only,
                 compact: a.compact,
+                surface: cli_surface_to_core(&a.surface),
             },
             adapter,
         ),
@@ -113,6 +114,11 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
         Commands::ListApps => list_apps::execute(adapter),
 
+        Commands::ListSurfaces(a) => list_surfaces::execute(
+            list_surfaces::ListSurfacesArgs { app: a.app },
+            adapter,
+        ),
+
         Commands::FocusWindow(a) => focus_window::execute(
             focus_window::FocusWindowArgs {
                 window_id: a.window_id,
@@ -131,6 +137,9 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 element: a.element,
                 window: a.window,
                 timeout_ms: a.timeout,
+                menu: a.menu,
+                menu_closed: a.menu_closed,
+                app: a.app,
             },
             adapter,
         ),
@@ -191,6 +200,7 @@ fn dispatch_batch_command(
                 include_bounds: args.get("include_bounds").and_then(|v| v.as_bool()).unwrap_or(false),
                 interactive_only: args.get("interactive_only").and_then(|v| v.as_bool()).unwrap_or(false),
                 compact: args.get("compact").and_then(|v| v.as_bool()).unwrap_or(false),
+                surface: parse_batch_surface(args.get("surface").and_then(|v| v.as_str())),
             },
             adapter,
         ),
@@ -331,7 +341,15 @@ fn dispatch_batch_command(
                 element: str_field(&args, "element"),
                 window: str_field(&args, "window"),
                 timeout_ms: args.get("timeout_ms").and_then(|v| v.as_u64()).unwrap_or(30000),
+                menu: args.get("menu").and_then(|v| v.as_bool()).unwrap_or(false),
+                menu_closed: args.get("menu_closed").and_then(|v| v.as_bool()).unwrap_or(false),
+                app: str_field(&args, "app"),
             },
+            adapter,
+        ),
+
+        "list-surfaces" => list_surfaces::execute(
+            list_surfaces::ListSurfacesArgs { app: str_field(&args, "app") },
             adapter,
         ),
 
@@ -393,5 +411,30 @@ fn parse_direction(s: &str) -> Result<Direction, AppError> {
         other => Err(AppError::invalid_input(format!(
             "Unknown direction '{other}'. Valid: up, down, left, right"
         ))),
+    }
+}
+
+fn cli_surface_to_core(s: &crate::cli::Surface) -> agent_desktop_core::adapter::SnapshotSurface {
+    use agent_desktop_core::adapter::SnapshotSurface;
+    use crate::cli::Surface;
+    match s {
+        Surface::Window  => SnapshotSurface::Window,
+        Surface::Focused => SnapshotSurface::Focused,
+        Surface::Menu    => SnapshotSurface::Menu,
+        Surface::Sheet   => SnapshotSurface::Sheet,
+        Surface::Popover => SnapshotSurface::Popover,
+        Surface::Alert   => SnapshotSurface::Alert,
+    }
+}
+
+fn parse_batch_surface(s: Option<&str>) -> agent_desktop_core::adapter::SnapshotSurface {
+    use agent_desktop_core::adapter::SnapshotSurface;
+    match s {
+        Some("menu")    => SnapshotSurface::Menu,
+        Some("sheet")   => SnapshotSurface::Sheet,
+        Some("popover") => SnapshotSurface::Popover,
+        Some("alert")   => SnapshotSurface::Alert,
+        Some("focused") => SnapshotSurface::Focused,
+        _               => SnapshotSurface::Window,
     }
 }

@@ -14,6 +14,7 @@ pub mod helpers;
 pub mod is_check;
 pub mod launch;
 pub mod list_apps;
+pub mod list_surfaces;
 pub mod list_windows;
 pub mod permissions;
 pub mod press;

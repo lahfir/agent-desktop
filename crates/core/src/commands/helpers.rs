@@ -1,5 +1,5 @@
 use crate::{
-    adapter::{NativeHandle, PlatformAdapter},
+    adapter::{NativeHandle, PlatformAdapter, WindowFilter},
     error::AppError,
     refs::{RefEntry, RefMap},
 };
@@ -30,6 +30,22 @@ pub fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+pub fn resolve_app_pid(app: Option<&str>, adapter: &dyn PlatformAdapter) -> Result<i32, AppError> {
+    if let Some(name) = app {
+        let apps = adapter.list_apps()?;
+        apps.into_iter()
+            .find(|a| a.name.eq_ignore_ascii_case(name))
+            .map(|a| a.pid)
+            .ok_or_else(|| AppError::invalid_input(format!("App '{name}' not found")))
+    } else {
+        let filter = WindowFilter { focused_only: true, app: None };
+        let windows = adapter.list_windows(&filter)?;
+        windows.first()
+            .map(|w| w.pid)
+            .ok_or_else(|| AppError::invalid_input("No focused window. Use --app to specify."))
+    }
 }
 
 #[cfg(test)]
