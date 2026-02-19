@@ -10,7 +10,7 @@ pub struct FindArgs {
 
 pub fn execute(args: FindArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     let opts = crate::adapter::TreeOptions::default();
-    let result = snapshot::run(adapter, &opts, args.app.as_deref(), None)?;
+    let result = snapshot::build(adapter, &opts, args.app.as_deref(), None)?;
 
     let mut matches = Vec::new();
     search_tree(&result.tree, &args, &mut Vec::new(), &mut matches);
@@ -37,16 +37,15 @@ fn search_tree(
     });
 
     if role_match && name_match && value_match {
-        if let Some(ref_id) = &node.ref_id {
-            let path_str: Vec<String> = path.clone();
-            matches.push(json!({
-                "ref": ref_id,
-                "role": node.role,
-                "name": node.name,
-                "value": node.value,
-                "path": path_str
-            }));
-        }
+        let interactive = node.ref_id.is_some();
+        matches.push(json!({
+            "ref": node.ref_id,
+            "role": node.role,
+            "name": node.name,
+            "value": node.value,
+            "interactive": interactive,
+            "path": path.clone()
+        }));
     }
 
     let label = if let Some(name) = &node.name {

@@ -122,8 +122,11 @@ fn finish(cmd_name: &str, result: Result<serde_json::Value, agent_desktop_core::
 fn emit_json(value: &serde_json::Value) {
     let stdout = std::io::stdout();
     let mut writer = BufWriter::new(stdout.lock());
-    let _ = serde_json::to_writer(&mut writer, value);
+    if serde_json::to_writer(&mut writer, value).is_err() {
+        return;
+    }
     let _ = writer.write_all(b"\n");
+    let _ = writer.flush();
 }
 
 fn build_adapter() -> impl agent_desktop_core::adapter::PlatformAdapter {

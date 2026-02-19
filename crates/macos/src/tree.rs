@@ -59,8 +59,10 @@ mod imp {
         let role = copy_string_attr(el, kAXRoleAttribute)?;
         let normalized_role = crate::roles::ax_role_to_str(&role).to_string();
 
-        let name = copy_string_attr(el, kAXTitleAttribute)
-            .or_else(|| copy_string_attr(el, kAXDescriptionAttribute));
+        let title = copy_string_attr(el, kAXTitleAttribute);
+        let ax_desc = copy_string_attr(el, kAXDescriptionAttribute);
+        let name = title.clone().or_else(|| ax_desc.clone());
+        let description = if title.is_some() { ax_desc } else { None };
 
         let value = copy_string_attr(el, kAXValueAttribute);
 
@@ -87,7 +89,7 @@ mod imp {
             role: normalized_role,
             name,
             value,
-            description: None,
+            description,
             states,
             bounds,
             children,
@@ -157,8 +159,58 @@ mod imp {
         Some(children)
     }
 
-    fn read_bounds(_el: &AXElement) -> Option<Rect> {
-        None
+    fn read_bounds(el: &AXElement) -> Option<Rect> {
+        use accessibility_sys::{
+            kAXPositionAttribute, kAXSizeAttribute,
+            AXValueGetValue,
+            kAXValueTypeCGPoint, kAXValueTypeCGSize,
+        };
+        use core_graphics::geometry::{CGPoint, CGSize};
+        use std::ffi::c_void;
+
+        let pos_cf = CFString::new(kAXPositionAttribute);
+        let mut pos_ref: CFTypeRef = std::ptr::null_mut();
+        let pos_ok = unsafe {
+            AXUIElementCopyAttributeValue(el.0, pos_cf.as_concrete_TypeRef(), &mut pos_ref)
+        };
+        if pos_ok != kAXErrorSuccess || pos_ref.is_null() {
+            return None;
+        }
+        let mut point = CGPoint::new(0.0, 0.0);
+        let got_pos = unsafe {
+            AXValueGetValue(
+                pos_ref as _,
+                kAXValueTypeCGPoint,
+                &mut point as *mut _ as *mut c_void,
+            )
+        };
+        unsafe { CFRelease(pos_ref) };
+        if !got_pos {
+            return None;
+        }
+
+        let size_cf = CFString::new(kAXSizeAttribute);
+        let mut size_ref: CFTypeRef = std::ptr::null_mut();
+        let size_ok = unsafe {
+            AXUIElementCopyAttributeValue(el.0, size_cf.as_concrete_TypeRef(), &mut size_ref)
+        };
+        if size_ok != kAXErrorSuccess || size_ref.is_null() {
+            return None;
+        }
+        let mut size = CGSize::new(0.0, 0.0);
+        let got_size = unsafe {
+            AXValueGetValue(
+                size_ref as _,
+                kAXValueTypeCGSize,
+                &mut size as *mut _ as *mut c_void,
+            )
+        };
+        unsafe { CFRelease(size_ref) };
+        if !got_size {
+            return None;
+        }
+
+        Some(Rect { x: point.x, y: point.y, width: size.width, height: size.height })
     }
 }
 

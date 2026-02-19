@@ -10,14 +10,12 @@ const INTERACTIVE_ROLES: &[&str] = &[
     "combobox", "treeitem", "cell", "radiobutton", "incrementor",
 ];
 
-const ABSOLUTE_MAX_DEPTH: u8 = 50;
-
 pub struct SnapshotResult {
     pub tree: AccessibilityNode,
     pub refmap: RefMap,
 }
 
-pub fn run(
+pub fn build(
     adapter: &dyn PlatformAdapter,
     opts: &TreeOptions,
     app_name: Option<&str>,
@@ -65,7 +63,7 @@ pub fn run(
             })?
     };
 
-    let capped_depth = opts.max_depth.min(ABSOLUTE_MAX_DEPTH);
+    let capped_depth = opts.max_depth;
     let tree_opts = TreeOptions {
         max_depth: capped_depth,
         include_bounds: opts.include_bounds,
@@ -76,11 +74,27 @@ pub fn run(
     let raw_tree = adapter.get_tree(&window, &tree_opts)?;
 
     let mut refmap = RefMap::new();
-    let tree = allocate_refs(raw_tree, &mut refmap, opts.include_bounds, opts.interactive_only);
-
-    refmap.save()?;
+    let tree = allocate_refs(
+        raw_tree,
+        &mut refmap,
+        opts.include_bounds,
+        opts.interactive_only,
+        window.pid,
+        Some(window.app.as_str()),
+    );
 
     Ok(SnapshotResult { tree, refmap })
+}
+
+pub fn run(
+    adapter: &dyn PlatformAdapter,
+    opts: &TreeOptions,
+    app_name: Option<&str>,
+    window_id: Option<&str>,
+) -> Result<SnapshotResult, AppError> {
+    let result = build(adapter, opts, app_name, window_id)?;
+    result.refmap.save()?;
+    Ok(result)
 }
 
 fn allocate_refs(
@@ -88,21 +102,24 @@ fn allocate_refs(
     refmap: &mut RefMap,
     include_bounds: bool,
     interactive_only: bool,
+    window_pid: i32,
+    source_app: Option<&str>,
 ) -> AccessibilityNode {
     let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
 
     if is_interactive {
         let entry = RefEntry {
-            pid: 0,
+            pid: window_pid,
             role: node.role.clone(),
             name: node.name.clone(),
+            value: node.value.clone(),
+            states: node.states.clone(),
+            bounds: node.bounds,
             bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
             available_actions: actions_for_role(&node.role),
-            source_app: None,
+            source_app: source_app.map(str::to_string),
         };
         node.ref_id = Some(refmap.allocate(entry));
-    } else if interactive_only {
-        return node;
     }
 
     if !include_bounds {
@@ -112,7 +129,7 @@ fn allocate_refs(
     node.children = node
         .children
         .into_iter()
-        .map(|child| allocate_refs(child, refmap, include_bounds, interactive_only))
+        .map(|child| allocate_refs(child, refmap, include_bounds, interactive_only, window_pid, source_app))
         .collect();
 
     node

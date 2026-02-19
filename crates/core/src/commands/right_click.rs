@@ -6,12 +6,12 @@ use crate::{
 };
 use serde_json::Value;
 
-pub struct ClickArgs {
+pub struct RightClickArgs {
     pub ref_id: String,
 }
 
-pub fn execute(args: ClickArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub fn execute(args: RightClickArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     let (_entry, handle) = resolve_ref(&args.ref_id, adapter)?;
-    let result = adapter.execute_action(&handle, Action::Click)?;
+    let result = adapter.execute_action(&handle, Action::RightClick)?;
     Ok(serde_json::to_value(result)?)
 }

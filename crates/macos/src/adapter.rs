@@ -61,15 +61,15 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError> {
-        focus_window_impl(win)
+        crate::app_ops::focus_window_impl(win)
     }
 
     fn launch_app(&self, id: &str, wait: bool) -> Result<WindowInfo, AdapterError> {
-        launch_app_impl(id, wait)
+        crate::app_ops::launch_app_impl(id, wait)
     }
 
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {
-        close_app_impl(id, force)
+        crate::app_ops::close_app_impl(id, force)
     }
 
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
@@ -106,14 +106,10 @@ impl PlatformAdapter for MacOSAdapter {
 #[cfg(target_os = "macos")]
 fn execute_action_impl(handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError> {
     use crate::tree::AXElement;
-    use core_foundation::base::CFRetain;
-    use core_foundation_sys::base::CFTypeRef;
+    use std::mem::ManuallyDrop;
 
-    unsafe { CFRetain(handle.as_raw() as CFTypeRef) };
-    let el = AXElement(handle.as_raw() as accessibility_sys::AXUIElementRef);
-    let result = crate::actions::perform_action(&el, &action)?;
-    std::mem::forget(el);
-    Ok(result)
+    let el = ManuallyDrop::new(AXElement(handle.as_raw() as accessibility_sys::AXUIElementRef));
+    crate::actions::perform_action(&*el, &action)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -124,7 +120,8 @@ fn execute_action_impl(_handle: &NativeHandle, _action: Action) -> Result<Action
 #[cfg(target_os = "macos")]
 fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
     let root = crate::tree::element_for_pid(entry.pid);
-    find_element_recursive(&root, entry, 0, 20)
+    let mut visited = FxHashSet::default();
+    find_element_recursive(&root, entry, 0, 20, &mut visited)
 }
 
 #[cfg(target_os = "macos")]
@@ -133,6 +130,7 @@ fn find_element_recursive(
     entry: &RefEntry,
     depth: u8,
     max_depth: u8,
+    visited: &mut FxHashSet<usize>,
 ) -> Result<NativeHandle, AdapterError> {
     use accessibility_sys::{
         kAXChildrenAttribute, kAXErrorSuccess, kAXRoleAttribute, kAXTitleAttribute,
@@ -142,6 +140,10 @@ fn find_element_recursive(
         array::CFArray,
         base::{CFRetain, CFType, CFTypeRef, TCFType},
     };
+
+    if !visited.insert(el.0 as usize) {
+        return Err(AdapterError::element_not_found("element"));
+    }
 
     let role = crate::tree::copy_string_attr(el, kAXRoleAttribute);
     let normalized = role.as_deref().map(crate::roles::ax_role_to_str).unwrap_or("unknown");
@@ -185,7 +187,7 @@ fn find_element_recursive(
         }
         unsafe { CFRetain(ptr as CFTypeRef) };
         let child = crate::tree::AXElement(ptr);
-        if let Ok(handle) = find_element_recursive(&child, entry, depth + 1, max_depth) {
+        if let Ok(handle) = find_element_recursive(&child, entry, depth + 1, max_depth, visited) {
             return Ok(handle);
         }
     }
@@ -198,10 +200,13 @@ fn resolve_element_impl(_entry: &RefEntry) -> Result<NativeHandle, AdapterError>
     Err(AdapterError::not_supported("resolve_element"))
 }
 
-fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+pub fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
     #[cfg(target_os = "macos")]
     {
+        use rustc_hash::FxHasher;
+        use std::hash::{Hash, Hasher};
         use std::process::Command;
+
         let app_filter = filter.app.as_deref().unwrap_or("").to_string();
         let script = r#"
 tell application "System Events"
@@ -246,8 +251,13 @@ end tell
                 continue;
             }
 
+            let mut h = FxHasher::default();
+            pid.hash(&mut h);
+            title.hash(&mut h);
+            let id = format!("w-{:x}", h.finish() & 0xFFFFFF);
+
             windows.push(WindowInfo {
-                id: format!("w-{}", idx + 1),
+                id,
                 title,
                 app: app_name,
                 pid,
@@ -297,93 +307,4 @@ end tell"#,
     }
     #[cfg(not(target_os = "macos"))]
     Err(AdapterError::not_supported("list_apps"))
-}
-
-fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        Command::new("osascript")
-            .arg("-e")
-            .arg(format!(r#"tell application "{}" to activate"#, win.app))
-            .output()
-            .map_err(|e| AdapterError::internal(format!("focus_window failed: {e}")))?;
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = win;
-        Err(AdapterError::not_supported("focus_window"))
-    }
-}
-
-fn launch_app_impl(id: &str, wait: bool) -> Result<WindowInfo, AdapterError> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        use std::time::{Duration, Instant};
-
-        Command::new("open")
-            .arg("-a")
-            .arg(id)
-            .output()
-            .map_err(|e| AdapterError::internal(format!("open failed: {e}")))?;
-
-        if wait {
-            let start = Instant::now();
-            let timeout = Duration::from_secs(10);
-            loop {
-                std::thread::sleep(Duration::from_millis(200));
-                let filter = WindowFilter { focused_only: false, app: Some(id.to_string()) };
-                if let Ok(wins) = list_windows_impl(&filter) {
-                    if let Some(win) = wins.into_iter().next() {
-                        return Ok(win);
-                    }
-                }
-                if start.elapsed() > timeout {
-                    break;
-                }
-            }
-        }
-
-        Ok(WindowInfo {
-            id: "w-0".into(),
-            title: id.to_string(),
-            app: id.to_string(),
-            pid: 0,
-            bounds: None,
-            is_focused: true,
-        })
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (id, wait);
-        Err(AdapterError::not_supported("launch_app"))
-    }
-}
-
-fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        if force {
-            Command::new("pkill")
-                .arg("-f")
-                .arg(id)
-                .output()
-                .map_err(|e| AdapterError::internal(format!("pkill failed: {e}")))?;
-        } else {
-            Command::new("osascript")
-                .arg("-e")
-                .arg(format!(r#"tell application "{id}" to quit"#))
-                .output()
-                .map_err(|e| AdapterError::internal(format!("quit failed: {e}")))?;
-        }
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (id, force);
-        Err(AdapterError::not_supported("close_app"))
-    }
 }

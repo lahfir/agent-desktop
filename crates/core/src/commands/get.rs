@@ -20,12 +20,10 @@ pub fn execute(args: GetArgs, adapter: &dyn PlatformAdapter) -> Result<Value, Ap
 
     let value = match args.property {
         GetProperty::Role => json!(entry.role),
-        GetProperty::Text | GetProperty::Title => {
-            json!(entry.name)
-        }
-        GetProperty::Value => json!(null),
-        GetProperty::Bounds => json!(null),
-        GetProperty::States => json!([]),
+        GetProperty::Text | GetProperty::Title => json!(entry.name),
+        GetProperty::Value => json!(entry.value),
+        GetProperty::Bounds => json!(entry.bounds),
+        GetProperty::States => json!(entry.states),
     };
 
     let prop_name = match args.property {

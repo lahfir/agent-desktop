@@ -4,6 +4,10 @@ use crate::{
     refs::{RefEntry, RefMap},
 };
 
+pub struct RefArgs {
+    pub ref_id: String,
+}
+
 pub fn resolve_ref(
     ref_id: &str,
     adapter: &dyn PlatformAdapter,

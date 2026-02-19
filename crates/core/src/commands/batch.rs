@@ -8,19 +8,21 @@ pub struct BatchArgs {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct BatchCommand {
-    command: String,
+pub struct BatchCommand {
+    pub command: String,
     #[serde(default)]
-    args: Value,
+    pub args: Value,
+}
+
+pub fn parse_commands(json_str: &str) -> Result<Vec<BatchCommand>, AppError> {
+    serde_json::from_str(json_str)
+        .map_err(|e| AppError::invalid_input(format!("Invalid batch JSON: {e}")))
 }
 
 pub fn execute(args: BatchArgs, _adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let commands: Vec<BatchCommand> = serde_json::from_str(&args.commands_json)
-        .map_err(|e| AppError::invalid_input(format!("Invalid batch JSON: {e}")))?;
-
+    let commands = parse_commands(&args.commands_json)?;
     Ok(json!({
-        "note": "Batch dispatch is implemented in the binary crate dispatch layer",
+        "note": "Batch execution delegated to dispatch layer",
         "count": commands.len()
     }))
 }

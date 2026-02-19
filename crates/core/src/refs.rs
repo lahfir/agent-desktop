@@ -10,6 +10,12 @@ pub struct RefEntry {
     pub pid: i32,
     pub role: String,
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub states: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<crate::node::Rect>,
     pub bounds_hash: Option<u64>,
     pub available_actions: Vec<String>,
     pub source_app: Option<String>,
@@ -73,6 +79,7 @@ impl RefMap {
                 .mode(0o600)
                 .open(&tmp)?;
             file.write_all(json.as_bytes())?;
+            file.flush()?;
         }
         #[cfg(not(unix))]
         std::fs::write(&tmp, json.as_bytes())?;
@@ -110,7 +117,9 @@ fn refmap_path() -> Result<PathBuf, AppError> {
 }
 
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
 }
 
 #[cfg(test)]
@@ -124,6 +133,9 @@ mod tests {
             pid: 1,
             role: "button".into(),
             name: Some("OK".into()),
+            value: None,
+            states: vec![],
+            bounds: None,
             bounds_hash: None,
             available_actions: vec!["Click".into()],
             source_app: None,
@@ -142,6 +154,9 @@ mod tests {
             pid: 42,
             role: "textfield".into(),
             name: None,
+            value: None,
+            states: vec![],
+            bounds: None,
             bounds_hash: Some(12345),
             available_actions: vec![],
             source_app: Some("Finder".into()),

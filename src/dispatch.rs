@@ -2,9 +2,10 @@ use agent_desktop_core::{
     action::Direction,
     adapter::PlatformAdapter,
     commands::{
-        batch, clipboard, click, close_app, collapse, expand, find, focus, focus_window, get,
-        is_check, launch, list_apps, list_windows, permissions, press, screenshot, scroll, select,
-        set_value, snapshot, status, toggle, type_text, version, wait,
+        batch, click, clipboard_get, clipboard_set, close_app, collapse, double_click, expand,
+        find, focus, focus_window, get, helpers, is_check, launch, list_apps, list_windows,
+        permissions, press, right_click, screenshot, scroll, select, set_value, snapshot, status,
+        toggle, type_text, version, wait,
     },
     error::AppError,
 };
@@ -58,10 +59,10 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
         Commands::Click(a) => click::execute(click::ClickArgs { ref_id: a.ref_id }, adapter),
         Commands::DoubleClick(a) => {
-            click::execute_double(click::ClickArgs { ref_id: a.ref_id }, adapter)
+            double_click::execute(double_click::DoubleClickArgs { ref_id: a.ref_id }, adapter)
         }
         Commands::RightClick(a) => {
-            click::execute_right(click::ClickArgs { ref_id: a.ref_id }, adapter)
+            right_click::execute(right_click::RightClickArgs { ref_id: a.ref_id }, adapter)
         }
 
         Commands::Type(a) => type_text::execute(
@@ -74,11 +75,11 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             adapter,
         ),
 
-        Commands::Focus(a) => focus::execute(focus::RefArgs { ref_id: a.ref_id }, adapter),
-        Commands::Toggle(a) => toggle::execute(toggle::RefArgs { ref_id: a.ref_id }, adapter),
-        Commands::Expand(a) => expand::execute(expand::RefArgs { ref_id: a.ref_id }, adapter),
+        Commands::Focus(a) => focus::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
+        Commands::Toggle(a) => toggle::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
+        Commands::Expand(a) => expand::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
         Commands::Collapse(a) => {
-            collapse::execute(collapse::RefArgs { ref_id: a.ref_id }, adapter)
+            collapse::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter)
         }
 
         Commands::Select(a) => select::execute(
@@ -121,8 +122,8 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             adapter,
         ),
 
-        Commands::ClipboardGet => clipboard::execute_get(adapter),
-        Commands::ClipboardSet(a) => clipboard::execute_set(a.text, adapter),
+        Commands::ClipboardGet => clipboard_get::execute(adapter),
+        Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
 
         Commands::Wait(a) => wait::execute(
             wait::WaitArgs {
@@ -143,14 +144,38 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
         Commands::Version(a) => version::execute(version::VersionArgs { json: a.json }),
 
-        Commands::Batch(a) => batch::execute(
-            batch::BatchArgs {
-                commands_json: a.commands_json,
-                stop_on_error: a.stop_on_error,
-            },
-            adapter,
-        ),
+        Commands::Batch(a) => {
+            let commands = batch::parse_commands(&a.commands_json)?;
+            let mut results = Vec::new();
+            for cmd in commands {
+                let result = dispatch_batch_command(&cmd.command, cmd.args, adapter);
+                let ok = result.is_ok();
+                let entry = match result {
+                    Ok(data) => {
+                        serde_json::json!({ "ok": true, "command": cmd.command, "data": data })
+                    }
+                    Err(e) => {
+                        serde_json::json!({ "ok": false, "command": cmd.command, "error": e.to_string() })
+                    }
+                };
+                results.push(entry);
+                if !ok && a.stop_on_error {
+                    break;
+                }
+            }
+            Ok(serde_json::json!({ "results": results }))
+        }
     }
+}
+
+fn dispatch_batch_command(
+    command: &str,
+    _args: serde_json::Value,
+    _adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
+) -> Result<serde_json::Value, agent_desktop_core::error::AppError> {
+    Err(agent_desktop_core::error::AppError::invalid_input(format!(
+        "Batch dispatch for '{command}' not yet implemented. Use individual commands."
+    )))
 }
 
 fn parse_get_property(s: &str) -> Result<get::GetProperty, AppError> {

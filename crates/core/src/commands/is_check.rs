@@ -26,11 +26,11 @@ pub fn execute(args: IsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, App
     };
 
     let result = match args.property {
-        IsProperty::Visible => true,
-        IsProperty::Enabled => !entry.role.is_empty(),
-        IsProperty::Checked => false,
-        IsProperty::Focused => false,
-        IsProperty::Expanded => false,
+        IsProperty::Visible => !entry.states.contains(&"hidden".to_string()),
+        IsProperty::Enabled => !entry.states.contains(&"disabled".to_string()),
+        IsProperty::Checked => entry.states.contains(&"checked".to_string()),
+        IsProperty::Focused => entry.states.contains(&"focused".to_string()),
+        IsProperty::Expanded => entry.states.contains(&"expanded".to_string()),
     };
 
     Ok(json!({ "property": prop_name, "ref": args.ref_id, "result": result }))

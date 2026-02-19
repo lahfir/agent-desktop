@@ -17,6 +17,24 @@ pub enum ErrorCode {
     Internal,
 }
 
+impl ErrorCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ErrorCode::PermissionDenied => "PERMISSION_DENIED",
+            ErrorCode::ElementNotFound => "ELEMENT_NOT_FOUND",
+            ErrorCode::ApplicationNotFound => "APPLICATION_NOT_FOUND",
+            ErrorCode::ActionFailed => "ACTION_FAILED",
+            ErrorCode::ActionNotSupported => "ACTION_NOT_SUPPORTED",
+            ErrorCode::StaleRef => "STALE_REF",
+            ErrorCode::WindowNotFound => "WINDOW_NOT_FOUND",
+            ErrorCode::PlatformNotSupported => "PLATFORM_NOT_SUPPORTED",
+            ErrorCode::Timeout => "TIMEOUT",
+            ErrorCode::InvalidArgs => "INVALID_ARGS",
+            ErrorCode::Internal => "INTERNAL",
+        }
+    }
+}
+
 #[derive(Debug, Error, Clone)]
 #[error("{message}")]
 pub struct AdapterError {
@@ -106,22 +124,8 @@ pub enum AppError {
 impl AppError {
     pub fn code(&self) -> &str {
         match self {
-            AppError::Adapter(e) => match e.code {
-                ErrorCode::PermissionDenied => "PERMISSION_DENIED",
-                ErrorCode::ElementNotFound => "ELEMENT_NOT_FOUND",
-                ErrorCode::ApplicationNotFound => "APPLICATION_NOT_FOUND",
-                ErrorCode::ActionFailed => "ACTION_FAILED",
-                ErrorCode::ActionNotSupported => "ACTION_NOT_SUPPORTED",
-                ErrorCode::StaleRef => "STALE_REF",
-                ErrorCode::WindowNotFound => "WINDOW_NOT_FOUND",
-                ErrorCode::PlatformNotSupported => "PLATFORM_NOT_SUPPORTED",
-                ErrorCode::Timeout => "TIMEOUT",
-                ErrorCode::InvalidArgs => "INVALID_ARGS",
-                ErrorCode::Internal => "INTERNAL",
-            },
-            AppError::Io(_) => "INTERNAL",
-            AppError::Json(_) => "INTERNAL",
-            AppError::Internal(_) => "INTERNAL",
+            AppError::Adapter(e) => e.code.as_str(),
+            AppError::Io(_) | AppError::Json(_) | AppError::Internal(_) => "INTERNAL",
         }
     }
 

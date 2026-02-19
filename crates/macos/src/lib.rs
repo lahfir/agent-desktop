@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod adapter;
+pub mod app_ops;
 pub mod clipboard;
 pub mod input;
 pub mod permissions;

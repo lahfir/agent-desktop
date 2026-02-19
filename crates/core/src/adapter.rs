@@ -63,8 +63,9 @@ impl NativeHandle {
     }
 }
 
-// SAFETY: Phase 1 is single-threaded CLI. All AX calls happen on the calling thread.
-// NativeHandle is never stored across thread boundaries.
+// SAFETY: Phase 1 is single-threaded CLI. NativeHandle is never sent across thread
+// boundaries. The unsafe impls are required for use with dyn PlatformAdapter (which
+// is Send + Sync). Remove in Phase 4 when async daemon is introduced.
 unsafe impl Send for NativeHandle {}
 unsafe impl Sync for NativeHandle {}
 

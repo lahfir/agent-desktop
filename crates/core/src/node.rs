@@ -36,9 +36,9 @@ pub struct Rect {
 
 impl Rect {
     pub fn bounds_hash(&self) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
+        use rustc_hash::FxHasher;
         use std::hash::{Hash, Hasher};
-        let mut h = DefaultHasher::new();
+        let mut h = FxHasher::default();
         let x = (self.x * 100.0) as i64;
         let y = (self.y * 100.0) as i64;
         let w = (self.width * 100.0) as i64;
@@ -55,6 +55,7 @@ impl Rect {
 pub struct WindowInfo {
     pub id: String,
     pub title: String,
+    #[serde(rename = "app_name")]
     pub app: String,
     pub pid: i32,
     #[serde(skip_serializing_if = "Option::is_none")]

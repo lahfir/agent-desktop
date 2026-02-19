@@ -61,3 +61,7 @@ dist/
 *.deb
 *.rpm
 *.snap
+
+# Compound Engineering
+docs/
+todos/

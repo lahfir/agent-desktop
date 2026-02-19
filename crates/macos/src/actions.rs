@@ -69,19 +69,57 @@ mod imp {
             }
             Action::Expand => {
                 let ax_action = CFString::new("AXExpand");
-                let _ = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                if err != kAXErrorSuccess {
+                    return Err(AdapterError::new(
+                        agent_desktop_core::error::ErrorCode::ActionFailed,
+                        format!("AXExpand failed with error {err}"),
+                    ));
+                }
             }
             Action::Collapse => {
                 let ax_action = CFString::new("AXCollapse");
-                let _ = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                if err != kAXErrorSuccess {
+                    return Err(AdapterError::new(
+                        agent_desktop_core::error::ErrorCode::ActionFailed,
+                        format!("AXCollapse failed with error {err}"),
+                    ));
+                }
             }
             Action::Select(_) => {
                 let ax_action = CFString::new(kAXPressAction);
-                let _ = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                if err != kAXErrorSuccess {
+                    return Err(AdapterError::new(
+                        agent_desktop_core::error::ErrorCode::ActionFailed,
+                        format!("AXPress (select) failed with error {err}"),
+                    ));
+                }
             }
-            Action::Scroll(_, _) => {
-                let ax_action = CFString::new(kAXPressAction);
-                let _ = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+            Action::Scroll(direction, amount) => {
+                use core_graphics::{
+                    event::{CGEvent, CGEventTapLocation, ScrollEventUnit},
+                    event_source::{CGEventSource, CGEventSourceStateID},
+                };
+                let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+                    .map_err(|_| AdapterError::internal("CGEventSource failed"))?;
+                let (dx, dy) = match direction {
+                    agent_desktop_core::action::Direction::Up => (0i32, *amount as i32),
+                    agent_desktop_core::action::Direction::Down => (0i32, -(*amount as i32)),
+                    agent_desktop_core::action::Direction::Left => (-(*amount as i32), 0i32),
+                    agent_desktop_core::action::Direction::Right => (*amount as i32, 0i32),
+                };
+                let event = CGEvent::new_scroll_event(
+                    source,
+                    ScrollEventUnit::LINE,
+                    2,
+                    dy,
+                    dx,
+                    0,
+                )
+                .map_err(|_| AdapterError::internal("CGEvent scroll failed"))?;
+                event.post(CGEventTapLocation::HID);
             }
         }
 
