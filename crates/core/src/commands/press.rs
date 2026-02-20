@@ -15,6 +15,7 @@ const BLOCKED_COMBOS: &[&str] = &[
 
 pub struct PressArgs {
     pub combo: String,
+    pub app: Option<String>,
 }
 
 pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
@@ -27,18 +28,25 @@ pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, 
     }
 
     let combo = parse_combo(&normalized)?;
+
+    if let Some(app_name) = &args.app {
+        let result = adapter.press_key_for_app(app_name, &combo)?;
+        return Ok(serde_json::to_value(result)?);
+    }
+
     let handle = crate::adapter::NativeHandle::null();
     let result = adapter.execute_action(&handle, Action::PressKey(combo))?;
     Ok(serde_json::to_value(result)?)
 }
 
-fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
+pub fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
     let parts: Vec<&str> = s.split('+').collect();
-    if parts.is_empty() {
-        return Err(AppError::invalid_input("Empty key combo"));
-    }
-
-    let key = parts.last().unwrap().to_string();
+    let key = parts
+        .last()
+        .copied()
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| AppError::invalid_input("Empty key combo"))?
+        .to_string();
     let mut modifiers = Vec::new();
 
     for &part in &parts[..parts.len() - 1] {

@@ -29,6 +29,10 @@ mod imp {
             .map_err(|e| AdapterError::internal(format!("pbcopy wait failed: {e}")))?;
         Ok(())
     }
+
+    pub fn clear() -> Result<(), AdapterError> {
+        set("")
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -42,6 +46,10 @@ mod imp {
     pub fn set(_text: &str) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("clipboard_set"))
     }
+
+    pub fn clear() -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("clipboard_clear"))
+    }
 }
 
-pub use imp::{get, set};
+pub use imp::{clear, get, set};

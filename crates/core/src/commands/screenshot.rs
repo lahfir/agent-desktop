@@ -1,5 +1,5 @@
 use crate::{
-    adapter::{PlatformAdapter, ScreenshotTarget},
+    adapter::{PlatformAdapter, ScreenshotTarget, WindowFilter},
     error::AppError,
 };
 use base64::Engine;
@@ -13,12 +13,7 @@ pub struct ScreenshotArgs {
 }
 
 pub fn execute(args: ScreenshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let target = match (&args.window_id, &args.app) {
-        (Some(id), _) => ScreenshotTarget::Window(id.clone()),
-        (None, Some(_app)) => ScreenshotTarget::FullScreen,
-        (None, None) => ScreenshotTarget::FullScreen,
-    };
-
+    let target = resolve_target(&args, adapter)?;
     let buf = adapter.screenshot(target)?;
 
     if let Some(path) = args.output_path {
@@ -33,4 +28,36 @@ pub fn execute(args: ScreenshotArgs, adapter: &dyn PlatformAdapter) -> Result<Va
             "height": buf.height
         }))
     }
+}
+
+fn resolve_target(
+    args: &ScreenshotArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<ScreenshotTarget, AppError> {
+    if let Some(window_id) = &args.window_id {
+        let filter = WindowFilter {
+            focused_only: false,
+            app: args.app.clone(),
+        };
+        let windows = adapter.list_windows(&filter)?;
+        let win = windows
+            .into_iter()
+            .find(|w| &w.id == window_id)
+            .ok_or_else(|| AppError::invalid_input(format!("Window '{window_id}' not found")))?;
+        return Ok(ScreenshotTarget::Window(win.pid));
+    }
+
+    if let Some(app_name) = &args.app {
+        let filter = WindowFilter {
+            focused_only: false,
+            app: Some(app_name.clone()),
+        };
+        let windows = adapter.list_windows(&filter)?;
+        let win = windows.into_iter().next().ok_or_else(|| {
+            AppError::invalid_input(format!("No windows found for app '{app_name}'"))
+        })?;
+        return Ok(ScreenshotTarget::Window(win.pid));
+    }
+
+    Ok(ScreenshotTarget::FullScreen)
 }

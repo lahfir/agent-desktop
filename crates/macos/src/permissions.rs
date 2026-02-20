@@ -6,10 +6,7 @@ mod imp {
         kAXTrustedCheckOptionPrompt, AXIsProcessTrusted, AXIsProcessTrustedWithOptions,
     };
     use core_foundation::{
-        base::TCFType,
-        boolean::CFBoolean,
-        dictionary::CFDictionary,
-        string::CFString,
+        base::TCFType, boolean::CFBoolean, dictionary::CFDictionary, string::CFString,
     };
 
     pub fn is_trusted() -> bool {
@@ -20,8 +17,7 @@ mod imp {
         unsafe {
             let key = CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
             let val = CFBoolean::true_value();
-            let dict =
-                CFDictionary::from_CFType_pairs(&[(key.as_CFType(), val.as_CFType())]);
+            let dict = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), val.as_CFType())]);
             AXIsProcessTrustedWithOptions(dict.as_concrete_TypeRef())
         }
     }

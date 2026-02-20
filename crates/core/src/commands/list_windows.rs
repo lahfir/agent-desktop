@@ -9,7 +9,10 @@ pub struct ListWindowsArgs {
 }
 
 pub fn execute(args: ListWindowsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let filter = WindowFilter { focused_only: false, app: args.app };
+    let filter = WindowFilter {
+        focused_only: false,
+        app: args.app,
+    };
     let windows = adapter.list_windows(&filter)?;
     Ok(serde_json::to_value(windows)?)
 }

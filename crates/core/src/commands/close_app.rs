@@ -1,8 +1,7 @@
 use crate::{adapter::PlatformAdapter, error::AppError};
 use serde_json::{json, Value};
 
-const PROTECTED_PROCESSES: &[&str] =
-    &["loginwindow", "windowserver", "dock", "launchd", "finder"];
+const PROTECTED_PROCESSES: &[&str] = &["loginwindow", "windowserver", "dock", "launchd", "finder"];
 
 pub struct CloseAppArgs {
     pub app: String,

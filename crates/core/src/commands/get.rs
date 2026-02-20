@@ -16,12 +16,15 @@ pub enum GetProperty {
 }
 
 pub fn execute(args: GetArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (entry, _handle) = resolve_ref(&args.ref_id, adapter)?;
+    let (entry, handle) = resolve_ref(&args.ref_id, adapter)?;
 
     let value = match args.property {
         GetProperty::Role => json!(entry.role),
-        GetProperty::Text | GetProperty::Title => json!(entry.name),
-        GetProperty::Value => json!(entry.value),
+        GetProperty::Title => json!(entry.name),
+        GetProperty::Text | GetProperty::Value => {
+            let live = adapter.get_live_value(&handle).ok().flatten();
+            json!(live.or(entry.value))
+        }
         GetProperty::Bounds => json!(entry.bounds),
         GetProperty::States => json!(entry.states),
     };

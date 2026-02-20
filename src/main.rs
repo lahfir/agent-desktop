@@ -1,4 +1,6 @@
+mod batch_dispatch;
 mod cli;
+mod cli_args;
 mod dispatch;
 
 use agent_desktop_core::adapter::PlatformAdapter;
@@ -43,10 +45,9 @@ fn main() {
 
     match &cmd {
         Commands::Version(a) => {
-            let result =
-                agent_desktop_core::commands::version::execute(
-                    agent_desktop_core::commands::version::VersionArgs { json: a.json },
-                );
+            let result = agent_desktop_core::commands::version::execute(
+                agent_desktop_core::commands::version::VersionArgs { json: a.json },
+            );
             finish(cmd_name, result);
             return;
         }
