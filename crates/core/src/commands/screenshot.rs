@@ -35,7 +35,10 @@ fn resolve_target(
     adapter: &dyn PlatformAdapter,
 ) -> Result<ScreenshotTarget, AppError> {
     if let Some(window_id) = &args.window_id {
-        let filter = WindowFilter { focused_only: false, app: args.app.clone() };
+        let filter = WindowFilter {
+            focused_only: false,
+            app: args.app.clone(),
+        };
         let windows = adapter.list_windows(&filter)?;
         let win = windows
             .into_iter()
@@ -45,7 +48,10 @@ fn resolve_target(
     }
 
     if let Some(app_name) = &args.app {
-        let filter = WindowFilter { focused_only: false, app: Some(app_name.clone()) };
+        let filter = WindowFilter {
+            focused_only: false,
+            app: Some(app_name.clone()),
+        };
         let windows = adapter.list_windows(&filter)?;
         let win = windows.into_iter().next().ok_or_else(|| {
             AppError::invalid_input(format!("No windows found for app '{app_name}'"))

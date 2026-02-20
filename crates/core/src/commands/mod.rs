@@ -1,10 +1,10 @@
 pub mod batch;
 pub mod check;
 pub mod clear;
+pub mod click;
 pub mod clipboard_clear;
 pub mod clipboard_get;
 pub mod clipboard_set;
-pub mod click;
 pub mod close_app;
 pub mod collapse;
 pub mod double_click;

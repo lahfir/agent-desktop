@@ -11,10 +11,18 @@ deepened: 2026-02-19
 
 ## Enhancement Summary
 
-**Deepened on:** 2026-02-19
-**Research agents used:** 10 (Architecture Strategist, Performance Oracle, Security Sentinel, Code Simplicity Reviewer, Agent-Native Reviewer, Pattern Recognition Specialist, Best Practices Researcher, Framework Docs Researcher, Spec Flow Analyzer, Agent-Native Architecture Skill)
+**Deepened on:** 2026-02-19 (round 1), 2026-02-19 (round 2 — code quality audit)
+**Research agents used:** 15 (Architecture Strategist, Performance Oracle, Security Sentinel, Code Simplicity Reviewer, Agent-Native Reviewer, Pattern Recognition Specialist, Best Practices Researcher, Framework Docs Researcher, Spec Flow Analyzer, Agent-Native Architecture Skill, Dead Code/LOC Auditor, Test-Before-Implement Researcher, Modular Architecture Researcher, Code Quality Reviewer, Architecture Extensibility Reviewer)
 **Context7 queries:** clap 4 derive patterns, serde performance patterns
 **Web research:** macOS AX FFI best practices, cargo-dist distribution, rmcp latest version, accessibility-sys alternatives, thiserror 2.0 changes
+
+### Round 2 Structural Findings (Fix During Implementation)
+
+- **Dead code:** `clipboard.rs` (zero callers), `batch::execute` stub (never called)
+- **LOC violation:** `tree.rs` at 403 lines — split into `ax_element.rs` / `ax_attrs.rs` / `ax_tree.rs`
+- **Dispatch duplication:** 187/397 lines in `dispatch.rs` are a near-verbatim parallel dispatch table — collapse to single code path via `Commands` enum deserialization
+- **Probe binaries:** `axprobe.rs` / `axprobe2.rs` in `src/bin/` compile on every build — move to `examples/` with `required-features = ["dev-tools"]`
+- **Bugs:** `wait.rs` silently discards RefMap load errors; `is_check.rs` reads stale state; `press.rs` undocumented null-handle convention
 
 ### Blockers (Fix Before Writing Code)
 
@@ -941,7 +949,11 @@ Use `serde_json::to_writer(BufWriter::new(stdout.lock()), &data)` instead of `to
 
 ## macOS Adapter Implementation
 
-### `crates/macos/src/tree.rs` — Key patterns
+### `crates/macos/src/` — Tree module split
+
+`tree.rs` exceeds 400 LOC and is split into three files (see "Code Quality and Structural Refactors" section). The patterns below apply to the split files: `AXElement` and `element_for_pid` go in `ax_element.rs`, attribute helpers in `ax_attrs.rs`, traversal logic in `ax_tree.rs`.
+
+### `crates/macos/src/ax_element.rs` — Key patterns
 
 ```rust
 use accessibility_sys::{
@@ -1495,15 +1507,15 @@ macos_large_tree_test            - snapshot Xcode → completes under 2 seconds
 ### Weeks 3–4: macOS Tree Traversal
 
 **Deliverables:**
-- `crates/macos/src/tree.rs`: `AXElement` newtype with `Drop`, `element_for_pid()`,
-  `build_subtree()` with cycle detection via `HashSet<usize>`, depth limiting
-- `crates/macos/src/roles.rs`: AXRole string → unified role enum mapping
-  (AXButton → "button", AXTextField → "textfield", etc.)
+- `crates/macos/src/ax_element.rs`: `AXElement` newtype with `Drop`, `Clone` (CFRetain), `element_for_pid()`, `window_element_for()`
+- `crates/macos/src/ax_attrs.rs`: `copy_string_attr`, `copy_ax_array`, `fetch_node_attrs`, `read_bounds`
+- `crates/macos/src/ax_tree.rs`: `build_subtree()` with cycle detection via `FxHashSet<usize>`, depth limiting, `resolve_element_name`
+- `crates/macos/src/roles.rs`: AXRole string → unified role enum mapping (AXButton → "button", AXTextField → "textfield", etc.)
 - `crates/macos/src/permissions.rs`: `is_trusted()`, `request_trust()`
-- `crates/macos/src/adapter.rs`: `MacOSAdapter::get_tree()` and
-  `MacOSAdapter::check_permissions()` implemented; all other methods stub
-- Unit tests: role mapping coverage, cycle detection (synthetic circular tree),
-  permission mock
+- `crates/macos/src/adapter.rs`: `MacOSAdapter::get_tree()` and `MacOSAdapter::check_permissions()` implemented; all other methods stub
+- `crates/macos/examples/axprobe.rs`: probe binary moved from `src/bin/`, gated on `dev-tools` feature
+- Unit tests: role mapping coverage, cycle detection (synthetic circular tree), permission mock
+- Stage 1–3 probe validation completed for each AX attribute used before wiring into adapter
 - Manual validation: `cargo run -- snapshot --app Finder` produces valid JSON
 
 **Gotchas from research:**
@@ -1717,6 +1729,154 @@ From the Agent-Native Reviewer (score: 26/30, 4 structural gaps):
 - [ ] `diff` command (change detection between snapshots)
 - [ ] `status --app <name>` responsiveness check
 - [ ] `--max-tokens` flag on snapshot
+
+---
+
+## Code Quality and Structural Refactors
+
+These findings are not blockers for Phase 1 feature work, but must be resolved before the Phase 1 milestone is closed. Each has a clear fix and zero risk of behaviour change.
+
+### Dead Code to Remove
+
+**`crates/core/src/commands/clipboard.rs`** — 13 lines, exports `execute_get()` and `execute_set()` with zero callers anywhere in the workspace. The clipboard commands are implemented in the correct split files `clipboard_get.rs` and `clipboard_set.rs` (one command per file), which `dispatch.rs` calls directly. `clipboard.rs` is a leftover from before the split and should be deleted along with its `pub mod clipboard;` line in `mod.rs`.
+
+**`batch::execute` stub** — `crates/core/src/commands/batch.rs` exports an `execute()` function that returns `Ok(json!({"note": "..."}))`. It is never called; `dispatch.rs` handles batch routing inline. Delete the `execute` function body. Keep `BatchArgs`, `BatchCommand`, and `parse_commands` — they are live.
+
+### LOC Violations
+
+**`crates/macos/src/tree.rs` is at 403 lines** — exceeds the 400-line hard limit. Split into three files by single responsibility:
+
+| New file | Contents | Estimated LOC |
+|---|---|---|
+| `ax_element.rs` | `AXElement` newtype, `Drop`, `Clone` (with `CFRetain`), `element_for_pid`, `window_element_for` | ~55 |
+| `ax_attrs.rs` | `copy_string_attr`, `copy_value_typed`, `copy_bool_attr`, `copy_ax_array`, `read_bounds`, `fetch_node_attrs` | ~200 |
+| `ax_tree.rs` | `build_subtree`, `resolve_element_name`, `label_from_children`, `copy_children` | ~115 |
+
+**`crates/macos/src/lib.rs`** — update module declarations:
+```rust
+pub mod ax_element;
+pub mod ax_attrs;
+pub mod ax_tree;
+// Remove: pub mod tree;
+```
+
+Internal cross-file imports use `super::` paths:
+```rust
+// ax_tree.rs
+use super::ax_element::AXElement;
+use super::ax_attrs::{copy_string_attr, fetch_node_attrs};
+```
+
+**`src/dispatch.rs` is at 397 lines** — 3 lines under the limit but contains 187 lines of duplication (see below). Collapsing the duplication brings it to ~210 lines.
+
+### Dispatch Duplication
+
+`dispatch.rs` has two parallel dispatch tables:
+- Lines 16–169: `dispatch()` — type-safe `Commands` enum, 29 match arms
+- Lines 171–358: `dispatch_batch_command()` — string-keyed version, same 29 commands parsed differently
+
+**Fix:** Collapse `dispatch_batch_command()` by deserializing batch JSON into the `Commands` enum. Because `Commands` derives `Deserialize`, `serde_json::from_value(json!({"snapshot": {"app": "Finder"}}))` already works:
+
+```rust
+pub fn dispatch_batch_command(
+    name: &str,
+    args: serde_json::Value,
+    adapter: &dyn PlatformAdapter,
+) -> Result<serde_json::Value, AppError> {
+    let cmd: Commands = serde_json::from_value(serde_json::json!({ name: args }))
+        .map_err(|e| AppError::invalid_args(e.to_string()))?;
+    dispatch(cmd, adapter)
+}
+```
+
+This eliminates ~187 lines of duplication. `batch.rs`'s `parse_commands` routes `{"command": "snapshot", "args": {...}}` entries to `dispatch_batch_command("snapshot", args, adapter)` — one unified code path.
+
+### Probe Binary Reorganization
+
+`src/bin/axprobe.rs` and `src/bin/axprobe2.rs` are development probe binaries compiled on every `cargo build`. They should live in `examples/` and only compile when explicitly requested:
+
+```
+crates/macos/
+└── examples/
+    ├── axprobe.rs       # moved from src/bin/axprobe.rs
+    ├── axprobe2.rs      # moved from src/bin/axprobe2.rs
+    └── probe_utils.rs   # extract shared helpers (find_pid, string readers, array readers)
+```
+
+In `crates/macos/Cargo.toml`:
+```toml
+[[example]]
+name = "axprobe"
+path = "examples/axprobe.rs"
+required-features = ["dev-tools"]
+
+[features]
+dev-tools = []
+```
+
+Run with: `cargo run -p agent-desktop-macos --example axprobe --features dev-tools`
+
+### Bugs to Fix Before Phase 1 Ships
+
+| File | Bug | Fix |
+|---|---|---|
+| `wait.rs` | `if let Ok(refmap) = RefMap::load()` silently discards load errors on every polling iteration | Propagate with `?` or emit `tracing::warn!` |
+| `is_check.rs` | States read from stale RefMap entry; `_handle` is resolved (liveness check) but then discarded | Add `///` doc-comment: "Returns state from last snapshot. Run `snapshot` first for live state." |
+| `press.rs` | `parts.last().unwrap()` — safe but proof depends on preceding `is_empty` guard being visible | Change to `parts.last().ok_or_else(|| AppError::invalid_args("empty key combo"))` |
+| `press.rs` | `NativeHandle::null()` passed for `PressKey` action — convention undocumented | Add `// SAFETY: PressKey synthesises a global CGEvent; no element handle is required.` |
+
+---
+
+## Test-Before-Implement Development Workflow
+
+Every new AX capability must be confirmed at the OS level before being wired into the adapter. This 4-stage process eliminates "wrote 100 lines then discovered the attribute doesn't exist" failures. Document this in `CLAUDE.md` under `## Development Workflow`.
+
+### Stage 1 — Accessibility Inspector
+
+Open `/Applications/Xcode.app/Contents/Applications/Accessibility Inspector.app`. Point at the target application. Confirm the AX attribute exists and has a non-null value. Note the exact attribute name string (e.g. `AXMenus`, `AXFocusedWindow`).
+
+### Stage 2 — JXA Probe (30-second sanity check)
+
+```bash
+osascript -l JavaScript -e '
+  var sys = Application("System Events");
+  var proc = sys.processes.whose({ name: "Finder" })[0];
+  // inspect proc.windows(), proc.menuBars() etc.
+  JSON.stringify(proc.windows[0].attributes.whose({ name: "AXRole" })[0].value())
+'
+```
+
+If this returns the expected value, proceed to Stage 3. If it errors or returns null, the attribute is not accessible via standard AX for this app/macOS version — stop and reassess.
+
+### Stage 3 — Rust Probe in examples/
+
+Add a probe function to `examples/axprobe.rs` that calls the candidate AX API directly and prints the result:
+
+```rust
+// examples/axprobe.rs
+fn probe_ax_menus(pid: i32) {
+    let app = ax_element::element_for_pid(pid);
+    let menus = ax_attrs::copy_ax_array(&app, "AXMenus");
+    println!("AXMenus count: {:?}", menus.map(|v| v.len()));
+}
+```
+
+Run: `cargo run -p agent-desktop-macos --example axprobe --features dev-tools -- --pid $(pgrep Finder)`
+
+Only proceed to Stage 4 when Stage 3 prints the expected value.
+
+### Stage 4 — Implement as `pub(crate)` + Unit Test
+
+1. Add the function to the appropriate `ax_*.rs` file with `pub(crate)` visibility
+2. Write a unit test (with MockAdapter or synthetic tree if real AX not available)
+3. Wire into `adapter.rs` / `adapter.get_tree()`
+
+### Why the Stages Matter
+
+- AX attribute availability varies by app (Electron apps expose nothing; native apps vary)
+- Some attributes exist but always return `kAXErrorNoValue` for certain element subtypes
+- Stage 2 costs 30 seconds; Stage 3 costs 5 minutes; Stage 4 costs hours — fail early
+- The probe files double as executable documentation of how each AX API was validated
 
 ---
 

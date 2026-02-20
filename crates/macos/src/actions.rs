@@ -27,7 +27,8 @@ mod imp {
 
             Action::DoubleClick => {
                 let open_action = CFString::new("AXOpen");
-                let err = unsafe { AXUIElementPerformAction(el.0, open_action.as_concrete_TypeRef()) };
+                let err =
+                    unsafe { AXUIElementPerformAction(el.0, open_action.as_concrete_TypeRef()) };
                 if err != kAXErrorSuccess {
                     ax_press_or_fail(el, "double-click (first press)")?;
                     std::thread::sleep(std::time::Duration::from_millis(50));
@@ -37,7 +38,8 @@ mod imp {
 
             Action::RightClick => {
                 let ax_action = CFString::new("AXShowMenu");
-                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                let err =
+                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
                 if err != kAXErrorSuccess {
                     return Err(AdapterError::new(
                         ErrorCode::ActionFailed,
@@ -50,8 +52,12 @@ mod imp {
             Action::Toggle => {
                 let role = element_role(el);
                 let toggle_roles = [
-                    "checkbox", "switch", "radiobutton", "togglebutton",
-                    "menuitemcheckbox", "menuitemradio",
+                    "checkbox",
+                    "switch",
+                    "radiobutton",
+                    "togglebutton",
+                    "menuitemcheckbox",
+                    "menuitemradio",
                 ];
                 if !toggle_roles.iter().any(|r| role.as_deref() == Some(*r)) {
                     return Err(AdapterError::new(
@@ -169,7 +175,8 @@ mod imp {
 
             Action::ScrollTo => {
                 let ax_action = CFString::new("AXScrollToVisible");
-                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                let err =
+                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
                 if err != kAXErrorSuccess {
                     return Err(AdapterError::new(
                         ErrorCode::ActionFailed,
@@ -186,7 +193,10 @@ mod imp {
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
                 return Err(AdapterError::new(
                     ErrorCode::ActionNotSupported,
-                    format!("{} requires adapter-level handling, not element action", label),
+                    format!(
+                        "{} requires adapter-level handling, not element action",
+                        label
+                    ),
                 ));
             }
 
@@ -214,11 +224,7 @@ mod imp {
         let cf_attr = CFString::new(kAXValueAttribute);
         let cf_val = CFString::new(val);
         let err = unsafe {
-            AXUIElementSetAttributeValue(
-                el.0,
-                cf_attr.as_concrete_TypeRef(),
-                cf_val.as_CFTypeRef(),
-            )
+            AXUIElementSetAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), cf_val.as_CFTypeRef())
         };
         if err != kAXErrorSuccess {
             return Err(AdapterError::new(
@@ -255,7 +261,14 @@ mod imp {
 
     fn check_uncheck(el: &AXElement, want_checked: bool) -> Result<(), AdapterError> {
         let role = element_role(el);
-        let valid_roles = ["checkbox", "switch", "radiobutton", "togglebutton", "menuitemcheckbox", "menuitemradio"];
+        let valid_roles = [
+            "checkbox",
+            "switch",
+            "radiobutton",
+            "togglebutton",
+            "menuitemcheckbox",
+            "menuitemradio",
+        ];
         if !valid_roles.iter().any(|r| role.as_deref() == Some(*r)) {
             return Err(AdapterError::new(
                 ErrorCode::ActionNotSupported,

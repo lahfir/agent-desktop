@@ -15,7 +15,10 @@ pub struct MouseClickArgs {
 pub fn execute(args: MouseClickArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Click { count: args.count },
-        point: Point { x: args.x, y: args.y },
+        point: Point {
+            x: args.x,
+            y: args.y,
+        },
         button: args.button,
     })?;
     Ok(json!({ "clicked": true, "x": args.x, "y": args.y, "count": args.count }))

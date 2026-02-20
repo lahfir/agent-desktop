@@ -3,17 +3,12 @@ use agent_desktop_core::{action::WindowOp, error::AdapterError, node::WindowInfo
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use agent_desktop_core::error::ErrorCode;
     use accessibility_sys::{
-        kAXErrorSuccess, kAXPositionAttribute, kAXSizeAttribute,
-        AXUIElementPerformAction, AXUIElementSetAttributeValue,
-        kAXValueTypeCGPoint, kAXValueTypeCGSize,
+        kAXErrorSuccess, kAXPositionAttribute, kAXSizeAttribute, kAXValueTypeCGPoint,
+        kAXValueTypeCGSize, AXUIElementPerformAction, AXUIElementSetAttributeValue,
     };
-    use core_foundation::{
-        base::TCFType,
-        boolean::CFBoolean,
-        string::CFString,
-    };
+    use agent_desktop_core::error::ErrorCode;
+    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
     use core_graphics::geometry::{CGPoint, CGSize};
     use std::ffi::c_void;
 
@@ -32,15 +27,10 @@ mod imp {
         }
     }
 
-    fn set_size(
-        el: &crate::tree::AXElement,
-        width: f64,
-        height: f64,
-    ) -> Result<(), AdapterError> {
+    fn set_size(el: &crate::tree::AXElement, width: f64, height: f64) -> Result<(), AdapterError> {
         let size = CGSize::new(width, height);
-        let ax_value = unsafe {
-            AXValueCreate(kAXValueTypeCGSize, &size as *const _ as *const c_void)
-        };
+        let ax_value =
+            unsafe { AXValueCreate(kAXValueTypeCGSize, &size as *const _ as *const c_void) };
         if ax_value.is_null() {
             return Err(AdapterError::internal("Failed to create AXValue for size"));
         }
@@ -58,17 +48,14 @@ mod imp {
         Ok(())
     }
 
-    fn set_position(
-        el: &crate::tree::AXElement,
-        x: f64,
-        y: f64,
-    ) -> Result<(), AdapterError> {
+    fn set_position(el: &crate::tree::AXElement, x: f64, y: f64) -> Result<(), AdapterError> {
         let point = CGPoint::new(x, y);
-        let ax_value = unsafe {
-            AXValueCreate(kAXValueTypeCGPoint, &point as *const _ as *const c_void)
-        };
+        let ax_value =
+            unsafe { AXValueCreate(kAXValueTypeCGPoint, &point as *const _ as *const c_void) };
         if ax_value.is_null() {
-            return Err(AdapterError::internal("Failed to create AXValue for position"));
+            return Err(AdapterError::internal(
+                "Failed to create AXValue for position",
+            ));
         }
         let cf_attr = CFString::new(kAXPositionAttribute);
         let err = unsafe {
@@ -84,10 +71,7 @@ mod imp {
         Ok(())
     }
 
-    fn set_minimized(
-        el: &crate::tree::AXElement,
-        minimized: bool,
-    ) -> Result<(), AdapterError> {
+    fn set_minimized(el: &crate::tree::AXElement, minimized: bool) -> Result<(), AdapterError> {
         let cf_attr = CFString::new("AXMinimized");
         let val = if minimized {
             CFBoolean::true_value()
@@ -112,9 +96,7 @@ mod imp {
         match zoom {
             Some(btn) => {
                 let action = CFString::new("AXPress");
-                let err = unsafe {
-                    AXUIElementPerformAction(btn.0, action.as_concrete_TypeRef())
-                };
+                let err = unsafe { AXUIElementPerformAction(btn.0, action.as_concrete_TypeRef()) };
                 if err != kAXErrorSuccess {
                     return Err(AdapterError::new(
                         ErrorCode::ActionFailed,

@@ -54,7 +54,12 @@ mod imp {
             .map_err(|e| AdapterError::internal(format!("read screenshot: {e}")))?;
         let _ = std::fs::remove_file(path);
         let (width, height) = png_dimensions(&data);
-        Ok(ImageBuffer { data, format: ImageFormat::Png, width, height })
+        Ok(ImageBuffer {
+            data,
+            format: ImageFormat::Png,
+            width,
+            height,
+        })
     }
 
     fn png_dimensions(data: &[u8]) -> (u32, u32) {
@@ -92,7 +97,7 @@ mod imp {
         for item in array.iter() {
             let dict = unsafe {
                 CFDictionary::<CFString, CFType>::wrap_under_get_rule(
-                    item.as_concrete_TypeRef() as _,
+                    item.as_concrete_TypeRef() as _
                 )
             };
 
@@ -124,13 +129,11 @@ mod imp {
                     )
                 };
                 let w = bounds_dict.find(CFString::new("Width")).and_then(|v| {
-                    let n =
-                        unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
+                    let n = unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
                     n.to_f64()
                 });
                 let h = bounds_dict.find(CFString::new("Height")).and_then(|v| {
-                    let n =
-                        unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
+                    let n = unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
                     n.to_f64()
                 });
                 w.unwrap_or(0.0) * h.unwrap_or(0.0)

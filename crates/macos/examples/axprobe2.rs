@@ -30,7 +30,10 @@ fn run() {
     let windows = copy_el_array(app_el, "AXWindows");
     let win = match windows.first() {
         Some(&w) => w,
-        None => { eprintln!("No windows"); return; }
+        None => {
+            eprintln!("No windows");
+            return;
+        }
     };
     unsafe { AXUIElementSetMessagingTimeout(win, 5.0) };
 
@@ -54,7 +57,9 @@ fn run() {
         for (i, &row) in rows.iter().enumerate().take(8) {
             dump_element(row, i, 2);
         }
-        for &row in &rows { unsafe { CFRelease(row as CFTypeRef) }; }
+        for &row in &rows {
+            unsafe { CFRelease(row as CFTypeRef) };
+        }
         unsafe { CFRelease(outline as CFTypeRef) };
     } else {
         println!("Could not find sidebar outline");
@@ -80,14 +85,22 @@ fn run() {
             dump_all_attrs(col, 4);
             let col_rows = copy_el_array(col, "AXRows");
             let col_children = copy_el_array(col, "AXChildren");
-            println!("    AXRows={} AXChildren={}", col_rows.len(), col_children.len());
+            println!(
+                "    AXRows={} AXChildren={}",
+                col_rows.len(),
+                col_children.len()
+            );
 
             // Probe first few rows
             for (ri, &row) in col_rows.iter().enumerate().take(6) {
                 dump_element(row, ri, 6);
             }
-            for &row in &col_rows { unsafe { CFRelease(row as CFTypeRef) }; }
-            for &child in &col_children { unsafe { CFRelease(child as CFTypeRef) }; }
+            for &row in &col_rows {
+                unsafe { CFRelease(row as CFTypeRef) };
+            }
+            for &child in &col_children {
+                unsafe { CFRelease(child as CFTypeRef) };
+            }
             unsafe { CFRelease(col as CFTypeRef) };
         }
 
@@ -114,13 +127,19 @@ fn run() {
                     for (s2i, &s2) in sc2.iter().enumerate().take(6) {
                         dump_element(s2, s2i, 10);
                     }
-                    for &s2 in &sc2 { unsafe { CFRelease(s2 as CFTypeRef) }; }
+                    for &s2 in &sc2 {
+                        unsafe { CFRelease(s2 as CFTypeRef) };
+                    }
                     unsafe { CFRelease(sc as CFTypeRef) };
                 }
-                for &sc in &sc_children { unsafe { CFRelease(sc as CFTypeRef) }; }
+                for &sc in &sc_children {
+                    unsafe { CFRelease(sc as CFTypeRef) };
+                }
                 unsafe { CFRelease(gc as CFTypeRef) };
             }
-            for &gc in &gchildren { unsafe { CFRelease(gc as CFTypeRef) }; }
+            for &gc in &gchildren {
+                unsafe { CFRelease(gc as CFTypeRef) };
+            }
             unsafe { CFRelease(child as CFTypeRef) };
         }
 
@@ -141,12 +160,16 @@ fn run() {
             println!("Testing on first sidebar AXRow:");
             test_multi_attr_extended(row);
         }
-        for &row in &rows { unsafe { CFRelease(row as CFTypeRef) }; }
+        for &row in &rows {
+            unsafe { CFRelease(row as CFTypeRef) };
+        }
         unsafe { CFRelease(outline as CFTypeRef) };
     }
 
     // Cleanup
-    for &win2 in &windows { unsafe { CFRelease(win2 as CFTypeRef) }; }
+    for &win2 in &windows {
+        unsafe { CFRelease(win2 as CFTypeRef) };
+    }
     unsafe { CFRelease(app_el as CFTypeRef) };
 }
 
@@ -156,14 +179,16 @@ fn run() {
 fn dump_element(el: accessibility_sys::AXUIElementRef, idx: usize, indent: usize) {
     use core_foundation::base::{CFRelease, CFTypeRef};
     let pad = " ".repeat(indent);
-    let role  = fetch_str(el, "AXRole");
-    let sub   = fetch_str(el, "AXSubrole");
+    let role = fetch_str(el, "AXRole");
+    let sub = fetch_str(el, "AXSubrole");
     let title = fetch_str(el, "AXTitle");
-    let desc  = fetch_str(el, "AXDescription");
-    let val   = fetch_str(el, "AXValue");
-    let help  = fetch_str(el, "AXHelp");
-    println!("{}[{}] role={} subrole={} title={} desc={} value={} help={}",
-        pad, idx, role, sub, title, desc, val, help);
+    let desc = fetch_str(el, "AXDescription");
+    let val = fetch_str(el, "AXValue");
+    let help = fetch_str(el, "AXHelp");
+    println!(
+        "{}[{}] role={} subrole={} title={} desc={} value={} help={}",
+        pad, idx, role, sub, title, desc, val, help
+    );
     dump_all_attrs(el, indent + 2);
 
     let children = copy_el_array(el, "AXChildren");
@@ -172,7 +197,10 @@ fn dump_element(el: accessibility_sys::AXUIElementRef, idx: usize, indent: usize
         let ct = fetch_str(child, "AXTitle");
         let cd = fetch_str(child, "AXDescription");
         let cv = fetch_str(child, "AXValue");
-        println!("{}  child[{}] role={} title={} desc={} value={}", pad, ci, cr, ct, cd, cv);
+        println!(
+            "{}  child[{}] role={} title={} desc={} value={}",
+            pad, ci, cr, ct, cd, cv
+        );
         dump_all_attrs(child, indent + 4);
 
         let gchildren = copy_el_array(child, "AXChildren");
@@ -181,7 +209,10 @@ fn dump_element(el: accessibility_sys::AXUIElementRef, idx: usize, indent: usize
             let gt = fetch_str(gc, "AXTitle");
             let gd = fetch_str(gc, "AXDescription");
             let gv = fetch_str(gc, "AXValue");
-            println!("{}    gc[{}] role={} title={} desc={} value={}", pad, gi, gr, gt, gd, gv);
+            println!(
+                "{}    gc[{}] role={} title={} desc={} value={}",
+                pad, gi, gr, gt, gd, gv
+            );
             dump_all_attrs(gc, indent + 6);
             unsafe { CFRelease(gc as CFTypeRef) };
         }
@@ -191,7 +222,9 @@ fn dump_element(el: accessibility_sys::AXUIElementRef, idx: usize, indent: usize
 
 #[cfg(target_os = "macos")]
 fn test_multi_attr_extended(el: accessibility_sys::AXUIElementRef) {
-    use accessibility_sys::{AXUIElementCopyMultipleAttributeValues, AXUIElementCopyAttributeNames};
+    use accessibility_sys::{
+        AXUIElementCopyAttributeNames, AXUIElementCopyMultipleAttributeValues,
+    };
     use core_foundation::{
         array::CFArray,
         base::{CFType, CFTypeRef, TCFType},
@@ -203,9 +236,12 @@ fn test_multi_attr_extended(el: accessibility_sys::AXUIElementRef) {
     // First, get ALL attribute names for this element
     let mut names_ref: core_foundation_sys::array::CFArrayRef = std::ptr::null_mut();
     let err = unsafe { AXUIElementCopyAttributeNames(el, &mut names_ref) };
-    if err != 0 || names_ref.is_null() { return; }
+    if err != 0 || names_ref.is_null() {
+        return;
+    }
     let name_arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(names_ref as _) };
-    let all_names: Vec<String> = name_arr.into_iter()
+    let all_names: Vec<String> = name_arr
+        .into_iter()
         .filter_map(|item| item.downcast::<CFString>().map(|s| s.to_string()))
         .collect();
 
@@ -219,7 +255,9 @@ fn test_multi_attr_extended(el: accessibility_sys::AXUIElementRef) {
     let mut result: CFTypeRef = std::ptr::null_mut();
     let err2 = unsafe {
         AXUIElementCopyMultipleAttributeValues(
-            el, names_arr2.as_concrete_TypeRef(), 0,
+            el,
+            names_arr2.as_concrete_TypeRef(),
+            0,
             &mut result as *mut _ as *mut _,
         )
     };
@@ -246,8 +284,17 @@ fn test_multi_attr_extended(el: accessibility_sys::AXUIElementRef) {
 
 #[cfg(target_os = "macos")]
 fn find_pid(name: &str) -> Option<i32> {
-    let out = std::process::Command::new("pgrep").arg("-x").arg(name).output().ok()?;
-    String::from_utf8_lossy(&out.stdout).lines().next()?.trim().parse().ok()
+    let out = std::process::Command::new("pgrep")
+        .arg("-x")
+        .arg(name)
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 #[cfg(target_os = "macos")]
@@ -267,29 +314,45 @@ fn fetch_str(el: accessibility_sys::AXUIElementRef, attr: &str) -> String {
 
     let cf_attr = CFString::new(attr);
     let mut value: CFTypeRef = std::ptr::null_mut();
-    let err = unsafe {
-        AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value)
-    };
-    if err != 0 { return format!("<err:{}>", err); }
-    if value.is_null() { return "<null>".to_string(); }
+    let err =
+        unsafe { AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value) };
+    if err != 0 {
+        return format!("<err:{}>", err);
+    }
+    if value.is_null() {
+        return "<null>".to_string();
+    }
     let cf = unsafe { CFType::wrap_under_create_rule(value) };
-    if let Some(s) = cf.downcast::<CFString>() { return format!("\"{}\"", s.to_string()); }
-    if let Some(b) = cf.downcast::<CFBoolean>() { return format!("bool:{}", bool::from(b)); }
-    if let Some(n) = cf.downcast::<CFNumber>() { return format!("num:{}", n.to_i64().unwrap_or(-1)); }
+    if let Some(s) = cf.downcast::<CFString>() {
+        return format!("\"{}\"", s.to_string());
+    }
+    if let Some(b) = cf.downcast::<CFBoolean>() {
+        return format!("bool:{}", bool::from(b));
+    }
+    if let Some(n) = cf.downcast::<CFNumber>() {
+        return format!("num:{}", n.to_i64().unwrap_or(-1));
+    }
     format!("cftype:{}", cf.type_of())
 }
 
 #[cfg(target_os = "macos")]
 fn dump_all_attrs(el: accessibility_sys::AXUIElementRef, indent: usize) {
     use accessibility_sys::AXUIElementCopyAttributeNames;
-    use core_foundation::{array::CFArray, base::{CFType, TCFType}, string::CFString};
+    use core_foundation::{
+        array::CFArray,
+        base::{CFType, TCFType},
+        string::CFString,
+    };
 
     let pad = " ".repeat(indent);
     let mut names_ref: core_foundation_sys::array::CFArrayRef = std::ptr::null_mut();
     let err = unsafe { AXUIElementCopyAttributeNames(el, &mut names_ref) };
-    if err != 0 || names_ref.is_null() { return; }
+    if err != 0 || names_ref.is_null() {
+        return;
+    }
     let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(names_ref as _) };
-    let names: Vec<String> = arr.into_iter()
+    let names: Vec<String> = arr
+        .into_iter()
         .filter_map(|item| item.downcast::<CFString>().map(|s| s.to_string()))
         .collect();
     for name in &names {
@@ -312,16 +375,18 @@ fn copy_el_array(
 
     let cf_attr = CFString::new(attr);
     let mut value: CFTypeRef = std::ptr::null_mut();
-    let err = unsafe {
-        AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value)
-    };
-    if err != 0 || value.is_null() { return vec![]; }
+    let err =
+        unsafe { AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value) };
+    if err != 0 || value.is_null() {
+        return vec![];
+    }
     let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(value as _) };
     arr.into_iter()
         .filter_map(|item| {
             let ptr = item.as_concrete_TypeRef() as accessibility_sys::AXUIElementRef;
-            if ptr.is_null() { None }
-            else {
+            if ptr.is_null() {
+                None
+            } else {
                 unsafe { CFRetain(ptr as CFTypeRef) };
                 Some(ptr)
             }
@@ -337,7 +402,9 @@ fn find_by_desc(
     depth: u32,
 ) -> Option<accessibility_sys::AXUIElementRef> {
     use core_foundation::base::{CFRetain, CFTypeRef};
-    if depth > 8 { return None; }
+    if depth > 8 {
+        return None;
+    }
     let d = fetch_str(el, "AXDescription");
     if d == format!("\"{}\"", desc) {
         unsafe { CFRetain(el as CFTypeRef) };
@@ -360,8 +427,10 @@ fn find_by_role(
     role: &str,
     depth: u32,
 ) -> Option<accessibility_sys::AXUIElementRef> {
-    use core_foundation::base::{CFRetain, CFRelease, CFTypeRef};
-    if depth > 8 { return None; }
+    use core_foundation::base::{CFRelease, CFRetain, CFTypeRef};
+    if depth > 8 {
+        return None;
+    }
     let r = fetch_str(el, "AXRole");
     if r == format!("\"{}\"", role) {
         unsafe { CFRetain(el as CFTypeRef) };

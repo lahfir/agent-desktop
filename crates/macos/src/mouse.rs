@@ -37,7 +37,11 @@ mod imp {
             let t = i as f64 / steps as f64;
             let x = params.from.x + (params.to.x - params.from.x) * t;
             let y = params.from.y + (params.to.y - params.from.y) * t;
-            post_event(CGEventType::LeftMouseDragged, CGPoint::new(x, y), CGMouseButton::Left)?;
+            post_event(
+                CGEventType::LeftMouseDragged,
+                CGPoint::new(x, y),
+                CGMouseButton::Left,
+            )?;
             std::thread::sleep(step_delay);
         }
 
@@ -78,11 +82,7 @@ mod imp {
     }
 
     extern "C" {
-        fn CGEventSetIntegerValueField(
-            event: *const std::ffi::c_void,
-            field: u32,
-            value: i64,
-        );
+        fn CGEventSetIntegerValueField(event: *const std::ffi::c_void, field: u32, value: i64);
     }
 
     fn create_event(

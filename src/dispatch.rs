@@ -2,7 +2,7 @@ use agent_desktop_core::{
     action::{Direction, MouseButton},
     adapter::PlatformAdapter,
     commands::{
-        batch, check, clear, clipboard_clear, clipboard_get, clipboard_set, click, close_app,
+        batch, check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app,
         collapse, double_click, drag, expand, find, focus, focus_window, get, helpers, hover,
         is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize,
         minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
@@ -82,12 +82,18 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         }
 
         Commands::Type(a) => type_text::execute(
-            type_text::TypeArgs { ref_id: a.ref_id, text: a.text },
+            type_text::TypeArgs {
+                ref_id: a.ref_id,
+                text: a.text,
+            },
             adapter,
         ),
 
         Commands::SetValue(a) => set_value::execute(
-            set_value::SetValueArgs { ref_id: a.ref_id, value: a.value },
+            set_value::SetValueArgs {
+                ref_id: a.ref_id,
+                value: a.value,
+            },
             adapter,
         ),
 
@@ -100,12 +106,13 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             uncheck::execute(uncheck::UncheckArgs { ref_id: a.ref_id }, adapter)
         }
         Commands::Expand(a) => expand::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
-        Commands::Collapse(a) => {
-            collapse::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter)
-        }
+        Commands::Collapse(a) => collapse::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
 
         Commands::Select(a) => select::execute(
-            select::SelectArgs { ref_id: a.ref_id, value: a.value },
+            select::SelectArgs {
+                ref_id: a.ref_id,
+                value: a.value,
+            },
             adapter,
         ),
 
@@ -122,9 +129,13 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             scroll_to::execute(scroll_to::ScrollToArgs { ref_id: a.ref_id }, adapter)
         }
 
-        Commands::Press(a) => {
-            press::execute(press::PressArgs { combo: a.combo, app: a.app }, adapter)
-        }
+        Commands::Press(a) => press::execute(
+            press::PressArgs {
+                combo: a.combo,
+                app: a.app,
+            },
+            adapter,
+        ),
 
         Commands::KeyDown(a) => {
             key_down::execute(key_down::KeyDownArgs { combo: a.combo }, adapter)
@@ -173,7 +184,11 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         Commands::MouseDown(a) => {
             let (x, y) = parse_xy(&a.xy)?;
             mouse_down::execute(
-                mouse_down::MouseDownArgs { x, y, button: parse_mouse_button(&a.button)? },
+                mouse_down::MouseDownArgs {
+                    x,
+                    y,
+                    button: parse_mouse_button(&a.button)?,
+                },
                 adapter,
             )
         }
@@ -181,17 +196,28 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         Commands::MouseUp(a) => {
             let (x, y) = parse_xy(&a.xy)?;
             mouse_up::execute(
-                mouse_up::MouseUpArgs { x, y, button: parse_mouse_button(&a.button)? },
+                mouse_up::MouseUpArgs {
+                    x,
+                    y,
+                    button: parse_mouse_button(&a.button)?,
+                },
                 adapter,
             )
         }
 
-        Commands::Launch(a) => {
-            launch::execute(launch::LaunchArgs { app: a.app, timeout_ms: a.timeout }, adapter)
-        }
+        Commands::Launch(a) => launch::execute(
+            launch::LaunchArgs {
+                app: a.app,
+                timeout_ms: a.timeout,
+            },
+            adapter,
+        ),
 
         Commands::CloseApp(a) => close_app::execute(
-            close_app::CloseAppArgs { app: a.app, force: a.force },
+            close_app::CloseAppArgs {
+                app: a.app,
+                force: a.force,
+            },
             adapter,
         ),
 
@@ -201,10 +227,9 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
         Commands::ListApps => list_apps::execute(adapter),
 
-        Commands::ListSurfaces(a) => list_surfaces::execute(
-            list_surfaces::ListSurfacesArgs { app: a.app },
-            adapter,
-        ),
+        Commands::ListSurfaces(a) => {
+            list_surfaces::execute(list_surfaces::ListSurfacesArgs { app: a.app }, adapter)
+        }
 
         Commands::FocusWindow(a) => focus_window::execute(
             focus_window::FocusWindowArgs {
@@ -216,26 +241,28 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         ),
 
         Commands::ResizeWindow(a) => resize_window::execute(
-            resize_window::ResizeWindowArgs { app: a.app, width: a.width, height: a.height },
+            resize_window::ResizeWindowArgs {
+                app: a.app,
+                width: a.width,
+                height: a.height,
+            },
             adapter,
         ),
 
         Commands::MoveWindow(a) => move_window::execute(
-            move_window::MoveWindowArgs { app: a.app, x: a.x, y: a.y },
+            move_window::MoveWindowArgs {
+                app: a.app,
+                x: a.x,
+                y: a.y,
+            },
             adapter,
         ),
 
-        Commands::Minimize(a) => {
-            minimize::execute(minimize::MinimizeArgs { app: a.app }, adapter)
-        }
+        Commands::Minimize(a) => minimize::execute(minimize::MinimizeArgs { app: a.app }, adapter),
 
-        Commands::Maximize(a) => {
-            maximize::execute(maximize::MaximizeArgs { app: a.app }, adapter)
-        }
+        Commands::Maximize(a) => maximize::execute(maximize::MaximizeArgs { app: a.app }, adapter),
 
-        Commands::Restore(a) => {
-            restore::execute(restore::RestoreArgs { app: a.app }, adapter)
-        }
+        Commands::Restore(a) => restore::execute(restore::RestoreArgs { app: a.app }, adapter),
 
         Commands::ClipboardGet => clipboard_get::execute(adapter),
         Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
@@ -257,10 +284,9 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
         Commands::Status => status::execute(adapter),
 
-        Commands::Permissions(a) => permissions::execute(
-            permissions::PermissionsArgs { request: a.request },
-            adapter,
-        ),
+        Commands::Permissions(a) => {
+            permissions::execute(permissions::PermissionsArgs { request: a.request }, adapter)
+        }
 
         Commands::Version(a) => version::execute(version::VersionArgs { json: a.json }),
 
@@ -346,12 +372,14 @@ pub(crate) fn parse_xy(s: &str) -> Result<(f64, f64), AppError> {
             "Invalid coordinates '{s}'. Expected format: x,y (e.g., 500,300)"
         )));
     }
-    let x: f64 = parts[0].trim().parse().map_err(|_| {
-        AppError::invalid_input(format!("Invalid x coordinate: '{}'", parts[0]))
-    })?;
-    let y: f64 = parts[1].trim().parse().map_err(|_| {
-        AppError::invalid_input(format!("Invalid y coordinate: '{}'", parts[1]))
-    })?;
+    let x: f64 = parts[0]
+        .trim()
+        .parse()
+        .map_err(|_| AppError::invalid_input(format!("Invalid x coordinate: '{}'", parts[0])))?;
+    let y: f64 = parts[1]
+        .trim()
+        .parse()
+        .map_err(|_| AppError::invalid_input(format!("Invalid y coordinate: '{}'", parts[1])))?;
     Ok((x, y))
 }
 
@@ -363,14 +391,14 @@ fn parse_xy_opt(s: Option<&str>) -> Result<Option<(f64, f64)>, AppError> {
 }
 
 fn cli_surface_to_core(s: &crate::cli::Surface) -> agent_desktop_core::adapter::SnapshotSurface {
-    use agent_desktop_core::adapter::SnapshotSurface;
     use crate::cli::Surface;
+    use agent_desktop_core::adapter::SnapshotSurface;
     match s {
-        Surface::Window  => SnapshotSurface::Window,
+        Surface::Window => SnapshotSurface::Window,
         Surface::Focused => SnapshotSurface::Focused,
-        Surface::Menu    => SnapshotSurface::Menu,
-        Surface::Sheet   => SnapshotSurface::Sheet,
+        Surface::Menu => SnapshotSurface::Menu,
+        Surface::Sheet => SnapshotSurface::Sheet,
         Surface::Popover => SnapshotSurface::Popover,
-        Surface::Alert   => SnapshotSurface::Alert,
+        Surface::Alert => SnapshotSurface::Alert,
     }
 }

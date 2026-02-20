@@ -29,7 +29,10 @@ pub struct RefMap {
 
 impl RefMap {
     pub fn new() -> Self {
-        Self { inner: HashMap::new(), counter: 0 }
+        Self {
+            inner: HashMap::new(),
+            counter: 0,
+        }
     }
 
     pub fn allocate(&mut self, entry: RefEntry) -> String {
@@ -60,7 +63,10 @@ impl RefMap {
         #[cfg(unix)]
         {
             use std::os::unix::fs::DirBuilderExt;
-            std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)?;
         }
         #[cfg(not(unix))]
         std::fs::create_dir_all(dir)?;
@@ -111,8 +117,7 @@ impl Default for RefMap {
 }
 
 fn refmap_path() -> Result<PathBuf, AppError> {
-    let home = home_dir()
-        .ok_or_else(|| AppError::Internal("HOME directory not found".into()))?;
+    let home = home_dir().ok_or_else(|| AppError::Internal("HOME directory not found".into()))?;
     Ok(home.join(".agent-desktop").join("last_refmap.json"))
 }
 

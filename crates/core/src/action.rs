@@ -113,7 +113,11 @@ pub struct ElementState {
 
 impl ActionResult {
     pub fn new(action: impl Into<String>) -> Self {
-        Self { action: action.into(), ref_id: None, post_state: None }
+        Self {
+            action: action.into(),
+            ref_id: None,
+            post_state: None,
+        }
     }
 
     pub fn with_ref(mut self, ref_id: impl Into<String>) -> Self {

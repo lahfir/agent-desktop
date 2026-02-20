@@ -72,8 +72,11 @@ impl AdapterError {
     }
 
     pub fn stale_ref(ref_id: &str) -> Self {
-        Self::new(ErrorCode::StaleRef, format!("{ref_id} not found in current RefMap"))
-            .with_suggestion("Run 'snapshot' to refresh, then retry with updated ref")
+        Self::new(
+            ErrorCode::StaleRef,
+            format!("{ref_id} not found in current RefMap"),
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with updated ref")
     }
 
     pub fn not_supported(method: &str) -> Self {
@@ -85,8 +88,11 @@ impl AdapterError {
     }
 
     pub fn element_not_found(ref_id: &str) -> Self {
-        Self::new(ErrorCode::ElementNotFound, format!("Element {ref_id} could not be resolved"))
-            .with_suggestion("Run 'snapshot' to get fresh refs")
+        Self::new(
+            ErrorCode::ElementNotFound,
+            format!("Element {ref_id} could not be resolved"),
+        )
+        .with_suggestion("Run 'snapshot' to get fresh refs")
     }
 
     pub fn timeout(msg: impl Into<String>) -> Self {
@@ -99,10 +105,13 @@ impl AdapterError {
     }
 
     pub fn permission_denied() -> Self {
-        Self::new(ErrorCode::PermDenied, "Accessibility permission not granted")
-            .with_suggestion(
-                "Open System Settings > Privacy & Security > Accessibility and add your terminal",
-            )
+        Self::new(
+            ErrorCode::PermDenied,
+            "Accessibility permission not granted",
+        )
+        .with_suggestion(
+            "Open System Settings > Privacy & Security > Accessibility and add your terminal",
+        )
     }
 }
 

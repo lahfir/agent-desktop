@@ -14,7 +14,10 @@ pub fn resolve_ref(
 ) -> Result<(RefEntry, NativeHandle), AppError> {
     validate_ref_id(ref_id)?;
     let refmap = RefMap::load().map_err(|_| AppError::stale_ref(ref_id))?;
-    let entry = refmap.get(ref_id).ok_or_else(|| AppError::stale_ref(ref_id))?.clone();
+    let entry = refmap
+        .get(ref_id)
+        .ok_or_else(|| AppError::stale_ref(ref_id))?
+        .clone();
     let handle = adapter.resolve_element(&entry)?;
     Ok((entry, handle))
 }
@@ -25,9 +28,9 @@ pub fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
         && ref_id.len() <= 12
         && ref_id[2..].chars().all(|c| c.is_ascii_digit());
     if !valid {
-        return Err(AppError::invalid_input(
-            format!("Invalid ref_id '{ref_id}': must match @e{{N}} where N is a positive integer"),
-        ));
+        return Err(AppError::invalid_input(format!(
+            "Invalid ref_id '{ref_id}': must match @e{{N}} where N is a positive integer"
+        )));
     }
     Ok(())
 }
@@ -40,9 +43,13 @@ pub fn resolve_app_pid(app: Option<&str>, adapter: &dyn PlatformAdapter) -> Resu
             .map(|a| a.pid)
             .ok_or_else(|| AppError::invalid_input(format!("App '{name}' not found")))
     } else {
-        let filter = WindowFilter { focused_only: true, app: None };
+        let filter = WindowFilter {
+            focused_only: true,
+            app: None,
+        };
         let windows = adapter.list_windows(&filter)?;
-        windows.first()
+        windows
+            .first()
             .map(|w| w.pid)
             .ok_or_else(|| AppError::invalid_input("No focused window. Use --app to specify."))
     }

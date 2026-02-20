@@ -24,7 +24,9 @@ fn run() {
         url::CFURL,
     };
 
-    let app_name = std::env::args().nth(1).unwrap_or_else(|| "Finder".to_string());
+    let app_name = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "Finder".to_string());
     let pid = find_pid(&app_name).unwrap_or_else(|| {
         eprintln!("App '{}' not running", app_name);
         std::process::exit(1);
@@ -59,13 +61,15 @@ fn run() {
         println!("\n    Direct children: {}", children.len());
 
         for (ci, &child) in children.iter().enumerate() {
-            let role     = fetch_repr(child, "AXRole");
-            let subrole  = fetch_repr(child, "AXSubrole");
-            let title    = fetch_repr(child, "AXTitle");
-            let desc     = fetch_repr(child, "AXDescription");
-            let value    = fetch_repr(child, "AXValue");
-            println!("\n    Child[{}] role={} subrole={} title={} desc={} value={}",
-                ci, role, subrole, title, desc, value);
+            let role = fetch_repr(child, "AXRole");
+            let subrole = fetch_repr(child, "AXSubrole");
+            let title = fetch_repr(child, "AXTitle");
+            let desc = fetch_repr(child, "AXDescription");
+            let value = fetch_repr(child, "AXValue");
+            println!(
+                "\n    Child[{}] role={} subrole={} title={} desc={} value={}",
+                ci, role, subrole, title, desc, value
+            );
             dump_all_attrs(child, 6);
 
             // Grandchildren
@@ -77,8 +81,10 @@ fn run() {
                 let t = fetch_repr(gc, "AXTitle");
                 let d = fetch_repr(gc, "AXDescription");
                 let v = fetch_repr(gc, "AXValue");
-                println!("      GC[{}] role={} subrole={} title={} desc={} value={}",
-                    gci, r, s, t, d, v);
+                println!(
+                    "      GC[{}] role={} subrole={} title={} desc={} value={}",
+                    gci, r, s, t, d, v
+                );
                 dump_all_attrs(gc, 8);
 
                 // Great-grandchildren (just roles/names)
@@ -88,8 +94,10 @@ fn run() {
                     let t2 = fetch_repr(el, "AXTitle");
                     let d2 = fetch_repr(el, "AXDescription");
                     let v2 = fetch_repr(el, "AXValue");
-                    println!("        GGC[{}] role={} title={} desc={} value={}",
-                        ggci, r2, t2, d2, v2);
+                    println!(
+                        "        GGC[{}] role={} title={} desc={} value={}",
+                        ggci, r2, t2, d2, v2
+                    );
                     dump_all_attrs(el, 10);
 
                     for &gggel in copy_el_array(el, "AXChildren").iter().take(4) {
@@ -140,7 +148,10 @@ fn run() {
             let t = fetch_repr(pos_el, "AXTitle");
             let d = fetch_repr(pos_el, "AXDescription");
             let v = fetch_repr(pos_el, "AXValue");
-            println!("  ({},{}): role={} title={} desc={} value={}", x, y, r, t, d, v);
+            println!(
+                "  ({},{}): role={} title={} desc={} value={}",
+                x, y, r, t, d, v
+            );
             unsafe { CFRelease(pos_el as CFTypeRef) };
         } else {
             println!("  ({},{}): err={}", x, y, err);
@@ -178,7 +189,12 @@ fn find_pid(app_name: &str) -> Option<i32> {
         .arg(app_name)
         .output()
         .ok()?;
-    String::from_utf8_lossy(&out.stdout).lines().next()?.trim().parse().ok()
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 #[cfg(target_os = "macos")]
@@ -239,9 +255,8 @@ fn fetch_repr(el: accessibility_sys::AXUIElementRef, attr: &str) -> String {
 
     let cf_attr = CFString::new(attr);
     let mut value: CFTypeRef = std::ptr::null_mut();
-    let err = unsafe {
-        AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value)
-    };
+    let err =
+        unsafe { AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value) };
     if err != 0 {
         return format!("<err:{}>", err);
     }
@@ -296,9 +311,8 @@ fn copy_el_array(
 
     let cf_attr = CFString::new(attr);
     let mut value: CFTypeRef = std::ptr::null_mut();
-    let err = unsafe {
-        AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value)
-    };
+    let err =
+        unsafe { AXUIElementCopyAttributeValue(el, cf_attr.as_concrete_TypeRef(), &mut value) };
     if err != 0 || value.is_null() {
         return vec![];
     }
@@ -339,7 +353,7 @@ fn copy_action_names(el: accessibility_sys::AXUIElementRef) -> Vec<String> {
 #[cfg(target_os = "macos")]
 fn test_multi_attr(el: accessibility_sys::AXUIElementRef) {
     use accessibility_sys::{
-        AXUIElementCopyMultipleAttributeValues, kAXCopyMultipleAttributeOptionStopOnError,
+        kAXCopyMultipleAttributeOptionStopOnError, AXUIElementCopyMultipleAttributeValues,
     };
     use core_foundation::{
         array::CFArray,
@@ -350,13 +364,24 @@ fn test_multi_attr(el: accessibility_sys::AXUIElementRef) {
     };
 
     let test_attrs = [
-        "AXRole", "AXSubrole", "AXTitle", "AXDescription", "AXValue",
-        "AXEnabled", "AXFocused", "AXHelp", "AXPlaceholderValue",
+        "AXRole",
+        "AXSubrole",
+        "AXTitle",
+        "AXDescription",
+        "AXValue",
+        "AXEnabled",
+        "AXFocused",
+        "AXHelp",
+        "AXPlaceholderValue",
         "AXRoleDescription",
     ];
 
     for &options in &[0u32, kAXCopyMultipleAttributeOptionStopOnError] {
-        let label = if options == 0 { "AllowPartial(0)" } else { "StopOnError(0x1)" };
+        let label = if options == 0 {
+            "AllowPartial(0)"
+        } else {
+            "StopOnError(0x1)"
+        };
         println!("  options={}", label);
 
         let cf_names: Vec<CFString> = test_attrs.iter().map(|a| CFString::new(a)).collect();
@@ -376,7 +401,11 @@ fn test_multi_attr(el: accessibility_sys::AXUIElementRef) {
 
         if err == 0 && !result_ref.is_null() {
             let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(result_ref as _) };
-            println!("    result_count={} (requested {})", arr.len(), test_attrs.len());
+            println!(
+                "    result_count={} (requested {})",
+                arr.len(),
+                test_attrs.len()
+            );
             for (i, item) in arr.into_iter().enumerate() {
                 let name = test_attrs.get(i).unwrap_or(&"?");
                 let repr = if let Some(s) = item.downcast::<CFString>() {

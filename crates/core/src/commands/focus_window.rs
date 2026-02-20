@@ -11,15 +11,22 @@ pub struct FocusWindowArgs {
 }
 
 pub fn execute(args: FocusWindowArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let filter = WindowFilter { focused_only: false, app: args.app.clone() };
+    let filter = WindowFilter {
+        focused_only: false,
+        app: args.app.clone(),
+    };
     let windows = adapter.list_windows(&filter)?;
 
     let window = if let Some(id) = &args.window_id {
         windows.into_iter().find(|w| &w.id == id)
     } else if let Some(title) = &args.title {
-        windows.into_iter().find(|w| w.title.contains(title.as_str()))
+        windows
+            .into_iter()
+            .find(|w| w.title.contains(title.as_str()))
     } else if let Some(app) = &args.app {
-        windows.into_iter().find(|w| w.app.eq_ignore_ascii_case(app))
+        windows
+            .into_iter()
+            .find(|w| w.app.eq_ignore_ascii_case(app))
     } else {
         return Err(AppError::invalid_input(
             "Provide --window-id, --app, or --title to identify the window",

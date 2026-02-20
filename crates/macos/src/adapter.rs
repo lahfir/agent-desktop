@@ -117,7 +117,10 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {
-        let filter = WindowFilter { focused_only: true, app: None };
+        let filter = WindowFilter {
+            focused_only: true,
+            app: None,
+        };
         let windows = self.list_windows(&filter)?;
         Ok(windows.into_iter().next())
     }
@@ -125,10 +128,12 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use accessibility_sys::kAXValueAttribute;
             use crate::tree::AXElement;
+            use accessibility_sys::kAXValueAttribute;
             use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(handle.as_raw() as accessibility_sys::AXUIElementRef));
+            let el = ManuallyDrop::new(AXElement(
+                handle.as_raw() as accessibility_sys::AXUIElementRef
+            ));
             Ok(crate::tree::copy_string_attr(&el, kAXValueAttribute))
         }
         #[cfg(not(target_os = "macos"))]
@@ -140,7 +145,9 @@ impl PlatformAdapter for MacOSAdapter {
         {
             use crate::tree::AXElement;
             use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(handle.as_raw() as accessibility_sys::AXUIElementRef));
+            let el = ManuallyDrop::new(AXElement(
+                handle.as_raw() as accessibility_sys::AXUIElementRef
+            ));
             Ok(crate::tree::read_bounds(&el))
         }
         #[cfg(not(target_os = "macos"))]
@@ -168,16 +175,24 @@ impl PlatformAdapter for MacOSAdapter {
 }
 
 #[cfg(target_os = "macos")]
-fn execute_action_impl(handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError> {
+fn execute_action_impl(
+    handle: &NativeHandle,
+    action: Action,
+) -> Result<ActionResult, AdapterError> {
     use crate::tree::AXElement;
     use std::mem::ManuallyDrop;
 
-    let el = ManuallyDrop::new(AXElement(handle.as_raw() as accessibility_sys::AXUIElementRef));
+    let el = ManuallyDrop::new(AXElement(
+        handle.as_raw() as accessibility_sys::AXUIElementRef
+    ));
     crate::actions::perform_action(&el, &action)
 }
 
 #[cfg(not(target_os = "macos"))]
-fn execute_action_impl(_handle: &NativeHandle, _action: Action) -> Result<ActionResult, AdapterError> {
+fn execute_action_impl(
+    _handle: &NativeHandle,
+    _action: Action,
+) -> Result<ActionResult, AdapterError> {
     Err(AdapterError::not_supported("execute_action"))
 }
 
@@ -204,7 +219,10 @@ fn find_element_recursive(
     }
 
     let ax_role = crate::tree::copy_string_attr(el, kAXRoleAttribute);
-    let normalized = ax_role.as_deref().map(crate::roles::ax_role_to_str).unwrap_or("unknown");
+    let normalized = ax_role
+        .as_deref()
+        .map(crate::roles::ax_role_to_str)
+        .unwrap_or("unknown");
 
     if normalized == entry.role {
         let elem_name = crate::tree::resolve_element_name(el);
@@ -223,7 +241,11 @@ fn find_element_recursive(
         return Err(AdapterError::element_not_found("element"));
     }
 
-    let child_attr = if ax_role.as_deref() == Some("AXBrowser") { "AXColumns" } else { "AXChildren" };
+    let child_attr = if ax_role.as_deref() == Some("AXBrowser") {
+        "AXColumns"
+    } else {
+        "AXChildren"
+    };
     let children = crate::tree::copy_ax_array(el, child_attr)
         .filter(|v| !v.is_empty())
         .or_else(|| crate::tree::copy_ax_array(el, "AXContents").filter(|v| !v.is_empty()))
@@ -252,8 +274,8 @@ pub fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, Adapt
         use core_foundation_sys::dictionary::CFDictionaryGetValue;
         use core_graphics::display::CGDisplay;
         use core_graphics::window::{
-            kCGWindowLayer, kCGWindowListOptionOnScreenOnly, kCGWindowName,
-            kCGWindowOwnerName, kCGWindowOwnerPID,
+            kCGWindowLayer, kCGWindowListOptionOnScreenOnly, kCGWindowName, kCGWindowOwnerName,
+            kCGWindowOwnerPID,
         };
         use rustc_hash::FxHasher;
         use std::ffi::c_void;
@@ -261,14 +283,22 @@ pub fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, Adapt
 
         unsafe fn dict_string(dict: *const c_void, key: *const c_void) -> Option<String> {
             let val = CFDictionaryGetValue(dict as _, key);
-            if val.is_null() { return None; }
-            CFType::wrap_under_get_rule(val as _).downcast::<CFString>().map(|s| s.to_string())
+            if val.is_null() {
+                return None;
+            }
+            CFType::wrap_under_get_rule(val as _)
+                .downcast::<CFString>()
+                .map(|s| s.to_string())
         }
 
         unsafe fn dict_i64(dict: *const c_void, key: *const c_void) -> Option<i64> {
             let val = CFDictionaryGetValue(dict as _, key);
-            if val.is_null() { return None; }
-            CFType::wrap_under_get_rule(val as _).downcast::<CFNumber>().and_then(|n| n.to_i64())
+            if val.is_null() {
+                return None;
+            }
+            CFType::wrap_under_get_rule(val as _)
+                .downcast::<CFNumber>()
+                .and_then(|n| n.to_i64())
         }
 
         let arr = match CGDisplay::window_list_info(kCGWindowListOptionOnScreenOnly, None) {
@@ -280,9 +310,13 @@ pub fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, Adapt
         let mut windows = Vec::new();
 
         for raw in arr.get_all_values() {
-            if raw.is_null() { continue; }
+            if raw.is_null() {
+                continue;
+            }
             let layer = unsafe { dict_i64(raw, kCGWindowLayer as _) }.unwrap_or(99);
-            if layer != 0 { continue; }
+            if layer != 0 {
+                continue;
+            }
 
             let app_name = match unsafe { dict_string(raw, kCGWindowOwnerName as _) } {
                 Some(n) if !n.is_empty() => n,
@@ -342,30 +376,54 @@ fn list_apps_impl() -> Result<Vec<AppInfo>, AdapterError> {
         let mut apps = Vec::new();
 
         for raw in arr.get_all_values() {
-            if raw.is_null() { continue; }
+            if raw.is_null() {
+                continue;
+            }
 
             let layer = unsafe {
                 let v = CFDictionaryGetValue(raw as _, kCGWindowLayer as _);
-                if v.is_null() { continue; }
-                CFType::wrap_under_get_rule(v as _).downcast::<CFNumber>().and_then(|n| n.to_i64()).unwrap_or(99)
+                if v.is_null() {
+                    continue;
+                }
+                CFType::wrap_under_get_rule(v as _)
+                    .downcast::<CFNumber>()
+                    .and_then(|n| n.to_i64())
+                    .unwrap_or(99)
             };
-            if layer != 0 { continue; }
+            if layer != 0 {
+                continue;
+            }
 
             let pid = unsafe {
                 let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerPID as _);
-                if v.is_null() { continue; }
-                CFType::wrap_under_get_rule(v as _).downcast::<CFNumber>().and_then(|n| n.to_i64()).unwrap_or(0) as i32
+                if v.is_null() {
+                    continue;
+                }
+                CFType::wrap_under_get_rule(v as _)
+                    .downcast::<CFNumber>()
+                    .and_then(|n| n.to_i64())
+                    .unwrap_or(0) as i32
             };
-            if !seen_pids.insert(pid) { continue; }
+            if !seen_pids.insert(pid) {
+                continue;
+            }
 
             let name = unsafe {
                 let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerName as _);
-                if v.is_null() { continue; }
-                CFType::wrap_under_get_rule(v as _).downcast::<CFString>().map(|s| s.to_string())
+                if v.is_null() {
+                    continue;
+                }
+                CFType::wrap_under_get_rule(v as _)
+                    .downcast::<CFString>()
+                    .map(|s| s.to_string())
             };
 
             if let Some(n) = name {
-                apps.push(AppInfo { name: n, pid, bundle_id: None });
+                apps.push(AppInfo {
+                    name: n,
+                    pid,
+                    bundle_id: None,
+                });
             }
         }
         Ok(apps)

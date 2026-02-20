@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     commands::{
-        check, clear, clipboard_clear, clipboard_get, clipboard_set, click, close_app, collapse,
+        check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app, collapse,
         double_click, drag, expand, find, focus, focus_window, get, helpers, hover, is_check,
         key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, minimize,
         mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
@@ -23,8 +23,9 @@ pub fn dispatch_batch_command(
     }
 
     fn req_str(v: &Value, key: &str) -> Result<String, AppError> {
-        str_field(v, key)
-            .ok_or_else(|| AppError::invalid_input(format!("Batch: missing required field '{key}'")))
+        str_field(v, key).ok_or_else(|| {
+            AppError::invalid_input(format!("Batch: missing required field '{key}'"))
+        })
     }
 
     match command {
@@ -32,10 +33,23 @@ pub fn dispatch_batch_command(
             snapshot::SnapshotArgs {
                 app: str_field(&args, "app"),
                 window_id: str_field(&args, "window_id"),
-                max_depth: args.get("max_depth").and_then(|v| v.as_u64()).map(|v| v as u8).unwrap_or(10),
-                include_bounds: args.get("include_bounds").and_then(|v| v.as_bool()).unwrap_or(false),
-                interactive_only: args.get("interactive_only").and_then(|v| v.as_bool()).unwrap_or(false),
-                compact: args.get("compact").and_then(|v| v.as_bool()).unwrap_or(false),
+                max_depth: args
+                    .get("max_depth")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u8)
+                    .unwrap_or(10),
+                include_bounds: args
+                    .get("include_bounds")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                interactive_only: args
+                    .get("interactive_only")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                compact: args
+                    .get("compact")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
                 surface: parse_batch_surface(args.get("surface").and_then(|v| v.as_str())),
             },
             adapter,
@@ -69,7 +83,9 @@ pub fn dispatch_batch_command(
             get::GetArgs {
                 ref_id: req_str(&args, "ref_id")?,
                 property: crate::dispatch::parse_get_property(
-                    args.get("property").and_then(|v| v.as_str()).unwrap_or("text"),
+                    args.get("property")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("text"),
                 )?,
             },
             adapter,
@@ -79,46 +95,84 @@ pub fn dispatch_batch_command(
             is_check::IsArgs {
                 ref_id: req_str(&args, "ref_id")?,
                 property: crate::dispatch::parse_is_property(
-                    args.get("property").and_then(|v| v.as_str()).unwrap_or("visible"),
+                    args.get("property")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("visible"),
                 )?,
             },
             adapter,
         ),
 
-        "click" => click::execute(click::ClickArgs { ref_id: req_str(&args, "ref_id")? }, adapter),
+        "click" => click::execute(
+            click::ClickArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
         "double-click" => double_click::execute(
-            double_click::DoubleClickArgs { ref_id: req_str(&args, "ref_id")? },
+            double_click::DoubleClickArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
             adapter,
         ),
         "triple-click" => triple_click::execute(
-            triple_click::TripleClickArgs { ref_id: req_str(&args, "ref_id")? },
+            triple_click::TripleClickArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
             adapter,
         ),
         "right-click" => right_click::execute(
-            right_click::RightClickArgs { ref_id: req_str(&args, "ref_id")? },
+            right_click::RightClickArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
             adapter,
         ),
-        "focus" => focus::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter),
-        "toggle" => {
-            toggle::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
-        }
-        "check" => {
-            check::execute(check::CheckArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
-        }
-        "uncheck" => {
-            uncheck::execute(uncheck::UncheckArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
-        }
-        "expand" => {
-            expand::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
-        }
-        "collapse" => {
-            collapse::execute(helpers::RefArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
-        }
-        "clear" => {
-            clear::execute(clear::ClearArgs { ref_id: req_str(&args, "ref_id")? }, adapter)
-        }
+        "focus" => focus::execute(
+            helpers::RefArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
+        "toggle" => toggle::execute(
+            helpers::RefArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
+        "check" => check::execute(
+            check::CheckArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
+        "uncheck" => uncheck::execute(
+            uncheck::UncheckArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
+        "expand" => expand::execute(
+            helpers::RefArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
+        "collapse" => collapse::execute(
+            helpers::RefArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
+        "clear" => clear::execute(
+            clear::ClearArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
+            adapter,
+        ),
         "scroll-to" => scroll_to::execute(
-            scroll_to::ScrollToArgs { ref_id: req_str(&args, "ref_id")? },
+            scroll_to::ScrollToArgs {
+                ref_id: req_str(&args, "ref_id")?,
+            },
             adapter,
         ),
 
@@ -150,32 +204,43 @@ pub fn dispatch_batch_command(
             scroll::ScrollArgs {
                 ref_id: req_str(&args, "ref_id")?,
                 direction: parse_direction(
-                    args.get("direction").and_then(|v| v.as_str()).unwrap_or("down"),
+                    args.get("direction")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("down"),
                 )?,
-                amount: args.get("amount").and_then(|v| v.as_u64()).map(|v| v as u32).unwrap_or(3),
+                amount: args
+                    .get("amount")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32)
+                    .unwrap_or(3),
             },
             adapter,
         ),
 
         "press" => press::execute(
-            press::PressArgs { combo: req_str(&args, "combo")?, app: str_field(&args, "app") },
+            press::PressArgs {
+                combo: req_str(&args, "combo")?,
+                app: str_field(&args, "app"),
+            },
             adapter,
         ),
 
         "key-down" => key_down::execute(
-            key_down::KeyDownArgs { combo: req_str(&args, "combo")? },
+            key_down::KeyDownArgs {
+                combo: req_str(&args, "combo")?,
+            },
             adapter,
         ),
 
         "key-up" => key_up::execute(
-            key_up::KeyUpArgs { combo: req_str(&args, "combo")? },
+            key_up::KeyUpArgs {
+                combo: req_str(&args, "combo")?,
+            },
             adapter,
         ),
 
         "hover" => {
-            let xy = str_field(&args, "xy")
-                .map(|s| parse_xy(&s))
-                .transpose()?;
+            let xy = str_field(&args, "xy").map(|s| parse_xy(&s)).transpose()?;
             hover::execute(
                 hover::HoverArgs {
                     ref_id: str_field(&args, "ref_id"),
@@ -214,7 +279,10 @@ pub fn dispatch_batch_command(
         "mouse-click" => {
             let xy = req_str(&args, "xy")?;
             let (x, y) = parse_xy(&xy)?;
-            let button = args.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+            let button = args
+                .get("button")
+                .and_then(|v| v.as_str())
+                .unwrap_or("left");
             mouse_click::execute(
                 mouse_click::MouseClickArgs {
                     x,
@@ -229,9 +297,16 @@ pub fn dispatch_batch_command(
         "mouse-down" => {
             let xy = req_str(&args, "xy")?;
             let (x, y) = parse_xy(&xy)?;
-            let button = args.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+            let button = args
+                .get("button")
+                .and_then(|v| v.as_str())
+                .unwrap_or("left");
             mouse_down::execute(
-                mouse_down::MouseDownArgs { x, y, button: parse_mouse_button(button)? },
+                mouse_down::MouseDownArgs {
+                    x,
+                    y,
+                    button: parse_mouse_button(button)?,
+                },
                 adapter,
             )
         }
@@ -239,9 +314,16 @@ pub fn dispatch_batch_command(
         "mouse-up" => {
             let xy = req_str(&args, "xy")?;
             let (x, y) = parse_xy(&xy)?;
-            let button = args.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+            let button = args
+                .get("button")
+                .and_then(|v| v.as_str())
+                .unwrap_or("left");
             mouse_up::execute(
-                mouse_up::MouseUpArgs { x, y, button: parse_mouse_button(button)? },
+                mouse_up::MouseUpArgs {
+                    x,
+                    y,
+                    button: parse_mouse_button(button)?,
+                },
                 adapter,
             )
         }
@@ -249,7 +331,10 @@ pub fn dispatch_batch_command(
         "launch" => launch::execute(
             launch::LaunchArgs {
                 app: req_str(&args, "app")?,
-                timeout_ms: args.get("timeout").and_then(|v| v.as_u64()).unwrap_or(30000),
+                timeout_ms: args
+                    .get("timeout")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(30000),
             },
             adapter,
         ),
@@ -262,9 +347,12 @@ pub fn dispatch_batch_command(
             adapter,
         ),
 
-        "list-windows" => {
-            list_windows::execute(list_windows::ListWindowsArgs { app: str_field(&args, "app") }, adapter)
-        }
+        "list-windows" => list_windows::execute(
+            list_windows::ListWindowsArgs {
+                app: str_field(&args, "app"),
+            },
+            adapter,
+        ),
 
         "list-apps" => list_apps::execute(adapter),
 
@@ -296,17 +384,23 @@ pub fn dispatch_batch_command(
         ),
 
         "minimize" => minimize::execute(
-            minimize::MinimizeArgs { app: str_field(&args, "app") },
+            minimize::MinimizeArgs {
+                app: str_field(&args, "app"),
+            },
             adapter,
         ),
 
         "maximize" => maximize::execute(
-            maximize::MaximizeArgs { app: str_field(&args, "app") },
+            maximize::MaximizeArgs {
+                app: str_field(&args, "app"),
+            },
             adapter,
         ),
 
         "restore" => restore::execute(
-            restore::RestoreArgs { app: str_field(&args, "app") },
+            restore::RestoreArgs {
+                app: str_field(&args, "app"),
+            },
             adapter,
         ),
 
@@ -320,16 +414,24 @@ pub fn dispatch_batch_command(
                 element: str_field(&args, "element"),
                 window: str_field(&args, "window"),
                 text: str_field(&args, "text"),
-                timeout_ms: args.get("timeout_ms").and_then(|v| v.as_u64()).unwrap_or(30000),
+                timeout_ms: args
+                    .get("timeout_ms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(30000),
                 menu: args.get("menu").and_then(|v| v.as_bool()).unwrap_or(false),
-                menu_closed: args.get("menu_closed").and_then(|v| v.as_bool()).unwrap_or(false),
+                menu_closed: args
+                    .get("menu_closed")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
                 app: str_field(&args, "app"),
             },
             adapter,
         ),
 
         "list-surfaces" => list_surfaces::execute(
-            list_surfaces::ListSurfacesArgs { app: str_field(&args, "app") },
+            list_surfaces::ListSurfacesArgs {
+                app: str_field(&args, "app"),
+            },
             adapter,
         ),
 
@@ -337,7 +439,10 @@ pub fn dispatch_batch_command(
 
         "permissions" => permissions::execute(
             permissions::PermissionsArgs {
-                request: args.get("request").and_then(|v| v.as_bool()).unwrap_or(false),
+                request: args
+                    .get("request")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             },
             adapter,
         ),
@@ -355,11 +460,11 @@ pub fn dispatch_batch_command(
 fn parse_batch_surface(s: Option<&str>) -> agent_desktop_core::adapter::SnapshotSurface {
     use agent_desktop_core::adapter::SnapshotSurface;
     match s {
-        Some("menu")    => SnapshotSurface::Menu,
-        Some("sheet")   => SnapshotSurface::Sheet,
+        Some("menu") => SnapshotSurface::Menu,
+        Some("sheet") => SnapshotSurface::Sheet,
         Some("popover") => SnapshotSurface::Popover,
-        Some("alert")   => SnapshotSurface::Alert,
+        Some("alert") => SnapshotSurface::Alert,
         Some("focused") => SnapshotSurface::Focused,
-        _               => SnapshotSurface::Window,
+        _ => SnapshotSurface::Window,
     }
 }

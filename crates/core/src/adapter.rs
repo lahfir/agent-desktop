@@ -61,11 +61,17 @@ pub struct NativeHandle {
 
 impl NativeHandle {
     pub fn from_ptr(ptr: *const std::ffi::c_void) -> Self {
-        Self { ptr, _not_send_sync: PhantomData }
+        Self {
+            ptr,
+            _not_send_sync: PhantomData,
+        }
     }
 
     pub fn null() -> Self {
-        Self { ptr: std::ptr::null(), _not_send_sync: PhantomData }
+        Self {
+            ptr: std::ptr::null(),
+            _not_send_sync: PhantomData,
+        }
     }
 }
 

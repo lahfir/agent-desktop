@@ -105,7 +105,12 @@ EXAMPLES
   agent-desktop batch '[{\"command\":\"click\",\"args\":{\"ref_id\":\"@e1\"}}]'"
 )]
 pub struct Cli {
-    #[arg(long, short = 'v', global = true, help = "Enable debug logging to stderr")]
+    #[arg(
+        long,
+        short = 'v',
+        global = true,
+        help = "Enable debug logging to stderr"
+    )]
     pub verbose: bool,
 
     #[command(subcommand)]

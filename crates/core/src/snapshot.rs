@@ -6,9 +6,22 @@ use crate::{
 };
 
 const INTERACTIVE_ROLES: &[&str] = &[
-    "button", "textfield", "checkbox", "link", "menuitem", "tab", "slider",
-    "combobox", "treeitem", "cell", "radiobutton", "incrementor",
-    "menubutton", "switch", "colorwell", "dockitem",
+    "button",
+    "textfield",
+    "checkbox",
+    "link",
+    "menuitem",
+    "tab",
+    "slider",
+    "combobox",
+    "treeitem",
+    "cell",
+    "radiobutton",
+    "incrementor",
+    "menubutton",
+    "switch",
+    "colorwell",
+    "dockitem",
 ];
 
 pub struct SnapshotResult {
@@ -43,7 +56,10 @@ pub fn build(
             .find(|w| w.app.eq_ignore_ascii_case(app) && w.is_focused)
             .or_else(|| {
                 adapter
-                    .list_windows(&WindowFilter { focused_only: false, app: Some(app.to_string()) })
+                    .list_windows(&WindowFilter {
+                        focused_only: false,
+                        app: Some(app.to_string()),
+                    })
                     .ok()
                     .and_then(|ws| ws.into_iter().next())
             })
@@ -54,15 +70,12 @@ pub fn build(
                 ))
             })?
     } else {
-        windows
-            .into_iter()
-            .find(|w| w.is_focused)
-            .ok_or_else(|| {
-                AppError::Adapter(crate::error::AdapterError::new(
-                    crate::error::ErrorCode::WindowNotFound,
-                    "No focused window found. Use --app to specify an application.",
-                ))
-            })?
+        windows.into_iter().find(|w| w.is_focused).ok_or_else(|| {
+            AppError::Adapter(crate::error::AdapterError::new(
+                crate::error::ErrorCode::WindowNotFound,
+                "No focused window found. Use --app to specify an application.",
+            ))
+        })?
     };
 
     let raw_tree = adapter.get_tree(&window, opts)?;
@@ -77,7 +90,11 @@ pub fn build(
         Some(window.app.as_str()),
     );
 
-    Ok(SnapshotResult { tree, refmap, window })
+    Ok(SnapshotResult {
+        tree,
+        refmap,
+        window,
+    })
 }
 
 pub fn run(
@@ -124,7 +141,14 @@ fn allocate_refs(
         .children
         .into_iter()
         .filter_map(|child| {
-            let child = allocate_refs(child, refmap, include_bounds, interactive_only, window_pid, source_app);
+            let child = allocate_refs(
+                child,
+                refmap,
+                include_bounds,
+                interactive_only,
+                window_pid,
+                source_app,
+            );
             if interactive_only && child.ref_id.is_none() && child.children.is_empty() {
                 None
             } else {

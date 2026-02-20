@@ -47,9 +47,9 @@ mod imp {
     fn open_menubar_menu(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);
         let app_children = copy_ax_array(&app, "AXChildren")?;
-        let menubar = app_children.into_iter().find(|ch| {
-            copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenuBar")
-        })?;
+        let menubar = app_children
+            .into_iter()
+            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenuBar"))?;
         let items = copy_ax_array(&menubar, "AXChildren")?;
         for item in &items {
             if copy_string_attr(item, "AXRole").as_deref() != Some("AXMenuBarItem") {
@@ -59,9 +59,9 @@ mod imp {
                 continue;
             }
             if let Some(children) = copy_ax_array(item, "AXChildren") {
-                return children.into_iter().find(|ch| {
-                    copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu")
-                });
+                return children
+                    .into_iter()
+                    .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu"));
             }
         }
         None
@@ -74,17 +74,18 @@ mod imp {
         let app = element_for_pid(pid);
         if let Some(focused) = copy_element_attr(&app, "AXFocusedUIElement") {
             if let Some(children) = copy_ax_array(&focused, "AXChildren") {
-                if let Some(menu) = children.into_iter().find(|ch| {
-                    copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu")
-                }) {
+                if let Some(menu) = children
+                    .into_iter()
+                    .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu"))
+                {
                     return Some(menu);
                 }
             }
         }
         let children = copy_ax_array(&app, "AXChildren")?;
-        children.into_iter().find(|ch| {
-            copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu")
-        })
+        children
+            .into_iter()
+            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu"))
     }
 
     pub fn menu_element_for_pid(pid: i32) -> Option<AXElement> {
@@ -98,9 +99,9 @@ mod imp {
     fn first_child_with_subrole(pid: i32, subrole: &str) -> Option<AXElement> {
         let win = focused_window_element(pid)?;
         let children = copy_ax_array(&win, "AXChildren")?;
-        children.into_iter().find(|child| {
-            copy_string_attr(child, "AXSubrole").as_deref() == Some(subrole)
-        })
+        children
+            .into_iter()
+            .find(|child| copy_string_attr(child, "AXSubrole").as_deref() == Some(subrole))
     }
 
     pub fn sheet_for_pid(pid: i32) -> Option<AXElement> {
@@ -134,7 +135,9 @@ mod imp {
                     Some("AXMenuBar") => {
                         if let Some(items) = copy_ax_array(ch, "AXChildren") {
                             for item in &items {
-                                if copy_string_attr(item, "AXRole").as_deref() != Some("AXMenuBarItem") {
+                                if copy_string_attr(item, "AXRole").as_deref()
+                                    != Some("AXMenuBarItem")
+                                {
                                     continue;
                                 }
                                 if !copy_bool_attr(item, "AXSelected").unwrap_or(false) {
@@ -143,8 +146,11 @@ mod imp {
                                 let title = copy_string_attr(item, "AXTitle");
                                 if let Some(menu_children) = copy_ax_array(item, "AXChildren") {
                                     for menu in &menu_children {
-                                        if copy_string_attr(menu, "AXRole").as_deref() == Some("AXMenu") {
-                                            let item_count = copy_ax_array(menu, "AXChildren").map(|v| v.len());
+                                        if copy_string_attr(menu, "AXRole").as_deref()
+                                            == Some("AXMenu")
+                                        {
+                                            let item_count =
+                                                copy_ax_array(menu, "AXChildren").map(|v| v.len());
                                             surfaces.push(SurfaceInfo {
                                                 kind: "menu".into(),
                                                 title: title.clone(),
@@ -160,7 +166,11 @@ mod imp {
                         let title = copy_string_attr(ch, "AXTitle")
                             .or_else(|| copy_string_attr(ch, "AXDescription"));
                         let item_count = copy_ax_array(ch, "AXChildren").map(|v| v.len());
-                        surfaces.push(SurfaceInfo { kind: "context_menu".into(), title, item_count });
+                        surfaces.push(SurfaceInfo {
+                            kind: "context_menu".into(),
+                            title,
+                            item_count,
+                        });
                     }
                     _ => {}
                 }
@@ -174,7 +184,11 @@ mod imp {
                         let title = copy_string_attr(ch, "AXTitle")
                             .or_else(|| copy_string_attr(ch, "AXDescription"));
                         let item_count = copy_ax_array(ch, "AXChildren").map(|v| v.len());
-                        surfaces.push(SurfaceInfo { kind: "context_menu".into(), title, item_count });
+                        surfaces.push(SurfaceInfo {
+                            kind: "context_menu".into(),
+                            title,
+                            item_count,
+                        });
                     }
                 }
             }
@@ -192,7 +206,11 @@ mod imp {
                     };
                     let title = copy_string_attr(child, "AXTitle")
                         .or_else(|| copy_string_attr(child, "AXDescription"));
-                    surfaces.push(SurfaceInfo { kind: kind.into(), title, item_count: None });
+                    surfaces.push(SurfaceInfo {
+                        kind: kind.into(),
+                        title,
+                        item_count: None,
+                    });
                 }
             }
         }
@@ -205,13 +223,27 @@ mod imp {
 mod imp {
     use super::*;
 
-    pub fn menu_element_for_pid(_pid: i32) -> Option<AXElement> { None }
-    pub fn focused_surface_for_pid(_pid: i32) -> Option<AXElement> { None }
-    pub fn sheet_for_pid(_pid: i32) -> Option<AXElement> { None }
-    pub fn popover_for_pid(_pid: i32) -> Option<AXElement> { None }
-    pub fn alert_for_pid(_pid: i32) -> Option<AXElement> { None }
-    pub fn is_menu_open(_pid: i32) -> bool { false }
-    pub fn list_surfaces_for_pid(_pid: i32) -> Vec<SurfaceInfo> { Vec::new() }
+    pub fn menu_element_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
+    pub fn focused_surface_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
+    pub fn sheet_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
+    pub fn popover_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
+    pub fn alert_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
+    pub fn is_menu_open(_pid: i32) -> bool {
+        false
+    }
+    pub fn list_surfaces_for_pid(_pid: i32) -> Vec<SurfaceInfo> {
+        Vec::new()
+    }
 }
 
 pub use imp::{

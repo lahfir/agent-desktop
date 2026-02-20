@@ -4,10 +4,7 @@ use agent_desktop_core::{
 };
 
 #[cfg(target_os = "macos")]
-use agent_desktop_core::{
-    action::Modifier,
-    adapter::WindowFilter,
-};
+use agent_desktop_core::{action::Modifier, adapter::WindowFilter};
 
 #[cfg(target_os = "macos")]
 pub fn press_for_app_impl(app_name: &str, combo: &KeyCombo) -> Result<ActionResult, AdapterError> {
@@ -116,23 +113,17 @@ fn try_menu_bar_shortcut(
             for menu_group in &menu {
                 if let Some(items) = crate::tree::copy_ax_array(menu_group, "AXChildren") {
                     for item in &items {
-                        let cmd_char =
-                            crate::tree::copy_string_attr(item, "AXMenuItemCmdChar");
+                        let cmd_char = crate::tree::copy_string_attr(item, "AXMenuItemCmdChar");
                         let cmd_mods = read_menu_item_modifiers(item);
 
                         if let Some(ch) = &cmd_char {
                             if ch.to_uppercase() == target_char && cmd_mods == target_mods {
                                 let press = CFString::new("AXPress");
                                 let err = unsafe {
-                                    AXUIElementPerformAction(
-                                        item.0,
-                                        press.as_concrete_TypeRef(),
-                                    )
+                                    AXUIElementPerformAction(item.0, press.as_concrete_TypeRef())
                                 };
                                 if err == kAXErrorSuccess {
-                                    return Some(Ok(ActionResult::new(
-                                        "press_key".to_string(),
-                                    )));
+                                    return Some(Ok(ActionResult::new("press_key".to_string())));
                                 }
                             }
                         }
@@ -151,9 +142,8 @@ fn read_menu_item_modifiers(el: &crate::tree::AXElement) -> u32 {
 
     let attr = CFString::new("AXMenuItemCmdModifiers");
     let mut value: core_foundation_sys::base::CFTypeRef = std::ptr::null_mut();
-    let err = unsafe {
-        AXUIElementCopyAttributeValue(el.0, attr.as_concrete_TypeRef(), &mut value)
-    };
+    let err =
+        unsafe { AXUIElementCopyAttributeValue(el.0, attr.as_concrete_TypeRef(), &mut value) };
     if err != kAXErrorSuccess || value.is_null() {
         return 0;
     }
@@ -235,13 +225,42 @@ fn format_combo(combo: &KeyCombo) -> String {
 #[cfg(target_os = "macos")]
 fn key_to_keycode(key: &str) -> Option<u16> {
     Some(match key {
-        "a" => 0, "b" => 11, "c" => 8, "d" => 2, "e" => 14, "f" => 3,
-        "g" => 5, "h" => 4, "i" => 34, "j" => 38, "k" => 40, "l" => 37,
-        "m" => 46, "n" => 45, "o" => 31, "p" => 35, "q" => 12, "r" => 15,
-        "s" => 1, "t" => 17, "u" => 32, "v" => 9, "w" => 13, "x" => 7,
-        "y" => 16, "z" => 6,
-        "0" => 29, "1" => 18, "2" => 19, "3" => 20, "4" => 21,
-        "5" => 23, "6" => 22, "7" => 26, "8" => 28, "9" => 25,
+        "a" => 0,
+        "b" => 11,
+        "c" => 8,
+        "d" => 2,
+        "e" => 14,
+        "f" => 3,
+        "g" => 5,
+        "h" => 4,
+        "i" => 34,
+        "j" => 38,
+        "k" => 40,
+        "l" => 37,
+        "m" => 46,
+        "n" => 45,
+        "o" => 31,
+        "p" => 35,
+        "q" => 12,
+        "r" => 15,
+        "s" => 1,
+        "t" => 17,
+        "u" => 32,
+        "v" => 9,
+        "w" => 13,
+        "x" => 7,
+        "y" => 16,
+        "z" => 6,
+        "0" => 29,
+        "1" => 18,
+        "2" => 19,
+        "3" => 20,
+        "4" => 21,
+        "5" => 23,
+        "6" => 22,
+        "7" => 26,
+        "8" => 28,
+        "9" => 25,
         "return" | "enter" => 36,
         "escape" | "esc" => 53,
         "tab" => 48,
@@ -252,27 +271,39 @@ fn key_to_keycode(key: &str) -> Option<u16> {
         "end" => 119,
         "pageup" => 116,
         "pagedown" => 121,
-        "left" => 123, "right" => 124, "down" => 125, "up" => 126,
-        "f1" => 122, "f2" => 120, "f3" => 99, "f4" => 118,
-        "f5" => 96, "f6" => 97, "f7" => 98, "f8" => 100,
-        "f9" => 101, "f10" => 109, "f11" => 103, "f12" => 111,
+        "left" => 123,
+        "right" => 124,
+        "down" => 125,
+        "up" => 126,
+        "f1" => 122,
+        "f2" => 120,
+        "f3" => 99,
+        "f4" => 118,
+        "f5" => 96,
+        "f6" => 97,
+        "f7" => 98,
+        "f8" => 100,
+        "f9" => 101,
+        "f10" => 109,
+        "f11" => 103,
+        "f12" => 111,
         _ => return None,
     })
 }
 
 #[cfg(target_os = "macos")]
 pub(crate) fn find_pid_by_name(app_name: &str) -> Result<i32, AdapterError> {
-    let filter = WindowFilter { focused_only: false, app: Some(app_name.to_string()) };
+    let filter = WindowFilter {
+        focused_only: false,
+        app: Some(app_name.to_string()),
+    };
     let windows = crate::adapter::list_windows_impl(&filter)?;
-    windows
-        .first()
-        .map(|w| w.pid)
-        .ok_or_else(|| {
-            AdapterError::new(
-                agent_desktop_core::error::ErrorCode::AppNotFound,
-                format!("App '{app_name}' not found"),
-            )
-        })
+    windows.first().map(|w| w.pid).ok_or_else(|| {
+        AdapterError::new(
+            agent_desktop_core::error::ErrorCode::AppNotFound,
+            format!("App '{app_name}' not found"),
+        )
+    })
 }
 
 #[cfg(not(target_os = "macos"))]

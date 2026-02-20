@@ -1,8 +1,5 @@
 use crate::{
-    action::WindowOp,
-    adapter::PlatformAdapter,
-    commands::helpers::resolve_app_pid,
-    error::AppError,
+    action::WindowOp, adapter::PlatformAdapter, commands::helpers::resolve_app_pid, error::AppError,
 };
 use serde_json::{json, Value};
 
@@ -21,7 +18,10 @@ fn find_window(
     pid: i32,
     adapter: &dyn PlatformAdapter,
 ) -> Result<crate::node::WindowInfo, AppError> {
-    let filter = crate::adapter::WindowFilter { focused_only: false, app: None };
+    let filter = crate::adapter::WindowFilter {
+        focused_only: false,
+        app: None,
+    };
     let windows = adapter.list_windows(&filter)?;
     windows
         .into_iter()

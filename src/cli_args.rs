@@ -15,7 +15,11 @@ pub enum Surface {
 pub struct SnapshotArgs {
     #[arg(long, help = "Filter to application by name")]
     pub app: Option<String>,
-    #[arg(long, name = "window-id", help = "Filter to window ID (from list-windows)")]
+    #[arg(
+        long,
+        name = "window-id",
+        help = "Filter to window ID (from list-windows)"
+    )]
     pub window_id: Option<String>,
     #[arg(long, default_value = "10", help = "Maximum tree depth")]
     pub max_depth: u8,
@@ -33,7 +37,10 @@ pub struct SnapshotArgs {
 pub struct FindArgs {
     #[arg(long, help = "Filter to application by name")]
     pub app: Option<String>,
-    #[arg(long, help = "Match by accessibility role (button, textfield, checkbox ...)")]
+    #[arg(
+        long,
+        help = "Match by accessibility role (button, textfield, checkbox ...)"
+    )]
     pub role: Option<String>,
     #[arg(long, help = "Match by accessible name or label")]
     pub name: Option<String>,
@@ -55,7 +62,11 @@ pub struct FindArgs {
 pub struct ScreenshotArgs {
     #[arg(long, help = "Filter to application by name")]
     pub app: Option<String>,
-    #[arg(long, name = "window-id", help = "Filter to window ID (from list-windows)")]
+    #[arg(
+        long,
+        name = "window-id",
+        help = "Filter to window ID (from list-windows)"
+    )]
     pub window_id: Option<String>,
     #[arg(value_name = "PATH", help = "Save to file instead of returning base64")]
     pub output_path: Option<std::path::PathBuf>,
@@ -65,7 +76,11 @@ pub struct ScreenshotArgs {
 pub struct GetArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, default_value = "text", help = "Property: text, value, title, bounds, role, states")]
+    #[arg(
+        long,
+        default_value = "text",
+        help = "Property: text, value, title, bounds, role, states"
+    )]
     pub property: String,
 }
 
@@ -73,7 +88,11 @@ pub struct GetArgs {
 pub struct IsArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, default_value = "visible", help = "State: visible, enabled, checked, focused, expanded")]
+    #[arg(
+        long,
+        default_value = "visible",
+        help = "State: visible, enabled, checked, focused, expanded"
+    )]
     pub property: String,
 }
 
@@ -95,7 +114,11 @@ pub struct TypeArgs {
 pub struct SetValueArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(value_name = "VALUE", allow_hyphen_values = true, help = "Value to set")]
+    #[arg(
+        value_name = "VALUE",
+        allow_hyphen_values = true,
+        help = "Value to set"
+    )]
     pub value: String,
 }
 
@@ -111,7 +134,11 @@ pub struct SelectArgs {
 pub struct ScrollArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, default_value = "down", help = "Direction: up, down, left, right")]
+    #[arg(
+        long,
+        default_value = "down",
+        help = "Direction: up, down, left, right"
+    )]
     pub direction: String,
     #[arg(long, default_value = "3", help = "Number of scroll units")]
     pub amount: u32,
@@ -119,7 +146,10 @@ pub struct ScrollArgs {
 
 #[derive(Parser, Debug)]
 pub struct PressArgs {
-    #[arg(value_name = "COMBO", help = "Key combo: return, escape, cmd+c, shift+tab ...")]
+    #[arg(
+        value_name = "COMBO",
+        help = "Key combo: return, escape, cmd+c, shift+tab ..."
+    )]
     pub combo: String,
     #[arg(long, help = "Target application name (focuses app before pressing)")]
     pub app: Option<String>,
@@ -127,7 +157,10 @@ pub struct PressArgs {
 
 #[derive(Parser, Debug)]
 pub struct KeyComboArgs {
-    #[arg(value_name = "COMBO", help = "Key or modifier to hold/release: shift, cmd, ctrl ...")]
+    #[arg(
+        value_name = "COMBO",
+        help = "Key or modifier to hold/release: shift, cmd, ctrl ..."
+    )]
     pub combo: String,
 }
 
@@ -165,7 +198,11 @@ pub struct MouseMoveArgs {
 pub struct MouseClickArgs {
     #[arg(long, help = "Absolute coordinates as x,y")]
     pub xy: String,
-    #[arg(long, default_value = "left", help = "Mouse button: left, right, middle")]
+    #[arg(
+        long,
+        default_value = "left",
+        help = "Mouse button: left, right, middle"
+    )]
     pub button: String,
     #[arg(long, default_value = "1", help = "Number of clicks")]
     pub count: u32,
@@ -175,7 +212,11 @@ pub struct MouseClickArgs {
 pub struct MousePointArgs {
     #[arg(long, help = "Absolute coordinates as x,y")]
     pub xy: String,
-    #[arg(long, default_value = "left", help = "Mouse button: left, right, middle")]
+    #[arg(
+        long,
+        default_value = "left",
+        help = "Mouse button: left, right, middle"
+    )]
     pub button: String,
 }
 
@@ -183,7 +224,11 @@ pub struct MousePointArgs {
 pub struct LaunchArgs {
     #[arg(value_name = "APP", help = "Application name or bundle ID")]
     pub app: String,
-    #[arg(long, default_value = "30000", help = "Max time in ms to wait for the window to appear")]
+    #[arg(
+        long,
+        default_value = "30000",
+        help = "Max time in ms to wait for the window to appear"
+    )]
     pub timeout: u64,
 }
 
@@ -251,9 +296,16 @@ pub struct WaitArgs {
     pub element: Option<String>,
     #[arg(long, help = "Block until a window with this title appears")]
     pub window: Option<String>,
-    #[arg(long, help = "Block until text appears in the app's accessibility tree")]
+    #[arg(
+        long,
+        help = "Block until text appears in the app's accessibility tree"
+    )]
     pub text: Option<String>,
-    #[arg(long, default_value = "30000", help = "Timeout in milliseconds for element/window/text waits")]
+    #[arg(
+        long,
+        default_value = "30000",
+        help = "Timeout in milliseconds for element/window/text waits"
+    )]
     pub timeout: u64,
     #[arg(long, help = "Block until a context menu is open")]
     pub menu: bool,

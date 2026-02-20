@@ -1,8 +1,5 @@
 use crate::{
-    action::Action,
-    adapter::PlatformAdapter,
-    commands::press::parse_combo,
-    error::AppError,
+    action::Action, adapter::PlatformAdapter, commands::press::parse_combo, error::AppError,
 };
 use serde_json::{json, Value};
 

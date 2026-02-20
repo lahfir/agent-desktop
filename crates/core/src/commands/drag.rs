@@ -17,7 +17,11 @@ pub struct DragArgs {
 pub fn execute(args: DragArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     let from = resolve_point(&args.from_ref, args.from_xy, "from", adapter)?;
     let to = resolve_point(&args.to_ref, args.to_xy, "to", adapter)?;
-    let params = DragParams { from: from.clone(), to: to.clone(), duration_ms: args.duration_ms };
+    let params = DragParams {
+        from: from.clone(),
+        to: to.clone(),
+        duration_ms: args.duration_ms,
+    };
     adapter.drag(params)?;
     Ok(json!({
         "dragged": true,
@@ -37,10 +41,15 @@ fn resolve_point(
         let bounds = adapter
             .get_element_bounds(&handle)?
             .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
-        Ok(Point { x: bounds.x + bounds.width / 2.0, y: bounds.y + bounds.height / 2.0 })
+        Ok(Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        })
     } else if let Some((x, y)) = xy {
         Ok(Point { x, y })
     } else {
-        Err(AppError::invalid_input(format!("Provide --{label} <ref> or --{label}-xy x,y")))
+        Err(AppError::invalid_input(format!(
+            "Provide --{label} <ref> or --{label}-xy x,y"
+        )))
     }
 }

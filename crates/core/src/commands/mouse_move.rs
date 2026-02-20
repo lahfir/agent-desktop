@@ -13,7 +13,10 @@ pub struct MouseMoveArgs {
 pub fn execute(args: MouseMoveArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Move,
-        point: Point { x: args.x, y: args.y },
+        point: Point {
+            x: args.x,
+            y: args.y,
+        },
         button: MouseButton::Left,
     })?;
     Ok(json!({ "moved": true, "x": args.x, "y": args.y }))

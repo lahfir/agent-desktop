@@ -1,8 +1,4 @@
-use agent_desktop_core::{
-    adapter::WindowFilter,
-    error::AdapterError,
-    node::WindowInfo,
-};
+use agent_desktop_core::{adapter::WindowFilter, error::AdapterError, node::WindowInfo};
 
 #[cfg(target_os = "macos")]
 pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
@@ -66,7 +62,10 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
         ));
     }
 
-    let filter = WindowFilter { focused_only: false, app: Some(id.to_string()) };
+    let filter = WindowFilter {
+        focused_only: false,
+        app: Some(id.to_string()),
+    };
     if let Ok(wins) = list_windows_impl(&filter) {
         if let Some(win) = wins.into_iter().next() {
             return Ok(win);
@@ -86,7 +85,10 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
 
     loop {
         std::thread::sleep(poll_interval);
-        let filter = WindowFilter { focused_only: false, app: Some(id.to_string()) };
+        let filter = WindowFilter {
+            focused_only: false,
+            app: Some(id.to_string()),
+        };
         if let Ok(wins) = list_windows_impl(&filter) {
             if let Some(win) = wins.into_iter().next() {
                 return Ok(win);
@@ -162,10 +164,7 @@ fn try_quit_via_menu_bar(app_el: &crate::tree::AXElement) -> bool {
                             if t.contains("Quit") || t.contains("quit") {
                                 let press = CFString::new("AXPress");
                                 let err = unsafe {
-                                    AXUIElementPerformAction(
-                                        item.0,
-                                        press.as_concrete_TypeRef(),
-                                    )
+                                    AXUIElementPerformAction(item.0, press.as_concrete_TypeRef())
                                 };
                                 return err == kAXErrorSuccess;
                             }

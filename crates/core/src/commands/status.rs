@@ -1,4 +1,8 @@
-use crate::{adapter::{PermissionStatus, PlatformAdapter}, error::AppError, refs::RefMap};
+use crate::{
+    adapter::{PermissionStatus, PlatformAdapter},
+    error::AppError,
+    refs::RefMap,
+};
 use serde_json::{json, Value};
 
 pub fn execute(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {

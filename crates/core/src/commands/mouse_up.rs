@@ -14,7 +14,10 @@ pub struct MouseUpArgs {
 pub fn execute(args: MouseUpArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Up,
-        point: Point { x: args.x, y: args.y },
+        point: Point {
+            x: args.x,
+            y: args.y,
+        },
         button: args.button,
     })?;
     Ok(json!({ "released": true, "x": args.x, "y": args.y }))

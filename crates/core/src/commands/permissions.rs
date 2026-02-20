@@ -1,4 +1,7 @@
-use crate::{adapter::{PermissionStatus, PlatformAdapter}, error::AppError};
+use crate::{
+    adapter::{PermissionStatus, PlatformAdapter},
+    error::AppError,
+};
 use serde_json::{json, Value};
 
 pub struct PermissionsArgs {

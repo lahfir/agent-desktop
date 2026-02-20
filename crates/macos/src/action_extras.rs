@@ -126,9 +126,8 @@ pub(crate) fn ax_scroll(
     if let Some(scroll_bar) = get_scroll_bar(target, bar_orientation) {
         let ax_action = CFString::new(action_name);
         for _ in 0..amount {
-            let err = unsafe {
-                AXUIElementPerformAction(scroll_bar.0, ax_action.as_concrete_TypeRef())
-            };
+            let err =
+                unsafe { AXUIElementPerformAction(scroll_bar.0, ax_action.as_concrete_TypeRef()) };
             if err != kAXErrorSuccess {
                 return Err(AdapterError::new(
                     ErrorCode::ActionFailed,
