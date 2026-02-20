@@ -7,7 +7,10 @@ pub mod output;
 pub mod refs;
 pub mod snapshot;
 
-pub use action::{Action, ActionResult, Direction, ElementState, KeyCombo, Modifier};
+pub use action::{
+    Action, ActionResult, Direction, DragParams, ElementState, KeyCombo, Modifier, MouseButton,
+    MouseEvent, MouseEventKind, Point, WindowOp,
+};
 pub use adapter::{
     ImageBuffer, ImageFormat, NativeHandle, PermissionStatus, PlatformAdapter, ScreenshotTarget,
     TreeOptions, WindowFilter,

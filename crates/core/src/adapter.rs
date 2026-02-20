@@ -1,7 +1,7 @@
 use crate::{
-    action::{Action, ActionResult},
+    action::{Action, ActionResult, DragParams, MouseEvent, WindowOp},
     error::AdapterError,
-    node::{AccessibilityNode, AppInfo, SurfaceInfo, WindowInfo},
+    node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     refs::RefEntry,
 };
 use std::marker::PhantomData;
@@ -143,7 +143,7 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("focus_window"))
     }
 
-    fn launch_app(&self, _id: &str, _wait: bool) -> Result<WindowInfo, AdapterError> {
+    fn launch_app(&self, _id: &str, _timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
         Err(AdapterError::not_supported("launch_app"))
     }
 
@@ -171,11 +171,39 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("get_live_value"))
     }
 
+    fn press_key_for_app(
+        &self,
+        _app_name: &str,
+        _combo: &crate::action::KeyCombo,
+    ) -> Result<crate::action::ActionResult, AdapterError> {
+        Err(AdapterError::not_supported("press_key_for_app"))
+    }
+
     fn wait_for_menu(&self, _pid: i32, _open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("wait_for_menu"))
     }
 
     fn list_surfaces(&self, _pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_surfaces"))
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        Err(AdapterError::not_supported("get_element_bounds"))
+    }
+
+    fn window_op(&self, _win: &WindowInfo, _op: WindowOp) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("window_op"))
+    }
+
+    fn mouse_event(&self, _event: MouseEvent) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("mouse_event"))
+    }
+
+    fn drag(&self, _params: DragParams) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("drag"))
+    }
+
+    fn clear_clipboard(&self) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("clear_clipboard"))
     }
 }

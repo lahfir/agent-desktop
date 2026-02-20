@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     action::{Action, ActionResult},
-    error::AdapterError,
+    error::{AdapterError, ErrorCode},
 };
 
 #[cfg(target_os = "macos")]
@@ -9,60 +9,67 @@ mod imp {
     use crate::tree::AXElement;
     use accessibility_sys::{
         kAXErrorSuccess, kAXFocusedAttribute, kAXPressAction, kAXValueAttribute,
-        AXUIElementPerformAction, AXUIElementSetAttributeValue,
+        AXUIElementCopyActionNames, AXUIElementPerformAction, AXUIElementSetAttributeValue,
     };
-    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
-    use core_graphics::{
-        event::{CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, ScrollEventUnit},
-        event_source::{CGEventSource, CGEventSourceStateID},
-        geometry::CGPoint,
+    use core_foundation::{
+        array::CFArray,
+        base::{CFType, TCFType},
+        boolean::CFBoolean,
+        string::CFString,
     };
 
     pub fn perform_action(el: &AXElement, action: &Action) -> Result<ActionResult, AdapterError> {
         let label = action_label(action);
         match action {
             Action::Click => {
-                let err = ax_press(el);
-                if err != kAXErrorSuccess {
-                    cg_mouse_click(el, 1, CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)?;
-                }
+                ax_press_or_fail(el, "click")?;
             }
 
             Action::DoubleClick => {
-                cg_mouse_click(el, 2, CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)?;
+                let open_action = CFString::new("AXOpen");
+                let err = unsafe { AXUIElementPerformAction(el.0, open_action.as_concrete_TypeRef()) };
+                if err != kAXErrorSuccess {
+                    ax_press_or_fail(el, "double-click (first press)")?;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    ax_press_or_fail(el, "double-click (second press)")?;
+                }
             }
 
             Action::RightClick => {
                 let ax_action = CFString::new("AXShowMenu");
                 let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
                 if err != kAXErrorSuccess {
-                    cg_mouse_click(el, 1, CGEventType::RightMouseDown, CGEventType::RightMouseUp, CGMouseButton::Right)?;
+                    return Err(AdapterError::new(
+                        ErrorCode::ActionFailed,
+                        format!("AXShowMenu failed (err={err})"),
+                    )
+                    .with_suggestion("Element may not support context menus"));
                 }
             }
 
             Action::Toggle => {
-                let err = ax_press(el);
-                if err != kAXErrorSuccess {
-                    cg_mouse_click(el, 1, CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)?;
+                let role = element_role(el);
+                let toggle_roles = [
+                    "checkbox", "switch", "radiobutton", "togglebutton",
+                    "menuitemcheckbox", "menuitemradio",
+                ];
+                if !toggle_roles.iter().any(|r| role.as_deref() == Some(*r)) {
+                    return Err(AdapterError::new(
+                        ErrorCode::ActionNotSupported,
+                        format!(
+                            "Toggle not supported on role '{}'",
+                            role.as_deref().unwrap_or("unknown")
+                        ),
+                    )
+                    .with_suggestion(
+                        "Toggle works on checkboxes, switches, and radio buttons. Use 'click' for other elements.",
+                    ));
                 }
+                ax_press_or_fail(el, "toggle")?;
             }
 
             Action::SetValue(val) => {
-                let cf_attr = CFString::new(kAXValueAttribute);
-                let cf_val = CFString::new(val);
-                let err = unsafe {
-                    AXUIElementSetAttributeValue(
-                        el.0,
-                        cf_attr.as_concrete_TypeRef(),
-                        cf_val.as_CFTypeRef(),
-                    )
-                };
-                if err != kAXErrorSuccess {
-                    return Err(AdapterError::new(
-                        agent_desktop_core::error::ErrorCode::ActionFailed,
-                        format!("SetValue failed (err={err})"),
-                    ));
-                }
+                ax_set_value(el, val)?;
             }
 
             Action::SetFocus => {
@@ -76,7 +83,7 @@ mod imp {
                 };
                 if err != kAXErrorSuccess {
                     return Err(AdapterError::new(
-                        agent_desktop_core::error::ErrorCode::ActionFailed,
+                        ErrorCode::ActionFailed,
                         format!("SetFocus failed (err={err})"),
                     ));
                 }
@@ -99,105 +106,172 @@ mod imp {
             }
 
             Action::Expand => {
+                if !has_ax_action(el, "AXExpand") {
+                    return Err(AdapterError::new(
+                        ErrorCode::ActionNotSupported,
+                        "This element doesn't support expand",
+                    )
+                    .with_suggestion("Try 'click' to open it instead."));
+                }
                 let ax_action = CFString::new("AXExpand");
-                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                let err =
+                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
                 if err != kAXErrorSuccess {
                     return Err(AdapterError::new(
-                        agent_desktop_core::error::ErrorCode::ActionFailed,
+                        ErrorCode::ActionFailed,
                         format!("AXExpand failed (err={err})"),
                     ));
                 }
             }
 
             Action::Collapse => {
+                if !has_ax_action(el, "AXCollapse") {
+                    return Err(AdapterError::new(
+                        ErrorCode::ActionNotSupported,
+                        "This element doesn't support collapse",
+                    )
+                    .with_suggestion("Try 'click' to close it instead."));
+                }
                 let ax_action = CFString::new("AXCollapse");
-                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                let err =
+                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
                 if err != kAXErrorSuccess {
                     return Err(AdapterError::new(
-                        agent_desktop_core::error::ErrorCode::ActionFailed,
+                        ErrorCode::ActionFailed,
                         format!("AXCollapse failed (err={err})"),
                     ));
                 }
             }
 
-            Action::Select(_) => {
-                let err = ax_press(el);
-                if err != kAXErrorSuccess {
-                    cg_mouse_click(el, 1, CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)?;
-                }
+            Action::Select(value) => {
+                crate::action_extras::select_value(el, value)?;
             }
 
             Action::Scroll(direction, amount) => {
-                let center = element_center(el).ok_or_else(|| {
-                    AdapterError::new(
-                        agent_desktop_core::error::ErrorCode::ActionFailed,
-                        "Cannot scroll: element has no position/size",
+                crate::action_extras::ax_scroll(el, direction, *amount)?;
+            }
+
+            Action::Check => {
+                check_uncheck(el, true)?;
+            }
+
+            Action::Uncheck => {
+                check_uncheck(el, false)?;
+            }
+
+            Action::TripleClick => {
+                ax_press_or_fail(el, "triple-click (1st)")?;
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                ax_press_or_fail(el, "triple-click (2nd)")?;
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                ax_press_or_fail(el, "triple-click (3rd)")?;
+            }
+
+            Action::ScrollTo => {
+                let ax_action = CFString::new("AXScrollToVisible");
+                let err = unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
+                if err != kAXErrorSuccess {
+                    return Err(AdapterError::new(
+                        ErrorCode::ActionFailed,
+                        format!("AXScrollToVisible failed (err={err})"),
                     )
-                })?;
+                    .with_suggestion("Element may not be inside a scrollable area"));
+                }
+            }
 
-                let (dx, dy): (i32, i32) = match direction {
-                    agent_desktop_core::action::Direction::Up    => (0,  *amount as i32),
-                    agent_desktop_core::action::Direction::Down  => (0, -(*amount as i32)),
-                    agent_desktop_core::action::Direction::Left  => (-(*amount as i32), 0),
-                    agent_desktop_core::action::Direction::Right => (*amount as i32, 0),
-                };
+            Action::Clear => {
+                ax_set_value(el, "")?;
+            }
 
-                let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-                    .map_err(|_| AdapterError::internal("CGEventSource failed"))?;
-                let event = CGEvent::new_scroll_event(source, ScrollEventUnit::LINE, 2, dy, dx, 0)
-                    .map_err(|_| AdapterError::internal("CGEvent scroll failed"))?;
-                event.set_location(center);
-                event.post(CGEventTapLocation::HID);
+            Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
+                return Err(AdapterError::new(
+                    ErrorCode::ActionNotSupported,
+                    format!("{} requires adapter-level handling, not element action", label),
+                ));
+            }
+
+            _ => {
+                return Err(AdapterError::not_supported(&label));
             }
         }
 
         Ok(ActionResult::new(label))
     }
 
-    fn ax_press(el: &AXElement) -> i32 {
+    pub fn ax_press_or_fail(el: &AXElement, context: &str) -> Result<(), AdapterError> {
         let action = CFString::new(kAXPressAction);
-        unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) }
-    }
-
-    fn element_center(el: &AXElement) -> Option<CGPoint> {
-        let bounds = crate::tree::read_bounds(el)?;
-        Some(CGPoint::new(bounds.x + bounds.width / 2.0, bounds.y + bounds.height / 2.0))
-    }
-
-    fn cg_mouse_click(
-        el: &AXElement,
-        click_count: i64,
-        down: CGEventType,
-        up: CGEventType,
-        button: CGMouseButton,
-    ) -> Result<(), AdapterError> {
-        let center = element_center(el).ok_or_else(|| {
-            AdapterError::new(
-                agent_desktop_core::error::ErrorCode::ActionFailed,
-                "Cannot click: element has no accessible position or size",
-            )
-        })?;
-
-        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-            .map_err(|_| AdapterError::internal("CGEventSource failed"))?;
-
-        let ev_down = CGEvent::new_mouse_event(source.clone(), down, center, button)
-            .map_err(|_| AdapterError::internal("CGEvent mouse_down failed"))?;
-        let ev_up = CGEvent::new_mouse_event(source, up, center, button)
-            .map_err(|_| AdapterError::internal("CGEvent mouse_up failed"))?;
-
-        ev_down.set_integer_value_field(
-            core_graphics::event::EventField::MOUSE_EVENT_CLICK_STATE,
-            click_count,
-        );
-        ev_up.set_integer_value_field(
-            core_graphics::event::EventField::MOUSE_EVENT_CLICK_STATE,
-            click_count,
-        );
-
-        ev_down.post(CGEventTapLocation::HID);
-        ev_up.post(CGEventTapLocation::HID);
+        let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
+        if err != kAXErrorSuccess {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                format!("{context}: AXPress failed (err={err})"),
+            ));
+        }
         Ok(())
+    }
+
+    pub fn ax_set_value(el: &AXElement, val: &str) -> Result<(), AdapterError> {
+        let cf_attr = CFString::new(kAXValueAttribute);
+        let cf_val = CFString::new(val);
+        let err = unsafe {
+            AXUIElementSetAttributeValue(
+                el.0,
+                cf_attr.as_concrete_TypeRef(),
+                cf_val.as_CFTypeRef(),
+            )
+        };
+        if err != kAXErrorSuccess {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                format!("SetValue failed (err={err})"),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn element_role(el: &AXElement) -> Option<String> {
+        use accessibility_sys::kAXRoleAttribute;
+        crate::tree::copy_string_attr(el, kAXRoleAttribute)
+            .map(|r| crate::roles::ax_role_to_str(&r).to_string())
+    }
+
+    pub fn has_ax_action(el: &AXElement, action_name: &str) -> bool {
+        let mut actions_ref: core_foundation_sys::array::CFArrayRef = std::ptr::null();
+        let err = unsafe { AXUIElementCopyActionNames(el.0, &mut actions_ref) };
+        if err != kAXErrorSuccess || actions_ref.is_null() {
+            return false;
+        }
+        let actions: CFArray<CFType> = unsafe { TCFType::wrap_under_create_rule(actions_ref) };
+        let target = CFString::new(action_name);
+        for i in 0..actions.len() {
+            if let Some(name) = actions.get(i).and_then(|v| v.downcast::<CFString>()) {
+                if name == target {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn check_uncheck(el: &AXElement, want_checked: bool) -> Result<(), AdapterError> {
+        let role = element_role(el);
+        let valid_roles = ["checkbox", "switch", "radiobutton", "togglebutton", "menuitemcheckbox", "menuitemradio"];
+        if !valid_roles.iter().any(|r| role.as_deref() == Some(*r)) {
+            return Err(AdapterError::new(
+                ErrorCode::ActionNotSupported,
+                format!(
+                    "check/uncheck not supported on role '{}'",
+                    role.as_deref().unwrap_or("unknown")
+                ),
+            )
+            .with_suggestion("Only works on checkboxes, switches, and radio buttons."));
+        }
+        let current = crate::tree::copy_string_attr(el, "AXValue");
+        let is_checked = current.as_deref() == Some("1");
+        if is_checked == want_checked {
+            return Ok(());
+        }
+        ax_press_or_fail(el, if want_checked { "check" } else { "uncheck" })
     }
 }
 
@@ -213,20 +287,33 @@ mod imp {
 
 pub use imp::perform_action;
 
+#[cfg(target_os = "macos")]
+pub(crate) use imp::{ax_press_or_fail, ax_set_value, element_role, has_ax_action};
+
 fn action_label(action: &Action) -> String {
     match action {
         Action::Click => "click",
         Action::DoubleClick => "double_click",
         Action::RightClick => "right_click",
+        Action::TripleClick => "triple_click",
         Action::SetValue(_) => "set_value",
         Action::SetFocus => "set_focus",
         Action::Expand => "expand",
         Action::Collapse => "collapse",
         Action::Select(_) => "select",
         Action::Toggle => "toggle",
+        Action::Check => "check",
+        Action::Uncheck => "uncheck",
         Action::Scroll(_, _) => "scroll",
+        Action::ScrollTo => "scroll_to",
         Action::PressKey(_) => "press_key",
+        Action::KeyDown(_) => "key_down",
+        Action::KeyUp(_) => "key_up",
         Action::TypeText(_) => "type_text",
+        Action::Clear => "clear",
+        Action::Hover => "hover",
+        Action::Drag(_) => "drag",
+        _ => "unknown",
     }
     .to_string()
 }

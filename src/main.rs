@@ -1,4 +1,6 @@
+mod batch_dispatch;
 mod cli;
+mod cli_args;
 mod dispatch;
 
 use agent_desktop_core::adapter::PlatformAdapter;

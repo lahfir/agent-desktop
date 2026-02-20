@@ -1,11 +1,11 @@
 use agent_desktop_core::{
-    action::{Action, ActionResult},
+    action::{Action, ActionResult, DragParams, MouseEvent, WindowOp},
     adapter::{
         ImageBuffer, NativeHandle, PermissionStatus, PlatformAdapter, ScreenshotTarget,
         SnapshotSurface, TreeOptions, WindowFilter,
     },
     error::AdapterError,
-    node::{AccessibilityNode, AppInfo, SurfaceInfo, WindowInfo},
+    node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     refs::RefEntry,
 };
 use rustc_hash::FxHashSet;
@@ -76,8 +76,8 @@ impl PlatformAdapter for MacOSAdapter {
         crate::app_ops::focus_window_impl(win)
     }
 
-    fn launch_app(&self, id: &str, wait: bool) -> Result<WindowInfo, AdapterError> {
-        crate::app_ops::launch_app_impl(id, wait)
+    fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
+        crate::app_ops::launch_app_impl(id, timeout_ms)
     }
 
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {
@@ -98,6 +98,14 @@ impl PlatformAdapter for MacOSAdapter {
 
     fn set_clipboard(&self, text: &str) -> Result<(), AdapterError> {
         crate::clipboard::set(text)
+    }
+
+    fn press_key_for_app(
+        &self,
+        app_name: &str,
+        combo: &agent_desktop_core::action::KeyCombo,
+    ) -> Result<agent_desktop_core::action::ActionResult, AdapterError> {
+        crate::key_dispatch::press_for_app_impl(app_name, combo)
     }
 
     fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
@@ -125,6 +133,37 @@ impl PlatformAdapter for MacOSAdapter {
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_value"))
+    }
+
+    fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        #[cfg(target_os = "macos")]
+        {
+            use crate::tree::AXElement;
+            use std::mem::ManuallyDrop;
+            let el = ManuallyDrop::new(AXElement(handle.as_raw() as accessibility_sys::AXUIElementRef));
+            Ok(crate::tree::read_bounds(&el))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = handle;
+            Err(AdapterError::not_supported("get_element_bounds"))
+        }
+    }
+
+    fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {
+        crate::window_ops::execute(win, op)
+    }
+
+    fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
+        crate::mouse::synthesize_mouse(event)
+    }
+
+    fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
+        crate::mouse::synthesize_drag(params)
+    }
+
+    fn clear_clipboard(&self) -> Result<(), AdapterError> {
+        crate::clipboard::clear()
     }
 }
 
@@ -255,7 +294,7 @@ pub fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, Adapt
 
             let title = match unsafe { dict_string(raw, kCGWindowName as _) } {
                 Some(t) if !t.is_empty() => t,
-                _ => continue,
+                _ => app_name.clone(),
             };
 
             let pid = unsafe { dict_i64(raw, kCGWindowOwnerPID as _) }.unwrap_or(0) as i32;

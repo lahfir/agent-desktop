@@ -321,6 +321,19 @@ mod imp {
         Some(children)
     }
 
+    pub fn copy_element_attr(el: &AXElement, attr: &str) -> Option<AXElement> {
+        let cf_attr = CFString::new(attr);
+        let mut value: CFTypeRef = std::ptr::null_mut();
+        let err = unsafe {
+            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
+        };
+        if err != kAXErrorSuccess || value.is_null() {
+            return None;
+        }
+        let ptr = value as AXUIElementRef;
+        Some(AXElement(ptr))
+    }
+
     pub fn read_bounds(el: &AXElement) -> Option<Rect> {
         use accessibility_sys::{
             kAXPositionAttribute, kAXSizeAttribute, AXValueGetValue,
@@ -374,6 +387,7 @@ mod imp {
     pub fn window_element_for(_pid: i32, _win_title: &str) -> AXElement { AXElement(std::ptr::null()) }
     pub fn copy_ax_array(_el: &AXElement, _attr: &str) -> Option<Vec<AXElement>> { None }
     pub fn copy_string_attr(_el: &AXElement, _attr: &str) -> Option<String> { None }
+    pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> { None }
     pub fn read_bounds(_el: &AXElement) -> Option<agent_desktop_core::node::Rect> { None }
     pub fn resolve_element_name(_el: &AXElement) -> Option<String> { None }
 
@@ -381,6 +395,6 @@ mod imp {
 }
 
 pub use imp::{
-    build_subtree, copy_ax_array, copy_string_attr, element_for_pid, read_bounds,
-    resolve_element_name, window_element_for, AXElement,
+    build_subtree, copy_ax_array, copy_element_attr, copy_string_attr, element_for_pid,
+    read_bounds, resolve_element_name, window_element_for, AXElement,
 };
