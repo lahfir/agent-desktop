@@ -10,6 +10,7 @@ pub use crate::cli_args::*;
     after_help = "\
 OBSERVATION
   snapshot                   Accessibility tree as JSON with @ref IDs
+  diff-snapshot              Snapshot and diff against the previous snapshot
   screenshot                 PNG screenshot of an application window
   find                       Search elements by role, name, value, or text
   get <ref> <property>       Read element property: text, value, title, bounds, role, states
@@ -121,6 +122,8 @@ pub struct Cli {
 pub enum Commands {
     #[command(about = "Capture accessibility tree as structured JSON with @ref IDs")]
     Snapshot(SnapshotArgs),
+    #[command(about = "Snapshot and diff against the previous snapshot")]
+    DiffSnapshot(DiffSnapshotCliArgs),
     #[command(about = "Search elements by role, name, value, or text content")]
     Find(FindArgs),
     #[command(about = "Take a PNG screenshot of an application window")]
@@ -223,6 +226,7 @@ impl Commands {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Snapshot(_) => "snapshot",
+            Self::DiffSnapshot(_) => "diff-snapshot",
             Self::Find(_) => "find",
             Self::Screenshot(_) => "screenshot",
             Self::Get(_) => "get",

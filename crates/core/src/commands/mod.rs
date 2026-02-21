@@ -7,6 +7,7 @@ pub mod clipboard_get;
 pub mod clipboard_set;
 pub mod close_app;
 pub mod collapse;
+pub mod diff_snapshot;
 pub mod double_click;
 pub mod drag;
 pub mod expand;

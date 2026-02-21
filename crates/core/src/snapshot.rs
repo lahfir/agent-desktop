@@ -3,6 +3,7 @@ use crate::{
     error::AppError,
     node::{AccessibilityNode, WindowInfo},
     refs::{RefEntry, RefMap},
+    store,
 };
 
 const INTERACTIVE_ROLES: &[&str] = &[
@@ -105,6 +106,7 @@ pub fn run(
 ) -> Result<SnapshotResult, AppError> {
     let result = build(adapter, opts, app_name, window_id)?;
     result.refmap.save()?;
+    let _ = store::save(&store::record_from_result(&result));
     Ok(result)
 }
 

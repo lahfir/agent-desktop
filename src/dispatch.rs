@@ -3,11 +3,11 @@ use agent_desktop_core::{
     adapter::PlatformAdapter,
     commands::{
         batch, check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app,
-        collapse, double_click, drag, expand, find, focus, focus_window, get, helpers, hover,
-        is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize,
-        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
-        resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
-        snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
+        collapse, diff_snapshot, double_click, drag, expand, find, focus, focus_window, get,
+        helpers, hover, is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows,
+        maximize, minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions,
+        press, resize_window, restore, right_click, screenshot, scroll, scroll_to, select,
+        set_value, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
     },
     error::AppError,
 };
@@ -26,6 +26,20 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 interactive_only: a.interactive_only,
                 compact: a.compact,
                 surface: cli_surface_to_core(&a.surface),
+            },
+            adapter,
+        ),
+
+        Commands::DiffSnapshot(a) => diff_snapshot::execute(
+            diff_snapshot::DiffSnapshotArgs {
+                app: a.app,
+                window_id: a.window_id,
+                max_depth: a.max_depth,
+                include_bounds: a.include_bounds,
+                interactive_only: a.interactive_only,
+                compact: a.compact,
+                surface: cli_surface_to_core(&a.surface),
+                text: a.text,
             },
             adapter,
         ),

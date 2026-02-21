@@ -1,11 +1,13 @@
 pub mod action;
 pub mod adapter;
 pub mod commands;
+pub mod diff;
 pub mod error;
 pub mod node;
 pub mod output;
 pub mod refs;
 pub mod snapshot;
+pub mod store;
 
 pub use action::{
     Action, ActionResult, Direction, DragParams, ElementState, KeyCombo, Modifier, MouseButton,

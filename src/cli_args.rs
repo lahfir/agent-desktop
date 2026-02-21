@@ -340,3 +340,27 @@ pub struct BatchArgs {
     #[arg(long, help = "Halt the batch on the first failed command")]
     pub stop_on_error: bool,
 }
+
+#[derive(Parser, Debug)]
+pub struct DiffSnapshotCliArgs {
+    #[arg(long, help = "Filter to application by name")]
+    pub app: Option<String>,
+    #[arg(
+        long,
+        name = "window-id",
+        help = "Filter to window ID (from list-windows)"
+    )]
+    pub window_id: Option<String>,
+    #[arg(long, default_value = "10", help = "Maximum tree depth")]
+    pub max_depth: u8,
+    #[arg(long, help = "Include element bounds (x, y, width, height)")]
+    pub include_bounds: bool,
+    #[arg(long, short = 'i', help = "Include interactive elements only")]
+    pub interactive_only: bool,
+    #[arg(long, help = "Omit empty structural nodes from output")]
+    pub compact: bool,
+    #[arg(long, value_enum, default_value_t = Surface::Window, help = "Surface to snapshot")]
+    pub surface: Surface,
+    #[arg(long, help = "Output diff as human-readable text instead of JSON")]
+    pub text: bool,
+}
