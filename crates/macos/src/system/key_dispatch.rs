@@ -28,7 +28,7 @@ pub fn press_for_app_impl(app_name: &str, combo: &KeyCombo) -> Result<ActionResu
     std::thread::sleep(std::time::Duration::from_millis(50));
 
     if !combo.modifiers.is_empty() {
-        let app_ax = crate::tree::AXElement(app_el);
+        let app_ax = std::mem::ManuallyDrop::new(crate::tree::AXElement(app_el));
         if let Some(result) = try_menu_bar_shortcut(&app_ax, combo) {
             return result;
         }
@@ -159,8 +159,8 @@ fn combo_to_ax_modifiers(combo: &KeyCombo) -> u32 {
     let mut mods: u32 = 0;
     for m in &combo.modifiers {
         match m {
-            Modifier::Shift => mods |= 1 << 1,
-            Modifier::Alt => mods |= 1 << 3,
+            Modifier::Shift => mods |= 1 << 0,
+            Modifier::Alt => mods |= 1 << 1,
             Modifier::Ctrl => mods |= 1 << 2,
             Modifier::Cmd => {}
         }

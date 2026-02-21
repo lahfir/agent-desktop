@@ -17,6 +17,7 @@ pub enum SnapshotSurface {
     Window,
     Focused,
     Menu,
+    Menubar,
     Sheet,
     Popover,
     Alert,

@@ -86,6 +86,14 @@ mod imp {
         open_menubar_menu(pid).or_else(|| context_menu_from_app(pid))
     }
 
+    pub fn menubar_for_pid(pid: i32) -> Option<AXElement> {
+        let app = element_for_pid(pid);
+        let app_children = copy_ax_array(&app, "AXChildren")?;
+        app_children
+            .into_iter()
+            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenuBar"))
+    }
+
     pub fn focused_surface_for_pid(pid: i32) -> Option<AXElement> {
         focused_window_element(pid)
     }
@@ -107,12 +115,43 @@ mod imp {
     }
 
     pub fn alert_for_pid(pid: i32) -> Option<AXElement> {
-        let win = focused_window_element(pid)?;
-        let children = copy_ax_array(&win, "AXChildren")?;
-        children.into_iter().find(|child| {
-            let subrole = copy_string_attr(child, "AXSubrole");
-            matches!(subrole.as_deref(), Some("AXDialog") | Some("AXAlert"))
-        })
+        if let Some(win) = focused_window_element(pid) {
+            let children = copy_ax_array(&win, "AXChildren").unwrap_or_default();
+            if let Some(found) = children.into_iter().find(|child| {
+                let subrole = copy_string_attr(child, "AXSubrole");
+                matches!(
+                    subrole.as_deref(),
+                    Some("AXDialog") | Some("AXAlert") | Some("AXSheet")
+                )
+            }) {
+                return Some(found);
+            }
+        }
+
+        let app = element_for_pid(pid);
+        let windows = copy_ax_array(&app, "AXWindows")?;
+        for win in &windows {
+            let role = copy_string_attr(win, "AXRole");
+            let subrole = copy_string_attr(win, "AXSubrole");
+            if matches!(
+                subrole.as_deref(),
+                Some("AXDialog") | Some("AXAlert") | Some("AXSheet")
+            ) || matches!(role.as_deref(), Some("AXSheet"))
+            {
+                return Some(win.clone());
+            }
+            let children = copy_ax_array(win, "AXChildren").unwrap_or_default();
+            if let Some(found) = children.into_iter().find(|child| {
+                let sr = copy_string_attr(child, "AXSubrole");
+                matches!(
+                    sr.as_deref(),
+                    Some("AXDialog") | Some("AXAlert") | Some("AXSheet")
+                )
+            }) {
+                return Some(found);
+            }
+        }
+        None
     }
 
     pub fn is_menu_open(pid: i32) -> bool {
@@ -220,6 +259,9 @@ mod imp {
     pub fn menu_element_for_pid(_pid: i32) -> Option<AXElement> {
         None
     }
+    pub fn menubar_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
     pub fn focused_surface_for_pid(_pid: i32) -> Option<AXElement> {
         None
     }
@@ -242,5 +284,5 @@ mod imp {
 
 pub use imp::{
     alert_for_pid, focused_surface_for_pid, is_menu_open, list_surfaces_for_pid,
-    menu_element_for_pid, popover_for_pid, sheet_for_pid,
+    menu_element_for_pid, menubar_for_pid, popover_for_pid, sheet_for_pid,
 };

@@ -397,6 +397,7 @@ fn cli_surface_to_core(s: &crate::cli::Surface) -> agent_desktop_core::adapter::
         Surface::Window => SnapshotSurface::Window,
         Surface::Focused => SnapshotSurface::Focused,
         Surface::Menu => SnapshotSurface::Menu,
+        Surface::Menubar => SnapshotSurface::Menubar,
         Surface::Sheet => SnapshotSurface::Sheet,
         Surface::Popover => SnapshotSurface::Popover,
         Surface::Alert => SnapshotSurface::Alert,

@@ -461,6 +461,7 @@ fn parse_batch_surface(s: Option<&str>) -> agent_desktop_core::adapter::Snapshot
     use agent_desktop_core::adapter::SnapshotSurface;
     match s {
         Some("menu") => SnapshotSurface::Menu,
+        Some("menubar") => SnapshotSurface::Menubar,
         Some("sheet") => SnapshotSurface::Sheet,
         Some("popover") => SnapshotSurface::Popover,
         Some("alert") => SnapshotSurface::Alert,

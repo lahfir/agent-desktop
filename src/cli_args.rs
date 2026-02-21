@@ -6,6 +6,7 @@ pub enum Surface {
     Window,
     Focused,
     Menu,
+    Menubar,
     Sheet,
     Popover,
     Alert,
