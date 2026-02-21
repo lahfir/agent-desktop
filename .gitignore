@@ -62,7 +62,9 @@ dist/
 *.rpm
 *.snap
 
-# Compound Engineering
-docs/
+# Compound Engineering (ignore auto-generated, keep plans/brainstorms)
+docs/*
+!docs/plans/
+!docs/brainstorms/
 todos/
 .cursor/
