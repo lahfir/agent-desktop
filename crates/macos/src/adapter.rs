@@ -209,12 +209,13 @@ fn find_element_recursive(
     entry: &RefEntry,
     depth: u8,
     max_depth: u8,
-    visited: &mut FxHashSet<usize>,
+    ancestors: &mut FxHashSet<usize>,
 ) -> Result<NativeHandle, AdapterError> {
     use accessibility_sys::kAXRoleAttribute;
     use core_foundation::base::{CFRetain, CFTypeRef};
 
-    if !visited.insert(el.0 as usize) {
+    let ptr_key = el.0 as usize;
+    if !ancestors.insert(ptr_key) {
         return Err(AdapterError::element_not_found("element"));
     }
 
@@ -232,12 +233,14 @@ fn find_element_recursive(
             _ => false,
         };
         if name_match {
+            ancestors.remove(&ptr_key);
             unsafe { CFRetain(el.0 as CFTypeRef) };
             return Ok(NativeHandle::from_ptr(el.0 as *const _));
         }
     }
 
     if depth >= max_depth {
+        ancestors.remove(&ptr_key);
         return Err(AdapterError::element_not_found("element"));
     }
 
@@ -252,11 +255,13 @@ fn find_element_recursive(
         .unwrap_or_default();
 
     for child in &children {
-        if let Ok(handle) = find_element_recursive(child, entry, depth + 1, max_depth, visited) {
+        if let Ok(handle) = find_element_recursive(child, entry, depth + 1, max_depth, ancestors) {
+            ancestors.remove(&ptr_key);
             return Ok(handle);
         }
     }
 
+    ancestors.remove(&ptr_key);
     Err(AdapterError::element_not_found("element"))
 }
 

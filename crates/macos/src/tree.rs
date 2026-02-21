@@ -187,12 +187,13 @@ mod imp {
         depth: u8,
         max_depth: u8,
         include_bounds: bool,
-        visited: &mut FxHashSet<usize>,
+        ancestors: &mut FxHashSet<usize>,
     ) -> Option<AccessibilityNode> {
         if depth > max_depth || depth >= ABSOLUTE_MAX_DEPTH {
             return None;
         }
-        if !visited.insert(el.0 as usize) {
+        let ptr_key = el.0 as usize;
+        if !ancestors.insert(ptr_key) {
             return None;
         }
 
@@ -233,9 +234,11 @@ mod imp {
         let children = children_raw
             .into_iter()
             .filter_map(|child| {
-                build_subtree(&child, depth + 1, max_depth, include_bounds, visited)
+                build_subtree(&child, depth + 1, max_depth, include_bounds, ancestors)
             })
             .collect();
+
+        ancestors.remove(&ptr_key);
 
         Some(AccessibilityNode {
             ref_id: None,

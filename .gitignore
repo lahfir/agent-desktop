@@ -65,3 +65,4 @@ dist/
 # Compound Engineering
 docs/
 todos/
+.cursor/

@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    action::{Action, ActionResult},
+    action::{Action, ActionResult, MouseButton, MouseEvent, MouseEventKind, Point},
     error::{AdapterError, ErrorCode},
 };
 
@@ -18,34 +18,70 @@ mod imp {
         string::CFString,
     };
 
+    fn try_ax_action(el: &AXElement, name: &str) -> bool {
+        let action = CFString::new(name);
+        let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
+        err == kAXErrorSuccess
+    }
+
+    fn click_via_bounds(
+        el: &AXElement,
+        button: MouseButton,
+        count: u32,
+    ) -> Result<(), AdapterError> {
+        let bounds = crate::tree::read_bounds(el).ok_or_else(|| {
+            AdapterError::new(ErrorCode::ActionFailed, "Element has no readable bounds")
+                .with_suggestion("AX action failed and CGEvent fallback unavailable")
+        })?;
+        if bounds.width <= 0.0 || bounds.height <= 0.0 {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Element has zero-size bounds",
+            ));
+        }
+        let center = Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        };
+        tracing::debug!(
+            ?button,
+            count,
+            x = center.x,
+            y = center.y,
+            "AX action failed, falling back to CGEvent click"
+        );
+        crate::mouse::synthesize_mouse(MouseEvent {
+            kind: MouseEventKind::Click { count },
+            point: center,
+            button,
+        })
+    }
+
     pub fn perform_action(el: &AXElement, action: &Action) -> Result<ActionResult, AdapterError> {
         let label = action_label(action);
         match action {
             Action::Click => {
-                ax_press_or_fail(el, "click")?;
+                if !try_ax_action(el, kAXPressAction) && !try_ax_action(el, "AXConfirm") {
+                    click_via_bounds(el, MouseButton::Left, 1)?;
+                }
             }
 
             Action::DoubleClick => {
-                let open_action = CFString::new("AXOpen");
-                let err =
-                    unsafe { AXUIElementPerformAction(el.0, open_action.as_concrete_TypeRef()) };
-                if err != kAXErrorSuccess {
-                    ax_press_or_fail(el, "double-click (first press)")?;
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    ax_press_or_fail(el, "double-click (second press)")?;
+                if !try_ax_action(el, "AXOpen") {
+                    if try_ax_action(el, kAXPressAction) {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                        if !try_ax_action(el, kAXPressAction) {
+                            click_via_bounds(el, MouseButton::Left, 2)?;
+                        }
+                    } else {
+                        click_via_bounds(el, MouseButton::Left, 2)?;
+                    }
                 }
             }
 
             Action::RightClick => {
-                let ax_action = CFString::new("AXShowMenu");
-                let err =
-                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
-                if err != kAXErrorSuccess {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionFailed,
-                        format!("AXShowMenu failed (err={err})"),
-                    )
-                    .with_suggestion("Element may not support context menus"));
+                if !try_ax_action(el, "AXShowMenu") {
+                    click_via_bounds(el, MouseButton::Right, 1)?;
                 }
             }
 
@@ -71,7 +107,9 @@ mod imp {
                         "Toggle works on checkboxes, switches, and radio buttons. Use 'click' for other elements.",
                     ));
                 }
-                ax_press_or_fail(el, "toggle")?;
+                if !try_ax_action(el, kAXPressAction) && !try_ax_action(el, "AXConfirm") {
+                    click_via_bounds(el, MouseButton::Left, 1)?;
+                }
             }
 
             Action::SetValue(val) => {
@@ -166,11 +204,19 @@ mod imp {
             }
 
             Action::TripleClick => {
-                ax_press_or_fail(el, "triple-click (1st)")?;
-                std::thread::sleep(std::time::Duration::from_millis(30));
-                ax_press_or_fail(el, "triple-click (2nd)")?;
-                std::thread::sleep(std::time::Duration::from_millis(30));
-                ax_press_or_fail(el, "triple-click (3rd)")?;
+                if !try_ax_action(el, kAXPressAction) {
+                    click_via_bounds(el, MouseButton::Left, 3)?;
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                    if !try_ax_action(el, kAXPressAction) {
+                        click_via_bounds(el, MouseButton::Left, 3)?;
+                    } else {
+                        std::thread::sleep(std::time::Duration::from_millis(30));
+                        if !try_ax_action(el, kAXPressAction) {
+                            click_via_bounds(el, MouseButton::Left, 3)?;
+                        }
+                    }
+                }
             }
 
             Action::ScrollTo => {
@@ -284,7 +330,10 @@ mod imp {
         if is_checked == want_checked {
             return Ok(());
         }
-        ax_press_or_fail(el, if want_checked { "check" } else { "uncheck" })
+        if !try_ax_action(el, kAXPressAction) {
+            click_via_bounds(el, MouseButton::Left, 1)?;
+        }
+        Ok(())
     }
 }
 
