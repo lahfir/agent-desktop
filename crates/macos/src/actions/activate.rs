@@ -78,11 +78,100 @@ mod imp {
     }
 
     pub fn smart_right_activate(el: &AXElement) -> Result<(), AdapterError> {
-        let actions = list_ax_actions(el);
-        if try_action_from_list(el, &actions, &["AXShowMenu"]) {
+        if ax_show_menu(el) {
+            return Ok(());
+        }
+
+        if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
+            let _ = crate::system::app_ops::ensure_app_focused(pid);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if ax_show_menu(el) {
+                return Ok(());
+            }
+        }
+
+        if try_select_then_show_menu(el) {
+            return Ok(());
+        }
+
+        if try_focus_then_show_menu(el) {
+            return Ok(());
+        }
+
+        if try_parent_show_menu(el) {
+            return Ok(());
+        }
+
+        if try_child_show_menu(el) {
             return Ok(());
         }
         crate::actions::dispatch::click_via_bounds(el, MouseButton::Right, 1)
+    }
+
+    fn ax_show_menu(el: &AXElement) -> bool {
+        let show = CFString::new("AXShowMenu");
+        let err = unsafe { AXUIElementPerformAction(el.0, show.as_concrete_TypeRef()) };
+        err == kAXErrorSuccess
+    }
+
+    fn try_select_then_show_menu(el: &AXElement) -> bool {
+        if !is_attr_settable(el, "AXSelected") {
+            return false;
+        }
+        let cf_attr = CFString::new("AXSelected");
+        let err = unsafe {
+            AXUIElementSetAttributeValue(
+                el.0,
+                cf_attr.as_concrete_TypeRef(),
+                CFBoolean::true_value().as_CFTypeRef(),
+            )
+        };
+        if err != kAXErrorSuccess {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        ax_show_menu(el)
+    }
+
+    fn try_focus_then_show_menu(el: &AXElement) -> bool {
+        let cf_attr = CFString::new(kAXFocusedAttribute);
+        let err = unsafe {
+            AXUIElementSetAttributeValue(
+                el.0,
+                cf_attr.as_concrete_TypeRef(),
+                CFBoolean::true_value().as_CFTypeRef(),
+            )
+        };
+        if err != kAXErrorSuccess {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        ax_show_menu(el)
+    }
+
+    fn try_parent_show_menu(el: &AXElement) -> bool {
+        let mut current = crate::tree::copy_element_attr(el, "AXParent");
+        for _ in 0..3 {
+            let ancestor = match &current {
+                Some(a) => a,
+                None => return false,
+            };
+            if ax_show_menu(ancestor) {
+                return true;
+            }
+            current = crate::tree::copy_element_attr(ancestor, "AXParent");
+        }
+        false
+    }
+
+    fn try_child_show_menu(el: &AXElement) -> bool {
+        let children = crate::tree::copy_ax_array(el, "AXChildren").unwrap_or_default();
+        for child in children.iter().take(5) {
+            if ax_show_menu(child) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Three smart_activate calls with gaps, then CGEvent triple-click.
@@ -202,15 +291,10 @@ mod imp {
 
     fn try_child_activation(el: &AXElement) -> bool {
         let children = crate::tree::copy_ax_array(el, "AXChildren").unwrap_or_default();
-        let targets = ["AXPress", "AXConfirm", "AXOpen", "AXShowDefaultUI"];
         for child in children.iter().take(3) {
             let child_actions = list_ax_actions(child);
-            for target in &targets {
-                if child_actions.iter().any(|a| a == target) {
-                    let action = CFString::new(target);
-                    unsafe { AXUIElementPerformAction(child.0, action.as_concrete_TypeRef()) };
-                    return true;
-                }
+            if try_action_from_list(child, &child_actions, &["AXPress", "AXConfirm", "AXOpen"]) {
+                return true;
             }
         }
         false
@@ -219,17 +303,10 @@ mod imp {
     fn try_parent_activation(el: &AXElement) -> bool {
         let mut current = crate::tree::copy_element_attr(el, "AXParent");
         for _ in 0..2 {
-            let ancestor = match &current {
-                Some(a) => a,
-                None => return false,
-            };
-            for action_name in &["AXPress", "AXConfirm"] {
-                let action = CFString::new(action_name);
-                if unsafe { AXUIElementPerformAction(ancestor.0, action.as_concrete_TypeRef()) }
-                    == kAXErrorSuccess
-                {
-                    return true;
-                }
+            let ancestor = match &current { Some(a) => a, None => return false };
+            let actions = list_ax_actions(ancestor);
+            if try_action_from_list(ancestor, &actions, &["AXPress", "AXConfirm"]) {
+                return true;
             }
             current = crate::tree::copy_element_attr(ancestor, "AXParent");
         }
@@ -266,7 +343,6 @@ mod imp {
 
     fn try_keyboard_activate(el: &AXElement) -> bool {
         use accessibility_sys::AXUIElementPostKeyboardEvent;
-
         let cf_focused = CFString::new(kAXFocusedAttribute);
         let err = unsafe {
             AXUIElementSetAttributeValue(
@@ -279,7 +355,6 @@ mod imp {
             return false;
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
-
         let pid = match crate::system::app_ops::pid_from_element(el) {
             Some(p) => p,
             None => return false,
@@ -291,8 +366,6 @@ mod imp {
         };
         true
     }
-
-
 }
 
 #[cfg(not(target_os = "macos"))]

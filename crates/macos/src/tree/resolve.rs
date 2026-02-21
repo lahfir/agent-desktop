@@ -44,14 +44,6 @@ pub fn find_element_recursive(
         let bounds_match = match entry.bounds_hash {
             Some(expected) => {
                 let actual = crate::tree::read_bounds(el).map(|b| b.bounds_hash());
-                tracing::debug!(
-                    role = normalized,
-                    ?elem_name,
-                    ?actual,
-                    expected,
-                    name_match,
-                    "resolve candidate"
-                );
                 actual.map(|h| h == expected).unwrap_or(false)
             }
             None => true,

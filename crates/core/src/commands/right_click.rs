@@ -1,8 +1,9 @@
 use crate::{
     action::Action,
-    adapter::{PlatformAdapter, SnapshotSurface},
+    adapter::{PlatformAdapter, TreeOptions},
     commands::helpers::resolve_ref,
     error::AppError,
+    node::AccessibilityNode,
     snapshot,
 };
 use serde_json::Value;
@@ -16,18 +17,32 @@ pub fn execute(args: RightClickArgs, adapter: &dyn PlatformAdapter) -> Result<Va
     let result = adapter.execute_action(&handle, Action::RightClick)?;
     let mut response = serde_json::to_value(&result)?;
 
-    std::thread::sleep(std::time::Duration::from_millis(250));
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
-    if let Some(menu_tree) = snapshot::append_surface_refs(
-        adapter,
-        entry.pid,
-        entry.source_app.as_deref(),
-        SnapshotSurface::Menu,
-    ) {
-        if let Ok(menu_json) = serde_json::to_value(&menu_tree) {
-            response["menu"] = menu_json;
+    let opts = TreeOptions {
+        interactive_only: true,
+        ..Default::default()
+    };
+    if let Ok(snap) = snapshot::build(adapter, &opts, entry.source_app.as_deref(), None) {
+        snap.refmap.save().ok();
+        if let Some(menu) = find_context_menu(&snap.tree) {
+            if let Ok(menu_json) = serde_json::to_value(menu) {
+                response["menu"] = menu_json;
+            }
         }
     }
 
     Ok(response)
+}
+
+fn find_context_menu(node: &AccessibilityNode) -> Option<&AccessibilityNode> {
+    if node.role == "menu" && node.children.iter().any(|c| c.role == "menuitem") {
+        return Some(node);
+    }
+    for child in &node.children {
+        if let Some(menu) = find_context_menu(child) {
+            return Some(menu);
+        }
+    }
+    None
 }
