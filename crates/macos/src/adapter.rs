@@ -26,7 +26,7 @@ impl Default for MacOSAdapter {
 
 impl PlatformAdapter for MacOSAdapter {
     fn check_permissions(&self) -> PermissionStatus {
-        crate::permissions::check()
+        crate::system::permissions::check()
     }
 
     fn get_tree(
@@ -36,15 +36,15 @@ impl PlatformAdapter for MacOSAdapter {
     ) -> Result<AccessibilityNode, AdapterError> {
         let el = match opts.surface {
             SnapshotSurface::Window => crate::tree::window_element_for(win.pid, &win.title),
-            SnapshotSurface::Focused => crate::surfaces::focused_surface_for_pid(win.pid)
+            SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::internal("No focused surface found"))?,
-            SnapshotSurface::Menu => crate::surfaces::menu_element_for_pid(win.pid)
+            SnapshotSurface::Menu => crate::tree::surfaces::menu_element_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?,
-            SnapshotSurface::Sheet => crate::surfaces::sheet_for_pid(win.pid)
+            SnapshotSurface::Sheet => crate::tree::surfaces::sheet_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No open sheet"))?,
-            SnapshotSurface::Popover => crate::surfaces::popover_for_pid(win.pid)
+            SnapshotSurface::Popover => crate::tree::surfaces::popover_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No visible popover"))?,
-            SnapshotSurface::Alert => crate::surfaces::alert_for_pid(win.pid)
+            SnapshotSurface::Alert => crate::tree::surfaces::alert_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
         };
         let mut visited = FxHashSet::default();
@@ -61,7 +61,7 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        resolve_element_impl(entry)
+        crate::tree::resolve::resolve_element_impl(entry)
     }
 
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
@@ -73,31 +73,31 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError> {
-        crate::app_ops::focus_window_impl(win)
+        crate::system::app_ops::focus_window_impl(win)
     }
 
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
-        crate::app_ops::launch_app_impl(id, timeout_ms)
+        crate::system::app_ops::launch_app_impl(id, timeout_ms)
     }
 
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {
-        crate::app_ops::close_app_impl(id, force)
+        crate::system::app_ops::close_app_impl(id, force)
     }
 
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         match target {
-            ScreenshotTarget::Window(pid) => crate::screenshot::capture_app(pid),
-            ScreenshotTarget::Screen(idx) => crate::screenshot::capture_screen(idx),
-            ScreenshotTarget::FullScreen => crate::screenshot::capture_screen(0),
+            ScreenshotTarget::Window(pid) => crate::system::screenshot::capture_app(pid),
+            ScreenshotTarget::Screen(idx) => crate::system::screenshot::capture_screen(idx),
+            ScreenshotTarget::FullScreen => crate::system::screenshot::capture_screen(0),
         }
     }
 
     fn get_clipboard(&self) -> Result<String, AdapterError> {
-        crate::clipboard::get()
+        crate::input::clipboard::get()
     }
 
     fn set_clipboard(&self, text: &str) -> Result<(), AdapterError> {
-        crate::clipboard::set(text)
+        crate::input::clipboard::set(text)
     }
 
     fn press_key_for_app(
@@ -105,15 +105,15 @@ impl PlatformAdapter for MacOSAdapter {
         app_name: &str,
         combo: &agent_desktop_core::action::KeyCombo,
     ) -> Result<agent_desktop_core::action::ActionResult, AdapterError> {
-        crate::key_dispatch::press_for_app_impl(app_name, combo)
+        crate::system::key_dispatch::press_for_app_impl(app_name, combo)
     }
 
     fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
-        crate::wait::wait_for_menu(pid, open, timeout_ms)
+        crate::system::wait::wait_for_menu(pid, open, timeout_ms)
     }
 
     fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> {
-        Ok(crate::surfaces::list_surfaces_for_pid(pid))
+        Ok(crate::tree::surfaces::list_surfaces_for_pid(pid))
     }
 
     fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {
@@ -158,19 +158,19 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {
-        crate::window_ops::execute(win, op)
+        crate::system::window_ops::execute(win, op)
     }
 
     fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
-        crate::mouse::synthesize_mouse(event)
+        crate::input::mouse::synthesize_mouse(event)
     }
 
     fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
-        crate::mouse::synthesize_drag(params)
+        crate::input::mouse::synthesize_drag(params)
     }
 
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
-        crate::clipboard::clear()
+        crate::input::clipboard::clear()
     }
 }
 
@@ -194,80 +194,6 @@ fn execute_action_impl(
     _action: Action,
 ) -> Result<ActionResult, AdapterError> {
     Err(AdapterError::not_supported("execute_action"))
-}
-
-#[cfg(target_os = "macos")]
-fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-    let root = crate::tree::element_for_pid(entry.pid);
-    let mut visited = FxHashSet::default();
-    find_element_recursive(&root, entry, 0, 20, &mut visited)
-}
-
-#[cfg(target_os = "macos")]
-fn find_element_recursive(
-    el: &crate::tree::AXElement,
-    entry: &RefEntry,
-    depth: u8,
-    max_depth: u8,
-    ancestors: &mut FxHashSet<usize>,
-) -> Result<NativeHandle, AdapterError> {
-    use accessibility_sys::kAXRoleAttribute;
-    use core_foundation::base::{CFRetain, CFTypeRef};
-
-    let ptr_key = el.0 as usize;
-    if !ancestors.insert(ptr_key) {
-        return Err(AdapterError::element_not_found("element"));
-    }
-
-    let ax_role = crate::tree::copy_string_attr(el, kAXRoleAttribute);
-    let normalized = ax_role
-        .as_deref()
-        .map(crate::roles::ax_role_to_str)
-        .unwrap_or("unknown");
-
-    if normalized == entry.role {
-        let elem_name = crate::tree::resolve_element_name(el);
-        let name_match = match (&entry.name, &elem_name) {
-            (Some(en), Some(nn)) => en == nn,
-            (None, None) => true,
-            _ => false,
-        };
-        if name_match {
-            ancestors.remove(&ptr_key);
-            unsafe { CFRetain(el.0 as CFTypeRef) };
-            return Ok(NativeHandle::from_ptr(el.0 as *const _));
-        }
-    }
-
-    if depth >= max_depth {
-        ancestors.remove(&ptr_key);
-        return Err(AdapterError::element_not_found("element"));
-    }
-
-    let child_attr = if ax_role.as_deref() == Some("AXBrowser") {
-        "AXColumns"
-    } else {
-        "AXChildren"
-    };
-    let children = crate::tree::copy_ax_array(el, child_attr)
-        .filter(|v| !v.is_empty())
-        .or_else(|| crate::tree::copy_ax_array(el, "AXContents").filter(|v| !v.is_empty()))
-        .unwrap_or_default();
-
-    for child in &children {
-        if let Ok(handle) = find_element_recursive(child, entry, depth + 1, max_depth, ancestors) {
-            ancestors.remove(&ptr_key);
-            return Ok(handle);
-        }
-    }
-
-    ancestors.remove(&ptr_key);
-    Err(AdapterError::element_not_found("element"))
-}
-
-#[cfg(not(target_os = "macos"))]
-fn resolve_element_impl(_entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-    Err(AdapterError::not_supported("resolve_element"))
 }
 
 pub fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {

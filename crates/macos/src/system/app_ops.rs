@@ -122,7 +122,7 @@ pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
             .output()
             .map_err(|e| AdapterError::internal(format!("pkill failed: {e}")))?;
     } else {
-        let pid = crate::key_dispatch::find_pid_by_name(id)?;
+        let pid = crate::system::key_dispatch::find_pid_by_name(id)?;
         let app_ax = crate::tree::element_for_pid(pid);
         let closed = try_quit_via_menu_bar(&app_ax);
         if !closed {

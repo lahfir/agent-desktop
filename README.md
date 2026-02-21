@@ -1,36 +1,41 @@
 # agent-desktop
 
-**Desktop automation for AI agents.** A fast, cross-platform Rust CLI that gives AI agents structured access to every native application on macOS, Windows, and Linux through OS accessibility trees — no screen scraping, no image recognition, no fragile selectors.
+[![Build](https://github.com/lahfir/agent-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/lahfir/agent-desktop/actions)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)]()
+
+A cross-platform Rust CLI that gives AI agents structured access to native desktop applications through OS accessibility trees. It outputs JSON with ref-based element identifiers (`@e1`, `@e2`, ...) so agents can observe UI state, act on elements, and drive any application programmatically. **agent-desktop is not an AI agent** — it is the tool AI agents invoke.
+
+## Quick example
 
 ```bash
-agent-desktop snapshot -i
+# 1. Observe: get the accessibility tree with interactive element refs
+agent-desktop snapshot --app "TextEdit" -i
+
+# 2. Act: click a button by ref
 agent-desktop click @e3
+
+# 3. Type into a text field
 agent-desktop type @e5 "quarterly report"
-agent-desktop screenshot --app "Finder" report.png
+
+# 4. Submit with a keyboard shortcut
+agent-desktop press cmd+return
+
+# 5. Re-observe after the UI changes
+agent-desktop snapshot -i
 ```
 
----
-
-## How it works
-
-Every desktop OS exposes a machine-readable accessibility tree — the same tree that powers screen readers. `agent-desktop` wraps that API behind a clean CLI and outputs structured JSON. AI agents call the binary, read the JSON, and act on element references (`@e1`, `@e2`, …). The observation-action loop lives in the agent, not here.
+The observation-action loop lives in the calling agent, not here.
 
 ```
 AI Agent
-  │
-  ├─ agent-desktop snapshot -i          # observe: get tree + ref IDs
-  │    └─ {"tree": {...}, "ref_count": 14}
-  │
-  ├─ agent-desktop click @e7            # act: by ref
-  │    └─ {"ok": true, "data": {"action": "click"}}
-  │
-  └─ agent-desktop snapshot -i          # re-observe after action
-       └─ {"tree": {...}, "ref_count": 11}
+  |
+  +-- agent-desktop snapshot -i          → {"tree": {...}, "ref_count": 14}
+  |
+  +-- agent-desktop click @e7            → {"ok": true, "data": {"action": "click"}}
+  |
+  +-- agent-desktop snapshot -i          → {"tree": {...}, "ref_count": 11}
 ```
-
-**agent-desktop is not an AI agent.** It is the tool AI agents invoke.
-
----
 
 ## Installation
 
@@ -40,10 +45,9 @@ AI Agent
 git clone https://github.com/lahfir/agent-desktop
 cd agent-desktop
 cargo build --release
-# Binary at: ./target/release/agent-desktop
 ```
 
-Move to your PATH:
+The binary is at `./target/release/agent-desktop`. Move it to your PATH:
 
 ```bash
 mv target/release/agent-desktop /usr/local/bin/
@@ -51,117 +55,24 @@ mv target/release/agent-desktop /usr/local/bin/
 
 ### Requirements
 
-| Platform | Minimum Version | Accessibility API |
-|----------|----------------|-------------------|
-| macOS    | 13.0+          | AXUIElement (AXAPI) |
-| Windows  | 10+            | UIAutomation *(Phase 2)* |
-| Linux    | Any (X11/Wayland) | AT-SPI *(Phase 2)* |
+- **Rust** 1.78+ (pinned via `rust-toolchain.toml`)
+- **macOS** 13.0+ (Phase 1 — the only supported platform today)
 
-### macOS permissions
+## Permissions
 
-The first time you run any command, macOS will prompt for Accessibility permission. You can also trigger it explicitly:
+macOS requires Accessibility permission for agent-desktop to read UI trees and perform actions.
 
 ```bash
+# Check current permission status
+agent-desktop permissions
+
+# Trigger the system permission dialog
 agent-desktop permissions --request
 ```
 
-Or grant it manually: **System Settings → Privacy & Security → Accessibility → add your terminal**.
+Or grant manually: **System Settings > Privacy & Security > Accessibility** and add your terminal application.
 
----
-
-## Quick start
-
-```bash
-# 1. Get the focused app's interactive elements with ref IDs
-agent-desktop snapshot -i
-
-# 2. Read what's on screen
-agent-desktop find --role button --name "Open"
-
-# 3. Click a button by ref
-agent-desktop click @e4
-
-# 4. Type into a text field
-agent-desktop type @e7 "Hello, world"
-
-# 5. Submit with keyboard
-agent-desktop press "cmd+return"
-```
-
----
-
-## The ref system
-
-`snapshot` assigns stable identifiers to every interactive element in depth-first order: `@e1`, `@e2`, `@e3`, etc. These refs are valid for subsequent action commands **until the next snapshot replaces them**.
-
-**Only interactive roles receive refs:**
-
-| Role | Role | Role |
-|------|------|------|
-| `button` | `textfield` | `checkbox` |
-| `link` | `menuitem` | `tab` |
-| `slider` | `combobox` | `treeitem` |
-| `cell` | `radiobutton` | `incrementor` |
-
-Static elements (labels, groups, containers) appear in the tree for context but have no `ref` and cannot be acted upon.
-
-The refmap is persisted at `~/.agent-desktop/last_refmap.json` (permissions: `0600`) and fully replaced on every snapshot. Action commands perform optimistic re-identification — if the element at a ref has changed since the snapshot, they return `STALE_REF`.
-
----
-
-## JSON output
-
-Every command produces the same envelope:
-
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "click",
-  "data": { ... }
-}
-```
-
-Errors follow the same envelope with a structured error object:
-
-```json
-{
-  "version": "1.0",
-  "ok": false,
-  "command": "click",
-  "error": {
-    "code": "STALE_REF",
-    "message": "Element at @e7 no longer matches the last snapshot",
-    "suggestion": "Run 'snapshot' to refresh refs, then retry"
-  }
-}
-```
-
-### Error codes
-
-| Code | Meaning |
-|------|---------|
-| `PERM_DENIED` | Accessibility permission not granted |
-| `ELEMENT_NOT_FOUND` | No element matched the given ref or query |
-| `APP_NOT_FOUND` | Application is not running or has no open windows |
-| `ACTION_FAILED` | The OS rejected the action |
-| `ACTION_NOT_SUPPORTED` | Element does not support the requested action |
-| `STALE_REF` | Ref is from a previous snapshot |
-| `WINDOW_NOT_FOUND` | No window matched the given ID or query |
-| `PLATFORM_NOT_SUPPORTED` | Command not implemented on this OS |
-| `TIMEOUT` | Wait condition expired |
-| `INVALID_ARGS` | Bad argument values |
-| `INTERNAL` | Unexpected internal error |
-
-### Exit codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | Success |
-| `1` | Structured error (JSON on stdout) |
-| `2` | Argument parse error |
-
----
+If permission is missing, commands return a `PERM_DENIED` error with guidance.
 
 ## Commands
 
@@ -169,7 +80,7 @@ Errors follow the same envelope with a structured error object:
 
 #### `snapshot`
 
-Capture the accessibility tree of a window and allocate ref IDs.
+Capture the accessibility tree of a window as structured JSON with `@eN` ref IDs.
 
 ```bash
 agent-desktop snapshot [OPTIONS]
@@ -181,18 +92,14 @@ agent-desktop snapshot [OPTIONS]
 | `--window-id <ID>` | — | Filter to a specific window |
 | `--max-depth <N>` | `10` | Maximum tree traversal depth |
 | `--include-bounds` | off | Include pixel bounds for every node |
-| `--interactive-only` / `-i` | off | Omit non-interactive elements from output |
-| `--compact` | off | Single-line JSON output |
+| `-i` / `--interactive-only` | off | Omit non-interactive elements from output |
+| `--compact` | off | Omit empty structural nodes |
+| `--surface <TYPE>` | `window` | Surface to snapshot: window, focused, menu, sheet, popover, alert |
 
 ```bash
-# Snapshot the frontmost window
-agent-desktop snapshot
-
-# Snapshot a specific app, interactive elements only
 agent-desktop snapshot --app "TextEdit" -i
-
-# Include pixel coordinates for layout analysis
-agent-desktop snapshot --include-bounds
+agent-desktop snapshot --include-bounds --max-depth 15
+agent-desktop snapshot --surface menu --app "Finder"
 ```
 
 <details>
@@ -228,82 +135,54 @@ agent-desktop snapshot --include-bounds
 
 </details>
 
----
-
-#### `find`
-
-Search the accessibility tree for elements matching a query. Returns all matches across the app.
-
-```bash
-agent-desktop find [--app <NAME>] [--role <ROLE>] [--name <TEXT>] [--value <TEXT>]
-```
-
-```bash
-# Find all buttons
-agent-desktop find --role button
-
-# Find the Save button in TextEdit
-agent-desktop find --app "TextEdit" --role button --name "Save"
-
-# Find a text field containing specific text
-agent-desktop find --role textfield --value "search"
-```
-
-<details>
-<summary>Example output</summary>
-
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "find",
-  "data": {
-    "matches": [
-      { "ref": "@e2", "role": "button", "name": "Save", "interactive": true },
-      { "ref": null,  "role": "group",  "name": "Toolbar", "interactive": false }
-    ]
-  }
-}
-```
-
-</details>
-
----
-
 #### `screenshot`
 
-Capture a PNG screenshot of a window or application.
+Capture a PNG screenshot of a window.
 
 ```bash
 agent-desktop screenshot [--app <NAME>] [--window-id <ID>] [PATH]
 ```
 
 ```bash
-# Screenshot the frontmost window to stdout (base64 PNG)
-agent-desktop screenshot
-
-# Screenshot a specific app to a file
 agent-desktop screenshot --app "Finder" ~/Desktop/finder.png
+agent-desktop screenshot   # base64 PNG to stdout
 ```
 
----
+#### `find`
+
+Search the accessibility tree for elements matching a query.
+
+```bash
+agent-desktop find [OPTIONS]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--app <NAME>` | Filter to application |
+| `--role <ROLE>` | Match by role (button, textfield, checkbox ...) |
+| `--name <TEXT>` | Match by accessible name or label |
+| `--value <TEXT>` | Match by current value |
+| `--text <TEXT>` | Match by text in name, value, title, or description |
+| `--count` | Return match count only |
+| `--first` | Return first match only |
+| `--last` | Return last match only |
+| `--nth <N>` | Return Nth match (0-indexed) |
+
+```bash
+agent-desktop find --role button --name "Save"
+agent-desktop find --app "TextEdit" --text "hello" --first
+agent-desktop find --role textfield --count
+```
 
 #### `get`
 
-Read a property of a specific element by ref.
+Read a property of an element by ref.
 
 ```bash
-agent-desktop get <REF> [--property <PROP>]
+agent-desktop get <REF> --property <PROP>
 ```
 
-| Property | Description |
-|----------|-------------|
-| `text` | Display text / label |
-| `value` | Current value (text field content, slider position) |
-| `title` | Window or element title |
-| `bounds` | `{ x, y, width, height }` in screen coordinates |
-| `role` | Accessibility role string |
-| `states` | Array of active states |
+Properties: `text` (default), `value`, `title`, `bounds`, `role`, `states`.
 
 ```bash
 agent-desktop get @e3 --property value
@@ -311,112 +190,83 @@ agent-desktop get @e1 --property bounds
 agent-desktop get @e5 --property states
 ```
 
-<details>
-<summary>Example output</summary>
-
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "get",
-  "data": { "property": "value", "value": "quarterly-report.pdf" }
-}
-```
-
-</details>
-
----
-
 #### `is`
 
-Check a boolean property of an element.
+Check a boolean state of an element.
 
 ```bash
-agent-desktop is <REF> [--property <PROP>]
+agent-desktop is <REF> --property <PROP>
 ```
 
-| Property | Description |
-|----------|-------------|
-| `visible` | Element is visible on screen |
-| `enabled` | Element is interactive (not disabled) |
-| `checked` | Checkbox/toggle is checked |
-| `focused` | Element has keyboard focus |
-| `expanded` | Disclosure or tree item is expanded |
+Properties: `visible` (default), `enabled`, `checked`, `focused`, `expanded`.
 
 ```bash
 agent-desktop is @e4 --property enabled
 agent-desktop is @e6 --property checked
 ```
 
-<details>
-<summary>Example output</summary>
+#### `list-surfaces`
 
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "is",
-  "data": { "property": "enabled", "result": true }
-}
+List accessibility surfaces for an application (window, menu, sheet, popover, alert).
+
+```bash
+agent-desktop list-surfaces [--app <NAME>]
 ```
-
-</details>
-
----
 
 ### Interaction
 
-#### `click` / `double-click` / `right-click`
+#### `click` / `double-click` / `triple-click` / `right-click`
 
 ```bash
 agent-desktop click <REF>
 agent-desktop double-click <REF>
-agent-desktop right-click <REF>
+agent-desktop triple-click <REF>       # select line or paragraph
+agent-desktop right-click <REF>        # open context menu
 ```
-
----
 
 #### `type`
 
-Type text into an element (simulates keyboard input, respects IME).
+Focus an element and type text (simulates keyboard input).
 
 ```bash
 agent-desktop type <REF> <TEXT>
 ```
 
 ```bash
-agent-desktop type @e3 "your search query"
+agent-desktop type @e3 "hello@example.com"
 ```
-
----
 
 #### `set-value`
 
-Directly set the value of an element (faster than `type` for programmatic writes; bypasses key events).
+Set an element's value directly via the accessibility attribute (bypasses key events).
 
 ```bash
 agent-desktop set-value <REF> <VALUE>
 ```
 
 ```bash
-agent-desktop set-value @e3 "2026-02-19"
+agent-desktop set-value @e3 "2026-02-20"
 ```
 
----
+#### `clear`
+
+Clear an element's value to an empty string.
+
+```bash
+agent-desktop clear <REF>
+```
 
 #### `focus`
 
-Move keyboard focus to an element.
+Set keyboard focus on an element.
 
 ```bash
 agent-desktop focus <REF>
 ```
 
----
-
 #### `select`
 
-Select an option in a dropdown or combo box.
+Select an option in a list or dropdown.
 
 ```bash
 agent-desktop select <REF> <VALUE>
@@ -426,17 +276,13 @@ agent-desktop select <REF> <VALUE>
 agent-desktop select @e8 "Last 30 days"
 ```
 
----
-
-#### `toggle`
-
-Toggle a checkbox, switch, or toggle button.
+#### `toggle` / `check` / `uncheck`
 
 ```bash
-agent-desktop toggle <REF>
+agent-desktop toggle <REF>      # flip checkbox or switch state
+agent-desktop check <REF>       # set to checked (idempotent)
+agent-desktop uncheck <REF>     # set to unchecked (idempotent)
 ```
-
----
 
 #### `expand` / `collapse`
 
@@ -447,69 +293,92 @@ agent-desktop expand <REF>
 agent-desktop collapse <REF>
 ```
 
----
-
-#### `scroll`
-
-Scroll an element in a direction.
+#### `scroll` / `scroll-to`
 
 ```bash
-agent-desktop scroll <REF> [--direction <DIR>] [--amount <N>]
+agent-desktop scroll <REF> [--direction up|down|left|right] [--amount <N>]
+agent-desktop scroll-to <REF>   # scroll element into visible area
 ```
-
-| Flag | Default | Options |
-|------|---------|---------|
-| `--direction` | `down` | `up`, `down`, `left`, `right` |
-| `--amount` | `3` | Number of scroll units |
 
 ```bash
 agent-desktop scroll @e2 --direction down --amount 5
+agent-desktop scroll-to @e14
 ```
-
----
 
 ### Keyboard
 
 #### `press`
 
-Send a keyboard shortcut or key combination.
+Send a key combo. Modifiers: `cmd`, `ctrl`, `alt`, `shift`. Combine with `+`.
 
 ```bash
-agent-desktop press <COMBO>
+agent-desktop press <COMBO> [--app <NAME>]
 ```
-
-Modifiers: `cmd`, `ctrl`, `alt`/`opt`, `shift`, `fn`. Key names are lowercase. Combine with `+`.
 
 ```bash
-agent-desktop press "cmd+s"
-agent-desktop press "cmd+shift+z"
-agent-desktop press "escape"
-agent-desktop press "return"
-agent-desktop press "tab"
+agent-desktop press cmd+s
+agent-desktop press cmd+shift+z
+agent-desktop press escape
+agent-desktop press return
+agent-desktop press tab
+agent-desktop press cmd+c --app "TextEdit"
 ```
 
----
+#### `key-down` / `key-up`
+
+Hold or release a key or modifier.
+
+```bash
+agent-desktop key-down shift
+agent-desktop key-up shift
+```
+
+### Mouse
+
+#### `hover`
+
+Move the cursor to an element or absolute coordinates.
+
+```bash
+agent-desktop hover <REF>
+agent-desktop hover --xy 500,300
+agent-desktop hover @e5 --duration 2000    # hold for 2s
+```
+
+#### `drag`
+
+Drag from one element or point to another.
+
+```bash
+agent-desktop drag --from @e1 --to @e5
+agent-desktop drag --from-xy 100,200 --to-xy 400,500 --duration 500
+```
+
+#### `mouse-move` / `mouse-click` / `mouse-down` / `mouse-up`
+
+Low-level mouse operations at absolute screen coordinates.
+
+```bash
+agent-desktop mouse-move --xy 500,300
+agent-desktop mouse-click --xy 500,300 --button left --count 2
+agent-desktop mouse-down --xy 100,200 --button left
+agent-desktop mouse-up --xy 400,500 --button left
+```
 
 ### App & window management
 
 #### `launch`
 
-Launch an application by name or bundle ID.
+Launch an application by name or bundle ID and wait for its window.
 
 ```bash
-agent-desktop launch <APP> [--wait]
+agent-desktop launch <APP> [--timeout <MS>]
 ```
-
-| Flag | Description |
-|------|-------------|
-| `--wait` | Block until the app's main window is visible |
 
 ```bash
-agent-desktop launch "TextEdit" --wait
-agent-desktop launch "com.apple.finder"
+agent-desktop launch "TextEdit"
+agent-desktop launch "com.apple.finder" --timeout 10000
 ```
-
----
 
 #### `close-app`
 
@@ -524,206 +393,103 @@ agent-desktop close-app "TextEdit"
 agent-desktop close-app "TextEdit" --force   # SIGKILL
 ```
 
----
-
 #### `list-apps`
 
-List all running applications with accessibility trees.
+List all running GUI applications.
 
 ```bash
 agent-desktop list-apps
 ```
 
-<details>
-<summary>Example output</summary>
-
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "list-apps",
-  "data": {
-    "apps": [
-      { "name": "Finder", "pid": 391, "bundle_id": "com.apple.finder" },
-      { "name": "TextEdit", "pid": 1204, "bundle_id": "com.apple.TextEdit" }
-    ]
-  }
-}
-```
-
-</details>
-
----
-
 #### `list-windows`
 
-List windows for an application.
+List all visible windows.
 
 ```bash
 agent-desktop list-windows [--app <NAME>]
 ```
-
-```bash
-agent-desktop list-windows --app "Finder"
-```
-
-<details>
-<summary>Example output</summary>
-
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "list-windows",
-  "data": {
-    "windows": [
-      { "id": "w-4521", "title": "Documents", "app_name": "Finder", "pid": 391 }
-    ]
-  }
-}
-```
-
-</details>
-
----
 
 #### `focus-window`
 
 Bring a window to the foreground.
 
 ```bash
-agent-desktop focus-window [--window-id <ID>] [--app <NAME>] [--title <TEXT>]
-```
-
-```bash
 agent-desktop focus-window --app "Finder" --title "Documents"
 agent-desktop focus-window --window-id "w-4521"
 ```
 
----
+#### `resize-window`
+
+```bash
+agent-desktop resize-window --app "TextEdit" --width 800 --height 600
+```
+
+#### `move-window`
+
+```bash
+agent-desktop move-window --app "TextEdit" --x 100 --y 50
+```
+
+#### `minimize` / `maximize` / `restore`
+
+```bash
+agent-desktop minimize --app "TextEdit"
+agent-desktop maximize --app "TextEdit"
+agent-desktop restore --app "TextEdit"
+```
 
 ### Clipboard
 
-#### `clipboard-get`
-
-Read the current clipboard contents.
-
 ```bash
-agent-desktop clipboard-get
+agent-desktop clipboard-get          # read plain-text clipboard
+agent-desktop clipboard-set "text"   # write text to clipboard
+agent-desktop clipboard-clear        # clear the clipboard
 ```
-
----
-
-#### `clipboard-set`
-
-Write text to the clipboard.
-
-```bash
-agent-desktop clipboard-set <TEXT>
-```
-
-```bash
-agent-desktop clipboard-set "copied text"
-```
-
----
 
 ### Wait
 
-#### `wait`
-
-Block for a fixed duration or until a condition is met.
+Block for a duration or until a condition is met.
 
 ```bash
-agent-desktop wait [MS] [--element <REF>] [--window <TITLE>] [--timeout <MS>]
+agent-desktop wait [MS] [OPTIONS]
 ```
 
-| Form | Description |
+| Flag | Description |
 |------|-------------|
-| `wait 2000` | Sleep for 2 seconds |
-| `wait --element @e3` | Block until the element at `@e3` is visible (polls) |
-| `wait --window "Save"` | Block until a window with this title appears |
+| `<MS>` | Sleep for N milliseconds |
+| `--element <REF>` | Block until element appears |
+| `--window <TITLE>` | Block until window appears |
+| `--text <TEXT>` | Block until text appears in the app's tree |
+| `--menu` | Block until a context menu is open |
+| `--menu-closed` | Block until a context menu is dismissed |
+| `--app <NAME>` | Scope wait to a specific application |
+| `--timeout <MS>` | Timeout (default 30000) |
 
 ```bash
-# Wait for a dialog to appear
-agent-desktop wait --window "Are you sure?" --timeout 10000
-
-# Wait for a loading spinner to disappear
-agent-desktop wait --element @e9 --timeout 15000
-
-# Fixed delay
 agent-desktop wait 500
+agent-desktop wait --window "Save" --timeout 10000
+agent-desktop wait --element @e3 --timeout 5000
+agent-desktop wait --text "Loading complete" --app "Safari" --timeout 5000
+agent-desktop wait --menu --timeout 3000
 ```
-
----
 
 ### System
 
-#### `status`
-
-Report the runtime status of agent-desktop and its platform adapter.
-
 ```bash
-agent-desktop status
+agent-desktop status                  # adapter health, platform, permission state
+agent-desktop permissions             # check accessibility permission
+agent-desktop permissions --request   # trigger system dialog
+agent-desktop version                 # version string
+agent-desktop version --json          # machine-readable version
 ```
-
-<details>
-<summary>Example output</summary>
-
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "status",
-  "data": {
-    "platform": "macos",
-    "accessibility": "granted",
-    "version": "0.1.0"
-  }
-}
-```
-
-</details>
-
----
-
-#### `permissions`
-
-Check or request Accessibility permissions.
-
-```bash
-agent-desktop permissions [--request]
-```
-
-```bash
-# Check current permission status
-agent-desktop permissions
-
-# Trigger the system permission dialog
-agent-desktop permissions --request
-```
-
----
-
-#### `version`
-
-Print the binary version.
-
-```bash
-agent-desktop version [--json]
-```
-
----
 
 ### Batch
 
-Run multiple commands in a single invocation to reduce process-spawn overhead.
+Run multiple commands in a single invocation.
 
 ```bash
 agent-desktop batch <JSON> [--stop-on-error]
 ```
-
-The `JSON` argument is an array of `{ "command": "...", "args": { ... } }` objects. Results are returned in order.
 
 ```bash
 agent-desktop batch '[
@@ -733,274 +499,142 @@ agent-desktop batch '[
 ]' --stop-on-error
 ```
 
-<details>
-<summary>Example output</summary>
+## JSON output format
+
+Every command produces a standard envelope:
 
 ```json
 {
   "version": "1.0",
   "ok": true,
-  "command": "batch",
-  "data": {
-    "results": [
-      { "ok": true,  "command": "click", "data": { "action": "click" } },
-      { "ok": true,  "command": "type",  "data": { "action": "type" } },
-      { "ok": false, "command": "press", "error": "STALE_REF: ..." }
-    ]
+  "command": "click",
+  "data": { "action": "click", "ref": "@e3" }
+}
+```
+
+Errors include a machine-readable code and recovery hint:
+
+```json
+{
+  "version": "1.0",
+  "ok": false,
+  "command": "click",
+  "error": {
+    "code": "STALE_REF",
+    "message": "Element at @e7 no longer matches the last snapshot",
+    "suggestion": "Run 'snapshot' to refresh refs, then retry"
   }
 }
 ```
 
-</details>
+### Error codes
 
----
+| Code | Meaning |
+|------|---------|
+| `PERM_DENIED` | Accessibility permission not granted |
+| `ELEMENT_NOT_FOUND` | No element matched the ref or query |
+| `APP_NOT_FOUND` | Application not running or no windows |
+| `ACTION_FAILED` | The OS rejected the action |
+| `ACTION_NOT_SUPPORTED` | Element does not support this action |
+| `STALE_REF` | Ref is from a previous snapshot |
+| `WINDOW_NOT_FOUND` | No window matched the ID or query |
+| `PLATFORM_NOT_SUPPORTED` | Not implemented on this OS |
+| `TIMEOUT` | Wait condition expired |
+| `INVALID_ARGS` | Invalid argument values |
+| `INTERNAL` | Unexpected internal error |
 
-## Common agent patterns
+### Exit codes
 
-### Observe → identify → act
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Structured error (JSON on stdout) |
+| `2` | Argument parse error |
 
-```bash
-# Observe the current window
-TREE=$(agent-desktop snapshot -i)
+## Ref system
 
-# Find the search field
-SEARCH=$(agent-desktop find --role textfield --name "Search")
+`snapshot` assigns identifiers to every interactive element in depth-first order: `@e1`, `@e2`, `@e3`, etc. These refs are valid for action commands **until the next snapshot replaces them**.
 
-# Act on it
-agent-desktop click @e1
-agent-desktop type @e1 "quarterly report"
-agent-desktop press "return"
-```
+Only interactive roles receive refs:
 
-### Handle stale refs
+| | | |
+|---|---|---|
+| `button` | `textfield` | `checkbox` |
+| `link` | `menuitem` | `tab` |
+| `slider` | `combobox` | `treeitem` |
+| `cell` | `radiobutton` | `incrementor` |
 
-Refs become stale when the UI changes. The correct loop:
+Static elements (labels, groups, containers) appear in the tree for context but have no ref and cannot be acted upon.
 
-```
-snapshot → act → if STALE_REF → snapshot again → retry
-```
+The refmap is stored at `~/.agent-desktop/last_refmap.json` (permissions `0600`) and fully replaced on every snapshot. Action commands perform optimistic re-identification — if the element has changed since the snapshot, they return `STALE_REF`.
 
-### Wait for async UI
-
-```bash
-# Trigger an action
-agent-desktop click @e12
-
-# Wait for the result dialog
-agent-desktop wait --window "Export complete" --timeout 30000
-
-# Confirm
-agent-desktop click @e1   # OK button in the new snapshot
-```
-
-### Automated form fill
-
-```bash
-agent-desktop batch '[
-  {"command":"focus",     "args":{"ref_id":"@e1"}},
-  {"command":"set-value", "args":{"ref_id":"@e1","value":"John Doe"}},
-  {"command":"set-value", "args":{"ref_id":"@e2","value":"john@example.com"}},
-  {"command":"select",    "args":{"ref_id":"@e3","value":"Engineering"}},
-  {"command":"click",     "args":{"ref_id":"@e10"}}
-]'
-```
-
----
-
-## Architecture
+Stale ref recovery pattern:
 
 ```
-agent-desktop/
-├── Cargo.toml              # workspace (resolver = 2)
-├── src/                    # binary crate (entry point)
-│   ├── main.rs             # permission check, dispatch, JSON emit
-│   ├── cli.rs              # clap derive structs (all 30 subcommands)
-│   └── dispatch.rs         # match cmd → commands::execute()
-└── crates/
-    ├── core/               # agent-desktop-core (platform-agnostic)
-    │   └── src/
-    │       ├── adapter.rs      # PlatformAdapter trait
-    │       ├── snapshot.rs     # SnapshotEngine, RefAllocator
-    │       ├── refs.rs         # RefMap, RefEntry, @eN allocation
-    │       ├── node.rs         # AccessibilityNode, WindowInfo, Rect
-    │       ├── action.rs       # Action enum
-    │       ├── error.rs        # AppError, AdapterError, ErrorCode
-    │       ├── output.rs       # Response envelope
-    │       └── commands/       # one file per CLI command
-    ├── macos/              # agent-desktop-macos (Phase 1)
-    │   └── src/
-    │       ├── adapter.rs      # MacOSAdapter: PlatformAdapter impl
-    │       ├── tree.rs         # AXUIElement tree traversal
-    │       ├── actions.rs      # CGEvent keyboard/mouse/scroll
-    │       ├── app_ops.rs      # launch, close, focus via AppleScript/pkill
-    │       └── roles.rs        # AXRole → unified role string
-    ├── windows/            # agent-desktop-windows (Phase 2)
-    └── linux/              # agent-desktop-linux (Phase 2)
+snapshot -> act -> if STALE_REF -> snapshot again -> retry
 ```
-
-### Dependency inversion
-
-`core` defines the `PlatformAdapter` trait. Platform crates implement it. **Core never imports platform crates.** The binary is the only wiring point:
-
-```rust
-fn build_adapter() -> impl PlatformAdapter {
-    #[cfg(target_os = "macos")]
-    { agent_desktop_macos::MacOSAdapter::new() }
-    // ...
-}
-```
-
-This constraint is enforced in CI: `cargo tree -p agent-desktop-core` must contain no platform crate names.
-
-### PlatformAdapter trait
-
-```rust
-pub trait PlatformAdapter: Send + Sync {
-    fn list_windows(&self, filter: &WindowFilter)    -> Result<Vec<WindowInfo>, AdapterError>;
-    fn list_apps(&self)                              -> Result<Vec<AppInfo>, AdapterError>;
-    fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
-    fn execute_action(&self, handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError>;
-    fn resolve_element(&self, entry: &RefEntry)      -> Result<NativeHandle, AdapterError>;
-    fn check_permissions(&self)                      -> PermissionStatus;
-    fn focus_window(&self, win: &WindowInfo)         -> Result<(), AdapterError>;
-    fn launch_app(&self, id: &str, wait: bool)       -> Result<WindowInfo, AdapterError>;
-    fn close_app(&self, id: &str, force: bool)       -> Result<(), AdapterError>;
-    fn screenshot(&self, target: ScreenshotTarget)   -> Result<ImageBuffer, AdapterError>;
-    fn get_clipboard(&self)                          -> Result<String, AdapterError>;
-    fn set_clipboard(&self, text: &str)              -> Result<(), AdapterError>;
-}
-```
-
-All methods have default implementations returning `Err(AdapterError::not_supported())`, so platform stubs compile without implementing anything.
-
----
 
 ## Platform support
 
 | Feature | macOS | Windows | Linux |
 |---------|-------|---------|-------|
-| Snapshot / tree | ✅ Phase 1 | 🔜 Phase 2 | 🔜 Phase 2 |
-| Click / type / keyboard | ✅ Phase 1 | 🔜 Phase 2 | 🔜 Phase 2 |
-| Screenshot | ✅ Phase 1 | 🔜 Phase 2 | 🔜 Phase 2 |
-| Clipboard | ✅ Phase 1 | 🔜 Phase 2 | 🔜 Phase 2 |
-| App launch / close | ✅ Phase 1 | 🔜 Phase 2 | 🔜 Phase 2 |
-| MCP server mode | 🔜 Phase 3 | 🔜 Phase 3 | 🔜 Phase 3 |
+| Accessibility tree | Phase 1 | Planned (Phase 2) | Planned (Phase 2) |
+| Click / type / keyboard | Phase 1 | Planned (Phase 2) | Planned (Phase 2) |
+| Mouse input | Phase 1 | Planned (Phase 2) | Planned (Phase 2) |
+| Screenshot | Phase 1 | Planned (Phase 2) | Planned (Phase 2) |
+| Clipboard | Phase 1 | Planned (Phase 2) | Planned (Phase 2) |
+| App launch / close | Phase 1 | Planned (Phase 2) | Planned (Phase 2) |
+| Window management | Phase 1 | Planned (Phase 2) | Planned (Phase 2) |
+| MCP server mode | Planned (Phase 3) | Planned (Phase 3) | Planned (Phase 3) |
 
-### macOS implementation
+macOS implementation uses `AXUIElement` for tree traversal and actions, `CGEvent` for keyboard and mouse input, `CGWindowListCreateImage` for screenshots, and `NSPasteboard` for clipboard.
 
-- **Tree**: `AXUIElementCopyAttributeValue` with cycle detection via visited-set
-- **Click/Type**: `AXUIElementPerformAction` + `CGEventCreateKeyboardEvent`
-- **Scroll**: `CGEvent::new_scroll_event` (highsierra feature)
-- **Screenshot**: `CGWindowListCreateImage`
-- **Clipboard**: `NSPasteboard.generalPasteboard` via Cocoa FFI
-- **App ops**: PID polling for launch, AppleScript for focus, `pkill -x` for close
+## Architecture
 
----
-
-## Performance
-
-### Snapshot tree: 6 s → 0.3 s
-
-The initial implementation fetched each AX attribute with a separate IPC call to the macOS Accessibility server — one call for role, one for title, one for description, one for value, one for enabled state, one for focused state. For a 2,000-node tree (e.g. Xcode), that is **~14,000 round-trips** across the process boundary, each stalling until the target application responds.
-
-The fix was replacing six sequential `AXUIElementCopyAttributeValue` calls per node with a single `AXUIElementCopyMultipleAttributeValues` call that batches all attributes in one IPC message:
+The workspace follows strict dependency inversion. `agent-desktop-core` defines the `PlatformAdapter` trait and all shared types. Platform crates (`macos`, `windows`, `linux`) implement the trait. Core never imports platform crates — the binary crate is the only wiring point. This constraint is enforced in CI via `cargo tree`.
 
 ```
-Before: node × 7 calls = 14,000 IPC round-trips (Xcode)
-After:  node × 1 call  =  2,000 IPC round-trips (Xcode)
+agent-desktop/
+├── src/                    # binary crate (entry point, CLI, dispatch)
+└── crates/
+    ├── core/               # platform-agnostic types, commands, engine
+    ├── macos/              # macOS adapter (Phase 1)
+    ├── windows/            # stub (Phase 2)
+    └── linux/              # stub (Phase 2)
 ```
 
-`AXUIElementCopyMultipleAttributeValues` is not exposed by the `accessibility-sys` crate and is declared manually:
-
-```rust
-extern "C" {
-    fn AXUIElementCopyMultipleAttributeValues(
-        element:    AXUIElementRef,
-        attributes: CFArrayRef,
-        options:    u32,
-        values:     *mut CFArrayRef,
-    ) -> AXError;
-}
-```
-
-The implementation in `crates/macos/src/tree.rs` builds a `CFArray` of the six attribute name strings once per node and passes it to this call. The returned `CFArray` is then unpacked into `(role, title, description, value, enabled, focused)` with full type-safe downcasting for `CFString`, `CFBoolean`, and `CFNumber` values.
-
-### Measured benchmarks
-
-| Application | Nodes | IPC calls (before) | IPC calls (after) | Wall time (before) | Wall time (after) |
-|-------------|-------|--------------------|--------------------|---------------------|---------------------|
-| TextEdit (empty doc) | ~50 | ~350 | ~50 | 18–35 ms | 5–10 ms |
-| Finder Documents | ~100 | ~700 | ~100 | 35–70 ms | 10–20 ms |
-| System Settings | ~500 | ~3,500 | ~500 | 175–350 ms | 50–100 ms |
-| Xcode (depth 8) | ~1,500 | ~10,500 | ~1,500 | 525 ms – 1.05 s | 150–300 ms |
-| Xcode (depth 12, worst case) | ~2,000+ | ~14,000+ | ~2,000+ | ~6 s | ~0.3 s |
-
-The 6 s → 0.3 s figure is a 20× reduction observed on a large Xcode project tree with depth 12. The integration test CI gate asserts the Xcode snapshot completes in under 2 seconds at the default `--max-depth 10`.
-
-### Secondary optimisations
-
-**Cycle detection with `FxHashSet`**
-The visited-pointer set used during depth-first traversal switched from `std::collections::HashSet<usize>` to `rustc_hash::FxHashSet<usize>`. Because the keys are raw machine-word pointers (not user-controlled), the non-cryptographic FxHash is appropriate and benchmarks at roughly 2× the throughput of the default SipHash.
-
-**Streaming JSON serialisation**
-The snapshot output is written with `serde_json::to_writer(BufWriter::new(stdout.lock()), &response)` rather than `to_string()` followed by `println!`. This eliminates the intermediate heap allocation for the full JSON string, which matters for large trees (Xcode-scale output can exceed 200 KB).
-
-**Messaging timeout**
-`AXUIElementSetMessagingTimeout(element, 2.0)` is set on the application element immediately after creation. This caps how long a single IPC call can block when the target application is busy or hung, preventing the snapshot from stalling indefinitely.
-
----
-
-## Development
+## Contributing
 
 ### Build
 
 ```bash
-cargo build                  # debug build
+cargo build                  # debug
 cargo build --release        # optimized, stripped binary (<15MB)
 ```
 
 ### Test
 
 ```bash
-cargo test --workspace       # all unit tests
+cargo test --workspace
 cargo clippy --all-targets -- -D warnings
 ```
 
-### Add a command
+### Adding a command
 
-Adding a command touches exactly five files:
+1. Create `crates/core/src/commands/{name}.rs` with an `execute()` function
+2. Register in `crates/core/src/commands/mod.rs`
+3. Add subcommand variant to `src/cli.rs`
+4. Add match arm in `src/dispatch.rs`
+5. If needed: add `Action` variant in `crates/core/src/action.rs`
+6. If needed: add adapter method to `PlatformAdapter` with default `not_supported()` impl
 
-1. **`crates/core/src/commands/{name}.rs`** — implement `execute(args, adapter)`
-2. **`crates/core/src/commands/mod.rs`** — register the module
-3. **`src/cli.rs`** — add a subcommand variant and arg struct
-4. **`src/dispatch.rs`** — add a match arm
-5. **`crates/core/src/action.rs`** — add an `Action` variant if a new native action is needed
+### Standards
 
-No existing files change beyond these registration points.
-
-### Coding standards
-
-- **400 LOC hard limit** per file — split by responsibility when approaching
-- **No inline comments** — names must be self-documenting; `///` doc-comments on public items only when necessary
-- **Zero `unwrap()`** in non-test code — propagate with `?` or match explicitly
-- **One command per file**, one domain type per file
-- **Explicit `pub` boundaries** — only `lib.rs` re-exports; internal modules use `pub(crate)`
-
----
-
-## Roadmap
-
-| Phase | Status | Scope |
-|-------|--------|-------|
-| Phase 1 | ✅ Complete | macOS adapter, 30 commands, core engine |
-| Phase 2 | 🔜 Planned | Windows (UIAutomation), Linux (AT-SPI), 10+ new commands |
-| Phase 3 | 🔜 Planned | MCP server mode (`--mcp`), JSON Schema generation |
-| Phase 4 | 🔜 Planned | Daemon, sessions, enterprise quality gates |
-
-Phases 2–4 add adapters, transports, and hardening. The core engine is not rebuilt.
-
----
+- 400 LOC hard limit per file
+- No inline comments — code must be self-documenting
+- Zero `unwrap()` in non-test code
+- One command per file, one domain type per file
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0

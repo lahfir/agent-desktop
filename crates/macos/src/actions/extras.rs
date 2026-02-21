@@ -6,7 +6,7 @@ use crate::tree::AXElement;
 
 #[cfg(target_os = "macos")]
 pub(crate) fn select_value(el: &AXElement, value: &str) -> Result<(), AdapterError> {
-    use crate::actions::{ax_press_or_fail, ax_set_value, element_role};
+    use crate::actions::dispatch::{ax_press_or_fail, ax_set_value, element_role};
 
     let role = element_role(el);
     match role.as_deref() {
@@ -145,7 +145,7 @@ pub(crate) fn ax_scroll(
         Direction::Left => "AXScrollLeftByPage",
     };
 
-    if crate::actions::has_ax_action(target, scroll_action_name) {
+    if crate::actions::dispatch::has_ax_action(target, scroll_action_name) {
         let ax_action = CFString::new(scroll_action_name);
         for _ in 0..amount {
             unsafe { AXUIElementPerformAction(target.0, ax_action.as_concrete_TypeRef()) };

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use crate::surfaces::is_menu_open;
+    use crate::tree::surfaces::is_menu_open;
 
     pub fn wait_for_menu(pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);

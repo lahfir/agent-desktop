@@ -1,4 +1,4 @@
-use crate::tree::{copy_ax_array, copy_string_attr, element_for_pid, AXElement};
+use super::element::{copy_ax_array, copy_string_attr, element_for_pid, AXElement};
 use agent_desktop_core::node::SurfaceInfo;
 
 #[cfg(target_os = "macos")]
@@ -41,9 +41,6 @@ mod imp {
         copy_element_attr(&app, "AXFocusedWindow")
     }
 
-    /// Find an open menu bar menu by looking for AXMenuBarItem with AXSelected=true.
-    /// This is the correct macOS mechanism — menus are always children of their bar item,
-    /// not direct children of the application.
     fn open_menubar_menu(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);
         let app_children = copy_ax_array(&app, "AXChildren")?;
@@ -67,9 +64,6 @@ mod imp {
         None
     }
 
-    /// Find a right-click context menu. After AXShowMenu, the menu appears
-    /// as a child of the focused element (the one that was right-clicked).
-    /// Falls back to scanning direct app children for Electron-style apps.
     fn context_menu_from_app(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);
         if let Some(focused) = copy_element_attr(&app, "AXFocusedUIElement") {

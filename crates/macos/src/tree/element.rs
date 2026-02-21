@@ -1,5 +1,4 @@
-use agent_desktop_core::node::{AccessibilityNode, Rect};
-use rustc_hash::FxHashSet;
+use agent_desktop_core::node::Rect;
 
 pub const ABSOLUTE_MAX_DEPTH: u8 = 50;
 
@@ -7,11 +6,10 @@ pub const ABSOLUTE_MAX_DEPTH: u8 = 50;
 mod imp {
     use super::*;
     use accessibility_sys::{
-        kAXChildrenAttribute, kAXContentsAttribute, kAXDescriptionAttribute, kAXEnabledAttribute,
-        kAXErrorSuccess, kAXFocusedAttribute, kAXRoleAttribute, kAXTitleAttribute,
-        kAXValueAttribute, kAXWindowsAttribute, AXUIElementCopyAttributeValue,
-        AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication, AXUIElementRef,
-        AXUIElementSetMessagingTimeout,
+        kAXChildrenAttribute, kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess,
+        kAXFocusedAttribute, kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute,
+        AXUIElementCopyAttributeValue, AXUIElementCopyMultipleAttributeValues,
+        AXUIElementCreateApplication, AXUIElementRef, AXUIElementSetMessagingTimeout,
     };
     use core_foundation::{
         array::CFArray,
@@ -48,38 +46,7 @@ mod imp {
         el
     }
 
-    /// Find the AXWindow element whose title matches `win_title`.
-    /// Falls back to the first window, then to the app element if no windows.
-    pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
-        let app = element_for_pid(pid);
-
-        if let Some(windows) = copy_ax_array(&app, kAXWindowsAttribute) {
-            for win in &windows {
-                let title = copy_string_attr(win, kAXTitleAttribute);
-                if title.as_deref() == Some(win_title) {
-                    return win.clone();
-                }
-            }
-            for win in &windows {
-                let title = copy_string_attr(win, kAXTitleAttribute);
-                if title
-                    .as_deref()
-                    .is_some_and(|t| t.contains(win_title) || win_title.contains(t))
-                {
-                    return win.clone();
-                }
-            }
-            if let Some(first) = windows.into_iter().next() {
-                return first;
-            }
-        }
-
-        app
-    }
-
-    /// Batch-fetch six most-used attributes. Returns (role, title, desc, value, enabled, focused).
-    /// Value handles CFString, CFBoolean, and CFNumber types.
-    fn fetch_node_attrs(
+    pub fn fetch_node_attrs(
         el: &AXElement,
     ) -> (
         Option<String>,
@@ -163,7 +130,6 @@ mod imp {
         (role, title, desc, val, enabled, focused)
     }
 
-    /// Compute the effective display name for any element, mirroring `build_subtree` name resolution.
     pub fn resolve_element_name(el: &AXElement) -> Option<String> {
         let ax_role = copy_string_attr(el, kAXRoleAttribute);
         let title = copy_string_attr(el, kAXTitleAttribute);
@@ -178,131 +144,8 @@ mod imp {
 
         name.or_else(|| {
             let children = copy_ax_array(el, kAXChildrenAttribute).unwrap_or_default();
-            label_from_children(&children)
+            super::super::builder::label_from_children(&children)
         })
-    }
-
-    pub fn build_subtree(
-        el: &AXElement,
-        depth: u8,
-        max_depth: u8,
-        include_bounds: bool,
-        ancestors: &mut FxHashSet<usize>,
-    ) -> Option<AccessibilityNode> {
-        if depth > max_depth || depth >= ABSOLUTE_MAX_DEPTH {
-            return None;
-        }
-        let ptr_key = el.0 as usize;
-        if !ancestors.insert(ptr_key) {
-            return None;
-        }
-
-        let (ax_role, title, ax_desc, value, enabled, focused) = fetch_node_attrs(el);
-
-        let role = ax_role
-            .as_deref()
-            .map(crate::roles::ax_role_to_str)
-            .unwrap_or("unknown")
-            .to_string();
-
-        let name = title.clone().or_else(|| ax_desc.clone());
-        let description = if title.is_some() { ax_desc } else { None };
-
-        let name = if name.is_none() && ax_role.as_deref() == Some("AXStaticText") {
-            value.clone().or(name)
-        } else {
-            name
-        };
-
-        let mut states = Vec::new();
-        if focused {
-            states.push("focused".into());
-        }
-        if !enabled {
-            states.push("disabled".into());
-        }
-
-        let bounds = if include_bounds {
-            read_bounds(el)
-        } else {
-            None
-        };
-
-        let children_raw = copy_children(el, ax_role.as_deref()).unwrap_or_default();
-        let name = name.or_else(|| label_from_children(&children_raw));
-
-        let children = children_raw
-            .into_iter()
-            .filter_map(|child| {
-                build_subtree(&child, depth + 1, max_depth, include_bounds, ancestors)
-            })
-            .collect();
-
-        ancestors.remove(&ptr_key);
-
-        Some(AccessibilityNode {
-            ref_id: None,
-            role,
-            name,
-            value,
-            description,
-            states,
-            bounds,
-            children,
-        })
-    }
-
-    /// Scan immediate children (and one level deeper through AXCell) to find a text label.
-    /// Resolves the common macOS pattern: AXRow → AXCell → AXStaticText.kAXValue = "label".
-    fn label_from_children(children: &[AXElement]) -> Option<String> {
-        fn text_of(el: &AXElement) -> Option<String> {
-            copy_string_attr(el, kAXValueAttribute)
-                .or_else(|| copy_string_attr(el, kAXTitleAttribute))
-                .filter(|s| !s.is_empty())
-        }
-
-        for child in children.iter().take(5) {
-            match copy_string_attr(child, kAXRoleAttribute).as_deref() {
-                Some("AXStaticText") => {
-                    if let Some(s) = text_of(child) {
-                        return Some(s);
-                    }
-                }
-                Some("AXCell") | Some("AXGroup") => {
-                    for gc in copy_ax_array(child, kAXChildrenAttribute).unwrap_or_default() {
-                        if copy_string_attr(&gc, kAXRoleAttribute).as_deref()
-                            == Some("AXStaticText")
-                        {
-                            if let Some(s) = text_of(&gc) {
-                                return Some(s);
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
-    }
-
-    /// Read children using the appropriate attribute for this element's role.
-    /// AXBrowser exposes its content via AXColumns, not AXChildren.
-    fn copy_children(el: &AXElement, ax_role: Option<&str>) -> Option<Vec<AXElement>> {
-        if ax_role == Some("AXBrowser") {
-            return copy_ax_array(el, "AXColumns");
-        }
-        for attr in &[
-            kAXChildrenAttribute,
-            kAXContentsAttribute,
-            "AXChildrenInNavigationOrder",
-        ] {
-            if let Some(v) = copy_ax_array(el, attr) {
-                if !v.is_empty() {
-                    return Some(v);
-                }
-            }
-        }
-        None
     }
 
     pub fn copy_string_attr(el: &AXElement, attr: &str) -> Option<String> {
@@ -318,7 +161,6 @@ mod imp {
         cf_type.downcast::<CFString>().map(|s| s.to_string())
     }
 
-    /// Read kAXValueAttribute handling CFString, CFBoolean, and CFNumber.
     fn copy_value_typed(el: &AXElement) -> Option<String> {
         let cf_attr = CFString::new(kAXValueAttribute);
         let mut val_ref: CFTypeRef = std::ptr::null_mut();
@@ -359,7 +201,6 @@ mod imp {
         cf_type.downcast::<CFBoolean>().map(|b| b.into())
     }
 
-    /// Read an array-typed AX attribute, retaining each AXUIElement.
     pub fn copy_ax_array(el: &AXElement, attr: &str) -> Option<Vec<AXElement>> {
         let cf_attr = CFString::new(attr);
         let mut value: CFTypeRef = std::ptr::null_mut();
@@ -476,9 +317,6 @@ mod imp {
     pub fn element_for_pid(_pid: i32) -> AXElement {
         AXElement(std::ptr::null())
     }
-    pub fn window_element_for(_pid: i32, _win_title: &str) -> AXElement {
-        AXElement(std::ptr::null())
-    }
     pub fn copy_ax_array(_el: &AXElement, _attr: &str) -> Option<Vec<AXElement>> {
         None
     }
@@ -488,25 +326,27 @@ mod imp {
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
     }
-    pub fn read_bounds(_el: &AXElement) -> Option<agent_desktop_core::node::Rect> {
+    pub fn read_bounds(_el: &AXElement) -> Option<Rect> {
         None
     }
     pub fn resolve_element_name(_el: &AXElement) -> Option<String> {
         None
     }
-
-    pub fn build_subtree(
+    pub fn fetch_node_attrs(
         _el: &AXElement,
-        _depth: u8,
-        _max_depth: u8,
-        _include_bounds: bool,
-        _visited: &mut FxHashSet<usize>,
-    ) -> Option<AccessibilityNode> {
-        None
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        bool,
+        bool,
+    ) {
+        (None, None, None, None, true, false)
     }
 }
 
 pub use imp::{
-    build_subtree, copy_ax_array, copy_element_attr, copy_string_attr, element_for_pid,
-    read_bounds, resolve_element_name, window_element_for, AXElement,
+    copy_ax_array, copy_element_attr, copy_string_attr, element_for_pid, fetch_node_attrs,
+    read_bounds, resolve_element_name, AXElement,
 };

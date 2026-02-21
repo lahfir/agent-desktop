@@ -18,13 +18,13 @@ mod imp {
         string::CFString,
     };
 
-    fn try_ax_action(el: &AXElement, name: &str) -> bool {
+    pub fn try_ax_action(el: &AXElement, name: &str) -> bool {
         let action = CFString::new(name);
         let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
         err == kAXErrorSuccess
     }
 
-    fn click_via_bounds(
+    pub fn click_via_bounds(
         el: &AXElement,
         button: MouseButton,
         count: u32,
@@ -50,7 +50,7 @@ mod imp {
             y = center.y,
             "AX action failed, falling back to CGEvent click"
         );
-        crate::mouse::synthesize_mouse(MouseEvent {
+        crate::input::mouse::synthesize_mouse(MouseEvent {
             kind: MouseEventKind::Click { count },
             point: center,
             button,
@@ -61,28 +61,15 @@ mod imp {
         let label = action_label(action);
         match action {
             Action::Click => {
-                if !try_ax_action(el, kAXPressAction) && !try_ax_action(el, "AXConfirm") {
-                    click_via_bounds(el, MouseButton::Left, 1)?;
-                }
+                crate::actions::activate::smart_activate(el)?;
             }
 
             Action::DoubleClick => {
-                if !try_ax_action(el, "AXOpen") {
-                    if try_ax_action(el, kAXPressAction) {
-                        std::thread::sleep(std::time::Duration::from_millis(50));
-                        if !try_ax_action(el, kAXPressAction) {
-                            click_via_bounds(el, MouseButton::Left, 2)?;
-                        }
-                    } else {
-                        click_via_bounds(el, MouseButton::Left, 2)?;
-                    }
-                }
+                crate::actions::activate::smart_double_activate(el)?;
             }
 
             Action::RightClick => {
-                if !try_ax_action(el, "AXShowMenu") {
-                    click_via_bounds(el, MouseButton::Right, 1)?;
-                }
+                crate::actions::activate::smart_right_activate(el)?;
             }
 
             Action::Toggle => {
@@ -107,9 +94,7 @@ mod imp {
                         "Toggle works on checkboxes, switches, and radio buttons. Use 'click' for other elements.",
                     ));
                 }
-                if !try_ax_action(el, kAXPressAction) && !try_ax_action(el, "AXConfirm") {
-                    click_via_bounds(el, MouseButton::Left, 1)?;
-                }
+                crate::actions::activate::smart_activate(el)?;
             }
 
             Action::SetValue(val) => {
@@ -142,57 +127,73 @@ mod imp {
                         CFBoolean::true_value().as_CFTypeRef(),
                     )
                 };
-                crate::input::synthesize_text(text)?;
+                crate::input::keyboard::synthesize_text(text)?;
             }
 
             Action::PressKey(combo) => {
-                crate::input::synthesize_key(combo)?;
+                crate::input::keyboard::synthesize_key(combo)?;
             }
 
             Action::Expand => {
-                if !has_ax_action(el, "AXExpand") {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionNotSupported,
-                        "This element doesn't support expand",
-                    )
-                    .with_suggestion("Try 'click' to open it instead."));
-                }
-                let ax_action = CFString::new("AXExpand");
-                let err =
-                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
-                if err != kAXErrorSuccess {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionFailed,
-                        format!("AXExpand failed (err={err})"),
-                    ));
+                if !try_ax_action(el, "AXExpand") {
+                    if crate::actions::activate::is_attr_settable_pub(el, "AXDisclosing") {
+                        let cf_attr = CFString::new("AXDisclosing");
+                        let err = unsafe {
+                            AXUIElementSetAttributeValue(
+                                el.0,
+                                cf_attr.as_concrete_TypeRef(),
+                                CFBoolean::true_value().as_CFTypeRef(),
+                            )
+                        };
+                        if err != kAXErrorSuccess {
+                            return Err(AdapterError::new(
+                                ErrorCode::ActionFailed,
+                                format!("AXDisclosing set to true failed (err={err})"),
+                            ));
+                        }
+                    } else {
+                        return Err(AdapterError::new(
+                            ErrorCode::ActionNotSupported,
+                            "AXExpand failed and AXDisclosing not settable",
+                        )
+                        .with_suggestion("Try 'click' to open it instead."));
+                    }
                 }
             }
 
             Action::Collapse => {
-                if !has_ax_action(el, "AXCollapse") {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionNotSupported,
-                        "This element doesn't support collapse",
-                    )
-                    .with_suggestion("Try 'click' to close it instead."));
-                }
-                let ax_action = CFString::new("AXCollapse");
-                let err =
-                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
-                if err != kAXErrorSuccess {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionFailed,
-                        format!("AXCollapse failed (err={err})"),
-                    ));
+                if !try_ax_action(el, "AXCollapse") {
+                    if crate::actions::activate::is_attr_settable_pub(el, "AXDisclosing") {
+                        let cf_attr = CFString::new("AXDisclosing");
+                        let err = unsafe {
+                            AXUIElementSetAttributeValue(
+                                el.0,
+                                cf_attr.as_concrete_TypeRef(),
+                                CFBoolean::false_value().as_CFTypeRef(),
+                            )
+                        };
+                        if err != kAXErrorSuccess {
+                            return Err(AdapterError::new(
+                                ErrorCode::ActionFailed,
+                                format!("AXDisclosing set to false failed (err={err})"),
+                            ));
+                        }
+                    } else {
+                        return Err(AdapterError::new(
+                            ErrorCode::ActionNotSupported,
+                            "AXCollapse failed and AXDisclosing not settable",
+                        )
+                        .with_suggestion("Try 'click' to close it instead."));
+                    }
                 }
             }
 
             Action::Select(value) => {
-                crate::action_extras::select_value(el, value)?;
+                crate::actions::extras::select_value(el, value)?;
             }
 
             Action::Scroll(direction, amount) => {
-                crate::action_extras::ax_scroll(el, direction, *amount)?;
+                crate::actions::extras::ax_scroll(el, direction, *amount)?;
             }
 
             Action::Check => {
@@ -204,19 +205,7 @@ mod imp {
             }
 
             Action::TripleClick => {
-                if !try_ax_action(el, kAXPressAction) {
-                    click_via_bounds(el, MouseButton::Left, 3)?;
-                } else {
-                    std::thread::sleep(std::time::Duration::from_millis(30));
-                    if !try_ax_action(el, kAXPressAction) {
-                        click_via_bounds(el, MouseButton::Left, 3)?;
-                    } else {
-                        std::thread::sleep(std::time::Duration::from_millis(30));
-                        if !try_ax_action(el, kAXPressAction) {
-                            click_via_bounds(el, MouseButton::Left, 3)?;
-                        }
-                    }
-                }
+                crate::actions::activate::smart_triple_activate(el)?;
             }
 
             Action::ScrollTo => {
@@ -284,7 +273,7 @@ mod imp {
     pub fn element_role(el: &AXElement) -> Option<String> {
         use accessibility_sys::kAXRoleAttribute;
         crate::tree::copy_string_attr(el, kAXRoleAttribute)
-            .map(|r| crate::roles::ax_role_to_str(&r).to_string())
+            .map(|r| crate::tree::roles::ax_role_to_str(&r).to_string())
     }
 
     pub fn has_ax_action(el: &AXElement, action_name: &str) -> bool {
@@ -330,9 +319,7 @@ mod imp {
         if is_checked == want_checked {
             return Ok(());
         }
-        if !try_ax_action(el, kAXPressAction) {
-            click_via_bounds(el, MouseButton::Left, 1)?;
-        }
+        crate::actions::activate::smart_activate(el)?;
         Ok(())
     }
 }
@@ -350,7 +337,9 @@ mod imp {
 pub use imp::perform_action;
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::{ax_press_or_fail, ax_set_value, element_role, has_ax_action};
+pub(crate) use imp::{
+    ax_press_or_fail, ax_set_value, click_via_bounds, element_role, has_ax_action,
+};
 
 fn action_label(action: &Action) -> String {
     match action {
