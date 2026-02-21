@@ -145,48 +145,6 @@ PLATFORM_NOT_SUPPORTED, TIMEOUT, INVALID_ARGS, INTERNAL
 | CLI flags | kebab-case | `--max-depth`, `--include-bounds` |
 | Ref IDs | `@e{n}` sequential | `@e1`, `@e2`, `@e14` |
 
-### Platform Crate Folder Structure
-
-All platform crates (`macos`, `windows`, `linux`) follow an identical subfolder layout. New files must be placed in the correct subfolder.
-
-```
-crates/{macos,windows,linux}/src/
-├── lib.rs              # mod declarations + re-exports only
-├── adapter.rs          # PlatformAdapter trait impl (~175 LOC)
-├── tree/               # Reading & understanding the UI
-│   ├── mod.rs          # re-exports
-│   ├── element.rs      # AXElement struct + attribute readers
-│   ├── builder.rs      # build_subtree, tree traversal
-│   ├── roles.rs        # Role mapping
-│   ├── resolve.rs      # Element re-identification
-│   └── surfaces.rs     # Surface detection
-├── actions/            # Interacting with elements
-│   ├── mod.rs          # re-exports
-│   ├── dispatch.rs     # perform_action match arms
-│   ├── activate.rs     # Smart AX-first activation chain
-│   └── extras.rs       # select_value, ax_scroll
-├── input/              # Low-level OS input synthesis
-│   ├── mod.rs          # re-exports
-│   ├── keyboard.rs     # Key synthesis, text typing
-│   ├── mouse.rs        # Mouse events
-│   └── clipboard.rs    # Clipboard get/set
-└── system/             # App lifecycle, windows, permissions
-    ├── mod.rs          # re-exports
-    ├── app_ops.rs      # launch, close, focus
-    ├── window_ops.rs   # window operations
-    ├── key_dispatch.rs # app-targeted key press
-    ├── permissions.rs  # permission checks
-    ├── screenshot.rs   # screen capture
-    └── wait.rs         # wait utilities
-```
-
-**Placement rules:**
-- Tree reading/traversal/resolution → `tree/`
-- Element interaction/activation → `actions/`
-- Raw OS input (keyboard, mouse, clipboard) → `input/`
-- App lifecycle, windows, permissions, screenshots → `system/`
-- `adapter.rs` stays at root — it's the PlatformAdapter impl that wires everything together
-
 ### Extensibility Pattern
 
 Adding a new command requires exactly these steps:
@@ -285,9 +243,9 @@ pub trait PlatformAdapter: Send + Sync {
 
 ### Tree Traversal
 - Entry: `AXUIElementCreateApplication(pid)` for app root
-- Children: `kAXChildrenAttribute` recursively with **ancestor-path set** (not global visited set — macOS reuses AXUIElementRef pointers across sibling branches)
+- Children: `kAXChildrenAttribute` recursively with visited-set to prevent cycles
 - **Use `AXUIElementCopyMultipleAttributeValues`** for batch attribute fetch (3-5x faster)
-- Role mapping: AXRole strings → unified role enum in `tree/roles.rs`
+- Role mapping: AXRole strings → unified role enum in `roles.rs`
 - Max depth default: 10. Configurable via `--max-depth`
 
 ### Action Execution
