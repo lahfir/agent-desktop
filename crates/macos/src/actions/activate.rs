@@ -16,8 +16,10 @@ mod imp {
     };
     use std::os::raw::c_uchar;
 
-    /// Attempts a 10-step AX-first activation chain before falling back to CGEvent.
     pub fn smart_activate(el: &AXElement) -> Result<(), AdapterError> {
+        let scroll_action = CFString::new("AXScrollToVisible");
+        unsafe { AXUIElementPerformAction(el.0, scroll_action.as_concrete_TypeRef()) };
+
         let actions = list_ax_actions(el);
 
         if try_action_from_list(el, &actions, &["AXPress"]) {
@@ -32,6 +34,9 @@ mod imp {
         if try_action_from_list(el, &actions, &["AXPick"]) {
             return Ok(());
         }
+        if try_show_alternate_ui(el) {
+            return Ok(());
+        }
 
         if try_child_activation(el) {
             return Ok(());
@@ -42,7 +47,13 @@ mod imp {
         if try_select_via_parent(el) {
             return Ok(());
         }
+        if try_custom_actions(el) {
+            return Ok(());
+        }
         if try_focus_then_activate(el) {
+            return Ok(());
+        }
+        if try_keyboard_activate(el) {
             return Ok(());
         }
         if try_parent_activation(el) {
@@ -66,7 +77,6 @@ mod imp {
         crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2)
     }
 
-    /// AXShowMenu first, then CGEvent right-click.
     pub fn smart_right_activate(el: &AXElement) -> Result<(), AdapterError> {
         let actions = list_ax_actions(el);
         if try_action_from_list(el, &actions, &["AXShowMenu"]) {
@@ -225,6 +235,64 @@ mod imp {
         }
         false
     }
+
+    fn try_show_alternate_ui(el: &AXElement) -> bool {
+        let actions = list_ax_actions(el);
+        if !actions.iter().any(|a| a == "AXShowAlternateUI") {
+            return false;
+        }
+        let action = CFString::new("AXShowAlternateUI");
+        unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let children = crate::tree::copy_ax_array(el, "AXChildren").unwrap_or_default();
+        for child in children.iter().take(5) {
+            let child_actions = list_ax_actions(child);
+            if try_action_from_list(child, &child_actions, &["AXPress"]) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn try_custom_actions(el: &AXElement) -> bool {
+        let custom = crate::tree::copy_ax_array(el, "AXCustomActions").unwrap_or_default();
+        if custom.is_empty() {
+            return false;
+        }
+        let action = CFString::new("AXPerformCustomAction");
+        let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
+        err == kAXErrorSuccess
+    }
+
+    fn try_keyboard_activate(el: &AXElement) -> bool {
+        use accessibility_sys::AXUIElementPostKeyboardEvent;
+
+        let cf_focused = CFString::new(kAXFocusedAttribute);
+        let err = unsafe {
+            AXUIElementSetAttributeValue(
+                el.0,
+                cf_focused.as_concrete_TypeRef(),
+                CFBoolean::true_value().as_CFTypeRef(),
+            )
+        };
+        if err != kAXErrorSuccess {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let pid = match crate::system::app_ops::pid_from_element(el) {
+            Some(p) => p,
+            None => return false,
+        };
+        let app = crate::tree::element_for_pid(pid);
+        unsafe {
+            AXUIElementPostKeyboardEvent(app.0, 0, 49, true);
+            AXUIElementPostKeyboardEvent(app.0, 0, 49, false);
+        };
+        true
+    }
+
+
 }
 
 #[cfg(not(target_os = "macos"))]

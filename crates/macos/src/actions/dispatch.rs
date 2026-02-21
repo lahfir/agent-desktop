@@ -29,6 +29,9 @@ mod imp {
         button: MouseButton,
         count: u32,
     ) -> Result<(), AdapterError> {
+        if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
+            let _ = crate::system::app_ops::ensure_app_focused(pid);
+        }
         let bounds = crate::tree::read_bounds(el).ok_or_else(|| {
             AdapterError::new(ErrorCode::ActionFailed, "Element has no readable bounds")
                 .with_suggestion("AX action failed and CGEvent fallback unavailable")

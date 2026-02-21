@@ -1,5 +1,5 @@
 use crate::{
-    adapter::{PlatformAdapter, TreeOptions, WindowFilter},
+    adapter::{PlatformAdapter, SnapshotSurface, TreeOptions, WindowFilter},
     error::AppError,
     node::{AccessibilityNode, WindowInfo},
     refs::{RefEntry, RefMap},
@@ -106,6 +106,30 @@ pub fn run(
     let result = build(adapter, opts, app_name, window_id)?;
     result.refmap.save()?;
     Ok(result)
+}
+
+pub fn append_surface_refs(
+    adapter: &dyn PlatformAdapter,
+    pid: i32,
+    source_app: Option<&str>,
+    surface: SnapshotSurface,
+) -> Option<AccessibilityNode> {
+    let filter = WindowFilter {
+        focused_only: false,
+        app: None,
+    };
+    let windows = adapter.list_windows(&filter).ok()?;
+    let window = windows.into_iter().find(|w| w.pid == pid)?;
+    let opts = TreeOptions {
+        surface,
+        interactive_only: true,
+        ..Default::default()
+    };
+    let raw_tree = adapter.get_tree(&window, &opts).ok()?;
+    let mut refmap = RefMap::load().ok()?;
+    let tree = allocate_refs(raw_tree, &mut refmap, false, true, pid, source_app);
+    refmap.save().ok()?;
+    Some(tree)
 }
 
 fn allocate_refs(

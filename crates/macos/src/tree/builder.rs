@@ -45,7 +45,7 @@ pub fn build_subtree(
     el: &AXElement,
     depth: u8,
     max_depth: u8,
-    include_bounds: bool,
+    _include_bounds: bool,
     ancestors: &mut FxHashSet<usize>,
 ) -> Option<AccessibilityNode> {
     if depth > max_depth || depth >= ABSOLUTE_MAX_DEPTH {
@@ -81,18 +81,14 @@ pub fn build_subtree(
         states.push("disabled".into());
     }
 
-    let bounds = if include_bounds {
-        read_bounds(el)
-    } else {
-        None
-    };
+    let bounds = read_bounds(el);
 
     let children_raw = copy_children(el, ax_role.as_deref()).unwrap_or_default();
     let name = name.or_else(|| label_from_children(&children_raw));
 
     let children = children_raw
         .into_iter()
-        .filter_map(|child| build_subtree(&child, depth + 1, max_depth, include_bounds, ancestors))
+        .filter_map(|child| build_subtree(&child, depth + 1, max_depth, _include_bounds, ancestors))
         .collect();
 
     ancestors.remove(&ptr_key);

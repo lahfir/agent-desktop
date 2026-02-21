@@ -1,6 +1,40 @@
 use agent_desktop_core::{adapter::WindowFilter, error::AdapterError, node::WindowInfo};
 
 #[cfg(target_os = "macos")]
+pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
+    let mut pid: i32 = 0;
+    let err = unsafe { accessibility_sys::AXUIElementGetPid(el.0, &mut pid) };
+    if err == accessibility_sys::kAXErrorSuccess {
+        Some(pid)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
+    use accessibility_sys::{kAXErrorSuccess, AXUIElementSetAttributeValue};
+    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
+
+    let app_el = crate::tree::element_for_pid(pid);
+    let frontmost_attr = CFString::new("AXFrontmost");
+    let err = unsafe {
+        AXUIElementSetAttributeValue(
+            app_el.0,
+            frontmost_attr.as_concrete_TypeRef(),
+            CFBoolean::true_value().as_CFTypeRef(),
+        )
+    };
+    if err != kAXErrorSuccess {
+        return Err(AdapterError::internal(format!(
+            "Failed to focus app pid={pid}"
+        )));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
     use accessibility_sys::{
         kAXErrorSuccess, AXUIElementCreateApplication, AXUIElementPerformAction,
@@ -162,22 +196,23 @@ fn try_quit_via_menu_bar(app_el: &crate::tree::AXElement) -> bool {
     let Some(bar_items) = crate::tree::copy_ax_array(&menu_bar, "AXChildren") else {
         return false;
     };
-    if let Some(app_menu) = bar_items.first() {
-        if let Some(menus) = crate::tree::copy_ax_array(app_menu, "AXChildren") {
-            for menu in &menus {
-                if let Some(items) = crate::tree::copy_ax_array(menu, "AXChildren") {
-                    for item in &items {
-                        let title = crate::tree::copy_string_attr(item, "AXTitle");
-                        if let Some(t) = &title {
-                            if t.contains("Quit") || t.contains("quit") {
-                                let press = CFString::new("AXPress");
-                                let err = unsafe {
-                                    AXUIElementPerformAction(item.0, press.as_concrete_TypeRef())
-                                };
-                                return err == kAXErrorSuccess;
-                            }
-                        }
-                    }
+    for bar_item in bar_items.iter().skip(1) {
+        let Some(menus) = crate::tree::copy_ax_array(bar_item, "AXChildren") else {
+            continue;
+        };
+        for menu in &menus {
+            let Some(items) = crate::tree::copy_ax_array(menu, "AXChildren") else {
+                continue;
+            };
+            for item in &items {
+                let Some(t) = crate::tree::copy_string_attr(item, "AXTitle") else {
+                    continue;
+                };
+                if t.starts_with("Quit") {
+                    let press = CFString::new("AXPress");
+                    let err =
+                        unsafe { AXUIElementPerformAction(item.0, press.as_concrete_TypeRef()) };
+                    return err == kAXErrorSuccess;
                 }
             }
         }

@@ -129,6 +129,33 @@ mod imp {
             MouseButton::Middle => CGEventType::OtherMouseUp,
         }
     }
+
+    pub fn synthesize_scroll_at(x: f64, y: f64, dy: i32, dx: i32) -> Result<(), AdapterError> {
+        use core_graphics::geometry::CGPoint;
+
+        extern "C" {
+            fn CGEventCreateScrollWheelEvent(
+                source: *const std::ffi::c_void,
+                units: u32,
+                wheel_count: u32,
+                wheel1: i32,
+                wheel2: i32,
+            ) -> *mut std::ffi::c_void;
+            fn CGEventSetLocation(event: *mut std::ffi::c_void, point: CGPoint);
+            fn CGEventPost(tap: u32, event: *mut std::ffi::c_void);
+        }
+
+        let event = unsafe { CGEventCreateScrollWheelEvent(std::ptr::null(), 0, 2, dy, dx) };
+        if event.is_null() {
+            return Err(AdapterError::internal("scroll event creation failed"));
+        }
+        unsafe {
+            CGEventSetLocation(event, CGPoint::new(x, y));
+            CGEventPost(0, event);
+            core_foundation::base::CFRelease(event as _);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -142,6 +169,10 @@ mod imp {
     pub fn synthesize_drag(_params: DragParams) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("drag"))
     }
+
+    pub fn synthesize_scroll_at(_x: f64, _y: f64, _dy: i32, _dx: i32) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("scroll"))
+    }
 }
 
-pub use imp::{synthesize_drag, synthesize_mouse};
+pub use imp::{synthesize_drag, synthesize_mouse, synthesize_scroll_at};
