@@ -57,6 +57,15 @@ mod imp {
         })
     }
 
+    const TOGGLEABLE_ROLES: &[&str] = &[
+        "checkbox",
+        "switch",
+        "radiobutton",
+        "togglebutton",
+        "menuitemcheckbox",
+        "menuitemradio",
+    ];
+
     pub fn perform_action(el: &AXElement, action: &Action) -> Result<ActionResult, AdapterError> {
         let label = action_label(action);
         match action {
@@ -74,15 +83,7 @@ mod imp {
 
             Action::Toggle => {
                 let role = element_role(el);
-                let toggle_roles = [
-                    "checkbox",
-                    "switch",
-                    "radiobutton",
-                    "togglebutton",
-                    "menuitemcheckbox",
-                    "menuitemradio",
-                ];
-                if !toggle_roles.iter().any(|r| role.as_deref() == Some(*r)) {
+                if !TOGGLEABLE_ROLES.iter().any(|r| role.as_deref() == Some(*r)) {
                     return Err(AdapterError::new(
                         ErrorCode::ActionNotSupported,
                         format!(
@@ -136,7 +137,7 @@ mod imp {
 
             Action::Expand => {
                 if !try_ax_action(el, "AXExpand") {
-                    if crate::actions::activate::is_attr_settable_pub(el, "AXDisclosing") {
+                    if crate::actions::activate::is_attr_settable(el, "AXDisclosing") {
                         let cf_attr = CFString::new("AXDisclosing");
                         let err = unsafe {
                             AXUIElementSetAttributeValue(
@@ -163,7 +164,7 @@ mod imp {
 
             Action::Collapse => {
                 if !try_ax_action(el, "AXCollapse") {
-                    if crate::actions::activate::is_attr_settable_pub(el, "AXDisclosing") {
+                    if crate::actions::activate::is_attr_settable(el, "AXDisclosing") {
                         let cf_attr = CFString::new("AXDisclosing");
                         let err = unsafe {
                             AXUIElementSetAttributeValue(
@@ -296,15 +297,7 @@ mod imp {
 
     fn check_uncheck(el: &AXElement, want_checked: bool) -> Result<(), AdapterError> {
         let role = element_role(el);
-        let valid_roles = [
-            "checkbox",
-            "switch",
-            "radiobutton",
-            "togglebutton",
-            "menuitemcheckbox",
-            "menuitemradio",
-        ];
-        if !valid_roles.iter().any(|r| role.as_deref() == Some(*r)) {
+        if !TOGGLEABLE_ROLES.iter().any(|r| role.as_deref() == Some(*r)) {
             return Err(AdapterError::new(
                 ErrorCode::ActionNotSupported,
                 format!(

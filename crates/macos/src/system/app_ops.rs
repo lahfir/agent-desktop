@@ -8,15 +8,15 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
     };
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
-    let app_el = unsafe { AXUIElementCreateApplication(win.pid) };
-    if app_el.is_null() {
+    let app_el = crate::tree::AXElement(unsafe { AXUIElementCreateApplication(win.pid) });
+    if app_el.0.is_null() {
         return Err(AdapterError::internal("Failed to create AX app element"));
     }
 
     let frontmost_attr = CFString::new("AXFrontmost");
     let err = unsafe {
         AXUIElementSetAttributeValue(
-            app_el,
+            app_el.0,
             frontmost_attr.as_concrete_TypeRef(),
             CFBoolean::true_value().as_CFTypeRef(),
         )
@@ -126,10 +126,18 @@ pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
         let app_ax = crate::tree::element_for_pid(pid);
         let closed = try_quit_via_menu_bar(&app_ax);
         if !closed {
-            let safe_name = id.replace('"', "");
+            if id
+                .chars()
+                .any(|c| !c.is_alphanumeric() && !matches!(c, ' ' | '-' | '.' | '_'))
+            {
+                return Err(AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    format!("Invalid app name '{id}'"),
+                ));
+            }
             let script = format!(
                 r#"tell application "System Events"
-    set theProc to first process whose name is "{safe_name}"
+    set theProc to first process whose name is "{id}"
     tell theProc to quit
 end tell"#
             );

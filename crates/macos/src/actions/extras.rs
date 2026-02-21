@@ -166,7 +166,7 @@ fn find_scroll_area(el: &AXElement) -> Option<AXElement> {
 
     let role = crate::tree::copy_string_attr(el, kAXRoleAttribute)?;
     if role == "AXScrollArea" {
-        return Some(AXElement(el.0));
+        return Some(el.clone());
     }
     let parent = crate::tree::copy_element_attr(el, "AXParent")?;
     let parent_role = crate::tree::copy_string_attr(&parent, kAXRoleAttribute)?;

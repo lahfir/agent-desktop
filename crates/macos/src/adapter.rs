@@ -198,7 +198,7 @@ fn execute_action_impl(
     Err(AdapterError::not_supported("execute_action"))
 }
 
-pub fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+pub(crate) fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
     #[cfg(target_os = "macos")]
     {
         use core_foundation::base::{CFType, TCFType};

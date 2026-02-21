@@ -84,10 +84,6 @@ mod imp {
         crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 3)
     }
 
-    pub fn is_attr_settable_pub(el: &AXElement, attr: &str) -> bool {
-        is_attr_settable(el, attr)
-    }
-
     fn list_ax_actions(el: &AXElement) -> Vec<String> {
         let mut actions_ref: core_foundation_sys::array::CFArrayRef = std::ptr::null();
         let err = unsafe { AXUIElementCopyActionNames(el.0, &mut actions_ref) };
@@ -104,7 +100,7 @@ mod imp {
         result
     }
 
-    fn is_attr_settable(el: &AXElement, attr: &str) -> bool {
+    pub fn is_attr_settable(el: &AXElement, attr: &str) -> bool {
         let cf_attr = CFString::new(attr);
         let mut settable: c_uchar = 0;
         let err = unsafe {
@@ -211,33 +207,21 @@ mod imp {
     }
 
     fn try_parent_activation(el: &AXElement) -> bool {
-        if let Some(parent) = crate::tree::copy_element_attr(el, "AXParent") {
-            let press = CFString::new("AXPress");
-            if unsafe { AXUIElementPerformAction(parent.0, press.as_concrete_TypeRef()) }
-                == kAXErrorSuccess
-            {
-                return true;
-            }
-            let confirm = CFString::new("AXConfirm");
-            if unsafe { AXUIElementPerformAction(parent.0, confirm.as_concrete_TypeRef()) }
-                == kAXErrorSuccess
-            {
-                return true;
-            }
-            if let Some(grandparent) = crate::tree::copy_element_attr(&parent, "AXParent") {
-                let press = CFString::new("AXPress");
-                if unsafe { AXUIElementPerformAction(grandparent.0, press.as_concrete_TypeRef()) }
-                    == kAXErrorSuccess
-                {
-                    return true;
-                }
-                let confirm = CFString::new("AXConfirm");
-                if unsafe { AXUIElementPerformAction(grandparent.0, confirm.as_concrete_TypeRef()) }
+        let mut current = crate::tree::copy_element_attr(el, "AXParent");
+        for _ in 0..2 {
+            let ancestor = match &current {
+                Some(a) => a,
+                None => return false,
+            };
+            for action_name in &["AXPress", "AXConfirm"] {
+                let action = CFString::new(action_name);
+                if unsafe { AXUIElementPerformAction(ancestor.0, action.as_concrete_TypeRef()) }
                     == kAXErrorSuccess
                 {
                     return true;
                 }
             }
+            current = crate::tree::copy_element_attr(ancestor, "AXParent");
         }
         false
     }
@@ -260,12 +244,12 @@ mod imp {
     pub fn smart_triple_activate(_el: &AXElement) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("smart_triple_activate"))
     }
-    pub fn is_attr_settable_pub(_el: &AXElement, _attr: &str) -> bool {
+    pub fn is_attr_settable(_el: &AXElement, _attr: &str) -> bool {
         false
     }
 }
 
 pub(crate) use imp::{
-    is_attr_settable_pub, smart_activate, smart_double_activate, smart_right_activate,
+    is_attr_settable, smart_activate, smart_double_activate, smart_right_activate,
     smart_triple_activate,
 };

@@ -1,40 +1,11 @@
-use super::element::{copy_ax_array, copy_string_attr, element_for_pid, AXElement};
+use super::element::{
+    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, element_for_pid, AXElement,
+};
 use agent_desktop_core::node::SurfaceInfo;
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use accessibility_sys::{kAXErrorSuccess, AXUIElementCopyAttributeValue, AXUIElementRef};
-    use core_foundation::{
-        base::{CFType, CFTypeRef, TCFType},
-        boolean::CFBoolean,
-        string::CFString,
-    };
-
-    fn copy_element_attr(el: &AXElement, attr: &str) -> Option<AXElement> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        Some(AXElement(value as AXUIElementRef))
-    }
-
-    fn copy_bool_attr(el: &AXElement, attr: &str) -> Option<bool> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        let cf_type = unsafe { CFType::wrap_under_create_rule(value) };
-        cf_type.downcast::<CFBoolean>().map(|b| b.into())
-    }
 
     fn focused_window_element(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);

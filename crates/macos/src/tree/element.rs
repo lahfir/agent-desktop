@@ -144,7 +144,7 @@ mod imp {
 
         name.or_else(|| {
             let children = copy_ax_array(el, kAXChildrenAttribute).unwrap_or_default();
-            super::super::builder::label_from_children(&children)
+            crate::tree::builder::label_from_children(&children)
         })
     }
 
@@ -188,7 +188,7 @@ mod imp {
         None
     }
 
-    fn copy_bool_attr(el: &AXElement, attr: &str) -> Option<bool> {
+    pub fn copy_bool_attr(el: &AXElement, attr: &str) -> Option<bool> {
         let cf_attr = CFString::new(attr);
         let mut value: CFTypeRef = std::ptr::null_mut();
         let err = unsafe {
@@ -323,6 +323,9 @@ mod imp {
     pub fn copy_string_attr(_el: &AXElement, _attr: &str) -> Option<String> {
         None
     }
+    pub fn copy_bool_attr(_el: &AXElement, _attr: &str) -> Option<bool> {
+        None
+    }
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
     }
@@ -347,6 +350,6 @@ mod imp {
 }
 
 pub use imp::{
-    copy_ax_array, copy_element_attr, copy_string_attr, element_for_pid, fetch_node_attrs,
-    read_bounds, resolve_element_name, AXElement,
+    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, element_for_pid,
+    fetch_node_attrs, read_bounds, resolve_element_name, AXElement,
 };

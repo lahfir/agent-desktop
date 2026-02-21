@@ -8,19 +8,19 @@ use agent_desktop_core::{action::Modifier, adapter::WindowFilter};
 
 #[cfg(target_os = "macos")]
 pub fn press_for_app_impl(app_name: &str, combo: &KeyCombo) -> Result<ActionResult, AdapterError> {
-    use accessibility_sys::{AXUIElementCreateApplication, AXUIElementSetAttributeValue};
+    use accessibility_sys::AXUIElementSetAttributeValue;
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
     let pid = find_pid_by_name(app_name)?;
-    let app_el = unsafe { AXUIElementCreateApplication(pid) };
-    if app_el.is_null() {
+    let app_el = crate::tree::element_for_pid(pid);
+    if app_el.0.is_null() {
         return Err(AdapterError::internal("Failed to create AX app element"));
     }
 
     let frontmost_attr = CFString::new("AXFrontmost");
     unsafe {
         AXUIElementSetAttributeValue(
-            app_el,
+            app_el.0,
             frontmost_attr.as_concrete_TypeRef(),
             CFBoolean::true_value().as_CFTypeRef(),
         )
@@ -28,18 +28,17 @@ pub fn press_for_app_impl(app_name: &str, combo: &KeyCombo) -> Result<ActionResu
     std::thread::sleep(std::time::Duration::from_millis(50));
 
     if !combo.modifiers.is_empty() {
-        let app_ax = std::mem::ManuallyDrop::new(crate::tree::AXElement(app_el));
-        if let Some(result) = try_menu_bar_shortcut(&app_ax, combo) {
+        if let Some(result) = try_menu_bar_shortcut(&app_el, combo) {
             return result;
         }
     }
 
-    let simple_result = try_simple_key_action(app_el, combo);
+    let simple_result = try_simple_key_action(app_el.0, combo);
     if let Some(result) = simple_result {
         return result;
     }
 
-    ax_post_keyboard_event(app_el, combo)?;
+    ax_post_keyboard_event(app_el.0, combo)?;
     Ok(ActionResult::new("press_key".to_string()))
 }
 
