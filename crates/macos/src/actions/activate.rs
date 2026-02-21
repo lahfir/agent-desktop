@@ -33,6 +33,9 @@ mod imp {
             return Ok(());
         }
 
+        if try_child_activation(el) {
+            return Ok(());
+        }
         if try_set_selected(el) {
             return Ok(());
         }
@@ -40,9 +43,6 @@ mod imp {
             return Ok(());
         }
         if try_focus_then_activate(el) {
-            return Ok(());
-        }
-        if try_child_activation(el) {
             return Ok(());
         }
         if try_parent_activation(el) {
@@ -196,18 +196,15 @@ mod imp {
 
     fn try_child_activation(el: &AXElement) -> bool {
         let children = crate::tree::copy_ax_array(el, "AXChildren").unwrap_or_default();
+        let targets = ["AXPress", "AXConfirm", "AXOpen", "AXShowDefaultUI"];
         for child in children.iter().take(3) {
-            let press = CFString::new("AXPress");
-            if unsafe { AXUIElementPerformAction(child.0, press.as_concrete_TypeRef()) }
-                == kAXErrorSuccess
-            {
-                return true;
-            }
-            let confirm = CFString::new("AXConfirm");
-            if unsafe { AXUIElementPerformAction(child.0, confirm.as_concrete_TypeRef()) }
-                == kAXErrorSuccess
-            {
-                return true;
+            let child_actions = list_ax_actions(child);
+            for target in &targets {
+                if child_actions.iter().any(|a| a == target) {
+                    let action = CFString::new(target);
+                    unsafe { AXUIElementPerformAction(child.0, action.as_concrete_TypeRef()) };
+                    return true;
+                }
             }
         }
         false
