@@ -303,7 +303,10 @@ mod imp {
     fn try_parent_activation(el: &AXElement) -> bool {
         let mut current = crate::tree::copy_element_attr(el, "AXParent");
         for _ in 0..2 {
-            let ancestor = match &current { Some(a) => a, None => return false };
+            let ancestor = match &current {
+                Some(a) => a,
+                None => return false,
+            };
             let actions = list_ax_actions(ancestor);
             if try_action_from_list(ancestor, &actions, &["AXPress", "AXConfirm"]) {
                 return true;
