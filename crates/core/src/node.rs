@@ -16,6 +16,9 @@ pub struct AccessibilityNode {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub states: Vec<String>,
 

@@ -99,6 +99,7 @@ pub fn build_subtree(
         name,
         value,
         description,
+        hint: None,
         states,
         bounds,
         children,

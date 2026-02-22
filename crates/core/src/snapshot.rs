@@ -81,7 +81,7 @@ pub fn build(
     let raw_tree = adapter.get_tree(&window, opts)?;
 
     let mut refmap = RefMap::new();
-    let tree = allocate_refs(
+    let mut tree = allocate_refs(
         raw_tree,
         &mut refmap,
         opts.include_bounds,
@@ -89,6 +89,8 @@ pub fn build(
         window.pid,
         Some(window.app.as_str()),
     );
+
+    crate::hints::add_structural_hints(&mut tree);
 
     Ok(SnapshotResult {
         tree,

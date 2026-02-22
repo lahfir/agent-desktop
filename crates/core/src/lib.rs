@@ -2,6 +2,7 @@ pub mod action;
 pub mod adapter;
 pub mod commands;
 pub mod error;
+pub mod hints;
 pub mod node;
 pub mod output;
 pub mod refs;
