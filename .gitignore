@@ -20,8 +20,9 @@ Cargo.lock
 *~
 .vim/
 
-# Claude Code
-.claude/
+# Claude Code (keep skills and commands tracked, ignore settings)
+.claude/settings.json
+.claude/settings.local.json
 .agents/
 
 # Environment
