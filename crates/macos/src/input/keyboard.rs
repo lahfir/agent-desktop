@@ -258,7 +258,8 @@ mod imp {
                 return Err(AdapterError::new(
                     agent_desktop_core::error::ErrorCode::InvalidArgs,
                     format!("Unknown key: '{other}'"),
-                ))
+                )
+                .with_suggestion("Valid keys: a-z, 0-9, return, escape, tab, space, delete, left, right, up, down, f1-f12"))
             }
         };
         Ok(code)

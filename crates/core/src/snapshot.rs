@@ -45,10 +45,13 @@ pub fn build(
 
     let window = if let Some(wid) = window_id {
         windows.into_iter().find(|w| w.id == wid).ok_or_else(|| {
-            AppError::Adapter(crate::error::AdapterError::new(
-                crate::error::ErrorCode::WindowNotFound,
-                format!("No window with id {wid}"),
-            ))
+            AppError::Adapter(
+                crate::error::AdapterError::new(
+                    crate::error::ErrorCode::WindowNotFound,
+                    format!("No window with id {wid}"),
+                )
+                .with_suggestion("Run 'list-windows' to see available window IDs."),
+            )
         })?
     } else if let Some(app) = app_name {
         windows
@@ -64,17 +67,27 @@ pub fn build(
                     .and_then(|ws| ws.into_iter().next())
             })
             .ok_or_else(|| {
-                AppError::Adapter(crate::error::AdapterError::new(
-                    crate::error::ErrorCode::AppNotFound,
-                    format!("No window found for app '{app}'"),
-                ))
+                AppError::Adapter(
+                    crate::error::AdapterError::new(
+                        crate::error::ErrorCode::AppNotFound,
+                        format!("No window found for app '{app}'"),
+                    )
+                    .with_suggestion(
+                        "Verify the app is running. Use 'list-apps' to see running applications.",
+                    ),
+                )
             })?
     } else {
         windows.into_iter().find(|w| w.is_focused).ok_or_else(|| {
-            AppError::Adapter(crate::error::AdapterError::new(
-                crate::error::ErrorCode::WindowNotFound,
-                "No focused window found. Use --app to specify an application.",
-            ))
+            AppError::Adapter(
+                crate::error::AdapterError::new(
+                    crate::error::ErrorCode::WindowNotFound,
+                    "No focused window found",
+                )
+                .with_suggestion(
+                    "Use --app to specify an application, or click a window to focus it.",
+                ),
+            )
         })?
     };
 

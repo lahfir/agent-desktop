@@ -302,6 +302,7 @@ pub(crate) fn find_pid_by_name(app_name: &str) -> Result<i32, AdapterError> {
             agent_desktop_core::error::ErrorCode::AppNotFound,
             format!("App '{app_name}' not found"),
         )
+        .with_suggestion("Verify the app is running. Use 'list-apps' to see running applications.")
     })
 }
 

@@ -93,7 +93,8 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
         return Err(AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
             format!("Invalid app identifier: '{id}'"),
-        ));
+        )
+        .with_suggestion("Use an app name like 'Safari' or bundle ID like 'com.apple.Safari'."));
     }
 
     let filter = WindowFilter {
@@ -167,7 +168,8 @@ pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
                 return Err(AdapterError::new(
                     agent_desktop_core::error::ErrorCode::InvalidArgs,
                     format!("Invalid app name '{id}'"),
-                ));
+                )
+                .with_suggestion("App name should only contain letters, numbers, spaces, hyphens, dots, or underscores."));
             }
             let script = format!(
                 r#"tell application "System Events"

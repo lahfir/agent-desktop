@@ -1,4 +1,7 @@
-pub mod activate;
+pub mod ax_helpers;
+pub mod chain;
+pub mod chain_defs;
+pub mod discovery;
 pub mod dispatch;
 pub mod extras;
 

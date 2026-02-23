@@ -6,12 +6,13 @@ use crate::tree::AXElement;
 
 #[cfg(target_os = "macos")]
 pub(crate) fn select_value(el: &AXElement, value: &str) -> Result<(), AdapterError> {
-    use crate::actions::dispatch::{ax_press_or_fail, ax_set_value, element_role};
+    use crate::actions::ax_helpers;
+    use crate::actions::dispatch::ax_press_or_fail;
 
-    let role = element_role(el);
+    let role = ax_helpers::element_role(el);
     match role.as_deref() {
         Some("combobox") => {
-            ax_set_value(el, value)?;
+            ax_helpers::ax_set_value(el, value)?;
         }
         Some("popupbutton") | Some("menubutton") => {
             ax_press_or_fail(el, "select (open popup)")?;
@@ -37,7 +38,7 @@ pub(crate) fn select_value(el: &AXElement, value: &str) -> Result<(), AdapterErr
             }
         }
         _ => {
-            if ax_set_value(el, value).is_err() {
+            if ax_helpers::ax_set_value(el, value).is_err() {
                 return Err(AdapterError::new(
                     ErrorCode::ActionNotSupported,
                     format!(
@@ -155,7 +156,7 @@ pub(crate) fn ax_scroll(
         Direction::Right => "AXScrollRightByPage",
         Direction::Left => "AXScrollLeftByPage",
     };
-    if crate::actions::dispatch::has_ax_action(target, page_action) {
+    if crate::actions::ax_helpers::has_ax_action(target, page_action) {
         let ax = CFString::new(page_action);
         for _ in 0..amount {
             unsafe { AXUIElementPerformAction(target.0, ax.as_concrete_TypeRef()) };
@@ -240,7 +241,7 @@ fn try_scroll_bar_value_shift(
     use agent_desktop_core::action::Direction;
     use core_foundation::{base::TCFType, number::CFNumber, string::CFString};
 
-    if !crate::actions::activate::is_attr_settable(bar, "AXValue") {
+    if !crate::actions::ax_helpers::is_attr_settable(bar, "AXValue") {
         return false;
     }
     let current = read_scroll_bar_value(bar).unwrap_or(0.0);
@@ -347,7 +348,7 @@ fn try_select_row_in_direction(
         if !matches!(role.as_deref(), Some("AXTable" | "AXOutline" | "AXList")) {
             continue;
         }
-        if !crate::actions::activate::is_attr_settable(child, "AXSelectedRows") {
+        if !crate::actions::ax_helpers::is_attr_settable(child, "AXSelectedRows") {
             continue;
         }
         let rows = crate::tree::copy_ax_array(child, "AXRows").unwrap_or_default();

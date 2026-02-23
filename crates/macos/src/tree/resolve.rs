@@ -9,7 +9,28 @@ use super::element::{
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
     let root = element_for_pid(entry.pid);
     let mut visited = FxHashSet::default();
-    find_element_recursive(&root, entry, 0, 20, &mut visited)
+    if let Ok(handle) = find_element_recursive(&root, entry, 0, 20, &mut visited) {
+        return Ok(handle);
+    }
+    if entry.bounds_hash.is_some() && entry.name.is_some() {
+        let relaxed = RefEntry {
+            bounds_hash: None,
+            ..entry.clone()
+        };
+        visited.clear();
+        if let Ok(handle) = find_element_recursive(&root, &relaxed, 0, 20, &mut visited) {
+            return Ok(handle);
+        }
+    }
+    Err(AdapterError::new(
+        agent_desktop_core::error::ErrorCode::StaleRef,
+        format!(
+            "Element not found: role={}, name={:?}",
+            entry.role,
+            entry.name.as_deref().unwrap_or("(none)")
+        ),
+    )
+    .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref."))
 }
 
 #[cfg(target_os = "macos")]

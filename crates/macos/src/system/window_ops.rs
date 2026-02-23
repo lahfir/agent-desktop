@@ -43,7 +43,8 @@ mod imp {
             return Err(AdapterError::new(
                 ErrorCode::ActionFailed,
                 format!("Resize failed (err={err})"),
-            ));
+            )
+            .with_suggestion("Window may not support resizing. Try a different size."));
         }
         Ok(())
     }
@@ -66,6 +67,9 @@ mod imp {
             return Err(AdapterError::new(
                 ErrorCode::ActionFailed,
                 format!("Move failed (err={err})"),
+            )
+            .with_suggestion(
+                "Window may not support repositioning. Verify coordinates are on-screen.",
             ));
         }
         Ok(())
@@ -86,7 +90,8 @@ mod imp {
             return Err(AdapterError::new(
                 ErrorCode::ActionFailed,
                 format!("{op} failed (err={err})"),
-            ));
+            )
+            .with_suggestion("Window may not support this operation. Try 'focus-window' first."));
         }
         Ok(())
     }
@@ -101,7 +106,8 @@ mod imp {
                     return Err(AdapterError::new(
                         ErrorCode::ActionFailed,
                         format!("Zoom button press failed (err={err})"),
-                    ));
+                    )
+                    .with_suggestion("Try 'resize-window' with explicit dimensions instead."));
                 }
                 Ok(())
             }
