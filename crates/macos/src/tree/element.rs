@@ -161,7 +161,7 @@ mod imp {
         cf_type.downcast::<CFString>().map(|s| s.to_string())
     }
 
-    fn copy_value_typed(el: &AXElement) -> Option<String> {
+    pub fn copy_value_typed(el: &AXElement) -> Option<String> {
         let cf_attr = CFString::new(kAXValueAttribute);
         let mut val_ref: CFTypeRef = std::ptr::null_mut();
         let err = unsafe {
@@ -335,6 +335,9 @@ mod imp {
     pub fn resolve_element_name(_el: &AXElement) -> Option<String> {
         None
     }
+    pub fn copy_value_typed(_el: &AXElement) -> Option<String> {
+        None
+    }
     pub fn fetch_node_attrs(
         _el: &AXElement,
     ) -> (
@@ -350,6 +353,6 @@ mod imp {
 }
 
 pub use imp::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, element_for_pid,
-    fetch_node_attrs, read_bounds, resolve_element_name, AXElement,
+    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, copy_value_typed,
+    element_for_pid, fetch_node_attrs, read_bounds, resolve_element_name, AXElement,
 };

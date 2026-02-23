@@ -105,21 +105,23 @@ mod imp {
             }
 
             Action::SetValue(val) => {
-                ax_helpers::ax_set_value(el, val)?;
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: Some(val),
+                };
+                execute_chain(el, &caps, &chain_defs::SET_VALUE_CHAIN, &ctx)?;
             }
 
             Action::SetFocus => {
-                if !ax_helpers::ax_focus(el) {
-                    return Err(
-                        AdapterError::new(ErrorCode::ActionFailed, "SetFocus failed")
-                            .with_suggestion("Element may not support focus. Try 'click' instead."),
-                    );
-                }
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::FOCUS_CHAIN, &ctx)?;
             }
 
             Action::TypeText(text) => {
-                ax_helpers::ax_focus(el);
-                crate::input::keyboard::synthesize_text(text)?;
+                execute_type(el, text)?;
             }
 
             Action::PressKey(combo) => {
@@ -164,17 +166,19 @@ mod imp {
             }
 
             Action::ScrollTo => {
-                if !ax_helpers::try_ax_action(el, "AXScrollToVisible") {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionFailed,
-                        "AXScrollToVisible failed",
-                    )
-                    .with_suggestion("Element may not be inside a scrollable area"));
-                }
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::SCROLL_TO_CHAIN, &ctx)?;
             }
 
             Action::Clear => {
-                ax_helpers::ax_set_value(el, "")?;
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: Some(""),
+                };
+                execute_chain(el, &caps, &chain_defs::CLEAR_CHAIN, &ctx)?;
             }
 
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
@@ -193,7 +197,76 @@ mod imp {
             }
         }
 
-        Ok(ActionResult::new(label))
+        let mut result = ActionResult::new(label);
+        if let Some(state) = read_post_state(el, action) {
+            result = result.with_state(state);
+        }
+        Ok(result)
+    }
+
+    fn execute_type(el: &AXElement, text: &str) -> Result<(), AdapterError> {
+        if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
+            let _ = crate::system::app_ops::ensure_app_focused(pid);
+        }
+        ax_helpers::ax_focus(el);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let has_non_ascii = !text.is_ascii();
+        if has_non_ascii {
+            type_via_clipboard_paste(el, text)
+        } else {
+            crate::input::keyboard::synthesize_text(text)
+        }
+    }
+
+    fn type_via_clipboard_paste(_el: &AXElement, text: &str) -> Result<(), AdapterError> {
+        let saved = crate::input::clipboard::get().ok();
+        crate::input::clipboard::set(text)?;
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        crate::input::keyboard::synthesize_key(&agent_desktop_core::action::KeyCombo {
+            key: "v".into(),
+            modifiers: vec![agent_desktop_core::action::Modifier::Cmd],
+        })?;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        if let Some(prev) = saved {
+            let _ = crate::input::clipboard::set(&prev);
+        }
+        Ok(())
+    }
+
+    fn read_post_state(
+        el: &AXElement,
+        action: &Action,
+    ) -> Option<agent_desktop_core::action::ElementState> {
+        let delay_ms = match action {
+            Action::Click
+            | Action::Toggle
+            | Action::Check
+            | Action::Uncheck
+            | Action::TypeText(_) => 50,
+            Action::SetValue(_) | Action::Clear | Action::Expand | Action::Collapse => 0,
+            _ => return None,
+        };
+        if delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        }
+        let value = crate::tree::copy_value_typed(el);
+        let role = ax_helpers::element_role(el).unwrap_or_default();
+        let focused = crate::tree::element::copy_bool_attr(el, "AXFocused").unwrap_or(false);
+        let enabled = crate::tree::element::copy_bool_attr(el, "AXEnabled").unwrap_or(true);
+        let mut states = Vec::new();
+        if focused {
+            states.push("focused".into());
+        }
+        if !enabled {
+            states.push("disabled".into());
+        }
+        Some(agent_desktop_core::action::ElementState {
+            role,
+            states,
+            value,
+        })
     }
 
     pub fn ax_press_or_fail(el: &AXElement, context: &str) -> Result<(), AdapterError> {

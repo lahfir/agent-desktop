@@ -108,6 +108,124 @@ mod imp {
         suggestion: "Try 'click' to close it instead.",
     };
 
+    pub static SET_VALUE_CHAIN: ChainDef = ChainDef {
+        pre_scroll: false,
+        steps: &[
+            ChainStep::SetDynamic { attr: "AXValue" },
+            ChainStep::FocusThenSetDynamic { attr: "AXValue" },
+        ],
+        suggestion: "Try 'clear' then 'type', or check element is a text field.",
+    };
+
+    pub static CLEAR_CHAIN: ChainDef = ChainDef {
+        pre_scroll: false,
+        steps: &[
+            ChainStep::SetDynamic { attr: "AXValue" },
+            ChainStep::FocusThenSetDynamic { attr: "AXValue" },
+            ChainStep::Custom {
+                label: "select_all_delete",
+                func: select_all_then_delete,
+            },
+        ],
+        suggestion: "Try 'press cmd+a' then 'press delete'.",
+    };
+
+    pub static FOCUS_CHAIN: ChainDef = ChainDef {
+        pre_scroll: false,
+        steps: &[
+            ChainStep::SetBool {
+                attr: "AXFocused",
+                value: true,
+            },
+            ChainStep::Action("AXRaise"),
+            ChainStep::Action("AXPress"),
+            ChainStep::SetBool {
+                attr: "AXSelected",
+                value: true,
+            },
+            ChainStep::CGClick {
+                button: MouseButton::Left,
+                count: 1,
+            },
+        ],
+        suggestion: "Try 'click' to focus the element instead.",
+    };
+
+    pub static SCROLL_TO_CHAIN: ChainDef = ChainDef {
+        pre_scroll: false,
+        steps: &[
+            ChainStep::Action("AXScrollToVisible"),
+            ChainStep::Custom {
+                label: "walk_parents_scroll",
+                func: walk_parents_and_scroll,
+            },
+        ],
+        suggestion: "Element may not be in a scrollable container.",
+    };
+
+    fn select_all_then_delete(el: &AXElement, _caps: &ElementCaps) -> bool {
+        use accessibility_sys::AXUIElementPostKeyboardEvent;
+
+        if !ax_helpers::ax_focus(el) {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let pid = match crate::system::app_ops::pid_from_element(el) {
+            Some(p) => p,
+            None => return false,
+        };
+        let app = crate::tree::element_for_pid(pid);
+        unsafe {
+            AXUIElementPostKeyboardEvent(app.0, 0, 55, true);
+            AXUIElementPostKeyboardEvent(app.0, 0, 0, true);
+            AXUIElementPostKeyboardEvent(app.0, 0, 0, false);
+            AXUIElementPostKeyboardEvent(app.0, 0, 55, false);
+        };
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        unsafe {
+            AXUIElementPostKeyboardEvent(app.0, 0, 51, true);
+            AXUIElementPostKeyboardEvent(app.0, 0, 51, false);
+        };
+        true
+    }
+
+    fn walk_parents_and_scroll(el: &AXElement, _caps: &ElementCaps) -> bool {
+        use accessibility_sys::kAXRoleAttribute;
+
+        let bounds = match crate::tree::read_bounds(el) {
+            Some(b) => b,
+            None => return false,
+        };
+        let mut current = crate::tree::copy_element_attr(el, "AXParent");
+        for _ in 0..8 {
+            let parent = match &current {
+                Some(p) => p,
+                None => return false,
+            };
+            let role = crate::tree::copy_string_attr(parent, kAXRoleAttribute);
+            if role.as_deref() == Some("AXScrollArea") {
+                let parent_bounds = match crate::tree::read_bounds(parent) {
+                    Some(b) => b,
+                    None => return false,
+                };
+                let target_y = bounds.y + bounds.height / 2.0;
+                let visible_mid = parent_bounds.y + parent_bounds.height / 2.0;
+                if target_y < parent_bounds.y || target_y > parent_bounds.y + parent_bounds.height {
+                    let dy = if target_y > visible_mid { -5 } else { 5 };
+                    let cx = parent_bounds.x + parent_bounds.width / 2.0;
+                    let cy = parent_bounds.y + parent_bounds.height / 2.0;
+                    for _ in 0..20 {
+                        let _ = crate::input::mouse::synthesize_scroll_at(cx, cy, dy, 0);
+                        std::thread::sleep(std::time::Duration::from_millis(16));
+                    }
+                }
+                return true;
+            }
+            current = crate::tree::copy_element_attr(parent, "AXParent");
+        }
+        false
+    }
+
     fn try_show_alternate_ui(el: &AXElement, _caps: &ElementCaps) -> bool {
         if !ax_helpers::has_ax_action(el, "AXShowAlternateUI") {
             return false;
@@ -238,5 +356,6 @@ mod imp {}
 
 #[cfg(target_os = "macos")]
 pub(crate) use imp::{
-    double_click, triple_click, CLICK_CHAIN, COLLAPSE_CHAIN, EXPAND_CHAIN, RIGHT_CLICK_CHAIN,
+    double_click, triple_click, CLEAR_CHAIN, CLICK_CHAIN, COLLAPSE_CHAIN, EXPAND_CHAIN,
+    FOCUS_CHAIN, RIGHT_CLICK_CHAIN, SCROLL_TO_CHAIN, SET_VALUE_CHAIN,
 };

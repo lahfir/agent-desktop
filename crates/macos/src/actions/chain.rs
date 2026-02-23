@@ -15,6 +15,9 @@ pub enum ChainStep {
         attr: &'static str,
     },
     FocusThenAction(&'static str),
+    FocusThenSetDynamic {
+        attr: &'static str,
+    },
     FocusThenConfirmOrPress,
     ChildActions {
         actions: &'static [&'static str],
@@ -93,6 +96,7 @@ mod imp {
             ChainStep::SetBool { attr, .. } => attr,
             ChainStep::SetDynamic { attr } => attr,
             ChainStep::FocusThenAction(name) => name,
+            ChainStep::FocusThenSetDynamic { attr } => attr,
             ChainStep::FocusThenConfirmOrPress => "FocusThenConfirmOrPress",
             ChainStep::ChildActions { .. } => "ChildActions",
             ChainStep::AncestorActions { .. } => "AncestorActions",
@@ -134,6 +138,18 @@ mod imp {
                 }
                 std::thread::sleep(Duration::from_millis(50));
                 ax_helpers::try_ax_action_retried(el, name)
+            }
+
+            ChainStep::FocusThenSetDynamic { attr } => {
+                let value = match ctx.dynamic_value {
+                    Some(v) => v,
+                    None => return false,
+                };
+                if !ax_helpers::ax_focus(el) {
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+                ax_helpers::set_ax_string_or_err(el, attr, value).is_ok()
             }
 
             ChainStep::FocusThenConfirmOrPress => {
