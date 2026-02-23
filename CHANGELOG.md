@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.3](https://github.com/lahfir/agent-desktop/compare/v0.1.2...v0.1.3) (2026-02-23)
+
+
+### Bug Fixes
+
+* correct GitHub Release download URL and simplify tag format ([8f66a93](https://github.com/lahfir/agent-desktop/commit/8f66a9346e02a751a83ac02313dcec2d9c81bde8))
+* include README and CHANGELOG in npm package ([084fc8c](https://github.com/lahfir/agent-desktop/commit/084fc8c960527c0d0654028794ec3c4fd2d970c4))
+
+
+### Performance
+
+* use curl for binary download in postinstall ([ebafb71](https://github.com/lahfir/agent-desktop/commit/ebafb71603f5f2b32af8ac5bf6c88df3d6012f70))
+
 ## [0.1.2](https://github.com/lahfir/agent-desktop/compare/agent-desktop-v0.1.1...agent-desktop-v0.1.2) (2026-02-23)
 
 
