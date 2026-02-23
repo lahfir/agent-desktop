@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "release-type": "rust",
+  "release-type": "simple",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "packages": {
@@ -8,13 +8,18 @@
       "package-name": "agent-desktop",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "npm/package.json"
+        {
+          "type": "generic",
+          "path": "Cargo.toml"
+        },
+        {
+          "type": "json",
+          "path": "npm/package.json",
+          "jsonpath": "$.version"
+        }
       ]
     }
   },
-  "plugins": [
-    "cargo-workspace"
-  ],
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "fix", "section": "Bug Fixes" },
