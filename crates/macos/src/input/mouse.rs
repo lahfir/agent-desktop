@@ -46,7 +46,7 @@ mod imp {
         let step_delay = std::time::Duration::from_millis(duration_ms / steps as u64);
 
         post_event(CGEventType::LeftMouseDown, from, CGMouseButton::Left)?;
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(200));
 
         for i in 1..=steps {
             let t = i as f64 / steps as f64;
@@ -60,6 +60,7 @@ mod imp {
             std::thread::sleep(step_delay);
         }
 
+        std::thread::sleep(std::time::Duration::from_millis(500));
         post_event(CGEventType::LeftMouseUp, to, CGMouseButton::Left)
     }
 
