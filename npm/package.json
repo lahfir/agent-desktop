@@ -1,6 +1,6 @@
 {
   "name": "agent-desktop",
-  "version": "0.0.0-development",
+  "version": "0.1.1",
   "description": "AI agent tool for observing and controlling desktop applications via native OS accessibility trees",
   "license": "Apache-2.0",
   "repository": {
