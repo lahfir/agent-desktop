@@ -140,7 +140,7 @@ jobs:
           fi
           echo "OK: ${ASSETS} assets found on release"
 
-      - name: Sync version to package.json
+      - name: Prepare npm package
         run: |
           VERSION=${{ needs.release-please.outputs.version }}
           cd npm
@@ -150,6 +150,8 @@ jobs:
             require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
           echo "npm package version set to ${VERSION}"
+          cp ../README.md README.md
+          cp ../CHANGELOG.md CHANGELOG.md 2>/dev/null || true
 
       - name: Publish to npm
         run: npm publish --provenance --access public
