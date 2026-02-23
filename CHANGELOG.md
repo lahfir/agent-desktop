@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/lahfir/agent-desktop/compare/v0.1.3...v0.1.4) (2026-02-23)
+
+
+### Features
+
+* add agent-desktop skill for universal AI agent support ([ef45135](https://github.com/lahfir/agent-desktop/commit/ef45135087d09a7e065f65d9a0558d1e710cb8bf))
+* add Claude Code skills for agent-desktop automation ([ad91cd3](https://github.com/lahfir/agent-desktop/commit/ad91cd32cf2de1c1c8dcda4c0dcae37f0022b4c6))
+
 ## [0.1.3](https://github.com/lahfir/agent-desktop/compare/v0.1.2...v0.1.3) (2026-02-23)
 
 
