@@ -1,52 +1,54 @@
+use agent_desktop_core::action::MouseButton;
 use agent_desktop_core::error::{AdapterError, ErrorCode};
+
+use crate::actions::discovery::ElementCaps;
+use crate::tree::AXElement;
+
+#[allow(dead_code)]
+pub enum ChainStep {
+    Action(&'static str),
+    SetBool {
+        attr: &'static str,
+        value: bool,
+    },
+    SetDynamic {
+        attr: &'static str,
+    },
+    FocusThenAction(&'static str),
+    FocusThenConfirmOrPress,
+    ChildActions {
+        actions: &'static [&'static str],
+        limit: usize,
+    },
+    AncestorActions {
+        actions: &'static [&'static str],
+        limit: usize,
+    },
+    Custom {
+        label: &'static str,
+        func: fn(&AXElement, &ElementCaps) -> bool,
+    },
+    CGClick {
+        button: MouseButton,
+        count: u32,
+    },
+}
+
+pub struct ChainDef {
+    pub pre_scroll: bool,
+    pub steps: &'static [ChainStep],
+    pub suggestion: &'static str,
+}
+
+pub struct ChainContext<'a> {
+    pub dynamic_value: Option<&'a str>,
+}
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use crate::actions::{ax_helpers, discovery::ElementCaps};
-    use crate::tree::AXElement;
-    use agent_desktop_core::action::MouseButton;
+    use crate::actions::ax_helpers;
     use std::time::{Duration, Instant};
-
-    #[allow(dead_code)]
-    pub enum ChainStep {
-        Action(&'static str),
-        SetBool {
-            attr: &'static str,
-            value: bool,
-        },
-        SetDynamic {
-            attr: &'static str,
-        },
-        FocusThenAction(&'static str),
-        FocusThenConfirmOrPress,
-        ChildActions {
-            actions: &'static [&'static str],
-            limit: usize,
-        },
-        AncestorActions {
-            actions: &'static [&'static str],
-            limit: usize,
-        },
-        Custom {
-            label: &'static str,
-            func: fn(&AXElement, &ElementCaps) -> bool,
-        },
-        CGClick {
-            button: MouseButton,
-            count: u32,
-        },
-    }
-
-    pub struct ChainDef {
-        pub pre_scroll: bool,
-        pub steps: &'static [ChainStep],
-        pub suggestion: &'static str,
-    }
-
-    pub struct ChainContext<'a> {
-        pub dynamic_value: Option<&'a str>,
-    }
 
     const CHAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -173,49 +175,6 @@ mod imp {
 #[cfg(not(target_os = "macos"))]
 mod imp {
     use super::*;
-    use crate::actions::discovery::ElementCaps;
-    use crate::tree::AXElement;
-    use agent_desktop_core::action::MouseButton;
-
-    #[allow(dead_code)]
-    pub enum ChainStep {
-        Action(&'static str),
-        SetBool {
-            attr: &'static str,
-            value: bool,
-        },
-        SetDynamic {
-            attr: &'static str,
-        },
-        FocusThenAction(&'static str),
-        FocusThenConfirmOrPress,
-        ChildActions {
-            actions: &'static [&'static str],
-            limit: usize,
-        },
-        AncestorActions {
-            actions: &'static [&'static str],
-            limit: usize,
-        },
-        Custom {
-            label: &'static str,
-            func: fn(&AXElement, &ElementCaps) -> bool,
-        },
-        CGClick {
-            button: MouseButton,
-            count: u32,
-        },
-    }
-
-    pub struct ChainDef {
-        pub pre_scroll: bool,
-        pub steps: &'static [ChainStep],
-        pub suggestion: &'static str,
-    }
-
-    pub struct ChainContext<'a> {
-        pub dynamic_value: Option<&'a str>,
-    }
 
     pub fn execute_chain(
         _el: &AXElement,
@@ -231,5 +190,4 @@ mod imp {
     }
 }
 
-#[allow(unused_imports)]
-pub(crate) use imp::{execute_chain, ChainContext, ChainDef, ChainStep};
+pub(crate) use imp::execute_chain;

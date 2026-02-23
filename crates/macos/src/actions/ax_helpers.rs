@@ -50,16 +50,6 @@ mod imp {
         err == kAXErrorSuccess
     }
 
-    #[allow(dead_code)]
-    pub fn set_ax_string(el: &AXElement, attr: &str, value: &str) -> bool {
-        let cf_attr = CFString::new(attr);
-        let cf_val = CFString::new(value);
-        let err = unsafe {
-            AXUIElementSetAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), cf_val.as_CFTypeRef())
-        };
-        err == kAXErrorSuccess
-    }
-
     pub fn set_ax_string_or_err(
         el: &AXElement,
         attr: &str,
@@ -183,9 +173,6 @@ mod imp {
         false
     }
     pub fn set_ax_bool(_el: &AXElement, _attr: &str, _value: bool) -> bool {
-        false
-    }
-    pub fn set_ax_string(_el: &AXElement, _attr: &str, _value: &str) -> bool {
         false
     }
     pub fn set_ax_string_or_err(

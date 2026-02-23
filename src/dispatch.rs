@@ -16,7 +16,7 @@ use serde_json::Value;
 use crate::cli::Commands;
 
 pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    tracing::debug!("dispatch: {}", command_name(&cmd));
+    tracing::debug!("dispatch: {}", cmd.name());
     match cmd {
         Commands::Snapshot(a) => snapshot::execute(
             snapshot::SnapshotArgs {
@@ -26,7 +26,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 include_bounds: a.include_bounds,
                 interactive_only: a.interactive_only,
                 compact: a.compact,
-                surface: cli_surface_to_core(&a.surface),
+                surface: a.surface.to_core(),
             },
             adapter,
         ),
@@ -388,73 +388,5 @@ fn parse_xy_opt(s: Option<&str>) -> Result<Option<(f64, f64)>, AppError> {
     match s {
         Some(s) => parse_xy(s).map(Some),
         None => Ok(None),
-    }
-}
-
-fn command_name(cmd: &Commands) -> &'static str {
-    match cmd {
-        Commands::Snapshot(_) => "snapshot",
-        Commands::Find(_) => "find",
-        Commands::Screenshot(_) => "screenshot",
-        Commands::Get(_) => "get",
-        Commands::Is(_) => "is",
-        Commands::Click(_) => "click",
-        Commands::DoubleClick(_) => "double-click",
-        Commands::TripleClick(_) => "triple-click",
-        Commands::RightClick(_) => "right-click",
-        Commands::Type(_) => "type",
-        Commands::SetValue(_) => "set-value",
-        Commands::Clear(_) => "clear",
-        Commands::Focus(_) => "focus",
-        Commands::Toggle(_) => "toggle",
-        Commands::Check(_) => "check",
-        Commands::Uncheck(_) => "uncheck",
-        Commands::Expand(_) => "expand",
-        Commands::Collapse(_) => "collapse",
-        Commands::Select(_) => "select",
-        Commands::Scroll(_) => "scroll",
-        Commands::ScrollTo(_) => "scroll-to",
-        Commands::Press(_) => "press",
-        Commands::KeyDown(_) => "key-down",
-        Commands::KeyUp(_) => "key-up",
-        Commands::Hover(_) => "hover",
-        Commands::Drag(_) => "drag",
-        Commands::MouseMove(_) => "mouse-move",
-        Commands::MouseClick(_) => "mouse-click",
-        Commands::MouseDown(_) => "mouse-down",
-        Commands::MouseUp(_) => "mouse-up",
-        Commands::Launch(_) => "launch",
-        Commands::CloseApp(_) => "close-app",
-        Commands::ListWindows(_) => "list-windows",
-        Commands::ListApps => "list-apps",
-        Commands::ListSurfaces(_) => "list-surfaces",
-        Commands::FocusWindow(_) => "focus-window",
-        Commands::ResizeWindow(_) => "resize-window",
-        Commands::MoveWindow(_) => "move-window",
-        Commands::Minimize(_) => "minimize",
-        Commands::Maximize(_) => "maximize",
-        Commands::Restore(_) => "restore",
-        Commands::ClipboardGet => "clipboard-get",
-        Commands::ClipboardSet(_) => "clipboard-set",
-        Commands::ClipboardClear => "clipboard-clear",
-        Commands::Wait(_) => "wait",
-        Commands::Status => "status",
-        Commands::Permissions(_) => "permissions",
-        Commands::Version(_) => "version",
-        Commands::Batch(_) => "batch",
-    }
-}
-
-fn cli_surface_to_core(s: &crate::cli::Surface) -> agent_desktop_core::adapter::SnapshotSurface {
-    use crate::cli::Surface;
-    use agent_desktop_core::adapter::SnapshotSurface;
-    match s {
-        Surface::Window => SnapshotSurface::Window,
-        Surface::Focused => SnapshotSurface::Focused,
-        Surface::Menu => SnapshotSurface::Menu,
-        Surface::Menubar => SnapshotSurface::Menubar,
-        Surface::Sheet => SnapshotSurface::Sheet,
-        Surface::Popover => SnapshotSurface::Popover,
-        Surface::Alert => SnapshotSurface::Alert,
     }
 }
