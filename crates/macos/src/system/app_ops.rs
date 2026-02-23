@@ -13,6 +13,7 @@ pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
 
 #[cfg(target_os = "macos")]
 pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
+    tracing::debug!("system: ensure_app_focused pid={pid}");
     use accessibility_sys::{kAXErrorSuccess, AXUIElementSetAttributeValue};
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
@@ -36,6 +37,11 @@ pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
 
 #[cfg(target_os = "macos")]
 pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
+    tracing::debug!(
+        "system: focus_window app={:?} title={:?}",
+        win.app,
+        win.title
+    );
     use accessibility_sys::{
         kAXErrorSuccess, AXUIElementCreateApplication, AXUIElementPerformAction,
         AXUIElementSetAttributeValue,
@@ -85,6 +91,7 @@ pub fn focus_window_impl(_win: &WindowInfo) -> Result<(), AdapterError> {
 
 #[cfg(target_os = "macos")]
 pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
+    tracing::debug!("system: launch app={id:?} timeout={timeout_ms}ms");
     use crate::adapter::list_windows_impl;
     use std::process::Command;
     use std::time::{Duration, Instant};
@@ -93,7 +100,8 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
         return Err(AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
             format!("Invalid app identifier: '{id}'"),
-        ));
+        )
+        .with_suggestion("Use an app name like 'Safari' or bundle ID like 'com.apple.Safari'."));
     }
 
     let filter = WindowFilter {
@@ -148,6 +156,7 @@ pub fn launch_app_impl(_id: &str, _timeout_ms: u64) -> Result<WindowInfo, Adapte
 
 #[cfg(target_os = "macos")]
 pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
+    tracing::debug!("system: close app={id:?} force={force}");
     use std::process::Command;
     if force {
         Command::new("pkill")
@@ -167,7 +176,8 @@ pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
                 return Err(AdapterError::new(
                     agent_desktop_core::error::ErrorCode::InvalidArgs,
                     format!("Invalid app name '{id}'"),
-                ));
+                )
+                .with_suggestion("App name should only contain letters, numbers, spaces, hyphens, dots, or underscores."));
             }
             let script = format!(
                 r#"tell application "System Events"

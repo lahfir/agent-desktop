@@ -3,35 +3,92 @@ use agent_desktop_core::error::AdapterError;
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use std::process::Command;
+    use core_foundation::base::TCFType;
+    use std::ffi::c_void;
+
+    type Id = *mut c_void;
+    type Class = *mut c_void;
+    type Sel = *mut c_void;
+
+    extern "C" {
+        fn objc_getClass(name: *const core::ffi::c_char) -> Class;
+        fn sel_registerName(name: *const core::ffi::c_char) -> Sel;
+        fn objc_msgSend(receiver: Id, sel: Sel, ...) -> Id;
+        static NSPasteboardTypeString: Id;
+    }
+
+    fn pasteboard() -> Result<Id, AdapterError> {
+        unsafe {
+            let cls = objc_getClass(c"NSPasteboard".as_ptr());
+            if cls.is_null() {
+                return Err(AdapterError::internal("NSPasteboard class not found"));
+            }
+            let sel = sel_registerName(c"generalPasteboard".as_ptr());
+            let send: unsafe extern "C" fn(Class, Sel) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            let pb = send(cls, sel);
+            if pb.is_null() {
+                return Err(AdapterError::internal("generalPasteboard returned null"));
+            }
+            Ok(pb)
+        }
+    }
 
     pub fn get() -> Result<String, AdapterError> {
-        let output = Command::new("pbpaste")
-            .output()
-            .map_err(|e| AdapterError::internal(format!("pbpaste failed: {e}")))?;
-        String::from_utf8(output.stdout)
-            .map_err(|_| AdapterError::internal("Clipboard contains non-UTF8 data"))
+        tracing::debug!("clipboard: get");
+        unsafe {
+            let pb = pasteboard()?;
+            let sel = sel_registerName(c"stringForType:".as_ptr());
+            let send: unsafe extern "C" fn(Id, Sel, Id) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            let ns_string = send(pb, sel, NSPasteboardTypeString);
+            if ns_string.is_null() {
+                tracing::debug!("clipboard: get -> empty");
+                return Ok(String::new());
+            }
+            let cf_str = core_foundation::string::CFString::wrap_under_get_rule(
+                ns_string as core_foundation_sys::string::CFStringRef,
+            );
+            let result = cf_str.to_string();
+            tracing::debug!("clipboard: get -> {} chars", result.len());
+            Ok(result)
+        }
     }
 
     pub fn set(text: &str) -> Result<(), AdapterError> {
-        use std::io::Write;
-        let mut child = Command::new("pbcopy")
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| AdapterError::internal(format!("pbcopy failed: {e}")))?;
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|e| AdapterError::internal(format!("Write to pbcopy failed: {e}")))?;
+        tracing::debug!("clipboard: set {} chars", text.len());
+        unsafe {
+            let pb = pasteboard()?;
+            let clear_sel = sel_registerName(c"clearContents".as_ptr());
+            let send_void: unsafe extern "C" fn(Id, Sel) =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            send_void(pb, clear_sel);
+
+            let cf_text = core_foundation::string::CFString::new(text);
+            let ns_text = cf_text.as_concrete_TypeRef() as Id;
+            let set_sel = sel_registerName(c"setString:forType:".as_ptr());
+            let send_two: unsafe extern "C" fn(Id, Sel, Id, Id) -> bool =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            let ok = send_two(pb, set_sel, ns_text, NSPasteboardTypeString);
+            if !ok {
+                return Err(AdapterError::internal(
+                    "NSPasteboard setString:forType: failed",
+                ));
+            }
+            Ok(())
         }
-        child
-            .wait()
-            .map_err(|e| AdapterError::internal(format!("pbcopy wait failed: {e}")))?;
-        Ok(())
     }
 
     pub fn clear() -> Result<(), AdapterError> {
-        set("")
+        tracing::debug!("clipboard: clear");
+        unsafe {
+            let pb = pasteboard()?;
+            let sel = sel_registerName(c"clearContents".as_ptr());
+            let send: unsafe extern "C" fn(Id, Sel) =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            send(pb, sel);
+            Ok(())
+        }
     }
 }
 

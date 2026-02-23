@@ -6,8 +6,8 @@ pub mod surfaces;
 
 pub use builder::{build_subtree, window_element_for};
 pub use element::{
-    copy_ax_array, copy_element_attr, copy_string_attr, element_for_pid, read_bounds,
-    resolve_element_name, AXElement, ABSOLUTE_MAX_DEPTH,
+    copy_ax_array, copy_element_attr, copy_string_attr, copy_value_typed, element_for_pid,
+    read_bounds, resolve_element_name, AXElement, ABSOLUTE_MAX_DEPTH,
 };
 pub use resolve::{find_element_recursive, resolve_element_impl};
 pub use roles::{ax_role_to_str, is_interactive_role};

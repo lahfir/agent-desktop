@@ -12,6 +12,21 @@ pub enum Surface {
     Alert,
 }
 
+impl Surface {
+    pub fn to_core(&self) -> agent_desktop_core::adapter::SnapshotSurface {
+        use agent_desktop_core::adapter::SnapshotSurface;
+        match self {
+            Self::Window => SnapshotSurface::Window,
+            Self::Focused => SnapshotSurface::Focused,
+            Self::Menu => SnapshotSurface::Menu,
+            Self::Menubar => SnapshotSurface::Menubar,
+            Self::Sheet => SnapshotSurface::Sheet,
+            Self::Popover => SnapshotSurface::Popover,
+            Self::Alert => SnapshotSurface::Alert,
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 pub struct SnapshotArgs {
     #[arg(long, help = "Filter to application by name")]

@@ -11,6 +11,13 @@ mod imp {
     use core_graphics::geometry::CGPoint;
 
     pub fn synthesize_mouse(event: MouseEvent) -> Result<(), AdapterError> {
+        tracing::debug!(
+            "mouse: {:?} {:?} at ({:.0}, {:.0})",
+            event.kind,
+            event.button,
+            event.point.x,
+            event.point.y
+        );
         let point = CGPoint::new(event.point.x, event.point.y);
         let cg_button = to_cg_button(&event.button);
         match event.kind {
@@ -24,6 +31,14 @@ mod imp {
     }
 
     pub fn synthesize_drag(params: DragParams) -> Result<(), AdapterError> {
+        tracing::debug!(
+            "mouse: drag ({:.0},{:.0}) -> ({:.0},{:.0}) duration={}ms",
+            params.from.x,
+            params.from.y,
+            params.to.x,
+            params.to.y,
+            params.duration_ms.unwrap_or(300)
+        );
         let from = CGPoint::new(params.from.x, params.from.y);
         let to = CGPoint::new(params.to.x, params.to.y);
         let duration_ms = params.duration_ms.unwrap_or(300);
@@ -31,7 +46,7 @@ mod imp {
         let step_delay = std::time::Duration::from_millis(duration_ms / steps as u64);
 
         post_event(CGEventType::LeftMouseDown, from, CGMouseButton::Left)?;
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(200));
 
         for i in 1..=steps {
             let t = i as f64 / steps as f64;
@@ -45,6 +60,7 @@ mod imp {
             std::thread::sleep(step_delay);
         }
 
+        std::thread::sleep(std::time::Duration::from_millis(500));
         post_event(CGEventType::LeftMouseUp, to, CGMouseButton::Left)
     }
 
@@ -131,6 +147,7 @@ mod imp {
     }
 
     pub fn synthesize_scroll_at(x: f64, y: f64, dy: i32, dx: i32) -> Result<(), AdapterError> {
+        tracing::debug!("mouse: scroll at ({x:.0},{y:.0}) dy={dy} dx={dx}");
         use core_graphics::geometry::CGPoint;
 
         extern "C" {

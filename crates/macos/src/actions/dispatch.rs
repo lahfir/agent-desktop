@@ -6,23 +6,12 @@ use agent_desktop_core::{
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
+    use crate::actions::{
+        ax_helpers,
+        chain::{execute_chain, ChainContext},
+        chain_defs, discovery,
+    };
     use crate::tree::AXElement;
-    use accessibility_sys::{
-        kAXErrorSuccess, kAXFocusedAttribute, kAXPressAction, kAXValueAttribute,
-        AXUIElementCopyActionNames, AXUIElementPerformAction, AXUIElementSetAttributeValue,
-    };
-    use core_foundation::{
-        array::CFArray,
-        base::{CFType, TCFType},
-        boolean::CFBoolean,
-        string::CFString,
-    };
-
-    pub fn try_ax_action(el: &AXElement, name: &str) -> bool {
-        let action = CFString::new(name);
-        let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
-        err == kAXErrorSuccess
-    }
 
     pub fn click_via_bounds(
         el: &AXElement,
@@ -37,10 +26,10 @@ mod imp {
                 .with_suggestion("AX action failed and CGEvent fallback unavailable")
         })?;
         if bounds.width <= 0.0 || bounds.height <= 0.0 {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                "Element has zero-size bounds",
-            ));
+            return Err(
+                AdapterError::new(ErrorCode::ActionFailed, "Element has zero-size bounds")
+                    .with_suggestion("Element may be hidden or off-screen. Try 'scroll-to' first."),
+            );
         }
         let center = Point {
             x: bounds.x + bounds.width / 2.0,
@@ -71,21 +60,31 @@ mod imp {
 
     pub fn perform_action(el: &AXElement, action: &Action) -> Result<ActionResult, AdapterError> {
         let label = action_label(action);
+        tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
-                crate::actions::activate::smart_activate(el)?;
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::CLICK_CHAIN, &ctx)?;
             }
 
             Action::DoubleClick => {
-                crate::actions::activate::smart_double_activate(el)?;
+                let caps = discovery::discover(el);
+                chain_defs::double_click(el, &caps)?;
             }
 
             Action::RightClick => {
-                crate::actions::activate::smart_right_activate(el)?;
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::RIGHT_CLICK_CHAIN, &ctx)?;
             }
 
             Action::Toggle => {
-                let role = element_role(el);
+                let role = ax_helpers::element_role(el);
                 if !TOGGLEABLE_ROLES.iter().any(|r| role.as_deref() == Some(*r)) {
                     return Err(AdapterError::new(
                         ErrorCode::ActionNotSupported,
@@ -98,40 +97,31 @@ mod imp {
                         "Toggle works on checkboxes, switches, and radio buttons. Use 'click' for other elements.",
                     ));
                 }
-                crate::actions::activate::smart_activate(el)?;
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::CLICK_CHAIN, &ctx)?;
             }
 
             Action::SetValue(val) => {
-                ax_set_value(el, val)?;
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: Some(val),
+                };
+                execute_chain(el, &caps, &chain_defs::SET_VALUE_CHAIN, &ctx)?;
             }
 
             Action::SetFocus => {
-                let cf_attr = CFString::new(kAXFocusedAttribute);
-                let err = unsafe {
-                    AXUIElementSetAttributeValue(
-                        el.0,
-                        cf_attr.as_concrete_TypeRef(),
-                        CFBoolean::true_value().as_CFTypeRef(),
-                    )
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
                 };
-                if err != kAXErrorSuccess {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionFailed,
-                        format!("SetFocus failed (err={err})"),
-                    ));
-                }
+                execute_chain(el, &caps, &chain_defs::FOCUS_CHAIN, &ctx)?;
             }
 
             Action::TypeText(text) => {
-                let cf_attr = CFString::new(kAXFocusedAttribute);
-                unsafe {
-                    AXUIElementSetAttributeValue(
-                        el.0,
-                        cf_attr.as_concrete_TypeRef(),
-                        CFBoolean::true_value().as_CFTypeRef(),
-                    )
-                };
-                crate::input::keyboard::synthesize_text(text)?;
+                execute_type(el, text)?;
             }
 
             Action::PressKey(combo) => {
@@ -139,57 +129,19 @@ mod imp {
             }
 
             Action::Expand => {
-                if !try_ax_action(el, "AXExpand") {
-                    if crate::actions::activate::is_attr_settable(el, "AXDisclosing") {
-                        let cf_attr = CFString::new("AXDisclosing");
-                        let err = unsafe {
-                            AXUIElementSetAttributeValue(
-                                el.0,
-                                cf_attr.as_concrete_TypeRef(),
-                                CFBoolean::true_value().as_CFTypeRef(),
-                            )
-                        };
-                        if err != kAXErrorSuccess {
-                            return Err(AdapterError::new(
-                                ErrorCode::ActionFailed,
-                                format!("AXDisclosing set to true failed (err={err})"),
-                            ));
-                        }
-                    } else {
-                        return Err(AdapterError::new(
-                            ErrorCode::ActionNotSupported,
-                            "AXExpand failed and AXDisclosing not settable",
-                        )
-                        .with_suggestion("Try 'click' to open it instead."));
-                    }
-                }
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::EXPAND_CHAIN, &ctx)?;
             }
 
             Action::Collapse => {
-                if !try_ax_action(el, "AXCollapse") {
-                    if crate::actions::activate::is_attr_settable(el, "AXDisclosing") {
-                        let cf_attr = CFString::new("AXDisclosing");
-                        let err = unsafe {
-                            AXUIElementSetAttributeValue(
-                                el.0,
-                                cf_attr.as_concrete_TypeRef(),
-                                CFBoolean::false_value().as_CFTypeRef(),
-                            )
-                        };
-                        if err != kAXErrorSuccess {
-                            return Err(AdapterError::new(
-                                ErrorCode::ActionFailed,
-                                format!("AXDisclosing set to false failed (err={err})"),
-                            ));
-                        }
-                    } else {
-                        return Err(AdapterError::new(
-                            ErrorCode::ActionNotSupported,
-                            "AXCollapse failed and AXDisclosing not settable",
-                        )
-                        .with_suggestion("Try 'click' to close it instead."));
-                    }
-                }
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::COLLAPSE_CHAIN, &ctx)?;
             }
 
             Action::Select(value) => {
@@ -209,24 +161,24 @@ mod imp {
             }
 
             Action::TripleClick => {
-                crate::actions::activate::smart_triple_activate(el)?;
+                let caps = discovery::discover(el);
+                chain_defs::triple_click(el, &caps)?;
             }
 
             Action::ScrollTo => {
-                let ax_action = CFString::new("AXScrollToVisible");
-                let err =
-                    unsafe { AXUIElementPerformAction(el.0, ax_action.as_concrete_TypeRef()) };
-                if err != kAXErrorSuccess {
-                    return Err(AdapterError::new(
-                        ErrorCode::ActionFailed,
-                        format!("AXScrollToVisible failed (err={err})"),
-                    )
-                    .with_suggestion("Element may not be inside a scrollable area"));
-                }
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: None,
+                };
+                execute_chain(el, &caps, &chain_defs::SCROLL_TO_CHAIN, &ctx)?;
             }
 
             Action::Clear => {
-                ax_set_value(el, "")?;
+                let caps = discovery::discover(el);
+                let ctx = ChainContext {
+                    dynamic_value: Some(""),
+                };
+                execute_chain(el, &caps, &chain_defs::CLEAR_CHAIN, &ctx)?;
             }
 
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
@@ -236,7 +188,8 @@ mod imp {
                         "{} requires adapter-level handling, not element action",
                         label
                     ),
-                ));
+                )
+                .with_suggestion("Use the top-level command (e.g. 'hover', 'drag', 'key-down') instead of targeting an element."));
             }
 
             _ => {
@@ -244,62 +197,91 @@ mod imp {
             }
         }
 
-        Ok(ActionResult::new(label))
+        let mut result = ActionResult::new(label);
+        if let Some(state) = read_post_state(el, action) {
+            result = result.with_state(state);
+        }
+        Ok(result)
+    }
+
+    fn execute_type(el: &AXElement, text: &str) -> Result<(), AdapterError> {
+        if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
+            let _ = crate::system::app_ops::ensure_app_focused(pid);
+        }
+        ax_helpers::ax_focus(el);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let has_non_ascii = !text.is_ascii();
+        if has_non_ascii {
+            type_via_clipboard_paste(el, text)
+        } else {
+            crate::input::keyboard::synthesize_text(text)
+        }
+    }
+
+    fn type_via_clipboard_paste(_el: &AXElement, text: &str) -> Result<(), AdapterError> {
+        let saved = crate::input::clipboard::get().ok();
+        crate::input::clipboard::set(text)?;
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        crate::input::keyboard::synthesize_key(&agent_desktop_core::action::KeyCombo {
+            key: "v".into(),
+            modifiers: vec![agent_desktop_core::action::Modifier::Cmd],
+        })?;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        if let Some(prev) = saved {
+            let _ = crate::input::clipboard::set(&prev);
+        }
+        Ok(())
+    }
+
+    fn read_post_state(
+        el: &AXElement,
+        action: &Action,
+    ) -> Option<agent_desktop_core::action::ElementState> {
+        let delay_ms = match action {
+            Action::Click
+            | Action::Toggle
+            | Action::Check
+            | Action::Uncheck
+            | Action::TypeText(_) => 50,
+            Action::SetValue(_) | Action::Clear | Action::Expand | Action::Collapse => 0,
+            _ => return None,
+        };
+        if delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        }
+        let value = crate::tree::copy_value_typed(el);
+        let role = ax_helpers::element_role(el).unwrap_or_default();
+        let focused = crate::tree::element::copy_bool_attr(el, "AXFocused").unwrap_or(false);
+        let enabled = crate::tree::element::copy_bool_attr(el, "AXEnabled").unwrap_or(true);
+        let mut states = Vec::new();
+        if focused {
+            states.push("focused".into());
+        }
+        if !enabled {
+            states.push("disabled".into());
+        }
+        Some(agent_desktop_core::action::ElementState {
+            role,
+            states,
+            value,
+        })
     }
 
     pub fn ax_press_or_fail(el: &AXElement, context: &str) -> Result<(), AdapterError> {
-        let action = CFString::new(kAXPressAction);
-        let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
-        if err != kAXErrorSuccess {
+        if !ax_helpers::ax_press(el) {
             return Err(AdapterError::new(
                 ErrorCode::ActionFailed,
-                format!("{context}: AXPress failed (err={err})"),
-            ));
+                format!("{context}: AXPress failed"),
+            )
+            .with_suggestion("Element may not be pressable. Try 'click' instead."));
         }
         Ok(())
-    }
-
-    pub fn ax_set_value(el: &AXElement, val: &str) -> Result<(), AdapterError> {
-        let cf_attr = CFString::new(kAXValueAttribute);
-        let cf_val = CFString::new(val);
-        let err = unsafe {
-            AXUIElementSetAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), cf_val.as_CFTypeRef())
-        };
-        if err != kAXErrorSuccess {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                format!("SetValue failed (err={err})"),
-            ));
-        }
-        Ok(())
-    }
-
-    pub fn element_role(el: &AXElement) -> Option<String> {
-        use accessibility_sys::kAXRoleAttribute;
-        crate::tree::copy_string_attr(el, kAXRoleAttribute)
-            .map(|r| crate::tree::roles::ax_role_to_str(&r).to_string())
-    }
-
-    pub fn has_ax_action(el: &AXElement, action_name: &str) -> bool {
-        let mut actions_ref: core_foundation_sys::array::CFArrayRef = std::ptr::null();
-        let err = unsafe { AXUIElementCopyActionNames(el.0, &mut actions_ref) };
-        if err != kAXErrorSuccess || actions_ref.is_null() {
-            return false;
-        }
-        let actions: CFArray<CFType> = unsafe { TCFType::wrap_under_create_rule(actions_ref) };
-        let target = CFString::new(action_name);
-        for i in 0..actions.len() {
-            if let Some(name) = actions.get(i).and_then(|v| v.downcast::<CFString>()) {
-                if name == target {
-                    return true;
-                }
-            }
-        }
-        false
     }
 
     fn check_uncheck(el: &AXElement, want_checked: bool) -> Result<(), AdapterError> {
-        let role = element_role(el);
+        let role = ax_helpers::element_role(el);
         if !TOGGLEABLE_ROLES.iter().any(|r| role.as_deref() == Some(*r)) {
             return Err(AdapterError::new(
                 ErrorCode::ActionNotSupported,
@@ -315,8 +297,11 @@ mod imp {
         if is_checked == want_checked {
             return Ok(());
         }
-        crate::actions::activate::smart_activate(el)?;
-        Ok(())
+        let caps = discovery::discover(el);
+        let ctx = ChainContext {
+            dynamic_value: None,
+        };
+        execute_chain(el, &caps, &chain_defs::CLICK_CHAIN, &ctx)
     }
 }
 
@@ -333,9 +318,7 @@ mod imp {
 pub use imp::perform_action;
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::{
-    ax_press_or_fail, ax_set_value, click_via_bounds, element_role, has_ax_action,
-};
+pub(crate) use imp::{ax_press_or_fail, click_via_bounds};
 
 fn action_label(action: &Action) -> String {
     match action {

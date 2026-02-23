@@ -34,10 +34,13 @@ pub fn execute(args: FocusWindowArgs, adapter: &dyn PlatformAdapter) -> Result<V
     };
 
     let window = window.ok_or_else(|| {
-        AppError::Adapter(crate::error::AdapterError::new(
-            crate::error::ErrorCode::WindowNotFound,
-            "No matching window found",
-        ))
+        AppError::Adapter(
+            crate::error::AdapterError::new(
+                crate::error::ErrorCode::WindowNotFound,
+                "No matching window found",
+            )
+            .with_suggestion("Run 'list-windows' to see available windows and their IDs."),
+        )
     })?;
 
     adapter.focus_window(&window)?;
