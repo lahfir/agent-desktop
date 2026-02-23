@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/lahfir/agent-desktop/compare/agent-desktop-v0.1.1...agent-desktop-v0.1.2) (2026-02-23)
+
+
+### Bug Fixes
+
+* use macos-latest for both build targets ([91c7677](https://github.com/lahfir/agent-desktop/commit/91c76777cb7ee864b45e14d123c79c08f0c2d5b9))
+
 ## [0.1.1](https://github.com/lahfir/agent-desktop/compare/agent-desktop-v0.1.0...agent-desktop-v0.1.1) (2026-02-23)
 
 
