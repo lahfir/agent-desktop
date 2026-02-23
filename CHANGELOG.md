@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.5](https://github.com/lahfir/agent-desktop/compare/v0.1.4...v0.1.5) (2026-02-23)
+
+
+### Features
+
+* add fallback chains for set-value, clear, focus, scroll-to, type and post-action state hints ([11f8da0](https://github.com/lahfir/agent-desktop/commit/11f8da06e84ed67b0e26dbc1946f7a7542e89dcd))
+* add structured verbose logging across all layers ([c7316e8](https://github.com/lahfir/agent-desktop/commit/c7316e8b5160ab0e6ba554bcd502d4c47adf8b1a))
+
+
+### Bug Fixes
+
+* add dwell time before drag release for drop target recognition ([2a52d62](https://github.com/lahfir/agent-desktop/commit/2a52d62106699b36f62f9af83895f2264b80efb1))
+
 ## [0.1.4](https://github.com/lahfir/agent-desktop/compare/v0.1.3...v0.1.4) (2026-02-23)
 
 
