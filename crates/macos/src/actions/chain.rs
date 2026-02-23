@@ -57,25 +57,46 @@ mod imp {
         ctx: &ChainContext,
     ) -> Result<(), AdapterError> {
         let deadline = Instant::now() + CHAIN_TIMEOUT;
+        let total = def.steps.len();
 
         ax_helpers::set_messaging_timeout(el, 3.0);
         if def.pre_scroll {
+            tracing::debug!("chain: pre-scroll AXScrollToVisible");
             ax_helpers::ensure_visible(el);
         }
 
-        for step in def.steps {
+        for (i, step) in def.steps.iter().enumerate() {
             if Instant::now() > deadline {
+                tracing::debug!("chain: timeout after {i}/{total} steps");
                 return Err(AdapterError::timeout("Chain execution exceeded 10s"));
             }
+            let label = step_label(step);
             if execute_step(el, caps, step, ctx) {
+                tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
                 return Ok(());
             }
+            tracing::debug!("chain: [{}/{}] {} -> skip", i + 1, total, label);
         }
 
+        tracing::debug!("chain: all {total} steps exhausted");
         Err(
             AdapterError::new(ErrorCode::ActionFailed, "All chain steps exhausted")
                 .with_suggestion(def.suggestion),
         )
+    }
+
+    fn step_label(step: &ChainStep) -> &'static str {
+        match step {
+            ChainStep::Action(name) => name,
+            ChainStep::SetBool { attr, .. } => attr,
+            ChainStep::SetDynamic { attr } => attr,
+            ChainStep::FocusThenAction(name) => name,
+            ChainStep::FocusThenConfirmOrPress => "FocusThenConfirmOrPress",
+            ChainStep::ChildActions { .. } => "ChildActions",
+            ChainStep::AncestorActions { .. } => "AncestorActions",
+            ChainStep::Custom { label, .. } => label,
+            ChainStep::CGClick { .. } => "CGClick",
+        }
     }
 
     fn execute_step(

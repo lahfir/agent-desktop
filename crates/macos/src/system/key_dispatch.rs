@@ -11,6 +11,7 @@ pub fn press_for_app_impl(app_name: &str, combo: &KeyCombo) -> Result<ActionResu
     use accessibility_sys::AXUIElementSetAttributeValue;
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
+    tracing::debug!("system: press_for_app app={app_name:?} key={:?}", combo.key);
     let pid = find_pid_by_name(app_name)?;
     let app_el = crate::tree::element_for_pid(pid);
     if app_el.0.is_null() {

@@ -18,7 +18,15 @@ pub fn resolve_ref(
         .get(ref_id)
         .ok_or_else(|| AppError::stale_ref(ref_id))?
         .clone();
+    tracing::debug!(
+        "resolve: {} -> pid={} role={} name={:?}",
+        ref_id,
+        entry.pid,
+        entry.role,
+        entry.name.as_deref().unwrap_or("(none)")
+    );
     let handle = adapter.resolve_element(&entry)?;
+    tracing::debug!("resolve: {} resolved successfully", ref_id);
     Ok((entry, handle))
 }
 

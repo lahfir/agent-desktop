@@ -60,6 +60,7 @@ mod imp {
 
     pub fn perform_action(el: &AXElement, action: &Action) -> Result<ActionResult, AdapterError> {
         let label = action_label(action);
+        tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
                 let caps = discovery::discover(el);

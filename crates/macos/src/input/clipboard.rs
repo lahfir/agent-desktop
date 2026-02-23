@@ -35,6 +35,7 @@ mod imp {
     }
 
     pub fn get() -> Result<String, AdapterError> {
+        tracing::debug!("clipboard: get");
         unsafe {
             let pb = pasteboard()?;
             let sel = sel_registerName(c"stringForType:".as_ptr());
@@ -42,16 +43,20 @@ mod imp {
                 std::mem::transmute(objc_msgSend as *const c_void);
             let ns_string = send(pb, sel, NSPasteboardTypeString);
             if ns_string.is_null() {
+                tracing::debug!("clipboard: get -> empty");
                 return Ok(String::new());
             }
             let cf_str = core_foundation::string::CFString::wrap_under_get_rule(
                 ns_string as core_foundation_sys::string::CFStringRef,
             );
-            Ok(cf_str.to_string())
+            let result = cf_str.to_string();
+            tracing::debug!("clipboard: get -> {} chars", result.len());
+            Ok(result)
         }
     }
 
     pub fn set(text: &str) -> Result<(), AdapterError> {
+        tracing::debug!("clipboard: set {} chars", text.len());
         unsafe {
             let pb = pasteboard()?;
             let clear_sel = sel_registerName(c"clearContents".as_ptr());
@@ -75,6 +80,7 @@ mod imp {
     }
 
     pub fn clear() -> Result<(), AdapterError> {
+        tracing::debug!("clipboard: clear");
         unsafe {
             let pb = pasteboard()?;
             let sel = sel_registerName(c"clearContents".as_ptr());

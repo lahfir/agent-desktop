@@ -16,6 +16,14 @@ pub struct SnapshotArgs {
 }
 
 pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    tracing::debug!(
+        "tree: snapshot app={:?} window_id={:?} max_depth={} interactive_only={}",
+        args.app.as_deref().unwrap_or("(focused)"),
+        args.window_id.as_deref().unwrap_or("(auto)"),
+        args.max_depth,
+        args.interactive_only
+    );
+
     let opts = crate::adapter::TreeOptions {
         max_depth: args.max_depth,
         include_bounds: args.include_bounds,
@@ -34,6 +42,13 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
     let ref_count = result.refmap.len();
     let tree = serde_json::to_value(&result.tree)?;
     let win = &result.window;
+
+    tracing::debug!(
+        "tree: snapshot complete app={:?} window={:?} refs={}",
+        win.app,
+        win.title,
+        ref_count
+    );
 
     Ok(json!({
         "app": win.app,

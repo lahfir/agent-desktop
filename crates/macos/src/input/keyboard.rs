@@ -8,6 +8,23 @@ mod imp {
     };
 
     pub fn synthesize_key(combo: &KeyCombo) -> Result<(), AdapterError> {
+        tracing::debug!(
+            "keyboard: synthesize_key {}{}",
+            if combo.modifiers.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "{}+",
+                    combo
+                        .modifiers
+                        .iter()
+                        .map(|m| format!("{m:?}"))
+                        .collect::<Vec<_>>()
+                        .join("+")
+                )
+            },
+            combo.key
+        );
         let key_code = key_name_to_code(&combo.key)?;
 
         let sys_wide = unsafe { AXUIElementCreateSystemWide() };
@@ -54,6 +71,7 @@ mod imp {
     }
 
     pub fn synthesize_text(text: &str) -> Result<(), AdapterError> {
+        tracing::debug!("keyboard: synthesize_text {} chars", text.len());
         let sys_wide = unsafe { AXUIElementCreateSystemWide() };
         if sys_wide.is_null() {
             return Err(AdapterError::internal(

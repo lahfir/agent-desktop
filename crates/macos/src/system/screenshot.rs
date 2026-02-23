@@ -6,6 +6,7 @@ mod imp {
     use std::process::Command;
 
     pub fn capture_app(pid: i32) -> Result<ImageBuffer, AdapterError> {
+        tracing::debug!("system: screenshot app pid={pid}");
         let temp = temp_path();
         let cg_id = find_cg_window_id_for_pid(pid);
 
@@ -31,6 +32,7 @@ mod imp {
     }
 
     pub fn capture_screen(_idx: usize) -> Result<ImageBuffer, AdapterError> {
+        tracing::debug!("system: screenshot screen");
         let temp = temp_path();
         let status = Command::new("screencapture")
             .args(["-x", "-t", "png"])

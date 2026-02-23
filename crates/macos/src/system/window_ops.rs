@@ -17,6 +17,12 @@ mod imp {
     }
 
     pub fn execute(win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {
+        tracing::debug!(
+            "system: window_op {:?} app={:?} title={:?}",
+            op,
+            win.app,
+            win.title
+        );
         let win_el = crate::tree::window_element_for(win.pid, &win.title);
         match op {
             WindowOp::Resize { width, height } => set_size(&win_el, width, height),
