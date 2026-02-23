@@ -1,0 +1,33 @@
+{
+  "name": "agent-desktop",
+  "version": "0.0.0-development",
+  "description": "AI agent tool for observing and controlling desktop applications via native OS accessibility trees",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lahfir/agent-desktop.git"
+  },
+  "homepage": "https://github.com/lahfir/agent-desktop",
+  "bin": {
+    "agent-desktop": "./bin/agent-desktop.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "files": [
+    "bin",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "desktop",
+    "automation",
+    "accessibility",
+    "cli",
+    "agent",
+    "macos",
+    "a11y"
+  ]
+}

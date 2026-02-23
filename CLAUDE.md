@@ -1,4 +1,25 @@
-# agent-desktop
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Common Commands
+
+```bash
+cargo build                                    # Debug build
+cargo build --release                          # Release build (<15MB target)
+cargo test --lib --workspace                   # Run all unit tests
+cargo test --lib -p agent-desktop-core         # Test core crate only
+cargo test --lib -p agent-desktop-macos        # Test macOS crate only
+cargo test test_name                           # Run a single test by name
+cargo clippy --all-targets -- -D warnings      # Lint (must pass, zero warnings)
+cargo fmt --all -- --check                     # Format check
+cargo fmt --all                                # Auto-format
+cargo tree -p agent-desktop-core               # Verify no platform crate leaks (CI enforces)
+```
+
+Run the binary: `./target/release/agent-desktop snapshot --app Finder -i`
+
+## Project Overview
 
 Cross-platform Rust CLI + MCP server enabling AI agents to observe and control desktop applications via native OS accessibility trees.
 
@@ -7,7 +28,19 @@ Cross-platform Rust CLI + MCP server enabling AI agents to observe and control d
 - All commits are authored by **Lahfir**
 - NEVER add `Co-Authored-By` lines, AI attribution badges, or "Generated with" footers
 - NEVER include co-committers of any kind
-- Commit messages: concise, imperative mood, focus on "why" not "what"
+- **Conventional Commits required.** Every commit message must use a type prefix:
+  - `feat:` — new feature (triggers minor version bump)
+  - `fix:` — bug fix (triggers patch version bump)
+  - `feat!:` or `BREAKING CHANGE:` footer — breaking change (triggers major version bump)
+  - `docs:` — documentation only
+  - `style:` — formatting, no code change
+  - `refactor:` — code change that neither fixes a bug nor adds a feature
+  - `chore:` — maintenance tasks, dependencies
+  - `ci:` — CI/CD changes
+  - `test:` — adding or fixing tests
+- Format: `type: concise imperative description` (lowercase type, no capital after colon)
+- Focus on "why" not "what"
+- Examples: `feat: add scroll-to command`, `fix: prevent stale ref on window resize`, `ci: add binary size check`
 
 ## Core Principle
 
@@ -28,8 +61,11 @@ agent-desktop/
 │   ├── windows/            # agent-desktop-windows (stub → Phase 2)
 │   └── linux/              # agent-desktop-linux (stub → Phase 2)
 ├── src/                    # agent-desktop binary (entry point)
-│   ├── main.rs             # mode detection, dispatch
-│   └── cli.rs              # clap derive structs
+│   ├── main.rs             # entry point, permission check, JSON envelope
+│   ├── cli.rs              # clap derive enum (Commands)
+│   ├── cli_args.rs         # all command argument structs
+│   ├── dispatch.rs         # command dispatcher + parse helpers
+│   └── batch_dispatch.rs   # batch command execution
 └── tests/
     ├── fixtures/           # golden JSON snapshots
     └── integration/        # macOS CI integration tests
@@ -370,17 +406,20 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Phase 1 Command Scope (30 commands)
+## Implemented Commands (50)
 
 | Category | Commands |
 |----------|----------|
-| App/Window (5) | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window` |
-| Observation (15) | `snapshot`, `screenshot`, `find`, `get` (text, value, title, bounds, role, states), `is` (visible, enabled, checked, focused, expanded) |
-| Interaction (11) | `click`, `double-click`, `right-click`, `type`, `set-value`, `focus`, `select`, `toggle`, `expand`, `collapse`, `scroll` |
-| Keyboard (1) | `press` |
-| Clipboard (2) | `clipboard get`, `clipboard set` |
-| Wait (3) | `wait` (ms), `wait --element`, `wait --window` |
+| App/Window (10) | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` |
+| Observation (6) | `snapshot`, `screenshot`, `find`, `get`, `is`, `list-surfaces` |
+| Interaction (14) | `click`, `double-click`, `triple-click`, `right-click`, `type`, `set-value`, `clear`, `focus`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse` |
+| Scroll (2) | `scroll`, `scroll-to` |
+| Keyboard (3) | `press`, `key-down`, `key-up` |
+| Mouse (5) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
+| Clipboard (3) | `clipboard-get`, `clipboard-set`, `clipboard-clear` |
+| Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu` flags) |
 | System (3) | `status`, `permissions`, `version` |
+| Batch (1) | `batch` |
 
 ## Non-Goals
 

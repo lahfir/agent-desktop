@@ -62,6 +62,11 @@ dist/
 *.rpm
 *.snap
 
+# npm (platform binaries downloaded by postinstall)
+npm/bin/agent-desktop-*
+npm/node_modules/
+node_modules/
+
 # Compound Engineering
 docs/
 todos/

@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-apple-darwin
+            runner: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Check binary size
+        run: |
+          SIZE=$(stat -f%z target/${{ matrix.target }}/release/agent-desktop)
+          LIMIT=$((15 * 1024 * 1024))
+          echo "Binary size: $(du -sh target/${{ matrix.target }}/release/agent-desktop | cut -f1)"
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "FAIL: binary exceeds 15MB limit (${SIZE} bytes)"
+            exit 1
+          fi
+
+      - name: Create tarball
+        run: |
+          VERSION=${{ needs.release-please.outputs.version }}
+          TARBALL="agent-desktop-v${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -czf "${TARBALL}" -C target/${{ matrix.target }}/release agent-desktop
+          shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256"
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: |
+            agent-desktop-v*.tar.gz
+            agent-desktop-v*.tar.gz.sha256
+
+  publish-github:
+    name: Publish to GitHub Release
+    needs: [release-please, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Create checksums file
+        run: |
+          cat *.sha256 > checksums.txt
+          echo "Checksums:"
+          cat checksums.txt
+
+      - name: Upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release upload ${{ needs.release-please.outputs.tag_name }} \
+            *.tar.gz checksums.txt \
+            --clobber
+
+  publish-npm:
+    name: Publish to npm
+    needs: [release-please, publish-github]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSETS=$(gh release view ${{ needs.release-please.outputs.tag_name }} --json assets --jq '.assets | length')
+          if [ "$ASSETS" -lt 3 ]; then
+            echo "FAIL: expected at least 3 assets (2 tarballs + checksums), found ${ASSETS}"
+            exit 1
+          fi
+          echo "OK: ${ASSETS} assets found on release"
+
+      - name: Sync version to package.json
+        run: |
+          VERSION=${{ needs.release-please.outputs.version }}
+          cd npm
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '${VERSION}';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "npm package version set to ${VERSION}"
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
