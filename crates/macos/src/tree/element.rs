@@ -290,6 +290,14 @@ mod imp {
             return None;
         }
 
+        if !point.x.is_finite()
+            || !point.y.is_finite()
+            || !size.width.is_finite()
+            || !size.height.is_finite()
+        {
+            return None;
+        }
+
         Some(Rect {
             x: point.x,
             y: point.y,

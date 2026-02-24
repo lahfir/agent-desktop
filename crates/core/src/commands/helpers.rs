@@ -13,7 +13,10 @@ pub fn resolve_ref(
     adapter: &dyn PlatformAdapter,
 ) -> Result<(RefEntry, NativeHandle), AppError> {
     validate_ref_id(ref_id)?;
-    let refmap = RefMap::load().map_err(|_| AppError::stale_ref(ref_id))?;
+    let refmap = RefMap::load().map_err(|e| {
+        tracing::debug!("refmap load failed: {e}");
+        AppError::stale_ref(ref_id)
+    })?;
     let entry = refmap
         .get(ref_id)
         .ok_or_else(|| AppError::stale_ref(ref_id))?
