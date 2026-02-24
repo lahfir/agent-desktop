@@ -1,221 +1,178 @@
 # agent-desktop
 
-[![Build](https://github.com/lahfir/agent-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/lahfir/agent-desktop/actions)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)]()
+**agent-desktop** is a native desktop automation CLI designed for AI agents, built with Rust. It gives structured access to any application through OS accessibility trees — no screenshots, no pixel matching, no browser required.
 
-A cross-platform Rust CLI that gives AI agents structured access to native desktop applications through OS accessibility trees. Outputs JSON with ref-based element identifiers (`@e1`, `@e2`, ...) so agents can observe UI state, act on elements, and drive any application programmatically.
+## Key Features
 
-**agent-desktop is not an AI agent** — it is the tool AI agents invoke. The observation-action loop lives in the calling agent.
-
-```
-AI Agent
-  |
-  +-- agent-desktop snapshot --app "Finder" -i  → { "tree": {...}, "ref_count": 83 }
-  |
-  +-- agent-desktop right-click @e66            → { "action": "right_click", "menu": {...} }
-  |
-  +-- agent-desktop click @e72                  → { "action": "click" }
-```
+- **Native Rust CLI**: Fast, single binary, no runtime dependencies
+- **50 commands**: Observation, interaction, keyboard, mouse, clipboard, window management
+- **Snapshot & refs**: AI-optimized workflow using deterministic element references (`@e1`, `@e2`)
+- **AX-first interactions**: Every action exhausts pure accessibility API strategies before falling back to mouse events
+- **Structured JSON output**: Machine-readable responses with error codes and recovery hints
+- **Works with any app**: Finder, Safari, System Settings, Xcode, Slack — anything with an accessibility tree
 
 ## Installation
+
+### npm (recommended)
+
+```bash
+npm install -g agent-desktop        # downloads prebuilt binary automatically
+```
+
+Or without installing:
+
+```bash
+npx agent-desktop snapshot --app Finder -i
+```
+
+### From source
 
 ```bash
 git clone https://github.com/lahfir/agent-desktop
 cd agent-desktop
 cargo build --release
-mv target/release/agent-desktop /usr/local/bin/
+cp target/release/agent-desktop /usr/local/bin/
 ```
 
-**Requirements:** Rust 1.78+, macOS 13.0+
+Requires Rust 1.78+ and macOS 13.0+.
 
-## Permissions
+### Permissions
 
-macOS requires Accessibility permission to read UI trees and perform actions.
+macOS requires Accessibility permission. Grant it in **System Settings > Privacy & Security > Accessibility** by adding your terminal app, or:
 
 ```bash
-agent-desktop permissions            # check status
-agent-desktop permissions --request  # trigger system dialog
+agent-desktop permissions --request   # trigger system dialog
 ```
 
-Or grant manually: **System Settings > Privacy & Security > Accessibility** — add your terminal app.
-
-## Quick start
+## Core Workflow for AI
 
 ```bash
-# observe: get the accessibility tree with interactive element refs
-agent-desktop snapshot --app "TextEdit" -i
-
-# act: click a button by ref
-agent-desktop click @e3
-
-# type into a text field
-agent-desktop type @e5 "quarterly report"
-
-# keyboard shortcut
-agent-desktop press cmd+return
-
-# right-click returns the context menu inline
-agent-desktop right-click @e8
-
-# re-observe after the UI changes
-agent-desktop snapshot -i
+agent-desktop snapshot --app Finder -i   # get interactive elements with refs
+agent-desktop click @e3                  # click a button by ref
+agent-desktop type @e5 "quarterly report"  # type into a text field
+agent-desktop press cmd+s               # keyboard shortcut
+agent-desktop snapshot -i               # re-observe after UI changes
 ```
 
-## How interactions work
+The snapshot + ref pattern is optimal for LLMs: refs provide deterministic element selection without re-querying the accessibility tree.
 
-agent-desktop uses an **AX-first** approach for all interactions. Every action exhausts multiple Accessibility API strategies before falling back to CGEvent (which moves the cursor and requires the window to be frontmost).
-
-### Click chain (13 steps)
-
-1. AXScrollToVisible (ensure element is in viewport)
-2. AXPress
-3. AXConfirm
-4. AXOpen
-5. AXPick
-6. AXShowAlternateUI + retry children
-7. Try child activation (first 3 children)
-8. Set AXSelected=true
-9. Set AXSelectedRows on parent table/outline/list
-10. AXCustomActions
-11. Set AXFocused + AXConfirm/AXPress
-12. AXUIElementPostKeyboardEvent(Space) to app
-13. Try parent activation (walk up 2 ancestors)
-14. CGEvent click at center **(last resort)**
-
-### Right-click chain (7 steps)
-
-1. AXShowMenu on element
-2. Focus app via AX + AXShowMenu (fixes -25204 CannotComplete)
-3. Select element + AXShowMenu
-4. Focus element + AXShowMenu
-5. AXShowMenu on parent (walk up 3 ancestors)
-6. AXShowMenu on child (first 5 children)
-7. CGEvent right-click **(last resort)**
-
-The `right-click` command returns the full context menu tree inline with ref_ids on all items, so the agent can immediately click a menu item without a separate snapshot.
-
-### Scroll chain (10 steps)
-
-1. AXScrollToVisible on target element
-2. AXIncrement/AXDecrement on AXScrollBar
-3. AXScrollDownByPage/AXScrollUpByPage on AXScrollArea
-4. Set AXValue (float 0.0-1.0) on AXScrollBar
-5. AXPress on scroll bar sub-elements (page/arrow parts)
-6. Set AXFocused=true on child in scroll direction
-7. Set AXSelectedRows on parent table/outline/list
-8. AXUIElementPostKeyboardEvent (Page Up/Down)
-9. AXUIElementPostKeyboardEvent (arrow keys)
-10. CGEventCreateScrollWheelEvent **(last resort)**
-
-Steps 1-7 are pure AX (no window focus required, works in background). Steps 8-9 use AX keyboard events (need app focus, no cursor movement). Step 10 uses CGEvent (needs focus + screen coordinates).
-
-All CGEvent fallbacks include a focus guard (`ensure_app_focused`) that brings the target app to front via AX before posting events.
+```
+Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
+```
 
 ## Commands
 
 ### Observation
 
-| Command | Description |
-|---------|-------------|
-| `snapshot` | Capture accessibility tree as JSON with `@eN` refs |
-| `screenshot` | Capture PNG screenshot of a window |
-| `find` | Search tree for elements by role, name, value, or text |
-| `get` | Read a property of an element (text, value, title, bounds, role, states) |
-| `is` | Check a boolean state (visible, enabled, checked, focused, expanded) |
-| `list-surfaces` | List open surfaces (menus, sheets, popovers, alerts) |
+```bash
+agent-desktop snapshot --app Safari -i           # accessibility tree with refs
+agent-desktop snapshot --surface menu            # capture open menu
+agent-desktop screenshot --app Finder            # PNG screenshot
+agent-desktop find --role button --app TextEdit  # search by role, name, value, text
+agent-desktop get @e3 value                      # read element property
+agent-desktop is @e7 checked                     # check boolean state
+agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers, alerts
+```
 
 ### Interaction
 
-| Command | Description |
-|---------|-------------|
-| `click` | Smart AX-first click (13-step chain) |
-| `double-click` | AXOpen first, then double-activate chain |
-| `triple-click` | Select line/paragraph |
-| `right-click` | Open context menu via AX, returns menu tree inline |
-| `type` | Focus element and type text via keyboard synthesis |
-| `set-value` | Set element value directly via AX attribute |
-| `clear` | Clear element value to empty string |
-| `focus` | Set keyboard focus on element |
-| `select` | Select option in list or dropdown |
-| `toggle` | Flip checkbox or switch state |
-| `check` / `uncheck` | Idempotent checked/unchecked |
-| `expand` / `collapse` | Disclosure triangle, tree item, accordion |
-| `scroll` | Scroll element (10-step AX-first chain) |
-| `scroll-to` | Scroll element into visible area |
+```bash
+agent-desktop click @e3                  # smart AX-first click (15-step chain)
+agent-desktop double-click @e3           # open files, select words
+agent-desktop triple-click @e3           # select lines/paragraphs
+agent-desktop right-click @e3            # context menu (returns menu tree inline)
+agent-desktop type @e5 "hello world"     # type text into element
+agent-desktop set-value @e5 "new value"  # set value directly via AX
+agent-desktop clear @e5                  # clear element value
+agent-desktop focus @e5                  # set keyboard focus
+agent-desktop select @e9 "Option B"      # select option in dropdown/list
+agent-desktop toggle @e12                # flip checkbox or switch
+agent-desktop check @e12                 # idempotent check
+agent-desktop uncheck @e12               # idempotent uncheck
+agent-desktop expand @e15                # expand disclosure/tree item
+agent-desktop collapse @e15              # collapse disclosure/tree item
+agent-desktop scroll @e1 down 3          # scroll (AX-first, 10-step chain)
+agent-desktop scroll-to @e20             # scroll element into view
+```
 
 ### Keyboard
 
-| Command | Description |
-|---------|-------------|
-| `press` | Send key combo (e.g. `cmd+s`, `cmd+shift+z`, `escape`) |
-| `key-down` / `key-up` | Hold or release a key |
+```bash
+agent-desktop press cmd+s               # key combo
+agent-desktop press cmd+shift+z          # multi-modifier
+agent-desktop press escape               # single key
+agent-desktop key-down shift             # hold key
+agent-desktop key-up shift               # release key
+```
 
-### Mouse (raw coordinates)
+### Mouse
 
-| Command | Description |
-|---------|-------------|
-| `hover` | Move cursor to element or coordinates |
-| `drag` | Drag from one point/element to another |
-| `mouse-move` | Move cursor to absolute coordinates |
-| `mouse-click` | Click at absolute coordinates |
-| `mouse-down` / `mouse-up` | Press/release at coordinates |
+```bash
+agent-desktop hover @e3                  # move cursor to element
+agent-desktop hover --xy 500,300         # move cursor to coordinates
+agent-desktop drag @e3 --to @e8          # drag between elements
+agent-desktop drag --xy 100,200 --to-xy 400,200  # drag between coordinates
+agent-desktop mouse-click --xy 500,300   # click at coordinates
+agent-desktop mouse-down --xy 500,300    # press at coordinates
+agent-desktop mouse-up --xy 500,300      # release at coordinates
+```
 
-### App & window management
+### App & Window Management
 
-| Command | Description |
-|---------|-------------|
-| `launch` | Launch app by name or bundle ID |
-| `close-app` | Quit app (optional `--force` for SIGKILL) |
-| `list-apps` | List running GUI applications |
-| `list-windows` | List visible windows |
-| `focus-window` | Bring window to foreground |
-| `resize-window` | Resize a window |
-| `move-window` | Move a window |
-| `minimize` / `maximize` / `restore` | Window state |
+```bash
+agent-desktop launch Safari              # launch app by name
+agent-desktop launch com.apple.Safari    # launch by bundle ID
+agent-desktop close-app Safari           # quit app
+agent-desktop close-app Safari --force   # force quit (SIGKILL)
+agent-desktop list-apps                  # list running GUI apps
+agent-desktop list-windows               # list visible windows
+agent-desktop list-windows --app Finder  # windows for specific app
+agent-desktop focus-window w-4521        # bring window to front
+agent-desktop resize-window w-4521 800 600  # resize
+agent-desktop move-window w-4521 100 100    # move
+agent-desktop minimize w-4521            # minimize
+agent-desktop maximize w-4521            # maximize
+agent-desktop restore w-4521             # restore
+```
 
 ### Clipboard
 
-| Command | Description |
-|---------|-------------|
-| `clipboard-get` | Read plain-text clipboard |
-| `clipboard-set` | Write text to clipboard |
-| `clipboard-clear` | Clear the clipboard |
+```bash
+agent-desktop clipboard-get              # read clipboard text
+agent-desktop clipboard-set "copied"     # write to clipboard
+agent-desktop clipboard-clear            # clear clipboard
+```
 
 ### Wait
 
-Block for a duration or until a condition is met.
-
 ```bash
-agent-desktop wait 500                                        # sleep 500ms
-agent-desktop wait --window "Save" --timeout 10000            # wait for window
-agent-desktop wait --element @e3 --timeout 5000               # wait for element
-agent-desktop wait --text "Loading complete" --app "Safari"   # wait for text
-agent-desktop wait --menu --timeout 3000                      # wait for menu
+agent-desktop wait 500                                       # sleep 500ms
+agent-desktop wait --element @e3 --timeout 5000              # wait for element
+agent-desktop wait --window "Save" --timeout 10000           # wait for window
+agent-desktop wait --text "Loading complete" --app Safari    # wait for text
+agent-desktop wait --menu --timeout 3000                     # wait for menu
 ```
 
 ### Batch
 
-Run multiple commands in a single invocation.
-
 ```bash
 agent-desktop batch '[
-  {"command":"click",  "args":{"ref_id":"@e2"}},
-  {"command":"type",   "args":{"ref_id":"@e5","text":"hello"}},
-  {"command":"press",  "args":{"combo":"return"}}
+  {"command": "click", "args": {"ref_id": "@e2"}},
+  {"command": "type", "args": {"ref_id": "@e5", "text": "hello"}},
+  {"command": "press", "args": {"combo": "return"}}
 ]' --stop-on-error
 ```
 
 ### System
 
 ```bash
-agent-desktop status                  # adapter health, platform, permission state
-agent-desktop permissions             # check accessibility permission
-agent-desktop permissions --request   # trigger system dialog
-agent-desktop version                 # version string
+agent-desktop status                     # platform, permission state
+agent-desktop permissions                # check accessibility permission
+agent-desktop permissions --request      # trigger system dialog
+agent-desktop version                    # version string
 ```
 
-## Snapshot options
+## Snapshot Options
 
 ```bash
 agent-desktop snapshot [OPTIONS]
@@ -224,16 +181,16 @@ agent-desktop snapshot [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--app <NAME>` | focused app | Filter to a specific application |
-| `--window-id <ID>` | — | Filter to a specific window |
-| `--max-depth <N>` | `10` | Maximum tree traversal depth |
-| `--include-bounds` | off | Include pixel bounds for every node |
-| `-i` / `--interactive-only` | off | Omit non-interactive elements from output |
+| `--window-id <ID>` | - | Filter to a specific window |
+| `-i` / `--interactive-only` | off | Only include interactive elements |
 | `--compact` | off | Omit empty structural nodes |
-| `--surface <TYPE>` | `window` | Surface: window, focused, menu, menubar, sheet, popover, alert |
+| `--include-bounds` | off | Include pixel bounds (x, y, width, height) |
+| `--max-depth <N>` | 10 | Maximum tree depth |
+| `--surface <TYPE>` | window | `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
 
-## JSON output
+## JSON Output
 
-Every command produces a standard envelope:
+Every command returns structured JSON:
 
 ```json
 {
@@ -244,29 +201,7 @@ Every command produces a standard envelope:
 }
 ```
 
-Right-click includes the context menu tree:
-
-```json
-{
-  "version": "1.0",
-  "ok": true,
-  "command": "right-click",
-  "data": {
-    "action": "right_click",
-    "menu": {
-      "role": "menu",
-      "children": [
-        { "role": "menuitem", "name": "Open in New Tab", "ref_id": "@e71" },
-        { "role": "menuitem", "name": "Open in New Window", "ref_id": "@e72" },
-        { "role": "menuitem", "name": "Get Info", "ref_id": "@e78" },
-        { "role": "menuitem", "name": "Rename", "ref_id": "@e80" }
-      ]
-    }
-  }
-}
-```
-
-Errors include a machine-readable code and recovery hint:
+Errors include machine-readable codes and recovery hints:
 
 ```json
 {
@@ -281,110 +216,55 @@ Errors include a machine-readable code and recovery hint:
 }
 ```
 
-### Error codes
+### Error Codes
 
 | Code | Meaning |
 |------|---------|
 | `PERM_DENIED` | Accessibility permission not granted |
 | `ELEMENT_NOT_FOUND` | No element matched the ref or query |
 | `APP_NOT_FOUND` | Application not running or no windows |
-| `ACTION_FAILED` | The OS rejected the action |
-| `ACTION_NOT_SUPPORTED` | Element does not support this action |
 | `STALE_REF` | Ref is from a previous snapshot |
-| `WINDOW_NOT_FOUND` | No window matched the ID or query |
-| `PLATFORM_NOT_SUPPORTED` | Not implemented on this OS |
+| `ACTION_FAILED` | The OS rejected the action |
 | `TIMEOUT` | Wait condition expired |
 | `INVALID_ARGS` | Invalid argument values |
-| `INTERNAL` | Unexpected internal error |
 
-### Exit codes
+### Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| `0` | Success |
-| `1` | Structured error (JSON on stdout) |
-| `2` | Argument parse error |
+`0` success, `1` structured error (JSON on stdout), `2` argument parse error.
 
-## Ref system
+## Ref System
 
-`snapshot` assigns identifiers to every interactive element in depth-first order: `@e1`, `@e2`, `@e3`, etc. These refs are valid for action commands until the next snapshot replaces them.
+`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are valid until the next snapshot replaces them.
 
-Interactive roles that receive refs:
-
-| | | | |
-|---|---|---|---|
-| `button` | `textfield` | `checkbox` | `link` |
-| `menuitem` | `tab` | `slider` | `combobox` |
-| `treeitem` | `cell` | `radiobutton` | `incrementor` |
-| `menubutton` | `switch` | `colorwell` | `dockitem` |
+Interactive roles that receive refs: `button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `incrementor`, `menubutton`, `switch`, `colorwell`, `dockitem`.
 
 Static elements (labels, groups, containers) appear in the tree for context but have no ref.
-
-The refmap is stored at `~/.agent-desktop/last_refmap.json` and fully replaced on every snapshot. Action commands perform optimistic re-identification using `(pid, role, name, bounds_hash)` — if the element has moved or changed, they return `STALE_REF`.
 
 Stale ref recovery:
 
 ```
-snapshot → act → if STALE_REF → snapshot again → retry
+snapshot → act → STALE_REF? → snapshot again → retry
 ```
 
-## Platform support
+## Platform Support
 
-| Feature | macOS | Windows | Linux |
-|---------|-------|---------|-------|
-| Accessibility tree | Phase 1 | Planned | Planned |
-| Click / type / keyboard | Phase 1 | Planned | Planned |
-| Mouse input | Phase 1 | Planned | Planned |
-| Screenshot | Phase 1 | Planned | Planned |
-| Clipboard | Phase 1 | Planned | Planned |
-| App launch / close | Phase 1 | Planned | Planned |
-| Window management | Phase 1 | Planned | Planned |
-| MCP server mode | Planned | Planned | Planned |
+| | macOS | Windows | Linux |
+|---|:---:|:---:|:---:|
+| Accessibility tree | **Yes** | Planned | Planned |
+| Click / type / keyboard | **Yes** | Planned | Planned |
+| Mouse input | **Yes** | Planned | Planned |
+| Screenshot | **Yes** | Planned | Planned |
+| Clipboard | **Yes** | Planned | Planned |
+| App & window management | **Yes** | Planned | Planned |
 
-macOS uses `AXUIElement` for tree traversal and actions, `CGEvent` for keyboard/mouse, `CGWindowListCreateImage` for screenshots, and `NSPasteboard` for clipboard.
-
-## Architecture
-
-Strict dependency inversion. `agent-desktop-core` defines the `PlatformAdapter` trait and all shared types. Platform crates implement the trait. Core never imports platform crates — the binary crate is the only wiring point. Enforced in CI via `cargo tree`.
-
-```
-agent-desktop/
-├── src/                    # binary crate (entry point, CLI, dispatch)
-└── crates/
-    ├── core/               # platform-agnostic types, commands, engine
-    ├── macos/              # macOS adapter (Phase 1)
-    │   ├── tree/           # AX tree reading, element resolution, surfaces
-    │   ├── actions/        # smart interaction chains (click, scroll, right-click)
-    │   ├── input/          # keyboard, mouse, clipboard synthesis
-    │   └── system/         # app lifecycle, windows, permissions
-    ├── windows/            # stub (Phase 2)
-    └── linux/              # stub (Phase 2)
-```
-
-## Contributing
+## Development
 
 ```bash
-cargo build                              # debug build
-cargo build --release                    # optimized (<15MB)
-cargo test --workspace                   # run tests
-cargo clippy --all-targets -- -D warnings # lint
+cargo build                               # debug build
+cargo build --release                     # optimized (<15MB)
+cargo test --lib --workspace              # run tests
+cargo clippy --all-targets -- -D warnings # lint (must pass with zero warnings)
 ```
-
-### Adding a command
-
-1. Create `crates/core/src/commands/{name}.rs` with an `execute()` function
-2. Register in `crates/core/src/commands/mod.rs`
-3. Add subcommand variant to `src/cli.rs`
-4. Add match arm in dispatch
-5. If needed: add `Action` variant in `crates/core/src/action.rs`
-6. If needed: add adapter method to `PlatformAdapter` with default `not_supported()` impl
-
-### Standards
-
-- 400 LOC hard limit per file
-- No inline comments — code must be self-documenting
-- Zero `unwrap()` in non-test code
-- One command per file, one domain type per file
 
 ## License
 
