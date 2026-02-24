@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/lahfir/agent-desktop/compare/v0.1.5...v0.1.6) (2026-02-24)
+
+
+### Bug Fixes
+
+* handle null bounds in refmap and improve sidebar click resolution ([d4197e8](https://github.com/lahfir/agent-desktop/commit/d4197e8f6f6700f2f672d3e1e436ecf24cf82e01))
+
 ## [0.1.5](https://github.com/lahfir/agent-desktop/compare/v0.1.4...v0.1.5) (2026-02-23)
 
 
