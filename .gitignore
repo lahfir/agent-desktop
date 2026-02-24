@@ -68,6 +68,6 @@ npm/node_modules/
 node_modules/
 
 # Compound Engineering
-docs/
+docs/solutions/
 todos/
 .cursor/

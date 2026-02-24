@@ -2,6 +2,12 @@
 
 **agent-desktop** is a native desktop automation CLI designed for AI agents, built with Rust. It gives structured access to any application through OS accessibility trees — no screenshots, no pixel matching, no browser required.
 
+## Architecture
+
+<p align="center">
+  <img src="docs/architecture.png" alt="agent-desktop architecture diagram" width="800" />
+</p>
+
 ## Key Features
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
