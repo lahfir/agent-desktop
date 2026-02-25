@@ -71,5 +71,6 @@ node_modules/
 docs/*
 !docs/architecture.excalidraw
 !docs/architecture.png
+!docs/phases.md
 todos/
 .cursor/
