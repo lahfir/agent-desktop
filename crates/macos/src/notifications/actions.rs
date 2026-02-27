@@ -69,16 +69,12 @@ fn dismiss_all_impl(
 
 #[cfg(target_os = "macos")]
 fn dismiss_entry(element: &crate::tree::AXElement) -> Result<(), AdapterError> {
-    use crate::actions::ax_helpers::{list_ax_actions, try_action_from_list, try_ax_action};
+    use crate::actions::ax_helpers::{list_ax_actions, try_action_from_list};
     use crate::tree::copy_ax_array;
     use accessibility_sys::kAXChildrenAttribute;
 
     let actions = list_ax_actions(element);
-    if try_action_from_list(
-        element,
-        &actions,
-        &["AXDismiss", "AXRemoveFromParent", "AXPress"],
-    ) {
+    if try_action_from_list(element, &actions, &["AXDismiss", "AXRemoveFromParent"]) {
         return Ok(());
     }
 
@@ -88,20 +84,16 @@ fn dismiss_entry(element: &crate::tree::AXElement) -> Result<(), AdapterError> {
     }
 
     hover_over(element)?;
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     let children = copy_ax_array(element, kAXChildrenAttribute).unwrap_or_default();
     if try_dismiss_button(&children) {
         return Ok(());
     }
 
-    if try_ax_action(element, "AXPress") {
-        return Ok(());
-    }
-
     Err(AdapterError::new(
         ErrorCode::ActionFailed,
-        "All dismiss strategies failed (AX actions, close button, hover+close, AXPress)",
+        "All dismiss strategies failed (AXDismiss, AXRemoveFromParent, close button, hover+close)",
     ))
 }
 
