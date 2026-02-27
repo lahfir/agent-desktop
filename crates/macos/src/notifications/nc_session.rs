@@ -34,7 +34,7 @@ impl Drop for NcSession {
 }
 
 #[cfg(target_os = "macos")]
-fn nc_pid() -> Option<i32> {
+pub(super) fn nc_pid() -> Option<i32> {
     use core_foundation::base::{CFType, TCFType};
     use core_foundation::number::CFNumber;
     use core_foundation::string::CFString;
