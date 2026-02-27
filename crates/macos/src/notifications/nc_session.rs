@@ -35,44 +35,17 @@ impl Drop for NcSession {
 
 #[cfg(target_os = "macos")]
 pub(super) fn nc_pid() -> Option<i32> {
-    use core_foundation::base::{CFType, TCFType};
-    use core_foundation::number::CFNumber;
-    use core_foundation::string::CFString;
-    use core_foundation_sys::dictionary::CFDictionaryGetValue;
-    use core_graphics::display::CGDisplay;
-    use core_graphics::window::{
-        kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName, kCGWindowOwnerPID,
-    };
+    let output = std::process::Command::new("pgrep")
+        .arg("-x")
+        .arg("NotificationCenter")
+        .output()
+        .ok()?;
 
-    let arr = CGDisplay::window_list_info(kCGWindowListOptionOnScreenOnly, None)?;
-    for raw in arr.get_all_values() {
-        if raw.is_null() {
-            continue;
-        }
-        let name = unsafe {
-            let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerName as _);
-            if v.is_null() {
-                continue;
-            }
-            CFType::wrap_under_get_rule(v as _)
-                .downcast::<CFString>()
-                .map(|s| s.to_string())
-        };
-        if name.as_deref() == Some("NotificationCenter") {
-            let pid = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerPID as _);
-                if v.is_null() {
-                    return None;
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFNumber>()
-                    .and_then(|n| n.to_i64())
-                    .map(|p| p as i32)
-            };
-            return pid;
-        }
-    }
-    None
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .lines()
+        .next()
+        .and_then(|line| line.trim().parse::<i32>().ok())
 }
 
 #[cfg(target_os = "macos")]
@@ -95,54 +68,20 @@ fn is_nc_open() -> bool {
 
 #[cfg(target_os = "macos")]
 fn open_nc() -> Result<(), AdapterError> {
-    use crate::tree::{copy_ax_array, copy_string_attr, element_for_pid};
-    use accessibility_sys::kAXRoleAttribute;
+    let script = r#"tell application "System Events" to tell its application process "ControlCenter"
+        click (first menu bar item of menu bar 1 whose description is "Clock")
+    end tell"#;
 
-    let sui_pid = find_system_ui_server_pid()?;
-    let sui_app = element_for_pid(sui_pid);
-    let menubar = copy_ax_array(&sui_app, "AXMenuBar")
-        .or_else(|| copy_ax_array(&sui_app, "AXExtrasMenuBar"))
-        .ok_or_else(|| AdapterError::internal("SystemUIServer: no menu bar found"))?;
+    let mut child = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| AdapterError::internal(format!("Failed to spawn osascript: {e}")))?;
 
-    let mut clock_item = None;
-    for bar_items in [
-        copy_ax_array(&sui_app, "AXExtrasMenuBar").unwrap_or_default(),
-        menubar,
-    ] {
-        for item in &bar_items {
-            let role = copy_string_attr(item, kAXRoleAttribute);
-            if role.as_deref() != Some("AXMenuBarItem") && role.as_deref() != Some("AXMenuExtra") {
-                continue;
-            }
-            let desc = copy_string_attr(item, "AXDescription");
-            let title = copy_string_attr(item, "AXTitle");
-            let is_clock = desc
-                .as_deref()
-                .map(|d| d.contains("Clock") || d.contains("clock") || d.contains("Date"))
-                .unwrap_or(false)
-                || title
-                    .as_deref()
-                    .map(|t| t.contains("Clock") || t.contains("clock") || t.contains("Date"))
-                    .unwrap_or(false);
-            if is_clock {
-                clock_item = Some(item.clone());
-                break;
-            }
-        }
-        if clock_item.is_some() {
-            break;
-        }
-    }
-
-    let clock = clock_item
-        .ok_or_else(|| AdapterError::internal("SystemUIServer: clock menu bar item not found"))?;
-
-    if !crate::actions::ax_helpers::try_ax_action(&clock, "AXPress") {
-        return Err(AdapterError::internal(
-            "Failed to press clock menu bar item to open Notification Center",
-        ));
-    }
-
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = child.try_wait();
     Ok(())
 }
 
@@ -191,49 +130,4 @@ fn wait_for_nc_ready() -> Result<(), AdapterError> {
 #[cfg(not(target_os = "macos"))]
 fn wait_for_nc_ready() -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("wait_for_nc_ready"))
-}
-
-#[cfg(target_os = "macos")]
-fn find_system_ui_server_pid() -> Result<i32, AdapterError> {
-    use core_foundation::base::{CFType, TCFType};
-    use core_foundation::number::CFNumber;
-    use core_foundation::string::CFString;
-    use core_foundation_sys::dictionary::CFDictionaryGetValue;
-    use core_graphics::display::CGDisplay;
-    use core_graphics::window::{
-        kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName, kCGWindowOwnerPID,
-    };
-
-    let arr = CGDisplay::window_list_info(kCGWindowListOptionOnScreenOnly, None)
-        .ok_or_else(|| AdapterError::internal("Failed to get window list"))?;
-
-    for raw in arr.get_all_values() {
-        if raw.is_null() {
-            continue;
-        }
-        let name = unsafe {
-            let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerName as _);
-            if v.is_null() {
-                continue;
-            }
-            CFType::wrap_under_get_rule(v as _)
-                .downcast::<CFString>()
-                .map(|s| s.to_string())
-        };
-        if name.as_deref() == Some("SystemUIServer") {
-            let pid = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerPID as _);
-                if v.is_null() {
-                    return Err(AdapterError::internal("SystemUIServer: no PID"));
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFNumber>()
-                    .and_then(|n| n.to_i64())
-                    .map(|p| p as i32)
-                    .ok_or_else(|| AdapterError::internal("SystemUIServer: bad PID"))?
-            };
-            return Ok(pid);
-        }
-    }
-    Err(AdapterError::internal("SystemUIServer process not found"))
 }
