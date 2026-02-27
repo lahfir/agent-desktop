@@ -163,3 +163,23 @@ impl AppError {
         AppError::Adapter(AdapterError::new(ErrorCode::InvalidArgs, msg))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notification_not_found_error_has_correct_code() {
+        let err = AdapterError::notification_not_found(5);
+        assert_eq!(err.code, ErrorCode::NotificationNotFound);
+        assert!(err.message.contains("5"));
+        assert!(err.suggestion.is_some());
+    }
+
+    #[test]
+    fn error_code_serialization() {
+        let code = ErrorCode::NotificationNotFound;
+        let json = serde_json::to_string(&code).unwrap();
+        assert_eq!(json, "\"NOTIFICATION_NOT_FOUND\"");
+    }
+}

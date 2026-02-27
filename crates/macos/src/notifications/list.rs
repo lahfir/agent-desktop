@@ -231,3 +231,55 @@ fn matches_filters(
 fn list_from_nc(_filter: &NotificationFilter) -> Result<Vec<NotificationInfo>, AdapterError> {
     Err(AdapterError::not_supported("list_notifications"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_info(app: &str, title: &str, body: Option<&str>) -> NotificationInfo {
+        NotificationInfo {
+            index: 1,
+            app_name: app.into(),
+            title: title.into(),
+            body: body.map(String::from),
+            timestamp: None,
+            actions: vec![],
+        }
+    }
+
+    #[test]
+    fn matches_filters_no_filter() {
+        let info = make_info("Slack", "Hello", None);
+        assert!(matches_filters(&info, &None, &None));
+    }
+
+    #[test]
+    fn matches_filters_app_match() {
+        let info = make_info("Slack", "Hello", None);
+        assert!(matches_filters(&info, &Some("slack".into()), &None));
+        assert!(!matches_filters(&info, &Some("teams".into()), &None));
+    }
+
+    #[test]
+    fn matches_filters_text_match() {
+        let info = make_info("Slack", "Hello world", Some("body text"));
+        assert!(matches_filters(&info, &None, &Some("hello".into())));
+        assert!(matches_filters(&info, &None, &Some("body".into())));
+        assert!(!matches_filters(&info, &None, &Some("missing".into())));
+    }
+
+    #[test]
+    fn matches_filters_combined() {
+        let info = make_info("Slack", "Hello", None);
+        assert!(matches_filters(
+            &info,
+            &Some("slack".into()),
+            &Some("hello".into())
+        ));
+        assert!(!matches_filters(
+            &info,
+            &Some("teams".into()),
+            &Some("hello".into())
+        ));
+    }
+}
