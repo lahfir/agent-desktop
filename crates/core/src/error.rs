@@ -14,6 +14,7 @@ pub enum ErrorCode {
     PlatformNotSupported,
     Timeout,
     InvalidArgs,
+    NotificationNotFound,
     Internal,
 }
 
@@ -30,6 +31,7 @@ impl ErrorCode {
             ErrorCode::PlatformNotSupported => "PLATFORM_NOT_SUPPORTED",
             ErrorCode::Timeout => "TIMEOUT",
             ErrorCode::InvalidArgs => "INVALID_ARGS",
+            ErrorCode::NotificationNotFound => "NOTIFICATION_NOT_FOUND",
             ErrorCode::Internal => "INTERNAL",
         }
     }
@@ -98,6 +100,14 @@ impl AdapterError {
     pub fn timeout(msg: impl Into<String>) -> Self {
         Self::new(ErrorCode::Timeout, msg)
             .with_suggestion("The target application may be busy or unresponsive")
+    }
+
+    pub fn notification_not_found(index: usize) -> Self {
+        Self::new(
+            ErrorCode::NotificationNotFound,
+            format!("Notification at index {index} not found"),
+        )
+        .with_suggestion("Notification may have been dismissed or expired. Run 'list-notifications' to see current notifications")
     }
 
     pub fn internal(msg: impl Into<String>) -> Self {

@@ -4,6 +4,7 @@ pub mod commands;
 pub mod error;
 pub mod hints;
 pub mod node;
+pub mod notification;
 pub mod output;
 pub mod refs;
 pub mod snapshot;
@@ -18,5 +19,6 @@ pub use adapter::{
 };
 pub use error::{AdapterError, AppError, ErrorCode};
 pub use node::{AccessibilityNode, AppInfo, Rect, WindowInfo};
+pub use notification::{NotificationFilter, NotificationInfo};
 pub use output::{AppContext, ErrorPayload, Response, WindowContext};
 pub use refs::{RefEntry, RefMap};

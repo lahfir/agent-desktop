@@ -1,11 +1,9 @@
 use agent_desktop_core::{
     commands::{
-        check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app, collapse,
-        double_click, drag, expand, find, focus, focus_window, get, helpers, hover, is_check,
-        key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, minimize,
-        mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
-        resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
-        snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
+        check, clear, click, collapse, double_click, drag, expand, find, focus, get, helpers,
+        hover, is_check, key_down, key_up, mouse_click, mouse_down, mouse_move, mouse_up, press,
+        right_click, screenshot, scroll, scroll_to, select, set_value, snapshot, toggle,
+        triple_click, type_text, uncheck,
     },
     error::AppError,
 };
@@ -18,16 +16,6 @@ pub fn dispatch_batch_command(
     args: Value,
     adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
 ) -> Result<Value, AppError> {
-    fn str_field(v: &Value, key: &str) -> Option<String> {
-        v.get(key).and_then(|v| v.as_str()).map(String::from)
-    }
-
-    fn req_str(v: &Value, key: &str) -> Result<String, AppError> {
-        str_field(v, key).ok_or_else(|| {
-            AppError::invalid_input(format!("Batch: missing required field '{key}'"))
-        })
-    }
-
     match command {
         "snapshot" => snapshot::execute(
             snapshot::SnapshotArgs {
@@ -328,133 +316,17 @@ pub fn dispatch_batch_command(
             )
         }
 
-        "launch" => launch::execute(
-            launch::LaunchArgs {
-                app: req_str(&args, "app")?,
-                timeout_ms: args
-                    .get("timeout")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(30000),
-            },
-            adapter,
-        ),
-
-        "close-app" => close_app::execute(
-            close_app::CloseAppArgs {
-                app: req_str(&args, "app")?,
-                force: args.get("force").and_then(|v| v.as_bool()).unwrap_or(false),
-            },
-            adapter,
-        ),
-
-        "list-windows" => list_windows::execute(
-            list_windows::ListWindowsArgs {
-                app: str_field(&args, "app"),
-            },
-            adapter,
-        ),
-
-        "list-apps" => list_apps::execute(adapter),
-
-        "focus-window" => focus_window::execute(
-            focus_window::FocusWindowArgs {
-                window_id: str_field(&args, "window_id"),
-                app: str_field(&args, "app"),
-                title: str_field(&args, "title"),
-            },
-            adapter,
-        ),
-
-        "resize-window" => resize_window::execute(
-            resize_window::ResizeWindowArgs {
-                app: str_field(&args, "app"),
-                width: args.get("width").and_then(|v| v.as_f64()).unwrap_or(800.0),
-                height: args.get("height").and_then(|v| v.as_f64()).unwrap_or(600.0),
-            },
-            adapter,
-        ),
-
-        "move-window" => move_window::execute(
-            move_window::MoveWindowArgs {
-                app: str_field(&args, "app"),
-                x: args.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                y: args.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            },
-            adapter,
-        ),
-
-        "minimize" => minimize::execute(
-            minimize::MinimizeArgs {
-                app: str_field(&args, "app"),
-            },
-            adapter,
-        ),
-
-        "maximize" => maximize::execute(
-            maximize::MaximizeArgs {
-                app: str_field(&args, "app"),
-            },
-            adapter,
-        ),
-
-        "restore" => restore::execute(
-            restore::RestoreArgs {
-                app: str_field(&args, "app"),
-            },
-            adapter,
-        ),
-
-        "clipboard-get" => clipboard_get::execute(adapter),
-        "clipboard-set" => clipboard_set::execute(req_str(&args, "text")?, adapter),
-        "clipboard-clear" => clipboard_clear::execute(adapter),
-
-        "wait" => wait::execute(
-            wait::WaitArgs {
-                ms: args.get("ms").and_then(|v| v.as_u64()),
-                element: str_field(&args, "element"),
-                window: str_field(&args, "window"),
-                text: str_field(&args, "text"),
-                timeout_ms: args
-                    .get("timeout_ms")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(30000),
-                menu: args.get("menu").and_then(|v| v.as_bool()).unwrap_or(false),
-                menu_closed: args
-                    .get("menu_closed")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
-                app: str_field(&args, "app"),
-            },
-            adapter,
-        ),
-
-        "list-surfaces" => list_surfaces::execute(
-            list_surfaces::ListSurfacesArgs {
-                app: str_field(&args, "app"),
-            },
-            adapter,
-        ),
-
-        "status" => status::execute(adapter),
-
-        "permissions" => permissions::execute(
-            permissions::PermissionsArgs {
-                request: args
-                    .get("request")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
-            },
-            adapter,
-        ),
-
-        "version" => version::execute(version::VersionArgs {
-            json: args.get("json").and_then(|v| v.as_bool()).unwrap_or(false),
-        }),
-
-        other => Err(AppError::invalid_input(format!(
-            "Unknown batch command '{other}'"
-        ))),
+        other => crate::batch_dispatch_ext::dispatch(other, args, adapter),
     }
+}
+
+pub(crate) fn str_field(v: &Value, key: &str) -> Option<String> {
+    v.get(key).and_then(|v| v.as_str()).map(String::from)
+}
+
+pub(crate) fn req_str(v: &Value, key: &str) -> Result<String, AppError> {
+    str_field(v, key)
+        .ok_or_else(|| AppError::invalid_input(format!("Batch: missing required field '{key}'")))
 }
 
 fn parse_batch_surface(s: Option<&str>) -> agent_desktop_core::adapter::SnapshotSurface {

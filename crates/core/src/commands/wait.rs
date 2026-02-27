@@ -3,6 +3,7 @@ use crate::{
     commands::helpers::{resolve_app_pid, validate_ref_id},
     error::AppError,
     node::AccessibilityNode,
+    notification::NotificationFilter,
     refs::RefMap,
     snapshot,
 };
@@ -17,6 +18,8 @@ pub struct WaitArgs {
     pub timeout_ms: u64,
     pub menu: bool,
     pub menu_closed: bool,
+    pub notification: bool,
+    pub poll_interval_ms: u64,
     pub app: Option<String>,
 }
 
@@ -36,6 +39,10 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
         return Ok(json!({ "found": true, "elapsed_ms": elapsed }));
     }
 
+    if args.notification {
+        return wait_for_notification(&args, adapter);
+    }
+
     if let Some(ref_id) = args.element {
         validate_ref_id(&ref_id)?;
         return wait_for_element(ref_id, args.timeout_ms, adapter);
@@ -50,7 +57,7 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
     }
 
     Err(AppError::invalid_input(
-        "Provide a duration (ms), --menu, --element <ref>, --window <title>, or --text <text>",
+        "Provide a duration (ms), --menu, --notification, --element <ref>, --window <title>, or --text <text>",
     ))
 }
 
@@ -150,6 +157,41 @@ fn wait_for_text(
 struct TextMatch {
     ref_id: Option<String>,
     role: String,
+}
+
+fn wait_for_notification(
+    args: &WaitArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    let filter = NotificationFilter {
+        app: args.app.clone(),
+        text: None,
+        ..Default::default()
+    };
+    let baseline = adapter.list_notifications(&filter)?;
+    let baseline_count = baseline.len();
+    let interval = Duration::from_millis(args.poll_interval_ms);
+    let deadline = Instant::now() + Duration::from_millis(args.timeout_ms);
+    let start = Instant::now();
+
+    loop {
+        std::thread::sleep(interval);
+        if Instant::now() > deadline {
+            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
+                format!("No new notification within {}ms", args.timeout_ms),
+            )));
+        }
+        let current = adapter.list_notifications(&filter)?;
+        if current.len() > baseline_count {
+            let elapsed = start.elapsed().as_millis();
+            return Ok(json!({
+                "condition": "notification",
+                "matched": true,
+                "notification": current[0],
+                "elapsed_ms": elapsed,
+            }));
+        }
+    }
 }
 
 fn find_text_in_tree(node: &AccessibilityNode, text_lower: &str) -> Option<TextMatch> {

@@ -1,4 +1,5 @@
 mod batch_dispatch;
+mod batch_dispatch_ext;
 mod cli;
 mod cli_args;
 mod dispatch;
