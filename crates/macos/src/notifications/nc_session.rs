@@ -2,21 +2,29 @@ use agent_desktop_core::error::AdapterError;
 
 pub(crate) struct NcSession {
     was_already_open: bool,
+    previous_app: Option<String>,
 }
 
 impl NcSession {
     pub(crate) fn open() -> Result<Self, AdapterError> {
+        let previous_app = frontmost_app();
         let was_already_open = is_nc_open();
         if !was_already_open {
             open_nc()?;
             wait_for_nc_ready()?;
         }
-        Ok(Self { was_already_open })
+        Ok(Self {
+            was_already_open,
+            previous_app,
+        })
     }
 
     pub(crate) fn close(self) -> Result<(), AdapterError> {
         if !self.was_already_open {
             close_nc()?;
+        }
+        if let Some(ref app) = self.previous_app {
+            reactivate_app(app);
         }
         std::mem::forget(self);
         Ok(())
@@ -30,8 +38,49 @@ impl Drop for NcSession {
                 tracing::warn!("Failed to close NC in Drop: {e}");
             }
         }
+        if let Some(ref app) = self.previous_app {
+            reactivate_app(app);
+        }
     }
 }
+
+#[cfg(target_os = "macos")]
+fn frontmost_app() -> Option<String> {
+    let output = std::process::Command::new("/usr/bin/osascript")
+        .args([
+            "-e",
+            "tell application \"System Events\" to get name of first application process whose frontmost is true",
+        ])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if name.is_empty() { None } else { Some(name) }
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn frontmost_app() -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn reactivate_app(name: &str) {
+    let script = format!(
+        "tell application \"{}\" to activate",
+        name.replace('"', "\\\"")
+    );
+    let _ = std::process::Command::new("/usr/bin/osascript")
+        .args(["-e", &script])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+}
+
+#[cfg(not(target_os = "macos"))]
+fn reactivate_app(_name: &str) {}
 
 #[cfg(target_os = "macos")]
 pub(super) fn nc_pid() -> Option<i32> {
