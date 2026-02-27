@@ -16,6 +16,20 @@ pub fn list_notifications(
 
 #[cfg(target_os = "macos")]
 fn list_from_nc(filter: &NotificationFilter) -> Result<Vec<NotificationInfo>, AdapterError> {
+    let entries = list_entries(filter)?;
+    Ok(entries.into_iter().map(|e| e.info).collect())
+}
+
+#[cfg(target_os = "macos")]
+pub(super) struct NotificationEntry {
+    pub info: NotificationInfo,
+    pub element: crate::tree::AXElement,
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn list_entries(
+    filter: &NotificationFilter,
+) -> Result<Vec<NotificationEntry>, AdapterError> {
     use crate::tree::{copy_ax_array, element_for_pid};
     use accessibility_sys::kAXChildrenAttribute;
 
@@ -32,7 +46,7 @@ fn list_from_nc(filter: &NotificationFilter) -> Result<Vec<NotificationInfo>, Ad
     let text_filter = filter.text.as_deref().map(|s| s.to_lowercase());
     let limit = filter.limit.unwrap_or(usize::MAX);
 
-    let mut notifications = Vec::new();
+    let mut entries = Vec::new();
     let mut index: usize = 1;
 
     for window in &windows {
@@ -43,15 +57,15 @@ fn list_from_nc(filter: &NotificationFilter) -> Result<Vec<NotificationInfo>, Ad
             &text_filter,
             limit,
             &mut index,
-            &mut notifications,
+            &mut entries,
             0,
         );
-        if notifications.len() >= limit {
+        if entries.len() >= limit {
             break;
         }
     }
 
-    Ok(notifications)
+    Ok(entries)
 }
 
 #[cfg(target_os = "macos")]
@@ -61,7 +75,7 @@ fn collect_notifications(
     text_filter: &Option<String>,
     limit: usize,
     index: &mut usize,
-    out: &mut Vec<NotificationInfo>,
+    out: &mut Vec<NotificationEntry>,
     depth: u8,
 ) {
     use crate::tree::{copy_ax_array, copy_string_attr};
@@ -82,7 +96,10 @@ fn collect_notifications(
         if is_notification_group(role.as_deref(), &children) {
             if let Some(info) = extract_notification(el, &children, *index) {
                 if matches_filters(&info, app_filter, text_filter) {
-                    out.push(info);
+                    out.push(NotificationEntry {
+                        info,
+                        element: el.clone(),
+                    });
                 }
                 *index += 1;
                 continue;
