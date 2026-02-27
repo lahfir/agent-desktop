@@ -25,9 +25,9 @@ pub fn notification_action(index: usize, action_name: &str) -> Result<ActionResu
 
 #[cfg(target_os = "macos")]
 fn dismiss_impl(index: usize, app_filter: Option<&str>) -> Result<NotificationInfo, AdapterError> {
-    use crate::actions::ax_helpers::try_ax_action;
-    use crate::tree::{copy_ax_array, copy_string_attr};
-    use accessibility_sys::{kAXChildrenAttribute, kAXRoleAttribute};
+    use crate::actions::ax_helpers::{list_ax_actions, try_action_from_list, try_ax_action};
+    use crate::tree::copy_ax_array;
+    use accessibility_sys::kAXChildrenAttribute;
 
     let filter = build_filter(app_filter);
     let entries = super::list::list_entries(&filter)?;
@@ -39,10 +39,47 @@ fn dismiss_impl(index: usize, app_filter: Option<&str>) -> Result<NotificationIn
 
     let info = entry.info;
 
+    // Headless first: try AX actions directly on the notification group
+    let actions = list_ax_actions(&entry.element);
+    if try_action_from_list(
+        &entry.element,
+        &actions,
+        &["AXDismiss", "AXRemoveFromParent", "AXPress"],
+    ) {
+        return Ok(info);
+    }
+
+    // Headless: look for close/clear/dismiss button without hovering
+    let children = copy_ax_array(&entry.element, kAXChildrenAttribute).unwrap_or_default();
+    if try_dismiss_button(&children) {
+        return Ok(info);
+    }
+
+    // Last resort: hover to reveal hidden close button, then try again
     hover_over(&entry.element)?;
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     let children = copy_ax_array(&entry.element, kAXChildrenAttribute).unwrap_or_default();
+    if try_dismiss_button(&children) {
+        return Ok(info);
+    }
+
+    if !try_ax_action(&entry.element, "AXPress") {
+        return Err(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "All dismiss strategies failed (AX actions, close button, hover+close, AXPress)",
+        ));
+    }
+
+    Ok(info)
+}
+
+#[cfg(target_os = "macos")]
+fn try_dismiss_button(children: &[crate::tree::AXElement]) -> bool {
+    use crate::actions::ax_helpers::try_ax_action;
+    use crate::tree::copy_string_attr;
+    use accessibility_sys::kAXRoleAttribute;
+
     let close_btn = children.iter().find(|c| {
         if copy_string_attr(c, kAXRoleAttribute).as_deref() != Some("AXButton") {
             return false;
@@ -53,22 +90,7 @@ fn dismiss_impl(index: usize, app_filter: Option<&str>) -> Result<NotificationIn
             .to_lowercase();
         name.contains("close") || name.contains("clear") || name.contains("dismiss")
     });
-
-    if let Some(btn) = close_btn {
-        if !try_ax_action(btn, "AXPress") {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                "Failed to press close button on notification",
-            ));
-        }
-    } else if !try_ax_action(&entry.element, "AXPress") {
-        return Err(AdapterError::new(
-            ErrorCode::ActionFailed,
-            "No close button found and AXPress on notification group failed",
-        ));
-    }
-
-    Ok(info)
+    close_btn.is_some_and(|btn| try_ax_action(btn, "AXPress"))
 }
 
 #[cfg(target_os = "macos")]
