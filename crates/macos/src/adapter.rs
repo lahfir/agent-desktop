@@ -191,6 +191,13 @@ impl PlatformAdapter for MacOSAdapter {
         crate::notifications::actions::dismiss_notification(index, app_filter)
     }
 
+    fn dismiss_all_notifications(
+        &self,
+        app_filter: Option<&str>,
+    ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+        crate::notifications::actions::dismiss_all(app_filter)
+    }
+
     fn notification_action(
         &self,
         index: usize,

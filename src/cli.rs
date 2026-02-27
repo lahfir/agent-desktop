@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::*;
+pub use crate::cli_args_notifications::*;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -209,11 +210,11 @@ pub enum Commands {
     #[command(about = "List accessibility surfaces for an app (window, menu, sheet ...)")]
     ListSurfaces(ListSurfacesArgs),
     #[command(about = "List notifications from Notification Center")]
-    ListNotifications(ListNotificationsArgs),
+    ListNotifications(ListNotificationsCliArgs),
     #[command(about = "Dismiss a notification by index")]
     DismissNotification(DismissNotificationCliArgs),
     #[command(about = "Dismiss all notifications (--app to filter)")]
-    DismissAllNotifications(DismissAllNotificationsArgs),
+    DismissAllNotifications(DismissAllNotificationsCliArgs),
     #[command(about = "Click an action button on a notification")]
     NotificationAction(NotificationActionCliArgs),
     #[command(about = "Read plain-text clipboard contents")]

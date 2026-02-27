@@ -3,7 +3,7 @@ use agent_desktop_core::{
     notification::{NotificationFilter, NotificationInfo},
 };
 
-use super::NcSession;
+use super::nc_session::NcSession;
 
 pub fn list_notifications(
     filter: &NotificationFilter,
@@ -126,13 +126,12 @@ fn is_notification_group(role: Option<&str>, children: &[crate::tree::AXElement]
     if role != Some("AXGroup") {
         return false;
     }
-    let has_static_text = children
-        .iter()
-        .any(|c| copy_string_attr(c, kAXRoleAttribute).as_deref() == Some("AXStaticText"));
-    let has_button = children
-        .iter()
-        .any(|c| copy_string_attr(c, kAXRoleAttribute).as_deref() == Some("AXButton"));
-    has_static_text || has_button
+    children.iter().any(|c| {
+        matches!(
+            copy_string_attr(c, kAXRoleAttribute).as_deref(),
+            Some("AXStaticText") | Some("AXButton")
+        )
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -197,7 +196,6 @@ fn extract_notification(
         app_name,
         title,
         body,
-        timestamp: None,
         actions,
     })
 }
@@ -242,7 +240,6 @@ mod tests {
             app_name: app.into(),
             title: title.into(),
             body: body.map(String::from),
-            timestamp: None,
             actions: vec![],
         }
     }

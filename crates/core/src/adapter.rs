@@ -230,6 +230,13 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("dismiss_notification"))
     }
 
+    fn dismiss_all_notifications(
+        &self,
+        _app_filter: Option<&str>,
+    ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+        Err(AdapterError::not_supported("dismiss_all_notifications"))
+    }
+
     fn notification_action(
         &self,
         _index: usize,

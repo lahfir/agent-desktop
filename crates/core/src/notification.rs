@@ -7,8 +7,6 @@ pub struct NotificationInfo {
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub actions: Vec<String>,
 }
@@ -31,12 +29,10 @@ mod tests {
             app_name: "Messages".into(),
             title: "New message".into(),
             body: None,
-            timestamp: None,
             actions: vec![],
         };
         let json = serde_json::to_value(&info).unwrap();
         assert!(!json.as_object().unwrap().contains_key("body"));
-        assert!(!json.as_object().unwrap().contains_key("timestamp"));
         assert!(!json.as_object().unwrap().contains_key("actions"));
     }
 
@@ -47,12 +43,10 @@ mod tests {
             app_name: "Slack".into(),
             title: "Channel update".into(),
             body: Some("New message in #general".into()),
-            timestamp: Some("2026-02-27T10:00:00Z".into()),
             actions: vec!["Reply".into(), "Open".into()],
         };
         let json = serde_json::to_value(&info).unwrap();
         assert_eq!(json["body"], "New message in #general");
-        assert_eq!(json["timestamp"], "2026-02-27T10:00:00Z");
         assert_eq!(json["actions"], serde_json::json!(["Reply", "Open"]));
     }
 

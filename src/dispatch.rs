@@ -3,13 +3,11 @@ use agent_desktop_core::{
     adapter::PlatformAdapter,
     commands::{
         batch, check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app,
-        collapse, dismiss_all_notifications, dismiss_notification, double_click, drag, expand,
-        find, focus, focus_window, get, helpers, hover, is_check, key_down, key_up, launch,
-        list_apps, list_notifications, list_surfaces, list_windows, maximize, minimize,
-        mouse_click, mouse_down, mouse_move, mouse_up, move_window, notification_action,
-        permissions, press, resize_window, restore, right_click, screenshot, scroll, scroll_to,
-        select, set_value, snapshot, status, toggle, triple_click, type_text, uncheck, version,
-        wait,
+        collapse, double_click, drag, expand, find, focus, focus_window, get, helpers, hover,
+        is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize,
+        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
+        resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
+        snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
     },
     error::AppError,
 };
@@ -267,35 +265,12 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
         Commands::Restore(a) => restore::execute(restore::RestoreArgs { app: a.app }, adapter),
 
-        Commands::ListNotifications(a) => list_notifications::execute(
-            list_notifications::ListNotificationsArgs {
-                app: a.app,
-                text: a.text,
-                limit: a.limit,
-            },
-            adapter,
-        ),
-
-        Commands::DismissNotification(a) => dismiss_notification::execute(
-            dismiss_notification::DismissNotificationArgs {
-                index: a.index as usize,
-                app: a.app,
-            },
-            adapter,
-        ),
-
-        Commands::DismissAllNotifications(a) => dismiss_all_notifications::execute(
-            dismiss_all_notifications::DismissAllNotificationsArgs { app: a.app },
-            adapter,
-        ),
-
-        Commands::NotificationAction(a) => notification_action::execute(
-            notification_action::NotificationActionArgs {
-                index: a.index as usize,
-                action: a.action,
-            },
-            adapter,
-        ),
+        Commands::ListNotifications(_)
+        | Commands::DismissNotification(_)
+        | Commands::DismissAllNotifications(_)
+        | Commands::NotificationAction(_) => {
+            crate::dispatch_notifications::dispatch_notification(cmd, adapter)
+        }
 
         Commands::ClipboardGet => clipboard_get::execute(adapter),
         Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
@@ -311,7 +286,6 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 menu: a.menu,
                 menu_closed: a.menu_closed,
                 notification: a.notification,
-                poll_interval_ms: a.poll_interval,
                 app: a.app,
             },
             adapter,

@@ -2,7 +2,9 @@ mod batch_dispatch;
 mod batch_dispatch_ext;
 mod cli;
 mod cli_args;
+mod cli_args_notifications;
 mod dispatch;
+mod dispatch_notifications;
 
 use agent_desktop_core::adapter::PlatformAdapter;
 use clap::{CommandFactory, Parser};

@@ -19,7 +19,6 @@ pub struct WaitArgs {
     pub menu: bool,
     pub menu_closed: bool,
     pub notification: bool,
-    pub poll_interval_ms: u64,
     pub app: Option<String>,
 }
 
@@ -165,32 +164,38 @@ fn wait_for_notification(
 ) -> Result<Value, AppError> {
     let filter = NotificationFilter {
         app: args.app.clone(),
-        text: None,
+        text: args.text.clone(),
         ..Default::default()
     };
     let baseline = adapter.list_notifications(&filter)?;
-    let baseline_count = baseline.len();
-    let interval = Duration::from_millis(args.poll_interval_ms);
+    let baseline_indices: std::collections::HashSet<usize> =
+        baseline.iter().map(|n| n.index).collect();
+    let interval = Duration::from_millis(500);
     let deadline = Instant::now() + Duration::from_millis(args.timeout_ms);
     let start = Instant::now();
 
     loop {
-        std::thread::sleep(interval);
         if Instant::now() > deadline {
             return Err(AppError::Adapter(crate::error::AdapterError::timeout(
                 format!("No new notification within {}ms", args.timeout_ms),
             )));
         }
         let current = adapter.list_notifications(&filter)?;
-        if current.len() > baseline_count {
-            let elapsed = start.elapsed().as_millis();
-            return Ok(json!({
-                "condition": "notification",
-                "matched": true,
-                "notification": current[0],
-                "elapsed_ms": elapsed,
-            }));
+        let new_notif = current
+            .iter()
+            .find(|n| !baseline_indices.contains(&n.index));
+        if let Some(notif) = new_notif.or(current.last()) {
+            if current.len() > baseline_indices.len() {
+                let elapsed = start.elapsed().as_millis();
+                return Ok(json!({
+                    "condition": "notification",
+                    "matched": true,
+                    "notification": notif,
+                    "elapsed_ms": elapsed,
+                }));
+            }
         }
+        std::thread::sleep(interval);
     }
 }
 

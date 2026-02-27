@@ -215,16 +215,16 @@ RefMap persisted at `~/.agent-desktop/last_refmap.json` with `0o600` permissions
 
 ### New Commands — Notification & System Tray (Post Phase 1)
 
-> **Note:** Notification management and system tray interaction were not part of the original Phase 1 delivery. These are **new features to be implemented across all platforms** as each platform adapter is built. The macOS implementations should be added first as a follow-up to Phase 1, then Windows (Phase 2) and Linux (Phase 3) implementations follow the same pattern.
+> **Note:** Notification management and system tray interaction were not part of the original Phase 1 delivery. These are **new features to be implemented across all platforms** as each platform adapter is built. The macOS implementations were added as a follow-up to Phase 1. Windows (Phase 2) and Linux (Phase 3) implementations follow the same pattern.
 
-#### Notification Commands (New — Not Yet Implemented)
+#### Notification Commands (macOS — Completed)
 
-| Command | Description | Flags |
-|---------|-------------|-------|
-| `list-notifications` | List current notifications with app, title, body, timestamp, and available actions | `--app` (filter by app), `--limit` (max results) |
-| `dismiss-notification` | Dismiss a specific notification by ID | `<notification-id>` |
-| `dismiss-all-notifications` | Clear all notifications, optionally filtered by app | `--app` (filter by app) |
-| `notification-action` | Click an action button on a specific notification | `<notification-id> <action-name>` |
+| Command | Description | Flags | Status |
+|---------|-------------|-------|--------|
+| `list-notifications` | List current notifications with app, title, body, and available actions | `--app` (filter by app), `--text` (filter by text), `--limit` (max results) | **Completed** |
+| `dismiss-notification` | Dismiss a specific notification by 1-based index | `<index>`, `--app` (filter by app) | **Completed** |
+| `dismiss-all-notifications` | Clear all notifications, optionally filtered by app (single NC session, reports failures) | `--app` (filter by app) | **Completed** |
+| `notification-action` | Click an action button on a specific notification | `<index> <action-name>` | **Completed** |
 
 #### System Tray / Status Area Commands (New — Not Yet Implemented)
 
@@ -234,12 +234,13 @@ RefMap persisted at `~/.agent-desktop/last_refmap.json` with `0o600` permissions
 | `click-tray-item` | Click a system tray item by ID or app name | `<tray-item-id>` |
 | `open-tray-menu` | Click a tray item and snapshot its resulting menu for ref-based interaction | `<tray-item-id>` |
 
-#### Wait Command Update (Not Yet Implemented)
+#### Wait Command Update (Notification — Completed, Menu — Completed)
 
-The existing `wait` command should be extended with a `--notification` flag:
-- `wait --notification` — Wait for any notification to appear
+The `wait` command has been extended with notification and menu support:
+- `wait --notification` — Wait for any new notification to appear (index-diff based detection)
 - `wait --notification --app Safari` — Wait for a notification from a specific app
 - `wait --notification --text "Download complete"` — Wait for a notification containing specific text
+- `wait --menu` / `wait --menu-closed` — Wait for context menu open/close
 
 ### Commands Shipped (57)
 
@@ -467,7 +468,7 @@ crates/windows/src/
 
 ### Notification Management (New Feature — Windows Implementation)
 
-Windows notification management must be implemented from scratch as part of Phase 2. This is a new feature, not a port of existing macOS code (macOS notification support is also new and added as a follow-up to Phase 1).
+Windows notification management must be implemented from scratch as part of Phase 2. The macOS notification implementation (completed as a follow-up to Phase 1) serves as the reference pattern — same `PlatformAdapter` trait methods (`list_notifications`, `dismiss_notification`, `dismiss_all_notifications`, `notification_action`), same JSON output contract, same 1-based indexing.
 
 **Implementation approach:**
 - **List notifications:** Open Action Center via UIA (`Windows.UI.Notifications`). Traverse the notification list — each toast is a UIA element with `Name` (title), `FullDescription` (body), app info, and child action buttons
@@ -673,7 +674,7 @@ crates/linux/src/
 
 ### Notification Management (New Feature — Linux Implementation)
 
-Linux notification management must be implemented from scratch as part of Phase 3. This is a new feature across all platforms.
+Linux notification management must be implemented from scratch as part of Phase 3. The macOS implementation (completed) and Windows implementation (Phase 2) serve as reference patterns — same trait methods, same JSON output contract, same 1-based indexing.
 
 **Implementation approach:**
 - **List notifications:** The standard `org.freedesktop.Notifications` D-Bus interface does NOT provide a "list current notifications" method. Approach varies by desktop environment:

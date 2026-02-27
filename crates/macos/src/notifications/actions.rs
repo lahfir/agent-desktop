@@ -4,7 +4,7 @@ use agent_desktop_core::{
     notification::{NotificationFilter, NotificationInfo},
 };
 
-use super::NcSession;
+use super::nc_session::NcSession;
 
 pub fn dismiss_notification(
     index: usize,
@@ -12,6 +12,15 @@ pub fn dismiss_notification(
 ) -> Result<NotificationInfo, AdapterError> {
     let session = NcSession::open()?;
     let result = dismiss_impl(index, app_filter);
+    session.close()?;
+    result
+}
+
+pub fn dismiss_all(
+    app_filter: Option<&str>,
+) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+    let session = NcSession::open()?;
+    let result = dismiss_all_impl(app_filter);
     session.close()?;
     result
 }
@@ -25,10 +34,6 @@ pub fn notification_action(index: usize, action_name: &str) -> Result<ActionResu
 
 #[cfg(target_os = "macos")]
 fn dismiss_impl(index: usize, app_filter: Option<&str>) -> Result<NotificationInfo, AdapterError> {
-    use crate::actions::ax_helpers::{list_ax_actions, try_action_from_list, try_ax_action};
-    use crate::tree::copy_ax_array;
-    use accessibility_sys::kAXChildrenAttribute;
-
     let filter = build_filter(app_filter);
     let entries = super::list::list_entries(&filter)?;
 
@@ -38,40 +43,66 @@ fn dismiss_impl(index: usize, app_filter: Option<&str>) -> Result<NotificationIn
         .ok_or_else(|| AdapterError::notification_not_found(index))?;
 
     let info = entry.info;
+    dismiss_entry(&entry.element)?;
+    Ok(info)
+}
 
-    // Headless first: try AX actions directly on the notification group
-    let actions = list_ax_actions(&entry.element);
+#[cfg(target_os = "macos")]
+fn dismiss_all_impl(
+    app_filter: Option<&str>,
+) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+    let filter = build_filter(app_filter);
+    let entries = super::list::list_entries(&filter)?;
+
+    let mut dismissed = Vec::new();
+    let mut failures = Vec::new();
+
+    for entry in entries.into_iter().rev() {
+        match dismiss_entry(&entry.element) {
+            Ok(()) => dismissed.push(entry.info),
+            Err(e) => failures.push(format!("#{}: {}", entry.info.index, e)),
+        }
+    }
+
+    Ok((dismissed, failures))
+}
+
+#[cfg(target_os = "macos")]
+fn dismiss_entry(element: &crate::tree::AXElement) -> Result<(), AdapterError> {
+    use crate::actions::ax_helpers::{list_ax_actions, try_action_from_list, try_ax_action};
+    use crate::tree::copy_ax_array;
+    use accessibility_sys::kAXChildrenAttribute;
+
+    let actions = list_ax_actions(element);
     if try_action_from_list(
-        &entry.element,
+        element,
         &actions,
         &["AXDismiss", "AXRemoveFromParent", "AXPress"],
     ) {
-        return Ok(info);
+        return Ok(());
     }
 
-    // Headless: look for close/clear/dismiss button without hovering
-    let children = copy_ax_array(&entry.element, kAXChildrenAttribute).unwrap_or_default();
+    let children = copy_ax_array(element, kAXChildrenAttribute).unwrap_or_default();
     if try_dismiss_button(&children) {
-        return Ok(info);
+        return Ok(());
     }
 
-    // Last resort: hover to reveal hidden close button, then try again
-    hover_over(&entry.element)?;
+    hover_over(element)?;
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    let children = copy_ax_array(&entry.element, kAXChildrenAttribute).unwrap_or_default();
+    let children = copy_ax_array(element, kAXChildrenAttribute).unwrap_or_default();
     if try_dismiss_button(&children) {
-        return Ok(info);
+        return Ok(());
     }
 
-    if !try_ax_action(&entry.element, "AXPress") {
-        return Err(AdapterError::new(
-            ErrorCode::ActionFailed,
-            "All dismiss strategies failed (AX actions, close button, hover+close, AXPress)",
-        ));
+    if try_ax_action(element, "AXPress") {
+        return Ok(());
     }
 
-    Ok(info)
+    Err(AdapterError::new(
+        ErrorCode::ActionFailed,
+        "All dismiss strategies failed (AX actions, close button, hover+close, AXPress)",
+    ))
 }
 
 #[cfg(target_os = "macos")]
@@ -173,6 +204,13 @@ fn dismiss_impl(
     _app_filter: Option<&str>,
 ) -> Result<NotificationInfo, AdapterError> {
     Err(AdapterError::not_supported("dismiss_notification"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn dismiss_all_impl(
+    _app_filter: Option<&str>,
+) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+    Err(AdapterError::not_supported("dismiss_all_notifications"))
 }
 
 #[cfg(not(target_os = "macos"))]

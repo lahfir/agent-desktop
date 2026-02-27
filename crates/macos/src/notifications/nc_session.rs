@@ -1,11 +1,11 @@
 use agent_desktop_core::error::AdapterError;
 
-pub struct NcSession {
+pub(crate) struct NcSession {
     was_already_open: bool,
 }
 
 impl NcSession {
-    pub fn open() -> Result<Self, AdapterError> {
+    pub(crate) fn open() -> Result<Self, AdapterError> {
         let was_already_open = is_nc_open();
         if !was_already_open {
             open_nc()?;
@@ -14,7 +14,7 @@ impl NcSession {
         Ok(Self { was_already_open })
     }
 
-    pub fn close(self) -> Result<(), AdapterError> {
+    pub(crate) fn close(self) -> Result<(), AdapterError> {
         if !self.was_already_open {
             close_nc()?;
         }
@@ -35,7 +35,7 @@ impl Drop for NcSession {
 
 #[cfg(target_os = "macos")]
 pub(super) fn nc_pid() -> Option<i32> {
-    let output = std::process::Command::new("pgrep")
+    let output = std::process::Command::new("/usr/bin/pgrep")
         .arg("-x")
         .arg("NotificationCenter")
         .output()
@@ -72,7 +72,7 @@ fn open_nc() -> Result<(), AdapterError> {
         click (first menu bar item of menu bar 1 whose description is "Clock")
     end tell"#;
 
-    let mut child = std::process::Command::new("osascript")
+    let mut child = std::process::Command::new("/usr/bin/osascript")
         .arg("-e")
         .arg(script)
         .stdout(std::process::Stdio::null())
@@ -81,7 +81,21 @@ fn open_nc() -> Result<(), AdapterError> {
         .map_err(|e| AdapterError::internal(format!("Failed to spawn osascript: {e}")))?;
 
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let _ = child.try_wait();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if std::time::Instant::now() > deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(_) => break,
+        }
+    }
     Ok(())
 }
 

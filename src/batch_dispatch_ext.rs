@@ -171,10 +171,6 @@ pub fn dispatch(
                     .get("notification")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
-                poll_interval_ms: args
-                    .get("poll_interval_ms")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(3000),
                 app: str_field(&args, "app"),
             },
             adapter,
