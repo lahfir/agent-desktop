@@ -96,6 +96,11 @@ pub trait PlatformAdapter: Send + Sync {
     fn set_clipboard(&self, text: &str) -> Result<()>;
     fn synthesize_input(&self, input: InputEvent) -> Result<()>;
     fn manage_window(&self, win: &WindowInfo, op: WindowOp) -> Result<()>;
+    fn list_notifications(&self) -> Result<Vec<NotificationInfo>>;
+    fn dismiss_notification(&self, id: &str) -> Result<()>;
+    fn interact_notification(&self, id: &str, action_name: &str) -> Result<ActionResult>;
+    fn list_tray_items(&self) -> Result<Vec<TrayItemInfo>>;
+    fn interact_tray_item(&self, id: &str, action: Action) -> Result<ActionResult>;
 }
 ```
 
@@ -105,6 +110,8 @@ pub trait PlatformAdapter: Send + Sync {
 - `InputEvent` — MouseMove(x,y), MouseClick(x,y,button,count), MouseDown(button), MouseUp(button), MouseWheel(dy,dx), KeyDown(key), KeyUp(key), Drag(from,to)
 - `WindowOp` — Resize(w,h), Move(x,y), Minimize, Maximize, Restore, Close
 - `ScreenshotTarget` — Screen(index), Window(id), Element(NativeHandle), FullScreen
+- `NotificationInfo` — id, app_name, title, body, timestamp, actions: Vec\<String\>, is_persistent
+- `TrayItemInfo` — id, app_name, title, tooltip, has_menu
 
 ### macOS Adapter Implementation
 
@@ -131,6 +138,15 @@ crates/macos/src/
 │   ├── keyboard.rs     # CGEventCreateKeyboardEvent, key synthesis, text typing
 │   ├── mouse.rs        # CGEventCreateMouseEvent, mouse events
 │   └── clipboard.rs    # NSPasteboard.generalPasteboard read/write
+├── notifications/
+│   ├── mod.rs          # re-exports
+│   ├── list.rs         # List notifications via Notification Center AX tree
+│   ├── dismiss.rs      # Dismiss individual or all notifications via AXPress
+│   └── interact.rs     # Click notification action buttons
+├── tray/
+│   ├── mod.rs          # re-exports
+│   ├── list.rs         # List menu bar extras via SystemUIServer AX tree
+│   └── interact.rs     # Click menu bar extras, expand menus
 └── system/
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # launch, close, focus via NSWorkspace / AppleScript
@@ -165,6 +181,21 @@ crates/macos/src/
 - If false, return `PERM_DENIED` with guidance: "Open System Settings > Privacy > Accessibility and add your terminal"
 - Optionally call `AXIsProcessTrustedWithOptions(prompt: true)` to trigger system dialog
 
+**Notification management:**
+- Open Notification Center via AX: target the `NotificationCenter` process (bundleId: `com.apple.notificationcenterui`)
+- List notifications: traverse the Notification Center AX tree — each notification is an `AXGroup` with title, subtitle, and action buttons
+- Dismiss: perform `AXPress` on the notification's close button, or `AXRemoveFromParent` if supported
+- Interact: resolve action buttons within a notification group and perform `AXPress`
+- Dismiss all: `AXPress` the "Clear All" button at the group level
+- Do Not Disturb detection: read Focus/DND state via `NSDoNotDisturbEnabled` user defaults or `CoreFoundation` preferences
+
+**System tray / Menu bar extras:**
+- Menu bar extras (status items) live under the `SystemUIServer` process AX tree
+- List items: traverse `AXMenuBarItem` children of the system menu bar
+- Click: `AXPress` on the target menu bar extra element
+- Expand menus: after clicking a tray item, traverse the resulting `AXMenu` as a surface
+- Control Center items: accessible via the `ControlCenter` process (bundleId: `com.apple.controlcenter`)
+
 **AXElement safety:**
 - Inner field: `pub(crate)` not `pub` (prevents double-free via raw pointer extraction)
 - `Clone` impl must call `CFRetain`
@@ -182,7 +213,36 @@ Platform-agnostic, lives in `agent-desktop-core`:
 
 RefMap persisted at `~/.agent-desktop/last_refmap.json` with `0o600` permissions, directory at `0o700`. Each snapshot replaces the refmap file entirely (atomic write via temp + rename). Action commands use optimistic re-identification: `(pid, role, name, bounds_hash)`. Return `STALE_REF` on mismatch.
 
-### Commands Shipped (50)
+### New Commands — Notification & System Tray (Post Phase 1)
+
+> **Note:** Notification management and system tray interaction were not part of the original Phase 1 delivery. These are **new features to be implemented across all platforms** as each platform adapter is built. The macOS implementations were added as a follow-up to Phase 1. Windows (Phase 2) and Linux (Phase 3) implementations follow the same pattern.
+
+#### Notification Commands (macOS — Completed)
+
+| Command | Description | Flags | Status |
+|---------|-------------|-------|--------|
+| `list-notifications` | List current notifications with app, title, body, and available actions | `--app` (filter by app), `--text` (filter by text), `--limit` (max results) | **Completed** |
+| `dismiss-notification` | Dismiss a specific notification by 1-based index | `<index>`, `--app` (filter by app) | **Completed** |
+| `dismiss-all-notifications` | Clear all notifications, optionally filtered by app (single NC session, reports failures) | `--app` (filter by app) | **Completed** |
+| `notification-action` | Click an action button on a specific notification | `<index> <action-name>` | **Completed** |
+
+#### System Tray / Status Area Commands (New — Not Yet Implemented)
+
+| Command | Description | Flags |
+|---------|-------------|-------|
+| `list-tray-items` | List all system tray / menu bar extra items with app name and tooltip | — |
+| `click-tray-item` | Click a system tray item by ID or app name | `<tray-item-id>` |
+| `open-tray-menu` | Click a tray item and snapshot its resulting menu for ref-based interaction | `<tray-item-id>` |
+
+#### Wait Command Update (Notification — Completed, Menu — Completed)
+
+The `wait` command has been extended with notification and menu support:
+- `wait --notification` — Wait for any new notification to appear (index-diff based detection)
+- `wait --notification --app Safari` — Wait for a notification from a specific app
+- `wait --notification --text "Download complete"` — Wait for a notification containing specific text
+- `wait --menu` / `wait --menu-closed` — Wait for context menu open/close
+
+### Commands Shipped (57)
 
 | Category | Commands | Count |
 |----------|----------|-------|
@@ -193,7 +253,9 @@ RefMap persisted at `~/.agent-desktop/last_refmap.json` with `0o600` permissions
 | Keyboard | `press`, `key-down`, `key-up` | 3 |
 | Mouse | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` | 6 |
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | 3 |
-| Wait | `wait` (with `--element`, `--window`, `--text`, `--menu` flags) | 1 |
+| Notification | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | 4 |
+| System Tray | `list-tray-items`, `click-tray-item`, `open-tray-menu` | 3 |
+| Wait | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) | 1 |
 | System | `status`, `permissions`, `version` | 3 |
 | Batch | `batch` | 1 |
 
@@ -247,6 +309,10 @@ Serialization rules: omit null/None fields (`skip_serializing_if`), omit empty a
 | `PLATFORM_UNSUPPORTED` | Platform | Linux adapter not yet shipped | This platform ships in Phase 3. Currently macOS only |
 | `CLIPBOARD_EMPTY` | Clipboard | clipboard get but clipboard is empty | No text content in clipboard. Copy something first |
 | `TIMEOUT` | Wait | wait --element exceeded timeout | Element did not appear within timeout. Increase --timeout or check app state |
+| `NOTIFICATION_NOT_FOUND` | Notification | Notification ID not found | Notification may have been dismissed or expired. Run 'list-notifications' to see current notifications |
+| `NOTIFICATION_UNSUPPORTED` | Notification | Notification daemon does not support listing | This notification daemon does not expose a history API. Consider using 'wait --notification' to catch notifications in real-time |
+| `TRAY_NOT_FOUND` | System Tray | Tray item not found | Tray item may have been removed. Run 'list-tray-items' to see current items |
+| `TRAY_UNSUPPORTED` | System Tray | No system tray available | System tray not available on this desktop environment. On GNOME, install the AppIndicator extension |
 
 Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/parse error.
 
@@ -274,6 +340,10 @@ Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/par
 - Launch + close app lifecycle
 - Permission denied scenario — correct error code and guidance
 - Large tree (Xcode) snapshot in under 2 seconds
+- List notifications — returns non-empty list when Notification Center has entries
+- Dismiss notification — verify notification removed from Notification Center AX tree
+- List tray items — returns known menu bar extras (Wi-Fi, Bluetooth, Clock)
+- Click tray item — verify menu bar extra menu opens
 
 **Golden fixtures (`tests/fixtures/`):**
 - Real snapshots from Finder, TextEdit, etc. checked into repo
@@ -353,6 +423,15 @@ crates/windows/src/
 │   ├── keyboard.rs     # SendInput keyboard synthesis
 │   ├── mouse.rs        # SendInput mouse events
 │   └── clipboard.rs    # OpenClipboard / GetClipboardData / SetClipboardData Win32 APIs
+├── notifications/
+│   ├── mod.rs          # re-exports
+│   ├── list.rs         # List toast/Action Center notifications via UIA
+│   ├── dismiss.rs      # Dismiss individual or all notifications
+│   └── interact.rs     # Click notification action buttons
+├── tray/
+│   ├── mod.rs          # re-exports
+│   ├── list.rs         # List system tray items via Shell_TrayWnd UIA tree
+│   └── interact.rs     # Click tray items, open tray menus
 └── system/
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # Process launch via CreateProcess, close via TerminateProcess
@@ -384,6 +463,28 @@ crates/windows/src/
 | App close | `WM_CLOSE` / `TerminateProcess` | Graceful close first, force kill with `--force` |
 | Window ops | `SetWindowPos` / `ShowWindow` | Resize, move, minimize (`SW_MINIMIZE`), maximize (`SW_MAXIMIZE`), restore (`SW_RESTORE`) |
 | Permissions | COM security / UAC | Detect elevation requirements; return `PERM_DENIED` if UIA access blocked |
+| Notifications | UIA + Action Center | Toast notifications accessible via UIA tree of `Windows.UI.Notifications.Manager`. List via `IUIAutomationElement` traversal of Action Center pane. Dismiss via `InvokePattern` on close button. Interact via `InvokePattern` on action buttons. Do Not Disturb (Focus Assist) state via `WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED` or registry query |
+| System tray | UIA + Shell_TrayWnd | System tray items accessible via UIA tree of `Shell_TrayWnd` class. Overflow items in `NotifyIconOverflowWindow`. List via `IUIAutomationTreeWalker` on tray area. Click via `InvokePattern` or coordinate-based `SendInput`. Expand overflow via click on chevron button |
+
+### Notification Management (New Feature — Windows Implementation)
+
+Windows notification management must be implemented from scratch as part of Phase 2. The macOS notification implementation (completed as a follow-up to Phase 1) serves as the reference pattern — same `PlatformAdapter` trait methods (`list_notifications`, `dismiss_notification`, `dismiss_all_notifications`, `notification_action`), same JSON output contract, same 1-based indexing.
+
+**Implementation approach:**
+- **List notifications:** Open Action Center via UIA (`Windows.UI.Notifications`). Traverse the notification list — each toast is a UIA element with `Name` (title), `FullDescription` (body), app info, and child action buttons
+- **Dismiss:** `InvokePattern.Invoke()` on the notification's dismiss/close button. For "dismiss all", invoke the "Clear all" button in Action Center
+- **Interact with actions:** Resolve action buttons within a toast element tree, invoke via `InvokePattern`
+- **Focus Assist / Do Not Disturb:** Query via `WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED` state notification or registry key `HKCU\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.notifications.quiethourssettings`
+- **Edge case:** Some notifications may be transient (disappear after timeout). The `wait --notification` command should monitor for new toasts via UIA event subscription (`UIA_Notification_EventId`)
+
+### System Tray (New Feature — Windows Implementation)
+
+System tray interaction must be implemented from scratch as part of Phase 2.
+
+**Implementation approach:**
+- **List items:** Access the system tray via UIA tree of `Shell_TrayWnd` window class. Tray items are children of the notification area. Overflow items live in `NotifyIconOverflowWindow`
+- **Click:** `InvokePattern` on tray items, falling back to coordinate-based `SendInput` for items that don't expose UIA patterns
+- **Open menu:** After clicking a tray item, detect the resulting popup menu via UIA focus-changed events and expose it for ref-based interaction
 
 ### Chromium Detection
 
@@ -430,6 +531,11 @@ agent-desktop-windows = { path = "crates/windows" }
 - Screenshot produces valid PNG
 - Large tree snapshot performance validation
 - Chromium detection — verify warning when tree is empty
+- List notifications — returns non-empty list when notifications exist
+- Dismiss notification — verify notification removed from Action Center
+- Notification action — click action button on a test toast notification
+- List tray items — returns known system tray entries (volume, network, clock)
+- Click tray item — verify tray menu opens
 
 **Cross-platform validation:**
 - Same snapshot of a cross-platform app (e.g., VS Code) produces structurally identical JSON on macOS and Windows
@@ -523,6 +629,15 @@ crates/linux/src/
 │   ├── keyboard.rs     # xdotool (X11) / ydotool (Wayland) keyboard synthesis
 │   ├── mouse.rs        # xdotool (X11) / ydotool (Wayland) mouse events
 │   └── clipboard.rs    # wl-clipboard (Wayland) / xclip (X11) clipboard ops
+├── notifications/
+│   ├── mod.rs          # re-exports
+│   ├── list.rs         # List notifications via D-Bus org.freedesktop.Notifications or daemon-specific API
+│   ├── dismiss.rs      # Dismiss/close notifications via CloseNotification D-Bus method
+│   └── interact.rs     # Invoke notification actions via ActionInvoked D-Bus signal
+├── tray/
+│   ├── mod.rs          # re-exports
+│   ├── list.rs         # List tray items via StatusNotifierItem D-Bus interface or AT-SPI
+│   └── interact.rs     # Activate/context-menu tray items via D-Bus methods
 └── system/
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # App launch via xdg-open / process spawn, close via SIGTERM/SIGKILL
@@ -554,6 +669,36 @@ crates/linux/src/
 | App close | `SIGTERM` / `SIGKILL` | Graceful close first, force with `--force` |
 | Window ops | `xdotool` / `wmctrl` | Window resize, move, minimize, maximize, restore |
 | Permissions | AT-SPI2 bus availability | Check for `org.a11y.Bus` on D-Bus session bus. Return `PLATFORM_UNSUPPORTED` with enable instructions if missing |
+| Notifications | D-Bus `org.freedesktop.Notifications` | List via `GetServerInformation` + monitoring `Notify` signals. History varies by daemon: GNOME uses `org.gnome.Shell.Notifications`, KDE uses `org.freedesktop.Notifications` with `GetNotifications`. Dismiss via `CloseNotification(id)`. Interact via `ActionInvoked` signal. Do Not Disturb: GNOME `org.gnome.desktop.notifications.show-banners`, KDE `org.kde.notificationmanager` |
+| System tray | D-Bus `org.kde.StatusNotifierWatcher` | SNI (StatusNotifierItem) protocol for modern tray items. Legacy XEmbed tray items via AT-SPI tree of the tray window. List via `RegisteredStatusNotifierItems` property. Activate via `Activate(x, y)` method. Context menu via `ContextMenu(x, y)` method. Fallback: coordinate-based click for XEmbed items |
+
+### Notification Management (New Feature — Linux Implementation)
+
+Linux notification management must be implemented from scratch as part of Phase 3. The macOS implementation (completed) and Windows implementation (Phase 2) serve as reference patterns — same trait methods, same JSON output contract, same 1-based indexing.
+
+**Implementation approach:**
+- **List notifications:** The standard `org.freedesktop.Notifications` D-Bus interface does NOT provide a "list current notifications" method. Approach varies by desktop environment:
+  - GNOME: `org.gnome.Shell` exposes `org.gnome.Shell.Notifications` interface with `GetNotifications()` method (returns array of notification dicts)
+  - KDE Plasma: `org.freedesktop.Notifications` with `GetNotifications()` extension, or `org.kde.notificationmanager` D-Bus interface
+  - Other DEs: Monitor `Notify` D-Bus signals to maintain an in-memory notification history within the daemon session
+- **Dismiss:** `org.freedesktop.Notifications.CloseNotification(id)` D-Bus method call. Works across all notification daemons
+- **Interact with actions:** Listen for user-triggered actions or programmatically invoke via `ActionInvoked` signal. Note: the D-Bus spec does not define a method to programmatically trigger actions — coordinate-based click on the notification popup via AT-SPI may be needed as a fallback
+- **Do Not Disturb:**
+  - GNOME: `gsettings get org.gnome.desktop.notifications show-banners` (boolean)
+  - KDE: `org.kde.notificationmanager` D-Bus interface, `inhibited` property
+- **Edge case:** Notification daemon varies by DE — detect via `GetServerInformation()` D-Bus method. Return `PLATFORM_UNSUPPORTED` with daemon-specific guidance if the notification interface is unreachable
+
+### System Tray (New Feature — Linux Implementation)
+
+System tray interaction must be implemented from scratch as part of Phase 3.
+
+**Implementation approach:**
+- **Modern tray (SNI):** Most modern Linux apps use the `StatusNotifierItem` (SNI) D-Bus protocol. Discover items via `org.kde.StatusNotifierWatcher.RegisteredStatusNotifierItems` property
+- **Legacy tray (XEmbed):** Older apps use XEmbed protocol. Access via AT-SPI tree of the tray window, or coordinate-based interaction
+- **List items:** Query `StatusNotifierWatcher` for registered items. Each item exposes `Title`, `IconName`, `ToolTip`, `Menu` (D-Bus menu path) properties
+- **Activate:** Call `Activate(x, y)` method on the `StatusNotifierItem` D-Bus interface
+- **Context menu:** Call `ContextMenu(x, y)` method, or read the `Menu` property to get the `com.canonical.dbusmenu` path and traverse the menu tree
+- **Edge case:** GNOME does not natively support SNI (requires `AppIndicator` extension). Detect and report via error suggestion if no tray is available
 
 ### Display Server Detection
 
@@ -626,10 +771,17 @@ Note: `tokio` is introduced here for the first time. Phases 1-2 are fully synchr
 - Resize, move, minimize, maximize, restore window operations
 - Screenshot produces valid PNG
 - AT-SPI2 bus not running — correct error code and guidance
+- List notifications — returns non-empty list when notifications exist (GNOME)
+- Dismiss notification — verify notification dismissed via D-Bus `CloseNotification`
+- List tray items — returns known SNI items (if running under KDE or with AppIndicator extension)
+- Click tray item — verify tray menu opens via `Activate` D-Bus method
+- Notification daemon detection — correct `GetServerInformation` result
 
 **Cross-platform validation:**
 - Same snapshot of a cross-platform app (e.g., VS Code) produces structurally identical JSON on all 3 platforms
 - All error codes produce identical JSON envelope format on all 3 platforms
+- Notification commands return identical JSON envelope structure across all 3 platforms (list, dismiss, action)
+- Tray commands return identical JSON envelope structure across all 3 platforms
 
 ### CI
 
@@ -738,6 +890,13 @@ Each MCP tool maps 1:1 to a CLI command. Tool names are prefixed with `desktop_`
 | `desktop_wait` | `wait` | true | false |
 | `desktop_get` | `get <prop> <ref>` | true | false |
 | `desktop_is` | `is <state> <ref>` | true | false |
+| `desktop_list_notifications` | `list-notifications` | true | false |
+| `desktop_dismiss_notification` | `dismiss-notification <id>` | false | true |
+| `desktop_dismiss_all_notifications` | `dismiss-all-notifications` | false | true |
+| `desktop_notification_action` | `notification-action <id> <action>` | false | false |
+| `desktop_list_tray_items` | `list-tray-items` | true | false |
+| `desktop_click_tray_item` | `click-tray-item <id>` | false | false |
+| `desktop_open_tray_menu` | `open-tray-menu <id>` | false | false |
 
 ### Transport
 
@@ -1061,6 +1220,8 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | Clipboard | `NSPasteboard` | Win32 Clipboard API | `wl-clipboard` / `xclip` |
 | Screenshot | `CGWindowListCreateImage` | `BitBlt` / `PrintWindow` | `PipeWire` / `XGetImage` |
 | Permissions | `AXIsProcessTrusted()` | COM security / UAC | Bus availability |
+| Notifications | Notification Center AX tree (`com.apple.notificationcenterui`) | UIA tree of Action Center / Toast Manager | D-Bus `org.freedesktop.Notifications` + daemon-specific history |
+| System tray | `SystemUIServer` AX tree + `ControlCenter` AX tree | UIA tree of `Shell_TrayWnd` + overflow window | D-Bus `StatusNotifierWatcher` + XEmbed fallback |
 
 ---
 

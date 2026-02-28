@@ -6,6 +6,7 @@ use agent_desktop_core::{
     },
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
+    notification::{NotificationFilter, NotificationInfo},
     refs::RefEntry,
 };
 use rustc_hash::FxHashSet;
@@ -173,6 +174,36 @@ impl PlatformAdapter for MacOSAdapter {
 
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
         crate::input::clipboard::clear()
+    }
+
+    fn list_notifications(
+        &self,
+        filter: &NotificationFilter,
+    ) -> Result<Vec<NotificationInfo>, AdapterError> {
+        crate::notifications::list::list_notifications(filter)
+    }
+
+    fn dismiss_notification(
+        &self,
+        index: usize,
+        app_filter: Option<&str>,
+    ) -> Result<NotificationInfo, AdapterError> {
+        crate::notifications::actions::dismiss_notification(index, app_filter)
+    }
+
+    fn dismiss_all_notifications(
+        &self,
+        app_filter: Option<&str>,
+    ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+        crate::notifications::actions::dismiss_all(app_filter)
+    }
+
+    fn notification_action(
+        &self,
+        index: usize,
+        action_name: &str,
+    ) -> Result<ActionResult, AdapterError> {
+        crate::notifications::actions::notification_action(index, action_name)
     }
 }
 

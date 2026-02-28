@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::*;
+pub use crate::cli_args_notifications::*;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -59,6 +60,12 @@ APP & WINDOW
   maximize                   Maximize/zoom window
   restore                    Restore minimized/maximized window
 
+NOTIFICATIONS
+  list-notifications         List notifications from Notification Center
+  dismiss-notification <n>   Dismiss notification by index
+  dismiss-all-notifications  Dismiss all notifications
+  notification-action <n> <action>  Click action button on notification
+
 CLIPBOARD
   clipboard-get              Read plain-text clipboard
   clipboard-set <text>       Write text to clipboard
@@ -69,6 +76,7 @@ WAIT
   wait --element <ref>       Block until element appears (--timeout ms)
   wait --window <title>      Block until window appears
   wait --text <text>         Block until text appears in app
+  wait --notification        Block until a new notification arrives
 
 SYSTEM
   status                     Adapter health, platform, and permission state
@@ -201,6 +209,14 @@ pub enum Commands {
     Restore(AppRefArgs),
     #[command(about = "List accessibility surfaces for an app (window, menu, sheet ...)")]
     ListSurfaces(ListSurfacesArgs),
+    #[command(about = "List notifications from Notification Center")]
+    ListNotifications(ListNotificationsCliArgs),
+    #[command(about = "Dismiss a notification by index")]
+    DismissNotification(DismissNotificationCliArgs),
+    #[command(about = "Dismiss all notifications (--app to filter)")]
+    DismissAllNotifications(DismissAllNotificationsCliArgs),
+    #[command(about = "Click an action button on a notification")]
+    NotificationAction(NotificationActionCliArgs),
     #[command(about = "Read plain-text clipboard contents")]
     ClipboardGet,
     #[command(about = "Write text to the clipboard")]
@@ -263,6 +279,10 @@ impl Commands {
             Self::Maximize(_) => "maximize",
             Self::Restore(_) => "restore",
             Self::ListSurfaces(_) => "list-surfaces",
+            Self::ListNotifications(_) => "list-notifications",
+            Self::DismissNotification(_) => "dismiss-notification",
+            Self::DismissAllNotifications(_) => "dismiss-all-notifications",
+            Self::NotificationAction(_) => "notification-action",
             Self::ClipboardGet => "clipboard-get",
             Self::ClipboardSet(_) => "clipboard-set",
             Self::ClipboardClear => "clipboard-clear",

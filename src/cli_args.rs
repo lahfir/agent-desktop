@@ -327,6 +327,8 @@ pub struct WaitArgs {
     pub menu: bool,
     #[arg(long, help = "Block until the context menu is dismissed")]
     pub menu_closed: bool,
+    #[arg(long, help = "Block until a new notification arrives")]
+    pub notification: bool,
     #[arg(long, help = "Scope element, window, or text wait to this application")]
     pub app: Option<String>,
 }

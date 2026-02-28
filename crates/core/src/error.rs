@@ -14,6 +14,7 @@ pub enum ErrorCode {
     PlatformNotSupported,
     Timeout,
     InvalidArgs,
+    NotificationNotFound,
     Internal,
 }
 
@@ -30,6 +31,7 @@ impl ErrorCode {
             ErrorCode::PlatformNotSupported => "PLATFORM_NOT_SUPPORTED",
             ErrorCode::Timeout => "TIMEOUT",
             ErrorCode::InvalidArgs => "INVALID_ARGS",
+            ErrorCode::NotificationNotFound => "NOTIFICATION_NOT_FOUND",
             ErrorCode::Internal => "INTERNAL",
         }
     }
@@ -100,6 +102,14 @@ impl AdapterError {
             .with_suggestion("The target application may be busy or unresponsive")
     }
 
+    pub fn notification_not_found(index: usize) -> Self {
+        Self::new(
+            ErrorCode::NotificationNotFound,
+            format!("Notification at index {index} not found"),
+        )
+        .with_suggestion("Notification may have been dismissed or expired. Run 'list-notifications' to see current notifications")
+    }
+
     pub fn internal(msg: impl Into<String>) -> Self {
         Self::new(ErrorCode::Internal, msg)
     }
@@ -151,5 +161,25 @@ impl AppError {
 
     pub fn invalid_input(msg: impl Into<String>) -> Self {
         AppError::Adapter(AdapterError::new(ErrorCode::InvalidArgs, msg))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notification_not_found_error_has_correct_code() {
+        let err = AdapterError::notification_not_found(5);
+        assert_eq!(err.code, ErrorCode::NotificationNotFound);
+        assert!(err.message.contains("5"));
+        assert!(err.suggestion.is_some());
+    }
+
+    #[test]
+    fn error_code_serialization() {
+        let code = ErrorCode::NotificationNotFound;
+        let json = serde_json::to_string(&code).unwrap();
+        assert_eq!(json, "\"NOTIFICATION_NOT_FOUND\"");
     }
 }

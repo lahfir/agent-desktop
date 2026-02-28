@@ -2,6 +2,7 @@ use crate::{
     action::{Action, ActionResult, DragParams, MouseEvent, WindowOp},
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
+    notification::{NotificationFilter, NotificationInfo},
     refs::RefEntry,
 };
 use std::marker::PhantomData;
@@ -212,5 +213,35 @@ pub trait PlatformAdapter: Send + Sync {
 
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("clear_clipboard"))
+    }
+
+    fn list_notifications(
+        &self,
+        _filter: &NotificationFilter,
+    ) -> Result<Vec<NotificationInfo>, AdapterError> {
+        Err(AdapterError::not_supported("list_notifications"))
+    }
+
+    fn dismiss_notification(
+        &self,
+        _index: usize,
+        _app_filter: Option<&str>,
+    ) -> Result<NotificationInfo, AdapterError> {
+        Err(AdapterError::not_supported("dismiss_notification"))
+    }
+
+    fn dismiss_all_notifications(
+        &self,
+        _app_filter: Option<&str>,
+    ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+        Err(AdapterError::not_supported("dismiss_all_notifications"))
+    }
+
+    fn notification_action(
+        &self,
+        _index: usize,
+        _action_name: &str,
+    ) -> Result<ActionResult, AdapterError> {
+        Err(AdapterError::not_supported("notification_action"))
     }
 }

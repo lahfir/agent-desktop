@@ -265,6 +265,13 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
         Commands::Restore(a) => restore::execute(restore::RestoreArgs { app: a.app }, adapter),
 
+        Commands::ListNotifications(_)
+        | Commands::DismissNotification(_)
+        | Commands::DismissAllNotifications(_)
+        | Commands::NotificationAction(_) => {
+            crate::dispatch_notifications::dispatch_notification(cmd, adapter)
+        }
+
         Commands::ClipboardGet => clipboard_get::execute(adapter),
         Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
         Commands::ClipboardClear => clipboard_clear::execute(adapter),
@@ -278,6 +285,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 timeout_ms: a.timeout,
                 menu: a.menu,
                 menu_closed: a.menu_closed,
+                notification: a.notification,
                 app: a.app,
             },
             adapter,

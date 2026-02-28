@@ -68,6 +68,7 @@ npm/node_modules/
 node_modules/
 
 # Compound Engineering
+skills-lock.json
 docs/*
 !docs/architecture.excalidraw
 !docs/architecture.png
