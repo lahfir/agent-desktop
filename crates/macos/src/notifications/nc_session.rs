@@ -55,7 +55,11 @@ fn frontmost_app() -> Option<String> {
         .ok()?;
     if output.status.success() {
         let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if name.is_empty() { None } else { Some(name) }
+        if name.is_empty() {
+            None
+        } else {
+            Some(name)
+        }
     } else {
         None
     }
