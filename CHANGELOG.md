@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.7](https://github.com/lahfir/agent-desktop/compare/v0.1.6...v0.1.7) (2026-02-28)
+
+
+### Features
+
+* add notification command types, adapter trait, and CLI wiring ([c5b05ba](https://github.com/lahfir/agent-desktop/commit/c5b05bab600aafa36c642f21837c44583b36459c))
+* add notification management commands (macOS) ([b1fd368](https://github.com/lahfir/agent-desktop/commit/b1fd368f195640642adf011b75cca6ecb9e5acc3))
+* **macos:** add NC session RAII guard and notification adapter wiring ([0d55c21](https://github.com/lahfir/agent-desktop/commit/0d55c21de0f0ea6ea08ccb836e5527c9da513620))
+* **macos:** implement dismiss and notification action commands ([53d697d](https://github.com/lahfir/agent-desktop/commit/53d697d52248c3fa06797787b1eb549ac2766533))
+* **macos:** implement notification list via AX tree traversal ([53549a3](https://github.com/lahfir/agent-desktop/commit/53549a384eec67572ee05c31621b8b4174425ab3))
+
+
+### Bug Fixes
+
+* **macos:** remove AXPress from dismiss action list ([27ef4f3](https://github.com/lahfir/agent-desktop/commit/27ef4f34c038c26f5852bf1f6026762a98d0df0a))
+* **macos:** restore frontmost app after notification center interaction ([3881bc8](https://github.com/lahfir/agent-desktop/commit/3881bc82bdb5a4bb7689f1e1e2237bb745e60c21))
+* **macos:** use pgrep and async osascript for NC lifecycle ([9797585](https://github.com/lahfir/agent-desktop/commit/979758538fca0145e9245641fb03a0769eed68de))
+
 ## [0.1.6](https://github.com/lahfir/agent-desktop/compare/v0.1.5...v0.1.6) (2026-02-24)
 
 
