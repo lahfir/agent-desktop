@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8](https://github.com/lahfir/agent-desktop/compare/v0.1.7...v0.1.8) (2026-03-01)
+
+
+### Features
+
+* add electron/web app compatibility for accessibility tree traversal ([a19c1b5](https://github.com/lahfir/agent-desktop/commit/a19c1b5132d3b71c5de58886ba51357ffc9bd1e8))
+* implement --compact flag to collapse single-child unnamed nodes ([4a300c8](https://github.com/lahfir/agent-desktop/commit/4a300c8cb054462ca95fb5160e89e8fce661ec3b))
+
 ## [0.1.7](https://github.com/lahfir/agent-desktop/compare/v0.1.6...v0.1.7) (2026-02-28)
 
 
