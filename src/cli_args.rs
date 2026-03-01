@@ -43,7 +43,10 @@ pub struct SnapshotArgs {
     pub include_bounds: bool,
     #[arg(long, short = 'i', help = "Include interactive elements only")]
     pub interactive_only: bool,
-    #[arg(long, help = "Omit empty structural nodes from output")]
+    #[arg(
+        long,
+        help = "Collapse single-child unnamed nodes to reduce tree depth"
+    )]
     pub compact: bool,
     #[arg(long, value_enum, default_value_t = Surface::Window, help = "Surface to snapshot")]
     pub surface: Surface,

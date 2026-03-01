@@ -17,11 +17,12 @@ pub struct SnapshotArgs {
 
 pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     tracing::debug!(
-        "tree: snapshot app={:?} window_id={:?} max_depth={} interactive_only={}",
+        "tree: snapshot app={:?} window_id={:?} max_depth={} interactive_only={} compact={}",
         args.app.as_deref().unwrap_or("(focused)"),
         args.window_id.as_deref().unwrap_or("(auto)"),
         args.max_depth,
-        args.interactive_only
+        args.interactive_only,
+        args.compact
     );
 
     let opts = crate::adapter::TreeOptions {
