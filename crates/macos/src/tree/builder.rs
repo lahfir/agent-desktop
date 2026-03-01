@@ -86,9 +86,21 @@ pub fn build_subtree(
     let children_raw = copy_children(el, ax_role.as_deref()).unwrap_or_default();
     let name = name.or_else(|| label_from_children(&children_raw));
 
+    // Non-semantic groups inside web content don't cost depth budget.
+    // A nameless AXGroup/AXGenericElement is just a <div> wrapper — skip it.
+    let is_web_wrapper = matches!(
+        ax_role.as_deref(),
+        Some("AXGroup") | Some("AXGenericElement")
+    ) && title.as_deref().is_none_or(str::is_empty)
+        && value.as_deref().is_none_or(str::is_empty);
+
+    let child_depth = if is_web_wrapper { depth } else { depth + 1 };
+
     let children = children_raw
         .into_iter()
-        .filter_map(|child| build_subtree(&child, depth + 1, max_depth, _include_bounds, ancestors))
+        .filter_map(|child| {
+            build_subtree(&child, child_depth, max_depth, _include_bounds, ancestors)
+        })
         .collect();
 
     ancestors.remove(&ptr_key);

@@ -16,7 +16,9 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
     );
     let root = element_for_pid(entry.pid);
     let mut visited = FxHashSet::default();
-    if let Ok(handle) = find_element_recursive(&root, entry, 0, 20, &mut visited) {
+    // Electron/web apps nest 25+ levels deep; use ABSOLUTE_MAX_DEPTH (50) for resolution.
+    let resolve_depth: u8 = 50;
+    if let Ok(handle) = find_element_recursive(&root, entry, 0, resolve_depth, &mut visited) {
         tracing::debug!("resolve: found exact match");
         return Ok(handle);
     }
@@ -27,7 +29,8 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
             ..entry.clone()
         };
         visited.clear();
-        if let Ok(handle) = find_element_recursive(&root, &relaxed, 0, 20, &mut visited) {
+        if let Ok(handle) = find_element_recursive(&root, &relaxed, 0, resolve_depth, &mut visited)
+        {
             tracing::debug!("resolve: found via relaxed match (bounds changed)");
             return Ok(handle);
         }

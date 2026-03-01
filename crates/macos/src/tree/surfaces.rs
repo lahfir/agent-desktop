@@ -69,20 +69,27 @@ mod imp {
         focused_window_element(pid)
     }
 
-    fn first_child_with_subrole(pid: i32, subrole: &str) -> Option<AXElement> {
+    fn first_child_with_role_or_subrole(pid: i32, target: &str) -> Option<AXElement> {
         let win = focused_window_element(pid)?;
+        // The focused window itself might be the target surface (e.g. Electron sheets).
+        if copy_string_attr(&win, "AXRole").as_deref() == Some(target)
+            || copy_string_attr(&win, "AXSubrole").as_deref() == Some(target)
+        {
+            return Some(win);
+        }
         let children = copy_ax_array(&win, "AXChildren")?;
-        children
-            .into_iter()
-            .find(|child| copy_string_attr(child, "AXSubrole").as_deref() == Some(subrole))
+        children.into_iter().find(|child| {
+            copy_string_attr(child, "AXSubrole").as_deref() == Some(target)
+                || copy_string_attr(child, "AXRole").as_deref() == Some(target)
+        })
     }
 
     pub fn sheet_for_pid(pid: i32) -> Option<AXElement> {
-        first_child_with_subrole(pid, "AXSheet")
+        first_child_with_role_or_subrole(pid, "AXSheet")
     }
 
     pub fn popover_for_pid(pid: i32) -> Option<AXElement> {
-        first_child_with_subrole(pid, "AXPopover")
+        first_child_with_role_or_subrole(pid, "AXPopover")
     }
 
     pub fn alert_for_pid(pid: i32) -> Option<AXElement> {
@@ -199,14 +206,42 @@ mod imp {
         }
 
         if let Some(win) = focused_window_element(pid) {
+            // The focused window itself might be a surface (e.g. Electron sheets).
+            let win_role = copy_string_attr(&win, "AXRole");
+            let win_subrole = copy_string_attr(&win, "AXSubrole");
+            let win_kind = match win_subrole.as_deref() {
+                Some("AXSheet") => Some("sheet"),
+                Some("AXPopover") => Some("popover"),
+                Some("AXDialog") | Some("AXAlert") => Some("alert"),
+                _ => match win_role.as_deref() {
+                    Some("AXSheet") => Some("sheet"),
+                    Some("AXPopover") => Some("popover"),
+                    _ => None,
+                },
+            };
+            if let Some(kind) = win_kind {
+                let title = copy_string_attr(&win, "AXTitle")
+                    .or_else(|| copy_string_attr(&win, "AXDescription"));
+                surfaces.push(SurfaceInfo {
+                    kind: kind.into(),
+                    title,
+                    item_count: None,
+                });
+            }
+
             if let Some(children) = copy_ax_array(&win, "AXChildren") {
                 for child in &children {
+                    let role = copy_string_attr(child, "AXRole");
                     let subrole = copy_string_attr(child, "AXSubrole");
                     let kind = match subrole.as_deref() {
                         Some("AXSheet") => "sheet",
                         Some("AXPopover") => "popover",
                         Some("AXDialog") | Some("AXAlert") => "alert",
-                        _ => continue,
+                        _ => match role.as_deref() {
+                            Some("AXSheet") => "sheet",
+                            Some("AXPopover") => "popover",
+                            _ => continue,
+                        },
                     };
                     let title = copy_string_attr(child, "AXTitle")
                         .or_else(|| copy_string_attr(child, "AXDescription"));

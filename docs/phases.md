@@ -486,11 +486,31 @@ System tray interaction must be implemented from scratch as part of Phase 2.
 - **Click:** `InvokePattern` on tray items, falling back to coordinate-based `SendInput` for items that don't expose UIA patterns
 - **Open menu:** After clicking a tray item, detect the resulting popup menu via UIA focus-changed events and expose it for ref-based interaction
 
-### Chromium Detection
+### Web/Electron App Compatibility
 
-- Detect Chromium-based windows (Electron, Chrome, Edge, VS Code) via UIA process name or class name matching
+Chromium-based apps (Electron, Chrome, Edge, VS Code) expose deep, noisy accessibility trees where every HTML `<div>` becomes a UIA Group element. The macOS adapter solved this with three patterns that must be replicated identically on Windows.
+
+**Chromium detection:**
+- Detect Chromium-based windows via UIA process name or `Chrome_WidgetWin_1` window class matching
 - If tree is empty or minimal for a Chromium window, warn: "This appears to be a Chromium app. Run the app with `--force-renderer-accessibility` to expose the accessibility tree"
 - Include this guidance in the `platform_detail` field of the error response
+
+**Web-aware tree traversal (depth-skip):**
+- Non-semantic wrapper elements (`UIA_GroupControlTypeId` / `UIA_CustomControlTypeId`) with empty `Name` AND empty `Value` properties do NOT consume depth budget during tree traversal
+- This matches the macOS pattern where `AXGroup`/`AXGenericElement` wrappers are skipped
+- Without this, default `--max-depth 10` finds ~3 refs in Slack; with it, finds 100+ refs
+- Implement in `crates/windows/src/tree/builder.rs` with the same `is_web_wrapper` logic
+
+**Resolver depth:**
+- Element re-identification must search up to `ABSOLUTE_MAX_DEPTH` (50), not a lower hardcoded limit
+- Electron elements commonly sit at depth 25+ in the raw tree; a shallow resolver cap causes `STALE_REF` errors
+- Implement in `crates/windows/src/tree/resolve.rs` matching the macOS pattern
+
+**Surface detection for Electron:**
+- When an Electron app opens a modal (file picker, dialog), UIA may report the dialog as the focused window itself rather than a child of the parent window
+- Surface detection (`list-surfaces`, `--surface sheet/alert`) must check if the focused window IS the target surface, not only search its children
+- Check both `ControlType` and `LocalizedControlType` / UIA patterns (analogous to macOS checking both AXRole and AXSubrole)
+- Implement in `crates/windows/src/tree/surfaces.rs`
 
 ### Minimum OS Requirements
 
@@ -531,6 +551,8 @@ agent-desktop-windows = { path = "crates/windows" }
 - Screenshot produces valid PNG
 - Large tree snapshot performance validation
 - Chromium detection — verify warning when tree is empty
+- Electron app snapshot (VS Code) — default depth finds 50+ refs via web-aware depth-skip
+- Electron surface detection — file picker dialog detected as sheet surface
 - List notifications — returns non-empty list when notifications exist
 - Dismiss notification — verify notification removed from Action Center
 - Notification action — click action button on a test toast notification
@@ -561,7 +583,8 @@ Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 - [ ] Create `.claude/skills/agent-desktop-windows/SKILL.md`:
   - UIA permission model and UAC handling
   - Windows-specific behaviors (UIA patterns, WinUI3 quirks, COM initialization)
-  - Chromium detection and `--force-renderer-accessibility` guidance
+  - Chromium/Electron compatibility: depth-skip, resolver depth, surface detection patterns
+  - `--force-renderer-accessibility` guidance for empty trees
   - Windows error codes and `platform_detail` examples (HRESULT codes)
   - Troubleshooting guide (empty trees, COM errors, elevation failures)
 - [ ] Update core `SKILL.md`:
@@ -710,6 +733,31 @@ Runtime detection required for input, clipboard, and screenshot since Linux runs
 - Input tools: verify `xdotool` (X11) or `ydotool` (Wayland) is installed; error with install instructions if missing
 - Clipboard tools: verify `xclip` (X11) or `wl-clipboard` (Wayland) is installed; error with install instructions if missing
 
+### Web/Electron App Compatibility
+
+Same Chromium/Electron compatibility patterns as Phase 2 (Windows), adapted for AT-SPI2. These patterns ensure default `--max-depth 10` works with Electron apps like Slack, VS Code, and Chrome.
+
+**Web-aware tree traversal (depth-skip):**
+- Non-semantic wrapper elements with AT-SPI roles `ROLE_PANEL`, `ROLE_SECTION`, or `ROLE_FILLER` that have empty `Name` AND empty `Value` do NOT consume depth budget during tree traversal
+- This is the AT-SPI equivalent of macOS `AXGroup`/`AXGenericElement` and Windows `UIA_GroupControlTypeId` skipping
+- Implement in `crates/linux/src/tree/builder.rs` with the same `is_web_wrapper` logic
+
+**Resolver depth:**
+- Element re-identification must search up to `ABSOLUTE_MAX_DEPTH` (50), not a lower hardcoded limit
+- Electron elements commonly sit at depth 25+ in the raw AT-SPI tree
+- Implement in `crates/linux/src/tree/resolve.rs` matching the macOS/Windows pattern
+
+**Surface detection for Electron:**
+- When an Electron app opens a modal (file picker, dialog), AT-SPI may report the dialog as the active window itself rather than a child of the parent window
+- Surface detection must check if the focused window IS the target surface, not only search its children
+- Check both `Role` and `RelationSet` / `RELATION_EMBEDS` for dialog detection (analogous to macOS AXRole + AXSubrole)
+- Implement in `crates/linux/src/tree/surfaces.rs`
+
+**Chromium detection:**
+- Detect Chromium-based apps via process name matching (electron, chrome, chromium, code)
+- If AT-SPI tree is empty for a Chromium app, warn about `--force-renderer-accessibility`
+- On Linux, Chromium respects `ACCESSIBILITY_ENABLED=1` environment variable as an alternative
+
 ### AT-SPI2 Bus Detection
 
 - Check for `org.a11y.Bus` presence on the D-Bus session bus
@@ -771,6 +819,8 @@ Note: `tokio` is introduced here for the first time. Phases 1-2 are fully synchr
 - Resize, move, minimize, maximize, restore window operations
 - Screenshot produces valid PNG
 - AT-SPI2 bus not running — correct error code and guidance
+- Electron app snapshot (VS Code) — default depth finds 50+ refs via web-aware depth-skip
+- Electron surface detection — file picker dialog detected as sheet surface
 - List notifications — returns non-empty list when notifications exist (GNOME)
 - Dismiss notification — verify notification dismissed via D-Bus `CloseNotification`
 - List tray items — returns known SNI items (if running under KDE or with AppIndicator extension)
