@@ -1,10 +1,14 @@
 ---
 name: agent-desktop
+version: 0.1.8
+tags: desktop-automation, accessibility, ai-agent, gui-automation, cli
+requirements:
+  - agent-desktop
 description: >
   Desktop automation via native OS accessibility trees using the agent-desktop CLI.
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
-  drag, type text, take screenshots, manage windows, use clipboard). Covers 50 commands
+  drag, type text, take screenshots, manage windows, use clipboard). Covers 54 commands
   across observation, interaction, keyboard/mouse, app lifecycle, clipboard, and wait.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
@@ -38,7 +42,7 @@ Detailed documentation is split into focused reference files. Read them as neede
 | `references/commands-interaction.md` | click, type, set-value, select, toggle, scroll, drag, keyboard, mouse — choosing the right command |
 | `references/commands-system.md` | launch, close, windows, clipboard, wait, batch, status, permissions, version |
 | `references/workflows.md` | 12 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
-| `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, troubleshooting |
+| `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, Notification Center, troubleshooting |
 
 ## The Observe-Act Loop
 
@@ -85,7 +89,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `TIMEOUT` | Wait condition not met | Increase --timeout |
 | `INVALID_ARGS` | Bad arguments | Check command syntax |
 
-## Command Quick Reference (50 commands)
+## Command Quick Reference (54 commands)
 
 ### Observation
 ```
@@ -147,6 +151,17 @@ agent-desktop maximize --app "App"
 agent-desktop restore --app "App"
 ```
 
+### Notifications
+```
+agent-desktop list-notifications                # List all notifications
+agent-desktop list-notifications --app "Slack"  # Filter by app
+agent-desktop list-notifications --text "deploy" --limit 5  # Filter by text
+agent-desktop dismiss-notification 1            # Dismiss by index
+agent-desktop dismiss-all-notifications         # Dismiss all
+agent-desktop dismiss-all-notifications --app "Slack"  # Dismiss all from app
+agent-desktop notification-action 1 --action "Reply"   # Click action button
+```
+
 ### Clipboard
 ```
 agent-desktop clipboard-get                     # Read clipboard
@@ -162,6 +177,7 @@ agent-desktop wait --window "Title"             # Wait for window
 agent-desktop wait --text "Done" --app "App"    # Wait for text
 agent-desktop wait --menu --app "App"           # Wait for context menu
 agent-desktop wait --menu-closed --app "App"    # Wait for menu dismissal
+agent-desktop wait --notification --app "App"   # Wait for new notification
 ```
 
 ### System
