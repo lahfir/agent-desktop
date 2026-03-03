@@ -85,6 +85,19 @@ agent-desktop list-surfaces --app "Finder"
 agent-desktop snapshot --app "Finder" --surface menu -i
 ```
 
+### Surface-First Snapshot Rule
+
+**When a snapshot shows a sheet, alert, popover, or menu is open, ALWAYS re-snapshot with the matching `--surface` flag.** The full app tree includes refs for the entire window behind the overlay — those refs are irrelevant and waste tokens. The surface snapshot returns only the overlay's refs, which are the only ones you can meaningfully interact with.
+
+| Snapshot shows... | Next command |
+|-------------------|-------------|
+| A sheet is open (Save, Export, Print dialog) | `snapshot --app "App" --surface sheet -i` |
+| An alert is visible (confirmation, error) | `snapshot --app "App" --surface alert -i` |
+| A menu is open (dropdown, context menu) | `snapshot --app "App" --surface menu -i` |
+| A popover appeared (tooltip, picker) | `snapshot --app "App" --surface popover -i` |
+
+**Do not interact with refs from the full window snapshot while an overlay is open.** The overlay captures focus — clicks on background refs will either fail or dismiss the overlay unexpectedly. Snapshot the surface, interact with it, then snapshot the window again after the overlay closes.
+
 ## Notification Center
 
 agent-desktop interacts with macOS Notification Center via the accessibility API.

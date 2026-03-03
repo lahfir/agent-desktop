@@ -49,9 +49,9 @@ agent-desktop snapshot --app "TextEdit" --surface menu -i
 
 agent-desktop click @e5
 
-# 2. Wait for the dialog
+# 2. Wait for the dialog, then snapshot the SHEET surface (not the full window)
 agent-desktop wait --window "Save"
-agent-desktop snapshot --app "TextEdit" -i
+agent-desktop snapshot --app "TextEdit" --surface sheet -i
 ```
 
 ## Pattern: Right-Click Context Menu
@@ -78,13 +78,19 @@ agent-desktop wait --menu-closed --app "Finder" --timeout 2000
 ```bash
 # After triggering a dialog (save, alert, confirmation):
 agent-desktop wait --window "Save As" --timeout 5000
-agent-desktop snapshot --app "TextEdit" -i
+
+# Snapshot the SURFACE, not the full window — only overlay refs matter
+agent-desktop snapshot --app "TextEdit" --surface sheet -i
+# For alerts: --surface alert | For popovers: --surface popover
 
 # Fill dialog fields
 agent-desktop type @e2 "my-document.txt"
 
 # Click OK/Save
 agent-desktop click @e5
+
+# After dialog closes, snapshot the window again for fresh refs
+agent-desktop snapshot --app "TextEdit" -i
 ```
 
 ## Pattern: Scroll and Find
@@ -217,3 +223,4 @@ agent-desktop batch '[
 5. **Not checking permissions.** Always verify accessibility permission before starting automation.
 6. **Deep snapshots of large apps.** Use `--max-depth 5` and `-i` for Xcode, VS Code, etc.
 7. **Assuming UI stability.** Re-snapshot after every action that could change the UI.
+8. **Snapshotting the full window when an overlay is open.** When a sheet, alert, popover, or menu is visible, use `--surface sheet/alert/popover/menu` instead. The full window tree includes irrelevant background refs that waste tokens and can't be interacted with while the overlay has focus.
