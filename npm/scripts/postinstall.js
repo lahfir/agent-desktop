@@ -138,6 +138,7 @@ function main() {
         chmodSync(binaryPath, 0o755);
         log(`Using binary from AGENT_DESKTOP_BINARY_PATH: ${customPath}`);
         fixGlobalInstallBin();
+        promptSkillInstall();
         return;
       } catch (err) {
         log(`Failed to copy from AGENT_DESKTOP_BINARY_PATH: ${err.message}`);
@@ -149,6 +150,7 @@ function main() {
     chmodSync(binaryPath, 0o755);
     log(`Native binary ready: ${binaryName}`);
     fixGlobalInstallBin();
+    promptSkillInstall();
     return;
   }
 
