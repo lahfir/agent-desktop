@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/lahfir/agent-desktop/compare/v0.1.10...v0.1.11) (2026-03-03)
+
+
+### Bug Fixes
+
+* show skill install prompt on all success paths ([39b2bc6](https://github.com/lahfir/agent-desktop/commit/39b2bc63480890f7ed417b2c040eecf80c4628a0))
+
 ## [0.1.10](https://github.com/lahfir/agent-desktop/compare/v0.1.9...v0.1.10) (2026-03-03)
 
 
