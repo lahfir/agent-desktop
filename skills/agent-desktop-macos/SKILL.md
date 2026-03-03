@@ -1,6 +1,26 @@
+---
+name: agent-desktop-macos
+version: 0.1.8
+tags: desktop-automation, macos, accessibility, ax-api, tcc-permissions
+requirements:
+  - agent-desktop
+description: >
+  macOS platform details for agent-desktop. Use when troubleshooting macOS accessibility
+  permissions (TCC), debugging AX API failures, understanding the smart activation chain,
+  working with macOS surfaces (menu, sheet, alert), working with Notification Center
+  (dismiss strategies, stacked notifications, NC session lifecycle), or handling macOS-specific
+  errors like PERM_DENIED, ACTION_FAILED, or empty accessibility trees.
+---
+
 # agent-desktop: macOS Platform
 
 macOS-specific details for agent-desktop. Covers permissions, accessibility API behavior, troubleshooting, and platform quirks.
+
+## Reference Files
+
+| Reference | Contents |
+|-----------|----------|
+| `references/notifications.md` | Notification Center lifecycle, dismiss strategies, stacked notifications, troubleshooting |
 
 ## Prerequisites
 

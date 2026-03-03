@@ -94,6 +94,23 @@ function fixGlobalInstallBin() {
   }
 }
 
+function promptSkillInstall() {
+  const platformSkill = {
+    darwin: 'agent-desktop-macos',
+    win32: 'agent-desktop-windows',
+    linux: 'agent-desktop-linux',
+  }[platform()];
+
+  log('');
+  log('Claude Code skills available for agent-desktop!');
+  log('Install with:');
+  log('  claude mcp add-skill lahfir/agent-desktop');
+  if (platformSkill) {
+    log(`  claude mcp add-skill lahfir/${platformSkill}`);
+  }
+  log('');
+}
+
 function main() {
   if (process.env.AGENT_DESKTOP_SKIP_DOWNLOAD === '1') {
     log('Skipping binary download (AGENT_DESKTOP_SKIP_DOWNLOAD=1)');
@@ -193,6 +210,8 @@ function main() {
   }
 
   fixGlobalInstallBin();
+
+  promptSkillInstall();
 }
 
 main();

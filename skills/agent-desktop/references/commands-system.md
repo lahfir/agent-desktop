@@ -1,6 +1,6 @@
 # System Commands
 
-App lifecycle, window management, clipboard, wait, and system health commands.
+App lifecycle, window management, notifications, clipboard, wait, and system health commands.
 
 ## App Lifecycle
 
@@ -71,6 +71,62 @@ Zooms the window to fill the screen.
 agent-desktop restore --app "TextEdit"
 ```
 Restores a minimized or maximized window to its previous size.
+
+## Notifications
+
+### list-notifications
+```bash
+agent-desktop list-notifications
+agent-desktop list-notifications --app "Slack"
+agent-desktop list-notifications --text "deploy" --limit 5
+```
+Lists notifications in the Notification Center. Returns array of `{ index, app_name, title, body, actions }`.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--app` | | Filter by source app name |
+| `--text` | | Filter by text content (matches title and body) |
+| `--limit` | | Max number of notifications to return |
+
+### dismiss-notification
+```bash
+agent-desktop dismiss-notification 1
+agent-desktop dismiss-notification 3 --app "Slack"
+```
+Dismisses a single notification by its 1-based index. Returns the dismissed notification info.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| (positional) | | 1-based notification index (required) |
+| `--app` | | Filter by app before indexing |
+
+### dismiss-all-notifications
+```bash
+agent-desktop dismiss-all-notifications
+agent-desktop dismiss-all-notifications --app "Slack"
+```
+Dismisses all notifications, optionally filtered by app. Reports per-notification failures.
+
+Returns `{ "dismissed_count": N, "failures": [...], "failed_count": N }`.
+
+### notification-action
+```bash
+agent-desktop notification-action 1 --action "Reply"
+agent-desktop notification-action 2 --action "Mark as Read"
+```
+Clicks a named action button on a notification by its 1-based index.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| (positional) | | 1-based notification index (required) |
+| `--action` | | Action button name to click (required) |
+
+### wait --notification
+```bash
+agent-desktop wait --notification --app "App" --timeout 10000
+agent-desktop wait --notification --text "build passed" --timeout 15000
+```
+Blocks until a new notification appears (detects index-diff from previous state). Supports `--app` and `--text` filters.
 
 ## Clipboard
 
