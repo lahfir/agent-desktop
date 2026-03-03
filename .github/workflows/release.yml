@@ -176,6 +176,11 @@ jobs:
       - name: Install ClawHub CLI
         run: npm i -g clawhub
 
+      - name: Authenticate with ClawHub
+        run: clawhub login --token "$CLAWHUB_TOKEN" --no-browser
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
       - name: Publish all skills to ClawHub
         run: |
           clawhub sync \
@@ -183,5 +188,3 @@ jobs:
             --all \
             --bump patch \
             --changelog "Release ${{ needs.release-please.outputs.tag_name }}"
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
