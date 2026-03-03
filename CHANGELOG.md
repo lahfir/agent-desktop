@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/lahfir/agent-desktop/compare/v0.1.8...v0.1.9) (2026-03-03)
+
+
+### Features
+
+* scalable skill architecture with ClawHub auto-publishing ([#14](https://github.com/lahfir/agent-desktop/issues/14)) ([9766520](https://github.com/lahfir/agent-desktop/commit/97665203a464e605bc9b156ec90029c5909399be))
+
 ## [0.1.8](https://github.com/lahfir/agent-desktop/compare/v0.1.7...v0.1.8) (2026-03-01)
 
 
