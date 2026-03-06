@@ -31,6 +31,12 @@ Or without installing:
 npx agent-desktop snapshot --app Finder -i
 ```
 
+### Skills
+
+```bash
+npx skills add github:lahfir/agent-desktop
+```
+
 ### From source
 
 ```bash
