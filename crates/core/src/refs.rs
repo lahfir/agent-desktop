@@ -19,6 +19,8 @@ pub struct RefEntry {
     pub bounds_hash: Option<u64>,
     pub available_actions: Vec<String>,
     pub source_app: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +56,12 @@ impl RefMap {
         self.inner.is_empty()
     }
 
+    pub fn remove_by_root_ref(&mut self, root: &str) {
+        self.inner.retain(|_, entry| {
+            entry.root_ref.as_deref() != Some(root)
+        });
+    }
+
     pub fn save(&self) -> Result<(), AppError> {
         let path = refmap_path()?;
         let dir = path
@@ -72,6 +80,13 @@ impl RefMap {
         std::fs::create_dir_all(dir)?;
 
         let json = serde_json::to_string(self)?;
+
+        if json.len() as u64 > MAX_REFMAP_BYTES {
+            return Err(AppError::Internal(
+                "RefMap exceeds 1MB size limit on write".into(),
+            ));
+        }
+
         let tmp = path.with_extension("tmp");
 
         #[cfg(unix)]
@@ -144,6 +159,7 @@ mod tests {
             bounds_hash: None,
             available_actions: vec!["Click".into()],
             source_app: None,
+            root_ref: None,
         };
         let r1 = map.allocate(entry.clone());
         let r2 = map.allocate(entry);
@@ -165,6 +181,7 @@ mod tests {
             bounds_hash: Some(12345),
             available_actions: vec![],
             source_app: Some("Finder".into()),
+            root_ref: None,
         };
         let ref_id = map.allocate(entry);
         let retrieved = map.get(&ref_id).unwrap();
@@ -176,5 +193,74 @@ mod tests {
     fn test_get_missing() {
         let map = RefMap::new();
         assert!(map.get("@e99").is_none());
+    }
+
+    #[test]
+    fn test_remove_by_root_ref() {
+        let mut map = RefMap::new();
+        let base = RefEntry {
+            pid: 1,
+            role: "button".into(),
+            name: Some("OK".into()),
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash: None,
+            available_actions: vec!["Click".into()],
+            source_app: None,
+            root_ref: None,
+        };
+
+        map.allocate(base.clone());
+
+        let drilled = RefEntry {
+            root_ref: Some("@e1".into()),
+            ..base.clone()
+        };
+        map.allocate(drilled.clone());
+        map.allocate(drilled);
+        assert_eq!(map.len(), 3);
+
+        map.remove_by_root_ref("@e1");
+        assert_eq!(map.len(), 1);
+        assert!(map.get("@e1").is_some());
+    }
+
+    #[test]
+    fn test_root_ref_serde_roundtrip() {
+        let entry = RefEntry {
+            pid: 1,
+            role: "button".into(),
+            name: None,
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash: None,
+            available_actions: vec![],
+            source_app: None,
+            root_ref: Some("@e5".into()),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("root_ref"));
+        let back: RefEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.root_ref.as_deref(), Some("@e5"));
+    }
+
+    #[test]
+    fn test_root_ref_none_omitted() {
+        let entry = RefEntry {
+            pid: 1,
+            role: "button".into(),
+            name: None,
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash: None,
+            available_actions: vec![],
+            source_app: None,
+            root_ref: None,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(!json.contains("root_ref"));
     }
 }

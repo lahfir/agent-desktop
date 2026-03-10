@@ -13,6 +13,8 @@ pub struct SnapshotArgs {
     pub interactive_only: bool,
     pub compact: bool,
     pub surface: SnapshotSurface,
+    pub skeleton: bool,
+    pub root_ref: Option<String>,
 }
 
 pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
@@ -31,6 +33,8 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         interactive_only: args.interactive_only,
         compact: args.compact,
         surface: args.surface,
+        skeleton: args.skeleton,
+        root_ref: args.root_ref.clone(),
     };
 
     let result = snapshot::run(

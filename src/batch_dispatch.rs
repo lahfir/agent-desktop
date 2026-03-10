@@ -39,6 +39,11 @@ pub fn dispatch_batch_command(
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
                 surface: parse_batch_surface(args.get("surface").and_then(|v| v.as_str())),
+                skeleton: args
+                    .get("skeleton")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                root_ref: str_field(&args, "root"),
             },
             adapter,
         ),

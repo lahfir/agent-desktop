@@ -114,6 +114,7 @@ pub fn build_subtree(
         hint: None,
         states,
         bounds,
+        children_count: None,
         children,
     })
 }

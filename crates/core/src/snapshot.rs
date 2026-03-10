@@ -179,6 +179,7 @@ fn allocate_refs(
             bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
             available_actions: actions_for_role(&node.role),
             source_app: source_app.map(str::to_string),
+            root_ref: None,
         };
         node.ref_id = Some(refmap.allocate(entry));
     }
@@ -242,6 +243,7 @@ mod tests {
             hint: None,
             states: vec![],
             bounds: None,
+            children_count: None,
             children: vec![],
         }
     }
