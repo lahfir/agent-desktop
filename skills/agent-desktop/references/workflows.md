@@ -13,25 +13,65 @@ agent-desktop permissions --request
 # Then: System Settings > Privacy & Security > Accessibility > enable your terminal
 ```
 
+## Pattern: Progressive Skeleton Traversal (Default for Dense Apps)
+
+The recommended approach for Electron apps (Slack, VS Code, Discord) and any app with 50+ interactive elements. Reduces token consumption 78-96%.
+
+```bash
+# 1. Get skeleton overview — shallow 3-level map with children_count hints
+agent-desktop snapshot --skeleton --app "Slack" -i --compact
+# Output shows regions like:
+#   @e1 = group "Workspaces" (children_count: 4)
+#   @e2 = group "Channels" (children_count: 42)
+#   @e3 = group "Messages" (children_count: 156)
+#   @e4 = button "New Message"    ← interactive elements at top levels still get refs
+
+# 2. Identify the region you need and drill into it
+agent-desktop snapshot --root @e2 -i --compact
+# Now you see all 42 children inside "Channels" with full refs
+
+# 3. Act on an element found in the drill-down
+agent-desktop click @e18  # Click "general" channel
+
+# 4. Re-drill the same or a different region to verify / continue
+agent-desktop snapshot --root @e3 -i --compact
+# Scoped invalidation: only @e3's previous refs are replaced
+# @e2's drill-down refs and the skeleton refs are preserved
+
+# 5. Drill into another region as needed — refs accumulate
+agent-desktop snapshot --root @e1 -i --compact
+# Now you have refs from skeleton + @e2 drill + @e3 drill + @e1 drill
+```
+
+**Key behaviors:**
+- `--skeleton` clamps depth to min(max_depth, 3) automatically
+- Named/described containers at the boundary get refs as drill-down targets
+- `--root @ref` merges new refs into the existing refmap
+- Re-drilling the same root replaces only that root's subtree refs
+- Interactive elements (buttons, textfields) within skeleton depth still get normal refs
+
 ## Pattern: Fill a Form
 
 ```bash
-# 1. Snapshot the form
+# For simple apps, full snapshot is fine
 agent-desktop snapshot --app "System Settings" -i
 
-# 2. Parse output, identify text fields by name
+# For dense apps, use skeleton first to find the form region, then drill
+# agent-desktop snapshot --skeleton --app "System Settings" -i --compact
+# agent-desktop snapshot --root @e5 -i --compact
+
 # Found: @e3 = "Computer Name" textfield, @e5 = "Local Hostname" textfield
 
-# 3. Clear and fill each field
+# Clear and fill each field
 agent-desktop clear @e3
 agent-desktop type @e3 "My MacBook Pro"
 agent-desktop clear @e5
 agent-desktop type @e5 "my-macbook-pro"
 
-# 4. Click the save/apply button
+# Click the save/apply button
 agent-desktop click @e8
 
-# 5. Verify success
+# Verify success — re-snapshot or re-drill
 agent-desktop snapshot --app "System Settings" -i
 ```
 
@@ -98,15 +138,19 @@ agent-desktop snapshot --app "TextEdit" -i
 When the target element isn't visible and you need to scroll to find it:
 
 ```bash
-# 1. Find the scroll area
-agent-desktop snapshot --app "App" -i
-# Found: @e1 = scroll area
+# 1. Use skeleton to find the scrollable region
+agent-desktop snapshot --skeleton --app "App" -i --compact
+# Found: @e2 = group "Content" (children_count: 200)
 
-# 2. Scroll and search in a loop
-agent-desktop scroll @e1 --direction down --amount 5
+# 2. Drill into the region to get a scroll area ref
+agent-desktop snapshot --root @e2 -i --compact
+# Found: @e8 = scroll area
+
+# 3. Scroll and search in a loop
+agent-desktop scroll @e8 --direction down --amount 5
 agent-desktop find --app "App" --name "Target Item"
 # If no matches, scroll again
-agent-desktop scroll @e1 --direction down --amount 5
+agent-desktop scroll @e8 --direction down --amount 5
 agent-desktop find --app "App" --name "Target Item"
 # Found: @e14 = "Target Item"
 agent-desktop click @e14
@@ -168,7 +212,13 @@ agent-desktop wait --element @e10 --timeout 10000
 ```bash
 # Full lifecycle
 agent-desktop launch "Calculator"
+# Simple app → full snapshot is fine
 agent-desktop snapshot --app "Calculator" -i
+
+# Dense app → skeleton first
+# agent-desktop launch "Slack"
+# agent-desktop snapshot --skeleton --app "Slack" -i --compact
+# agent-desktop snapshot --root @e2 -i --compact
 
 # ... perform automation ...
 
@@ -216,11 +266,12 @@ agent-desktop batch '[
 
 ## Anti-Patterns to Avoid
 
-1. **Acting without observing.** Never click a ref without a recent snapshot.
-2. **Hardcoding refs.** Refs change between snapshots. Always use fresh refs.
-3. **Ignoring wait.** After launch, dialog triggers, or menu clicks — always wait before snapshotting.
-4. **Using coordinates when refs exist.** AX-based actions are more reliable than coordinate clicks.
-5. **Not checking permissions.** Always verify accessibility permission before starting automation.
-6. **Deep snapshots of large apps.** Use `--max-depth 5` and `-i` for Xcode, VS Code, etc.
-7. **Assuming UI stability.** Re-snapshot after every action that could change the UI.
-8. **Snapshotting the full window when an overlay is open.** When a sheet, alert, popover, or menu is visible, use `--surface sheet/alert/popover/menu` instead. The full window tree includes irrelevant background refs that waste tokens and can't be interacted with while the overlay has focus.
+1. **Full snapshot on dense apps.** Use `--skeleton` + `--root` for Electron apps (Slack, VS Code, Discord). Full snapshot wastes 4-25x more tokens.
+2. **Acting without observing.** Never click a ref without a recent snapshot or drill-down.
+3. **Hardcoding refs.** Refs change between snapshots. Always use fresh refs.
+4. **Ignoring wait.** After launch, dialog triggers, or menu clicks — always wait before snapshotting.
+5. **Using coordinates when refs exist.** AX-based actions are more reliable than coordinate clicks.
+6. **Not checking permissions.** Always verify accessibility permission before starting automation.
+7. **Assuming UI stability.** Re-drill the affected region after every action that could change the UI.
+8. **Snapshotting the full window when an overlay is open.** Use `--surface sheet/alert/popover/menu` instead. Never `--skeleton` for surfaces — they're already focused.
+9. **Re-snapshotting everything after one action.** Use scoped re-drill (`--root @ref`) to refresh only the affected region. Other refs stay valid.
