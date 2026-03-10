@@ -22,6 +22,8 @@ agent-desktop snapshot --app "App" -i --compact
 | `--max-depth` | 10 | Maximum tree traversal depth |
 | `--include-bounds` | false | Include `{x, y, width, height}` for each element |
 | `--compact` | false | Omit empty structural nodes |
+| `--skeleton` | false | Shallow overview: clamps depth to min(max_depth, 3), adds `children_count` on truncated containers |
+| `--root <REF>` | | Start traversal from this ref instead of window root. Cannot be combined with `--surface` |
 | `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
 
 **Output structure:**
@@ -63,12 +65,36 @@ agent-desktop snapshot --app "App" -i --compact
 }
 ```
 
+**Skeleton mode (`--skeleton`):**
+- Produces a shallow overview by clamping depth to `min(max_depth, 3)`
+- Truncated containers include a `children_count` field showing how many children were omitted
+- Named or described containers at the truncation boundary receive refs with empty `available_actions`, serving as drill-down targets for `--root`
+
+**Root mode (`--root <REF>`):**
+- Starts tree traversal from the given ref instead of the window root
+- Merges new refs into the existing refmap with scoped invalidation: only refs from the previous drill of the same root are replaced, leaving all other refs intact
+- Cannot be combined with `--surface`
+
+**Progressive drill-down workflow:**
+```bash
+# Step 1: Get skeleton overview
+agent-desktop snapshot --skeleton --app Slack -i
+
+# Step 2: Drill into a discovered region
+agent-desktop snapshot --root @e3 -i
+
+# Step 3: Re-drill same region (scoped invalidation replaces @e3's refs)
+agent-desktop snapshot --root @e3 -i
+```
+
 **Tips:**
 - Always use `-i` to keep output compact for LLM context windows
 - Use `--surface menu` to capture open context menus or dropdown menus
 - Use `--surface sheet` for modal dialogs
 - Use `--compact` with `-i` for maximum token efficiency
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
+- Use `--skeleton` first to get a high-level map, then `--root` to drill into specific regions
+- Combine `--skeleton` with `-i` and `--compact` for the most token-efficient initial overview
 
 ## find
 
