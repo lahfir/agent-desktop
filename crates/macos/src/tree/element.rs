@@ -2,6 +2,14 @@ use agent_desktop_core::node::Rect;
 
 pub const ABSOLUTE_MAX_DEPTH: u8 = 50;
 
+pub(crate) fn child_attributes(ax_role: Option<&str>) -> &'static [&'static str] {
+    if ax_role == Some("AXBrowser") {
+        &["AXColumns"]
+    } else {
+        &["AXChildren", "AXContents", "AXChildrenInNavigationOrder"]
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
@@ -238,18 +246,26 @@ mod imp {
         Some(AXElement(ptr))
     }
 
-    pub fn count_children(element: &AXElement) -> u32 {
+    pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
         unsafe {
-            let mut value: core_foundation::base::CFTypeRef = std::ptr::null();
-            let attr = CFString::from_static_string("AXChildren");
-            let err =
-                AXUIElementCopyAttributeValue(element.0, attr.as_concrete_TypeRef(), &mut value);
-            if err != kAXErrorSuccess || value.is_null() {
-                return 0;
+            for attr_name in child_attributes(ax_role) {
+                let mut value: core_foundation::base::CFTypeRef = std::ptr::null();
+                let attr = CFString::from_static_string(attr_name);
+                let err = AXUIElementCopyAttributeValue(
+                    element.0,
+                    attr.as_concrete_TypeRef(),
+                    &mut value,
+                );
+                if err != kAXErrorSuccess || value.is_null() {
+                    continue;
+                }
+                let count = core_foundation_sys::array::CFArrayGetCount(value as _);
+                CFRelease(value);
+                if count > 0 {
+                    return count as u32;
+                }
             }
-            let count = core_foundation_sys::array::CFArrayGetCount(value as _);
-            CFRelease(value);
-            count as u32
+            0
         }
     }
 
@@ -352,7 +368,7 @@ mod imp {
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
     }
-    pub fn count_children(_element: &AXElement) -> u32 {
+    pub fn count_children(_element: &AXElement, _ax_role: Option<&str>) -> u32 {
         0
     }
     pub fn read_bounds(_el: &AXElement) -> Option<Rect> {

@@ -2,14 +2,14 @@ use agent_desktop_core::node::AccessibilityNode;
 use rustc_hash::FxHashSet;
 
 use super::element::{
-    copy_ax_array, copy_string_attr, count_children, element_for_pid, fetch_node_attrs,
-    read_bounds, AXElement, ABSOLUTE_MAX_DEPTH,
+    child_attributes, copy_ax_array, copy_string_attr, count_children, element_for_pid,
+    fetch_node_attrs, read_bounds, AXElement, ABSOLUTE_MAX_DEPTH,
 };
 
 #[cfg(target_os = "macos")]
 use accessibility_sys::{
-    kAXChildrenAttribute, kAXContentsAttribute, kAXRoleAttribute, kAXTitleAttribute,
-    kAXValueAttribute, kAXWindowsAttribute,
+    kAXChildrenAttribute, kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute,
+    kAXWindowsAttribute,
 };
 
 #[cfg(target_os = "macos")]
@@ -96,7 +96,7 @@ pub fn build_subtree(
         skeleton && child_depth > max_depth && child_depth < ABSOLUTE_MAX_DEPTH;
 
     if at_skeleton_boundary {
-        let child_count = count_children(el);
+        let child_count = count_children(el, ax_role.as_deref());
         let children_count = if child_count > 0 {
             Some(child_count)
         } else {
@@ -195,14 +195,7 @@ pub fn label_from_children(children: &[AXElement]) -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn copy_children(el: &AXElement, ax_role: Option<&str>) -> Option<Vec<AXElement>> {
-    if ax_role == Some("AXBrowser") {
-        return copy_ax_array(el, "AXColumns");
-    }
-    for attr in &[
-        kAXChildrenAttribute,
-        kAXContentsAttribute,
-        "AXChildrenInNavigationOrder",
-    ] {
+    for attr in child_attributes(ax_role) {
         if let Some(v) = copy_ax_array(el, attr) {
             if !v.is_empty() {
                 return Some(v);
@@ -227,4 +220,22 @@ pub fn build_subtree(
     _skeleton: bool,
 ) -> Option<AccessibilityNode> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::child_attributes;
+
+    #[test]
+    fn test_browser_children_use_columns() {
+        assert_eq!(child_attributes(Some("AXBrowser")), ["AXColumns"]);
+    }
+
+    #[test]
+    fn test_default_children_follow_fallback_order() {
+        assert_eq!(
+            child_attributes(Some("AXGroup")),
+            ["AXChildren", "AXContents", "AXChildrenInNavigationOrder"]
+        );
+    }
 }

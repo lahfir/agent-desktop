@@ -94,7 +94,11 @@ fn allocate_refs_with_root(
             if config.compact && is_collapsible(&child) {
                 return child.children.into_iter().next();
             }
-            if config.interactive_only && child.ref_id.is_none() && child.children.is_empty() {
+            if config.interactive_only
+                && child.ref_id.is_none()
+                && child.children.is_empty()
+                && child.children_count.is_none()
+            {
                 None
             } else {
                 Some(child)
@@ -174,6 +178,29 @@ mod tests {
 
         assert_eq!(tree.children.len(), 1);
         assert_eq!(tree.children[0].role, "button");
+    }
+
+    #[test]
+    fn test_allocate_refs_with_root_preserves_truncated_child() {
+        let mut container = node("group");
+        container.name = Some("Sidebar".into());
+        container.children_count = Some(4);
+        let mut root = node("window");
+        root.children = vec![container];
+
+        let mut refmap = RefMap::new();
+        let config = DrillDownConfig {
+            include_bounds: false,
+            interactive_only: true,
+            compact: false,
+            pid: 1,
+            source_app: None,
+            root_ref_id: "@e1",
+        };
+        let tree = allocate_refs_with_root(root, &mut refmap, &config);
+
+        assert_eq!(tree.children.len(), 1);
+        assert_eq!(tree.children[0].children_count, Some(4));
     }
 
     #[test]
