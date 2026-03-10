@@ -238,6 +238,21 @@ mod imp {
         Some(AXElement(ptr))
     }
 
+    pub fn count_children(element: &AXElement) -> u32 {
+        unsafe {
+            let mut value: core_foundation::base::CFTypeRef = std::ptr::null();
+            let attr = CFString::from_static_string("AXChildren");
+            let err =
+                AXUIElementCopyAttributeValue(element.0, attr.as_concrete_TypeRef(), &mut value);
+            if err != kAXErrorSuccess || value.is_null() {
+                return 0;
+            }
+            let count = core_foundation_sys::array::CFArrayGetCount(value as _);
+            CFRelease(value);
+            count as u32
+        }
+    }
+
     pub fn read_bounds(el: &AXElement) -> Option<Rect> {
         use accessibility_sys::{
             kAXPositionAttribute, kAXSizeAttribute, kAXValueTypeCGPoint, kAXValueTypeCGSize,
@@ -337,6 +352,9 @@ mod imp {
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
     }
+    pub fn count_children(_element: &AXElement) -> u32 {
+        0
+    }
     pub fn read_bounds(_el: &AXElement) -> Option<Rect> {
         None
     }
@@ -362,5 +380,6 @@ mod imp {
 
 pub use imp::{
     copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, copy_value_typed,
-    element_for_pid, fetch_node_attrs, read_bounds, resolve_element_name, AXElement,
+    count_children, element_for_pid, fetch_node_attrs, read_bounds, resolve_element_name,
+    AXElement,
 };

@@ -1,7 +1,7 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface},
     error::AppError,
-    snapshot,
+    snapshot, snapshot_ref,
 };
 use serde_json::{json, Value};
 
@@ -27,8 +27,14 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         args.compact
     );
 
+    let effective_depth = if args.skeleton {
+        args.max_depth.min(3)
+    } else {
+        args.max_depth
+    };
+
     let opts = crate::adapter::TreeOptions {
-        max_depth: args.max_depth,
+        max_depth: effective_depth,
         include_bounds: args.include_bounds,
         interactive_only: args.interactive_only,
         compact: args.compact,
@@ -37,6 +43,15 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         root_ref: args.root_ref.clone(),
     };
 
+    if let Some(ref root) = args.root_ref {
+        if !matches!(args.surface, SnapshotSurface::Window) {
+            return Err(AppError::invalid_input(
+                "--root cannot be combined with --surface",
+            ));
+        }
+        return format_result(snapshot_ref::run_from_ref(adapter, &opts, root)?);
+    }
+
     let result = snapshot::run(
         adapter,
         &opts,
@@ -44,6 +59,10 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         args.window_id.as_deref(),
     )?;
 
+    format_result(result)
+}
+
+fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
     let ref_count = result.refmap.len();
     let tree = serde_json::to_value(&result.tree)?;
     let win = &result.window;

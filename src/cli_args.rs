@@ -50,7 +50,10 @@ pub struct SnapshotArgs {
     pub compact: bool,
     #[arg(long, value_enum, default_value_t = Surface::Window, help = "Surface to snapshot")]
     pub surface: Surface,
-    #[arg(long, help = "Shallow overview with children_count on truncated containers")]
+    #[arg(
+        long,
+        help = "Shallow overview with children_count on truncated containers"
+    )]
     pub skeleton: bool,
     #[arg(long, help = "Start traversal from this ref instead of window root")]
     pub root: Option<String>,

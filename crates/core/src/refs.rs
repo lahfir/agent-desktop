@@ -57,9 +57,8 @@ impl RefMap {
     }
 
     pub fn remove_by_root_ref(&mut self, root: &str) {
-        self.inner.retain(|_, entry| {
-            entry.root_ref.as_deref() != Some(root)
-        });
+        self.inner
+            .retain(|_, entry| entry.root_ref.as_deref() != Some(root));
     }
 
     pub fn save(&self) -> Result<(), AppError> {
