@@ -75,7 +75,13 @@ pub fn build(
 
     let raw_tree = adapter.get_tree(&window, opts)?;
 
-    let mut refmap = RefMap::new();
+    let mut refmap = if opts.skeleton {
+        let mut loaded = RefMap::load().unwrap_or_default();
+        loaded.remove_skeleton_refs();
+        loaded
+    } else {
+        RefMap::new()
+    };
     let mut tree = allocate_refs(
         raw_tree,
         &mut refmap,

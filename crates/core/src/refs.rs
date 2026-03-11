@@ -61,6 +61,10 @@ impl RefMap {
             .retain(|_, entry| entry.root_ref.as_deref() != Some(root));
     }
 
+    pub fn remove_skeleton_refs(&mut self) {
+        self.inner.retain(|_, entry| entry.root_ref.is_some());
+    }
+
     pub fn save(&self) -> Result<(), AppError> {
         let path = refmap_path()?;
         let dir = path
@@ -223,6 +227,41 @@ mod tests {
         map.remove_by_root_ref("@e1");
         assert_eq!(map.len(), 1);
         assert!(map.get("@e1").is_some());
+    }
+
+    #[test]
+    fn test_remove_skeleton_refs() {
+        let mut map = RefMap::new();
+        let skeleton = RefEntry {
+            pid: 1,
+            role: "button".into(),
+            name: Some("OK".into()),
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash: None,
+            available_actions: vec!["Click".into()],
+            source_app: None,
+            root_ref: None,
+        };
+
+        let drilled = RefEntry {
+            root_ref: Some("@e1".into()),
+            ..skeleton.clone()
+        };
+
+        map.allocate(skeleton.clone());
+        map.allocate(skeleton);
+        map.allocate(drilled.clone());
+        map.allocate(drilled);
+        assert_eq!(map.len(), 4);
+
+        map.remove_skeleton_refs();
+        assert_eq!(map.len(), 2);
+        assert!(map.get("@e1").is_none());
+        assert!(map.get("@e2").is_none());
+        assert!(map.get("@e3").is_some());
+        assert!(map.get("@e4").is_some());
     }
 
     #[test]
