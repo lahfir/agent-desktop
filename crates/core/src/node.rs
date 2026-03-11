@@ -25,6 +25,9 @@ pub struct AccessibilityNode {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<Rect>,
 
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub children_count: Option<u32>,
+
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub children: Vec<AccessibilityNode>,
 }
@@ -110,6 +113,49 @@ mod tests {
         assert_eq!(rect.x, 0.0);
         assert_eq!(rect.y, 0.0);
         assert_eq!(rect.width, 100.0);
+    }
+
+    #[test]
+    fn test_children_count_omitted_when_none() {
+        let node = AccessibilityNode {
+            ref_id: None,
+            role: "group".into(),
+            name: Some("Sidebar".into()),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            bounds: None,
+            children_count: None,
+            children: vec![],
+        };
+        let json = serde_json::to_string(&node).unwrap();
+        assert!(!json.contains("children_count"));
+    }
+
+    #[test]
+    fn test_children_count_present_when_set() {
+        let node = AccessibilityNode {
+            ref_id: None,
+            role: "group".into(),
+            name: Some("Sidebar".into()),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            bounds: None,
+            children_count: Some(47),
+            children: vec![],
+        };
+        let json = serde_json::to_string(&node).unwrap();
+        assert!(json.contains("\"children_count\":47"));
+    }
+
+    #[test]
+    fn test_children_count_backward_compat() {
+        let json = r#"{"role":"button","name":"OK"}"#;
+        let node: AccessibilityNode = serde_json::from_str(json).unwrap();
+        assert!(node.children_count.is_none());
     }
 
     #[test]

@@ -44,27 +44,47 @@ Detailed documentation is split into focused reference files. Read them as neede
 | `references/workflows.md` | 12 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
 | `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, Notification Center, troubleshooting |
 
-## The Observe-Act Loop
+## The Observe-Act Loop (Progressive Skeleton Traversal)
 
-Every automation follows this pattern:
+Use **progressive skeleton traversal** as the default approach. It reduces token consumption 78-96% for dense apps by exploring the UI in two phases: a shallow skeleton overview, then targeted drill-downs into regions of interest.
 
 ```
-1. OBSERVE  → agent-desktop snapshot --app "App Name" -i
-2. REASON   → Parse JSON, find target element by ref (@e1, @e2...)
-3. ACT      → agent-desktop click @e5  (or type, select, toggle...)
-4. VERIFY   → agent-desktop snapshot again to confirm state change
-5. REPEAT   → Continue until task is complete
+1. SKELETON → agent-desktop snapshot --skeleton --app "App" -i --compact
+   Parse the overview. Identify the region containing your target.
+   Regions show children_count (e.g., "Sidebar" with children_count: 42).
+   Named containers at truncation boundary have refs for drill-down.
+
+2. DRILL    → agent-desktop snapshot --root @e3 -i --compact
+   Expand the target region. Now you see its interactive elements.
+
+3. ACT      → agent-desktop click @e12  (or type, select, toggle...)
+
+4. VERIFY   → agent-desktop snapshot --root @e3 -i --compact
+   Re-drill the same region to confirm the state change.
+   Scoped invalidation: only @e3's subtree refs are replaced.
+
+5. REPEAT   → Continue drilling other regions or acting as needed.
 ```
 
-Always snapshot before acting. Refs are snapshot-scoped and become stale after UI changes.
+**When to skip skeleton and use full snapshot instead:**
+- Simple apps with few elements (Finder, Calculator, TextEdit)
+- You already know the exact element name — use `find` instead
+- Surface snapshots (menus, sheets, alerts) — these are already focused
+
+**When skeleton shines:**
+- Dense Electron apps (Slack, VS Code, Discord, Notion)
+- Any app where full snapshot exceeds ~50 refs
+- Multi-region workflows (sidebar + main content + toolbar)
 
 ## Ref System
 
 - Refs assigned depth-first: `@e1`, `@e2`, `@e3`...
 - Only interactive elements get refs: button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell
+- In skeleton mode, named/described containers at truncation boundary also get refs (drill-down targets with empty `available_actions`)
 - Static text, groups, containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
-- After any action that changes UI, run `snapshot` again for fresh refs
+- After any action that changes UI, re-drill the affected region or re-snapshot
+- **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
 
 ## JSON Output Contract
 
@@ -93,12 +113,15 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 
 ### Observation
 ```
-agent-desktop snapshot --app "App" -i           # Accessibility tree with refs
-agent-desktop screenshot --app "App" out.png    # PNG screenshot
-agent-desktop find --app "App" --role button    # Search elements
-agent-desktop get @e1 --property text           # Read element property
-agent-desktop is @e1 --property enabled         # Check element state
-agent-desktop list-surfaces --app "App"         # Available surfaces
+agent-desktop snapshot --skeleton --app "App" -i --compact  # Skeleton overview (preferred)
+agent-desktop snapshot --root @e3 -i --compact              # Drill into region
+agent-desktop snapshot --app "App" -i                       # Full tree (simple apps)
+agent-desktop snapshot --app "App" --surface menu -i        # Surface snapshot
+agent-desktop screenshot --app "App" out.png                # PNG screenshot
+agent-desktop find --app "App" --role button                # Search elements
+agent-desktop get @e1 --property text                       # Read element property
+agent-desktop is @e1 --property enabled                     # Check element state
+agent-desktop list-surfaces --app "App"                     # Available surfaces
 ```
 
 ### Interaction
@@ -191,13 +214,13 @@ agent-desktop batch '[...]' --stop-on-error     # Batch commands
 
 ## Key Principles for Agents
 
-1. **Always snapshot first.** Never assume UI state.
-2. **Use `-i` flag.** Filters to interactive elements only, reducing tokens.
-3. **Refs are ephemeral.** Snapshot again after any UI-changing action.
+1. **Skeleton first, drill second.** Start with `--skeleton -i --compact` for dense apps. Drill into regions with `--root @ref`. Full snapshot only for simple apps.
+2. **Use `-i --compact` flags.** Filters to interactive elements and collapses empty wrappers, minimizing tokens.
+3. **Refs are ephemeral.** Re-drill the affected region after any UI-changing action. Scoped invalidation keeps other refs intact.
 4. **Prefer refs over coordinates.** `click @e5` > `mouse-click --xy 500,300`.
 5. **Use `wait` for async UI.** After launch/dialog triggers, wait for expected state.
 6. **Check permissions first.** Run `permissions` on first use.
 7. **Handle errors.** Parse `error.code` and follow `error.suggestion`.
-8. **Use `find` for targeted searches.** Faster than full snapshot when you know role/name.
-9. **Use surfaces for menus.** `snapshot --surface menu` captures open menus.
+8. **Use `find` for targeted searches.** Faster than any snapshot when you know role/name.
+9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused.
 10. **Batch for performance.** Multiple commands in one invocation.

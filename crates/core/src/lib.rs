@@ -6,8 +6,10 @@ pub mod hints;
 pub mod node;
 pub mod notification;
 pub mod output;
+pub mod ref_alloc;
 pub mod refs;
 pub mod snapshot;
+pub mod snapshot_ref;
 
 pub use action::{
     Action, ActionResult, Direction, DragParams, ElementState, KeyCombo, Modifier, MouseButton,

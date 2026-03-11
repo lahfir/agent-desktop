@@ -1,7 +1,7 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface},
     error::AppError,
-    snapshot,
+    snapshot, snapshot_ref,
 };
 use serde_json::{json, Value};
 
@@ -13,6 +13,26 @@ pub struct SnapshotArgs {
     pub interactive_only: bool,
     pub compact: bool,
     pub surface: SnapshotSurface,
+    pub skeleton: bool,
+    pub root_ref: Option<String>,
+}
+
+fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
+    let effective_depth = if args.skeleton && args.root_ref.is_none() {
+        args.max_depth.min(3)
+    } else {
+        args.max_depth
+    };
+
+    crate::adapter::TreeOptions {
+        max_depth: effective_depth,
+        include_bounds: args.include_bounds,
+        interactive_only: args.interactive_only,
+        compact: args.compact,
+        surface: args.surface,
+        skeleton: args.skeleton,
+        root_ref: args.root_ref.clone(),
+    }
 }
 
 pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
@@ -25,13 +45,16 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         args.compact
     );
 
-    let opts = crate::adapter::TreeOptions {
-        max_depth: args.max_depth,
-        include_bounds: args.include_bounds,
-        interactive_only: args.interactive_only,
-        compact: args.compact,
-        surface: args.surface,
-    };
+    let opts = tree_options(&args);
+
+    if let Some(ref root) = args.root_ref {
+        if !matches!(args.surface, SnapshotSurface::Window) {
+            return Err(AppError::invalid_input(
+                "--root cannot be combined with --surface",
+            ));
+        }
+        return format_result(snapshot_ref::run_from_ref(adapter, &opts, root)?);
+    }
 
     let result = snapshot::run(
         adapter,
@@ -40,6 +63,10 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         args.window_id.as_deref(),
     )?;
 
+    format_result(result)
+}
+
+fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
     let ref_count = result.refmap.len();
     let tree = serde_json::to_value(&result.tree)?;
     let win = &result.window;
@@ -60,4 +87,44 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         "ref_count": ref_count,
         "tree": tree
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args() -> SnapshotArgs {
+        SnapshotArgs {
+            app: None,
+            window_id: None,
+            max_depth: 8,
+            include_bounds: false,
+            interactive_only: false,
+            compact: false,
+            surface: SnapshotSurface::Window,
+            skeleton: false,
+            root_ref: None,
+        }
+    }
+
+    #[test]
+    fn test_tree_options_clamps_skeleton_depth() {
+        let mut args = args();
+        args.skeleton = true;
+
+        let opts = tree_options(&args);
+
+        assert_eq!(opts.max_depth, 3);
+    }
+
+    #[test]
+    fn test_tree_options_preserves_depth_for_drill_down() {
+        let mut args = args();
+        args.skeleton = true;
+        args.root_ref = Some("@e3".into());
+
+        let opts = tree_options(&args);
+
+        assert_eq!(opts.max_depth, 8);
+    }
 }

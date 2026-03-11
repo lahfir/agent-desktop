@@ -57,6 +57,10 @@ agent-desktop/
 ├── clippy.toml             # project-wide lint config
 ├── crates/
 │   ├── core/               # agent-desktop-core (platform-agnostic)
+│   │   └── src/
+│   │       ├── ref_alloc.rs      # Shared ref helpers (INTERACTIVE_ROLES, is_collapsible)
+│   │       ├── snapshot_ref.rs   # Ref-rooted drill-down (run_from_ref)
+│   │       └── commands/         # one file per command
 │   ├── macos/              # agent-desktop-macos (Phase 1)
 │   ├── windows/            # agent-desktop-windows (stub → Phase 2)
 │   └── linux/              # agent-desktop-linux (stub → Phase 2)
@@ -284,16 +288,20 @@ Error responses:
 - RefMap stored at `~/.agent-desktop/last_refmap.json` with `0o600` permissions, directory at `0o700`
 - Each snapshot REPLACES the refmap file entirely (atomic write via temp + rename)
 - Action commands use optimistic re-identification: `(pid, role, name, bounds_hash)`. Return `STALE_REF` on mismatch.
+- Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets
+- Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
+- RefMap size check: write-side guard prevents >1MB refmap files
 
 ## PlatformAdapter Trait
 
-12 methods with default implementations returning `not_supported()`:
+13 methods with default implementations returning `not_supported()`:
 
 ```rust
 pub trait PlatformAdapter: Send + Sync {
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError>;
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError>;
     fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
+    fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
     fn execute_action(&self, handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError>;
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
     fn check_permissions(&self) -> PermissionStatus;

@@ -2,27 +2,9 @@ use crate::{
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions, WindowFilter},
     error::AppError,
     node::{AccessibilityNode, WindowInfo},
-    refs::{RefEntry, RefMap},
+    ref_alloc::{is_collapsible, ref_entry_from_node, INTERACTIVE_ROLES},
+    refs::RefMap,
 };
-
-const INTERACTIVE_ROLES: &[&str] = &[
-    "button",
-    "textfield",
-    "checkbox",
-    "link",
-    "menuitem",
-    "tab",
-    "slider",
-    "combobox",
-    "treeitem",
-    "cell",
-    "radiobutton",
-    "incrementor",
-    "menubutton",
-    "switch",
-    "colorwell",
-    "dockitem",
-];
 
 pub struct SnapshotResult {
     pub tree: AccessibilityNode,
@@ -93,7 +75,13 @@ pub fn build(
 
     let raw_tree = adapter.get_tree(&window, opts)?;
 
-    let mut refmap = RefMap::new();
+    let mut refmap = if opts.skeleton {
+        let mut loaded = RefMap::load().unwrap_or_default();
+        loaded.remove_skeleton_refs();
+        loaded
+    } else {
+        RefMap::new()
+    };
     let mut tree = allocate_refs(
         raw_tree,
         &mut refmap,
@@ -148,15 +136,6 @@ pub fn append_surface_refs(
     Some(tree)
 }
 
-fn is_collapsible(node: &AccessibilityNode) -> bool {
-    node.ref_id.is_none()
-        && node.name.as_deref().is_none_or(str::is_empty)
-        && node.value.as_deref().is_none_or(str::is_empty)
-        && node.description.as_deref().is_none_or(str::is_empty)
-        && node.states.is_empty()
-        && node.children.len() == 1
-}
-
 fn allocate_refs(
     mut node: AccessibilityNode,
     refmap: &mut RefMap,
@@ -169,17 +148,17 @@ fn allocate_refs(
     let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
 
     if is_interactive {
-        let entry = RefEntry {
-            pid: window_pid,
-            role: node.role.clone(),
-            name: node.name.clone(),
-            value: node.value.clone(),
-            states: node.states.clone(),
-            bounds: node.bounds,
-            bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
-            available_actions: actions_for_role(&node.role),
-            source_app: source_app.map(str::to_string),
-        };
+        let entry = ref_entry_from_node(&node, window_pid, source_app, None);
+        node.ref_id = Some(refmap.allocate(entry));
+    }
+
+    let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
+        || node.description.as_deref().is_some_and(|d| !d.is_empty());
+    let is_skeleton_anchor = !is_interactive && node.children_count.is_some() && has_label;
+
+    if is_skeleton_anchor {
+        let mut entry = ref_entry_from_node(&node, window_pid, source_app, None);
+        entry.available_actions = vec![];
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -203,7 +182,11 @@ fn allocate_refs(
             if compact && is_collapsible(&child) {
                 return child.children.into_iter().next();
             }
-            if interactive_only && child.ref_id.is_none() && child.children.is_empty() {
+            if interactive_only
+                && child.ref_id.is_none()
+                && child.children.is_empty()
+                && child.children_count.is_none()
+            {
                 None
             } else {
                 Some(child)
@@ -212,19 +195,6 @@ fn allocate_refs(
         .collect();
 
     node
-}
-
-fn actions_for_role(role: &str) -> Vec<String> {
-    match role {
-        "button" | "link" | "menuitem" | "tab" | "radiobutton" => vec!["Click".into()],
-        "textfield" | "incrementor" => vec!["Click".into(), "SetValue".into(), "SetFocus".into()],
-        "checkbox" => vec!["Click".into(), "Toggle".into()],
-        "combobox" => vec!["Click".into(), "Select".into()],
-        "treeitem" => vec!["Click".into(), "Expand".into(), "Collapse".into()],
-        "slider" => vec!["SetValue".into()],
-        "cell" => vec!["Click".into()],
-        _ => vec!["Click".into()],
-    }
 }
 
 #[cfg(test)]
@@ -242,6 +212,7 @@ mod tests {
             hint: None,
             states: vec![],
             bounds: None,
+            children_count: None,
             children: vec![],
         }
     }
@@ -350,5 +321,68 @@ mod tests {
         assert_eq!(result.children.len(), 1);
         assert_eq!(result.children[0].role, "button");
         assert!(result.children[0].ref_id.is_some());
+    }
+
+    #[test]
+    fn test_skeleton_named_container_gets_ref() {
+        let mut container = node("group");
+        container.name = Some("Sidebar".into());
+        container.children_count = Some(5);
+        let mut root = node("window");
+        root.children = vec![container];
+
+        let mut refmap = RefMap::new();
+        let result = allocate_refs(root, &mut refmap, false, false, false, 1, Some("Test"));
+
+        assert!(result.children[0].ref_id.is_some());
+        assert_eq!(refmap.len(), 1);
+        let entry = refmap
+            .get(result.children[0].ref_id.as_deref().unwrap())
+            .unwrap();
+        assert!(entry.available_actions.is_empty());
+    }
+
+    #[test]
+    fn test_skeleton_unnamed_container_no_ref() {
+        let mut container = node("group");
+        container.children_count = Some(5);
+        let mut root = node("window");
+        root.children = vec![container];
+
+        let mut refmap = RefMap::new();
+        let result = allocate_refs(root, &mut refmap, false, false, false, 1, Some("Test"));
+
+        assert!(result.children[0].ref_id.is_none());
+        assert_eq!(refmap.len(), 0);
+    }
+
+    #[test]
+    fn test_skeleton_described_container_gets_ref() {
+        let mut container = node("group");
+        container.description = Some("Channels and direct messages".into());
+        container.children_count = Some(12);
+        let mut root = node("window");
+        root.children = vec![container];
+
+        let mut refmap = RefMap::new();
+        let result = allocate_refs(root, &mut refmap, false, false, false, 1, Some("Test"));
+
+        assert!(result.children[0].ref_id.is_some());
+        assert_eq!(refmap.len(), 1);
+    }
+
+    #[test]
+    fn test_skeleton_truncated_node_survives_interactive_only() {
+        let mut container = node("group");
+        container.name = Some("Content".into());
+        container.children_count = Some(10);
+        let mut root = node("window");
+        root.children = vec![container];
+
+        let mut refmap = RefMap::new();
+        let result = allocate_refs(root, &mut refmap, false, true, false, 1, Some("Test"));
+
+        assert_eq!(result.children.len(), 1);
+        assert_eq!(result.children[0].children_count, Some(10));
     }
 }

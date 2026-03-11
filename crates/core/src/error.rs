@@ -78,7 +78,9 @@ impl AdapterError {
             ErrorCode::StaleRef,
             format!("{ref_id} not found in current RefMap"),
         )
-        .with_suggestion("Run 'snapshot' to refresh, then retry with updated ref")
+        .with_suggestion(
+            "Run 'snapshot' (or 'snapshot --skeleton') to refresh, then retry with updated ref",
+        )
     }
 
     pub fn not_supported(method: &str) -> Self {

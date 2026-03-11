@@ -2,14 +2,14 @@ use agent_desktop_core::node::AccessibilityNode;
 use rustc_hash::FxHashSet;
 
 use super::element::{
-    copy_ax_array, copy_string_attr, element_for_pid, fetch_node_attrs, read_bounds, AXElement,
-    ABSOLUTE_MAX_DEPTH,
+    child_attributes, copy_ax_array, copy_string_attr, count_children, element_for_pid,
+    fetch_node_attrs, read_bounds, AXElement, ABSOLUTE_MAX_DEPTH,
 };
 
 #[cfg(target_os = "macos")]
 use accessibility_sys::{
-    kAXChildrenAttribute, kAXContentsAttribute, kAXRoleAttribute, kAXTitleAttribute,
-    kAXValueAttribute, kAXWindowsAttribute,
+    kAXChildrenAttribute, kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute,
+    kAXWindowsAttribute,
 };
 
 #[cfg(target_os = "macos")]
@@ -47,6 +47,7 @@ pub fn build_subtree(
     max_depth: u8,
     _include_bounds: bool,
     ancestors: &mut FxHashSet<usize>,
+    skeleton: bool,
 ) -> Option<AccessibilityNode> {
     if depth > max_depth || depth >= ABSOLUTE_MAX_DEPTH {
         return None;
@@ -83,11 +84,6 @@ pub fn build_subtree(
 
     let bounds = read_bounds(el);
 
-    let children_raw = copy_children(el, ax_role.as_deref()).unwrap_or_default();
-    let name = name.or_else(|| label_from_children(&children_raw));
-
-    // Non-semantic groups inside web content don't cost depth budget.
-    // A nameless AXGroup/AXGenericElement is just a <div> wrapper — skip it.
     let is_web_wrapper = matches!(
         ax_role.as_deref(),
         Some("AXGroup") | Some("AXGenericElement")
@@ -96,10 +92,49 @@ pub fn build_subtree(
 
     let child_depth = if is_web_wrapper { depth } else { depth + 1 };
 
+    let at_skeleton_boundary =
+        skeleton && child_depth > max_depth && child_depth < ABSOLUTE_MAX_DEPTH;
+
+    if at_skeleton_boundary {
+        let child_count = count_children(el, ax_role.as_deref());
+        let children_count = if child_count > 0 {
+            Some(child_count)
+        } else {
+            None
+        };
+        let name = name.or_else(|| {
+            let children_raw = copy_children(el, ax_role.as_deref()).unwrap_or_default();
+            label_from_children(&children_raw)
+        });
+        ancestors.remove(&ptr_key);
+        return Some(AccessibilityNode {
+            ref_id: None,
+            role,
+            name,
+            value,
+            description,
+            hint: None,
+            states,
+            bounds,
+            children_count,
+            children: vec![],
+        });
+    }
+
+    let children_raw = copy_children(el, ax_role.as_deref()).unwrap_or_default();
+    let name = name.or_else(|| label_from_children(&children_raw));
+
     let children = children_raw
         .into_iter()
         .filter_map(|child| {
-            build_subtree(&child, child_depth, max_depth, _include_bounds, ancestors)
+            build_subtree(
+                &child,
+                child_depth,
+                max_depth,
+                _include_bounds,
+                ancestors,
+                skeleton,
+            )
         })
         .collect();
 
@@ -114,6 +149,7 @@ pub fn build_subtree(
         hint: None,
         states,
         bounds,
+        children_count: None,
         children,
     })
 }
@@ -159,14 +195,7 @@ pub fn label_from_children(children: &[AXElement]) -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn copy_children(el: &AXElement, ax_role: Option<&str>) -> Option<Vec<AXElement>> {
-    if ax_role == Some("AXBrowser") {
-        return copy_ax_array(el, "AXColumns");
-    }
-    for attr in &[
-        kAXChildrenAttribute,
-        kAXContentsAttribute,
-        "AXChildrenInNavigationOrder",
-    ] {
+    for attr in child_attributes(ax_role) {
         if let Some(v) = copy_ax_array(el, attr) {
             if !v.is_empty() {
                 return Some(v);
@@ -188,6 +217,25 @@ pub fn build_subtree(
     _max_depth: u8,
     _include_bounds: bool,
     _visited: &mut FxHashSet<usize>,
+    _skeleton: bool,
 ) -> Option<AccessibilityNode> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::child_attributes;
+
+    #[test]
+    fn test_browser_children_use_columns() {
+        assert_eq!(child_attributes(Some("AXBrowser")), ["AXColumns"]);
+    }
+
+    #[test]
+    fn test_default_children_follow_fallback_order() {
+        assert_eq!(
+            child_attributes(Some("AXGroup")),
+            ["AXChildren", "AXContents", "AXChildrenInNavigationOrder"]
+        );
+    }
 }
