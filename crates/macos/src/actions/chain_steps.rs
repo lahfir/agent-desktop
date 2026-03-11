@@ -4,6 +4,16 @@ mod imp {
     use crate::tree::AXElement;
 
     pub fn do_verified_press(el: &AXElement, _caps: &ElementCaps) -> bool {
+        if !is_in_webarea(el) {
+            return verified_press_native(el);
+        }
+        tracing::debug!("verified_press: web element detected");
+        activate_web_element(el)
+    }
+
+    /// Native (non-web) elements: AXPress with selection verification
+    /// for elements inside selection containers.
+    fn verified_press_native(el: &AXElement) -> bool {
         use accessibility_sys::kAXRoleAttribute;
         let parent = crate::tree::copy_element_attr(el, "AXParent");
         let in_container = parent.as_ref().is_some_and(|p| {
@@ -15,6 +25,7 @@ mod imp {
         if !in_container {
             return ax_helpers::try_ax_action_retried(el, "AXPress");
         }
+        tracing::debug!("verified_press: native element in container, using AXPress");
         let selected_before = crate::tree::element::copy_bool_attr(el, "AXSelected");
         if !ax_helpers::try_ax_action_retried(el, "AXPress") {
             return false;
@@ -30,8 +41,116 @@ mod imp {
         if crate::tree::copy_string_attr(el, kAXRoleAttribute).is_none() {
             return true;
         }
-        tracing::debug!("verified_press: AXPress ok but no state change in selection container");
+        tracing::debug!("verified_press: AXPress ok but no state change");
         false
+    }
+
+    fn is_in_webarea(el: &AXElement) -> bool {
+        use accessibility_sys::kAXRoleAttribute;
+        let mut current = crate::tree::copy_element_attr(el, "AXParent");
+        for _ in 0..20 {
+            let Some(ref parent) = current else {
+                return false;
+            };
+            if crate::tree::copy_string_attr(parent, kAXRoleAttribute).as_deref()
+                == Some("AXWebArea")
+            {
+                return true;
+            }
+            current = crate::tree::copy_element_attr(parent, "AXParent");
+        }
+        false
+    }
+
+    /// Activate any Electron/web element with verified effect detection.
+    ///
+    /// Chromium's AX implementation lies: AXPress/AXConfirm return
+    /// kAXErrorSuccess but only toggle ARIA state — DOM click handlers
+    /// never fire. We verify by checking if the focused UI element
+    /// changed after AXPress. If nothing changed, CGClick is the
+    /// genuine last resort.
+    ///
+    /// This handles the FULL escalation for web elements so the chain
+    /// engine never reaches false-positive AX steps (AXConfirm, SetBool
+    /// AXSelected, etc. all lie on Chromium).
+    fn activate_web_element(el: &AXElement) -> bool {
+        let Some(pid) = crate::system::app_ops::pid_from_element(el) else {
+            return false;
+        };
+
+        // Capture pre-action state for verification
+        let app = crate::tree::element_for_pid(pid);
+        let focused_before = crate::tree::copy_element_attr(&app, "AXFocusedUIElement");
+
+        // Step 1: AXPress — the standard headless action
+        if ax_helpers::try_ax_action_retried(el, "AXPress") {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if web_action_had_effect(&app, focused_before.as_ref()) {
+                tracing::debug!("activate_web: AXPress had real effect");
+                return true;
+            }
+            tracing::debug!("activate_web: AXPress returned success but no DOM effect");
+        }
+
+        // Step 2: AXConfirm / AXOpen — try other AX actions
+        let actions = ax_helpers::list_ax_actions(el);
+        for action in &["AXConfirm", "AXOpen"] {
+            if actions.iter().any(|a| a == action) && ax_helpers::try_ax_action(el, action) {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if web_action_had_effect(&app, focused_before.as_ref()) {
+                    tracing::debug!("activate_web: {action} had real effect");
+                    return true;
+                }
+            }
+        }
+
+        // Step 3: Try AX actions on children
+        if ax_helpers::try_each_child(
+            el,
+            |child| {
+                let child_actions = ax_helpers::list_ax_actions(child);
+                ax_helpers::try_action_from_list(
+                    child,
+                    &child_actions,
+                    &["AXPress", "AXConfirm", "AXOpen"],
+                )
+            },
+            5,
+        ) {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if web_action_had_effect(&app, focused_before.as_ref()) {
+                tracing::debug!("activate_web: child action had real effect");
+                return true;
+            }
+        }
+
+        // Step 4: CGClick — absolute last resort
+        tracing::debug!("activate_web: all AX methods had no effect, CGClick");
+        let _ = crate::system::app_ops::ensure_app_focused(pid);
+        crate::actions::dispatch::click_via_bounds(
+            el,
+            agent_desktop_core::action::MouseButton::Left,
+            1,
+        )
+        .is_ok()
+    }
+
+    /// Check if a web action actually changed something in the app.
+    /// Compares the focused UI element before vs after — if the app's
+    /// focused element changed, the action had a real DOM effect.
+    fn web_action_had_effect(
+        app: &AXElement,
+        focused_before: Option<&AXElement>,
+    ) -> bool {
+        let focused_after = crate::tree::copy_element_attr(app, "AXFocusedUIElement");
+        match (focused_before, &focused_after) {
+            (Some(before), Some(after)) => {
+                // Different element pointers = focus moved = real effect
+                before.0 != after.0
+            }
+            (None, Some(_)) => true,
+            _ => false,
+        }
     }
 
     pub fn try_focus_then_verified_confirm_or_press(el: &AXElement, caps: &ElementCaps) -> bool {
