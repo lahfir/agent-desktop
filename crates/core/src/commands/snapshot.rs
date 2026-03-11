@@ -17,6 +17,24 @@ pub struct SnapshotArgs {
     pub root_ref: Option<String>,
 }
 
+fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
+    let effective_depth = if args.skeleton && args.root_ref.is_none() {
+        args.max_depth.min(3)
+    } else {
+        args.max_depth
+    };
+
+    crate::adapter::TreeOptions {
+        max_depth: effective_depth,
+        include_bounds: args.include_bounds,
+        interactive_only: args.interactive_only,
+        compact: args.compact,
+        surface: args.surface,
+        skeleton: args.skeleton,
+        root_ref: args.root_ref.clone(),
+    }
+}
+
 pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     tracing::debug!(
         "tree: snapshot app={:?} window_id={:?} max_depth={} interactive_only={} compact={}",
@@ -27,21 +45,7 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         args.compact
     );
 
-    let effective_depth = if args.skeleton {
-        args.max_depth.min(3)
-    } else {
-        args.max_depth
-    };
-
-    let opts = crate::adapter::TreeOptions {
-        max_depth: effective_depth,
-        include_bounds: args.include_bounds,
-        interactive_only: args.interactive_only,
-        compact: args.compact,
-        surface: args.surface,
-        skeleton: args.skeleton,
-        root_ref: args.root_ref.clone(),
-    };
+    let opts = tree_options(&args);
 
     if let Some(ref root) = args.root_ref {
         if !matches!(args.surface, SnapshotSurface::Window) {
@@ -83,4 +87,44 @@ fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
         "ref_count": ref_count,
         "tree": tree
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args() -> SnapshotArgs {
+        SnapshotArgs {
+            app: None,
+            window_id: None,
+            max_depth: 8,
+            include_bounds: false,
+            interactive_only: false,
+            compact: false,
+            surface: SnapshotSurface::Window,
+            skeleton: false,
+            root_ref: None,
+        }
+    }
+
+    #[test]
+    fn test_tree_options_clamps_skeleton_depth() {
+        let mut args = args();
+        args.skeleton = true;
+
+        let opts = tree_options(&args);
+
+        assert_eq!(opts.max_depth, 3);
+    }
+
+    #[test]
+    fn test_tree_options_preserves_depth_for_drill_down() {
+        let mut args = args();
+        args.skeleton = true;
+        args.root_ref = Some("@e3".into());
+
+        let opts = tree_options(&args);
+
+        assert_eq!(opts.max_depth, 8);
+    }
 }
