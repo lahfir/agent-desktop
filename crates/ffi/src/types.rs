@@ -192,3 +192,28 @@ pub struct AdWindowOp {
     pub x: f64,
     pub y: f64,
 }
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdMouseButton {
+    Left = 0,
+    Right = 1,
+    Middle = 2,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdMouseEventKind {
+    Move = 0,
+    Down = 1,
+    Up = 2,
+    Click = 3,
+}
+
+#[repr(C)]
+pub struct AdMouseEvent {
+    pub kind: AdMouseEventKind,
+    pub point: AdPoint,
+    pub button: AdMouseButton,
+    pub click_count: u32,
+}
