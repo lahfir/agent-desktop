@@ -6,13 +6,6 @@ style = "both"
 usize_is_size_t = true
 
 [export]
-prefix = "Ad"
-
-[export.rename]
-"AdResult" = "AdResult"
-
-[fn]
-prefix = "ad_"
 
 [enum]
 rename_variants = "ScreamingSnakeCase"
