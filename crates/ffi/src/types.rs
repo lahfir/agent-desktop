@@ -217,3 +217,34 @@ pub struct AdMouseEvent {
     pub button: AdMouseButton,
     pub click_count: u32,
 }
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdImageFormat {
+    Png = 0,
+    Jpg = 1,
+}
+
+#[repr(C)]
+pub struct AdImageBuffer {
+    pub data: *const u8,
+    pub data_len: u64,
+    pub format: AdImageFormat,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdScreenshotKind {
+    Screen = 0,
+    Window = 1,
+    FullScreen = 2,
+}
+
+#[repr(C)]
+pub struct AdScreenshotTarget {
+    pub kind: AdScreenshotKind,
+    pub screen_index: u64,
+    pub pid: i32,
+}
