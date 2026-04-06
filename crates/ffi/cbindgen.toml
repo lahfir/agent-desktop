@@ -1,0 +1,19 @@
+language = "C"
+include_guard = "AGENT_DESKTOP_H"
+no_includes = true
+sys_includes = ["stdint.h", "stdbool.h", "stddef.h"]
+style = "both"
+usize_is_size_t = true
+
+[export]
+prefix = "Ad"
+
+[export.rename]
+"AdResult" = "AdResult"
+
+[fn]
+prefix = "ad_"
+
+[enum]
+rename_variants = "ScreamingSnakeCase"
+prefix_with_name = true
