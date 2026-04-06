@@ -1,5 +1,6 @@
 pub(crate) mod convert;
-mod error;
+pub mod error;
 mod types;
 
+pub use error::AdResult;
 pub use types::*;
