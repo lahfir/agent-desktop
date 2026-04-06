@@ -23,7 +23,9 @@ pub(crate) fn direction_from_c(d: AdDirection) -> Direction {
 }
 
 pub(crate) unsafe fn key_combo_from_c(k: &AdKeyCombo) -> Result<CoreKeyCombo, &'static str> {
-    let key = c_to_str(k.key).ok_or("key is null or invalid UTF-8")?.to_owned();
+    let key = c_to_str(k.key)
+        .ok_or("key is null or invalid UTF-8")?
+        .to_owned();
     let mut modifiers = Vec::new();
     if !k.modifiers.is_null() && k.modifier_count > 0 {
         let slice = std::slice::from_raw_parts(k.modifiers, k.modifier_count as usize);
@@ -85,8 +87,14 @@ pub(crate) unsafe fn action_from_c(action: &AdAction) -> Result<Action, &'static
         }
         AdActionKind::Drag => {
             let params = CoreDragParams {
-                from: CorePoint { x: action.drag.from.x, y: action.drag.from.y },
-                to: CorePoint { x: action.drag.to.x, y: action.drag.to.y },
+                from: CorePoint {
+                    x: action.drag.from.x,
+                    y: action.drag.from.y,
+                },
+                to: CorePoint {
+                    x: action.drag.to.x,
+                    y: action.drag.to.y,
+                },
                 duration_ms: if action.drag.duration_ms == 0 {
                     None
                 } else {
@@ -117,11 +125,20 @@ pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
                 std::mem::forget(ptrs);
                 raw
             };
-            let elem = Box::new(AdElementState { role, states, state_count, value });
+            let elem = Box::new(AdElementState {
+                role,
+                states,
+                state_count,
+                value,
+            });
             Box::into_raw(elem)
         }
     };
-    AdActionResult { action, ref_id, post_state }
+    AdActionResult {
+        action,
+        ref_id,
+        post_state,
+    }
 }
 
 /// # Safety
@@ -140,17 +157,19 @@ pub unsafe extern "C" fn ad_resolve_element(
     let role = match c_to_str(entry.role) {
         Some(s) => s.to_owned(),
         None => {
-            error::set_last_error(
-                &agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    "role is null or invalid UTF-8",
-                ),
-            );
+            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                agent_desktop_core::error::ErrorCode::InvalidArgs,
+                "role is null or invalid UTF-8",
+            ));
             return AdResult::ErrInvalidArgs;
         }
     };
     let name = c_to_str(entry.name).map(|s| s.to_owned());
-    let bounds_hash = if entry.has_bounds_hash { Some(entry.bounds_hash) } else { None };
+    let bounds_hash = if entry.has_bounds_hash {
+        Some(entry.bounds_hash)
+    } else {
+        None
+    };
     let core_entry = CoreRefEntry {
         pid: entry.pid,
         role,
@@ -194,12 +213,10 @@ pub unsafe extern "C" fn ad_execute_action(
     let core_action = match action_from_c(action_ref) {
         Ok(a) => a,
         Err(msg) => {
-            error::set_last_error(
-                &agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    msg,
-                ),
-            );
+            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                agent_desktop_core::error::ErrorCode::InvalidArgs,
+                msg,
+            ));
             return AdResult::ErrInvalidArgs;
         }
     };
@@ -234,8 +251,7 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
         free_c_string(state.role as *mut _);
         free_c_string(state.value as *mut _);
         if !state.states.is_null() && state.state_count > 0 {
-            let slice =
-                std::slice::from_raw_parts_mut(state.states, state.state_count as usize);
+            let slice = std::slice::from_raw_parts_mut(state.states, state.state_count as usize);
             for ptr in slice.iter() {
                 free_c_string(*ptr);
             }
@@ -259,11 +275,18 @@ mod tests {
     use agent_desktop_core::action::ElementState;
 
     fn make_scroll_params() -> AdScrollParams {
-        AdScrollParams { direction: AdDirection::Down, amount: 3 }
+        AdScrollParams {
+            direction: AdDirection::Down,
+            amount: 3,
+        }
     }
 
     fn make_key_combo() -> AdKeyCombo {
-        AdKeyCombo { key: ptr::null(), modifiers: ptr::null(), modifier_count: 0 }
+        AdKeyCombo {
+            key: ptr::null(),
+            modifiers: ptr::null(),
+            modifier_count: 0,
+        }
     }
 
     fn make_drag_params() -> AdDragParams {
@@ -339,7 +362,10 @@ mod tests {
         let action = AdAction {
             kind: AdActionKind::Scroll,
             text: ptr::null(),
-            scroll: AdScrollParams { direction: AdDirection::Up, amount: 5 },
+            scroll: AdScrollParams {
+                direction: AdDirection::Up,
+                amount: 5,
+            },
             key: make_key_combo(),
             drag: make_drag_params(),
         };

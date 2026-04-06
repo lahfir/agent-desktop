@@ -50,9 +50,10 @@ pub unsafe extern "C" fn ad_free_apps(apps: *mut AdAppInfo, count: u32) {
     for app in slice.iter_mut() {
         free_app_info_fields(app);
     }
-    drop(Box::from_raw(
-        std::ptr::slice_from_raw_parts_mut(apps, count as usize),
-    ));
+    drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+        apps,
+        count as usize,
+    )));
 }
 
 /// # Safety

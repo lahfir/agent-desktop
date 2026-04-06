@@ -29,7 +29,15 @@ fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec
     let (states_ptr, state_count) = strings_to_c_array(&node.states);
     let (bounds, has_bounds) = match &node.bounds {
         Some(r) => (crate::convert::rect_to_c(r), true),
-        None => (AdRect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 }, false),
+        None => (
+            AdRect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            false,
+        ),
     };
 
     // Push with placeholder child_start — filled in after we know where children go
@@ -79,9 +87,10 @@ unsafe fn free_c_string_array(arr: *mut *mut c_char, count: u32) {
     for p in slice.iter_mut() {
         free_c_string(*p);
     }
-    drop(Box::from_raw(
-        std::ptr::slice_from_raw_parts_mut(arr, count as usize),
-    ));
+    drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+        arr,
+        count as usize,
+    )));
 }
 
 unsafe fn free_node_fields(node: &mut AdNode) {
@@ -118,9 +127,10 @@ pub unsafe extern "C" fn ad_free_tree(tree: *mut AdNodeTree) {
     for node in nodes.iter_mut() {
         free_node_fields(node);
     }
-    drop(Box::from_raw(
-        std::ptr::slice_from_raw_parts_mut(tree.nodes, tree.count as usize),
-    ));
+    drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+        tree.nodes,
+        tree.count as usize,
+    )));
     tree.nodes = ptr::null_mut();
     tree.count = 0;
 }

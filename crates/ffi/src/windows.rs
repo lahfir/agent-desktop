@@ -123,7 +123,10 @@ pub unsafe extern "C" fn ad_window_op(
     let adapter = &*adapter;
     let core_win = ad_window_to_core(&*win);
     let core_op = match op.kind {
-        AdWindowOpKind::Resize => WindowOp::Resize { width: op.width, height: op.height },
+        AdWindowOpKind::Resize => WindowOp::Resize {
+            width: op.width,
+            height: op.height,
+        },
         AdWindowOpKind::Move => WindowOp::Move { x: op.x, y: op.y },
         AdWindowOpKind::Minimize => WindowOp::Minimize,
         AdWindowOpKind::Maximize => WindowOp::Maximize,

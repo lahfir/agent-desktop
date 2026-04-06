@@ -45,12 +45,10 @@ pub unsafe extern "C" fn ad_set_clipboard(
     let text = match c_to_str(text) {
         Some(s) => s,
         None => {
-            error::set_last_error(
-                &agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    "text is null or invalid UTF-8",
-                ),
-            );
+            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                agent_desktop_core::error::ErrorCode::InvalidArgs,
+                "text is null or invalid UTF-8",
+            ));
             return AdResult::ErrInvalidArgs;
         }
     };
@@ -112,15 +110,24 @@ pub unsafe extern "C" fn ad_mouse_event(
 ) -> AdResult {
     let adapter = &*adapter;
     let ev = &*event;
-    let point = CorePoint { x: ev.point.x, y: ev.point.y };
+    let point = CorePoint {
+        x: ev.point.x,
+        y: ev.point.y,
+    };
     let button = mouse_button_from_c(ev.button);
     let kind = match ev.kind {
         AdMouseEventKind::Move => CoreMouseEventKind::Move,
         AdMouseEventKind::Down => CoreMouseEventKind::Down,
         AdMouseEventKind::Up => CoreMouseEventKind::Up,
-        AdMouseEventKind::Click => CoreMouseEventKind::Click { count: ev.click_count },
+        AdMouseEventKind::Click => CoreMouseEventKind::Click {
+            count: ev.click_count,
+        },
     };
-    let core_event = CoreMouseEvent { kind, point, button };
+    let core_event = CoreMouseEvent {
+        kind,
+        point,
+        button,
+    };
     match adapter.inner.mouse_event(core_event) {
         Ok(()) => {
             error::clear_last_error();
@@ -145,9 +152,19 @@ pub unsafe extern "C" fn ad_drag(
     let adapter = &*adapter;
     let p = &*params;
     let core_params = CoreDragParams {
-        from: CorePoint { x: p.from.x, y: p.from.y },
-        to: CorePoint { x: p.to.x, y: p.to.y },
-        duration_ms: if p.duration_ms == 0 { None } else { Some(p.duration_ms) },
+        from: CorePoint {
+            x: p.from.x,
+            y: p.from.y,
+        },
+        to: CorePoint {
+            x: p.to.x,
+            y: p.to.y,
+        },
+        duration_ms: if p.duration_ms == 0 {
+            None
+        } else {
+            Some(p.duration_ms)
+        },
     };
     match adapter.inner.drag(core_params) {
         Ok(()) => {
@@ -168,9 +185,18 @@ mod tests {
 
     #[test]
     fn test_mouse_button_mapping() {
-        assert!(matches!(mouse_button_from_c(AdMouseButton::Left), CoreMouseButton::Left));
-        assert!(matches!(mouse_button_from_c(AdMouseButton::Right), CoreMouseButton::Right));
-        assert!(matches!(mouse_button_from_c(AdMouseButton::Middle), CoreMouseButton::Middle));
+        assert!(matches!(
+            mouse_button_from_c(AdMouseButton::Left),
+            CoreMouseButton::Left
+        ));
+        assert!(matches!(
+            mouse_button_from_c(AdMouseButton::Right),
+            CoreMouseButton::Right
+        ));
+        assert!(matches!(
+            mouse_button_from_c(AdMouseButton::Middle),
+            CoreMouseButton::Middle
+        ));
     }
 
     #[test]
@@ -181,16 +207,28 @@ mod tests {
             button: AdMouseButton::Left,
             click_count: 2,
         };
-        let point = CorePoint { x: ev.point.x, y: ev.point.y };
+        let point = CorePoint {
+            x: ev.point.x,
+            y: ev.point.y,
+        };
         let button = mouse_button_from_c(ev.button);
         let kind = match ev.kind {
             AdMouseEventKind::Move => CoreMouseEventKind::Move,
             AdMouseEventKind::Down => CoreMouseEventKind::Down,
             AdMouseEventKind::Up => CoreMouseEventKind::Up,
-            AdMouseEventKind::Click => CoreMouseEventKind::Click { count: ev.click_count },
+            AdMouseEventKind::Click => CoreMouseEventKind::Click {
+                count: ev.click_count,
+            },
         };
-        let core_event = CoreMouseEvent { kind, point, button };
-        assert!(matches!(core_event.kind, CoreMouseEventKind::Click { count: 2 }));
+        let core_event = CoreMouseEvent {
+            kind,
+            point,
+            button,
+        };
+        assert!(matches!(
+            core_event.kind,
+            CoreMouseEventKind::Click { count: 2 }
+        ));
         assert_eq!(core_event.point.x, 10.0);
         assert_eq!(core_event.point.y, 20.0);
     }
@@ -203,9 +241,19 @@ mod tests {
             duration_ms: 0,
         };
         let core = CoreDragParams {
-            from: CorePoint { x: p.from.x, y: p.from.y },
-            to: CorePoint { x: p.to.x, y: p.to.y },
-            duration_ms: if p.duration_ms == 0 { None } else { Some(p.duration_ms) },
+            from: CorePoint {
+                x: p.from.x,
+                y: p.from.y,
+            },
+            to: CorePoint {
+                x: p.to.x,
+                y: p.to.y,
+            },
+            duration_ms: if p.duration_ms == 0 {
+                None
+            } else {
+                Some(p.duration_ms)
+            },
         };
         assert!(core.duration_ms.is_none());
         assert_eq!(core.to.x, 100.0);
@@ -219,9 +267,19 @@ mod tests {
             duration_ms: 500,
         };
         let core = CoreDragParams {
-            from: CorePoint { x: p.from.x, y: p.from.y },
-            to: CorePoint { x: p.to.x, y: p.to.y },
-            duration_ms: if p.duration_ms == 0 { None } else { Some(p.duration_ms) },
+            from: CorePoint {
+                x: p.from.x,
+                y: p.from.y,
+            },
+            to: CorePoint {
+                x: p.to.x,
+                y: p.to.y,
+            },
+            duration_ms: if p.duration_ms == 0 {
+                None
+            } else {
+                Some(p.duration_ms)
+            },
         };
         assert_eq!(core.duration_ms, Some(500));
     }

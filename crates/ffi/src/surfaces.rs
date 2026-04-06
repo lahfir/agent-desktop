@@ -20,8 +20,7 @@ pub unsafe extern "C" fn ad_list_surfaces(
     match adapter.inner.list_surfaces(pid) {
         Ok(surfaces) => {
             clear_last_error();
-            let c_surfaces: Vec<AdSurfaceInfo> =
-                surfaces.iter().map(surface_info_to_c).collect();
+            let c_surfaces: Vec<AdSurfaceInfo> = surfaces.iter().map(surface_info_to_c).collect();
             let count = c_surfaces.len() as u32;
             if c_surfaces.is_empty() {
                 return AdResult::Ok;
@@ -50,7 +49,8 @@ pub unsafe extern "C" fn ad_free_surfaces(surfaces: *mut AdSurfaceInfo, count: u
     for s in slice.iter_mut() {
         free_surface_info_fields(s);
     }
-    drop(Box::from_raw(
-        std::ptr::slice_from_raw_parts_mut(surfaces, count as usize),
-    ));
+    drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+        surfaces,
+        count as usize,
+    )));
 }

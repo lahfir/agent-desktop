@@ -1,6 +1,6 @@
 use agent_desktop_core::error::{AdapterError, ErrorCode};
 use std::cell::RefCell;
-use std::ffi::{CString, c_char};
+use std::ffi::{c_char, CString};
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,19 +52,20 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
 #[allow(dead_code)]
 pub(crate) fn set_last_error(err: &AdapterError) {
     let code = error_code_to_result(&err.code);
-    let message = CString::new(err.message.as_str()).unwrap_or_else(|_| {
-        CString::new("(message contained null byte)").unwrap()
-    });
-    let suggestion = err
-        .suggestion
-        .as_deref()
-        .and_then(|s| CString::new(s).ok());
+    let message = CString::new(err.message.as_str())
+        .unwrap_or_else(|_| CString::new("(message contained null byte)").unwrap());
+    let suggestion = err.suggestion.as_deref().and_then(|s| CString::new(s).ok());
     let platform_detail = err
         .platform_detail
         .as_deref()
         .and_then(|s| CString::new(s).ok());
     LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = Some(StoredError { code, message, suggestion, platform_detail });
+        *cell.borrow_mut() = Some(StoredError {
+            code,
+            message,
+            suggestion,
+            platform_detail,
+        });
     });
 }
 
@@ -78,7 +79,10 @@ pub(crate) fn clear_last_error() {
 #[allow(dead_code)]
 pub(crate) fn last_error_code() -> AdResult {
     LAST_ERROR.with(|cell| {
-        cell.borrow().as_ref().map(|e| e.code).unwrap_or(AdResult::Ok)
+        cell.borrow()
+            .as_ref()
+            .map(|e| e.code)
+            .unwrap_or(AdResult::Ok)
     })
 }
 
@@ -95,7 +99,9 @@ pub(crate) fn last_error_message_str() -> Option<String> {
 pub(crate) fn last_error_suggestion_str() -> Option<String> {
     LAST_ERROR.with(|cell| {
         cell.borrow().as_ref().and_then(|e| {
-            e.suggestion.as_ref().map(|s| s.to_string_lossy().into_owned())
+            e.suggestion
+                .as_ref()
+                .map(|s| s.to_string_lossy().into_owned())
         })
     })
 }
@@ -104,7 +110,9 @@ pub(crate) fn last_error_suggestion_str() -> Option<String> {
 pub(crate) fn last_error_platform_detail_str() -> Option<String> {
     LAST_ERROR.with(|cell| {
         cell.borrow().as_ref().and_then(|e| {
-            e.platform_detail.as_ref().map(|s| s.to_string_lossy().into_owned())
+            e.platform_detail
+                .as_ref()
+                .map(|s| s.to_string_lossy().into_owned())
         })
     })
 }
@@ -127,18 +135,20 @@ pub extern "C" fn ad_last_error_message() -> *const c_char {
 #[no_mangle]
 pub extern "C" fn ad_last_error_suggestion() -> *const c_char {
     LAST_ERROR.with(|cell| {
-        cell.borrow().as_ref().and_then(|e| {
-            e.suggestion.as_ref().map(|s| s.as_ptr())
-        }).unwrap_or(std::ptr::null())
+        cell.borrow()
+            .as_ref()
+            .and_then(|e| e.suggestion.as_ref().map(|s| s.as_ptr()))
+            .unwrap_or(std::ptr::null())
     })
 }
 
 #[no_mangle]
 pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
     LAST_ERROR.with(|cell| {
-        cell.borrow().as_ref().and_then(|e| {
-            e.platform_detail.as_ref().map(|s| s.as_ptr())
-        }).unwrap_or(std::ptr::null())
+        cell.borrow()
+            .as_ref()
+            .and_then(|e| e.platform_detail.as_ref().map(|s| s.as_ptr()))
+            .unwrap_or(std::ptr::null())
     })
 }
 
@@ -154,10 +164,8 @@ mod tests {
 
     #[test]
     fn test_set_and_get_error() {
-        let err = AdapterError::new(
-            ErrorCode::ElementNotFound,
-            "element @e5 gone",
-        ).with_suggestion("run snapshot");
+        let err = AdapterError::new(ErrorCode::ElementNotFound, "element @e5 gone")
+            .with_suggestion("run snapshot");
         set_last_error(&err);
         assert_eq!(last_error_code(), AdResult::ErrElementNotFound);
         assert_eq!(last_error_message_str().unwrap(), "element @e5 gone");
@@ -179,9 +187,7 @@ mod tests {
         let err = AdapterError::internal("thread1");
         set_last_error(&err);
 
-        let handle = std::thread::spawn(|| {
-            last_error_message_str().is_none()
-        });
+        let handle = std::thread::spawn(|| last_error_message_str().is_none());
         assert!(handle.join().unwrap(), "other thread should see no error");
         assert_eq!(last_error_message_str().unwrap(), "thread1");
     }

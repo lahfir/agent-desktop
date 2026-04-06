@@ -55,7 +55,15 @@ pub(crate) fn rect_to_c(r: &Rect) -> AdRect {
 pub(crate) fn window_info_to_c(w: &WindowInfo) -> AdWindowInfo {
     let (bounds, has_bounds) = match &w.bounds {
         Some(r) => (rect_to_c(r), true),
-        None => (AdRect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 }, false),
+        None => (
+            AdRect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            false,
+        ),
     };
     AdWindowInfo {
         id: string_to_c(&w.id),
@@ -145,7 +153,12 @@ mod tests {
             title: "Documents".into(),
             app: "Finder".into(),
             pid: 42,
-            bounds: Some(Rect { x: 10.0, y: 20.0, width: 800.0, height: 600.0 }),
+            bounds: Some(Rect {
+                x: 10.0,
+                y: 20.0,
+                width: 800.0,
+                height: 600.0,
+            }),
             is_focused: true,
         };
         let c = window_info_to_c(&w);

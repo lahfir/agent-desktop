@@ -1,9 +1,7 @@
 use crate::error::{clear_last_error, set_last_error, AdResult};
 use crate::types::*;
 use crate::AdAdapter;
-use agent_desktop_core::adapter::{
-    ImageFormat, ScreenshotTarget as CoreScreenshotTarget,
-};
+use agent_desktop_core::adapter::{ImageFormat, ScreenshotTarget as CoreScreenshotTarget};
 
 /// # Safety
 /// `adapter` and `target` must be valid. `out` must be writable.
