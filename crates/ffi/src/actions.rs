@@ -118,11 +118,11 @@ pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
             let states = if state.states.is_empty() {
                 ptr::null_mut()
             } else {
-                let mut ptrs: Vec<*mut std::os::raw::c_char> =
+                let ptrs: Vec<*mut std::os::raw::c_char> =
                     state.states.iter().map(|s| string_to_c(s)).collect();
-                ptrs.shrink_to_fit();
-                let raw = ptrs.as_mut_ptr();
-                std::mem::forget(ptrs);
+                let mut boxed = ptrs.into_boxed_slice();
+                let raw = boxed.as_mut_ptr();
+                std::mem::forget(boxed);
                 raw
             };
             let elem = Box::new(AdElementState {
@@ -189,7 +189,7 @@ pub unsafe extern "C" fn ad_resolve_element(
         }
         Err(e) => {
             error::set_last_error(&e);
-            AdResult::ErrElementNotFound
+            error::last_error_code()
         }
     }
 }
@@ -229,7 +229,7 @@ pub unsafe extern "C" fn ad_execute_action(
         }
         Err(e) => {
             error::set_last_error(&e);
-            AdResult::ErrActionFailed
+            error::last_error_code()
         }
     }
 }
@@ -255,10 +255,10 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
             for ptr in slice.iter() {
                 free_c_string(*ptr);
             }
-            drop(Box::from_raw(
-                std::slice::from_raw_parts_mut(state.states, state.state_count as usize)
-                    .as_mut_ptr(),
-            ));
+            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                state.states,
+                state.state_count as usize,
+            )));
         }
         drop(Box::from_raw(r.post_state));
         r.post_state = ptr::null_mut();

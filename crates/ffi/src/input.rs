@@ -27,7 +27,7 @@ pub unsafe extern "C" fn ad_get_clipboard(
         }
         Err(e) => {
             error::set_last_error(&e);
-            AdResult::ErrActionFailed
+            error::last_error_code()
         }
     }
 }
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn ad_set_clipboard(
         }
         Err(e) => {
             error::set_last_error(&e);
-            AdResult::ErrActionFailed
+            error::last_error_code()
         }
     }
 }
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResu
         }
         Err(e) => {
             error::set_last_error(&e);
-            AdResult::ErrActionFailed
+            error::last_error_code()
         }
     }
 }
@@ -135,7 +135,7 @@ pub unsafe extern "C" fn ad_mouse_event(
         }
         Err(e) => {
             error::set_last_error(&e);
-            AdResult::ErrActionFailed
+            error::last_error_code()
         }
     }
 }
@@ -173,7 +173,7 @@ pub unsafe extern "C" fn ad_drag(
         }
         Err(e) => {
             error::set_last_error(&e);
-            AdResult::ErrActionFailed
+            error::last_error_code()
         }
     }
 }

@@ -144,6 +144,9 @@ pub unsafe extern "C" fn ad_get_tree(
     opts: *const AdTreeOptions,
     out: *mut AdNodeTree,
 ) -> AdResult {
+    (*out).nodes = ptr::null_mut();
+    (*out).count = 0;
+
     let adapter = &*adapter;
     let opts_ref = &*opts;
     let core_win = crate::windows::ad_window_to_core(&*win);
