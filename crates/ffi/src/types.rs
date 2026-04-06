@@ -173,3 +173,22 @@ pub struct AdRefEntry {
     pub bounds_hash: u64,
     pub has_bounds_hash: bool,
 }
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdWindowOpKind {
+    Resize = 0,
+    Move = 1,
+    Minimize = 2,
+    Maximize = 3,
+    Restore = 4,
+}
+
+#[repr(C)]
+pub struct AdWindowOp {
+    pub kind: AdWindowOpKind,
+    pub width: f64,
+    pub height: f64,
+    pub x: f64,
+    pub y: f64,
+}
