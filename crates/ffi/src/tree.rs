@@ -1,5 +1,7 @@
 use crate::convert::{free_c_string, opt_string_to_c, string_to_c};
-use crate::types::{AdNode, AdNodeTree, AdRect};
+use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::types::{AdNode, AdNodeTree, AdRect, AdTreeOptions};
+use crate::AdAdapter;
 use agent_desktop_core::node::AccessibilityNode;
 use std::os::raw::c_char;
 use std::ptr;
@@ -121,6 +123,39 @@ pub unsafe extern "C" fn ad_free_tree(tree: *mut AdNodeTree) {
     ));
     tree.nodes = ptr::null_mut();
     tree.count = 0;
+}
+
+/// # Safety
+/// All pointers must be valid. `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn ad_get_tree(
+    adapter: *const AdAdapter,
+    win: *const crate::types::AdWindowInfo,
+    opts: *const AdTreeOptions,
+    out: *mut AdNodeTree,
+) -> AdResult {
+    let adapter = &*adapter;
+    let opts_ref = &*opts;
+    let core_win = crate::windows::ad_window_to_core(&*win);
+    let core_opts = agent_desktop_core::adapter::TreeOptions {
+        max_depth: opts_ref.max_depth,
+        include_bounds: opts_ref.include_bounds,
+        interactive_only: opts_ref.interactive_only,
+        compact: opts_ref.compact,
+        surface: agent_desktop_core::adapter::SnapshotSurface::Window,
+    };
+
+    match adapter.inner.get_tree(&core_win, &core_opts) {
+        Ok(tree) => {
+            clear_last_error();
+            *out = flatten_tree(&tree);
+            AdResult::Ok
+        }
+        Err(e) => {
+            set_last_error(&e);
+            crate::error::last_error_code()
+        }
+    }
 }
 
 #[cfg(test)]
