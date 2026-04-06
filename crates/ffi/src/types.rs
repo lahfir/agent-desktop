@@ -71,3 +71,105 @@ pub struct AdTreeOptions {
     pub interactive_only: bool,
     pub compact: bool,
 }
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdActionKind {
+    Click = 0,
+    DoubleClick = 1,
+    RightClick = 2,
+    TripleClick = 3,
+    SetValue = 4,
+    SetFocus = 5,
+    Expand = 6,
+    Collapse = 7,
+    Select = 8,
+    Toggle = 9,
+    Check = 10,
+    Uncheck = 11,
+    Scroll = 12,
+    ScrollTo = 13,
+    PressKey = 14,
+    KeyDown = 15,
+    KeyUp = 16,
+    TypeText = 17,
+    Clear = 18,
+    Hover = 19,
+    Drag = 20,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdDirection {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdModifier {
+    Cmd = 0,
+    Ctrl = 1,
+    Alt = 2,
+    Shift = 3,
+}
+
+#[repr(C)]
+pub struct AdKeyCombo {
+    pub key: *const c_char,
+    pub modifiers: *const AdModifier,
+    pub modifier_count: u32,
+}
+
+#[repr(C)]
+pub struct AdDragParams {
+    pub from: AdPoint,
+    pub to: AdPoint,
+    pub duration_ms: u64,
+}
+
+#[repr(C)]
+pub struct AdScrollParams {
+    pub direction: AdDirection,
+    pub amount: u32,
+}
+
+#[repr(C)]
+pub struct AdAction {
+    pub kind: AdActionKind,
+    pub text: *const c_char,
+    pub scroll: AdScrollParams,
+    pub key: AdKeyCombo,
+    pub drag: AdDragParams,
+}
+
+#[repr(C)]
+pub struct AdElementState {
+    pub role: *const c_char,
+    pub states: *mut *mut c_char,
+    pub state_count: u32,
+    pub value: *const c_char,
+}
+
+#[repr(C)]
+pub struct AdActionResult {
+    pub action: *const c_char,
+    pub ref_id: *const c_char,
+    pub post_state: *mut AdElementState,
+}
+
+#[repr(C)]
+pub struct AdNativeHandle {
+    pub ptr: *const std::ffi::c_void,
+}
+
+#[repr(C)]
+pub struct AdRefEntry {
+    pub pid: i32,
+    pub role: *const c_char,
+    pub name: *const c_char,
+    pub bounds_hash: u64,
+    pub has_bounds_hash: bool,
+}
