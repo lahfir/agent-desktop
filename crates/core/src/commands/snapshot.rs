@@ -18,7 +18,8 @@ pub struct SnapshotArgs {
 }
 
 fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
-    let effective_depth = if args.skeleton && args.root_ref.is_none() {
+    let skeleton_applies = args.skeleton && args.root_ref.is_none();
+    let effective_depth = if skeleton_applies {
         args.max_depth.min(3)
     } else {
         args.max_depth
@@ -30,7 +31,7 @@ fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
         interactive_only: args.interactive_only,
         compact: args.compact,
         surface: args.surface,
-        skeleton: args.skeleton,
+        skeleton: skeleton_applies,
     }
 }
 
@@ -126,17 +127,29 @@ mod tests {
         let opts = tree_options(&args);
 
         assert_eq!(opts.max_depth, 3);
+        assert!(
+            opts.skeleton,
+            "skeleton flag must propagate for full snapshots"
+        );
     }
 
     #[test]
-    fn test_tree_options_preserves_depth_for_drill_down() {
+    fn test_tree_options_suppresses_skeleton_for_drill_down() {
         let mut args = base_args();
         args.skeleton = true;
         args.root_ref = Some("@e3".into());
 
         let opts = tree_options(&args);
 
-        assert_eq!(opts.max_depth, 8);
+        assert_eq!(
+            opts.max_depth, 8,
+            "depth must not be clamped for drill-down"
+        );
+        assert!(
+            !opts.skeleton,
+            "skeleton flag must be suppressed for drill-down so build_subtree \
+             returns the full subtree and allocate_refs does not tag anchors"
+        );
     }
 
     #[test]
