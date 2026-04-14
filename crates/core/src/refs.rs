@@ -65,7 +65,19 @@ impl RefMap {
         self.inner.retain(|_, entry| entry.root_ref.is_some());
     }
 
+    fn serialize_with_size_check(&self) -> Result<String, AppError> {
+        let json = serde_json::to_string(self)?;
+        if json.len() as u64 > MAX_REFMAP_BYTES {
+            return Err(AppError::Internal(
+                "RefMap exceeds 1MB size limit on write".into(),
+            ));
+        }
+        Ok(json)
+    }
+
     pub fn save(&self) -> Result<(), AppError> {
+        let json = self.serialize_with_size_check()?;
+
         let path = refmap_path()?;
         let dir = path
             .parent()
@@ -81,14 +93,6 @@ impl RefMap {
         }
         #[cfg(not(unix))]
         std::fs::create_dir_all(dir)?;
-
-        let json = serde_json::to_string(self)?;
-
-        if json.len() as u64 > MAX_REFMAP_BYTES {
-            return Err(AppError::Internal(
-                "RefMap exceeds 1MB size limit on write".into(),
-            ));
-        }
 
         let tmp = path.with_extension("tmp");
 
@@ -282,6 +286,57 @@ mod tests {
         assert!(json.contains("root_ref"));
         let back: RefEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(back.root_ref.as_deref(), Some("@e5"));
+    }
+
+    #[test]
+    fn test_serialize_with_size_check_rejects_oversized() {
+        let mut map = RefMap::new();
+        let big_name = "x".repeat(2048);
+        for _ in 0..600 {
+            map.allocate(RefEntry {
+                pid: 1,
+                role: "button".into(),
+                name: Some(big_name.clone()),
+                value: None,
+                states: vec![],
+                bounds: None,
+                bounds_hash: None,
+                available_actions: vec!["Click".into()],
+                source_app: None,
+                root_ref: None,
+            });
+        }
+
+        let result = map.serialize_with_size_check();
+        assert!(result.is_err(), "oversized refmap should be rejected");
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("1MB"),
+            "error should mention the 1MB limit, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_serialize_with_size_check_accepts_normal() {
+        let mut map = RefMap::new();
+        for _ in 0..50 {
+            map.allocate(RefEntry {
+                pid: 1,
+                role: "button".into(),
+                name: Some("OK".into()),
+                value: None,
+                states: vec![],
+                bounds: None,
+                bounds_hash: None,
+                available_actions: vec!["Click".into()],
+                source_app: None,
+                root_ref: None,
+            });
+        }
+
+        let result = map.serialize_with_size_check();
+        assert!(result.is_ok(), "normal-sized refmap should serialize");
     }
 
     #[test]
