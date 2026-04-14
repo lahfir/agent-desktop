@@ -1,20 +1,11 @@
 use crate::{
     adapter::{PlatformAdapter, TreeOptions},
     error::AppError,
-    node::{AccessibilityNode, WindowInfo},
-    ref_alloc::{is_collapsible, ref_entry_from_node, INTERACTIVE_ROLES},
+    node::WindowInfo,
+    ref_alloc::{self, RefAllocConfig},
     refs::RefMap,
     snapshot::SnapshotResult,
 };
-
-struct DrillDownConfig<'a> {
-    include_bounds: bool,
-    interactive_only: bool,
-    compact: bool,
-    pid: i32,
-    source_app: Option<&'a str>,
-    root_ref_id: &'a str,
-}
 
 pub fn run_from_ref(
     adapter: &dyn PlatformAdapter,
@@ -34,16 +25,17 @@ pub fn run_from_ref(
 
     refmap.remove_by_root_ref(root_ref_id);
 
-    let config = DrillDownConfig {
+    let source_app = entry.source_app.as_deref();
+    let config = RefAllocConfig {
         include_bounds: opts.include_bounds,
         interactive_only: opts.interactive_only,
         compact: opts.compact,
         pid: entry.pid,
-        source_app: entry.source_app.as_deref(),
-        root_ref_id,
+        source_app,
+        root_ref_id: Some(root_ref_id),
     };
 
-    let mut tree = allocate_refs_with_root(raw_tree, &mut refmap, &config);
+    let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
 
     crate::hints::add_structural_hints(&mut tree);
 
@@ -65,65 +57,6 @@ pub fn run_from_ref(
     })
 }
 
-fn allocate_refs_with_root(
-    mut node: AccessibilityNode,
-    refmap: &mut RefMap,
-    config: &DrillDownConfig,
-) -> AccessibilityNode {
-    let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
-
-    if is_interactive {
-        let entry = ref_entry_from_node(
-            &node,
-            config.pid,
-            config.source_app,
-            Some(config.root_ref_id.to_string()),
-        );
-        node.ref_id = Some(refmap.allocate(entry));
-    }
-
-    let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
-        || node.description.as_deref().is_some_and(|d| !d.is_empty());
-    let is_skeleton_anchor = !is_interactive && node.children_count.is_some() && has_label;
-
-    if is_skeleton_anchor {
-        let mut entry = ref_entry_from_node(
-            &node,
-            config.pid,
-            config.source_app,
-            Some(config.root_ref_id.to_string()),
-        );
-        entry.available_actions = vec![];
-        node.ref_id = Some(refmap.allocate(entry));
-    }
-
-    if !config.include_bounds {
-        node.bounds = None;
-    }
-
-    node.children = node
-        .children
-        .into_iter()
-        .filter_map(|child| {
-            let child = allocate_refs_with_root(child, refmap, config);
-            if config.compact && is_collapsible(&child) {
-                return child.children.into_iter().next();
-            }
-            if config.interactive_only
-                && child.ref_id.is_none()
-                && child.children.is_empty()
-                && child.children_count.is_none()
-            {
-                None
-            } else {
-                Some(child)
-            }
-        })
-        .collect();
-
-    node
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,6 +64,7 @@ mod tests {
     use crate::adapter::{NativeHandle, PermissionStatus, PlatformAdapter};
     use crate::error::AdapterError;
     use crate::node::AccessibilityNode;
+    use crate::ref_alloc::ref_entry_from_node;
     use crate::refs::HomeGuard;
     use std::cell::Cell;
 
@@ -404,6 +338,23 @@ mod tests {
         );
     }
 
+    fn drill_config<'a>(
+        source_app: Option<&'a str>,
+        pid: i32,
+        root_ref_id: &'a str,
+        interactive_only: bool,
+        compact: bool,
+    ) -> RefAllocConfig<'a> {
+        RefAllocConfig {
+            include_bounds: false,
+            interactive_only,
+            compact,
+            pid,
+            source_app,
+            root_ref_id: Some(root_ref_id),
+        }
+    }
+
     #[test]
     fn test_allocate_refs_with_root_tags_entries() {
         let mut btn = node("button");
@@ -412,15 +363,8 @@ mod tests {
         root.children = vec![btn];
 
         let mut refmap = RefMap::new();
-        let config = DrillDownConfig {
-            include_bounds: false,
-            interactive_only: false,
-            compact: false,
-            pid: 42,
-            source_app: Some("TestApp"),
-            root_ref_id: "@e5",
-        };
-        let tree = allocate_refs_with_root(root, &mut refmap, &config);
+        let config = drill_config(Some("TestApp"), 42, "@e5", false, false);
+        let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
 
         assert_eq!(refmap.len(), 1);
         let btn_ref = tree.children[0]
@@ -441,15 +385,8 @@ mod tests {
         root.children = vec![btn, text];
 
         let mut refmap = RefMap::new();
-        let config = DrillDownConfig {
-            include_bounds: false,
-            interactive_only: true,
-            compact: false,
-            pid: 1,
-            source_app: None,
-            root_ref_id: "@e1",
-        };
-        let tree = allocate_refs_with_root(root, &mut refmap, &config);
+        let config = drill_config(None, 1, "@e1", true, false);
+        let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
 
         assert_eq!(tree.children.len(), 1);
         assert_eq!(tree.children[0].role, "button");
@@ -464,15 +401,8 @@ mod tests {
         root.children = vec![container];
 
         let mut refmap = RefMap::new();
-        let config = DrillDownConfig {
-            include_bounds: false,
-            interactive_only: true,
-            compact: false,
-            pid: 1,
-            source_app: None,
-            root_ref_id: "@e1",
-        };
-        let tree = allocate_refs_with_root(root, &mut refmap, &config);
+        let config = drill_config(None, 1, "@e1", true, false);
+        let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
 
         assert_eq!(tree.children.len(), 1);
         assert_eq!(tree.children[0].children_count, Some(4));
@@ -488,15 +418,8 @@ mod tests {
         root.children = vec![wrapper];
 
         let mut refmap = RefMap::new();
-        let config = DrillDownConfig {
-            include_bounds: false,
-            interactive_only: false,
-            compact: true,
-            pid: 1,
-            source_app: None,
-            root_ref_id: "@e1",
-        };
-        let tree = allocate_refs_with_root(root, &mut refmap, &config);
+        let config = drill_config(None, 1, "@e1", false, true);
+        let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
 
         assert_eq!(tree.children.len(), 1);
         assert_eq!(tree.children[0].role, "button");

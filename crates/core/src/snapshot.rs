@@ -2,7 +2,7 @@ use crate::{
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions, WindowFilter},
     error::AppError,
     node::{AccessibilityNode, WindowInfo},
-    ref_alloc::{is_collapsible, ref_entry_from_node, INTERACTIVE_ROLES},
+    ref_alloc::{self, RefAllocConfig},
     refs::RefMap,
 };
 
@@ -82,15 +82,15 @@ pub fn build(
     } else {
         RefMap::new()
     };
-    let mut tree = allocate_refs(
-        raw_tree,
-        &mut refmap,
-        opts.include_bounds,
-        opts.interactive_only,
-        opts.compact,
-        window.pid,
-        Some(window.app.as_str()),
-    );
+    let config = RefAllocConfig {
+        include_bounds: opts.include_bounds,
+        interactive_only: opts.interactive_only,
+        compact: opts.compact,
+        pid: window.pid,
+        source_app: Some(window.app.as_str()),
+        root_ref_id: None,
+    };
+    let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
 
     crate::hints::add_structural_hints(&mut tree);
 
@@ -131,70 +131,17 @@ pub fn append_surface_refs(
     };
     let raw_tree = adapter.get_tree(&window, &opts).ok()?;
     let mut refmap = RefMap::load().ok()?;
-    let tree = allocate_refs(raw_tree, &mut refmap, false, true, false, pid, source_app);
+    let config = RefAllocConfig {
+        include_bounds: false,
+        interactive_only: true,
+        compact: false,
+        pid,
+        source_app,
+        root_ref_id: None,
+    };
+    let tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
     refmap.save().ok()?;
     Some(tree)
-}
-
-fn allocate_refs(
-    mut node: AccessibilityNode,
-    refmap: &mut RefMap,
-    include_bounds: bool,
-    interactive_only: bool,
-    compact: bool,
-    window_pid: i32,
-    source_app: Option<&str>,
-) -> AccessibilityNode {
-    let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
-
-    if is_interactive {
-        let entry = ref_entry_from_node(&node, window_pid, source_app, None);
-        node.ref_id = Some(refmap.allocate(entry));
-    }
-
-    let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
-        || node.description.as_deref().is_some_and(|d| !d.is_empty());
-    let is_skeleton_anchor = !is_interactive && node.children_count.is_some() && has_label;
-
-    if is_skeleton_anchor {
-        let mut entry = ref_entry_from_node(&node, window_pid, source_app, None);
-        entry.available_actions = vec![];
-        node.ref_id = Some(refmap.allocate(entry));
-    }
-
-    if !include_bounds {
-        node.bounds = None;
-    }
-
-    node.children = node
-        .children
-        .into_iter()
-        .filter_map(|child| {
-            let child = allocate_refs(
-                child,
-                refmap,
-                include_bounds,
-                interactive_only,
-                compact,
-                window_pid,
-                source_app,
-            );
-            if compact && is_collapsible(&child) {
-                return child.children.into_iter().next();
-            }
-            if interactive_only
-                && child.ref_id.is_none()
-                && child.children.is_empty()
-                && child.children_count.is_none()
-            {
-                None
-            } else {
-                Some(child)
-            }
-        })
-        .collect();
-
-    node
 }
 
 #[cfg(test)]
@@ -217,14 +164,25 @@ mod tests {
         }
     }
 
+    fn run_config(compact: bool, interactive_only: bool) -> RefAllocConfig<'static> {
+        RefAllocConfig {
+            include_bounds: false,
+            interactive_only,
+            compact,
+            pid: 1,
+            source_app: Some("Test"),
+            root_ref_id: None,
+        }
+    }
+
     fn run_compact(tree: AccessibilityNode) -> AccessibilityNode {
         let mut refmap = RefMap::new();
-        allocate_refs(tree, &mut refmap, false, false, true, 1, Some("Test"))
+        ref_alloc::allocate_refs(tree, &mut refmap, &run_config(true, false))
     }
 
     fn run_compact_interactive(tree: AccessibilityNode) -> AccessibilityNode {
         let mut refmap = RefMap::new();
-        allocate_refs(tree, &mut refmap, false, true, true, 1, Some("Test"))
+        ref_alloc::allocate_refs(tree, &mut refmap, &run_config(true, true))
     }
 
     #[test]
@@ -332,7 +290,7 @@ mod tests {
         root.children = vec![container];
 
         let mut refmap = RefMap::new();
-        let result = allocate_refs(root, &mut refmap, false, false, false, 1, Some("Test"));
+        let result = ref_alloc::allocate_refs(root, &mut refmap, &run_config(false, false));
 
         assert!(result.children[0].ref_id.is_some());
         assert_eq!(refmap.len(), 1);
@@ -350,7 +308,7 @@ mod tests {
         root.children = vec![container];
 
         let mut refmap = RefMap::new();
-        let result = allocate_refs(root, &mut refmap, false, false, false, 1, Some("Test"));
+        let result = ref_alloc::allocate_refs(root, &mut refmap, &run_config(false, false));
 
         assert!(result.children[0].ref_id.is_none());
         assert_eq!(refmap.len(), 0);
@@ -365,7 +323,7 @@ mod tests {
         root.children = vec![container];
 
         let mut refmap = RefMap::new();
-        let result = allocate_refs(root, &mut refmap, false, false, false, 1, Some("Test"));
+        let result = ref_alloc::allocate_refs(root, &mut refmap, &run_config(false, false));
 
         assert!(result.children[0].ref_id.is_some());
         assert_eq!(refmap.len(), 1);
@@ -380,7 +338,7 @@ mod tests {
         root.children = vec![container];
 
         let mut refmap = RefMap::new();
-        let result = allocate_refs(root, &mut refmap, false, true, false, 1, Some("Test"));
+        let result = ref_alloc::allocate_refs(root, &mut refmap, &run_config(false, true));
 
         assert_eq!(result.children.len(), 1);
         assert_eq!(result.children[0].children_count, Some(10));
@@ -412,7 +370,15 @@ mod tests {
         root.children = vec![sidebar, described, content];
 
         let mut refmap = RefMap::new();
-        let result = allocate_refs(root, &mut refmap, false, false, false, 42, Some("Fixture"));
+        let config = RefAllocConfig {
+            include_bounds: false,
+            interactive_only: false,
+            compact: false,
+            pid: 42,
+            source_app: Some("Fixture"),
+            root_ref_id: None,
+        };
+        let result = ref_alloc::allocate_refs(root, &mut refmap, &config);
 
         assert_eq!(refmap.len(), 4, "should allocate 4 refs total");
         let result_value = serde_json::to_value(&result).unwrap();

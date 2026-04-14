@@ -1,5 +1,5 @@
 use crate::node::AccessibilityNode;
-use crate::refs::RefEntry;
+use crate::refs::{RefEntry, RefMap};
 
 pub(crate) const INTERACTIVE_ROLES: &[&str] = &[
     "button",
@@ -60,4 +60,64 @@ pub(crate) fn is_collapsible(node: &AccessibilityNode) -> bool {
         && node.description.as_deref().is_none_or(str::is_empty)
         && node.states.is_empty()
         && node.children.len() == 1
+}
+
+pub(crate) struct RefAllocConfig<'a> {
+    pub include_bounds: bool,
+    pub interactive_only: bool,
+    pub compact: bool,
+    pub pid: i32,
+    pub source_app: Option<&'a str>,
+    pub root_ref_id: Option<&'a str>,
+}
+
+pub(crate) fn allocate_refs(
+    mut node: AccessibilityNode,
+    refmap: &mut RefMap,
+    config: &RefAllocConfig,
+) -> AccessibilityNode {
+    let root_ref_owned = config.root_ref_id.map(str::to_string);
+    let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
+
+    if is_interactive {
+        let entry =
+            ref_entry_from_node(&node, config.pid, config.source_app, root_ref_owned.clone());
+        node.ref_id = Some(refmap.allocate(entry));
+    }
+
+    let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
+        || node.description.as_deref().is_some_and(|d| !d.is_empty());
+    let is_skeleton_anchor = !is_interactive && node.children_count.is_some() && has_label;
+
+    if is_skeleton_anchor {
+        let mut entry = ref_entry_from_node(&node, config.pid, config.source_app, root_ref_owned);
+        entry.available_actions = vec![];
+        node.ref_id = Some(refmap.allocate(entry));
+    }
+
+    if !config.include_bounds {
+        node.bounds = None;
+    }
+
+    node.children = node
+        .children
+        .into_iter()
+        .filter_map(|child| {
+            let child = allocate_refs(child, refmap, config);
+            if config.compact && is_collapsible(&child) {
+                return child.children.into_iter().next();
+            }
+            if config.interactive_only
+                && child.ref_id.is_none()
+                && child.children.is_empty()
+                && child.children_count.is_none()
+            {
+                None
+            } else {
+                Some(child)
+            }
+        })
+        .collect();
+
+    node
 }
