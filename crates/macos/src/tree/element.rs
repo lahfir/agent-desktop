@@ -14,10 +14,10 @@ pub(crate) fn child_attributes(ax_role: Option<&str>) -> &'static [&'static str]
 mod imp {
     use super::*;
     use accessibility_sys::{
-        kAXChildrenAttribute, kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess,
-        kAXFocusedAttribute, kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute,
-        AXUIElementCopyAttributeValue, AXUIElementCopyMultipleAttributeValues,
-        AXUIElementCreateApplication, AXUIElementRef, AXUIElementSetMessagingTimeout,
+        kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXFocusedAttribute,
+        kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute, AXUIElementCopyAttributeValue,
+        AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication, AXUIElementRef,
+        AXUIElementSetMessagingTimeout,
     };
     use core_foundation::{
         array::CFArray,
@@ -151,7 +151,10 @@ mod imp {
         };
 
         name.or_else(|| {
-            let children = copy_ax_array(el, kAXChildrenAttribute).unwrap_or_default();
+            let children = super::child_attributes(ax_role.as_deref())
+                .iter()
+                .find_map(|attr| copy_ax_array(el, attr).filter(|v| !v.is_empty()))
+                .unwrap_or_default();
             crate::tree::builder::label_from_children(&children)
         })
     }

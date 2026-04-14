@@ -2,7 +2,8 @@ use agent_desktop_core::{adapter::NativeHandle, error::AdapterError, refs::RefEn
 use rustc_hash::FxHashSet;
 
 use super::element::{
-    copy_ax_array, copy_string_attr, element_for_pid, resolve_element_name, AXElement,
+    child_attributes, copy_ax_array, copy_string_attr, element_for_pid, resolve_element_name,
+    AXElement,
 };
 
 #[cfg(target_os = "macos")]
@@ -95,14 +96,9 @@ pub fn find_element_recursive(
         return Err(AdapterError::element_not_found("element"));
     }
 
-    let child_attr = if ax_role.as_deref() == Some("AXBrowser") {
-        "AXColumns"
-    } else {
-        "AXChildren"
-    };
-    let children = copy_ax_array(el, child_attr)
-        .filter(|v| !v.is_empty())
-        .or_else(|| copy_ax_array(el, "AXContents").filter(|v| !v.is_empty()))
+    let children = child_attributes(ax_role.as_deref())
+        .iter()
+        .find_map(|attr| copy_ax_array(el, attr).filter(|v| !v.is_empty()))
         .unwrap_or_default();
 
     for child in &children {
