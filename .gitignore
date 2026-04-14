@@ -75,3 +75,4 @@ docs/*
 !docs/phases.md
 todos/
 .cursor/
+.context/
