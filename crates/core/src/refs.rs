@@ -1,9 +1,14 @@
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 const MAX_REFMAP_BYTES: u64 = 1_048_576; // 1 MB
+
+thread_local! {
+    static HOME_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefEntry {
@@ -144,9 +149,71 @@ fn refmap_path() -> Result<PathBuf, AppError> {
 }
 
 fn home_dir() -> Option<PathBuf> {
+    if let Some(p) = HOME_OVERRIDE.with(|cell| cell.borrow().clone()) {
+        return Some(p);
+    }
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+}
+
+#[cfg(test)]
+pub(crate) struct HomeGuard {
+    _dir: tempdir::TempDir,
+    prev: Option<PathBuf>,
+}
+
+#[cfg(test)]
+mod tempdir {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    pub struct TempDir(PathBuf);
+
+    impl TempDir {
+        pub fn new() -> Self {
+            let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path = std::env::temp_dir().join(format!("agent-desktop-test-{nanos}-{n}"));
+            fs::create_dir_all(&path).expect("create tempdir");
+            Self(path)
+        }
+
+        pub fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
+#[cfg(test)]
+impl HomeGuard {
+    pub fn new() -> Self {
+        let dir = tempdir::TempDir::new();
+        let prev = HOME_OVERRIDE.with(|cell| cell.borrow().clone());
+        HOME_OVERRIDE.with(|cell| *cell.borrow_mut() = Some(dir.path().to_path_buf()));
+        Self { _dir: dir, prev }
+    }
+}
+
+#[cfg(test)]
+impl Drop for HomeGuard {
+    fn drop(&mut self) {
+        let prev = self.prev.take();
+        HOME_OVERRIDE.with(|cell| *cell.borrow_mut() = prev);
+    }
 }
 
 #[cfg(test)]
@@ -382,6 +449,75 @@ mod tests {
 
         let result = map.serialize_with_size_check();
         assert!(result.is_ok(), "normal-sized refmap should serialize");
+    }
+
+    #[test]
+    fn test_save_load_roundtrip_with_home_override() {
+        let _guard = HomeGuard::new();
+        let mut map = RefMap::new();
+        map.allocate(RefEntry {
+            pid: 7,
+            role: "button".into(),
+            name: Some("Send".into()),
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash: Some(42),
+            available_actions: vec!["Click".into()],
+            source_app: Some("TestApp".into()),
+            root_ref: None,
+        });
+        map.save().expect("save should succeed under HomeGuard");
+
+        let loaded = RefMap::load().expect("load should succeed");
+        assert_eq!(loaded.len(), 1);
+        let entry = loaded.get("@e1").unwrap();
+        assert_eq!(entry.pid, 7);
+        assert_eq!(entry.name.as_deref(), Some("Send"));
+    }
+
+    #[test]
+    fn test_save_oversize_preserves_previous_file() {
+        let _guard = HomeGuard::new();
+
+        let mut original = RefMap::new();
+        original.allocate(RefEntry {
+            pid: 1,
+            role: "button".into(),
+            name: Some("Original".into()),
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash: None,
+            available_actions: vec!["Click".into()],
+            source_app: None,
+            root_ref: None,
+        });
+        original.save().expect("baseline save");
+
+        let mut oversize = RefMap::new();
+        let big = "x".repeat(2048);
+        for _ in 0..600 {
+            oversize.allocate(RefEntry {
+                pid: 1,
+                role: "button".into(),
+                name: Some(big.clone()),
+                value: None,
+                states: vec![],
+                bounds: None,
+                bounds_hash: None,
+                available_actions: vec!["Click".into()],
+                source_app: None,
+                root_ref: None,
+            });
+        }
+        let result = oversize.save();
+        assert!(result.is_err(), "oversize save must reject");
+
+        let reloaded = RefMap::load().expect("previous file must still load");
+        assert_eq!(reloaded.len(), 1);
+        let entry = reloaded.get("@e1").unwrap();
+        assert_eq!(entry.name.as_deref(), Some("Original"));
     }
 
     #[test]
