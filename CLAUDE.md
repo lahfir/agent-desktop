@@ -19,6 +19,16 @@ cargo tree -p agent-desktop-core               # Verify no platform crate leaks 
 
 Run the binary: `./target/release/agent-desktop snapshot --app Finder -i`
 
+## Pre-commit Hook
+
+The repo ships a pre-commit hook at `.githooks/pre-commit` that runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --lib --workspace` against staged Rust changes. Wire it up once after cloning:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Bypass for an emergency commit with `git commit --no-verify` or `SKIP_PRECOMMIT=1 git commit ...`.
+
 ## Project Overview
 
 Cross-platform Rust CLI + MCP server enabling AI agents to observe and control desktop applications via native OS accessibility trees.
