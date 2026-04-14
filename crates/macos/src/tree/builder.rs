@@ -94,7 +94,7 @@ pub fn build_subtree(
     let child_raw_depth = raw_depth + 1;
 
     let at_skeleton_boundary =
-        skeleton && child_depth > max_depth && raw_depth < ABSOLUTE_MAX_DEPTH;
+        skeleton && (child_depth > max_depth || child_raw_depth >= ABSOLUTE_MAX_DEPTH);
 
     if at_skeleton_boundary {
         let child_count = count_children(el, ax_role.as_deref());
