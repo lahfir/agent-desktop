@@ -31,7 +31,6 @@ pub struct TreeOptions {
     pub compact: bool,
     pub surface: SnapshotSurface,
     pub skeleton: bool,
-    pub root_ref: Option<String>,
 }
 
 impl Default for TreeOptions {
@@ -43,7 +42,6 @@ impl Default for TreeOptions {
             compact: false,
             surface: SnapshotSurface::Window,
             skeleton: false,
-            root_ref: None,
         }
     }
 }

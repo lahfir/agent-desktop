@@ -31,7 +31,6 @@ fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
         compact: args.compact,
         surface: args.surface,
         skeleton: args.skeleton,
-        root_ref: args.root_ref.clone(),
     }
 }
 
