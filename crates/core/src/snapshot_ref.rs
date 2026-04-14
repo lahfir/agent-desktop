@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn test_allocate_refs_with_root_tags_entries() {
+    fn test_drill_alloc_tags_entries() {
         let mut btn = node("button");
         btn.name = Some("Submit".into());
         let mut root = node("group");
@@ -378,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn test_allocate_refs_with_root_respects_interactive_only() {
+    fn test_drill_alloc_respects_interactive_only() {
         let btn = node("button");
         let text = node("statictext");
         let mut root = node("group");
@@ -393,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn test_allocate_refs_with_root_preserves_truncated_child() {
+    fn test_drill_alloc_preserves_truncated_child() {
         let mut container = node("group");
         container.name = Some("Sidebar".into());
         container.children_count = Some(4);
@@ -409,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn test_allocate_refs_with_root_compact() {
+    fn test_drill_alloc_compact() {
         let mut btn = node("button");
         btn.name = Some("OK".into());
         let mut wrapper = node("group");
