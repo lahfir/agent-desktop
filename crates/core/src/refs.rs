@@ -234,6 +234,51 @@ mod tests {
     }
 
     #[test]
+    fn test_counter_continues_after_skeleton_into_drill_down() {
+        let mut map = RefMap::new();
+        let skeleton_entry = RefEntry {
+            pid: 1,
+            role: "button".into(),
+            name: Some("Skeleton".into()),
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash: None,
+            available_actions: vec![],
+            source_app: None,
+            root_ref: None,
+        };
+
+        let last_skeleton = (0..10)
+            .map(|_| map.allocate(skeleton_entry.clone()))
+            .last()
+            .unwrap();
+        assert_eq!(last_skeleton, "@e10");
+
+        let drilled = RefEntry {
+            root_ref: Some("@e3".into()),
+            ..skeleton_entry
+        };
+
+        let first_drilled = map.allocate(drilled.clone());
+        let second_drilled = map.allocate(drilled);
+        assert_eq!(
+            first_drilled, "@e11",
+            "counter should continue past skeleton ids, not reset"
+        );
+        assert_eq!(second_drilled, "@e12");
+        assert_eq!(map.len(), 12);
+
+        map.remove_by_root_ref("@e3");
+        assert_eq!(
+            map.len(),
+            10,
+            "scoped invalidation should drop only the drill-down refs"
+        );
+        assert!(map.get("@e3").is_some(), "skeleton @e3 must survive");
+    }
+
+    #[test]
     fn test_remove_skeleton_refs() {
         let mut map = RefMap::new();
         let skeleton = RefEntry {
