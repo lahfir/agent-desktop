@@ -44,12 +44,12 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
 pub fn build_subtree(
     el: &AXElement,
     depth: u8,
+    raw_depth: u8,
     max_depth: u8,
-    _include_bounds: bool,
     ancestors: &mut FxHashSet<usize>,
     skeleton: bool,
 ) -> Option<AccessibilityNode> {
-    if depth > max_depth || depth >= ABSOLUTE_MAX_DEPTH {
+    if depth > max_depth || raw_depth >= ABSOLUTE_MAX_DEPTH {
         return None;
     }
     let ptr_key = el.0 as usize;
@@ -91,9 +91,10 @@ pub fn build_subtree(
         && value.as_deref().is_none_or(str::is_empty);
 
     let child_depth = if is_web_wrapper { depth } else { depth + 1 };
+    let child_raw_depth = raw_depth + 1;
 
     let at_skeleton_boundary =
-        skeleton && child_depth > max_depth && child_depth < ABSOLUTE_MAX_DEPTH;
+        skeleton && child_depth > max_depth && raw_depth < ABSOLUTE_MAX_DEPTH;
 
     if at_skeleton_boundary {
         let child_count = count_children(el, ax_role.as_deref());
@@ -130,8 +131,8 @@ pub fn build_subtree(
             build_subtree(
                 &child,
                 child_depth,
+                child_raw_depth,
                 max_depth,
-                _include_bounds,
                 ancestors,
                 skeleton,
             )
@@ -214,8 +215,8 @@ pub fn window_element_for(_pid: i32, _win_title: &str) -> AXElement {
 pub fn build_subtree(
     _el: &AXElement,
     _depth: u8,
+    _raw_depth: u8,
     _max_depth: u8,
-    _include_bounds: bool,
     _visited: &mut FxHashSet<usize>,
     _skeleton: bool,
 ) -> Option<AccessibilityNode> {

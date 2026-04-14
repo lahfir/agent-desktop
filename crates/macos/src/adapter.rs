@@ -51,15 +51,8 @@ impl PlatformAdapter for MacOSAdapter {
                 .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
         };
         let mut visited = FxHashSet::default();
-        crate::tree::build_subtree(
-            &el,
-            0,
-            opts.max_depth,
-            opts.include_bounds,
-            &mut visited,
-            opts.skeleton,
-        )
-        .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
+        crate::tree::build_subtree(&el, 0, 0, opts.max_depth, &mut visited, opts.skeleton)
+            .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
     }
 
     fn execute_action(
@@ -225,21 +218,14 @@ impl PlatformAdapter for MacOSAdapter {
             handle.as_raw() as accessibility_sys::AXUIElementRef
         ));
         let mut ancestors = FxHashSet::default();
-        crate::tree::build_subtree(
-            &el,
-            0,
-            opts.max_depth,
-            opts.include_bounds,
-            &mut ancestors,
-            false,
-        )
-        .ok_or_else(|| {
-            AdapterError::new(
-                agent_desktop_core::error::ErrorCode::ElementNotFound,
-                "Element no longer exists in accessibility tree",
-            )
-            .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
-        })
+        crate::tree::build_subtree(&el, 0, 0, opts.max_depth, &mut ancestors, opts.skeleton)
+            .ok_or_else(|| {
+                AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::ElementNotFound,
+                    "Element no longer exists in accessibility tree",
+                )
+                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+            })
     }
 }
 
