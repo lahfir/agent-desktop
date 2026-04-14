@@ -73,38 +73,50 @@ mod imp {
     /// This handles the FULL escalation for web elements so the chain
     /// engine never reaches false-positive AX steps (AXConfirm, SetBool
     /// AXSelected, etc. all lie on Chromium).
+    struct PreActionState {
+        focused: Option<AXElement>,
+        value: Option<String>,
+        selected: Option<bool>,
+    }
+
+    impl PreActionState {
+        fn capture(app: &AXElement, el: &AXElement) -> Self {
+            Self {
+                focused: crate::tree::copy_element_attr(app, "AXFocusedUIElement"),
+                value: crate::tree::copy_string_attr(el, "AXValue"),
+                selected: crate::tree::copy_bool_attr(el, "AXSelected"),
+            }
+        }
+    }
+
     fn activate_web_element(el: &AXElement) -> bool {
         let Some(pid) = crate::system::app_ops::pid_from_element(el) else {
             return false;
         };
 
-        // Capture pre-action state for verification
         let app = crate::tree::element_for_pid(pid);
-        let focused_before = crate::tree::copy_element_attr(&app, "AXFocusedUIElement");
+        let before = PreActionState::capture(&app, el);
 
-        // Step 1: AXPress — the standard headless action
         if ax_helpers::try_ax_action_retried(el, "AXPress") {
             std::thread::sleep(std::time::Duration::from_millis(100));
-            if web_action_had_effect(&app, focused_before.as_ref()) {
+            if web_action_had_effect(&app, el, &before) {
                 tracing::debug!("activate_web: AXPress had real effect");
                 return true;
             }
             tracing::debug!("activate_web: AXPress returned success but no DOM effect");
         }
 
-        // Step 2: AXConfirm / AXOpen — try other AX actions
         let actions = ax_helpers::list_ax_actions(el);
         for action in &["AXConfirm", "AXOpen"] {
             if actions.iter().any(|a| a == action) && ax_helpers::try_ax_action(el, action) {
                 std::thread::sleep(std::time::Duration::from_millis(100));
-                if web_action_had_effect(&app, focused_before.as_ref()) {
+                if web_action_had_effect(&app, el, &before) {
                     tracing::debug!("activate_web: {action} had real effect");
                     return true;
                 }
             }
         }
 
-        // Step 3: Try AX actions on children
         if ax_helpers::try_each_child(
             el,
             |child| {
@@ -118,13 +130,12 @@ mod imp {
             5,
         ) {
             std::thread::sleep(std::time::Duration::from_millis(100));
-            if web_action_had_effect(&app, focused_before.as_ref()) {
+            if web_action_had_effect(&app, el, &before) {
                 tracing::debug!("activate_web: child action had real effect");
                 return true;
             }
         }
 
-        // Step 4: CGClick — absolute last resort
         tracing::debug!("activate_web: all AX methods had no effect, CGClick");
         let _ = crate::system::app_ops::ensure_app_focused(pid);
         crate::actions::dispatch::click_via_bounds(
@@ -135,12 +146,23 @@ mod imp {
         .is_ok()
     }
 
-    fn web_action_had_effect(app: &AXElement, focused_before: Option<&AXElement>) -> bool {
+    fn web_action_had_effect(app: &AXElement, el: &AXElement, before: &PreActionState) -> bool {
         use core_foundation::base::{CFEqual, CFTypeRef};
+
+        let value_after = crate::tree::copy_string_attr(el, "AXValue");
+        if before.value != value_after {
+            return true;
+        }
+
+        let selected_after = crate::tree::copy_bool_attr(el, "AXSelected");
+        if before.selected != selected_after {
+            return true;
+        }
+
         let focused_after = crate::tree::copy_element_attr(app, "AXFocusedUIElement");
-        match (focused_before, &focused_after) {
-            (Some(before), Some(after)) => unsafe {
-                CFEqual(before.0 as CFTypeRef, after.0 as CFTypeRef) == 0
+        match (&before.focused, &focused_after) {
+            (Some(before_f), Some(after_f)) => unsafe {
+                CFEqual(before_f.0 as CFTypeRef, after_f.0 as CFTypeRef) == 0
             },
             (None, Some(_)) => true,
             _ => false,
