@@ -135,16 +135,13 @@ mod imp {
         .is_ok()
     }
 
-    /// Check if a web action actually changed something in the app.
-    /// Compares the focused UI element before vs after — if the app's
-    /// focused element changed, the action had a real DOM effect.
     fn web_action_had_effect(app: &AXElement, focused_before: Option<&AXElement>) -> bool {
+        use core_foundation::base::{CFEqual, CFTypeRef};
         let focused_after = crate::tree::copy_element_attr(app, "AXFocusedUIElement");
         match (focused_before, &focused_after) {
-            (Some(before), Some(after)) => {
-                // Different element pointers = focus moved = real effect
-                before.0 != after.0
-            }
+            (Some(before), Some(after)) => unsafe {
+                CFEqual(before.0 as CFTypeRef, after.0 as CFTypeRef) == 0
+            },
             (None, Some(_)) => true,
             _ => false,
         }
