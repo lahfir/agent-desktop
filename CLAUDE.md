@@ -80,6 +80,8 @@ agent-desktop/
 │   ├── cli_args.rs         # all command argument structs
 │   ├── dispatch.rs         # command dispatcher + parse helpers
 │   └── batch_dispatch.rs   # batch command execution
+├── docs/
+│   └── solutions/          # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type); relevant when implementing or debugging in documented areas
 └── tests/
     ├── fixtures/           # golden JSON snapshots
     └── integration/        # macOS CI integration tests

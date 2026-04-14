@@ -58,8 +58,8 @@ agent-desktop/
 │   │       ├── adapter.rs      # PlatformAdapter trait
 │   │       ├── action.rs       # Action enum, ActionResult, InputEvent, WindowOp
 │   │       ├── refs.rs         # RefAllocator, RefMap, RefEntry
-│   │       ├── ref_alloc.rs      # Shared ref-allocation helpers (INTERACTIVE_ROLES, is_collapsible)
-│   │       ├── snapshot_ref.rs   # Ref-rooted drill-down (run_from_ref, DrillDownConfig)
+│   │       ├── ref_alloc.rs      # Shared ref-allocation logic (RefAllocConfig, allocate_refs, INTERACTIVE_ROLES, is_collapsible)
+│   │       ├── snapshot_ref.rs   # Ref-rooted drill-down (run_from_ref) — delegates allocation to ref_alloc
 │   │       ├── snapshot.rs     # SnapshotEngine (filter, allocate, serialize)
 │   │       ├── error.rs        # ErrorCode enum, AdapterError, AppError
 │   │       ├── output.rs       # Response envelope, JSON formatting
@@ -223,7 +223,7 @@ RefMap persisted at `~/.agent-desktop/last_refmap.json` with `0o600` permissions
 - `--root <REF>` flag starts traversal from a previously-discovered ref instead of window root
 - Named or described containers at skeleton boundary receive refs as drill-down targets (with empty `available_actions`)
 - Scoped invalidation: re-drilling a ref replaces only that ref's subtree refs, preserving all others
-- Core modules: `ref_alloc.rs` (shared ref helpers), `snapshot_ref.rs` (drill-down logic with `DrillDownConfig`)
+- Core modules: `ref_alloc.rs` (canonical `allocate_refs` + `RefAllocConfig`), `snapshot_ref.rs` (drill-down flow that delegates allocation to `ref_alloc`)
 - macOS: `count_children()` uses raw `CFArrayGetCount` without materializing `AXElement` wrappers for performance
 - RefMap write-side size check prevents >1MB files
 - Token savings: 78-96% reduction for dense Electron apps (Slack skeleton: ~3.6KB vs ~17.3KB full)
