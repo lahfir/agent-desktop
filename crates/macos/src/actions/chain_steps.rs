@@ -3,8 +3,12 @@ mod imp {
     use crate::actions::{ax_helpers, discovery::ElementCaps};
     use crate::tree::AXElement;
 
-    pub fn do_verified_press(el: &AXElement, _caps: &ElementCaps) -> bool {
-        if !is_in_webarea(el) {
+    pub fn do_verified_press(el: &AXElement, caps: &ElementCaps) -> bool {
+        dispatch_verified_press(el, caps, is_in_webarea(el))
+    }
+
+    fn dispatch_verified_press(el: &AXElement, _caps: &ElementCaps, in_web: bool) -> bool {
+        if !in_web {
             return verified_press_native(el);
         }
         tracing::debug!("verified_press: web element detected");
@@ -174,10 +178,11 @@ mod imp {
             return false;
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
-        if !is_in_webarea(el) && ax_helpers::try_ax_action_retried(el, "AXConfirm") {
+        let in_web = is_in_webarea(el);
+        if !in_web && ax_helpers::try_ax_action_retried(el, "AXConfirm") {
             return true;
         }
-        do_verified_press(el, caps)
+        dispatch_verified_press(el, caps, in_web)
     }
 
     pub fn try_value_relay(el: &AXElement, _caps: &ElementCaps) -> bool {
