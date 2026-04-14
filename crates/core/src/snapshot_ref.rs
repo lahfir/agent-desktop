@@ -316,6 +316,64 @@ mod tests {
     }
 
     #[test]
+    fn test_drilldown_refmap_matches_golden_fixture() {
+        let golden = include_str!("../../../tests/fixtures/drilldown-refmap.json");
+        let golden_value: serde_json::Value = serde_json::from_str(golden).unwrap();
+        let expected_total = golden_value["expected_total"].as_u64().unwrap() as usize;
+
+        let _guard = HomeGuard::new();
+        let mut seed = RefMap::new();
+        seed.allocate(ref_entry_from_node(
+            &named("group", "Sidebar"),
+            42,
+            Some("Fixture"),
+            None,
+        ));
+        seed.allocate(ref_entry_from_node(
+            &named("group", "Toolbar"),
+            42,
+            Some("Fixture"),
+            None,
+        ));
+        seed.save().unwrap();
+
+        let mut sidebar_subtree = named("outline", "Sidebar");
+        sidebar_subtree.children =
+            vec![named("treeitem", "Recents"), named("treeitem", "Documents")];
+        let adapter = StubAdapter::new(sidebar_subtree);
+        let _ = run_from_ref(&adapter, &drill_opts(), "@e1").unwrap();
+
+        let toolbar_subtree = named("button", "Back");
+        let adapter = StubAdapter::new(toolbar_subtree);
+        let _ = run_from_ref(&adapter, &drill_opts(), "@e2").unwrap();
+
+        let on_disk = RefMap::load().unwrap();
+        assert_eq!(
+            on_disk.len(),
+            expected_total,
+            "merged refmap should match golden fixture's expected_total"
+        );
+
+        for anchor in golden_value["skeleton_anchors"].as_array().unwrap() {
+            let id = anchor["ref_id"].as_str().unwrap();
+            let entry = on_disk.get(id).unwrap_or_else(|| panic!("missing {id}"));
+            assert_eq!(entry.role, anchor["role"].as_str().unwrap());
+            assert_eq!(entry.name.as_deref(), anchor["name"].as_str());
+            assert!(
+                entry.root_ref.is_none(),
+                "skeleton {id} must have null root_ref"
+            );
+        }
+
+        for drill in golden_value["drilled_from_e1"].as_array().unwrap() {
+            let id = drill["ref_id"].as_str().unwrap();
+            if let Some(entry) = on_disk.get(id) {
+                assert_eq!(entry.root_ref.as_deref(), Some("@e1"));
+            }
+        }
+    }
+
+    #[test]
     fn test_run_from_ref_empty_subtree() {
         let _guard = HomeGuard::new();
         seed_skeleton_refmap().save().unwrap();

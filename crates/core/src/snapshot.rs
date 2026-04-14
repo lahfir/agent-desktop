@@ -385,4 +385,61 @@ mod tests {
         assert_eq!(result.children.len(), 1);
         assert_eq!(result.children[0].children_count, Some(10));
     }
+
+    #[test]
+    fn test_skeleton_fixture_matches_golden() {
+        let golden = include_str!("../../../tests/fixtures/skeleton-tree.json");
+        let golden_value: serde_json::Value = serde_json::from_str(golden).unwrap();
+
+        let mut sidebar = node("group");
+        sidebar.name = Some("Sidebar".into());
+        sidebar.children_count = Some(26);
+
+        let mut described = node("group");
+        described.description = Some("Channels and direct messages".into());
+        described.children_count = Some(12);
+
+        let mut send = node("button");
+        send.name = Some("Send".into());
+        let mut msg = node("textfield");
+        msg.name = Some("Message".into());
+        let mut content = node("group");
+        content.name = Some("Content".into());
+        content.children = vec![send, msg];
+
+        let mut root = node("window");
+        root.name = Some("Test Window".into());
+        root.children = vec![sidebar, described, content];
+
+        let mut refmap = RefMap::new();
+        let result = allocate_refs(root, &mut refmap, false, false, false, 42, Some("Fixture"));
+
+        assert_eq!(refmap.len(), 4, "should allocate 4 refs total");
+        let result_value = serde_json::to_value(&result).unwrap();
+
+        assert_eq!(result_value["role"], golden_value["role"]);
+        assert_eq!(result_value["name"], golden_value["name"]);
+        assert_eq!(
+            result_value["children"][0]["ref_id"], golden_value["children"][0]["ref_id"],
+            "named skeleton anchor should be @e1"
+        );
+        assert_eq!(
+            result_value["children"][0]["children_count"],
+            golden_value["children"][0]["children_count"]
+        );
+        assert_eq!(
+            result_value["children"][1]["ref_id"], golden_value["children"][1]["ref_id"],
+            "described skeleton anchor should be @e2"
+        );
+        assert_eq!(
+            result_value["children"][2]["children"][0]["ref_id"],
+            golden_value["children"][2]["children"][0]["ref_id"],
+            "interactive button should be @e3"
+        );
+        assert_eq!(
+            result_value["children"][2]["children"][1]["ref_id"],
+            golden_value["children"][2]["children"][1]["ref_id"],
+            "interactive textfield should be @e4"
+        );
+    }
 }
