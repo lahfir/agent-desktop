@@ -92,8 +92,12 @@ fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorCode;
 
-    fn args() -> SnapshotArgs {
+    struct NoopAdapter;
+    impl PlatformAdapter for NoopAdapter {}
+
+    fn base_args() -> SnapshotArgs {
         SnapshotArgs {
             app: None,
             window_id: None,
@@ -107,9 +111,17 @@ mod tests {
         }
     }
 
+    fn args_with_surface(surface: SnapshotSurface) -> SnapshotArgs {
+        SnapshotArgs {
+            surface,
+            root_ref: Some("@e3".into()),
+            ..base_args()
+        }
+    }
+
     #[test]
     fn test_tree_options_clamps_skeleton_depth() {
-        let mut args = args();
+        let mut args = base_args();
         args.skeleton = true;
 
         let opts = tree_options(&args);
@@ -119,12 +131,47 @@ mod tests {
 
     #[test]
     fn test_tree_options_preserves_depth_for_drill_down() {
-        let mut args = args();
+        let mut args = base_args();
         args.skeleton = true;
         args.root_ref = Some("@e3".into());
 
         let opts = tree_options(&args);
 
         assert_eq!(opts.max_depth, 8);
+    }
+
+    #[test]
+    fn test_root_with_menu_surface_rejected() {
+        let args = args_with_surface(SnapshotSurface::Menu);
+        let err = execute(args, &NoopAdapter).expect_err("should reject --root + --surface");
+        match err {
+            AppError::Adapter(adapter_err) => {
+                assert_eq!(adapter_err.code, ErrorCode::InvalidArgs);
+                assert!(
+                    adapter_err.message.contains("--root")
+                        && adapter_err.message.contains("--surface"),
+                    "error message should name both flags, got: {}",
+                    adapter_err.message
+                );
+            }
+            other => panic!("expected Adapter(InvalidArgs), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_root_with_window_surface_does_not_short_circuit_validation() {
+        let args = args_with_surface(SnapshotSurface::Window);
+        let result = execute(args, &NoopAdapter);
+        assert!(
+            result.is_err(),
+            "NoopAdapter cannot satisfy run_from_ref so this must error"
+        );
+        if let AppError::Adapter(adapter_err) = result.unwrap_err() {
+            assert_ne!(
+                adapter_err.code,
+                ErrorCode::InvalidArgs,
+                "Window surface must NOT trigger the --surface validation guard"
+            );
+        }
     }
 }
