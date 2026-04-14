@@ -82,6 +82,21 @@ fn allocate_refs_with_root(
         node.ref_id = Some(refmap.allocate(entry));
     }
 
+    let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
+        || node.description.as_deref().is_some_and(|d| !d.is_empty());
+    let is_skeleton_anchor = !is_interactive && node.children_count.is_some() && has_label;
+
+    if is_skeleton_anchor {
+        let mut entry = ref_entry_from_node(
+            &node,
+            config.pid,
+            config.source_app,
+            Some(config.root_ref_id.to_string()),
+        );
+        entry.available_actions = vec![];
+        node.ref_id = Some(refmap.allocate(entry));
+    }
+
     if !config.include_bounds {
         node.bounds = None;
     }

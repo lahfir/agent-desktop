@@ -155,7 +155,7 @@ mod imp {
             return false;
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
-        if ax_helpers::try_ax_action_retried(el, "AXConfirm") {
+        if !is_in_webarea(el) && ax_helpers::try_ax_action_retried(el, "AXConfirm") {
             return true;
         }
         do_verified_press(el, caps)
