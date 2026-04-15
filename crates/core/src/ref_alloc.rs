@@ -90,7 +90,7 @@ pub(crate) fn allocate_refs(
     let is_skeleton_anchor = !is_interactive && node.children_count.is_some() && has_label;
 
     if is_skeleton_anchor {
-        let mut entry = ref_entry_from_node(&node, config.pid, config.source_app, root_ref_owned);
+        let mut entry = ref_entry_from_node(&node, config.pid, config.source_app, None);
         entry.available_actions = vec![];
         node.ref_id = Some(refmap.allocate(entry));
     }

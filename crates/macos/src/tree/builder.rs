@@ -229,7 +229,10 @@ mod tests {
 
     #[test]
     fn test_browser_children_use_columns() {
-        assert_eq!(child_attributes(Some("AXBrowser")), ["AXColumns"]);
+        assert_eq!(
+            child_attributes(Some("AXBrowser")),
+            ["AXColumns", "AXContents"]
+        );
     }
 
     #[test]

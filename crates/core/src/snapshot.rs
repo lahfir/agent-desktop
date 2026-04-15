@@ -315,6 +315,36 @@ mod tests {
     }
 
     #[test]
+    fn test_skeleton_anchor_in_drilldown_has_null_root_ref() {
+        let mut anchor = node("group");
+        anchor.name = Some("Channels".into());
+        anchor.children_count = Some(8);
+        let mut root = node("group");
+        root.children = vec![anchor];
+
+        let mut refmap = RefMap::new();
+        let config = RefAllocConfig {
+            include_bounds: false,
+            interactive_only: false,
+            compact: false,
+            pid: 1,
+            source_app: Some("Test"),
+            root_ref_id: Some("@e3"),
+        };
+        let result = ref_alloc::allocate_refs(root, &mut refmap, &config);
+
+        let anchor_ref = result.children[0]
+            .ref_id
+            .as_deref()
+            .expect("anchor must get a ref");
+        let entry = refmap.get(anchor_ref).unwrap();
+        assert!(
+            entry.root_ref.is_none(),
+            "skeleton anchor discovered during drill-down must not inherit drill root_ref"
+        );
+    }
+
+    #[test]
     fn test_skeleton_described_container_gets_ref() {
         let mut container = node("group");
         container.description = Some("Channels and direct messages".into());
