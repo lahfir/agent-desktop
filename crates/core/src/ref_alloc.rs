@@ -87,7 +87,10 @@ pub(crate) fn allocate_refs(
 
     let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
         || node.description.as_deref().is_some_and(|d| !d.is_empty());
-    let is_skeleton_anchor = !is_interactive && node.children_count.is_some() && has_label;
+    let is_skeleton_anchor = !is_interactive
+        && node.children_count.is_some()
+        && has_label
+        && config.root_ref_id.is_none();
 
     if is_skeleton_anchor {
         let mut entry = ref_entry_from_node(&node, config.pid, config.source_app, None);

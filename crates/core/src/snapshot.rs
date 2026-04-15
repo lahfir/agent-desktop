@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skeleton_anchor_in_drilldown_has_null_root_ref() {
+    fn test_skeleton_anchor_suppressed_in_drilldown() {
         let mut anchor = node("group");
         anchor.name = Some("Channels".into());
         anchor.children_count = Some(8);
@@ -333,15 +333,11 @@ mod tests {
         };
         let result = ref_alloc::allocate_refs(root, &mut refmap, &config);
 
-        let anchor_ref = result.children[0]
-            .ref_id
-            .as_deref()
-            .expect("anchor must get a ref");
-        let entry = refmap.get(anchor_ref).unwrap();
         assert!(
-            entry.root_ref.is_none(),
-            "skeleton anchor discovered during drill-down must not inherit drill root_ref"
+            result.children[0].ref_id.is_none(),
+            "skeleton anchors must not be created during drill-down to prevent orphaned ref accumulation"
         );
+        assert_eq!(refmap.len(), 0);
     }
 
     #[test]
