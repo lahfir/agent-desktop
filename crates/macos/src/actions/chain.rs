@@ -64,7 +64,11 @@ mod imp {
         let deadline = Instant::now() + CHAIN_TIMEOUT;
         let total = def.steps.len();
 
-        ax_helpers::set_messaging_timeout(el, 3.0);
+        if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
+            ax_helpers::set_messaging_timeout(&crate::tree::element_for_pid(pid), 1.0);
+        }
+        ax_helpers::set_messaging_timeout(el, 1.0);
+
         if def.pre_scroll {
             tracing::debug!("chain: pre-scroll AXScrollToVisible");
             ax_helpers::ensure_visible(el);
@@ -72,7 +76,17 @@ mod imp {
 
         for (i, step) in def.steps.iter().enumerate() {
             if Instant::now() > deadline {
-                tracing::debug!("chain: timeout after {i}/{total} steps");
+                tracing::debug!("chain: timeout after {i}/{total} steps, trying CGClick fallback");
+                if let Some(cg) = def
+                    .steps
+                    .iter()
+                    .find(|s| matches!(s, ChainStep::CGClick { .. }))
+                {
+                    if execute_step(el, caps, cg, ctx) {
+                        tracing::debug!("chain: CGClick fallback succeeded");
+                        return Ok(());
+                    }
+                }
                 return Err(AdapterError::timeout("Chain execution exceeded 10s"));
             }
             let label = step_label(step);
