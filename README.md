@@ -11,7 +11,7 @@
 ## Key Features
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
-- **50 commands**: Observation, interaction, keyboard, mouse, clipboard, window management
+- **53 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using deterministic element references (`@e1`, `@e2`)
 - **AX-first interactions**: Every action exhausts pure accessibility API strategies before falling back to mouse events
@@ -158,6 +158,18 @@ agent-desktop maximize w-4521            # maximize
 agent-desktop restore w-4521             # restore
 ```
 
+### Notifications *(macOS only)*
+
+```bash
+agent-desktop list-notifications                       # list all notifications
+agent-desktop list-notifications --app "Slack"         # filter by app
+agent-desktop list-notifications --text "deploy" --limit 5  # filter by text
+agent-desktop dismiss-notification 1                   # dismiss by index
+agent-desktop dismiss-all-notifications                # dismiss all
+agent-desktop dismiss-all-notifications --app "Slack"  # dismiss all from app
+agent-desktop notification-action 1 --action "Reply"   # click action button
+```
+
 ### Clipboard
 
 ```bash
@@ -281,6 +293,7 @@ snapshot → act → STALE_REF? → snapshot again → retry
 | Screenshot | **Yes** | Planned | Planned |
 | Clipboard | **Yes** | Planned | Planned |
 | App & window management | **Yes** | Planned | Planned |
+| Notifications | **Yes** | Planned | Planned |
 
 ## Development
 

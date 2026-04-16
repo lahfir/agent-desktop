@@ -426,7 +426,9 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Implemented Commands (50)
+## Implemented Commands (53)
+
+> **Platform note:** All 53 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
 
 | Category | Commands |
 |----------|----------|
@@ -435,9 +437,10 @@ Target binary size: <15MB per platform.
 | Interaction (14) | `click`, `double-click`, `triple-click`, `right-click`, `type`, `set-value`, `clear`, `focus`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse` |
 | Scroll (2) | `scroll`, `scroll-to` |
 | Keyboard (3) | `press`, `key-down`, `key-up` |
-| Mouse (5) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
+| Mouse (6) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
+| Notifications (4) *(macOS)* | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` |
 | Clipboard (3) | `clipboard-get`, `clipboard-set`, `clipboard-clear` |
-| Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu` flags) |
+| Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) |
 | System (3) | `status`, `permissions`, `version` |
 | Batch (1) | `batch` |
 
