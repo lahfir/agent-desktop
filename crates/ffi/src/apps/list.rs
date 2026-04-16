@@ -52,10 +52,7 @@ pub unsafe extern "C" fn ad_app_list_count(list: *const AdAppList) -> u32 {
 /// # Safety
 /// `list` must be null or a pointer returned by `ad_list_apps`.
 #[no_mangle]
-pub unsafe extern "C" fn ad_app_list_get(
-    list: *const AdAppList,
-    index: u32,
-) -> *const AdAppInfo {
+pub unsafe extern "C" fn ad_app_list_get(list: *const AdAppList, index: u32) -> *const AdAppInfo {
     if list.is_null() {
         return ptr::null();
     }

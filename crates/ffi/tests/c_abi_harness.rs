@@ -141,7 +141,9 @@ fn enum_fuzz_invalid_discriminant_rejected() {
         action.drag = default_drag();
         action.text = std::ptr::null();
 
-        let handle = AdNativeHandle { ptr: std::ptr::null() };
+        let handle = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
         let mut out: AdActionResult = std::mem::zeroed();
         let rc = ad_execute_action(adapter, &handle, &action, &mut out);
         // Either the enum validator rejects (expected) or the cargo-test
@@ -227,7 +229,9 @@ fn find_returns_not_found_on_empty_query_against_no_window() {
             name_substring: std::ptr::null(),
             value_substring: std::ptr::null(),
         };
-        let mut handle = AdNativeHandle { ptr: std::ptr::null() };
+        let mut handle = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
         let rc = ad_find(adapter, &bad_win, &query, &mut handle);
         // A zeroed window has null id/title → InvalidArgs. On cargo-test
         // worker threads the main-thread assert trips first and returns
@@ -244,7 +248,9 @@ fn find_returns_not_found_on_empty_query_against_no_window() {
 #[test]
 fn free_handle_null_is_noop() {
     with_adapter(|adapter| unsafe {
-        let handle = AdNativeHandle { ptr: std::ptr::null() };
+        let handle = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
         let rc = ad_free_handle(adapter, &handle);
         assert_eq!(rc, AdResult::Ok);
 

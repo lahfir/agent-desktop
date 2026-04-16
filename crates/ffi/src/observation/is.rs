@@ -108,7 +108,10 @@ pub unsafe extern "C" fn ad_is(
 }
 
 fn is_known_property(p: &str) -> bool {
-    matches!(p, "focused" | "enabled" | "selected" | "checked" | "expanded")
+    matches!(
+        p,
+        "focused" | "enabled" | "selected" | "checked" | "expanded"
+    )
 }
 
 fn element_has_state(node: &AccessibilityNode, prop: &str) -> bool {
