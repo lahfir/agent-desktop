@@ -28,6 +28,9 @@ pub unsafe extern "C" fn ad_mouse_event(
     event: *const AdMouseEvent,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         let adapter = &*adapter;
         let ev = &*event;
         let validated_button = match AdMouseButton::from_c(ev.button) {

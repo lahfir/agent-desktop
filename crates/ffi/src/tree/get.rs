@@ -42,7 +42,9 @@ pub unsafe extern "C" fn ad_get_tree(
     out: *mut AdNodeTree,
 ) -> AdResult {
     trap_panic(|| {
-        crate::main_thread::debug_assert_main_thread();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         unsafe {
             (*out).nodes = ptr::null_mut();
             (*out).count = 0;

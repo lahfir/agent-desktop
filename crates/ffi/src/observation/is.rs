@@ -37,7 +37,9 @@ pub unsafe extern "C" fn ad_is(
     out: *mut bool,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        crate::main_thread::debug_assert_main_thread();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         *out = false;
         let adapter = &*adapter;
         let core_win = match crate::windows::ad_window_to_core(&*win) {

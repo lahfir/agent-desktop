@@ -16,6 +16,9 @@ pub unsafe extern "C" fn ad_list_apps(
     out: *mut *mut AdAppList,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         *out = ptr::null_mut();
         let adapter = &*adapter;
         match adapter.inner.list_apps() {

@@ -24,7 +24,9 @@ pub unsafe extern "C" fn ad_list_notifications(
     out: *mut *mut AdNotificationList,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        crate::main_thread::debug_assert_main_thread();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         *out = ptr::null_mut();
         let adapter = &*adapter;
         let core_filter = filter_from_c(filter);

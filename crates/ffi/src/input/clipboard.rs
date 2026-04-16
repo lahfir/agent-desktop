@@ -17,7 +17,9 @@ pub unsafe extern "C" fn ad_get_clipboard(
     out: *mut *mut c_char,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        crate::main_thread::debug_assert_main_thread();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         let adapter = &*adapter;
         match adapter.inner.get_clipboard() {
             Ok(text) => {
@@ -44,6 +46,9 @@ pub unsafe extern "C" fn ad_set_clipboard(
     text: *const c_char,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         let adapter = &*adapter;
         let text = match c_to_string(text) {
             Some(s) => s,
@@ -72,6 +77,9 @@ pub unsafe extern "C" fn ad_set_clipboard(
 #[no_mangle]
 pub unsafe extern "C" fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResult {
     trap_panic(|| unsafe {
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         let adapter = &*adapter;
         match adapter.inner.clear_clipboard() {
             Ok(()) => AdResult::Ok,

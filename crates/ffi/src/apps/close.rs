@@ -17,6 +17,9 @@ pub unsafe extern "C" fn ad_close_app(
     force: bool,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         let adapter = &*adapter;
         let id_str = match c_to_string(id) {
             Some(s) => s,

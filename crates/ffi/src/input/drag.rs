@@ -17,6 +17,9 @@ pub unsafe extern "C" fn ad_drag(
     params: *const AdDragParams,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         let adapter = &*adapter;
         let p = &*params;
         let core_params = CoreDragParams {

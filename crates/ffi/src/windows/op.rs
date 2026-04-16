@@ -22,6 +22,9 @@ pub unsafe extern "C" fn ad_window_op(
     op: AdWindowOp,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         let adapter = &*adapter;
         let core_win = match ad_window_to_core(&*win) {
             Ok(w) => w,

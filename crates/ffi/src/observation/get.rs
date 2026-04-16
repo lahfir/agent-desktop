@@ -28,7 +28,9 @@ pub unsafe extern "C" fn ad_get(
     out: *mut *mut c_char,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        crate::main_thread::debug_assert_main_thread();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         *out = std::ptr::null_mut();
         let adapter = &*adapter;
         let native = NativeHandle::from_ptr((*handle).ptr);

@@ -31,7 +31,9 @@ pub unsafe extern "C" fn ad_dismiss_all_notifications(
     failed_out: *mut *mut AdNotificationList,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        crate::main_thread::debug_assert_main_thread();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         *dismissed_out = ptr::null_mut();
         *failed_out = ptr::null_mut();
         let adapter = &*adapter;

@@ -25,7 +25,14 @@ fn last_error_pointer_survives_across_successful_calls() {
         let bad_id = std::ptr::null();
         let mut out_win: agent_desktop_ffi::AdWindowInfo = std::mem::zeroed();
         let rc = ad_launch_app(adapter, bad_id, 0, &mut out_win);
-        assert_eq!(rc, AdResult::ErrInvalidArgs);
+        // Worker-thread cargo tests hit the main-thread guard first
+        // (ErrInternal); main-thread callers would see ErrInvalidArgs.
+        // The contract we're testing here is that *some* failure
+        // populates last-error and the pointer stays stable.
+        assert!(matches!(
+            rc,
+            AdResult::ErrInvalidArgs | AdResult::ErrInternal
+        ));
 
         let first_msg_ptr = ad_last_error_message();
         assert!(!first_msg_ptr.is_null());
@@ -39,7 +46,7 @@ fn last_error_pointer_survives_across_successful_calls() {
         assert_eq!(first_msg_ptr, later_msg_ptr);
         let later_msg = CStr::from_ptr(later_msg_ptr).to_string_lossy().into_owned();
         assert_eq!(first_msg, later_msg);
-        assert_eq!(ad_last_error_code(), AdResult::ErrInvalidArgs);
+        assert_eq!(ad_last_error_code(), rc);
 
         ad_adapter_destroy(adapter);
     }
