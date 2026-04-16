@@ -51,11 +51,15 @@ pub unsafe extern "C" fn ad_find(
         let name_filter = c_to_string(q.name_substring);
         let value_filter = c_to_string(q.value_substring);
 
+        // include_bounds must be true: the resolver disambiguates
+        // duplicate-label siblings using bounds_hash, and without the
+        // bounds field populated on the matched node we would fall
+        // back to role+name alone and drift to the wrong element.
         let tree = match adapter.inner.get_tree(
             &core_win,
             &TreeOptions {
                 max_depth: 50,
-                include_bounds: false,
+                include_bounds: true,
                 interactive_only: false,
                 compact: false,
                 surface: SnapshotSurface::Window,
@@ -85,14 +89,15 @@ pub unsafe extern "C" fn ad_find(
             }
         };
 
+        let bounds_hash = matched.bounds.as_ref().map(|r| r.bounds_hash());
         let ref_entry = RefEntry {
             pid: core_win.pid,
             role: matched.role.clone(),
             name: matched.name.clone(),
-            value: None,
-            states: Vec::new(),
-            bounds: None,
-            bounds_hash: None,
+            value: matched.value.clone(),
+            states: matched.states.clone(),
+            bounds: matched.bounds,
+            bounds_hash,
             available_actions: Vec::new(),
             source_app: None,
             root_ref: None,
