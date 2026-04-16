@@ -1,5 +1,6 @@
 ---
-title: Harden progressive snapshot after review (skeleton reset, drill window, validation, depth)
+
+## title: Harden progressive snapshot after review (skeleton reset, drill window, validation, depth)
 date: 2026-04-16
 category: logic-errors
 module: agent-desktop-core
@@ -21,7 +22,6 @@ tags:
   - snapshot
   - macos
   - agent-contract
----
 
 # Harden progressive snapshot after review (skeleton reset, drill window, validation, depth)
 
@@ -45,13 +45,9 @@ A focused review of the `feat/progressive-skeleton-traversal` work found several
 ## Solution
 
 1. **Full refmap replace on window snapshot** — `snapshot::build` always starts from `RefMap::new()` before `allocate_refs`, then `run` persists the result. Skeleton mode still passes `TreeOptions.skeleton` into `get_tree` for shallow traversal and boundary labeling; it no longer rehydrates prior refs for the overview path.
-
 2. **Resolve real window for drill-down** — `snapshot_ref::run_from_ref` calls `adapter.list_windows` and picks the window matching `entry.pid`, with a fallback to the previous synthetic `WindowInfo` if listing fails.
-
 3. **Validate `--root` early** — `commands/snapshot::execute` calls `validate_ref_id(root)` before `run_from_ref`, so malformed IDs return `invalid_input` / `INVALID_ARGS` instead of `STALE_REF`.
-
 4. **Observable cap at `ABSOLUTE_MAX_DEPTH`** — `build_subtree` returns a **leaf boundary node** with `children_count` when `raw_depth >= ABSOLUTE_MAX_DEPTH` instead of `None`, so deep drill-downs are not silently dropped.
-
 5. **Docs and tests** — `docs/phases.md` clarifies that `root` is CLI-only (`SnapshotArgs`), not `TreeOptions`; skills document `ref_id` in examples and batch `snapshot` args for `skeleton` / `root`. Integration tests cover skeleton depth, ref-count stability across refresh, invalid `--root`, and skeleton→drill flow.
 
 ## Why This Works
@@ -63,12 +59,12 @@ A focused review of the `feat/progressive-skeleton-traversal` work found several
 
 ## Prevention
 
-- When changing snapshot or ref persistence, add or extend an integration test that asserts **`ref_count` is stable** across two identical `snapshot --skeleton` runs for the same app/window.
-- Any new CLI flag that accepts a ref id should call **`validate_ref_id`** before map or adapter lookups.
+- When changing snapshot or ref persistence, add or extend an integration test that asserts `**ref_count` is stable** across two identical `snapshot --skeleton` runs for the same app/window.
+- Any new CLI flag that accepts a ref id should call `**validate_ref_id`** before map or adapter lookups.
 - For subtree-only APIs, if a hard depth cap exists, return a **node with `children_count`** (or an explicit hint field) rather than `None`.
-- Keep **`TreeOptions` vs CLI args** documented in `docs/phases.md` when adding root-like concepts so public architecture docs do not drift.
+- Keep `**TreeOptions` vs CLI args** documented in `docs/phases.md` when adding root-like concepts so public architecture docs do not drift.
 
 ## Related Issues
 
-- [Known pattern] DRY ref allocation — [`docs/solutions/best-practices/deduplicate-ref-allocator-via-config-struct-2026-04-14.md`](../best-practices/deduplicate-ref-allocator-via-config-struct-2026-04-14.md)
+- [Known pattern] DRY ref allocation — `[docs/solutions/best-practices/deduplicate-ref-allocator-via-config-struct-2026-04-14.md](../best-practices/deduplicate-ref-allocator-via-config-struct-2026-04-14.md)`
 - Plan: `docs/plans/2026-03-10-feat-progressive-skeleton-traversal-plan.md`
