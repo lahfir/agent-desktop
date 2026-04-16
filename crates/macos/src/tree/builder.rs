@@ -117,6 +117,10 @@ pub fn build_subtree(
     ) && title.as_deref().is_none_or(str::is_empty)
         && value.as_deref().is_none_or(str::is_empty);
 
+    // Web wrappers do not consume a logical depth slot so that Electron/Chromium
+    // structural layers (AXGroup/AXGenericElement with no label) are transparent to
+    // agents. A chain of wrappers only stops at ABSOLUTE_MAX_DEPTH, not max_depth.
+    // This is intentional: skeleton depth tracks semantic content depth, not raw DOM depth.
     let child_depth = if is_web_wrapper { depth } else { depth + 1 };
     let child_raw_depth = raw_depth + 1;
 

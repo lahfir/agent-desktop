@@ -12,6 +12,7 @@
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
 - **50 commands**: Observation, interaction, keyboard, mouse, clipboard, window management
+- **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using deterministic element references (`@e1`, `@e2`)
 - **AX-first interactions**: Every action exhausts pure accessibility API strategies before falling back to mouse events
 - **Structured JSON output**: Machine-readable responses with error codes and recovery hints
@@ -52,6 +53,24 @@ agent-desktop permissions --request   # trigger system dialog
 
 ## Core Workflow for AI
 
+For dense apps (Slack, VS Code, Notion), use **progressive skeleton traversal** to minimize token usage:
+
+```bash
+# 1. Shallow overview — depth-3 map, truncated containers show children_count
+agent-desktop snapshot --skeleton --app Slack -i --compact
+
+# 2. Drill into a region of interest (named containers get refs as drill targets)
+agent-desktop snapshot --root @e3 -i --compact
+
+# 3. Act on an element found in the drill-down
+agent-desktop click @e12
+
+# 4. Re-drill the same region to verify the state change
+agent-desktop snapshot --root @e3 -i --compact
+```
+
+For simple apps, a full snapshot is fine:
+
 ```bash
 agent-desktop snapshot --app Finder -i   # get interactive elements with refs
 agent-desktop click @e3                  # click a button by ref
@@ -59,8 +78,6 @@ agent-desktop type @e5 "quarterly report"  # type into a text field
 agent-desktop press cmd+s               # keyboard shortcut
 agent-desktop snapshot -i               # re-observe after UI changes
 ```
-
-The snapshot + ref pattern is optimal for LLMs: refs provide deterministic element selection without re-querying the accessibility tree.
 
 ```
 Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
@@ -192,6 +209,8 @@ agent-desktop snapshot [OPTIONS]
 | `--compact` | off | Omit empty structural nodes |
 | `--include-bounds` | off | Include pixel bounds (x, y, width, height) |
 | `--max-depth <N>` | 10 | Maximum tree depth |
+| `--skeleton` | off | Shallow 3-level overview; truncated containers show `children_count` and get refs as drill targets |
+| `--root <REF>` | - | Start traversal from this ref; merges into existing refmap with scoped invalidation |
 | `--surface <TYPE>` | window | `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
 
 ## JSON Output

@@ -8,7 +8,7 @@ description: >
   Desktop automation via native OS accessibility trees using the agent-desktop CLI.
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
-  drag, type text, take screenshots, manage windows, use clipboard). Covers 54 commands
+  drag, type text, take screenshots, manage windows, use clipboard). Covers 50 commands
   across observation, interaction, keyboard/mouse, app lifecycle, clipboard, and wait.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
@@ -109,7 +109,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `TIMEOUT` | Wait condition not met | Increase --timeout |
 | `INVALID_ARGS` | Bad arguments | Check command syntax |
 
-## Command Quick Reference (54 commands)
+## Command Quick Reference (50 commands)
 
 ### Observation
 ```
