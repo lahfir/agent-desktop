@@ -1,12 +1,48 @@
 use crate::convert::string::{opt_string_to_c, string_to_c};
 use crate::types::{AdNode, AdNodeTree, AdRect};
 use agent_desktop_core::node::AccessibilityNode;
+use std::collections::VecDeque;
 use std::os::raw::c_char;
 use std::ptr;
 
+/// Flattens an `AccessibilityNode` tree into the BFS-ordered layout
+/// C consumers see via `AdNodeTree.nodes`.
+///
+/// Guarantees:
+/// - Direct children of any `AdNode` at index `i` live contiguously at
+///   `nodes[n.child_start .. n.child_start + n.child_count]`. This is
+///   the BFS (level-order) layout.
+/// - `parent_index` is `-1` for the root and otherwise a valid back-index
+///   into `nodes`.
+/// - `child_count` is zero when `child_start` is not indexable.
+///
+/// A recursive DFS layout placed node `a1` immediately after its parent
+/// `a`, overlapping with `a`'s siblings — the range
+/// `a.child_start..a.child_start + a.child_count` therefore stepped into
+/// grandchildren. BFS keeps siblings contiguous by construction.
 pub(crate) fn flatten_tree(root: &AccessibilityNode) -> AdNodeTree {
-    let mut flat: Vec<AdNode> = Vec::new();
-    flatten_recursive(root, -1, &mut flat);
+    let total = count_nodes(root);
+    let mut flat: Vec<AdNode> = Vec::with_capacity(total);
+
+    flat.push(to_ad_node(root, -1));
+    let mut queue: VecDeque<(&AccessibilityNode, usize)> = VecDeque::new();
+    queue.push_back((root, 0));
+
+    while let Some((node, node_idx)) = queue.pop_front() {
+        if node.children.is_empty() {
+            continue;
+        }
+        let child_start = flat.len() as u32;
+        let child_count = node.children.len() as u32;
+        flat[node_idx].child_start = child_start;
+        flat[node_idx].child_count = child_count;
+        for child in &node.children {
+            let child_idx = flat.len();
+            flat.push(to_ad_node(child, node_idx as i32));
+            queue.push_back((child, child_idx));
+        }
+    }
+
     let count = flat.len() as u32;
     let nodes = if flat.is_empty() {
         ptr::null_mut()
@@ -19,9 +55,20 @@ pub(crate) fn flatten_tree(root: &AccessibilityNode) -> AdNodeTree {
     AdNodeTree { nodes, count }
 }
 
-fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec<AdNode>) {
-    let my_index = flat.len() as i32;
+fn count_nodes(node: &AccessibilityNode) -> usize {
+    let mut total: usize = 0;
+    let mut queue: VecDeque<&AccessibilityNode> = VecDeque::new();
+    queue.push_back(node);
+    while let Some(n) = queue.pop_front() {
+        total += 1;
+        for c in &n.children {
+            queue.push_back(c);
+        }
+    }
+    total
+}
 
+fn to_ad_node(node: &AccessibilityNode, parent_index: i32) -> AdNode {
     let (states_ptr, state_count) = strings_to_c_array(&node.states);
     let (bounds, has_bounds) = match &node.bounds {
         Some(r) => (crate::convert::rect_to_c(r), true),
@@ -35,8 +82,7 @@ fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec
             false,
         ),
     };
-
-    flat.push(AdNode {
+    AdNode {
         ref_id: opt_string_to_c(node.ref_id.as_deref()),
         role: string_to_c(&node.role),
         name: opt_string_to_c(node.name.as_deref()),
@@ -49,14 +95,7 @@ fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec
         has_bounds,
         parent_index,
         child_start: 0,
-        child_count: node.children.len() as u32,
-    });
-
-    let child_start = flat.len() as u32;
-    flat[my_index as usize].child_start = child_start;
-
-    for child in &node.children {
-        flatten_recursive(child, my_index, flat);
+        child_count: 0,
     }
 }
 
@@ -90,6 +129,13 @@ mod tests {
             bounds: None,
             children: vec![],
         }
+    }
+
+    fn direct_children(nodes: &[AdNode], idx: usize) -> Vec<&AdNode> {
+        let n = &nodes[idx];
+        let start = n.child_start as usize;
+        let end = start + n.child_count as usize;
+        nodes[start..end].iter().collect()
     }
 
     #[test]
@@ -128,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn test_flatten_depth_first_order() {
+    fn test_flatten_breadth_first_layout() {
         let a1 = node("a1");
         let a2 = node("a2");
         let mut a = node("a");
@@ -145,18 +191,75 @@ mod tests {
             .iter()
             .map(|n| unsafe { c_to_string(n.role).unwrap() })
             .collect();
-        assert_eq!(roles, vec!["root", "a", "a1", "a2", "b"]);
+        assert_eq!(roles, vec!["root", "a", "b", "a1", "a2"]);
 
-        assert_eq!(nodes[0].child_start, 1);
-        assert_eq!(nodes[0].child_count, 2);
+        let root_children: Vec<String> = direct_children(nodes, 0)
+            .iter()
+            .map(|n| unsafe { c_to_string(n.role).unwrap() })
+            .collect();
+        assert_eq!(root_children, vec!["a", "b"]);
 
-        assert_eq!(nodes[1].child_start, 2);
-        assert_eq!(nodes[1].child_count, 2);
-        assert_eq!(nodes[1].parent_index, 0);
+        let a_idx = nodes
+            .iter()
+            .position(|n| unsafe { c_to_string(n.role).unwrap() } == "a")
+            .unwrap();
+        let a_children: Vec<String> = direct_children(nodes, a_idx)
+            .iter()
+            .map(|n| unsafe { c_to_string(n.role).unwrap() })
+            .collect();
+        assert_eq!(a_children, vec!["a1", "a2"]);
 
-        assert_eq!(nodes[4].parent_index, 0);
-        assert_eq!(nodes[4].child_count, 0);
+        let b_idx = nodes
+            .iter()
+            .position(|n| unsafe { c_to_string(n.role).unwrap() } == "b")
+            .unwrap();
+        assert!(direct_children(nodes, b_idx).is_empty());
 
+        unsafe { ad_free_tree(&tree as *const _ as *mut _) };
+    }
+
+    #[test]
+    fn test_flatten_deep_chain() {
+        let mut leaf = node("l10");
+        for i in (0..10).rev() {
+            let mut parent = node(&format!("l{}", i));
+            parent.children = vec![leaf];
+            leaf = parent;
+        }
+        let tree = flatten_tree(&leaf);
+        assert_eq!(tree.count, 11);
+        let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 11) };
+
+        let mut cursor = 0usize;
+        for expected in 0..11 {
+            let role = unsafe { c_to_string(nodes[cursor].role).unwrap() };
+            assert_eq!(role, format!("l{}", expected));
+            let children = direct_children(nodes, cursor);
+            if expected < 10 {
+                assert_eq!(children.len(), 1);
+                cursor = nodes[cursor].child_start as usize;
+            } else {
+                assert!(children.is_empty());
+            }
+        }
+        unsafe { ad_free_tree(&tree as *const _ as *mut _) };
+    }
+
+    #[test]
+    fn test_flatten_wide_root() {
+        let mut root = node("root");
+        for i in 0..100 {
+            root.children.push(node(&format!("child_{}", i)));
+        }
+        let tree = flatten_tree(&root);
+        assert_eq!(tree.count, 101);
+        let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 101) };
+        let children = direct_children(nodes, 0);
+        assert_eq!(children.len(), 100);
+        for (i, c) in children.iter().enumerate() {
+            let role = unsafe { c_to_string(c.role).unwrap() };
+            assert_eq!(role, format!("child_{}", i));
+        }
         unsafe { ad_free_tree(&tree as *const _ as *mut _) };
     }
 
