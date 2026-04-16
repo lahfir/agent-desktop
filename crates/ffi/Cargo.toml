@@ -3,6 +3,7 @@ name    = "agent-desktop-ffi"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [lib]
 crate-type = ["cdylib"]
@@ -12,6 +13,7 @@ agent-desktop-core.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 agent-desktop-macos = { path = "../macos" }
+libc                = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 agent-desktop-windows = { path = "../windows" }
