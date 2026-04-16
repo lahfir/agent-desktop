@@ -2,24 +2,36 @@
 
 ## macOS: main-thread rule
 
-Every adapter-touching entrypoint (`ad_get_tree`, `ad_resolve_element`,
-`ad_execute_action`, `ad_screenshot`, clipboard, mouse, drag, launch,
-focus, window-op, list-*) **must be invoked on the process's main
-thread**. macOS accessibility and Cocoa APIs require this.
+Every adapter-touching entrypoint (`ad_get_tree`, `ad_find`, `ad_get`,
+`ad_is`, `ad_resolve_element`, `ad_execute_action`, `ad_screenshot`,
+clipboard get/set/clear, mouse, drag, launch, close, focus, window-op,
+list-apps/windows/surfaces, notification list/dismiss/action)
+**must be invoked on the process's main thread**. macOS accessibility
+and Cocoa APIs require this.
 
-- **Debug builds** assert the constraint via `pthread_main_np()` and
-  convert violations into `AD_RESULT_ERR_INTERNAL` with message
-  `"agent_desktop FFI entry called off the main thread"`.
-- **Release builds** skip the check (no `debug_assert!`). Violations
-  are silent undefined behavior.
+The check runs at **runtime, in every build profile** — worker-thread
+calls return `AD_RESULT_ERR_INTERNAL` with a `'static` diagnostic
+`"agent_desktop FFI entry called off the main thread (macOS requires
+main-thread AX/Cocoa calls)"`. No build-config difference; no silent
+UB window in release builds.
 
-Operations that are **safe off-main-thread**:
+On non-macOS targets the check is a compile-time `true` and has zero
+runtime cost.
+
+Operations that are **safe off-main-thread** (no runtime guard):
 
 - `ad_adapter_create` / `ad_adapter_destroy`
 - `ad_last_error_{code,message,suggestion,platform_detail}`
-- `ad_free_*` family (handle, tree, apps, windows, surfaces, image,
-  string, action_result)
-- `ad_check_permissions`
+- `ad_check_permissions` (pure process-wide query)
+- `ad_app_list_count` / `_get` / `_free`
+- `ad_window_list_count` / `_get` / `_free`
+- `ad_surface_list_count` / `_get` / `_free`
+- `ad_notification_list_count` / `_get` / `_free`
+- `ad_image_buffer_data` / `_size` / `_width` / `_height` / `_format` / `_free`
+- `ad_release_window_fields`
+- `ad_free_handle` (invokes `CFRelease` which is thread-safe) — but
+  still prefer calling from the thread that produced the handle.
+- `ad_free_tree`, `ad_free_action_result`, `ad_free_string`
 
 ## Python consumers
 

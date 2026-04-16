@@ -34,14 +34,20 @@ int main(void) {
         return 1;
     }
 
-    AdAppInfo *apps = NULL;
-    uint32_t count = 0;
-    rc = ad_list_apps(adapter, &apps, &count);
+    /* Opaque list handle — walk via _count / _get, free with _free. */
+    AdAppList *list = NULL;
+    rc = ad_list_apps(adapter, &list);
     if (rc == AD_RESULT_OK) {
+        uint32_t count = ad_app_list_count(list);
         for (uint32_t i = 0; i < count; i++) {
-            printf("%s (pid %d)\n", apps[i].name, apps[i].pid);
+            const AdAppInfo *app = ad_app_list_get(list, i);
+            if (app) {
+                printf("%s (pid %d)\n", app->name, app->pid);
+            }
         }
-        ad_free_apps(apps, count);
+        ad_app_list_free(list);
+    } else {
+        fprintf(stderr, "list_apps failed: %s\n", ad_last_error_message());
     }
 
     ad_adapter_destroy(adapter);

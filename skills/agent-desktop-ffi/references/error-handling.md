@@ -14,11 +14,11 @@ if (rc != AD_RESULT_OK) {
     const char *sug = ad_last_error_suggestion();   // may be NULL
     fprintf(stderr, "launch_app failed (%d): %s\n", (int)rc, msg ? msg : "(no message)");
     if (sug) fprintf(stderr, "  suggestion: %s\n", sug);
-    // no need to call ad_free_window(&win) — out-param was zeroed
+    // no need to release the struct — out-param was zero-initialized
     return -1;
 }
 // ...use win...
-ad_free_window(&win);
+ad_release_window_fields(&win);
 ```
 
 ## Lifetime contract

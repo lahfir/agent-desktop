@@ -6,12 +6,21 @@
 //!
 //! ## ⚠ Thread safety (macOS)
 //!
-//! **Every FFI entry other than `ad_adapter_create`, `ad_adapter_destroy`,
-//! `ad_last_error_*`, and the `ad_free_*` family must be invoked on the
-//! process's main thread.** macOS accessibility and Cocoa APIs require
-//! this and will misbehave silently on worker threads. Debug builds
-//! assert this constraint; release builds do not (no-op `debug_assert!`)
-//! but violators invoke undefined behavior.
+//! Every adapter-touching FFI entry must be invoked on the process's
+//! main thread. The guard runs at **runtime in every build profile**:
+//! a worker-thread call returns `AD_RESULT_ERR_INTERNAL` with a
+//! `'static` diagnostic message — no silent UB even under
+//! `--profile release-ffi`.
+//!
+//! Operations exempt from the guard (safe from any thread):
+//!
+//! - `ad_adapter_create` / `ad_adapter_destroy`
+//! - `ad_last_error_*` readers
+//! - `ad_check_permissions` (process-wide query, no AX/Cocoa state)
+//! - All `ad_*_list_{count,get,free}` accessors and
+//!   `ad_image_buffer_*` accessors
+//! - `ad_release_window_fields`, `ad_free_handle`, `ad_free_tree`,
+//!   `ad_free_action_result`, `ad_free_string`
 //!
 //! ## Build profile
 //!
