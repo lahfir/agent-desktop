@@ -51,7 +51,7 @@ impl PlatformAdapter for MacOSAdapter {
                 .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
         };
         let mut visited = FxHashSet::default();
-        crate::tree::build_subtree(&el, 0, opts.max_depth, opts.include_bounds, &mut visited)
+        crate::tree::build_subtree(&el, 0, 0, opts.max_depth, &mut visited, opts.skeleton)
             .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
     }
 
@@ -72,7 +72,7 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
-        list_apps_impl()
+        crate::system::app_ops::list_apps_impl()
     }
 
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError> {
@@ -205,6 +205,28 @@ impl PlatformAdapter for MacOSAdapter {
     ) -> Result<ActionResult, AdapterError> {
         crate::notifications::actions::notification_action(index, action_name)
     }
+
+    fn get_subtree(
+        &self,
+        handle: &NativeHandle,
+        opts: &TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        use crate::tree::AXElement;
+        use std::mem::ManuallyDrop;
+
+        let el = ManuallyDrop::new(AXElement(
+            handle.as_raw() as accessibility_sys::AXUIElementRef
+        ));
+        let mut ancestors = FxHashSet::default();
+        crate::tree::build_subtree(&el, 0, 0, opts.max_depth, &mut ancestors, opts.skeleton)
+            .ok_or_else(|| {
+                AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::ElementNotFound,
+                    "Element no longer exists in accessibility tree",
+                )
+                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+            })
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -317,81 +339,4 @@ pub(crate) fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>
         let _ = filter;
         Err(AdapterError::not_supported("list_windows"))
     }
-}
-
-fn list_apps_impl() -> Result<Vec<AppInfo>, AdapterError> {
-    #[cfg(target_os = "macos")]
-    {
-        use core_foundation::base::{CFType, TCFType};
-        use core_foundation::number::CFNumber;
-        use core_foundation::string::CFString;
-        use core_foundation_sys::dictionary::CFDictionaryGetValue;
-        use core_graphics::display::CGDisplay;
-        use core_graphics::window::{
-            kCGWindowLayer, kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName, kCGWindowOwnerPID,
-        };
-
-        let arr = match CGDisplay::window_list_info(kCGWindowListOptionOnScreenOnly, None) {
-            Some(a) => a,
-            None => return Ok(vec![]),
-        };
-
-        let mut seen_pids = std::collections::HashSet::new();
-        let mut apps = Vec::new();
-
-        for raw in arr.get_all_values() {
-            if raw.is_null() {
-                continue;
-            }
-
-            let layer = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowLayer as _);
-                if v.is_null() {
-                    continue;
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFNumber>()
-                    .and_then(|n| n.to_i64())
-                    .unwrap_or(99)
-            };
-            if layer != 0 {
-                continue;
-            }
-
-            let pid = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerPID as _);
-                if v.is_null() {
-                    continue;
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFNumber>()
-                    .and_then(|n| n.to_i64())
-                    .unwrap_or(0) as i32
-            };
-            if !seen_pids.insert(pid) {
-                continue;
-            }
-
-            let name = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerName as _);
-                if v.is_null() {
-                    continue;
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFString>()
-                    .map(|s| s.to_string())
-            };
-
-            if let Some(n) = name {
-                apps.push(AppInfo {
-                    name: n,
-                    pid,
-                    bundle_id: None,
-                });
-            }
-        }
-        Ok(apps)
-    }
-    #[cfg(not(target_os = "macos"))]
-    Err(AdapterError::not_supported("list_apps"))
 }

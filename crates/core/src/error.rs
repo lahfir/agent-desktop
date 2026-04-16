@@ -78,7 +78,9 @@ impl AdapterError {
             ErrorCode::StaleRef,
             format!("{ref_id} not found in current RefMap"),
         )
-        .with_suggestion("Run 'snapshot' to refresh, then retry with updated ref")
+        .with_suggestion(
+            "Run 'snapshot' (or 'snapshot --skeleton') to refresh, then retry with updated ref",
+        )
     }
 
     pub fn not_supported(method: &str) -> Self {
@@ -181,5 +183,20 @@ mod tests {
         let code = ErrorCode::NotificationNotFound;
         let json = serde_json::to_string(&code).unwrap();
         assert_eq!(json, "\"NOTIFICATION_NOT_FOUND\"");
+    }
+
+    #[test]
+    fn stale_ref_suggestion_mentions_skeleton() {
+        let err = AdapterError::stale_ref("@e7");
+        assert_eq!(err.code, ErrorCode::StaleRef);
+        assert!(err.message.contains("@e7"));
+        let suggestion = err
+            .suggestion
+            .as_deref()
+            .expect("stale_ref should carry a suggestion");
+        assert!(
+            suggestion.contains("skeleton"),
+            "stale-ref suggestion should mention skeleton refresh, got: {suggestion}"
+        );
     }
 }

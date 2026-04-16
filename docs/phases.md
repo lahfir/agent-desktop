@@ -37,6 +37,7 @@ Phase 1 is the load-bearing phase. It establishes every shared abstraction, ever
 | P1-O7 | Command extensibility | Adding a new command requires exactly 1 new file + 2 registration lines |
 | P1-O8 | 50 working commands | All commands pass integration tests |
 | P1-O9 | CI pipeline | GitHub Actions macOS runner executes full test suite on every PR |
+| P1-O10 | Progressive skeleton traversal | Skeleton + drill-down workflow achieves 78%+ token savings on Electron apps |
 
 ### Workspace Structure
 
@@ -57,6 +58,8 @@ agent-desktop/
 │   │       ├── adapter.rs      # PlatformAdapter trait
 │   │       ├── action.rs       # Action enum, ActionResult, InputEvent, WindowOp
 │   │       ├── refs.rs         # RefAllocator, RefMap, RefEntry
+│   │       ├── ref_alloc.rs      # Shared ref-allocation logic (RefAllocConfig, allocate_refs, INTERACTIVE_ROLES, is_collapsible)
+│   │       ├── snapshot_ref.rs   # Ref-rooted drill-down (run_from_ref) — delegates allocation to ref_alloc
 │   │       ├── snapshot.rs     # SnapshotEngine (filter, allocate, serialize)
 │   │       ├── error.rs        # ErrorCode enum, AdapterError, AppError
 │   │       ├── output.rs       # Response envelope, JSON formatting
@@ -96,6 +99,7 @@ pub trait PlatformAdapter: Send + Sync {
     fn set_clipboard(&self, text: &str) -> Result<()>;
     fn synthesize_input(&self, input: InputEvent) -> Result<()>;
     fn manage_window(&self, win: &WindowInfo, op: WindowOp) -> Result<()>;
+    fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode>;
     fn list_notifications(&self) -> Result<Vec<NotificationInfo>>;
     fn dismiss_notification(&self, id: &str) -> Result<()>;
     fn interact_notification(&self, id: &str, action_name: &str) -> Result<ActionResult>;
@@ -112,6 +116,7 @@ pub trait PlatformAdapter: Send + Sync {
 - `ScreenshotTarget` — Screen(index), Window(id), Element(NativeHandle), FullScreen
 - `NotificationInfo` — id, app_name, title, body, timestamp, actions: Vec\<String\>, is_persistent
 - `TrayItemInfo` — id, app_name, title, tooltip, has_menu
+- `TreeOptions` — `max_depth`, `include_bounds`, `interactive_only`, `compact`, `surface`, `skeleton` (root is CLI-only via `SnapshotArgs.root_ref`, not plumbed into `TreeOptions`)
 
 ### macOS Adapter Implementation
 
@@ -212,6 +217,16 @@ Platform-agnostic, lives in `agent-desktop-core`:
 5. Estimate tokens: Optionally warn if exceeding threshold
 
 RefMap persisted at `~/.agent-desktop/last_refmap.json` with `0o600` permissions, directory at `0o700`. Each snapshot replaces the refmap file entirely (atomic write via temp + rename). Action commands use optimistic re-identification: `(pid, role, name, bounds_hash)`. Return `STALE_REF` on mismatch.
+
+**Progressive Skeleton Traversal:**
+- `--skeleton` flag clamps depth to `min(max_depth, 3)`, annotates truncated containers with `children_count` for agent discovery
+- `--root <REF>` flag starts traversal from a previously-discovered ref instead of window root
+- Named or described containers at skeleton boundary receive refs as drill-down targets (with empty `available_actions`)
+- Scoped invalidation: re-drilling a ref replaces only that ref's subtree refs, preserving all others
+- Core modules: `ref_alloc.rs` (canonical `allocate_refs` + `RefAllocConfig`), `snapshot_ref.rs` (drill-down flow that delegates allocation to `ref_alloc`)
+- macOS: `count_children()` uses raw `CFArrayGetCount` without materializing `AXElement` wrappers for performance
+- RefMap write-side size check prevents >1MB files
+- Token savings: 78-96% reduction for dense Electron apps (Slack skeleton: ~3.6KB vs ~17.3KB full)
 
 ### New Commands — Notification & System Tray (Post Phase 1)
 
@@ -512,6 +527,8 @@ Chromium-based apps (Electron, Chrome, Edge, VS Code) expose deep, noisy accessi
 - Check both `ControlType` and `LocalizedControlType` / UIA patterns (analogous to macOS checking both AXRole and AXSubrole)
 - Implement in `crates/windows/src/tree/surfaces.rs`
 
+**Progressive skeleton traversal** works identically on Windows — `--skeleton` and `--root` flags are platform-agnostic, handled entirely by core. The Windows adapter only needs to implement `get_subtree()` (which delegates to the same `build_subtree()` as `get_tree()`). Token savings for Electron apps (VS Code, Slack) apply equally.
+
 ### Minimum OS Requirements
 
 - Windows 10 1809+ (October 2018 update)
@@ -757,6 +774,8 @@ Same Chromium/Electron compatibility patterns as Phase 2 (Windows), adapted for 
 - Detect Chromium-based apps via process name matching (electron, chrome, chromium, code)
 - If AT-SPI tree is empty for a Chromium app, warn about `--force-renderer-accessibility`
 - On Linux, Chromium respects `ACCESSIBILITY_ENABLED=1` environment variable as an alternative
+
+**Progressive skeleton traversal** works identically on Linux — `--skeleton` and `--root` flags are platform-agnostic, handled entirely by core. The Linux adapter only needs to implement `get_subtree()` (which delegates to the same async tree walker). Token savings for Electron apps apply equally.
 
 ### AT-SPI2 Bus Detection
 
@@ -1131,6 +1150,7 @@ When daemon is not running, CLI falls back to direct execution (same as Phases 1
 | Async tree walking | Linux | Parallel D-Bus calls for tree traversal — concurrent child fetching |
 | Cached subtrees | All (daemon) | Reuse unchanged subtrees between snapshots in same session — skip re-traversal of stable UI regions |
 | Warm adapter | All (daemon) | Adapter stays initialized between commands — skip COM init (Win), D-Bus connect (Linux), AX bootstrap (macOS) |
+| Progressive skeleton drill | All | Skeleton overview + targeted drill-down reduces token consumption 78-96% for dense apps — fewer tokens per snapshot means more budget for actions |
 
 ### Package Manager Distribution
 
@@ -1285,5 +1305,5 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | R4 | Wayland a11y gaps | Medium | Medium | Focus on GNOME (best AT-SPI2 support). Prefer AT-SPI actions over coordinate input. Document gaps. |
 | R5 | Rust a11y crate maintenance stalls | Low | High | Pin versions, maintain patches. `atspi` backed by Odilia project. Fork-ready. |
 | R6 | MCP spec changes break compat | Low | Medium | Pin `rmcp` version. Monitor spec under Linux Foundation governance. |
-| R7 | Tree traversal too slow (>5s) | Medium | Medium | Depth limiting via `--max-depth`. Focused-window-only. Cached subtrees in Phase 5 daemon. |
-| R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. |
+| R7 | Tree traversal too slow (>5s) | Medium | Medium | Depth limiting via `--max-depth`. Focused-window-only. Cached subtrees in Phase 5 daemon. Progressive skeleton traversal (`--skeleton` + `--root`) reduces token consumption 78-96% for dense apps. |
+| R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. Progressive skeleton traversal with scoped invalidation provides a stable drill-down workflow for navigating complex UIs. |

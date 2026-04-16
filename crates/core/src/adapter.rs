@@ -30,6 +30,7 @@ pub struct TreeOptions {
     pub interactive_only: bool,
     pub compact: bool,
     pub surface: SnapshotSurface,
+    pub skeleton: bool,
 }
 
 impl Default for TreeOptions {
@@ -40,6 +41,7 @@ impl Default for TreeOptions {
             interactive_only: false,
             compact: false,
             surface: SnapshotSurface::Window,
+            skeleton: false,
         }
     }
 }
@@ -243,5 +245,13 @@ pub trait PlatformAdapter: Send + Sync {
         _action_name: &str,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::not_supported("notification_action"))
+    }
+
+    fn get_subtree(
+        &self,
+        _handle: &NativeHandle,
+        _opts: &TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        Err(AdapterError::not_supported("get_subtree"))
     }
 }

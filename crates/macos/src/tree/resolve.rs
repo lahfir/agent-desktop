@@ -2,7 +2,8 @@ use agent_desktop_core::{adapter::NativeHandle, error::AdapterError, refs::RefEn
 use rustc_hash::FxHashSet;
 
 use super::element::{
-    copy_ax_array, copy_string_attr, element_for_pid, resolve_element_name, AXElement,
+    child_attributes, copy_ax_array, copy_string_attr, element_for_pid, resolve_element_name,
+    AXElement,
 };
 
 #[cfg(target_os = "macos")]
@@ -16,9 +17,11 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
     );
     let root = element_for_pid(entry.pid);
     let mut visited = FxHashSet::default();
-    // Electron/web apps nest 25+ levels deep; use ABSOLUTE_MAX_DEPTH (50) for resolution.
     let resolve_depth: u8 = 50;
-    if let Ok(handle) = find_element_recursive(&root, entry, 0, resolve_depth, &mut visited) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    if let Ok(handle) =
+        find_element_recursive(&root, entry, 0, resolve_depth, &mut visited, deadline)
+    {
         tracing::debug!("resolve: found exact match");
         return Ok(handle);
     }
@@ -29,7 +32,8 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
             ..entry.clone()
         };
         visited.clear();
-        if let Ok(handle) = find_element_recursive(&root, &relaxed, 0, resolve_depth, &mut visited)
+        if let Ok(handle) =
+            find_element_recursive(&root, &relaxed, 0, resolve_depth, &mut visited, deadline)
         {
             tracing::debug!("resolve: found via relaxed match (bounds changed)");
             return Ok(handle);
@@ -47,6 +51,13 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
     .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref."))
 }
 
+/// Depth-first search for a single element matching `entry`.
+///
+/// `deadline` is shared across the full resolve call (exact + relaxed passes)
+/// so the total wall-clock time is bounded at five seconds. Subtrees whose
+/// spatial bounds do not contain the target's centre point are pruned, which
+/// makes resolution over large documents (e.g. dense spreadsheets) fast even
+/// when the AX tree has thousands of nodes.
 #[cfg(target_os = "macos")]
 pub fn find_element_recursive(
     el: &AXElement,
@@ -54,9 +65,18 @@ pub fn find_element_recursive(
     depth: u8,
     max_depth: u8,
     ancestors: &mut FxHashSet<usize>,
+    deadline: std::time::Instant,
 ) -> Result<NativeHandle, AdapterError> {
     use accessibility_sys::kAXRoleAttribute;
     use core_foundation::base::{CFRetain, CFTypeRef};
+
+    if std::time::Instant::now() > deadline {
+        return Err(AdapterError::new(
+            agent_desktop_core::error::ErrorCode::StaleRef,
+            "Element resolution timed out",
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref."));
+    }
 
     let ptr_key = el.0 as usize;
     if !ancestors.insert(ptr_key) {
@@ -95,18 +115,32 @@ pub fn find_element_recursive(
         return Err(AdapterError::element_not_found("element"));
     }
 
-    let child_attr = if ax_role.as_deref() == Some("AXBrowser") {
-        "AXColumns"
-    } else {
-        "AXChildren"
-    };
-    let children = copy_ax_array(el, child_attr)
-        .filter(|v| !v.is_empty())
-        .or_else(|| copy_ax_array(el, "AXContents").filter(|v| !v.is_empty()))
+    if let Some(target) = &entry.bounds {
+        if let Some(el_bounds) = crate::tree::read_bounds(el) {
+            if el_bounds.width > 0.0 && el_bounds.height > 0.0 {
+                let cx = target.x + target.width / 2.0;
+                let cy = target.y + target.height / 2.0;
+                if cx < el_bounds.x
+                    || cx > el_bounds.x + el_bounds.width
+                    || cy < el_bounds.y
+                    || cy > el_bounds.y + el_bounds.height
+                {
+                    ancestors.remove(&ptr_key);
+                    return Err(AdapterError::element_not_found("element"));
+                }
+            }
+        }
+    }
+
+    let children = child_attributes(ax_role.as_deref())
+        .iter()
+        .find_map(|attr| copy_ax_array(el, attr).filter(|v| !v.is_empty()))
         .unwrap_or_default();
 
     for child in &children {
-        if let Ok(handle) = find_element_recursive(child, entry, depth + 1, max_depth, ancestors) {
+        if let Ok(handle) =
+            find_element_recursive(child, entry, depth + 1, max_depth, ancestors, deadline)
+        {
             ancestors.remove(&ptr_key);
             return Ok(handle);
         }
@@ -128,6 +162,7 @@ pub fn find_element_recursive(
     _depth: u8,
     _max_depth: u8,
     _ancestors: &mut FxHashSet<usize>,
+    _deadline: std::time::Instant,
 ) -> Result<NativeHandle, AdapterError> {
     Err(AdapterError::not_supported("find_element_recursive"))
 }

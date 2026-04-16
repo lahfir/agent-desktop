@@ -27,6 +27,8 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 interactive_only: a.interactive_only,
                 compact: a.compact,
                 surface: a.surface.to_core(),
+                skeleton: a.skeleton,
+                root_ref: a.root,
             },
             adapter,
         ),

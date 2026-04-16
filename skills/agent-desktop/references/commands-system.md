@@ -217,6 +217,16 @@ Execute multiple commands in sequence from a JSON array. Each entry has `command
 ]
 ```
 
+**Progressive snapshot in batch** — use `skeleton` and `root` fields inside `snapshot` args:
+```json
+[
+  { "command": "snapshot", "args": { "app": "Slack", "skeleton": true, "interactive_only": true } },
+  { "command": "snapshot", "args": { "app": "Slack", "root": "@e3", "interactive_only": true } }
+]
+```
+
+`skeleton: true` clamps depth to 3 and tags truncated containers with `children_count`. `root: "@eN"` starts traversal from that ref instead of the window root; it cannot be combined with `surface`.
+
 ## System Health
 
 ### status
