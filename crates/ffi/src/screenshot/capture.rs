@@ -1,4 +1,3 @@
-use crate::enum_validation::enum_raw_i32;
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdImageBuffer, AdImageFormat, AdScreenshotKind, AdScreenshotTarget};
@@ -26,7 +25,7 @@ pub unsafe extern "C" fn ad_screenshot(
         *out = ptr::null_mut();
         let adapter = &*adapter;
         let t = &*target;
-        let kind = match AdScreenshotKind::from_c(enum_raw_i32(&t.kind)) {
+        let kind = match AdScreenshotKind::from_c(t.kind) {
             Some(k) => k,
             None => {
                 set_last_error(&agent_desktop_core::error::AdapterError::new(

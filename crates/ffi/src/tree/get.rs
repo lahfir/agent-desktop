@@ -1,4 +1,3 @@
-use crate::enum_validation::enum_raw_i32;
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::tree::flatten::flatten_tree;
@@ -58,7 +57,7 @@ pub unsafe extern "C" fn ad_get_tree(
                 return crate::error::last_error_code();
             }
         };
-        let surface = match AdSnapshotSurface::from_c(enum_raw_i32(&opts_ref.surface)) {
+        let surface = match AdSnapshotSurface::from_c(opts_ref.surface) {
             Some(s) => core_surface(s),
             None => {
                 set_last_error(&agent_desktop_core::error::AdapterError::new(

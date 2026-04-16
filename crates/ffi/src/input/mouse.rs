@@ -1,4 +1,3 @@
-use crate::enum_validation::enum_raw_i32;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdMouseButton, AdMouseEvent, AdMouseEventKind};
@@ -31,7 +30,7 @@ pub unsafe extern "C" fn ad_mouse_event(
     trap_panic(|| unsafe {
         let adapter = &*adapter;
         let ev = &*event;
-        let validated_button = match AdMouseButton::from_c(enum_raw_i32(&ev.button)) {
+        let validated_button = match AdMouseButton::from_c(ev.button) {
             Some(b) => b,
             None => {
                 error::set_last_error(&agent_desktop_core::error::AdapterError::new(
@@ -41,7 +40,7 @@ pub unsafe extern "C" fn ad_mouse_event(
                 return AdResult::ErrInvalidArgs;
             }
         };
-        let validated_kind = match AdMouseEventKind::from_c(enum_raw_i32(&ev.kind)) {
+        let validated_kind = match AdMouseEventKind::from_c(ev.kind) {
             Some(k) => k,
             None => {
                 error::set_last_error(&agent_desktop_core::error::AdapterError::new(
@@ -101,36 +100,32 @@ mod tests {
     }
 
     #[test]
-    fn test_mouse_event_kind_click_count() {
+    fn valid_discriminants_convert_to_typed_enums() {
         let ev = AdMouseEvent {
-            kind: AdMouseEventKind::Click,
+            kind: AdMouseEventKind::Click as i32,
             point: AdPoint { x: 10.0, y: 20.0 },
-            button: AdMouseButton::Left,
+            button: AdMouseButton::Left as i32,
             click_count: 2,
         };
-        let point = CorePoint {
-            x: ev.point.x,
-            y: ev.point.y,
-        };
-        let button = mouse_button_from_c(ev.button);
-        let kind = match ev.kind {
-            AdMouseEventKind::Move => CoreMouseEventKind::Move,
-            AdMouseEventKind::Down => CoreMouseEventKind::Down,
-            AdMouseEventKind::Up => CoreMouseEventKind::Up,
-            AdMouseEventKind::Click => CoreMouseEventKind::Click {
-                count: ev.click_count,
-            },
-        };
-        let core_event = CoreMouseEvent {
-            kind,
-            point,
-            button,
-        };
         assert!(matches!(
-            core_event.kind,
-            CoreMouseEventKind::Click { count: 2 }
+            AdMouseButton::from_c(ev.button),
+            Some(AdMouseButton::Left)
         ));
-        assert_eq!(core_event.point.x, 10.0);
-        assert_eq!(core_event.point.y, 20.0);
+        assert!(matches!(
+            AdMouseEventKind::from_c(ev.kind),
+            Some(AdMouseEventKind::Click)
+        ));
+    }
+
+    #[test]
+    fn invalid_discriminants_reject_without_ub() {
+        let ev = AdMouseEvent {
+            kind: 999,
+            point: AdPoint { x: 0.0, y: 0.0 },
+            button: -5,
+            click_count: 0,
+        };
+        assert!(AdMouseButton::from_c(ev.button).is_none());
+        assert!(AdMouseEventKind::from_c(ev.kind).is_none());
     }
 }

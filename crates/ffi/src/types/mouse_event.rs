@@ -1,11 +1,15 @@
-use crate::types::mouse_button::AdMouseButton;
-use crate::types::mouse_event_kind::AdMouseEventKind;
 use crate::types::point::AdPoint;
 
+/// Mouse event dispatched by `ad_mouse_event`.
+///
+/// `kind` and `button` are stored as `int32_t` for the same reason
+/// `AdAction.kind` is — foreign callers cannot place invalid
+/// discriminants into Rust enum slots. Valid values are the
+/// discriminants of `AdMouseEventKind` and `AdMouseButton`.
 #[repr(C)]
 pub struct AdMouseEvent {
-    pub kind: AdMouseEventKind,
+    pub kind: i32,
     pub point: AdPoint,
-    pub button: AdMouseButton,
+    pub button: i32,
     pub click_count: u32,
 }

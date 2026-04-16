@@ -1,4 +1,3 @@
-use crate::enum_validation::enum_raw_i32;
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdWindowInfo, AdWindowOp, AdWindowOpKind};
@@ -31,7 +30,7 @@ pub unsafe extern "C" fn ad_window_op(
                 return crate::error::last_error_code();
             }
         };
-        let kind = match AdWindowOpKind::from_c(enum_raw_i32(&op.kind)) {
+        let kind = match AdWindowOpKind::from_c(op.kind) {
             Some(k) => k,
             None => {
                 set_last_error(&agent_desktop_core::error::AdapterError::new(

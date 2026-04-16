@@ -5,67 +5,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-enum AdActionKind {
-  AD_ACTION_KIND_CLICK = 0,
-  AD_ACTION_KIND_DOUBLE_CLICK = 1,
-  AD_ACTION_KIND_RIGHT_CLICK = 2,
-  AD_ACTION_KIND_TRIPLE_CLICK = 3,
-  AD_ACTION_KIND_SET_VALUE = 4,
-  AD_ACTION_KIND_SET_FOCUS = 5,
-  AD_ACTION_KIND_EXPAND = 6,
-  AD_ACTION_KIND_COLLAPSE = 7,
-  AD_ACTION_KIND_SELECT = 8,
-  AD_ACTION_KIND_TOGGLE = 9,
-  AD_ACTION_KIND_CHECK = 10,
-  AD_ACTION_KIND_UNCHECK = 11,
-  AD_ACTION_KIND_SCROLL = 12,
-  AD_ACTION_KIND_SCROLL_TO = 13,
-  AD_ACTION_KIND_PRESS_KEY = 14,
-  AD_ACTION_KIND_KEY_DOWN = 15,
-  AD_ACTION_KIND_KEY_UP = 16,
-  AD_ACTION_KIND_TYPE_TEXT = 17,
-  AD_ACTION_KIND_CLEAR = 18,
-  AD_ACTION_KIND_HOVER = 19,
-  AD_ACTION_KIND_DRAG = 20,
-};
-typedef int32_t AdActionKind;
-
-enum AdDirection {
-  AD_DIRECTION_UP = 0,
-  AD_DIRECTION_DOWN = 1,
-  AD_DIRECTION_LEFT = 2,
-  AD_DIRECTION_RIGHT = 3,
-};
-typedef int32_t AdDirection;
-
 enum AdImageFormat {
   AD_IMAGE_FORMAT_PNG = 0,
   AD_IMAGE_FORMAT_JPG = 1,
 };
 typedef int32_t AdImageFormat;
-
-enum AdModifier {
-  AD_MODIFIER_CMD = 0,
-  AD_MODIFIER_CTRL = 1,
-  AD_MODIFIER_ALT = 2,
-  AD_MODIFIER_SHIFT = 3,
-};
-typedef int32_t AdModifier;
-
-enum AdMouseButton {
-  AD_MOUSE_BUTTON_LEFT = 0,
-  AD_MOUSE_BUTTON_RIGHT = 1,
-  AD_MOUSE_BUTTON_MIDDLE = 2,
-};
-typedef int32_t AdMouseButton;
-
-enum AdMouseEventKind {
-  AD_MOUSE_EVENT_KIND_MOVE = 0,
-  AD_MOUSE_EVENT_KIND_DOWN = 1,
-  AD_MOUSE_EVENT_KIND_UP = 2,
-  AD_MOUSE_EVENT_KIND_CLICK = 3,
-};
-typedef int32_t AdMouseEventKind;
 
 enum AdResult {
   AD_RESULT_OK = 0,
@@ -83,33 +27,6 @@ enum AdResult {
   AD_RESULT_ERR_INTERNAL = -12,
 };
 typedef int32_t AdResult;
-
-enum AdScreenshotKind {
-  AD_SCREENSHOT_KIND_SCREEN = 0,
-  AD_SCREENSHOT_KIND_WINDOW = 1,
-  AD_SCREENSHOT_KIND_FULL_SCREEN = 2,
-};
-typedef int32_t AdScreenshotKind;
-
-enum AdSnapshotSurface {
-  AD_SNAPSHOT_SURFACE_WINDOW = 0,
-  AD_SNAPSHOT_SURFACE_FOCUSED = 1,
-  AD_SNAPSHOT_SURFACE_MENU = 2,
-  AD_SNAPSHOT_SURFACE_MENUBAR = 3,
-  AD_SNAPSHOT_SURFACE_SHEET = 4,
-  AD_SNAPSHOT_SURFACE_POPOVER = 5,
-  AD_SNAPSHOT_SURFACE_ALERT = 6,
-};
-typedef int32_t AdSnapshotSurface;
-
-enum AdWindowOpKind {
-  AD_WINDOW_OP_KIND_RESIZE = 0,
-  AD_WINDOW_OP_KIND_MOVE = 1,
-  AD_WINDOW_OP_KIND_MINIMIZE = 2,
-  AD_WINDOW_OP_KIND_MAXIMIZE = 3,
-  AD_WINDOW_OP_KIND_RESTORE = 4,
-};
-typedef int32_t AdWindowOpKind;
 
 typedef struct AdAdapter AdAdapter;
 
@@ -152,14 +69,30 @@ typedef struct AdNativeHandle {
   const void *ptr;
 } AdNativeHandle;
 
+/**
+ * Scroll parameters embedded in `AdAction` when `kind == SCROLL`.
+ *
+ * `direction` is stored as `int32_t` for the same boundary-safety
+ * reason `AdAction.kind` is. Valid values are the discriminants of
+ * `AdDirection`.
+ */
 typedef struct AdScrollParams {
-  AdDirection direction;
+  int32_t direction;
   uint32_t amount;
 } AdScrollParams;
 
+/**
+ * Key combination: a named key plus optional modifier list.
+ *
+ * `modifiers` points to an array of `int32_t` values (not a typed Rust
+ * enum array) so the C boundary cannot be tricked into writing an
+ * out-of-range discriminant into a Rust enum slot. Each entry is
+ * validated against `AdModifier` before use; an invalid discriminant
+ * returns `AD_RESULT_ERR_INVALID_ARGS`.
+ */
 typedef struct AdKeyCombo {
   const char *key;
-  const AdModifier *modifiers;
+  const int32_t *modifiers;
   uint32_t modifier_count;
 } AdKeyCombo;
 
@@ -174,8 +107,17 @@ typedef struct AdDragParams {
   uint64_t duration_ms;
 } AdDragParams;
 
+/**
+ * Action dispatched by `ad_execute_action`.
+ *
+ * `kind` is stored as `int32_t` so a buggy or malicious C caller
+ * cannot write an out-of-range discriminant into a Rust enum slot —
+ * an out-of-range value is rejected with
+ * `AD_RESULT_ERR_INVALID_ARGS` at the boundary. Valid values are the
+ * discriminants of `AdActionKind`.
+ */
 typedef struct AdAction {
-  AdActionKind kind;
+  int32_t kind;
   const char *text;
   struct AdScrollParams scroll;
   struct AdKeyCombo key;
@@ -226,10 +168,18 @@ typedef struct AdAppInfo {
   const char *bundle_id;
 } AdAppInfo;
 
+/**
+ * Mouse event dispatched by `ad_mouse_event`.
+ *
+ * `kind` and `button` are stored as `int32_t` for the same reason
+ * `AdAction.kind` is — foreign callers cannot place invalid
+ * discriminants into Rust enum slots. Valid values are the
+ * discriminants of `AdMouseEventKind` and `AdMouseButton`.
+ */
 typedef struct AdMouseEvent {
-  AdMouseEventKind kind;
+  int32_t kind;
   struct AdPoint point;
-  AdMouseButton button;
+  int32_t button;
   uint32_t click_count;
 } AdMouseEvent;
 
@@ -255,8 +205,16 @@ typedef struct AdFindQuery {
   const char *value_substring;
 } AdFindQuery;
 
+/**
+ * Screenshot target for `ad_screenshot`.
+ *
+ * `kind` is stored as `int32_t` to keep the enum-discriminant check
+ * at the boundary. Valid values are the discriminants of
+ * `AdScreenshotKind`. `screen_index` is only consulted when kind is
+ * `SCREEN`; `pid` only when kind is `WINDOW`.
+ */
 typedef struct AdScreenshotTarget {
-  AdScreenshotKind kind;
+  int32_t kind;
   uint64_t screen_index;
   int32_t pid;
 } AdScreenshotTarget;
@@ -288,16 +246,33 @@ typedef struct AdNodeTree {
   uint32_t count;
 } AdNodeTree;
 
+/**
+ * Options for `ad_get_tree`.
+ *
+ * `surface` is stored as `int32_t` so foreign callers cannot write
+ * an invalid discriminant into a Rust enum slot. Valid values are the
+ * discriminants of `AdSnapshotSurface`; out-of-range values return
+ * `AD_RESULT_ERR_INVALID_ARGS`.
+ */
 typedef struct AdTreeOptions {
   uint8_t max_depth;
   bool include_bounds;
   bool interactive_only;
   bool compact;
-  AdSnapshotSurface surface;
+  int32_t surface;
 } AdTreeOptions;
 
+/**
+ * Window-manager operation dispatched by `ad_window_op`.
+ *
+ * `kind` is stored as `int32_t` to keep the enum-discriminant check at
+ * the boundary — out-of-range values return
+ * `AD_RESULT_ERR_INVALID_ARGS`. Valid values are the discriminants of
+ * `AdWindowOpKind`. `width`/`height`/`x`/`y` are only consulted for
+ * the variants that use them.
+ */
 typedef struct AdWindowOp {
-  AdWindowOpKind kind;
+  int32_t kind;
   double width;
   double height;
   double x;

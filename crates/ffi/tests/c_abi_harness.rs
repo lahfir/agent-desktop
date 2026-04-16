@@ -80,7 +80,7 @@ fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
 
 fn default_scroll() -> AdScrollParams {
     AdScrollParams {
-        direction: AdDirection::Down,
+        direction: AdDirection::Down as i32,
         amount: 0,
     }
 }
@@ -126,16 +126,12 @@ fn rect_and_point_layouts_are_memcpyable() {
 
 #[test]
 fn enum_fuzz_invalid_discriminant_rejected() {
-    // A malicious / buggy C caller stuffs i32::MAX into an enum-typed
-    // field. Must not UB the Rust side — should surface as InvalidArgs.
+    // AdAction.kind is `i32` — a buggy C caller can legally stuff any
+    // value in here. Must not UB the Rust side; the validator should
+    // surface AD_RESULT_ERR_INVALID_ARGS before any adapter code runs.
     with_adapter(|adapter| unsafe {
         let mut action: AdAction = std::mem::zeroed();
-        let bad_kind: i32 = i32::MAX;
-        std::ptr::copy_nonoverlapping(
-            &bad_kind as *const i32 as *const u8,
-            &mut action.kind as *mut _ as *mut u8,
-            std::mem::size_of::<i32>(),
-        );
+        action.kind = i32::MAX;
         action.scroll = default_scroll();
         action.key = default_key();
         action.drag = default_drag();
