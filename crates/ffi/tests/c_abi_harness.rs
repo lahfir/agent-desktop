@@ -413,8 +413,13 @@ fn last_error_survives_successful_calls() {
         let msg_ptr = ad_last_error_message();
         assert!(!msg_ptr.is_null());
 
+        // Use accessors that are guaranteed to succeed and never set
+        // last-error. ad_check_permissions is NOT safe here — it can
+        // return ErrPermDenied on macOS without Accessibility permission,
+        // which overwrites the TLS error slot we're testing.
         for _ in 0..5 {
-            let _ = ad_check_permissions(adapter);
+            let _ = ad_app_list_count(std::ptr::null());
+            let _ = ad_window_list_count(std::ptr::null());
         }
 
         let after = ad_last_error_message();

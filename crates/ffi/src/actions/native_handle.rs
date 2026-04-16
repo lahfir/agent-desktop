@@ -60,6 +60,7 @@ pub unsafe extern "C" fn ad_free_handle(
                 if matches!(
                     e.code,
                     agent_desktop_core::error::ErrorCode::ActionNotSupported
+                        | agent_desktop_core::error::ErrorCode::PlatformNotSupported
                 ) {
                     return AdResult::Ok;
                 }

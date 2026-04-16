@@ -38,22 +38,17 @@ fn main() {
 
     // cbindgen 0.27 returns `false` when the header file content hasn't changed and the
     // existing file already matches — that's a clean no-op, not an error. We just need a
-    // valid file at `out_path` for the copy step; if it doesn't exist, re-emit unconditionally.
+    // valid file at `out_path` for downstream build consumers.
     bindings.write_to_file(&out_path);
     if !out_path.exists() {
         panic!("cbindgen produced no header at {:?}", out_path);
     }
 
-    let include_dir = Path::new(&crate_dir).join("include");
-    if let Err(err) = std::fs::create_dir_all(&include_dir) {
-        panic!("failed to create include dir at {:?}: {}", include_dir, err);
-    }
-
-    let committed_header = include_dir.join("agent_desktop.h");
-    if let Err(err) = std::fs::copy(&out_path, &committed_header) {
-        panic!(
-            "failed to copy generated header into {:?}: {}",
-            committed_header, err
-        );
-    }
+    // NOTE: We intentionally do NOT copy the generated header back into
+    // `crates/ffi/include/`. That committed header is the ABI contract
+    // checked into source control. CI's "FFI header drift check" compares
+    // $OUT_DIR/agent_desktop.h against the committed copy; if the build
+    // script auto-copied it, the drift check would self-heal instead of
+    // catching stale headers. Developers update the committed header by
+    // running `scripts/update-ffi-header.sh`.
 }

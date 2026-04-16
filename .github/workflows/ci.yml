@@ -95,9 +95,14 @@ jobs:
 
       - name: FFI header drift check
         run: |
-          if ! git diff --exit-code crates/ffi/include/agent_desktop.h; then
+          GENERATED=$(find target -path '*/agent-desktop-ffi-*/out/agent_desktop.h' | head -1)
+          if [ -z "$GENERATED" ]; then
+            echo "FAIL: cbindgen did not produce a header in OUT_DIR"
+            exit 1
+          fi
+          if ! diff -u crates/ffi/include/agent_desktop.h "$GENERATED"; then
             echo "FAIL: crates/ffi/include/agent_desktop.h is out of date"
-            echo "Run 'cargo build -p agent-desktop-ffi' locally and commit the regenerated header."
+            echo "Run 'scripts/update-ffi-header.sh' locally and commit the regenerated header."
             exit 1
           fi
           echo "OK: FFI header is in sync with source"

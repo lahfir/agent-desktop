@@ -26,7 +26,17 @@ pub unsafe extern "C" fn ad_get_clipboard(
         let adapter = &*adapter;
         match adapter.inner.get_clipboard() {
             Ok(text) => {
-                *out = string_to_c(&text);
+                let c = string_to_c(&text);
+                if c.is_null() {
+                    error::set_last_error(
+                        &agent_desktop_core::error::AdapterError::new(
+                            agent_desktop_core::error::ErrorCode::Internal,
+                            "clipboard text contains an interior NUL and cannot be represented as a C string",
+                        ),
+                    );
+                    return AdResult::ErrInternal;
+                }
+                *out = c;
                 AdResult::Ok
             }
             Err(e) => {
