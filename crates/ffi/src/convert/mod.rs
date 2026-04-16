@@ -7,4 +7,3 @@ pub(crate) mod window;
 pub(crate) use rect::rect_to_c;
 pub(crate) use string::{c_to_str, free_c_string, string_to_c};
 pub(crate) use surface::{free_surface_info_fields, surface_info_to_c};
-pub(crate) use window::{free_window_info_fields, window_info_to_c};
