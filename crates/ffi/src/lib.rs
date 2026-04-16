@@ -42,6 +42,7 @@ pub(crate) mod ffi_try;
 pub(crate) mod input;
 pub(crate) mod main_thread;
 pub(crate) mod notifications;
+pub(crate) mod observation;
 pub(crate) mod screenshot;
 pub(crate) mod surfaces;
 pub(crate) mod tree;

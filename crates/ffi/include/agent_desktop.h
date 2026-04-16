@@ -249,6 +249,12 @@ typedef struct AdNotificationInfo {
   uint32_t action_count;
 } AdNotificationInfo;
 
+typedef struct AdFindQuery {
+  const char *role;
+  const char *name_substring;
+  const char *value_substring;
+} AdFindQuery;
+
 typedef struct AdScreenshotTarget {
   AdScreenshotKind kind;
   uint64_t screen_index;
@@ -588,6 +594,78 @@ const struct AdNotificationInfo *ad_notification_list_get(const struct AdNotific
  * `list` must be null or a pointer returned by `ad_list_notifications`.
  */
 void ad_notification_list_free(struct AdNotificationList *list);
+
+/**
+ * Finds the first element in `win`'s accessibility tree matching the
+ * query and resolves it to an opaque `AdNativeHandle`. The caller owns
+ * the handle and must release it with `ad_free_handle(adapter, handle)`
+ * once done.
+ *
+ * Matching is DFS order, first hit wins. All query fields are optional
+ * (null = "don't care") and case-insensitive substring matches:
+ * - `role` against `AccessibilityNode.role`
+ * - `name_substring` against `AccessibilityNode.name`
+ * - `value_substring` against `AccessibilityNode.value`
+ *
+ * # Safety
+ * `adapter`, `win`, and `query` must be valid pointers. `out_handle`
+ * must be a valid writable `*mut AdNativeHandle`. On
+ * `AD_RESULT_ERR_ELEMENT_NOT_FOUND` the out-handle is zero-initialized.
+ */
+AdResult ad_find(const struct AdAdapter *adapter,
+                 const struct AdWindowInfo *win,
+                 const struct AdFindQuery *query,
+                 struct AdNativeHandle *out_handle);
+
+/**
+ * Reads a single property off a previously-resolved element handle.
+ *
+ * Supported properties:
+ * - `"value"`  — live textual value (text fields, sliders, progress
+ *   indicators). Null out-string when the element has no value.
+ * - `"bounds"` — JSON-encoded `{"x":..,"y":..,"width":..,"height":..}`.
+ *   Null out-string when bounds are unavailable.
+ *
+ * The returned string must be freed with `ad_free_string`.
+ *
+ * # Safety
+ * `adapter` must be valid. `handle` must be a non-null `AdNativeHandle`.
+ * `property` must be a non-null UTF-8 C string. `out` must be a valid
+ * writable `*mut *mut c_char`; it is null-initialized on entry.
+ */
+AdResult ad_get(const struct AdAdapter *adapter,
+                const struct AdNativeHandle *handle,
+                const char *property,
+                char **out);
+
+/**
+ * Checks whether a named boolean state is set on the first element
+ * matching `query` inside `win`'s accessibility tree. Intended for the
+ * common agent idiom `find → is(focused) → if yes, act`.
+ *
+ * Recognized property names (match the strings the platform adapter
+ * emits in `AccessibilityNode.states`):
+ *
+ * - `"focused"`
+ * - `"enabled"`
+ * - `"selected"`
+ * - `"checked"`
+ * - `"expanded"`
+ *
+ * Any other property name returns `AD_RESULT_ERR_INVALID_ARGS`. If no
+ * element matches the query, returns `AD_RESULT_ERR_ELEMENT_NOT_FOUND`
+ * and `*out` is untouched.
+ *
+ * # Safety
+ * All pointers must be valid. `property` must be a non-null UTF-8
+ * C string. `out` must be a valid writable `*mut bool`; it is set to
+ * `false` on entry.
+ */
+AdResult ad_is(const struct AdAdapter *adapter,
+               const struct AdWindowInfo *win,
+               const struct AdFindQuery *query,
+               const char *property,
+               bool *out);
 
 /**
  * Borrowed pointer to the image bytes; valid until the buffer is freed.
