@@ -14,10 +14,23 @@ fn direction_from_c(d: AdDirection) -> Direction {
     }
 }
 
+/// Four modifier keys exist (`AdModifier::{Cmd, Ctrl, Alt, Shift}`),
+/// so a combo can name at most four. Anything larger must be bogus
+/// input — bail out instead of trusting it into `from_raw_parts`.
+const MAX_MODIFIERS_PER_COMBO: u32 = 4;
+
 pub(crate) unsafe fn key_combo_from_c(k: &AdKeyCombo) -> Result<CoreKeyCombo, &'static str> {
     let key = c_to_string(k.key).ok_or("key is null or invalid UTF-8")?;
-    let mut modifiers = Vec::new();
-    if !k.modifiers.is_null() && k.modifier_count > 0 {
+
+    if k.modifier_count > MAX_MODIFIERS_PER_COMBO {
+        return Err("modifier_count exceeds MAX_MODIFIERS_PER_COMBO (4)");
+    }
+    if k.modifier_count > 0 && k.modifiers.is_null() {
+        return Err("modifier_count > 0 but modifiers pointer is null");
+    }
+
+    let mut modifiers = Vec::with_capacity(k.modifier_count as usize);
+    if k.modifier_count > 0 {
         let slice = std::slice::from_raw_parts(k.modifiers, k.modifier_count as usize);
         for raw_modifier in slice {
             let m = AdModifier::from_c(*raw_modifier).ok_or("invalid modifier discriminant")?;
@@ -175,5 +188,46 @@ mod tests {
         let result = unsafe { action_from_c(&action) };
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), Action::Scroll(Direction::Up, 5)));
+    }
+
+    #[test]
+    fn key_combo_rejects_modifier_count_exceeding_cap() {
+        let key = string_to_c("a");
+        let combo = AdKeyCombo {
+            key,
+            modifiers: ptr::null(),
+            modifier_count: 5,
+        };
+        let result = unsafe { key_combo_from_c(&combo) };
+        assert!(result.is_err());
+        unsafe { free_c_string(key as *mut _) };
+    }
+
+    #[test]
+    fn key_combo_rejects_positive_count_with_null_pointer() {
+        let key = string_to_c("a");
+        let combo = AdKeyCombo {
+            key,
+            modifiers: ptr::null(),
+            modifier_count: 2,
+        };
+        let result = unsafe { key_combo_from_c(&combo) };
+        assert!(result.is_err());
+        unsafe { free_c_string(key as *mut _) };
+    }
+
+    #[test]
+    fn key_combo_accepts_valid_modifier_slice() {
+        let key = string_to_c("s");
+        let mods: [i32; 2] = [AdModifier::Cmd as i32, AdModifier::Shift as i32];
+        let combo = AdKeyCombo {
+            key,
+            modifiers: mods.as_ptr(),
+            modifier_count: 2,
+        };
+        let result = unsafe { key_combo_from_c(&combo) }.unwrap();
+        assert_eq!(result.key, "s");
+        assert_eq!(result.modifiers.len(), 2);
+        unsafe { free_c_string(key as *mut _) };
     }
 }
