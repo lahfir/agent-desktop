@@ -17,12 +17,12 @@ pub unsafe extern "C" fn ad_get_clipboard(
     out: *mut *mut c_char,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        *out = std::ptr::null_mut();
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        *out = std::ptr::null_mut();
         let adapter = &*adapter;
         match adapter.inner.get_clipboard() {
             Ok(text) => {

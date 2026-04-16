@@ -176,6 +176,29 @@ fn null_adapter_rejected_without_ub() {
 }
 
 #[test]
+fn dirty_out_param_is_cleared_before_early_return_on_worker_thread() {
+    // Regression for todo 006: prior shape ran require_main_thread()
+    // *before* zeroing *out, so a worker-thread early-return left
+    // whatever the caller had in the struct. A follow-up free on that
+    // stale pointer would double-free. This test seeds the out slot
+    // with fake pointers that *must* be cleared before the fn returns.
+    with_adapter(|adapter| unsafe {
+        let fake_ptr = 0xDEAD_BEEF as *mut AdAppList;
+        let mut list: *mut AdAppList = fake_ptr;
+        let rc = ad_list_apps(adapter, &mut list);
+        // Either the main-thread guard (ErrInternal on worker) or a
+        // successful call zeroed the slot before anything else.
+        if rc != AdResult::Ok {
+            assert!(
+                list.is_null(),
+                "dirty out-param must be zeroed before early return, got {:?}",
+                list
+            );
+        }
+    });
+}
+
+#[test]
 fn null_out_param_rejected_before_write() {
     with_adapter(|adapter| unsafe {
         let rc = ad_list_apps(adapter, std::ptr::null_mut());

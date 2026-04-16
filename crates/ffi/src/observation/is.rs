@@ -37,14 +37,14 @@ pub unsafe extern "C" fn ad_is(
     out: *mut bool,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        *out = false;
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(win, c"win is null");
         crate::pointer_guard::guard_non_null!(query, c"query is null");
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        *out = false;
         let adapter = &*adapter;
         let core_win = match crate::windows::ad_window_to_core(&*win) {
             Ok(w) => w,

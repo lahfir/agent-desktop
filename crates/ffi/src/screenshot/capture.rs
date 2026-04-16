@@ -21,13 +21,13 @@ pub unsafe extern "C" fn ad_screenshot(
     out: *mut *mut AdImageBuffer,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        *out = ptr::null_mut();
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(target, c"target is null");
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        *out = ptr::null_mut();
         let adapter = &*adapter;
         let t = &*target;
         let kind = match AdScreenshotKind::from_c(t.kind) {

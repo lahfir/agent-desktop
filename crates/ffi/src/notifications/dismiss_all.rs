@@ -31,14 +31,14 @@ pub unsafe extern "C" fn ad_dismiss_all_notifications(
     failed_out: *mut *mut AdNotificationList,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(dismissed_out, c"dismissed_out is null");
         crate::pointer_guard::guard_non_null!(failed_out, c"failed_out is null");
         *dismissed_out = ptr::null_mut();
         *failed_out = ptr::null_mut();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = &*adapter;
         let filter = c_to_string(app_filter);
         let filter_ref = filter.as_deref();
