@@ -1,5 +1,5 @@
 use crate::convert::string::c_to_string;
-use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::AdAdapter;
 use std::os::raw::c_char;
@@ -26,10 +26,7 @@ pub unsafe extern "C" fn ad_close_app(
         };
 
         match adapter.inner.close_app(&id_str, force) {
-            Ok(()) => {
-                clear_last_error();
-                AdResult::Ok
-            }
+            Ok(()) => AdResult::Ok,
             Err(e) => {
                 set_last_error(&e);
                 crate::error::last_error_code()

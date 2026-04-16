@@ -1,5 +1,5 @@
 use crate::convert::app::{app_info_to_c, free_app_info_fields};
-use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_void};
 use crate::types::AdAppInfo;
 use crate::AdAdapter;
@@ -21,7 +21,6 @@ pub unsafe extern "C" fn ad_list_apps(
         let adapter = &*adapter;
         match adapter.inner.list_apps() {
             Ok(apps) => {
-                clear_last_error();
                 let c_apps: Vec<AdAppInfo> = apps.iter().map(app_info_to_c).collect();
                 let count = c_apps.len() as u32;
                 if c_apps.is_empty() {

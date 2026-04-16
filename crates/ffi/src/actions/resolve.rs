@@ -49,7 +49,6 @@ pub unsafe extern "C" fn ad_resolve_element(
         match adapter.inner.resolve_element(&core_entry) {
             Ok(handle) => {
                 (*out).ptr = handle.as_raw();
-                error::clear_last_error();
                 AdResult::Ok
             }
             Err(e) => {

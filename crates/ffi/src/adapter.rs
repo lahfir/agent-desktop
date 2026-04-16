@@ -58,10 +58,7 @@ pub unsafe extern "C" fn ad_check_permissions(adapter: *const AdAdapter) -> AdRe
     trap_panic(|| {
         let adapter = unsafe { &*adapter };
         match adapter.inner.check_permissions() {
-            agent_desktop_core::adapter::PermissionStatus::Granted => {
-                error::clear_last_error();
-                AdResult::Ok
-            }
+            agent_desktop_core::adapter::PermissionStatus::Granted => AdResult::Ok,
             agent_desktop_core::adapter::PermissionStatus::Denied { suggestion } => {
                 error::set_last_error(
                     &agent_desktop_core::error::AdapterError::new(

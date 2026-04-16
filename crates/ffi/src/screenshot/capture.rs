@@ -1,4 +1,4 @@
-use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdImageBuffer, AdImageFormat, AdScreenshotKind, AdScreenshotTarget};
 use crate::AdAdapter;
@@ -23,7 +23,6 @@ pub unsafe extern "C" fn ad_screenshot(
 
         match adapter.inner.screenshot(core_target) {
             Ok(img) => {
-                clear_last_error();
                 let data_len = img.data.len() as u64;
                 let mut boxed = img.data.into_boxed_slice();
                 let data_ptr = boxed.as_mut_ptr();

@@ -1,6 +1,6 @@
 use crate::convert::string::c_to_string;
 use crate::convert::window::{free_window_info_fields, window_info_to_c};
-use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_void};
 use crate::types::AdWindowInfo;
 use crate::AdAdapter;
@@ -27,7 +27,6 @@ pub unsafe extern "C" fn ad_list_windows(
         };
         match adapter.inner.list_windows(&filter) {
             Ok(windows) => {
-                clear_last_error();
                 let c_wins: Vec<AdWindowInfo> = windows.iter().map(window_info_to_c).collect();
                 let count = c_wins.len() as u32;
                 if c_wins.is_empty() {

@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 agent-desktop-core.workspace = true

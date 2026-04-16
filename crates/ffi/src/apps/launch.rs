@@ -1,6 +1,6 @@
 use crate::convert::string::c_to_string;
 use crate::convert::window::window_info_to_c;
-use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::AdWindowInfo;
 use crate::AdAdapter;
@@ -30,7 +30,6 @@ pub unsafe extern "C" fn ad_launch_app(
 
         match adapter.inner.launch_app(&id_str, timeout_ms) {
             Ok(win) => {
-                clear_last_error();
                 *out = window_info_to_c(&win);
                 AdResult::Ok
             }

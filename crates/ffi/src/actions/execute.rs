@@ -37,7 +37,6 @@ pub unsafe extern "C" fn ad_execute_action(
         match adapter.inner.execute_action(&native_handle, core_action) {
             Ok(result) => {
                 *out = action_result_to_c(&result);
-                error::clear_last_error();
                 AdResult::Ok
             }
             Err(e) => {

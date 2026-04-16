@@ -1,4 +1,4 @@
-use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::tree::flatten::flatten_tree;
 use crate::types::{AdNodeTree, AdTreeOptions, AdWindowInfo};
@@ -33,7 +33,6 @@ pub unsafe extern "C" fn ad_get_tree(
 
         match adapter.inner.get_tree(&core_win, &core_opts) {
             Ok(tree) => {
-                clear_last_error();
                 unsafe { *out = flatten_tree(&tree) };
                 AdResult::Ok
             }

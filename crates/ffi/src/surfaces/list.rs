@@ -1,5 +1,5 @@
 use crate::convert::surface::{free_surface_info_fields, surface_info_to_c};
-use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_void};
 use crate::types::AdSurfaceInfo;
 use crate::AdAdapter;
@@ -21,7 +21,6 @@ pub unsafe extern "C" fn ad_list_surfaces(
         let adapter = &*adapter;
         match adapter.inner.list_surfaces(pid) {
             Ok(surfaces) => {
-                clear_last_error();
                 let c_surfaces: Vec<AdSurfaceInfo> =
                     surfaces.iter().map(surface_info_to_c).collect();
                 let count = c_surfaces.len() as u32;

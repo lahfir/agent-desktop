@@ -19,7 +19,6 @@ pub unsafe extern "C" fn ad_get_clipboard(
         match adapter.inner.get_clipboard() {
             Ok(text) => {
                 *out = string_to_c(&text);
-                error::clear_last_error();
                 AdResult::Ok
             }
             Err(e) => {
@@ -52,10 +51,7 @@ pub unsafe extern "C" fn ad_set_clipboard(
             }
         };
         match adapter.inner.set_clipboard(&text) {
-            Ok(()) => {
-                error::clear_last_error();
-                AdResult::Ok
-            }
+            Ok(()) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
                 error::last_error_code()
@@ -72,10 +68,7 @@ pub unsafe extern "C" fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResu
     trap_panic(|| unsafe {
         let adapter = &*adapter;
         match adapter.inner.clear_clipboard() {
-            Ok(()) => {
-                error::clear_last_error();
-                AdResult::Ok
-            }
+            Ok(()) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
                 error::last_error_code()

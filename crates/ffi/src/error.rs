@@ -93,6 +93,7 @@ pub(crate) fn set_last_error(err: &AdapterError) {
     });
 }
 
+#[cfg(test)]
 pub(crate) fn clear_last_error() {
     LAST_ERROR.with(|cell| {
         *cell.borrow_mut() = None;
@@ -121,6 +122,21 @@ pub(crate) fn last_error_code() -> AdResult {
     })
 }
 
+/// Last-error lifetime — errno-style.
+///
+/// The pointer returned by `ad_last_error_message`,
+/// `ad_last_error_suggestion`, and `ad_last_error_platform_detail`
+/// remains valid across any number of subsequent **successful** FFI
+/// calls on the same thread. Only the next FFI call that itself **fails**
+/// (returns a non-`AD_RESULT_OK` code) invalidates the previous pointers.
+///
+/// Consumers can therefore read an error once, cache the pointer, and
+/// keep reading it back across follow-up work that clears or re-fetches
+/// state before handing control to the user.
+///
+/// This matches the POSIX `errno` / `strerror` contract and is scoped
+/// per-thread via thread-local storage — Thread A's last-error never
+/// leaks to Thread B.
 #[no_mangle]
 pub extern "C" fn ad_last_error_code() -> AdResult {
     crate::ffi_try::trap_panic(last_error_code)
