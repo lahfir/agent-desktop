@@ -22,7 +22,13 @@ pub unsafe extern "C" fn ad_get_tree(
 
         let adapter = unsafe { &*adapter };
         let opts_ref = unsafe { &*opts };
-        let core_win = crate::windows::ad_window_to_core(unsafe { &*win });
+        let core_win = match crate::windows::ad_window_to_core(unsafe { &*win }) {
+            Ok(w) => w,
+            Err(e) => {
+                set_last_error(&e);
+                return crate::error::last_error_code();
+            }
+        };
         let core_opts = agent_desktop_core::adapter::TreeOptions {
             max_depth: opts_ref.max_depth,
             include_bounds: opts_ref.include_bounds,

@@ -16,6 +16,7 @@ pub unsafe extern "C" fn ad_launch_app(
     out: *mut AdWindowInfo,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        *out = std::mem::zeroed();
         let adapter = &*adapter;
         let id_str = match c_to_string(id) {
             Some(s) => s,

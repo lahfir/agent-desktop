@@ -14,6 +14,7 @@ pub unsafe extern "C" fn ad_screenshot(
     out: *mut AdImageBuffer,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        *out = std::mem::zeroed();
         let adapter = &*adapter;
         let t = &*target;
         let kind = match AdScreenshotKind::from_c(enum_raw_i32(&t.kind)) {

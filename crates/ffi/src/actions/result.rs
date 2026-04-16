@@ -1,22 +1,22 @@
-use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c};
+use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
 use crate::types::{AdActionResult, AdElementState};
 use agent_desktop_core::action::ActionResult as CoreActionResult;
 use std::ptr;
 
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
-    let action = string_to_c(&r.action);
+    let action = string_to_c_lossy(&r.action);
     let ref_id = opt_string_to_c(r.ref_id.as_deref());
     let post_state = match &r.post_state {
         None => ptr::null_mut(),
         Some(state) => {
-            let role = string_to_c(&state.role);
+            let role = string_to_c_lossy(&state.role);
             let value = opt_string_to_c(state.value.as_deref());
             let state_count = state.states.len() as u32;
             let states = if state.states.is_empty() {
                 ptr::null_mut()
             } else {
                 let ptrs: Vec<*mut std::os::raw::c_char> =
-                    state.states.iter().map(|s| string_to_c(s)).collect();
+                    state.states.iter().map(|s| string_to_c_lossy(s)).collect();
                 let mut boxed = ptrs.into_boxed_slice();
                 let raw = boxed.as_mut_ptr();
                 std::mem::forget(boxed);

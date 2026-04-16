@@ -1,4 +1,4 @@
-use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c};
+use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
 use crate::types::AdSurfaceInfo;
 use agent_desktop_core::node::SurfaceInfo;
 use std::os::raw::c_char;
@@ -6,7 +6,7 @@ use std::ptr;
 
 pub(crate) fn surface_info_to_c(s: &SurfaceInfo) -> AdSurfaceInfo {
     AdSurfaceInfo {
-        kind: string_to_c(&s.kind),
+        kind: string_to_c_lossy(&s.kind),
         title: opt_string_to_c(s.title.as_deref()),
         item_count: s.item_count.map(|c| c as i64).unwrap_or(-1),
     }

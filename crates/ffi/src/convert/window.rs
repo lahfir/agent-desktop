@@ -1,5 +1,5 @@
 use crate::convert::rect::rect_to_c;
-use crate::convert::string::{free_c_string, string_to_c};
+use crate::convert::string::{free_c_string, string_to_c_lossy};
 use crate::types::{AdRect, AdWindowInfo};
 use agent_desktop_core::node::WindowInfo;
 use std::os::raw::c_char;
@@ -19,9 +19,9 @@ pub(crate) fn window_info_to_c(w: &WindowInfo) -> AdWindowInfo {
         ),
     };
     AdWindowInfo {
-        id: string_to_c(&w.id),
-        title: string_to_c(&w.title),
-        app_name: string_to_c(&w.app),
+        id: string_to_c_lossy(&w.id),
+        title: string_to_c_lossy(&w.title),
+        app_name: string_to_c_lossy(&w.app),
         pid: w.pid,
         bounds,
         has_bounds,

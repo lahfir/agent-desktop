@@ -1,4 +1,4 @@
-use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c};
+use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
 use crate::types::AdAppInfo;
 use agent_desktop_core::node::AppInfo;
 use std::os::raw::c_char;
@@ -6,7 +6,7 @@ use std::ptr;
 
 pub(crate) fn app_info_to_c(a: &AppInfo) -> AdAppInfo {
     AdAppInfo {
-        name: string_to_c(&a.name),
+        name: string_to_c_lossy(&a.name),
         pid: a.pid,
         bundle_id: opt_string_to_c(a.bundle_id.as_deref()),
     }

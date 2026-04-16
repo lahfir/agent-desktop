@@ -17,6 +17,7 @@ pub unsafe extern "C" fn ad_resolve_element(
     out: *mut AdNativeHandle,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        (*out).ptr = std::ptr::null();
         let adapter = &*adapter;
         let entry = &*entry;
         let role = match c_to_string(entry.role) {

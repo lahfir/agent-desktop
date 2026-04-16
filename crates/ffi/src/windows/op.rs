@@ -16,7 +16,13 @@ pub unsafe extern "C" fn ad_window_op(
 ) -> AdResult {
     trap_panic(|| unsafe {
         let adapter = &*adapter;
-        let core_win = ad_window_to_core(&*win);
+        let core_win = match ad_window_to_core(&*win) {
+            Ok(w) => w,
+            Err(e) => {
+                set_last_error(&e);
+                return crate::error::last_error_code();
+            }
+        };
         let kind = match AdWindowOpKind::from_c(enum_raw_i32(&op.kind)) {
             Some(k) => k,
             None => {

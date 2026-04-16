@@ -13,7 +13,13 @@ pub unsafe extern "C" fn ad_focus_window(
 ) -> AdResult {
     trap_panic(|| unsafe {
         let adapter = &*adapter;
-        let core_win = ad_window_to_core(&*win);
+        let core_win = match ad_window_to_core(&*win) {
+            Ok(w) => w,
+            Err(e) => {
+                set_last_error(&e);
+                return crate::error::last_error_code();
+            }
+        };
         match adapter.inner.focus_window(&core_win) {
             Ok(()) => AdResult::Ok,
             Err(e) => {

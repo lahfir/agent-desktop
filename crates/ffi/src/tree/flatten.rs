@@ -1,4 +1,4 @@
-use crate::convert::string::{opt_string_to_c, string_to_c};
+use crate::convert::string::{opt_string_to_c, string_to_c_lossy};
 use crate::types::{AdNode, AdNodeTree, AdRect};
 use agent_desktop_core::node::AccessibilityNode;
 use std::collections::VecDeque;
@@ -84,7 +84,7 @@ fn to_ad_node(node: &AccessibilityNode, parent_index: i32) -> AdNode {
     };
     AdNode {
         ref_id: opt_string_to_c(node.ref_id.as_deref()),
-        role: string_to_c(&node.role),
+        role: string_to_c_lossy(&node.role),
         name: opt_string_to_c(node.name.as_deref()),
         value: opt_string_to_c(node.value.as_deref()),
         description: opt_string_to_c(node.description.as_deref()),
@@ -103,7 +103,7 @@ fn strings_to_c_array(strings: &[String]) -> (*mut *mut c_char, u32) {
     if strings.is_empty() {
         return (ptr::null_mut(), 0);
     }
-    let ptrs: Vec<*mut c_char> = strings.iter().map(|s| string_to_c(s)).collect();
+    let ptrs: Vec<*mut c_char> = strings.iter().map(|s| string_to_c_lossy(s)).collect();
     let count = ptrs.len() as u32;
     let mut boxed = ptrs.into_boxed_slice();
     let ptr = boxed.as_mut_ptr();

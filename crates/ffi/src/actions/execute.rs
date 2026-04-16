@@ -20,6 +20,7 @@ pub unsafe extern "C" fn ad_execute_action(
     out: *mut AdActionResult,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        *out = std::mem::zeroed();
         let adapter = &*adapter;
         let handle_ref = &*handle;
         let action_ref = &*action;
