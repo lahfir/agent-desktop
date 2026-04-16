@@ -2,6 +2,63 @@ use agent_desktop_core::error::{AdapterError, ErrorCode};
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
+const fn error_code_variant_count() -> usize {
+    let mut count = 0;
+    let variants = [
+        ErrorCode::PermDenied,
+        ErrorCode::ElementNotFound,
+        ErrorCode::AppNotFound,
+        ErrorCode::ActionFailed,
+        ErrorCode::ActionNotSupported,
+        ErrorCode::StaleRef,
+        ErrorCode::WindowNotFound,
+        ErrorCode::PlatformNotSupported,
+        ErrorCode::Timeout,
+        ErrorCode::InvalidArgs,
+        ErrorCode::NotificationNotFound,
+        ErrorCode::Internal,
+    ];
+    let mut i = 0;
+    while i < variants.len() {
+        count += 1;
+        i += 1;
+    }
+    count
+}
+
+const fn ad_result_error_variant_count() -> usize {
+    // count of AdResult variants below minus the Ok variant
+    let variants = [
+        AdResult::ErrPermDenied,
+        AdResult::ErrElementNotFound,
+        AdResult::ErrAppNotFound,
+        AdResult::ErrActionFailed,
+        AdResult::ErrActionNotSupported,
+        AdResult::ErrStaleRef,
+        AdResult::ErrWindowNotFound,
+        AdResult::ErrPlatformNotSupported,
+        AdResult::ErrTimeout,
+        AdResult::ErrInvalidArgs,
+        AdResult::ErrNotificationNotFound,
+        AdResult::ErrInternal,
+    ];
+    let mut count = 0;
+    let mut i = 0;
+    while i < variants.len() {
+        count += 1;
+        i += 1;
+    }
+    count
+}
+
+// Enforced at compile time. If core adds or removes an ErrorCode variant,
+// the array in error_code_variant_count() must be updated and the parity
+// check here fails the build.
+const _: () = assert!(
+    error_code_variant_count() == ad_result_error_variant_count(),
+    "ErrorCode variants must match AdResult error-code variants one-to-one"
+);
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdResult {

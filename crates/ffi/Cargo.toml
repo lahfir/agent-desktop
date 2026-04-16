@@ -22,4 +22,4 @@ agent-desktop-windows = { path = "../windows" }
 agent-desktop-linux = { path = "../linux" }
 
 [build-dependencies]
-cbindgen = "0.27"
+cbindgen = "= 0.27.0"

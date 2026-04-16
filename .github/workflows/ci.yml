@@ -68,6 +68,18 @@ jobs:
           fi
           echo "OK: binary within 15MB limit"
 
+      - name: FFI cdylib build (release-ffi profile)
+        run: cargo build --profile release-ffi -p agent-desktop-ffi
+
+      - name: FFI header drift check
+        run: |
+          if ! git diff --exit-code crates/ffi/include/agent_desktop.h; then
+            echo "FAIL: crates/ffi/include/agent_desktop.h is out of date"
+            echo "Run 'cargo build -p agent-desktop-ffi' locally and commit the regenerated header."
+            exit 1
+          fi
+          echo "OK: FFI header is in sync with source"
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
