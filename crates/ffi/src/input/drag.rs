@@ -4,8 +4,11 @@ use crate::types::AdDragParams;
 use crate::AdAdapter;
 use agent_desktop_core::action::{DragParams as CoreDragParams, Point as CorePoint};
 
-/// # Safety
+/// Synthesizes a mouse drag from `params.from` to `params.to`. When
+/// `params.duration_ms` is zero the drag is instantaneous; a non-zero
+/// value asks the platform adapter to interpolate.
 ///
+/// # Safety
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
 /// `params` must be a non-null pointer to a valid `AdDragParams`.
 #[no_mangle]

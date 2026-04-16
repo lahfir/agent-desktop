@@ -188,8 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fuzz_no_panic() {
-        // Any raw i32, even crafted bit patterns, must never panic.
+    fn fuzz_arbitrary_bit_patterns_never_panic_across_all_enums() {
         for raw in [-1_000_000_i32, -1, 0, 1, 20, 21, 999, i32::MAX, i32::MIN] {
             let _ = AdActionKind::from_c(raw);
             let _ = AdDirection::from_c(raw);

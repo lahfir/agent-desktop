@@ -26,6 +26,13 @@ fn build_adapter() -> Box<dyn PlatformAdapter> {
     compile_error!("Unsupported platform")
 }
 
+/// Builds a platform adapter for the current OS and returns an opaque
+/// handle. Returns null on allocation failure or if a Rust panic is
+/// caught at the FFI boundary (inspect `ad_last_error_*` for details).
+///
+/// The returned pointer is owned by the caller and must be released with
+/// `ad_adapter_destroy`. Creating and destroying adapters is cheap; the
+/// common pattern is one adapter per process lifetime.
 #[no_mangle]
 pub extern "C" fn ad_adapter_create() -> *mut AdAdapter {
     trap_panic_ptr(|| {

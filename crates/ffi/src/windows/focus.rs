@@ -4,8 +4,14 @@ use crate::types::AdWindowInfo;
 use crate::windows::to_core::ad_window_to_core;
 use crate::AdAdapter;
 
+/// Brings `win` to the foreground on the current space. Returns
+/// `AD_RESULT_ERR_WINDOW_NOT_FOUND` when the referenced window no longer
+/// exists (the caller should re-list and retry).
+///
 /// # Safety
-/// `adapter` and `win` must be valid pointers.
+/// `adapter` must be a non-null pointer from `ad_adapter_create`. `win`
+/// must be a non-null pointer to an `AdWindowInfo` whose `id` and
+/// `title` fields are non-null, valid UTF-8 C strings.
 #[no_mangle]
 pub unsafe extern "C" fn ad_focus_window(
     adapter: *const AdAdapter,

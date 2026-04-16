@@ -4,11 +4,13 @@ use crate::ffi_try::{trap_panic, trap_panic_void};
 use crate::AdAdapter;
 use std::os::raw::c_char;
 
-/// # Safety
+/// Reads the current clipboard text and writes an owned C string into
+/// `*out`. The caller must free the returned pointer with
+/// `ad_free_string`. On error `*out` is left null.
 ///
+/// # Safety
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
-/// `out` must be a non-null pointer to a `*mut c_char` to receive the allocated string.
-/// Free the result with `ad_free_string`.
+/// `out` must be a non-null writable `*mut *mut c_char`.
 #[no_mangle]
 pub unsafe extern "C" fn ad_get_clipboard(
     adapter: *const AdAdapter,
@@ -30,10 +32,12 @@ pub unsafe extern "C" fn ad_get_clipboard(
     })
 }
 
-/// # Safety
+/// Writes UTF-8 `text` to the clipboard. Null or non-UTF-8 input returns
+/// `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error.
 ///
+/// # Safety
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
-/// `text` must be a non-null, valid UTF-8 C string.
+/// `text` must be a non-null, NUL-terminated UTF-8 C string.
 #[no_mangle]
 pub unsafe extern "C" fn ad_set_clipboard(
     adapter: *const AdAdapter,
@@ -61,8 +65,9 @@ pub unsafe extern "C" fn ad_set_clipboard(
     })
 }
 
-/// # Safety
+/// Clears the clipboard.
 ///
+/// # Safety
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
 #[no_mangle]
 pub unsafe extern "C" fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResult {
@@ -78,9 +83,12 @@ pub unsafe extern "C" fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResu
     })
 }
 
-/// # Safety
+/// Frees a C string previously returned by `ad_get_clipboard` or any
+/// other FFI call documented as allocating a C string for the caller.
+/// Null-tolerant — safe to call on `NULL`. Double-free is undefined.
 ///
-/// `s` must be a pointer previously returned by `ad_get_clipboard`, or null.
+/// # Safety
+/// `s` must be null or a pointer previously handed out by this crate.
 /// After this call the pointer is invalid and must not be used.
 #[no_mangle]
 pub unsafe extern "C" fn ad_free_string(s: *mut c_char) {

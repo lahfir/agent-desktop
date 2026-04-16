@@ -354,6 +354,15 @@ AdResult ad_resolve_element(const struct AdAdapter *adapter,
  */
 void ad_free_action_result(struct AdActionResult *result);
 
+/**
+ * Builds a platform adapter for the current OS and returns an opaque
+ * handle. Returns null on allocation failure or if a Rust panic is
+ * caught at the FFI boundary (inspect `ad_last_error_*` for details).
+ *
+ * The returned pointer is owned by the caller and must be released with
+ * `ad_adapter_destroy`. Creating and destroying adapters is cheap; the
+ * common pattern is one adapter per process lifetime.
+ */
 struct AdAdapter *ad_adapter_create(void);
 
 /**
@@ -373,14 +382,29 @@ void ad_adapter_destroy(struct AdAdapter *adapter);
 AdResult ad_check_permissions(const struct AdAdapter *adapter);
 
 /**
+ * Closes the application identified by `id` (bundle id on macOS,
+ * executable path on other platforms). `force = true` skips the
+ * graceful-shutdown path (equivalent to `kill -9`).
+ *
  * # Safety
- * `adapter` must be valid. `id` must be a valid C string.
+ * `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
  */
 AdResult ad_close_app(const struct AdAdapter *adapter, const char *id, bool force);
 
 /**
+ * Launches the application identified by `id` (bundle id on macOS,
+ * executable path on other platforms) and, on success, writes the
+ * first window that becomes available into `*out`. Waits up to
+ * `timeout_ms` for the window to appear; zero means "no wait".
+ *
+ * The returned `AdWindowInfo` owns heap-allocated interior strings that
+ * must be released with `ad_release_window_fields` once done. On error
+ * the out-param is zero-initialized, so calling the release fn on it
+ * is a safe no-op.
+ *
  * # Safety
- * `adapter` must be valid. `id` must be a valid C string. `out` must be writable.
+ * `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
+ * `out` must be a non-null writable `*mut AdWindowInfo`.
  */
 AdResult ad_launch_app(const struct AdAdapter *adapter,
                        const char *id,
@@ -436,58 +460,91 @@ void ad_app_list_free(struct AdAppList *list);
  * This matches the POSIX `errno` / `strerror` contract and is scoped
  * per-thread via thread-local storage — Thread A's last-error never
  * leaks to Thread B.
+ * Returns the `AdResult` code of the last error on the calling thread,
+ * or `AD_RESULT_OK` if no error has been recorded.
  */
 AdResult ad_last_error_code(void);
 
+/**
+ * Returns a borrowed C string describing the last error, or null if no
+ * error has been recorded on the calling thread. The pointer remains
+ * valid across any number of subsequent *successful* FFI calls; only
+ * the next failing call overwrites it.
+ */
 const char *ad_last_error_message(void);
 
+/**
+ * Returns a borrowed C string with a human-readable suggestion for how
+ * to recover from the last error, or null if the adapter didn't emit
+ * one. Same lifetime rules as `ad_last_error_message`.
+ */
 const char *ad_last_error_suggestion(void);
 
+/**
+ * Returns a borrowed C string carrying a platform-specific diagnostic
+ * for the last error (AX error codes, COM HRESULTs, AT-SPI messages,
+ * etc.), or null if the adapter didn't supply one. Same lifetime rules
+ * as `ad_last_error_message`.
+ */
 const char *ad_last_error_platform_detail(void);
 
 /**
- * # Safety
+ * Reads the current clipboard text and writes an owned C string into
+ * `*out`. The caller must free the returned pointer with
+ * `ad_free_string`. On error `*out` is left null.
  *
+ * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `out` must be a non-null pointer to a `*mut c_char` to receive the allocated string.
- * Free the result with `ad_free_string`.
+ * `out` must be a non-null writable `*mut *mut c_char`.
  */
 AdResult ad_get_clipboard(const struct AdAdapter *adapter, char **out);
 
 /**
- * # Safety
+ * Writes UTF-8 `text` to the clipboard. Null or non-UTF-8 input returns
+ * `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error.
  *
+ * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `text` must be a non-null, valid UTF-8 C string.
+ * `text` must be a non-null, NUL-terminated UTF-8 C string.
  */
 AdResult ad_set_clipboard(const struct AdAdapter *adapter, const char *text);
 
 /**
- * # Safety
+ * Clears the clipboard.
  *
+ * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
  */
 AdResult ad_clear_clipboard(const struct AdAdapter *adapter);
 
 /**
- * # Safety
+ * Frees a C string previously returned by `ad_get_clipboard` or any
+ * other FFI call documented as allocating a C string for the caller.
+ * Null-tolerant — safe to call on `NULL`. Double-free is undefined.
  *
- * `s` must be a pointer previously returned by `ad_get_clipboard`, or null.
+ * # Safety
+ * `s` must be null or a pointer previously handed out by this crate.
  * After this call the pointer is invalid and must not be used.
  */
 void ad_free_string(char *s);
 
 /**
- * # Safety
+ * Synthesizes a mouse drag from `params.from` to `params.to`. When
+ * `params.duration_ms` is zero the drag is instantaneous; a non-zero
+ * value asks the platform adapter to interpolate.
  *
+ * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
  * `params` must be a non-null pointer to a valid `AdDragParams`.
  */
 AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *params);
 
 /**
- * # Safety
+ * Dispatches a mouse event (move / down / up / click) at the given
+ * screen point. Click count is only consulted when `event.kind` is
+ * `CLICK` (e.g., `click_count == 2` for a double-click).
  *
+ * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
  * `event` must be a non-null pointer to a valid `AdMouseEvent`.
  */
@@ -772,8 +829,22 @@ void ad_surface_list_free(struct AdSurfaceList *list);
 void ad_free_tree(struct AdNodeTree *tree);
 
 /**
+ * Snapshots `win`'s accessibility tree into the flat BFS layout shape
+ * described in the types module. The result is written into `*out` and
+ * must be freed with `ad_free_tree`. Direct children of any node live
+ * contiguously at `nodes[child_start..child_start + child_count]`.
+ *
+ * `opts.max_depth` caps tree depth. `opts.surface` selects which
+ * surface to snapshot (window body, menu, menubar, sheet, popover,
+ * alert, or focused subtree); see `AdSnapshotSurface`.
+ * `opts.interactive_only` prunes non-interactive nodes; `opts.compact`
+ * collapses containers with no semantic payload.
+ *
+ * On error `*out` is zeroed so `ad_free_tree` on it is a safe no-op.
+ *
  * # Safety
- * All pointers must be valid. `out` must be writable.
+ * All pointers must be non-null. `win.id` and `win.title` must be
+ * valid UTF-8 C strings. `out` must be writable.
  */
 AdResult ad_get_tree(const struct AdAdapter *adapter,
                      const struct AdWindowInfo *win,
@@ -781,8 +852,14 @@ AdResult ad_get_tree(const struct AdAdapter *adapter,
                      struct AdNodeTree *out);
 
 /**
+ * Brings `win` to the foreground on the current space. Returns
+ * `AD_RESULT_ERR_WINDOW_NOT_FOUND` when the referenced window no longer
+ * exists (the caller should re-list and retry).
+ *
  * # Safety
- * `adapter` and `win` must be valid pointers.
+ * `adapter` must be a non-null pointer from `ad_adapter_create`. `win`
+ * must be a non-null pointer to an `AdWindowInfo` whose `id` and
+ * `title` fields are non-null, valid UTF-8 C strings.
  */
 AdResult ad_focus_window(const struct AdAdapter *adapter, const struct AdWindowInfo *win);
 
@@ -838,8 +915,16 @@ const struct AdWindowInfo *ad_window_list_get(const struct AdWindowList *list, u
 void ad_window_list_free(struct AdWindowList *list);
 
 /**
+ * Performs a window-manager operation (`Resize`, `Move`, `Minimize`,
+ * `Maximize`, `Restore`) on `win`. Width / height / x / y are consulted
+ * only for the variants that use them; other kinds ignore them.
+ *
+ * An invalid `op.kind` discriminant is rejected with
+ * `AD_RESULT_ERR_INVALID_ARGS` before any adapter call.
+ *
  * # Safety
- * `adapter` and `win` must be valid pointers.
+ * `adapter` and `win` must be non-null pointers. `win.id` and
+ * `win.title` must be non-null valid UTF-8 C strings.
  */
 AdResult ad_window_op(const struct AdAdapter *adapter,
                       const struct AdWindowInfo *win,

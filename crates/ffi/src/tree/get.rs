@@ -19,8 +19,22 @@ fn core_surface(s: AdSnapshotSurface) -> SnapshotSurface {
     }
 }
 
+/// Snapshots `win`'s accessibility tree into the flat BFS layout shape
+/// described in the types module. The result is written into `*out` and
+/// must be freed with `ad_free_tree`. Direct children of any node live
+/// contiguously at `nodes[child_start..child_start + child_count]`.
+///
+/// `opts.max_depth` caps tree depth. `opts.surface` selects which
+/// surface to snapshot (window body, menu, menubar, sheet, popover,
+/// alert, or focused subtree); see `AdSnapshotSurface`.
+/// `opts.interactive_only` prunes non-interactive nodes; `opts.compact`
+/// collapses containers with no semantic payload.
+///
+/// On error `*out` is zeroed so `ad_free_tree` on it is a safe no-op.
+///
 /// # Safety
-/// All pointers must be valid. `out` must be writable.
+/// All pointers must be non-null. `win.id` and `win.title` must be
+/// valid UTF-8 C strings. `out` must be writable.
 #[no_mangle]
 pub unsafe extern "C" fn ad_get_tree(
     adapter: *const AdAdapter,

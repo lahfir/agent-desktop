@@ -40,17 +40,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_main_thread_returns_bool() {
-        // Cargo test runs each test on a worker thread, so the result may be
-        // false on macOS. We just want to confirm the call itself is safe.
+    fn is_main_thread_call_is_always_safe_even_on_workers() {
         let _ = is_main_thread();
     }
 
     #[test]
-    fn test_off_main_panic_is_caught_by_trap() {
-        // Simulate the production path: debug_assert_main_thread inside a
-        // trap_panic body must convert the debug-mode panic into a clean
-        // error code rather than unwinding out of the FFI boundary.
+    fn debug_assert_panic_on_worker_thread_does_not_escape_catch_unwind() {
         let result = std::panic::catch_unwind(|| {
             let _ = std::thread::spawn(|| {
                 debug_assert_main_thread();
