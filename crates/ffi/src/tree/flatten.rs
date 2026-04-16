@@ -1,7 +1,5 @@
-use crate::convert::{free_c_string, opt_string_to_c, string_to_c};
-use crate::error::{clear_last_error, set_last_error, AdResult};
-use crate::types::{AdNode, AdNodeTree, AdRect, AdTreeOptions};
-use crate::AdAdapter;
+use crate::convert::string::{opt_string_to_c, string_to_c};
+use crate::types::{AdNode, AdNodeTree, AdRect};
 use agent_desktop_core::node::AccessibilityNode;
 use std::os::raw::c_char;
 use std::ptr;
@@ -40,7 +38,6 @@ fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec
         ),
     };
 
-    // Push with placeholder child_start — filled in after we know where children go
     flat.push(AdNode {
         ref_id: opt_string_to_c(node.ref_id.as_deref()),
         role: string_to_c(&node.role),
@@ -57,7 +54,6 @@ fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec
         child_count: node.children.len() as u32,
     });
 
-    // Children start right after this node's descendants are placed
     let child_start = flat.len() as u32;
     flat[my_index as usize].child_start = child_start;
 
@@ -79,101 +75,11 @@ fn strings_to_c_array(strings: &[String]) -> (*mut *mut c_char, u32) {
     (ptr, count)
 }
 
-unsafe fn free_c_string_array(arr: *mut *mut c_char, count: u32) {
-    if arr.is_null() {
-        return;
-    }
-    let slice = std::slice::from_raw_parts_mut(arr, count as usize);
-    for p in slice.iter_mut() {
-        free_c_string(*p);
-    }
-    drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-        arr,
-        count as usize,
-    )));
-}
-
-unsafe fn free_node_fields(node: &mut AdNode) {
-    free_c_string(node.ref_id as *mut c_char);
-    free_c_string(node.role as *mut c_char);
-    free_c_string(node.name as *mut c_char);
-    free_c_string(node.value as *mut c_char);
-    free_c_string(node.description as *mut c_char);
-    free_c_string(node.hint as *mut c_char);
-    free_c_string_array(node.states, node.state_count);
-    node.ref_id = ptr::null();
-    node.role = ptr::null();
-    node.name = ptr::null();
-    node.value = ptr::null();
-    node.description = ptr::null();
-    node.hint = ptr::null();
-    node.states = ptr::null_mut();
-    node.state_count = 0;
-}
-
-/// # Safety
-/// `tree` must be null or point to a valid `AdNodeTree` previously returned
-/// by `flatten_tree` or `ad_get_tree`. After this call the tree is zeroed.
-#[no_mangle]
-pub unsafe extern "C" fn ad_free_tree(tree: *mut AdNodeTree) {
-    if tree.is_null() {
-        return;
-    }
-    let tree = &mut *tree;
-    if tree.nodes.is_null() {
-        return;
-    }
-    let nodes = std::slice::from_raw_parts_mut(tree.nodes, tree.count as usize);
-    for node in nodes.iter_mut() {
-        free_node_fields(node);
-    }
-    drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-        tree.nodes,
-        tree.count as usize,
-    )));
-    tree.nodes = ptr::null_mut();
-    tree.count = 0;
-}
-
-/// # Safety
-/// All pointers must be valid. `out` must be writable.
-#[no_mangle]
-pub unsafe extern "C" fn ad_get_tree(
-    adapter: *const AdAdapter,
-    win: *const crate::types::AdWindowInfo,
-    opts: *const AdTreeOptions,
-    out: *mut AdNodeTree,
-) -> AdResult {
-    (*out).nodes = ptr::null_mut();
-    (*out).count = 0;
-
-    let adapter = &*adapter;
-    let opts_ref = &*opts;
-    let core_win = crate::windows::ad_window_to_core(&*win);
-    let core_opts = agent_desktop_core::adapter::TreeOptions {
-        max_depth: opts_ref.max_depth,
-        include_bounds: opts_ref.include_bounds,
-        interactive_only: opts_ref.interactive_only,
-        compact: opts_ref.compact,
-        surface: agent_desktop_core::adapter::SnapshotSurface::Window,
-    };
-
-    match adapter.inner.get_tree(&core_win, &core_opts) {
-        Ok(tree) => {
-            clear_last_error();
-            *out = flatten_tree(&tree);
-            AdResult::Ok
-        }
-        Err(e) => {
-            set_last_error(&e);
-            crate::error::last_error_code()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::convert::string::c_to_str;
+    use crate::tree::free::ad_free_tree;
 
     fn node(role: &str) -> AccessibilityNode {
         AccessibilityNode {
@@ -197,7 +103,7 @@ mod tests {
         let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 1) };
         assert_eq!(nodes[0].parent_index, -1);
         assert_eq!(nodes[0].child_count, 0);
-        let role = unsafe { crate::convert::c_to_str(nodes[0].role) };
+        let role = unsafe { c_to_str(nodes[0].role) };
         assert_eq!(role, Some("window"));
         unsafe { ad_free_tree(&tree as *const _ as *mut _) };
     }
@@ -212,15 +118,13 @@ mod tests {
         assert_eq!(tree.count, 2);
         let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 2) };
 
-        // root
         assert_eq!(nodes[0].parent_index, -1);
         assert_eq!(nodes[0].child_start, 1);
         assert_eq!(nodes[0].child_count, 1);
 
-        // button
         assert_eq!(nodes[1].parent_index, 0);
         assert_eq!(nodes[1].child_count, 0);
-        let role = unsafe { crate::convert::c_to_str(nodes[1].role) };
+        let role = unsafe { c_to_str(nodes[1].role) };
         assert_eq!(role, Some("button"));
 
         unsafe { ad_free_tree(&tree as *const _ as *mut _) };
@@ -228,7 +132,6 @@ mod tests {
 
     #[test]
     fn test_flatten_depth_first_order() {
-        // root -> [a -> [a1, a2], b]
         let a1 = node("a1");
         let a2 = node("a2");
         let mut a = node("a");
@@ -241,23 +144,19 @@ mod tests {
         assert_eq!(tree.count, 5);
         let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 5) };
 
-        // Depth-first: root(0), a(1), a1(2), a2(3), b(4)
         let roles: Vec<_> = nodes
             .iter()
-            .map(|n| unsafe { crate::convert::c_to_str(n.role).unwrap() })
+            .map(|n| unsafe { c_to_str(n.role).unwrap() })
             .collect();
         assert_eq!(roles, vec!["root", "a", "a1", "a2", "b"]);
 
-        // root's children start at 1 (a and b)
         assert_eq!(nodes[0].child_start, 1);
         assert_eq!(nodes[0].child_count, 2);
 
-        // a's children start at 2 (a1 and a2)
         assert_eq!(nodes[1].child_start, 2);
         assert_eq!(nodes[1].child_count, 2);
         assert_eq!(nodes[1].parent_index, 0);
 
-        // b's parent is root (0), no children
         assert_eq!(nodes[4].parent_index, 0);
         assert_eq!(nodes[4].child_count, 0);
 
@@ -272,15 +171,10 @@ mod tests {
         let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 1) };
         assert_eq!(nodes[0].state_count, 2);
         let states = unsafe { std::slice::from_raw_parts(nodes[0].states, 2) };
-        let s0 = unsafe { crate::convert::c_to_str(states[0]) };
-        let s1 = unsafe { crate::convert::c_to_str(states[1]) };
+        let s0 = unsafe { c_to_str(states[0]) };
+        let s1 = unsafe { c_to_str(states[1]) };
         assert_eq!(s0, Some("focused"));
         assert_eq!(s1, Some("enabled"));
         unsafe { ad_free_tree(&tree as *const _ as *mut _) };
-    }
-
-    #[test]
-    fn test_free_null_tree_is_noop() {
-        unsafe { ad_free_tree(std::ptr::null_mut()) };
     }
 }
