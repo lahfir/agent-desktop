@@ -21,6 +21,8 @@ pub unsafe extern "C" fn ad_focus_window(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(win, c"win is null");
         let adapter = &*adapter;
         let core_win = match ad_window_to_core(&*win) {
             Ok(w) => w,

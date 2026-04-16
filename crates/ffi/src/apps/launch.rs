@@ -30,8 +30,9 @@ pub unsafe extern "C" fn ad_launch_app(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
         *out = std::mem::zeroed();
-        let adapter = &*adapter;
         let id_str = match c_to_string(id) {
             Some(s) => s,
             None => {
@@ -43,6 +44,7 @@ pub unsafe extern "C" fn ad_launch_app(
             }
         };
 
+        let adapter = &*adapter;
         match adapter.inner.launch_app(&id_str, timeout_ms) {
             Ok(win) => {
                 *out = window_info_to_c(&win);

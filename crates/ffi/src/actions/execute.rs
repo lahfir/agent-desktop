@@ -23,6 +23,10 @@ pub unsafe extern "C" fn ad_execute_action(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(handle, c"handle is null");
+        crate::pointer_guard::guard_non_null!(action, c"action is null");
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
         *out = std::mem::zeroed();
         let adapter = &*adapter;
         let handle_ref = &*handle;

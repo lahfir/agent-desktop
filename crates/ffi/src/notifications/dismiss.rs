@@ -21,6 +21,7 @@ pub unsafe extern "C" fn ad_dismiss_notification(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = &*adapter;
         let filter = c_to_string(app_filter);
         let filter_ref = filter.as_deref();

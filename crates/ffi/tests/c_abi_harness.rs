@@ -155,6 +155,38 @@ fn enum_fuzz_invalid_discriminant_rejected() {
 }
 
 #[test]
+fn null_adapter_rejected_without_ub() {
+    unsafe {
+        let mut list: *mut AdAppList = std::ptr::null_mut();
+        let rc = ad_list_apps(std::ptr::null(), &mut list);
+        // On cargo-test worker threads the macOS main-thread guard
+        // fires first (ErrInternal); on the main thread the null-adapter
+        // guard wins (ErrInvalidArgs). Either way: no dereference, no UB.
+        assert!(matches!(
+            rc,
+            AdResult::ErrInvalidArgs | AdResult::ErrInternal
+        ));
+        assert!(list.is_null(), "out-param must stay null on failure");
+
+        let rc2 = ad_check_permissions(std::ptr::null());
+        // ad_check_permissions has no main-thread guard — null adapter
+        // must hit the null-check and return InvalidArgs deterministically.
+        assert_eq!(rc2, AdResult::ErrInvalidArgs);
+    }
+}
+
+#[test]
+fn null_out_param_rejected_before_write() {
+    with_adapter(|adapter| unsafe {
+        let rc = ad_list_apps(adapter, std::ptr::null_mut());
+        assert!(matches!(
+            rc,
+            AdResult::ErrInvalidArgs | AdResult::ErrInternal
+        ));
+    });
+}
+
+#[test]
 fn null_tolerance_on_list_accessors_and_free() {
     unsafe {
         assert_eq!(ad_app_list_count(std::ptr::null()), 0);

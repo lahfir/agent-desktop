@@ -63,6 +63,7 @@ pub unsafe extern "C" fn ad_adapter_destroy(adapter: *mut AdAdapter) {
 #[no_mangle]
 pub unsafe extern "C" fn ad_check_permissions(adapter: *const AdAdapter) -> AdResult {
     trap_panic(|| {
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = unsafe { &*adapter };
         match adapter.inner.check_permissions() {
             agent_desktop_core::adapter::PermissionStatus::Granted => AdResult::Ok,

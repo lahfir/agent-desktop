@@ -20,6 +20,9 @@ pub unsafe extern "C" fn ad_get_clipboard(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        *out = std::ptr::null_mut();
         let adapter = &*adapter;
         match adapter.inner.get_clipboard() {
             Ok(text) => {
@@ -49,6 +52,7 @@ pub unsafe extern "C" fn ad_set_clipboard(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = &*adapter;
         let text = match c_to_string(text) {
             Some(s) => s,
@@ -80,6 +84,7 @@ pub unsafe extern "C" fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResu
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = &*adapter;
         match adapter.inner.clear_clipboard() {
             Ok(()) => AdResult::Ok,

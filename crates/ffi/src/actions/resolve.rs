@@ -20,6 +20,9 @@ pub unsafe extern "C" fn ad_resolve_element(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(entry, c"entry is null");
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
         (*out).ptr = std::ptr::null();
         let adapter = &*adapter;
         let entry = &*entry;

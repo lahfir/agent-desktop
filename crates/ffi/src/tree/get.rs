@@ -45,6 +45,10 @@ pub unsafe extern "C" fn ad_get_tree(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(win, c"win is null");
+        crate::pointer_guard::guard_non_null!(opts, c"opts is null");
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
         unsafe {
             (*out).nodes = ptr::null_mut();
             (*out).count = 0;
