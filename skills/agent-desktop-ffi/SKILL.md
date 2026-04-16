@@ -40,9 +40,12 @@ Four reference topics, loaded as needed:
 
 - **Main thread only (macOS).** Call every adapter-touching entrypoint
   (`ad_get_tree`, `ad_resolve_element`, `ad_execute_action`,
-  `ad_screenshot`, clipboard, etc.) from the process's main thread.
-  Debug builds `debug_assert!` this; release builds do not but the
-  host silently crashes or misbehaves on violation.
+  `ad_screenshot`, clipboard, launch/close, window ops, observation,
+  notifications, etc.) from the process's main thread. The FFI enforces
+  this at runtime in **every build profile** — a worker-thread call
+  returns `AD_RESULT_ERR_INTERNAL` with a diagnostic last-error. On
+  non-macOS platforms the check is a compile-time true; there is no
+  runtime cost.
 
 - **Release profile.** `cargo build --release` produces
   `panic = "abort"` — any Rust panic inside an `extern "C"` fn will
@@ -66,3 +69,10 @@ Four reference topics, loaded as needed:
 - **ABI is unstable before 1.0.** The header lists the exact current
   shapes. Anything added or reordered in a later patch is a breaking
   change; pin the version of libagent_desktop_ffi you link against.
+
+- **`ad_get_tree` returns a raw adapter tree, not the CLI snapshot.**
+  Ref IDs are always null, no skeleton/drill-down pipeline is wired
+  through, and `interactive_only` / `compact` follow adapter
+  semantics which may diverge slightly from the CLI's post-processed
+  shape. Use `ad_find` + `ad_get` / `ad_is` for point lookups, or
+  invoke the CLI if you need CLI-parity JSON snapshots.
