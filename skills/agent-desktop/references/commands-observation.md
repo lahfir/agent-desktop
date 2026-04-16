@@ -41,7 +41,7 @@ agent-desktop snapshot --app "App" -i --compact
       "name": "General",
       "children": [
         {
-          "ref": "@e1",
+          "ref_id": "@e1",
           "role": "button",
           "name": "About",
           "states": ["focused"]
@@ -51,7 +51,7 @@ agent-desktop snapshot --app "App" -i --compact
           "name": "Appearance",
           "children": [
             {
-              "ref": "@e2",
+              "ref_id": "@e2",
               "role": "checkbox",
               "name": "Dark Mode",
               "value": "0",
@@ -125,7 +125,7 @@ agent-desktop find --app "App" --role button --nth 2
 {
   "data": {
     "matches": [
-      { "ref": "@e5", "role": "button", "name": "OK", "states": ["enabled"] }
+      { "ref_id": "@e5", "role": "button", "name": "OK", "states": ["enabled"] }
     ],
     "count": 1
   }

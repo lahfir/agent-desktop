@@ -116,7 +116,7 @@ pub trait PlatformAdapter: Send + Sync {
 - `ScreenshotTarget` — Screen(index), Window(id), Element(NativeHandle), FullScreen
 - `NotificationInfo` — id, app_name, title, body, timestamp, actions: Vec\<String\>, is_persistent
 - `TrayItemInfo` — id, app_name, title, tooltip, has_menu
-- `TreeOptions` — `max_depth`, `include_bounds`, `interactive_only`, `compact`, `surface`, `skeleton`, `root_ref`
+- `TreeOptions` — `max_depth`, `include_bounds`, `interactive_only`, `compact`, `surface`, `skeleton` (root is CLI-only via `SnapshotArgs.root_ref`, not plumbed into `TreeOptions`)
 
 ### macOS Adapter Implementation
 

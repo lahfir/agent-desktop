@@ -1,5 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface},
+    commands::helpers::validate_ref_id,
     error::AppError,
     snapshot, snapshot_ref,
 };
@@ -53,6 +54,7 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
                 "--root cannot be combined with --surface",
             ));
         }
+        validate_ref_id(root)?;
         return format_result(snapshot_ref::run_from_ref(adapter, &opts, root)?);
     }
 
@@ -183,6 +185,41 @@ mod tests {
                 adapter_err.code,
                 ErrorCode::InvalidArgs,
                 "Window surface must NOT trigger the --surface validation guard"
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_root_ref_format_returns_invalid_args() {
+        let args = SnapshotArgs {
+            root_ref: Some("not-a-ref".into()),
+            ..base_args()
+        };
+        let err = execute(args, &NoopAdapter).expect_err("malformed --root should fail");
+        match err {
+            AppError::Adapter(adapter_err) => {
+                assert_eq!(
+                    adapter_err.code,
+                    ErrorCode::InvalidArgs,
+                    "malformed ref must return INVALID_ARGS, not STALE_REF"
+                );
+            }
+            other => panic!("expected Adapter(InvalidArgs), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_valid_root_ref_format_does_not_trigger_invalid_args() {
+        let args = SnapshotArgs {
+            root_ref: Some("@e42".into()),
+            ..base_args()
+        };
+        let err = execute(args, &NoopAdapter).expect_err("NoopAdapter cannot resolve ref");
+        if let AppError::Adapter(adapter_err) = err {
+            assert_ne!(
+                adapter_err.code,
+                ErrorCode::InvalidArgs,
+                "well-formed ref must not trigger INVALID_ARGS"
             );
         }
     }

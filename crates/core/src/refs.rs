@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 const MAX_REFMAP_BYTES: u64 = 1_048_576; // 1 MB
@@ -64,26 +64,6 @@ impl RefMap {
     pub fn remove_by_root_ref(&mut self, root: &str) {
         self.inner
             .retain(|_, entry| entry.root_ref.as_deref() != Some(root));
-    }
-
-    pub fn remove_skeleton_refs(&mut self) {
-        let referenced: HashSet<String> = self
-            .inner
-            .values()
-            .filter_map(|entry| entry.root_ref.clone())
-            .collect();
-
-        let live_anchors: HashSet<String> = self
-            .inner
-            .iter()
-            .filter(|(id, entry)| entry.root_ref.is_none() && referenced.contains(id.as_str()))
-            .map(|(id, _)| id.clone())
-            .collect();
-
-        self.inner.retain(|id, entry| match &entry.root_ref {
-            Some(root) => live_anchors.contains(root.as_str()),
-            None => live_anchors.contains(id.as_str()),
-        });
     }
 
     fn serialize_with_size_check(&self) -> Result<String, AppError> {
@@ -359,73 +339,6 @@ mod tests {
             "scoped invalidation should drop only the drill-down refs"
         );
         assert!(map.get("@e3").is_some(), "skeleton @e3 must survive");
-    }
-
-    #[test]
-    fn test_remove_skeleton_refs_keeps_referenced_anchors() {
-        let mut map = RefMap::new();
-        let skeleton = RefEntry {
-            pid: 1,
-            role: "group".into(),
-            name: Some("Sidebar".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec![],
-            source_app: None,
-            root_ref: None,
-        };
-
-        let drilled = RefEntry {
-            root_ref: Some("@e1".into()),
-            ..skeleton.clone()
-        };
-
-        map.allocate(skeleton.clone());
-        map.allocate(skeleton);
-        map.allocate(drilled.clone());
-        map.allocate(drilled);
-        assert_eq!(map.len(), 4);
-
-        map.remove_skeleton_refs();
-        assert_eq!(
-            map.len(),
-            3,
-            "anchor @e1 must survive because @e3 and @e4 reference it"
-        );
-        assert!(map.get("@e1").is_some(), "referenced anchor preserved");
-        assert!(
-            map.get("@e2").is_none(),
-            "unreferenced anchor must be dropped"
-        );
-        assert!(map.get("@e3").is_some());
-        assert!(map.get("@e4").is_some());
-    }
-
-    #[test]
-    fn test_remove_skeleton_refs_drops_orphaned_drilldowns() {
-        let mut map = RefMap::new();
-        let drilled = RefEntry {
-            pid: 1,
-            role: "treeitem".into(),
-            name: Some("Recents".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec!["Click".into()],
-            source_app: None,
-            root_ref: Some("@e99".into()),
-        };
-        map.allocate(drilled);
-
-        map.remove_skeleton_refs();
-        assert_eq!(
-            map.len(),
-            0,
-            "drill-down whose root anchor no longer exists must be dropped (no leak)"
-        );
     }
 
     #[test]

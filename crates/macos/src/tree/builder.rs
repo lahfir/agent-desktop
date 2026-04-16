@@ -49,8 +49,35 @@ pub fn build_subtree(
     ancestors: &mut FxHashSet<usize>,
     skeleton: bool,
 ) -> Option<AccessibilityNode> {
-    if depth > max_depth || raw_depth >= ABSOLUTE_MAX_DEPTH {
+    if depth > max_depth {
         return None;
+    }
+    if raw_depth >= ABSOLUTE_MAX_DEPTH {
+        let (ax_role, title, ax_desc, value, _, _) = fetch_node_attrs(el);
+        let role = ax_role
+            .as_deref()
+            .map(crate::tree::roles::ax_role_to_str)
+            .unwrap_or("unknown")
+            .to_string();
+        let name = title.or(ax_desc);
+        let child_count = count_children(el, ax_role.as_deref());
+        let bounds = read_bounds(el);
+        return Some(AccessibilityNode {
+            ref_id: None,
+            role,
+            name,
+            value,
+            description: None,
+            hint: None,
+            states: vec![],
+            bounds,
+            children_count: if child_count > 0 {
+                Some(child_count)
+            } else {
+                None
+            },
+            children: vec![],
+        });
     }
     let ptr_key = el.0 as usize;
     if !ancestors.insert(ptr_key) {
