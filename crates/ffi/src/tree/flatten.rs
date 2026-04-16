@@ -128,6 +128,7 @@ mod tests {
             states: vec![],
             bounds: None,
             children: vec![],
+            children_count: None,
         }
     }
 

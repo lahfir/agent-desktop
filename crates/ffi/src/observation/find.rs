@@ -53,6 +53,7 @@ pub unsafe extern "C" fn ad_find(
                 interactive_only: false,
                 compact: false,
                 surface: SnapshotSurface::Window,
+                skeleton: false,
             },
         ) {
             Ok(t) => t,
@@ -88,6 +89,7 @@ pub unsafe extern "C" fn ad_find(
             bounds_hash: None,
             available_actions: Vec::new(),
             source_app: None,
+            root_ref: None,
         };
         match adapter.inner.resolve_element(&ref_entry) {
             Ok(handle) => {

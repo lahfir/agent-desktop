@@ -77,6 +77,7 @@ pub unsafe extern "C" fn ad_is(
                 interactive_only: false,
                 compact: false,
                 surface: SnapshotSurface::Window,
+                skeleton: false,
             },
         ) {
             Ok(t) => t,

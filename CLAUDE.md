@@ -19,6 +19,16 @@ cargo tree -p agent-desktop-core               # Verify no platform crate leaks 
 
 Run the binary: `./target/release/agent-desktop snapshot --app Finder -i`
 
+## Pre-commit Hook
+
+The repo ships a pre-commit hook at `.githooks/pre-commit` that runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --lib --workspace` against staged Rust changes. Wire it up once after cloning:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Bypass for an emergency commit with `git commit --no-verify` or `SKIP_PRECOMMIT=1 git commit ...`.
+
 ## Project Overview
 
 Cross-platform Rust CLI + MCP server enabling AI agents to observe and control desktop applications via native OS accessibility trees.
@@ -57,6 +67,10 @@ agent-desktop/
 ├── clippy.toml             # project-wide lint config
 ├── crates/
 │   ├── core/               # agent-desktop-core (platform-agnostic)
+│   │   └── src/
+│   │       ├── ref_alloc.rs      # Shared ref helpers (INTERACTIVE_ROLES, is_collapsible)
+│   │       ├── snapshot_ref.rs   # Ref-rooted drill-down (run_from_ref)
+│   │       └── commands/         # one file per command
 │   ├── macos/              # agent-desktop-macos (Phase 1)
 │   ├── windows/            # agent-desktop-windows (stub → Phase 2)
 │   ├── linux/              # agent-desktop-linux (stub → Phase 2)
@@ -67,6 +81,8 @@ agent-desktop/
 │   ├── cli_args.rs         # all command argument structs
 │   ├── dispatch.rs         # command dispatcher + parse helpers
 │   └── batch_dispatch.rs   # batch command execution
+├── docs/
+│   └── solutions/          # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type); relevant when implementing or debugging in documented areas
 └── tests/
     ├── fixtures/           # golden JSON snapshots
     └── integration/        # macOS CI integration tests
@@ -287,16 +303,20 @@ Error responses:
 - RefMap stored at `~/.agent-desktop/last_refmap.json` with `0o600` permissions, directory at `0o700`
 - Each snapshot REPLACES the refmap file entirely (atomic write via temp + rename)
 - Action commands use optimistic re-identification: `(pid, role, name, bounds_hash)`. Return `STALE_REF` on mismatch.
+- Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets
+- Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
+- RefMap size check: write-side guard prevents >1MB refmap files
 
 ## PlatformAdapter Trait
 
-12 methods with default implementations returning `not_supported()`:
+13 methods with default implementations returning `not_supported()`:
 
 ```rust
 pub trait PlatformAdapter: Send + Sync {
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError>;
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError>;
     fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
+    fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
     fn execute_action(&self, handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError>;
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
     fn check_permissions(&self) -> PermissionStatus;
@@ -409,7 +429,9 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Implemented Commands (50)
+## Implemented Commands (53)
+
+> **Platform note:** All 53 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
 
 | Category | Commands |
 |----------|----------|
@@ -418,9 +440,10 @@ Target binary size: <15MB per platform.
 | Interaction (14) | `click`, `double-click`, `triple-click`, `right-click`, `type`, `set-value`, `clear`, `focus`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse` |
 | Scroll (2) | `scroll`, `scroll-to` |
 | Keyboard (3) | `press`, `key-down`, `key-up` |
-| Mouse (5) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
+| Mouse (6) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
+| Notifications (4) *(macOS)* | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` |
 | Clipboard (3) | `clipboard-get`, `clipboard-set`, `clipboard-clear` |
-| Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu` flags) |
+| Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) |
 | System (3) | `status`, `permissions`, `version` |
 | Batch (1) | `batch` |
 

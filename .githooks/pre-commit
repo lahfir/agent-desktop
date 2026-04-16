@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Pre-commit hook for agent-desktop.
+# Mirrors the CI quality gates so a failing commit never reaches origin.
+#
+# Setup (once per clone):
+#   git config core.hooksPath .githooks
+#
+# Bypass for a single commit (only when truly necessary):
+#   git commit --no-verify
+
+set -euo pipefail
+
+if [ -n "${SKIP_PRECOMMIT:-}" ]; then
+    echo "pre-commit: SKIP_PRECOMMIT set, skipping"
+    exit 0
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "pre-commit: cargo not found in PATH, skipping (install Rust to enable)"
+    exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.(rs|toml)$'; then
+    HAS_RUST_CHANGES=1
+else
+    HAS_RUST_CHANGES=0
+fi
+
+if [ "$HAS_RUST_CHANGES" -eq 0 ]; then
+    echo "pre-commit: no Rust changes staged, skipping cargo checks"
+    exit 0
+fi
+
+run() {
+    local label="$1"
+    shift
+    printf '\033[1;34m▶ %s\033[0m\n' "$label"
+    if ! "$@"; then
+        printf '\033[1;31m✗ %s failed\033[0m\n' "$label" >&2
+        echo "" >&2
+        echo "pre-commit: refusing the commit. Fix the issues above or rerun with SKIP_PRECOMMIT=1 to bypass." >&2
+        exit 1
+    fi
+}
+
+run "cargo fmt --all -- --check" cargo fmt --all -- --check
+run "cargo clippy --all-targets -- -D warnings" cargo clippy --all-targets -- -D warnings
+run "cargo test --lib --workspace" cargo test --lib --workspace
+
+printf '\033[1;32m✓ pre-commit checks passed\033[0m\n'

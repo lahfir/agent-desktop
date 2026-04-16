@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/lahfir/agent-desktop/compare/v0.1.11...v0.1.12) (2026-04-16)
+
+
+### Features
+
+* progressive skeleton traversal with ref-rooted drill-down ([#20](https://github.com/lahfir/agent-desktop/issues/20)) ([c17f2fa](https://github.com/lahfir/agent-desktop/commit/c17f2fae7abbbe2c914a050fa9e9be5fca9c6af0))
+
 ## [0.1.11](https://github.com/lahfir/agent-desktop/compare/v0.1.10...v0.1.11) (2026-03-03)
 
 

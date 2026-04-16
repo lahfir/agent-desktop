@@ -1,4 +1,8 @@
-use agent_desktop_core::{adapter::WindowFilter, error::AdapterError, node::WindowInfo};
+use agent_desktop_core::{
+    adapter::WindowFilter,
+    error::AdapterError,
+    node::{AppInfo, WindowInfo},
+};
 
 #[cfg(target_os = "macos")]
 pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
@@ -233,4 +237,81 @@ fn try_quit_via_menu_bar(app_el: &crate::tree::AXElement) -> bool {
 #[cfg(not(target_os = "macos"))]
 pub fn close_app_impl(_id: &str, _force: bool) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("close_app"))
+}
+
+pub fn list_apps_impl() -> Result<Vec<AppInfo>, AdapterError> {
+    #[cfg(target_os = "macos")]
+    {
+        use core_foundation::base::{CFType, TCFType};
+        use core_foundation::number::CFNumber;
+        use core_foundation::string::CFString;
+        use core_foundation_sys::dictionary::CFDictionaryGetValue;
+        use core_graphics::display::CGDisplay;
+        use core_graphics::window::{
+            kCGWindowLayer, kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName, kCGWindowOwnerPID,
+        };
+
+        let arr = match CGDisplay::window_list_info(kCGWindowListOptionOnScreenOnly, None) {
+            Some(a) => a,
+            None => return Ok(vec![]),
+        };
+
+        let mut seen_pids = std::collections::HashSet::new();
+        let mut apps = Vec::new();
+
+        for raw in arr.get_all_values() {
+            if raw.is_null() {
+                continue;
+            }
+
+            let layer = unsafe {
+                let v = CFDictionaryGetValue(raw as _, kCGWindowLayer as _);
+                if v.is_null() {
+                    continue;
+                }
+                CFType::wrap_under_get_rule(v as _)
+                    .downcast::<CFNumber>()
+                    .and_then(|n| n.to_i64())
+                    .unwrap_or(99)
+            };
+            if layer != 0 {
+                continue;
+            }
+
+            let pid = unsafe {
+                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerPID as _);
+                if v.is_null() {
+                    continue;
+                }
+                CFType::wrap_under_get_rule(v as _)
+                    .downcast::<CFNumber>()
+                    .and_then(|n| n.to_i64())
+                    .unwrap_or(0) as i32
+            };
+            if !seen_pids.insert(pid) {
+                continue;
+            }
+
+            let name = unsafe {
+                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerName as _);
+                if v.is_null() {
+                    continue;
+                }
+                CFType::wrap_under_get_rule(v as _)
+                    .downcast::<CFString>()
+                    .map(|s| s.to_string())
+            };
+
+            if let Some(n) = name {
+                apps.push(AppInfo {
+                    name: n,
+                    pid,
+                    bundle_id: None,
+                });
+            }
+        }
+        Ok(apps)
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err(AdapterError::not_supported("list_apps"))
 }

@@ -2,14 +2,22 @@ use agent_desktop_core::node::Rect;
 
 pub const ABSOLUTE_MAX_DEPTH: u8 = 50;
 
+pub(crate) fn child_attributes(ax_role: Option<&str>) -> &'static [&'static str] {
+    if ax_role == Some("AXBrowser") {
+        &["AXColumns", "AXContents"]
+    } else {
+        &["AXChildren", "AXContents", "AXChildrenInNavigationOrder"]
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
     use accessibility_sys::{
-        kAXChildrenAttribute, kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess,
-        kAXFocusedAttribute, kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute,
-        AXUIElementCopyAttributeValue, AXUIElementCopyMultipleAttributeValues,
-        AXUIElementCreateApplication, AXUIElementRef, AXUIElementSetMessagingTimeout,
+        kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXFocusedAttribute,
+        kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute, AXUIElementCopyAttributeValue,
+        AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication, AXUIElementRef,
+        AXUIElementSetMessagingTimeout,
     };
     use core_foundation::{
         array::CFArray,
@@ -143,7 +151,10 @@ mod imp {
         };
 
         name.or_else(|| {
-            let children = copy_ax_array(el, kAXChildrenAttribute).unwrap_or_default();
+            let children = super::child_attributes(ax_role.as_deref())
+                .iter()
+                .find_map(|attr| copy_ax_array(el, attr).filter(|v| !v.is_empty()))
+                .unwrap_or_default();
             crate::tree::builder::label_from_children(&children)
         })
     }
@@ -236,6 +247,29 @@ mod imp {
         }
         let ptr = value as AXUIElementRef;
         Some(AXElement(ptr))
+    }
+
+    pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
+        unsafe {
+            for attr_name in child_attributes(ax_role) {
+                let mut value: core_foundation::base::CFTypeRef = std::ptr::null();
+                let attr = CFString::from_static_string(attr_name);
+                let err = AXUIElementCopyAttributeValue(
+                    element.0,
+                    attr.as_concrete_TypeRef(),
+                    &mut value,
+                );
+                if err != kAXErrorSuccess || value.is_null() {
+                    continue;
+                }
+                let count = core_foundation_sys::array::CFArrayGetCount(value as _);
+                CFRelease(value);
+                if count > 0 {
+                    return count as u32;
+                }
+            }
+            0
+        }
     }
 
     pub fn read_bounds(el: &AXElement) -> Option<Rect> {
@@ -337,6 +371,9 @@ mod imp {
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
     }
+    pub fn count_children(_element: &AXElement, _ax_role: Option<&str>) -> u32 {
+        0
+    }
     pub fn read_bounds(_el: &AXElement) -> Option<Rect> {
         None
     }
@@ -362,5 +399,6 @@ mod imp {
 
 pub use imp::{
     copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, copy_value_typed,
-    element_for_pid, fetch_node_attrs, read_bounds, resolve_element_name, AXElement,
+    count_children, element_for_pid, fetch_node_attrs, read_bounds, resolve_element_name,
+    AXElement,
 };

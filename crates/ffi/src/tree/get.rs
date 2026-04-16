@@ -74,6 +74,7 @@ pub unsafe extern "C" fn ad_get_tree(
             interactive_only: opts_ref.interactive_only,
             compact: opts_ref.compact,
             surface,
+            skeleton: false,
         };
 
         match adapter.inner.get_tree(&core_win, &core_opts) {
