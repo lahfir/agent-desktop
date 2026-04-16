@@ -672,26 +672,34 @@ AdResult ad_get(const struct AdAdapter *adapter,
 
 /**
  * Checks whether a named boolean state is set on the first element
- * matching `query` inside `win`'s accessibility tree. Intended for the
- * common agent idiom `find → is(focused) → if yes, act`.
+ * matching `query` inside `win`'s accessibility tree. Intended for
+ * the common agent idiom `find → is("focused") → if yes, act`.
  *
- * Recognized property names (match the strings the platform adapter
- * emits in `AccessibilityNode.states`):
+ * Supported property names reflect the strings the macOS tree
+ * builder actually emits in `AccessibilityNode.states`:
  *
- * - `"focused"`
- * - `"enabled"`
- * - `"selected"`
- * - `"checked"`
- * - `"expanded"`
+ * - `"focused"` — true when the node carries the `focused` state.
+ * - `"disabled"` — true when the adapter surfaced `disabled`.
+ * - `"enabled"` — derived: true iff `disabled` is NOT present. There
+ *   is no `enabled` string in the adapter output; asking for it
+ *   returns the logical negation so agents don't have to invert
+ *   themselves.
  *
- * Any other property name returns `AD_RESULT_ERR_INVALID_ARGS`. If no
- * element matches the query, returns `AD_RESULT_ERR_ELEMENT_NOT_FOUND`
- * and `*out` is untouched.
+ * `"selected"`, `"checked"`, and `"expanded"` are not currently
+ * emitted by any platform adapter; asking for them returns
+ * `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error rather
+ * than silently answering `false`. The set will widen as adapters
+ * grow support; future additions stay backwards-compatible
+ * (unknown → InvalidArgs, known → deterministic answer).
+ *
+ * On entry `*out` is always cleared to `false` so a caller inspecting
+ * the slot after an error sees a predictable sentinel, not whatever
+ * was there before. If the query matches nothing, returns
+ * `AD_RESULT_ERR_ELEMENT_NOT_FOUND` with `*out` still `false`.
  *
  * # Safety
  * All pointers must be valid. `property` must be a non-null UTF-8
- * C string. `out` must be a valid writable `*mut bool`; it is set to
- * `false` on entry.
+ * C string. `out` must be a valid writable `*mut bool`.
  */
 AdResult ad_is(const struct AdAdapter *adapter,
                const struct AdWindowInfo *win,

@@ -8,26 +8,34 @@ use agent_desktop_core::node::AccessibilityNode;
 use std::os::raw::c_char;
 
 /// Checks whether a named boolean state is set on the first element
-/// matching `query` inside `win`'s accessibility tree. Intended for the
-/// common agent idiom `find → is(focused) → if yes, act`.
+/// matching `query` inside `win`'s accessibility tree. Intended for
+/// the common agent idiom `find → is("focused") → if yes, act`.
 ///
-/// Recognized property names (match the strings the platform adapter
-/// emits in `AccessibilityNode.states`):
+/// Supported property names reflect the strings the macOS tree
+/// builder actually emits in `AccessibilityNode.states`:
 ///
-/// - `"focused"`
-/// - `"enabled"`
-/// - `"selected"`
-/// - `"checked"`
-/// - `"expanded"`
+/// - `"focused"` — true when the node carries the `focused` state.
+/// - `"disabled"` — true when the adapter surfaced `disabled`.
+/// - `"enabled"` — derived: true iff `disabled` is NOT present. There
+///   is no `enabled` string in the adapter output; asking for it
+///   returns the logical negation so agents don't have to invert
+///   themselves.
 ///
-/// Any other property name returns `AD_RESULT_ERR_INVALID_ARGS`. If no
-/// element matches the query, returns `AD_RESULT_ERR_ELEMENT_NOT_FOUND`
-/// and `*out` is untouched.
+/// `"selected"`, `"checked"`, and `"expanded"` are not currently
+/// emitted by any platform adapter; asking for them returns
+/// `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error rather
+/// than silently answering `false`. The set will widen as adapters
+/// grow support; future additions stay backwards-compatible
+/// (unknown → InvalidArgs, known → deterministic answer).
+///
+/// On entry `*out` is always cleared to `false` so a caller inspecting
+/// the slot after an error sees a predictable sentinel, not whatever
+/// was there before. If the query matches nothing, returns
+/// `AD_RESULT_ERR_ELEMENT_NOT_FOUND` with `*out` still `false`.
 ///
 /// # Safety
 /// All pointers must be valid. `property` must be a non-null UTF-8
-/// C string. `out` must be a valid writable `*mut bool`; it is set to
-/// `false` on entry.
+/// C string. `out` must be a valid writable `*mut bool`.
 #[no_mangle]
 pub unsafe extern "C" fn ad_is(
     adapter: *const AdAdapter,
@@ -67,13 +75,16 @@ pub unsafe extern "C" fn ad_is(
                 return AdResult::ErrInvalidArgs;
             }
         };
-        if !is_known_property(&prop) {
-            set_last_error(&agent_desktop_core::error::AdapterError::new(
-                agent_desktop_core::error::ErrorCode::InvalidArgs,
-                "unknown property — expected one of: focused, enabled, selected, checked, expanded",
-            ));
-            return AdResult::ErrInvalidArgs;
-        }
+        let property = match SupportedProperty::from_name(&prop) {
+            Some(p) => p,
+            None => {
+                set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    "unknown property — expected one of: focused, disabled, enabled",
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
 
         let tree = match adapter.inner.get_tree(
             &core_win,
@@ -109,18 +120,90 @@ pub unsafe extern "C" fn ad_is(
             }
         };
 
-        *out = element_has_state(matched, &prop);
+        *out = property.evaluate(matched);
         AdResult::Ok
     })
 }
 
-fn is_known_property(p: &str) -> bool {
-    matches!(
-        p,
-        "focused" | "enabled" | "selected" | "checked" | "expanded"
-    )
+/// Compile-time set of property names `ad_is` answers. Each variant
+/// encodes how the answer is derived from `AccessibilityNode.states`,
+/// which keeps the documented contract and the implementation in
+/// lockstep — an addition here is the only way to add a supported name.
+enum SupportedProperty {
+    Focused,
+    Disabled,
+    EnabledDerivedFromDisabled,
 }
 
-fn element_has_state(node: &AccessibilityNode, prop: &str) -> bool {
-    node.states.iter().any(|s| s.eq_ignore_ascii_case(prop))
+impl SupportedProperty {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "focused" => Some(SupportedProperty::Focused),
+            "disabled" => Some(SupportedProperty::Disabled),
+            "enabled" => Some(SupportedProperty::EnabledDerivedFromDisabled),
+            _ => None,
+        }
+    }
+
+    fn evaluate(&self, node: &AccessibilityNode) -> bool {
+        match self {
+            SupportedProperty::Focused => has_state(node, "focused"),
+            SupportedProperty::Disabled => has_state(node, "disabled"),
+            SupportedProperty::EnabledDerivedFromDisabled => !has_state(node, "disabled"),
+        }
+    }
+}
+
+fn has_state(node: &AccessibilityNode, state: &str) -> bool {
+    node.states.iter().any(|s| s.eq_ignore_ascii_case(state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node_with_states(states: &[&str]) -> AccessibilityNode {
+        AccessibilityNode {
+            ref_id: None,
+            role: "button".into(),
+            name: None,
+            value: None,
+            description: None,
+            hint: None,
+            states: states.iter().map(|s| s.to_string()).collect(),
+            bounds: None,
+            children: vec![],
+            children_count: None,
+        }
+    }
+
+    #[test]
+    fn focused_mirrors_state_presence() {
+        let prop = SupportedProperty::from_name("focused").unwrap();
+        assert!(prop.evaluate(&node_with_states(&["focused"])));
+        assert!(!prop.evaluate(&node_with_states(&[])));
+    }
+
+    #[test]
+    fn disabled_mirrors_state_presence() {
+        let prop = SupportedProperty::from_name("disabled").unwrap();
+        assert!(prop.evaluate(&node_with_states(&["disabled"])));
+        assert!(!prop.evaluate(&node_with_states(&["focused"])));
+    }
+
+    #[test]
+    fn enabled_is_derived_negation_of_disabled() {
+        let prop = SupportedProperty::from_name("enabled").unwrap();
+        assert!(!prop.evaluate(&node_with_states(&["disabled"])));
+        assert!(prop.evaluate(&node_with_states(&[])));
+        assert!(prop.evaluate(&node_with_states(&["focused"])));
+    }
+
+    #[test]
+    fn unsupported_names_do_not_resolve() {
+        assert!(SupportedProperty::from_name("selected").is_none());
+        assert!(SupportedProperty::from_name("checked").is_none());
+        assert!(SupportedProperty::from_name("expanded").is_none());
+        assert!(SupportedProperty::from_name("bogus").is_none());
+    }
 }
