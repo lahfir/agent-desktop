@@ -141,6 +141,15 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("resolve_element"))
     }
 
+    /// Releases a platform-specific element handle returned from
+    /// `resolve_element`. macOS implementations must `CFRelease` the
+    /// underlying `AXUIElementRef` to balance the `CFRetain` that
+    /// happened during resolve. Windows/Linux consumers can leave this
+    /// as the default `not_supported` no-op.
+    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("release_handle"))
+    }
+
     fn check_permissions(&self) -> PermissionStatus {
         PermissionStatus::Denied {
             suggestion: "Platform adapter not available".into(),

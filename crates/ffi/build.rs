@@ -46,10 +46,7 @@ fn main() {
 
     let include_dir = Path::new(&crate_dir).join("include");
     if let Err(err) = std::fs::create_dir_all(&include_dir) {
-        panic!(
-            "failed to create include dir at {:?}: {}",
-            include_dir, err
-        );
+        panic!("failed to create include dir at {:?}: {}", include_dir, err);
     }
 
     let committed_header = include_dir.join("agent_desktop.h");

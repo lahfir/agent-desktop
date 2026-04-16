@@ -67,6 +67,17 @@ impl PlatformAdapter for MacOSAdapter {
         crate::tree::resolve::resolve_element_impl(entry)
     }
 
+    fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
+        let raw = handle.as_raw();
+        if raw.is_null() {
+            return Ok(());
+        }
+        unsafe {
+            core_foundation::base::CFRelease(raw as core_foundation::base::CFTypeRef);
+        }
+        Ok(())
+    }
+
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         list_windows_impl(filter)
     }

@@ -72,6 +72,7 @@ pub use types::ref_entry::AdRefEntry;
 pub use types::screenshot_kind::AdScreenshotKind;
 pub use types::screenshot_target::AdScreenshotTarget;
 pub use types::scroll_params::AdScrollParams;
+pub use types::snapshot_surface::AdSnapshotSurface;
 pub use types::surface_info::AdSurfaceInfo;
 pub use types::tree_options::AdTreeOptions;
 pub use types::window_info::AdWindowInfo;

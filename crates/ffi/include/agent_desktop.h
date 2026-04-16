@@ -91,6 +91,17 @@ enum AdScreenshotKind {
 };
 typedef int32_t AdScreenshotKind;
 
+enum AdSnapshotSurface {
+  AD_SNAPSHOT_SURFACE_WINDOW = 0,
+  AD_SNAPSHOT_SURFACE_FOCUSED = 1,
+  AD_SNAPSHOT_SURFACE_MENU = 2,
+  AD_SNAPSHOT_SURFACE_MENUBAR = 3,
+  AD_SNAPSHOT_SURFACE_SHEET = 4,
+  AD_SNAPSHOT_SURFACE_POPOVER = 5,
+  AD_SNAPSHOT_SURFACE_ALERT = 6,
+};
+typedef int32_t AdSnapshotSurface;
+
 enum AdWindowOpKind {
   AD_WINDOW_OP_KIND_RESIZE = 0,
   AD_WINDOW_OP_KIND_MOVE = 1,
@@ -233,6 +244,7 @@ typedef struct AdTreeOptions {
   bool include_bounds;
   bool interactive_only;
   bool compact;
+  AdSnapshotSurface surface;
 } AdTreeOptions;
 
 typedef struct AdWindowOp {
@@ -255,6 +267,24 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
                            const struct AdNativeHandle *handle,
                            const struct AdAction *action,
                            struct AdActionResult *out);
+
+/**
+ * Releases a handle previously returned by `ad_resolve_element`.
+ *
+ * On macOS this calls `CFRelease` on the underlying `AXUIElementRef`,
+ * balancing the `CFRetain` that happened during `ad_resolve_element`.
+ * On Windows/Linux the call is a no-op that returns `AD_RESULT_OK`
+ * (platform adapters inherit the default `not_supported` impl, which
+ * the FFI surface rewrites to `Ok` here so callers can apply the same
+ * release pattern everywhere).
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `handle` must be null or a pointer previously populated by
+ * `ad_resolve_element`. Double-free is undefined behavior.
+ */
+AdResult ad_free_handle(const struct AdAdapter *adapter, const struct AdNativeHandle *handle);
 
 /**
  * # Safety
@@ -457,6 +487,7 @@ void ad_free_window(struct AdWindowInfo *win);
  */
 AdResult ad_list_windows(const struct AdAdapter *adapter,
                          const char *app_filter,
+                         bool focused_only,
                          struct AdWindowInfo **out,
                          uint32_t *out_count);
 

@@ -14,6 +14,7 @@ use std::ptr;
 pub unsafe extern "C" fn ad_list_windows(
     adapter: *const AdAdapter,
     app_filter: *const c_char,
+    focused_only: bool,
     out: *mut *mut AdWindowInfo,
     out_count: *mut u32,
 ) -> AdResult {
@@ -22,7 +23,7 @@ pub unsafe extern "C" fn ad_list_windows(
         *out_count = 0;
         let adapter = &*adapter;
         let filter = WindowFilter {
-            focused_only: false,
+            focused_only,
             app: c_to_string(app_filter),
         };
         match adapter.inner.list_windows(&filter) {

@@ -23,7 +23,7 @@
 
 use crate::types::{
     AdActionKind, AdDirection, AdImageFormat, AdModifier, AdMouseButton, AdMouseEventKind,
-    AdScreenshotKind, AdWindowOpKind,
+    AdScreenshotKind, AdSnapshotSurface, AdWindowOpKind,
 };
 
 /// Reads the raw `i32` discriminant out of an `#[repr(i32)]` enum field
@@ -97,6 +97,13 @@ try_from_c_enum! {
 try_from_c_enum! {
     AdImageFormat {
         Png = 0, Jpg = 1,
+    }
+}
+
+try_from_c_enum! {
+    AdSnapshotSurface {
+        Window = 0, Focused = 1, Menu = 2, Menubar = 3,
+        Sheet = 4, Popover = 5, Alert = 6,
     }
 }
 
