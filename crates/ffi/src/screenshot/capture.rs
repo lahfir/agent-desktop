@@ -4,18 +4,26 @@ use crate::ffi_try::trap_panic;
 use crate::types::{AdImageBuffer, AdImageFormat, AdScreenshotKind, AdScreenshotTarget};
 use crate::AdAdapter;
 use agent_desktop_core::adapter::{ImageFormat, ScreenshotTarget as CoreScreenshotTarget};
+use std::ptr;
 
+/// Allocates and returns an opaque `AdImageBuffer`. The handle owns its
+/// byte buffer; inspect it through `ad_image_buffer_data` /
+/// `ad_image_buffer_size` / `ad_image_buffer_format` / `_width` / `_height`
+/// and free it with `ad_image_buffer_free`.
+///
 /// # Safety
-/// `adapter` and `target` must be valid. `out` must be writable.
+/// `adapter` and `target` must be valid pointers. `out` must be a valid
+/// writable `*mut *mut AdImageBuffer`. On error `*out` is null and
+/// last-error is set.
 #[no_mangle]
 pub unsafe extern "C" fn ad_screenshot(
     adapter: *const AdAdapter,
     target: *const AdScreenshotTarget,
-    out: *mut AdImageBuffer,
+    out: *mut *mut AdImageBuffer,
 ) -> AdResult {
     trap_panic(|| unsafe {
         crate::main_thread::debug_assert_main_thread();
-        *out = std::mem::zeroed();
+        *out = ptr::null_mut();
         let adapter = &*adapter;
         let t = &*target;
         let kind = match AdScreenshotKind::from_c(enum_raw_i32(&t.kind)) {
@@ -36,21 +44,16 @@ pub unsafe extern "C" fn ad_screenshot(
 
         match adapter.inner.screenshot(core_target) {
             Ok(img) => {
-                let data_len = img.data.len() as u64;
-                let mut boxed = img.data.into_boxed_slice();
-                let data_ptr = boxed.as_mut_ptr();
-                std::mem::forget(boxed);
-
-                *out = AdImageBuffer {
-                    data: data_ptr,
-                    data_len,
+                let buffer = Box::new(AdImageBuffer {
+                    data: img.data.into_boxed_slice(),
+                    width: img.width,
+                    height: img.height,
                     format: match img.format {
                         ImageFormat::Png => AdImageFormat::Png,
                         ImageFormat::Jpg => AdImageFormat::Jpg,
                     },
-                    width: img.width,
-                    height: img.height,
-                };
+                });
+                *out = Box::into_raw(buffer);
                 AdResult::Ok
             }
             Err(e) => {

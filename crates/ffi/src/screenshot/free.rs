@@ -1,22 +1,17 @@
 use crate::ffi_try::trap_panic_void;
 use crate::types::AdImageBuffer;
 
+/// Frees the image buffer allocated by `ad_screenshot`.
+///
 /// # Safety
-/// `img` must be null or point to an `AdImageBuffer` from `ad_screenshot`.
+/// `buf` must be null or a pointer previously returned by `ad_screenshot`.
+/// Double-free is undefined behavior.
 #[no_mangle]
-pub unsafe extern "C" fn ad_free_image(img: *mut AdImageBuffer) {
+pub unsafe extern "C" fn ad_image_buffer_free(buf: *mut AdImageBuffer) {
     trap_panic_void(|| unsafe {
-        if img.is_null() {
+        if buf.is_null() {
             return;
         }
-        let i = &mut *img;
-        if !i.data.is_null() {
-            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                i.data as *mut u8,
-                i.data_len as usize,
-            )));
-            i.data = std::ptr::null();
-            i.data_len = 0;
-        }
+        drop(Box::from_raw(buf));
     })
 }

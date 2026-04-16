@@ -113,6 +113,39 @@ typedef int32_t AdWindowOpKind;
 
 typedef struct AdAdapter AdAdapter;
 
+/**
+ * Opaque list handle emitted by `ad_list_apps`. See
+ * [`crate::types::window_list::AdWindowList`] for the pattern.
+ */
+typedef struct AdAppList AdAppList;
+
+/**
+ * Opaque image-buffer handle returned by `ad_screenshot`. The backing
+ * byte buffer and its length live inside the Rust-owned struct — a
+ * consumer cannot accidentally desynchronize the pair and trigger a
+ * heap-corruption double-free. Walk it through `ad_image_buffer_*`
+ * accessors and free it with `ad_image_buffer_free`.
+ */
+typedef struct AdImageBuffer AdImageBuffer;
+
+/**
+ * Opaque list handle emitted by `ad_list_surfaces`. See
+ * [`crate::types::window_list::AdWindowList`] for the pattern.
+ */
+typedef struct AdSurfaceList AdSurfaceList;
+
+/**
+ * Opaque list handle emitted by `ad_list_windows`.
+ *
+ * The struct intentionally has no `#[repr(C)]` so cbindgen emits a
+ * forward declaration only (`typedef struct AdWindowList AdWindowList;`).
+ * Consumers cannot read the backing pointer or length and cannot
+ * construct a count mismatch — they walk the list through
+ * `ad_window_list_count`, `ad_window_list_get`, and free it with
+ * `ad_window_list_free`.
+ */
+typedef struct AdWindowList AdWindowList;
+
 typedef struct AdNativeHandle {
   const void *ptr;
 } AdNativeHandle;
@@ -203,14 +236,6 @@ typedef struct AdScreenshotTarget {
   uint64_t screen_index;
   int32_t pid;
 } AdScreenshotTarget;
-
-typedef struct AdImageBuffer {
-  const uint8_t *data;
-  uint64_t data_len;
-  AdImageFormat format;
-  uint32_t width;
-  uint32_t height;
-} AdImageBuffer;
 
 typedef struct AdSurfaceInfo {
   const char *kind;
@@ -341,15 +366,35 @@ AdResult ad_launch_app(const struct AdAdapter *adapter,
 /**
  * # Safety
  * `adapter` must be a valid pointer from `ad_adapter_create`.
- * `out` and `out_count` must be valid writable pointers.
+ * `out` must be a valid writable `*mut *mut AdAppList`.
+ * On success, `*out` is a newly-allocated opaque list freed with
+ * `ad_app_list_free`. On error, `*out` is null and last-error is set.
  */
-AdResult ad_list_apps(const struct AdAdapter *adapter, struct AdAppInfo **out, uint32_t *out_count);
+AdResult ad_list_apps(const struct AdAdapter *adapter, struct AdAppList **out);
 
 /**
  * # Safety
- * `apps` must be null or a pointer previously returned by `ad_list_apps`.
+ * `list` must be null or a pointer returned by `ad_list_apps`.
  */
-void ad_free_apps(struct AdAppInfo *apps, uint32_t count);
+uint32_t ad_app_list_count(const struct AdAppList *list);
+
+/**
+ * Returns a borrowed pointer into the list; valid until the list is freed.
+ * Out-of-range `index` returns null.
+ *
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_apps`.
+ */
+const struct AdAppInfo *ad_app_list_get(const struct AdAppList *list, uint32_t index);
+
+/**
+ * Frees the list and every `AdAppInfo` it owns, including the interior
+ * C-strings.
+ *
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_apps`.
+ */
+void ad_app_list_free(struct AdAppList *list);
 
 /**
  * Last-error lifetime — errno-style.
@@ -425,33 +470,101 @@ AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *par
 AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEvent *event);
 
 /**
+ * Borrowed pointer to the image bytes; valid until the buffer is freed.
+ * Returns null if `buf` is null.
+ *
  * # Safety
- * `adapter` and `target` must be valid. `out` must be writable.
+ * `buf` must be null or returned by `ad_screenshot`.
+ */
+const uint8_t *ad_image_buffer_data(const struct AdImageBuffer *buf);
+
+/**
+ * Byte length of the buffer returned by `ad_image_buffer_data`.
+ * Always consistent with the actual allocation (no C-mutable mismatch).
+ *
+ * # Safety
+ * `buf` must be null or returned by `ad_screenshot`.
+ */
+uint64_t ad_image_buffer_size(const struct AdImageBuffer *buf);
+
+/**
+ * Pixel width of the image.
+ *
+ * # Safety
+ * `buf` must be null or returned by `ad_screenshot`.
+ */
+uint32_t ad_image_buffer_width(const struct AdImageBuffer *buf);
+
+/**
+ * Pixel height of the image.
+ *
+ * # Safety
+ * `buf` must be null or returned by `ad_screenshot`.
+ */
+uint32_t ad_image_buffer_height(const struct AdImageBuffer *buf);
+
+/**
+ * Encoding format of the image bytes. Defaults to `PNG` on a null
+ * handle — callers must still null-check.
+ *
+ * # Safety
+ * `buf` must be null or returned by `ad_screenshot`.
+ */
+AdImageFormat ad_image_buffer_format(const struct AdImageBuffer *buf);
+
+/**
+ * Allocates and returns an opaque `AdImageBuffer`. The handle owns its
+ * byte buffer; inspect it through `ad_image_buffer_data` /
+ * `ad_image_buffer_size` / `ad_image_buffer_format` / `_width` / `_height`
+ * and free it with `ad_image_buffer_free`.
+ *
+ * # Safety
+ * `adapter` and `target` must be valid pointers. `out` must be a valid
+ * writable `*mut *mut AdImageBuffer`. On error `*out` is null and
+ * last-error is set.
  */
 AdResult ad_screenshot(const struct AdAdapter *adapter,
                        const struct AdScreenshotTarget *target,
-                       struct AdImageBuffer *out);
+                       struct AdImageBuffer **out);
+
+/**
+ * Frees the image buffer allocated by `ad_screenshot`.
+ *
+ * # Safety
+ * `buf` must be null or a pointer previously returned by `ad_screenshot`.
+ * Double-free is undefined behavior.
+ */
+void ad_image_buffer_free(struct AdImageBuffer *buf);
 
 /**
  * # Safety
- * `img` must be null or point to an `AdImageBuffer` from `ad_screenshot`.
+ * `adapter` must be valid. `out` must be a valid writable
+ * `*mut *mut AdSurfaceList`. Success produces a list handle freed via
+ * `ad_surface_list_free`.
  */
-void ad_free_image(struct AdImageBuffer *img);
+AdResult ad_list_surfaces(const struct AdAdapter *adapter, int32_t pid, struct AdSurfaceList **out);
 
 /**
  * # Safety
- * `adapter` must be valid. `out` and `out_count` must be writable.
+ * `list` must be null or a pointer returned by `ad_list_surfaces`.
  */
-AdResult ad_list_surfaces(const struct AdAdapter *adapter,
-                          int32_t pid,
-                          struct AdSurfaceInfo **out,
-                          uint32_t *out_count);
+uint32_t ad_surface_list_count(const struct AdSurfaceList *list);
 
 /**
+ * Borrow a surface info entry. Null if `index` is out of range.
+ *
  * # Safety
- * `surfaces` must be null or from `ad_list_surfaces`.
+ * `list` must be null or a pointer returned by `ad_list_surfaces`.
  */
-void ad_free_surfaces(struct AdSurfaceInfo *surfaces, uint32_t count);
+const struct AdSurfaceInfo *ad_surface_list_get(const struct AdSurfaceList *list, uint32_t index);
+
+/**
+ * Frees the list and each entry's interior strings.
+ *
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_surfaces`.
+ */
+void ad_surface_list_free(struct AdSurfaceList *list);
 
 /**
  * # Safety
@@ -476,26 +589,55 @@ AdResult ad_get_tree(const struct AdAdapter *adapter,
 AdResult ad_focus_window(const struct AdAdapter *adapter, const struct AdWindowInfo *win);
 
 /**
+ * Releases the heap-allocated string fields (`id`, `title`, `app_name`)
+ * inside a single `AdWindowInfo` previously written by `ad_launch_app`
+ * or returned through a list accessor. Does not free the `AdWindowInfo`
+ * struct itself — that memory is owned by the caller's stack or by the
+ * enclosing list.
+ *
+ * Named `ad_release_window_fields` (not `ad_free_window`) to disambiguate
+ * from the now-removed list-free function and make the semantics clear
+ * in the header.
+ *
  * # Safety
- * `win` must be null or point to a valid `AdWindowInfo`.
+ * `win` must be null or point to a valid `AdWindowInfo` whose string
+ * fields were allocated by this crate. Do not call on pointers inside
+ * an `AdWindowList` — free the list instead.
  */
-void ad_free_window(struct AdWindowInfo *win);
+void ad_release_window_fields(struct AdWindowInfo *win);
 
 /**
  * # Safety
- * `adapter` must be valid. `out` and `out_count` must be writable.
+ * `adapter` must be valid. `out` must be a valid writable
+ * `*mut *mut AdWindowList`. `app_filter` may be null or a C string.
+ * Success produces a list handle freed via `ad_window_list_free`.
  */
 AdResult ad_list_windows(const struct AdAdapter *adapter,
                          const char *app_filter,
                          bool focused_only,
-                         struct AdWindowInfo **out,
-                         uint32_t *out_count);
+                         struct AdWindowList **out);
 
 /**
  * # Safety
- * `windows` must be null or from `ad_list_windows`.
+ * `list` must be null or a pointer returned by `ad_list_windows`.
  */
-void ad_free_windows(struct AdWindowInfo *windows, uint32_t count);
+uint32_t ad_window_list_count(const struct AdWindowList *list);
+
+/**
+ * Borrow a window info entry. Null if `index` is out of range.
+ *
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_windows`.
+ */
+const struct AdWindowInfo *ad_window_list_get(const struct AdWindowList *list, uint32_t index);
+
+/**
+ * Frees the list and each entry's interior strings.
+ *
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_windows`.
+ */
+void ad_window_list_free(struct AdWindowList *list);
 
 /**
  * # Safety
