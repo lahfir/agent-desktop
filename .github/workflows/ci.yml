@@ -6,42 +6,23 @@ on:
   pull_request:
     branches: [main, master]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions: {}
-
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - run: rustup component add rustfmt
-      - run: cargo fmt --all -- --check
-
   test:
     name: Test
     runs-on: macos-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
+
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         run: rustup show
 
       - name: Cache cargo registry
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/index/
@@ -51,7 +32,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Cache build artifacts
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@v4
         with:
           path: target/
           key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/*.rs') }}
@@ -86,3 +67,11 @@ jobs:
             exit 1
           fi
           echo "OK: binary within 15MB limit"
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all -- --check
