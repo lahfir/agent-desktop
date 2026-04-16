@@ -1,6 +1,6 @@
 use agent_desktop_core::error::{AdapterError, ErrorCode};
 use std::cell::RefCell;
-use std::ffi::{c_char, CString};
+use std::ffi::{c_char, CStr, CString};
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,12 +20,35 @@ pub enum AdResult {
     ErrInternal = -12,
 }
 
+enum MessageSource {
+    Owned(CString),
+    Static(&'static CStr),
+}
+
+impl MessageSource {
+    fn as_ptr(&self) -> *const c_char {
+        match self {
+            MessageSource::Owned(cs) => cs.as_ptr(),
+            MessageSource::Static(cs) => cs.as_ptr(),
+        }
+    }
+
+    fn to_owned_string(&self) -> String {
+        match self {
+            MessageSource::Owned(cs) => cs.to_string_lossy().into_owned(),
+            MessageSource::Static(cs) => cs.to_string_lossy().into_owned(),
+        }
+    }
+}
+
 struct StoredError {
     code: AdResult,
-    message: CString,
+    message: MessageSource,
     suggestion: Option<CString>,
     platform_detail: Option<CString>,
 }
+
+static NUL_BYTE_FALLBACK: &CStr = c"(message contained null byte)";
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<StoredError>> = const { RefCell::new(None) };
@@ -52,8 +75,10 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
 #[allow(dead_code)]
 pub(crate) fn set_last_error(err: &AdapterError) {
     let code = error_code_to_result(&err.code);
-    let message = CString::new(err.message.as_str())
-        .unwrap_or_else(|_| CString::new("(message contained null byte)").unwrap());
+    let message = match CString::new(err.message.as_str()) {
+        Ok(cs) => MessageSource::Owned(cs),
+        Err(_) => MessageSource::Static(NUL_BYTE_FALLBACK),
+    };
     let suggestion = err.suggestion.as_deref().and_then(|s| CString::new(s).ok());
     let platform_detail = err
         .platform_detail
@@ -88,11 +113,7 @@ pub(crate) fn last_error_code() -> AdResult {
 
 #[allow(dead_code)]
 pub(crate) fn last_error_message_str() -> Option<String> {
-    LAST_ERROR.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map(|e| e.message.to_string_lossy().into_owned())
-    })
+    LAST_ERROR.with(|cell| cell.borrow().as_ref().map(|e| e.message.to_owned_string()))
 }
 
 #[allow(dead_code)]
@@ -190,5 +211,15 @@ mod tests {
         let handle = std::thread::spawn(|| last_error_message_str().is_none());
         assert!(handle.join().unwrap(), "other thread should see no error");
         assert_eq!(last_error_message_str().unwrap(), "thread1");
+    }
+
+    #[test]
+    fn test_interior_nul_falls_back_to_static() {
+        let err = AdapterError::new(ErrorCode::Internal, "before\0after");
+        set_last_error(&err);
+        assert_eq!(
+            last_error_message_str().unwrap(),
+            "(message contained null byte)"
+        );
     }
 }
