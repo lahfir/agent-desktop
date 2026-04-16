@@ -1,4 +1,4 @@
-use crate::convert::{free_surface_info_fields, surface_info_to_c};
+use crate::convert::surface::{free_surface_info_fields, surface_info_to_c};
 use crate::error::{clear_last_error, set_last_error, AdResult};
 use crate::types::AdSurfaceInfo;
 use crate::AdAdapter;
