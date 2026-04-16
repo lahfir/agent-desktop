@@ -1,3 +1,4 @@
+use crate::enum_validation::enum_raw_i32;
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdWindowInfo, AdWindowOp, AdWindowOpKind};
@@ -16,7 +17,17 @@ pub unsafe extern "C" fn ad_window_op(
     trap_panic(|| unsafe {
         let adapter = &*adapter;
         let core_win = ad_window_to_core(&*win);
-        let core_op = match op.kind {
+        let kind = match AdWindowOpKind::from_c(enum_raw_i32(&op.kind)) {
+            Some(k) => k,
+            None => {
+                set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    "invalid window op kind discriminant",
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let core_op = match kind {
             AdWindowOpKind::Resize => WindowOp::Resize {
                 width: op.width,
                 height: op.height,

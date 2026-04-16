@@ -1,11 +1,12 @@
 use crate::convert::string::c_to_string;
+use crate::enum_validation::enum_raw_i32;
 use crate::types::{AdAction, AdActionKind, AdDirection, AdKeyCombo, AdModifier};
 use agent_desktop_core::action::{
     Action, Direction, DragParams as CoreDragParams, KeyCombo as CoreKeyCombo, Modifier,
     Point as CorePoint,
 };
 
-pub(crate) fn direction_from_c(d: AdDirection) -> Direction {
+fn direction_from_c(d: AdDirection) -> Direction {
     match d {
         AdDirection::Up => Direction::Up,
         AdDirection::Down => Direction::Down,
@@ -19,7 +20,9 @@ pub(crate) unsafe fn key_combo_from_c(k: &AdKeyCombo) -> Result<CoreKeyCombo, &'
     let mut modifiers = Vec::new();
     if !k.modifiers.is_null() && k.modifier_count > 0 {
         let slice = std::slice::from_raw_parts(k.modifiers, k.modifier_count as usize);
-        for m in slice {
+        for raw_modifier in slice {
+            let m = AdModifier::from_c(enum_raw_i32(raw_modifier))
+                .ok_or("invalid modifier discriminant")?;
             let modifier = match m {
                 AdModifier::Cmd => Modifier::Cmd,
                 AdModifier::Ctrl => Modifier::Ctrl,
@@ -33,7 +36,9 @@ pub(crate) unsafe fn key_combo_from_c(k: &AdKeyCombo) -> Result<CoreKeyCombo, &'
 }
 
 pub(crate) unsafe fn action_from_c(action: &AdAction) -> Result<Action, &'static str> {
-    match action.kind {
+    let kind = AdActionKind::from_c(enum_raw_i32(&action.kind))
+        .ok_or("invalid action kind discriminant")?;
+    match kind {
         AdActionKind::Click => Ok(Action::Click),
         AdActionKind::DoubleClick => Ok(Action::DoubleClick),
         AdActionKind::RightClick => Ok(Action::RightClick),
@@ -60,7 +65,9 @@ pub(crate) unsafe fn action_from_c(action: &AdAction) -> Result<Action, &'static
             Ok(Action::TypeText(text))
         }
         AdActionKind::Scroll => {
-            let dir = direction_from_c(action.scroll.direction);
+            let raw_dir = AdDirection::from_c(enum_raw_i32(&action.scroll.direction))
+                .ok_or("invalid scroll direction discriminant")?;
+            let dir = direction_from_c(raw_dir);
             Ok(Action::Scroll(dir, action.scroll.amount))
         }
         AdActionKind::PressKey => {

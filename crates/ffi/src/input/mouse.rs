@@ -1,3 +1,4 @@
+use crate::enum_validation::enum_raw_i32;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdMouseButton, AdMouseEvent, AdMouseEventKind};
@@ -27,12 +28,32 @@ pub unsafe extern "C" fn ad_mouse_event(
     trap_panic(|| unsafe {
         let adapter = &*adapter;
         let ev = &*event;
+        let validated_button = match AdMouseButton::from_c(enum_raw_i32(&ev.button)) {
+            Some(b) => b,
+            None => {
+                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    "invalid mouse button discriminant",
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let validated_kind = match AdMouseEventKind::from_c(enum_raw_i32(&ev.kind)) {
+            Some(k) => k,
+            None => {
+                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    "invalid mouse event kind discriminant",
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
         let point = CorePoint {
             x: ev.point.x,
             y: ev.point.y,
         };
-        let button = mouse_button_from_c(ev.button);
-        let kind = match ev.kind {
+        let button = mouse_button_from_c(validated_button);
+        let kind = match validated_kind {
             AdMouseEventKind::Move => CoreMouseEventKind::Move,
             AdMouseEventKind::Down => CoreMouseEventKind::Down,
             AdMouseEventKind::Up => CoreMouseEventKind::Up,

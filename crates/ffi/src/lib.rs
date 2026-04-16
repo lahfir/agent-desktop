@@ -2,6 +2,7 @@ pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod apps;
 pub(crate) mod convert;
+pub(crate) mod enum_validation;
 pub mod error;
 pub(crate) mod ffi_try;
 pub(crate) mod input;
