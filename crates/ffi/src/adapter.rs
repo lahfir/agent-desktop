@@ -1,0 +1,87 @@
+use crate::error::{self, AdResult};
+use agent_desktop_core::adapter::PlatformAdapter;
+
+pub struct AdAdapter {
+    pub(crate) inner: Box<dyn PlatformAdapter>,
+}
+
+fn build_adapter() -> Box<dyn PlatformAdapter> {
+    #[cfg(target_os = "macos")]
+    {
+        Box::new(agent_desktop_macos::MacOSAdapter::new())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Box::new(agent_desktop_windows::WindowsAdapter::new())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        Box::new(agent_desktop_linux::LinuxAdapter::new())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    compile_error!("Unsupported platform")
+}
+
+#[no_mangle]
+pub extern "C" fn ad_adapter_create() -> *mut AdAdapter {
+    let adapter = AdAdapter {
+        inner: build_adapter(),
+    };
+    Box::into_raw(Box::new(adapter))
+}
+
+/// # Safety
+///
+/// `adapter` must be a pointer returned by `ad_adapter_create`, or null.
+/// After this call the pointer is invalid and must not be used.
+#[no_mangle]
+pub unsafe extern "C" fn ad_adapter_destroy(adapter: *mut AdAdapter) {
+    if !adapter.is_null() {
+        drop(Box::from_raw(adapter));
+    }
+}
+
+/// # Safety
+///
+/// `adapter` must be a non-null pointer returned by `ad_adapter_create` that
+/// has not yet been destroyed.
+#[no_mangle]
+pub unsafe extern "C" fn ad_check_permissions(adapter: *const AdAdapter) -> AdResult {
+    let adapter = &*adapter;
+    match adapter.inner.check_permissions() {
+        agent_desktop_core::adapter::PermissionStatus::Granted => {
+            error::clear_last_error();
+            AdResult::Ok
+        }
+        agent_desktop_core::adapter::PermissionStatus::Denied { suggestion } => {
+            error::set_last_error(
+                &agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::PermDenied,
+                    "Accessibility permission not granted",
+                )
+                .with_suggestion(suggestion),
+            );
+            AdResult::ErrPermDenied
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_adapter_create_destroy() {
+        let ptr = ad_adapter_create();
+        assert!(!ptr.is_null());
+        unsafe { ad_adapter_destroy(ptr) };
+    }
+
+    #[test]
+    fn test_destroy_null_is_noop() {
+        unsafe { ad_adapter_destroy(std::ptr::null_mut()) };
+    }
+}
