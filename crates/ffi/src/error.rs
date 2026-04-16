@@ -33,6 +33,7 @@ impl MessageSource {
         }
     }
 
+    #[cfg(test)]
     fn to_owned_string(&self) -> String {
         match self {
             MessageSource::Owned(cs) => cs.to_string_lossy().into_owned(),
@@ -54,7 +55,6 @@ thread_local! {
     static LAST_ERROR: RefCell<Option<StoredError>> = const { RefCell::new(None) };
 }
 
-#[allow(dead_code)]
 fn error_code_to_result(code: &ErrorCode) -> AdResult {
     match code {
         ErrorCode::PermDenied => AdResult::ErrPermDenied,
@@ -72,7 +72,6 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn set_last_error(err: &AdapterError) {
     let code = error_code_to_result(&err.code);
     let message = match CString::new(err.message.as_str()) {
@@ -94,47 +93,18 @@ pub(crate) fn set_last_error(err: &AdapterError) {
     });
 }
 
-#[allow(dead_code)]
 pub(crate) fn clear_last_error() {
     LAST_ERROR.with(|cell| {
         *cell.borrow_mut() = None;
     });
 }
 
-#[allow(dead_code)]
 pub(crate) fn last_error_code() -> AdResult {
     LAST_ERROR.with(|cell| {
         cell.borrow()
             .as_ref()
             .map(|e| e.code)
             .unwrap_or(AdResult::Ok)
-    })
-}
-
-#[allow(dead_code)]
-pub(crate) fn last_error_message_str() -> Option<String> {
-    LAST_ERROR.with(|cell| cell.borrow().as_ref().map(|e| e.message.to_owned_string()))
-}
-
-#[allow(dead_code)]
-pub(crate) fn last_error_suggestion_str() -> Option<String> {
-    LAST_ERROR.with(|cell| {
-        cell.borrow().as_ref().and_then(|e| {
-            e.suggestion
-                .as_ref()
-                .map(|s| s.to_string_lossy().into_owned())
-        })
-    })
-}
-
-#[allow(dead_code)]
-pub(crate) fn last_error_platform_detail_str() -> Option<String> {
-    LAST_ERROR.with(|cell| {
-        cell.borrow().as_ref().and_then(|e| {
-            e.platform_detail
-                .as_ref()
-                .map(|s| s.to_string_lossy().into_owned())
-        })
     })
 }
 
@@ -176,6 +146,30 @@ pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn last_error_message_str() -> Option<String> {
+        LAST_ERROR.with(|cell| cell.borrow().as_ref().map(|e| e.message.to_owned_string()))
+    }
+
+    fn last_error_suggestion_str() -> Option<String> {
+        LAST_ERROR.with(|cell| {
+            cell.borrow().as_ref().and_then(|e| {
+                e.suggestion
+                    .as_ref()
+                    .map(|s| s.to_string_lossy().into_owned())
+            })
+        })
+    }
+
+    fn last_error_platform_detail_str() -> Option<String> {
+        LAST_ERROR.with(|cell| {
+            cell.borrow().as_ref().and_then(|e| {
+                e.platform_detail
+                    .as_ref()
+                    .map(|s| s.to_string_lossy().into_owned())
+            })
+        })
+    }
 
     #[test]
     fn test_no_error_initially() {

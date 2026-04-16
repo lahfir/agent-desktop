@@ -4,7 +4,6 @@ use agent_desktop_core::node::SurfaceInfo;
 use std::os::raw::c_char;
 use std::ptr;
 
-#[allow(dead_code)]
 pub(crate) fn surface_info_to_c(s: &SurfaceInfo) -> AdSurfaceInfo {
     AdSurfaceInfo {
         kind: string_to_c(&s.kind),
@@ -13,7 +12,6 @@ pub(crate) fn surface_info_to_c(s: &SurfaceInfo) -> AdSurfaceInfo {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) unsafe fn free_surface_info_fields(s: &mut AdSurfaceInfo) {
     free_c_string(s.kind as *mut c_char);
     free_c_string(s.title as *mut c_char);

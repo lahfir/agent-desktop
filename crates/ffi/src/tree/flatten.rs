@@ -4,7 +4,6 @@ use agent_desktop_core::node::AccessibilityNode;
 use std::os::raw::c_char;
 use std::ptr;
 
-#[allow(dead_code)]
 pub(crate) fn flatten_tree(root: &AccessibilityNode) -> AdNodeTree {
     let mut flat: Vec<AdNode> = Vec::new();
     flatten_recursive(root, -1, &mut flat);
@@ -20,7 +19,6 @@ pub(crate) fn flatten_tree(root: &AccessibilityNode) -> AdNodeTree {
     AdNodeTree { nodes, count }
 }
 
-#[allow(dead_code)]
 fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec<AdNode>) {
     let my_index = flat.len() as i32;
 
@@ -62,7 +60,6 @@ fn flatten_recursive(node: &AccessibilityNode, parent_index: i32, flat: &mut Vec
     }
 }
 
-#[allow(dead_code)]
 fn strings_to_c_array(strings: &[String]) -> (*mut *mut c_char, u32) {
     if strings.is_empty() {
         return (ptr::null_mut(), 0);

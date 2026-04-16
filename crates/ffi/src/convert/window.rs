@@ -5,7 +5,6 @@ use agent_desktop_core::node::WindowInfo;
 use std::os::raw::c_char;
 use std::ptr;
 
-#[allow(dead_code)]
 pub(crate) fn window_info_to_c(w: &WindowInfo) -> AdWindowInfo {
     let (bounds, has_bounds) = match &w.bounds {
         Some(r) => (rect_to_c(r), true),
@@ -30,7 +29,6 @@ pub(crate) fn window_info_to_c(w: &WindowInfo) -> AdWindowInfo {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) unsafe fn free_window_info_fields(w: &mut AdWindowInfo) {
     free_c_string(w.id as *mut c_char);
     free_c_string(w.title as *mut c_char);

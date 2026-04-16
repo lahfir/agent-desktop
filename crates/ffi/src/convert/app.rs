@@ -4,7 +4,6 @@ use agent_desktop_core::node::AppInfo;
 use std::os::raw::c_char;
 use std::ptr;
 
-#[allow(dead_code)]
 pub(crate) fn app_info_to_c(a: &AppInfo) -> AdAppInfo {
     AdAppInfo {
         name: string_to_c(&a.name),
@@ -13,7 +12,6 @@ pub(crate) fn app_info_to_c(a: &AppInfo) -> AdAppInfo {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) unsafe fn free_app_info_fields(a: &mut AdAppInfo) {
     free_c_string(a.name as *mut c_char);
     free_c_string(a.bundle_id as *mut c_char);

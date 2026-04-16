@@ -2,7 +2,6 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::ptr;
 
-#[allow(dead_code)]
 pub(crate) fn string_to_c(s: &str) -> *mut c_char {
     match CString::new(s) {
         Ok(cs) => cs.into_raw(),
@@ -10,7 +9,6 @@ pub(crate) fn string_to_c(s: &str) -> *mut c_char {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn opt_string_to_c(s: Option<&str>) -> *mut c_char {
     match s {
         Some(s) => string_to_c(s),
@@ -18,14 +16,12 @@ pub(crate) fn opt_string_to_c(s: Option<&str>) -> *mut c_char {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) unsafe fn free_c_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         drop(CString::from_raw(ptr));
     }
 }
 
-#[allow(dead_code)]
 pub(crate) unsafe fn c_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
