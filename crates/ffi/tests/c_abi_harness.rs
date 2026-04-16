@@ -66,7 +66,7 @@ extern "C" {
         out: *mut AdNativeHandle,
     ) -> AdResult;
 
-    fn ad_free_handle(adapter: *const AdAdapter, handle: *const AdNativeHandle) -> AdResult;
+    fn ad_free_handle(adapter: *const AdAdapter, handle: *mut AdNativeHandle) -> AdResult;
 }
 
 fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
@@ -306,14 +306,71 @@ fn find_returns_not_found_on_empty_query_against_no_window() {
 #[test]
 fn free_handle_null_is_noop() {
     with_adapter(|adapter| unsafe {
+        let mut handle = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
+        let rc = ad_free_handle(adapter, &mut handle);
+        assert_eq!(rc, AdResult::Ok);
+        assert!(handle.ptr.is_null());
+
+        let rc2 = ad_free_handle(adapter, std::ptr::null_mut());
+        assert_eq!(rc2, AdResult::Ok);
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn free_handle_zeroes_ptr_so_double_free_is_noop() {
+    // macOS is excluded: ad_free_handle invokes CFRelease on the
+    // underlying pointer, and a fabricated "fake live" pointer will
+    // SIGBUS before we can observe the zeroing. On Windows/Linux
+    // release_handle is NotSupported (no platform call), so the zeroing
+    // contract is safely observable with a fake pointer.
+    with_adapter(|adapter| unsafe {
+        let fake_live_ptr = 0x1234 as *const std::ffi::c_void;
+        let mut handle = AdNativeHandle { ptr: fake_live_ptr };
+
+        let _ = ad_free_handle(adapter, &mut handle);
+        assert!(handle.ptr.is_null());
+
+        let rc = ad_free_handle(adapter, &mut handle);
+        assert_eq!(rc, AdResult::Ok);
+    });
+}
+
+#[test]
+fn execute_action_rejects_null_handle_ptr() {
+    with_adapter(|adapter| unsafe {
+        let action = AdAction {
+            kind: 0,
+            text: std::ptr::null(),
+            scroll: AdScrollParams {
+                direction: 0,
+                amount: 0,
+            },
+            key: AdKeyCombo {
+                key: std::ptr::null(),
+                modifiers: std::ptr::null(),
+                modifier_count: 0,
+            },
+            drag: AdDragParams {
+                from: AdPoint { x: 0.0, y: 0.0 },
+                to: AdPoint { x: 0.0, y: 0.0 },
+                duration_ms: 0,
+            },
+        };
         let handle = AdNativeHandle {
             ptr: std::ptr::null(),
         };
-        let rc = ad_free_handle(adapter, &handle);
-        assert_eq!(rc, AdResult::Ok);
-
-        let rc2 = ad_free_handle(adapter, std::ptr::null());
-        assert_eq!(rc2, AdResult::Ok);
+        let mut out: AdActionResult = std::mem::zeroed();
+        let rc = ad_execute_action(adapter, &handle, &action, &mut out);
+        // Main-thread guard or null-ptr guard wins; both avoid UB and
+        // keep the struct-level handle accepted while rejecting the
+        // inner null pointer.
+        assert!(matches!(
+            rc,
+            AdResult::ErrInvalidArgs | AdResult::ErrInternal
+        ));
     });
 }
 

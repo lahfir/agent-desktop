@@ -293,22 +293,32 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
                            struct AdActionResult *out);
 
 /**
- * Releases a handle previously returned by `ad_resolve_element`.
+ * Releases a handle previously returned by `ad_resolve_element` and
+ * zeroes the caller's struct so accidentally calling this twice is
+ * a deterministic no-op instead of a double-free on the underlying
+ * `CFRelease`.
  *
  * On macOS this calls `CFRelease` on the underlying `AXUIElementRef`,
  * balancing the `CFRetain` that happened during `ad_resolve_element`.
  * On Windows/Linux the call is a no-op that returns `AD_RESULT_OK`
- * (platform adapters inherit the default `not_supported` impl, which
- * the FFI surface rewrites to `Ok` here so callers can apply the same
- * release pattern everywhere).
+ * (platform adapters inherit the default `not_supported` impl; the
+ * FFI surface translates it so callers apply the same release
+ * pattern everywhere).
+ *
+ * Ownership contract: the FFI owns the handle from the moment
+ * `ad_resolve_element` writes `ptr`. Copying the struct after that
+ * point and calling `ad_free_handle` on either copy is undefined —
+ * there is no way for the library to detect forged non-null pointers.
+ * Callers that legitimately need a "copy" should re-resolve.
  *
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `handle` must be null or a pointer previously populated by
- * `ad_resolve_element`. Double-free is undefined behavior.
+ * `handle` must be null or a `*mut AdNativeHandle` previously
+ * populated by `ad_resolve_element`. On return `(*handle).ptr` is
+ * `NULL` so a double-call is a no-op instead of a double-free.
  */
-AdResult ad_free_handle(const struct AdAdapter *adapter, const struct AdNativeHandle *handle);
+AdResult ad_free_handle(const struct AdAdapter *adapter, struct AdNativeHandle *handle);
 
 /**
  * # Safety

@@ -30,6 +30,13 @@ pub unsafe extern "C" fn ad_execute_action(
         crate::pointer_guard::guard_non_null!(action, c"action is null");
         let adapter = &*adapter;
         let handle_ref = &*handle;
+        if handle_ref.ptr.is_null() {
+            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                agent_desktop_core::error::ErrorCode::InvalidArgs,
+                "handle.ptr is null — the handle has already been freed or was never resolved",
+            ));
+            return AdResult::ErrInvalidArgs;
+        }
         let action_ref = &*action;
         let core_action = match action_from_c(action_ref) {
             Ok(a) => a,

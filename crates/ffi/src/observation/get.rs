@@ -36,7 +36,15 @@ pub unsafe extern "C" fn ad_get(
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(handle, c"handle is null");
         let adapter = &*adapter;
-        let native = NativeHandle::from_ptr((*handle).ptr);
+        let raw = (*handle).ptr;
+        if raw.is_null() {
+            set_last_error(&agent_desktop_core::error::AdapterError::new(
+                agent_desktop_core::error::ErrorCode::InvalidArgs,
+                "handle.ptr is null — the handle has already been freed or was never resolved",
+            ));
+            return AdResult::ErrInvalidArgs;
+        }
+        let native = NativeHandle::from_ptr(raw);
         let prop = match c_to_string(property) {
             Some(s) => s,
             None => {
