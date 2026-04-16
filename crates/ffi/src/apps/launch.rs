@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_str;
+use crate::convert::string::c_to_string;
 use crate::convert::window::window_info_to_c;
 use crate::error::{clear_last_error, set_last_error, AdResult};
 use crate::types::AdWindowInfo;
@@ -15,7 +15,7 @@ pub unsafe extern "C" fn ad_launch_app(
     out: *mut AdWindowInfo,
 ) -> AdResult {
     let adapter = &*adapter;
-    let id_str = match c_to_str(id) {
+    let id_str = match c_to_string(id) {
         Some(s) => s,
         None => {
             set_last_error(&agent_desktop_core::error::AdapterError::new(
@@ -26,7 +26,7 @@ pub unsafe extern "C" fn ad_launch_app(
         }
     };
 
-    match adapter.inner.launch_app(id_str, timeout_ms) {
+    match adapter.inner.launch_app(&id_str, timeout_ms) {
         Ok(win) => {
             clear_last_error();
             *out = window_info_to_c(&win);

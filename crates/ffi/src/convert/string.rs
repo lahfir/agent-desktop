@@ -22,11 +22,11 @@ pub(crate) unsafe fn free_c_string(ptr: *mut c_char) {
     }
 }
 
-pub(crate) unsafe fn c_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
+pub(crate) unsafe fn c_to_string(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
-    CStr::from_ptr(ptr).to_str().ok()
+    CStr::from_ptr(ptr).to_str().ok().map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -37,8 +37,8 @@ mod tests {
     fn test_string_roundtrip() {
         let c = string_to_c("hello");
         assert!(!c.is_null());
-        let back = unsafe { c_to_str(c) };
-        assert_eq!(back, Some("hello"));
+        let back = unsafe { c_to_string(c) };
+        assert_eq!(back.as_deref(), Some("hello"));
         unsafe { free_c_string(c) };
     }
 
@@ -46,7 +46,7 @@ mod tests {
     fn test_null_string() {
         let c = opt_string_to_c(None);
         assert!(c.is_null());
-        let back = unsafe { c_to_str(c) };
+        let back = unsafe { c_to_string(c) };
         assert_eq!(back, None);
     }
 

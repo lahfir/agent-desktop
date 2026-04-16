@@ -74,7 +74,7 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::convert::string::c_to_str;
+    use crate::convert::string::c_to_string;
     use agent_desktop_core::action::ElementState;
 
     #[test]
@@ -90,12 +90,12 @@ mod tests {
         };
         let c_result = action_result_to_c(&core_result);
         unsafe {
-            assert_eq!(c_to_str(c_result.action), Some("click"));
-            assert_eq!(c_to_str(c_result.ref_id), Some("@e3"));
+            assert_eq!(c_to_string(c_result.action).as_deref(), Some("click"));
+            assert_eq!(c_to_string(c_result.ref_id).as_deref(), Some("@e3"));
             assert!(!c_result.post_state.is_null());
             let state = &*c_result.post_state;
-            assert_eq!(c_to_str(state.role), Some("button"));
-            assert_eq!(c_to_str(state.value), Some("OK"));
+            assert_eq!(c_to_string(state.role).as_deref(), Some("button"));
+            assert_eq!(c_to_string(state.value).as_deref(), Some("OK"));
             assert_eq!(state.state_count, 2);
         }
         let mut c_result = c_result;

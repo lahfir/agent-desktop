@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_str;
+use crate::convert::string::c_to_string;
 use crate::types::{AdAction, AdActionKind, AdDirection, AdKeyCombo, AdModifier};
 use agent_desktop_core::action::{
     Action, Direction, DragParams as CoreDragParams, KeyCombo as CoreKeyCombo, Modifier,
@@ -15,9 +15,7 @@ pub(crate) fn direction_from_c(d: AdDirection) -> Direction {
 }
 
 pub(crate) unsafe fn key_combo_from_c(k: &AdKeyCombo) -> Result<CoreKeyCombo, &'static str> {
-    let key = c_to_str(k.key)
-        .ok_or("key is null or invalid UTF-8")?
-        .to_owned();
+    let key = c_to_string(k.key).ok_or("key is null or invalid UTF-8")?;
     let mut modifiers = Vec::new();
     if !k.modifiers.is_null() && k.modifier_count > 0 {
         let slice = std::slice::from_raw_parts(k.modifiers, k.modifier_count as usize);
@@ -50,16 +48,16 @@ pub(crate) unsafe fn action_from_c(action: &AdAction) -> Result<Action, &'static
         AdActionKind::Clear => Ok(Action::Clear),
         AdActionKind::Hover => Ok(Action::Hover),
         AdActionKind::SetValue => {
-            let text = c_to_str(action.text).ok_or("text is null or invalid UTF-8")?;
-            Ok(Action::SetValue(text.to_owned()))
+            let text = c_to_string(action.text).ok_or("text is null or invalid UTF-8")?;
+            Ok(Action::SetValue(text))
         }
         AdActionKind::Select => {
-            let text = c_to_str(action.text).ok_or("text is null or invalid UTF-8")?;
-            Ok(Action::Select(text.to_owned()))
+            let text = c_to_string(action.text).ok_or("text is null or invalid UTF-8")?;
+            Ok(Action::Select(text))
         }
         AdActionKind::TypeText => {
-            let text = c_to_str(action.text).ok_or("text is null or invalid UTF-8")?;
-            Ok(Action::TypeText(text.to_owned()))
+            let text = c_to_string(action.text).ok_or("text is null or invalid UTF-8")?;
+            Ok(Action::TypeText(text))
         }
         AdActionKind::Scroll => {
             let dir = direction_from_c(action.scroll.direction);

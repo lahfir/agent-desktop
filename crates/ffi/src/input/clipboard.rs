@@ -1,4 +1,4 @@
-use crate::convert::string::{c_to_str, free_c_string, string_to_c};
+use crate::convert::string::{c_to_string, free_c_string, string_to_c};
 use crate::error::{self, AdResult};
 use crate::AdAdapter;
 use std::os::raw::c_char;
@@ -37,7 +37,7 @@ pub unsafe extern "C" fn ad_set_clipboard(
     text: *const c_char,
 ) -> AdResult {
     let adapter = &*adapter;
-    let text = match c_to_str(text) {
+    let text = match c_to_string(text) {
         Some(s) => s,
         None => {
             error::set_last_error(&agent_desktop_core::error::AdapterError::new(
@@ -47,7 +47,7 @@ pub unsafe extern "C" fn ad_set_clipboard(
             return AdResult::ErrInvalidArgs;
         }
     };
-    match adapter.inner.set_clipboard(text) {
+    match adapter.inner.set_clipboard(&text) {
         Ok(()) => {
             error::clear_last_error();
             AdResult::Ok

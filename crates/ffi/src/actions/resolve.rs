@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_str;
+use crate::convert::string::c_to_string;
 use crate::error::{self, AdResult};
 use crate::types::{AdNativeHandle, AdRefEntry};
 use crate::AdAdapter;
@@ -17,8 +17,8 @@ pub unsafe extern "C" fn ad_resolve_element(
 ) -> AdResult {
     let adapter = &*adapter;
     let entry = &*entry;
-    let role = match c_to_str(entry.role) {
-        Some(s) => s.to_owned(),
+    let role = match c_to_string(entry.role) {
+        Some(s) => s,
         None => {
             error::set_last_error(&agent_desktop_core::error::AdapterError::new(
                 agent_desktop_core::error::ErrorCode::InvalidArgs,
@@ -27,7 +27,7 @@ pub unsafe extern "C" fn ad_resolve_element(
             return AdResult::ErrInvalidArgs;
         }
     };
-    let name = c_to_str(entry.name).map(|s| s.to_owned());
+    let name = c_to_string(entry.name);
     let bounds_hash = if entry.has_bounds_hash {
         Some(entry.bounds_hash)
     } else {

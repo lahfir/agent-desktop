@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_str;
+use crate::convert::string::c_to_string;
 use crate::error::{clear_last_error, set_last_error, AdResult};
 use crate::AdAdapter;
 use std::os::raw::c_char;
@@ -12,7 +12,7 @@ pub unsafe extern "C" fn ad_close_app(
     force: bool,
 ) -> AdResult {
     let adapter = &*adapter;
-    let id_str = match c_to_str(id) {
+    let id_str = match c_to_string(id) {
         Some(s) => s,
         None => {
             set_last_error(&agent_desktop_core::error::AdapterError::new(
@@ -23,7 +23,7 @@ pub unsafe extern "C" fn ad_close_app(
         }
     };
 
-    match adapter.inner.close_app(id_str, force) {
+    match adapter.inner.close_app(&id_str, force) {
         Ok(()) => {
             clear_last_error();
             AdResult::Ok

@@ -22,7 +22,7 @@ pub(crate) unsafe fn free_app_info_fields(a: &mut AdAppInfo) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::convert::string::c_to_str;
+    use crate::convert::string::c_to_string;
 
     #[test]
     fn test_app_info_roundtrip() {
@@ -32,8 +32,11 @@ mod tests {
             bundle_id: Some("com.apple.finder".into()),
         };
         let c = app_info_to_c(&a);
-        assert_eq!(unsafe { c_to_str(c.name) }, Some("Finder"));
-        assert_eq!(unsafe { c_to_str(c.bundle_id) }, Some("com.apple.finder"));
+        assert_eq!(unsafe { c_to_string(c.name) }.as_deref(), Some("Finder"));
+        assert_eq!(
+            unsafe { c_to_string(c.bundle_id) }.as_deref(),
+            Some("com.apple.finder")
+        );
         let mut c = c;
         unsafe { free_app_info_fields(&mut c) };
     }

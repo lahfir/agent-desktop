@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_str;
+use crate::convert::string::c_to_string;
 use crate::convert::window::{free_window_info_fields, window_info_to_c};
 use crate::error::{clear_last_error, set_last_error, AdResult};
 use crate::types::AdWindowInfo;
@@ -21,7 +21,7 @@ pub unsafe extern "C" fn ad_list_windows(
     let adapter = &*adapter;
     let filter = WindowFilter {
         focused_only: false,
-        app: c_to_str(app_filter).map(str::to_string),
+        app: c_to_string(app_filter),
     };
     match adapter.inner.list_windows(&filter) {
         Ok(windows) => {

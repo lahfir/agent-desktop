@@ -22,7 +22,7 @@ pub(crate) unsafe fn free_surface_info_fields(s: &mut AdSurfaceInfo) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::convert::string::c_to_str;
+    use crate::convert::string::c_to_string;
 
     #[test]
     fn test_surface_info_no_title() {
@@ -32,7 +32,7 @@ mod tests {
             item_count: Some(3),
         };
         let c = surface_info_to_c(&s);
-        assert_eq!(unsafe { c_to_str(c.kind) }, Some("menu"));
+        assert_eq!(unsafe { c_to_string(c.kind) }.as_deref(), Some("menu"));
         assert!(c.title.is_null());
         assert_eq!(c.item_count, 3);
         let mut c = c;

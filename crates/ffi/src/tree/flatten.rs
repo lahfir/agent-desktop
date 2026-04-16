@@ -75,7 +75,7 @@ fn strings_to_c_array(strings: &[String]) -> (*mut *mut c_char, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::convert::string::c_to_str;
+    use crate::convert::string::c_to_string;
     use crate::tree::free::ad_free_tree;
 
     fn node(role: &str) -> AccessibilityNode {
@@ -100,8 +100,8 @@ mod tests {
         let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 1) };
         assert_eq!(nodes[0].parent_index, -1);
         assert_eq!(nodes[0].child_count, 0);
-        let role = unsafe { c_to_str(nodes[0].role) };
-        assert_eq!(role, Some("window"));
+        let role = unsafe { c_to_string(nodes[0].role) };
+        assert_eq!(role.as_deref(), Some("window"));
         unsafe { ad_free_tree(&tree as *const _ as *mut _) };
     }
 
@@ -121,8 +121,8 @@ mod tests {
 
         assert_eq!(nodes[1].parent_index, 0);
         assert_eq!(nodes[1].child_count, 0);
-        let role = unsafe { c_to_str(nodes[1].role) };
-        assert_eq!(role, Some("button"));
+        let role = unsafe { c_to_string(nodes[1].role) };
+        assert_eq!(role.as_deref(), Some("button"));
 
         unsafe { ad_free_tree(&tree as *const _ as *mut _) };
     }
@@ -141,9 +141,9 @@ mod tests {
         assert_eq!(tree.count, 5);
         let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 5) };
 
-        let roles: Vec<_> = nodes
+        let roles: Vec<String> = nodes
             .iter()
-            .map(|n| unsafe { c_to_str(n.role).unwrap() })
+            .map(|n| unsafe { c_to_string(n.role).unwrap() })
             .collect();
         assert_eq!(roles, vec!["root", "a", "a1", "a2", "b"]);
 
@@ -168,10 +168,10 @@ mod tests {
         let nodes = unsafe { std::slice::from_raw_parts(tree.nodes, 1) };
         assert_eq!(nodes[0].state_count, 2);
         let states = unsafe { std::slice::from_raw_parts(nodes[0].states, 2) };
-        let s0 = unsafe { c_to_str(states[0]) };
-        let s1 = unsafe { c_to_str(states[1]) };
-        assert_eq!(s0, Some("focused"));
-        assert_eq!(s1, Some("enabled"));
+        let s0 = unsafe { c_to_string(states[0]) };
+        let s1 = unsafe { c_to_string(states[1]) };
+        assert_eq!(s0.as_deref(), Some("focused"));
+        assert_eq!(s1.as_deref(), Some("enabled"));
         unsafe { ad_free_tree(&tree as *const _ as *mut _) };
     }
 }
