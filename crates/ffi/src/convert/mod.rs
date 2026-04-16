@@ -1,4 +1,5 @@
 pub(crate) mod app;
+pub(crate) mod notification;
 pub(crate) mod rect;
 pub(crate) mod string;
 pub(crate) mod surface;

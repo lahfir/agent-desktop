@@ -128,6 +128,8 @@ typedef struct AdAppList AdAppList;
  */
 typedef struct AdImageBuffer AdImageBuffer;
 
+typedef struct AdNotificationList AdNotificationList;
+
 /**
  * Opaque list handle emitted by `ad_list_surfaces`. See
  * [`crate::types::window_list::AdWindowList`] for the pattern.
@@ -230,6 +232,22 @@ typedef struct AdMouseEvent {
   AdMouseButton button;
   uint32_t click_count;
 } AdMouseEvent;
+
+typedef struct AdNotificationFilter {
+  const char *app;
+  const char *text;
+  uint32_t limit;
+  bool has_limit;
+} AdNotificationFilter;
+
+typedef struct AdNotificationInfo {
+  uint32_t index;
+  const char *app_name;
+  const char *title;
+  const char *body;
+  char **actions;
+  uint32_t action_count;
+} AdNotificationInfo;
 
 typedef struct AdScreenshotTarget {
   AdScreenshotKind kind;
@@ -468,6 +486,108 @@ AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *par
  * `event` must be a non-null pointer to a valid `AdMouseEvent`.
  */
 AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEvent *event);
+
+/**
+ * Triggers the named action on the notification at `index`. Typical
+ * action names are those reported in `AdNotificationInfo.actions`
+ * (e.g. `"Reply"`, `"Open"`).
+ *
+ * # Safety
+ * `adapter` must be valid. `action_name` must be a non-null UTF-8
+ * C string. `out` must be a valid writable `*mut AdActionResult`;
+ * on error it is zero-initialized.
+ */
+AdResult ad_notification_action(const struct AdAdapter *adapter,
+                                uint32_t index,
+                                const char *action_name,
+                                struct AdActionResult *out);
+
+/**
+ * Dismisses the notification at `index`. Indexes are only valid within
+ * the response to the most recent `ad_list_notifications` call on this
+ * thread — the adapter re-queries internally, so dismissing by a stale
+ * index returns `AD_RESULT_ERR_NOTIFICATION_NOT_FOUND`.
+ *
+ * # Safety
+ * `adapter` must be valid. `app_filter` may be null.
+ */
+AdResult ad_dismiss_notification(const struct AdAdapter *adapter,
+                                 uint32_t index,
+                                 const char *app_filter);
+
+/**
+ * Dismisses every notification matching `app_filter` (null = all apps).
+ *
+ * Returns two lists: `dismissed_out` carries the notifications that
+ * were successfully dismissed; `failed_out` holds error strings for
+ * notifications where the platform rejected the dismiss. Partial
+ * failures do not set last-error — inspect `failed_out` for details.
+ *
+ * `failed_out` uses the notification-list handle to stay ABI-consistent
+ * with the other list-returning FFI calls; the entries carry the
+ * original notification shape with `body` populated by the platform
+ * error message.
+ *
+ * # Safety
+ * `adapter` must be valid. `app_filter` may be null. `dismissed_out`
+ * and `failed_out` must both be valid writable `*mut *mut AdNotificationList`.
+ */
+AdResult ad_dismiss_all_notifications(const struct AdAdapter *adapter,
+                                      const char *app_filter,
+                                      struct AdNotificationList **dismissed_out,
+                                      struct AdNotificationList **failed_out);
+
+/**
+ * Convenience wrapper: free both lists returned by
+ * `ad_dismiss_all_notifications`. Equivalent to calling
+ * `ad_notification_list_free` on each; provided for symmetry.
+ *
+ * # Safety
+ * Both arguments must be null or pointers from
+ * `ad_dismiss_all_notifications`.
+ */
+void ad_dismiss_all_notifications_free(struct AdNotificationList *dismissed,
+                                       struct AdNotificationList *failed);
+
+/**
+ * Lists the notifications currently on-screen.
+ *
+ * Notification indexes are only stable within a single list response.
+ * Pass them straight to `ad_dismiss_notification` /
+ * `ad_notification_action` without caching across ticks — the adapter
+ * re-queries Notification Center internally on every call.
+ *
+ * # Safety
+ * `adapter` must be valid. `filter` may be null. `out` must be a valid
+ * writable `*mut *mut AdNotificationList`. On success `*out` is a
+ * non-null handle freed with `ad_notification_list_free`.
+ */
+AdResult ad_list_notifications(const struct AdAdapter *adapter,
+                               const struct AdNotificationFilter *filter,
+                               struct AdNotificationList **out);
+
+/**
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_notifications`.
+ */
+uint32_t ad_notification_list_count(const struct AdNotificationList *list);
+
+/**
+ * Borrows a notification entry. Null if `index` is out of range.
+ *
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_notifications`.
+ */
+const struct AdNotificationInfo *ad_notification_list_get(const struct AdNotificationList *list,
+                                                          uint32_t index);
+
+/**
+ * Frees the list and each entry's interior strings.
+ *
+ * # Safety
+ * `list` must be null or a pointer returned by `ad_list_notifications`.
+ */
+void ad_notification_list_free(struct AdNotificationList *list);
 
 /**
  * Borrowed pointer to the image bytes; valid until the buffer is freed.
