@@ -59,7 +59,8 @@ agent-desktop/
 │   ├── core/               # agent-desktop-core (platform-agnostic)
 │   ├── macos/              # agent-desktop-macos (Phase 1)
 │   ├── windows/            # agent-desktop-windows (stub → Phase 2)
-│   └── linux/              # agent-desktop-linux (stub → Phase 2)
+│   ├── linux/              # agent-desktop-linux (stub → Phase 2)
+│   └── ffi/                # agent-desktop-ffi (cdylib + cbindgen C ABI)
 ├── src/                    # agent-desktop binary (entry point)
 │   ├── main.rs             # entry point, permission check, JSON envelope
 │   ├── cli.rs              # clap derive enum (Commands)
@@ -76,8 +77,10 @@ agent-desktop/
 - `agent-desktop-core` defines the `PlatformAdapter` trait and all shared types
 - Platform crates (`macos`, `windows`, `linux`) implement the trait
 - **Core NEVER imports platform crates.** Platform crates NEVER import each other.
-- The binary crate (`src/`) is the only place that wires platform → core
-- CI enforces this: `cargo tree -p agent-desktop-core` must contain zero platform crate names
+- Two legitimate wiring points bring platform → core together:
+  1. The binary crate (`src/`) — CLI consumers
+  2. The FFI crate (`crates/ffi/`) — cdylib consumers (Python, Swift, Go, Node, C++)
+- CI enforces core isolation: `cargo tree -p agent-desktop-core` must contain zero platform crate names
 
 ### Platform Selection
 
