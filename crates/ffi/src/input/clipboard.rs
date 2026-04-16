@@ -15,6 +15,7 @@ pub unsafe extern "C" fn ad_get_clipboard(
     out: *mut *mut c_char,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        crate::main_thread::debug_assert_main_thread();
         let adapter = &*adapter;
         match adapter.inner.get_clipboard() {
             Ok(text) => {

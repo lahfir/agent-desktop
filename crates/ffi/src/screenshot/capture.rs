@@ -14,6 +14,7 @@ pub unsafe extern "C" fn ad_screenshot(
     out: *mut AdImageBuffer,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        crate::main_thread::debug_assert_main_thread();
         *out = std::mem::zeroed();
         let adapter = &*adapter;
         let t = &*target;

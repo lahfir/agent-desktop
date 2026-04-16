@@ -20,6 +20,7 @@ pub unsafe extern "C" fn ad_execute_action(
     out: *mut AdActionResult,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        crate::main_thread::debug_assert_main_thread();
         *out = std::mem::zeroed();
         let adapter = &*adapter;
         let handle_ref = &*handle;

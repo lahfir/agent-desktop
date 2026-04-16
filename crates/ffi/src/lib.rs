@@ -1,3 +1,37 @@
+//! # agent-desktop FFI
+//!
+//! C-ABI surface over `PlatformAdapter`. Exposes
+//! `libagent_desktop_ffi.{dylib,so,dll}` to Python / Swift / Go / Node /
+//! C++ consumers.
+//!
+//! ## ⚠ Thread safety (macOS)
+//!
+//! **Every FFI entry other than `ad_adapter_create`, `ad_adapter_destroy`,
+//! `ad_last_error_*`, and the `ad_free_*` family must be invoked on the
+//! process's main thread.** macOS accessibility and Cocoa APIs require
+//! this and will misbehave silently on worker threads. Debug builds
+//! assert this constraint; release builds do not (no-op `debug_assert!`)
+//! but violators invoke undefined behavior.
+//!
+//! ## Build profile
+//!
+//! The cdylib must be built with the workspace's `release-ffi` profile:
+//!
+//! ```text
+//! cargo build --profile release-ffi -p agent-desktop-ffi
+//! ```
+//!
+//! The workspace `release` profile keeps `panic = "abort"` to hold the
+//! CLI under its size budget; the cdylib needs `panic = "unwind"` so the
+//! `trap_panic` boundary actually catches. Both profiles coexist.
+//!
+//! ## Error model
+//!
+//! Every `AdResult`-returning fn sets thread-local last-error details on
+//! failure. The pointer returned by `ad_last_error_message()` survives
+//! any number of subsequent successful calls on the same thread; only
+//! the next *failing* call rotates it. Matches POSIX `errno` semantics.
+
 pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod apps;
@@ -6,6 +40,7 @@ pub(crate) mod enum_validation;
 pub mod error;
 pub(crate) mod ffi_try;
 pub(crate) mod input;
+pub(crate) mod main_thread;
 pub(crate) mod screenshot;
 pub(crate) mod surfaces;
 pub(crate) mod tree;

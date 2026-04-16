@@ -17,6 +17,7 @@ pub unsafe extern "C" fn ad_resolve_element(
     out: *mut AdNativeHandle,
 ) -> AdResult {
     trap_panic(|| unsafe {
+        crate::main_thread::debug_assert_main_thread();
         (*out).ptr = std::ptr::null();
         let adapter = &*adapter;
         let entry = &*entry;
