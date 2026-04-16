@@ -199,6 +199,27 @@ fn dirty_out_param_is_cleared_before_early_return_on_worker_thread() {
 }
 
 #[test]
+fn invalid_utf8_filter_rejected_not_silently_widened() {
+    // Regression for todo 010: prior c_to_string conflated null with
+    // invalid UTF-8, so a non-null buffer with bogus bytes in the
+    // app_filter slot would be treated as "no filter" and widen
+    // ad_list_windows to every app on the system. Must now fail closed.
+    with_adapter(|adapter| unsafe {
+        let bad: [u8; 2] = [0xC3, 0x00];
+        let mut list: *mut AdWindowList = std::ptr::null_mut();
+        let rc = ad_list_windows(adapter, bad.as_ptr() as *const c_char, false, &mut list);
+        // Main-thread guard (ErrInternal on worker) or UTF-8 rejection
+        // (ErrInvalidArgs) — either way we do NOT produce a list by
+        // silently treating bad bytes as "no filter".
+        assert!(matches!(
+            rc,
+            AdResult::ErrInvalidArgs | AdResult::ErrInternal
+        ));
+        assert!(list.is_null());
+    });
+}
+
+#[test]
 fn null_out_param_rejected_before_write() {
     with_adapter(|adapter| unsafe {
         let rc = ad_list_apps(adapter, std::ptr::null_mut());

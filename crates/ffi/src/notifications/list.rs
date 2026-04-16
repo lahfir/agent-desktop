@@ -31,7 +31,13 @@ pub unsafe extern "C" fn ad_list_notifications(
         }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = &*adapter;
-        let core_filter = filter_from_c(filter);
+        let core_filter = match filter_from_c(filter) {
+            Ok(f) => f,
+            Err(e) => {
+                set_last_error(&e);
+                return crate::error::last_error_code();
+            }
+        };
         match adapter.inner.list_notifications(&core_filter) {
             Ok(notifications) => {
                 let items: Vec<AdNotificationInfo> =

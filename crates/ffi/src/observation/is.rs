@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_string;
+use crate::convert::string::{c_to_string, decode_optional_filter};
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdFindQuery, AdWindowInfo};
@@ -62,9 +62,9 @@ pub unsafe extern "C" fn ad_is(
             }
         };
         let q = &*query;
-        let role_filter = c_to_string(q.role);
-        let name_filter = c_to_string(q.name_substring);
-        let value_filter = c_to_string(q.value_substring);
+        let role_filter = decode_optional_filter!(q.role, "query.role");
+        let name_filter = decode_optional_filter!(q.name_substring, "query.name_substring");
+        let value_filter = decode_optional_filter!(q.value_substring, "query.value_substring");
         let prop = match c_to_string(property) {
             Some(s) => s,
             None => {

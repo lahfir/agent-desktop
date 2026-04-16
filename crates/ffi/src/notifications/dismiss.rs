@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_string;
+use crate::convert::string::decode_optional_filter;
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::AdAdapter;
@@ -23,7 +23,7 @@ pub unsafe extern "C" fn ad_dismiss_notification(
         }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = &*adapter;
-        let filter = c_to_string(app_filter);
+        let filter = decode_optional_filter!(app_filter, "app_filter");
         let filter_ref = filter.as_deref();
         match adapter
             .inner

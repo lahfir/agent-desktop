@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_string;
+use crate::convert::string::decode_optional_filter;
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::observation::walk::find_first_match;
@@ -47,9 +47,9 @@ pub unsafe extern "C" fn ad_find(
             }
         };
         let q = &*query;
-        let role_filter = c_to_string(q.role);
-        let name_filter = c_to_string(q.name_substring);
-        let value_filter = c_to_string(q.value_substring);
+        let role_filter = decode_optional_filter!(q.role, "query.role");
+        let name_filter = decode_optional_filter!(q.name_substring, "query.name_substring");
+        let value_filter = decode_optional_filter!(q.value_substring, "query.value_substring");
 
         // include_bounds must be true: the resolver disambiguates
         // duplicate-label siblings using bounds_hash, and without the

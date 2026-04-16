@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_string;
+use crate::convert::string::decode_optional_filter;
 use crate::convert::window::{free_window_info_fields, window_info_to_c};
 use crate::error::{set_last_error, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_void};
@@ -29,7 +29,7 @@ pub unsafe extern "C" fn ad_list_windows(
         let adapter = &*adapter;
         let filter = WindowFilter {
             focused_only,
-            app: c_to_string(app_filter),
+            app: decode_optional_filter!(app_filter, "app_filter"),
         };
         match adapter.inner.list_windows(&filter) {
             Ok(windows) => {
