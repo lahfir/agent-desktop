@@ -1,4 +1,5 @@
 use crate::error::{self, AdResult};
+use crate::ffi_try::{trap_panic, trap_panic_ptr, trap_panic_void};
 use agent_desktop_core::adapter::PlatformAdapter;
 
 pub struct AdAdapter {
@@ -27,10 +28,12 @@ fn build_adapter() -> Box<dyn PlatformAdapter> {
 
 #[no_mangle]
 pub extern "C" fn ad_adapter_create() -> *mut AdAdapter {
-    let adapter = AdAdapter {
-        inner: build_adapter(),
-    };
-    Box::into_raw(Box::new(adapter))
+    trap_panic_ptr(|| {
+        let adapter = AdAdapter {
+            inner: build_adapter(),
+        };
+        Box::into_raw(Box::new(adapter))
+    })
 }
 
 /// # Safety
@@ -39,9 +42,11 @@ pub extern "C" fn ad_adapter_create() -> *mut AdAdapter {
 /// After this call the pointer is invalid and must not be used.
 #[no_mangle]
 pub unsafe extern "C" fn ad_adapter_destroy(adapter: *mut AdAdapter) {
-    if !adapter.is_null() {
-        drop(Box::from_raw(adapter));
-    }
+    trap_panic_void(|| {
+        if !adapter.is_null() {
+            drop(unsafe { Box::from_raw(adapter) });
+        }
+    })
 }
 
 /// # Safety
@@ -50,23 +55,25 @@ pub unsafe extern "C" fn ad_adapter_destroy(adapter: *mut AdAdapter) {
 /// has not yet been destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn ad_check_permissions(adapter: *const AdAdapter) -> AdResult {
-    let adapter = &*adapter;
-    match adapter.inner.check_permissions() {
-        agent_desktop_core::adapter::PermissionStatus::Granted => {
-            error::clear_last_error();
-            AdResult::Ok
+    trap_panic(|| {
+        let adapter = unsafe { &*adapter };
+        match adapter.inner.check_permissions() {
+            agent_desktop_core::adapter::PermissionStatus::Granted => {
+                error::clear_last_error();
+                AdResult::Ok
+            }
+            agent_desktop_core::adapter::PermissionStatus::Denied { suggestion } => {
+                error::set_last_error(
+                    &agent_desktop_core::error::AdapterError::new(
+                        agent_desktop_core::error::ErrorCode::PermDenied,
+                        "Accessibility permission not granted",
+                    )
+                    .with_suggestion(suggestion),
+                );
+                AdResult::ErrPermDenied
+            }
         }
-        agent_desktop_core::adapter::PermissionStatus::Denied { suggestion } => {
-            error::set_last_error(
-                &agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::PermDenied,
-                    "Accessibility permission not granted",
-                )
-                .with_suggestion(suggestion),
-            );
-            AdResult::ErrPermDenied
-        }
-    }
+    })
 }
 
 #[cfg(test)]

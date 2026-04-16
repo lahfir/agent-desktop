@@ -1,6 +1,7 @@
 use crate::actions::conversion::action_from_c;
 use crate::actions::result::action_result_to_c;
 use crate::error::{self, AdResult};
+use crate::ffi_try::trap_panic;
 use crate::types::{AdAction, AdActionResult, AdNativeHandle};
 use crate::AdAdapter;
 use agent_desktop_core::adapter::NativeHandle;
@@ -18,29 +19,31 @@ pub unsafe extern "C" fn ad_execute_action(
     action: *const AdAction,
     out: *mut AdActionResult,
 ) -> AdResult {
-    let adapter = &*adapter;
-    let handle_ref = &*handle;
-    let action_ref = &*action;
-    let core_action = match action_from_c(action_ref) {
-        Ok(a) => a,
-        Err(msg) => {
-            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                agent_desktop_core::error::ErrorCode::InvalidArgs,
-                msg,
-            ));
-            return AdResult::ErrInvalidArgs;
+    trap_panic(|| unsafe {
+        let adapter = &*adapter;
+        let handle_ref = &*handle;
+        let action_ref = &*action;
+        let core_action = match action_from_c(action_ref) {
+            Ok(a) => a,
+            Err(msg) => {
+                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    msg,
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let native_handle = NativeHandle::from_ptr(handle_ref.ptr);
+        match adapter.inner.execute_action(&native_handle, core_action) {
+            Ok(result) => {
+                *out = action_result_to_c(&result);
+                error::clear_last_error();
+                AdResult::Ok
+            }
+            Err(e) => {
+                error::set_last_error(&e);
+                error::last_error_code()
+            }
         }
-    };
-    let native_handle = NativeHandle::from_ptr(handle_ref.ptr);
-    match adapter.inner.execute_action(&native_handle, core_action) {
-        Ok(result) => {
-            *out = action_result_to_c(&result);
-            error::clear_last_error();
-            AdResult::Ok
-        }
-        Err(e) => {
-            error::set_last_error(&e);
-            error::last_error_code()
-        }
-    }
+    })
 }

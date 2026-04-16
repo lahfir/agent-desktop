@@ -102,14 +102,6 @@ typedef int32_t AdWindowOpKind;
 
 typedef struct AdAdapter AdAdapter;
 
-typedef struct AdRefEntry {
-  int32_t pid;
-  const char *role;
-  const char *name;
-  uint64_t bounds_hash;
-  bool has_bounds_hash;
-} AdRefEntry;
-
 typedef struct AdNativeHandle {
   const void *ptr;
 } AdNativeHandle;
@@ -157,11 +149,13 @@ typedef struct AdActionResult {
   struct AdElementState *post_state;
 } AdActionResult;
 
-typedef struct AdAppInfo {
-  const char *name;
+typedef struct AdRefEntry {
   int32_t pid;
-  const char *bundle_id;
-} AdAppInfo;
+  const char *role;
+  const char *name;
+  uint64_t bounds_hash;
+  bool has_bounds_hash;
+} AdRefEntry;
 
 typedef struct AdRect {
   double x;
@@ -179,6 +173,12 @@ typedef struct AdWindowInfo {
   bool has_bounds;
   bool is_focused;
 } AdWindowInfo;
+
+typedef struct AdAppInfo {
+  const char *name;
+  int32_t pid;
+  const char *bundle_id;
+} AdAppInfo;
 
 typedef struct AdMouseEvent {
   AdMouseEventKind kind;
@@ -243,6 +243,38 @@ typedef struct AdWindowOp {
   double y;
 } AdWindowOp;
 
+/**
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+ * `action` must be a non-null pointer to a valid `AdAction`.
+ * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
+ */
+AdResult ad_execute_action(const struct AdAdapter *adapter,
+                           const struct AdNativeHandle *handle,
+                           const struct AdAction *action,
+                           struct AdActionResult *out);
+
+/**
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `entry` must be a non-null pointer to a valid `AdRefEntry`.
+ * `out` must be a non-null pointer to an `AdNativeHandle` to write the result into.
+ */
+AdResult ad_resolve_element(const struct AdAdapter *adapter,
+                            const struct AdRefEntry *entry,
+                            struct AdNativeHandle *out);
+
+/**
+ * # Safety
+ *
+ * `result` must be a pointer to an `AdActionResult` previously written by `ad_execute_action`,
+ * or null. After this call all pointers inside the struct are invalid.
+ */
+void ad_free_action_result(struct AdActionResult *result);
+
 struct AdAdapter *ad_adapter_create(void);
 
 /**
@@ -263,35 +295,18 @@ AdResult ad_check_permissions(const struct AdAdapter *adapter);
 
 /**
  * # Safety
- *
- * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `entry` must be a non-null pointer to a valid `AdRefEntry`.
- * `out` must be a non-null pointer to an `AdNativeHandle` to write the result into.
+ * `adapter` must be valid. `id` must be a valid C string.
  */
-AdResult ad_resolve_element(const struct AdAdapter *adapter,
-                            const struct AdRefEntry *entry,
-                            struct AdNativeHandle *out);
+AdResult ad_close_app(const struct AdAdapter *adapter, const char *id, bool force);
 
 /**
  * # Safety
- *
- * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `handle` must be a non-null pointer to a valid `AdNativeHandle`.
- * `action` must be a non-null pointer to a valid `AdAction`.
- * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
+ * `adapter` must be valid. `id` must be a valid C string. `out` must be writable.
  */
-AdResult ad_execute_action(const struct AdAdapter *adapter,
-                           const struct AdNativeHandle *handle,
-                           const struct AdAction *action,
-                           struct AdActionResult *out);
-
-/**
- * # Safety
- *
- * `result` must be a pointer to an `AdActionResult` previously written by `ad_execute_action`,
- * or null. After this call all pointers inside the struct are invalid.
- */
-void ad_free_action_result(struct AdActionResult *result);
+AdResult ad_launch_app(const struct AdAdapter *adapter,
+                       const char *id,
+                       uint64_t timeout_ms,
+                       struct AdWindowInfo *out);
 
 /**
  * # Safety
@@ -305,21 +320,6 @@ AdResult ad_list_apps(const struct AdAdapter *adapter, struct AdAppInfo **out, u
  * `apps` must be null or a pointer previously returned by `ad_list_apps`.
  */
 void ad_free_apps(struct AdAppInfo *apps, uint32_t count);
-
-/**
- * # Safety
- * `adapter` must be valid. `id` must be a valid C string. `out` must be writable.
- */
-AdResult ad_launch_app(const struct AdAdapter *adapter,
-                       const char *id,
-                       uint64_t timeout_ms,
-                       struct AdWindowInfo *out);
-
-/**
- * # Safety
- * `adapter` must be valid. `id` must be a valid C string.
- */
-AdResult ad_close_app(const struct AdAdapter *adapter, const char *id, bool force);
 
 AdResult ad_last_error_code(void);
 
@@ -365,17 +365,17 @@ void ad_free_string(char *s);
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `event` must be a non-null pointer to a valid `AdMouseEvent`.
+ * `params` must be a non-null pointer to a valid `AdDragParams`.
  */
-AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEvent *event);
+AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *params);
 
 /**
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `params` must be a non-null pointer to a valid `AdDragParams`.
+ * `event` must be a non-null pointer to a valid `AdMouseEvent`.
  */
-AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *params);
+AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEvent *event);
 
 /**
  * # Safety
@@ -424,6 +424,18 @@ AdResult ad_get_tree(const struct AdAdapter *adapter,
 
 /**
  * # Safety
+ * `adapter` and `win` must be valid pointers.
+ */
+AdResult ad_focus_window(const struct AdAdapter *adapter, const struct AdWindowInfo *win);
+
+/**
+ * # Safety
+ * `win` must be null or point to a valid `AdWindowInfo`.
+ */
+void ad_free_window(struct AdWindowInfo *win);
+
+/**
+ * # Safety
  * `adapter` must be valid. `out` and `out_count` must be writable.
  */
 AdResult ad_list_windows(const struct AdAdapter *adapter,
@@ -436,18 +448,6 @@ AdResult ad_list_windows(const struct AdAdapter *adapter,
  * `windows` must be null or from `ad_list_windows`.
  */
 void ad_free_windows(struct AdWindowInfo *windows, uint32_t count);
-
-/**
- * # Safety
- * `win` must be null or point to a valid `AdWindowInfo`.
- */
-void ad_free_window(struct AdWindowInfo *win);
-
-/**
- * # Safety
- * `adapter` and `win` must be valid pointers.
- */
-AdResult ad_focus_window(const struct AdAdapter *adapter, const struct AdWindowInfo *win);
 
 /**
  * # Safety

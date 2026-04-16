@@ -1,4 +1,5 @@
 use crate::error::{self, AdResult};
+use crate::ffi_try::trap_panic;
 use crate::types::{AdMouseButton, AdMouseEvent, AdMouseEventKind};
 use crate::AdAdapter;
 use agent_desktop_core::action::{
@@ -23,36 +24,38 @@ pub unsafe extern "C" fn ad_mouse_event(
     adapter: *const AdAdapter,
     event: *const AdMouseEvent,
 ) -> AdResult {
-    let adapter = &*adapter;
-    let ev = &*event;
-    let point = CorePoint {
-        x: ev.point.x,
-        y: ev.point.y,
-    };
-    let button = mouse_button_from_c(ev.button);
-    let kind = match ev.kind {
-        AdMouseEventKind::Move => CoreMouseEventKind::Move,
-        AdMouseEventKind::Down => CoreMouseEventKind::Down,
-        AdMouseEventKind::Up => CoreMouseEventKind::Up,
-        AdMouseEventKind::Click => CoreMouseEventKind::Click {
-            count: ev.click_count,
-        },
-    };
-    let core_event = CoreMouseEvent {
-        kind,
-        point,
-        button,
-    };
-    match adapter.inner.mouse_event(core_event) {
-        Ok(()) => {
-            error::clear_last_error();
-            AdResult::Ok
+    trap_panic(|| unsafe {
+        let adapter = &*adapter;
+        let ev = &*event;
+        let point = CorePoint {
+            x: ev.point.x,
+            y: ev.point.y,
+        };
+        let button = mouse_button_from_c(ev.button);
+        let kind = match ev.kind {
+            AdMouseEventKind::Move => CoreMouseEventKind::Move,
+            AdMouseEventKind::Down => CoreMouseEventKind::Down,
+            AdMouseEventKind::Up => CoreMouseEventKind::Up,
+            AdMouseEventKind::Click => CoreMouseEventKind::Click {
+                count: ev.click_count,
+            },
+        };
+        let core_event = CoreMouseEvent {
+            kind,
+            point,
+            button,
+        };
+        match adapter.inner.mouse_event(core_event) {
+            Ok(()) => {
+                error::clear_last_error();
+                AdResult::Ok
+            }
+            Err(e) => {
+                error::set_last_error(&e);
+                error::last_error_code()
+            }
         }
-        Err(e) => {
-            error::set_last_error(&e);
-            error::last_error_code()
-        }
-    }
+    })
 }
 
 #[cfg(test)]

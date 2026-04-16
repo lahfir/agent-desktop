@@ -40,23 +40,25 @@ unsafe fn free_node_fields(node: &mut AdNode) {
 /// by `flatten_tree` or `ad_get_tree`. After this call the tree is zeroed.
 #[no_mangle]
 pub unsafe extern "C" fn ad_free_tree(tree: *mut AdNodeTree) {
-    if tree.is_null() {
-        return;
-    }
-    let tree = &mut *tree;
-    if tree.nodes.is_null() {
-        return;
-    }
-    let nodes = std::slice::from_raw_parts_mut(tree.nodes, tree.count as usize);
-    for node in nodes.iter_mut() {
-        free_node_fields(node);
-    }
-    drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-        tree.nodes,
-        tree.count as usize,
-    )));
-    tree.nodes = ptr::null_mut();
-    tree.count = 0;
+    crate::ffi_try::trap_panic_void(|| unsafe {
+        if tree.is_null() {
+            return;
+        }
+        let tree = &mut *tree;
+        if tree.nodes.is_null() {
+            return;
+        }
+        let nodes = std::slice::from_raw_parts_mut(tree.nodes, tree.count as usize);
+        for node in nodes.iter_mut() {
+            free_node_fields(node);
+        }
+        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+            tree.nodes,
+            tree.count as usize,
+        )));
+        tree.nodes = ptr::null_mut();
+        tree.count = 0;
+    })
 }
 
 #[cfg(test)]

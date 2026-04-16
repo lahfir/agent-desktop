@@ -1,4 +1,5 @@
 use crate::error::{self, AdResult};
+use crate::ffi_try::trap_panic;
 use crate::types::AdDragParams;
 use crate::AdAdapter;
 use agent_desktop_core::action::{DragParams as CoreDragParams, Point as CorePoint};
@@ -12,33 +13,35 @@ pub unsafe extern "C" fn ad_drag(
     adapter: *const AdAdapter,
     params: *const AdDragParams,
 ) -> AdResult {
-    let adapter = &*adapter;
-    let p = &*params;
-    let core_params = CoreDragParams {
-        from: CorePoint {
-            x: p.from.x,
-            y: p.from.y,
-        },
-        to: CorePoint {
-            x: p.to.x,
-            y: p.to.y,
-        },
-        duration_ms: if p.duration_ms == 0 {
-            None
-        } else {
-            Some(p.duration_ms)
-        },
-    };
-    match adapter.inner.drag(core_params) {
-        Ok(()) => {
-            error::clear_last_error();
-            AdResult::Ok
+    trap_panic(|| unsafe {
+        let adapter = &*adapter;
+        let p = &*params;
+        let core_params = CoreDragParams {
+            from: CorePoint {
+                x: p.from.x,
+                y: p.from.y,
+            },
+            to: CorePoint {
+                x: p.to.x,
+                y: p.to.y,
+            },
+            duration_ms: if p.duration_ms == 0 {
+                None
+            } else {
+                Some(p.duration_ms)
+            },
+        };
+        match adapter.inner.drag(core_params) {
+            Ok(()) => {
+                error::clear_last_error();
+                AdResult::Ok
+            }
+            Err(e) => {
+                error::set_last_error(&e);
+                error::last_error_code()
+            }
         }
-        Err(e) => {
-            error::set_last_error(&e);
-            error::last_error_code()
-        }
-    }
+    })
 }
 
 #[cfg(test)]

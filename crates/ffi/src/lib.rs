@@ -3,6 +3,7 @@ pub(crate) mod adapter;
 pub(crate) mod apps;
 pub(crate) mod convert;
 pub mod error;
+pub(crate) mod ffi_try;
 pub(crate) mod input;
 pub(crate) mod screenshot;
 pub(crate) mod surfaces;

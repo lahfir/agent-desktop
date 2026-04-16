@@ -61,8 +61,14 @@ mod tests {
         };
         let c = window_info_to_c(&w);
         assert_eq!(unsafe { c_to_string(c.id) }.as_deref(), Some("w-123"));
-        assert_eq!(unsafe { c_to_string(c.title) }.as_deref(), Some("Documents"));
-        assert_eq!(unsafe { c_to_string(c.app_name) }.as_deref(), Some("Finder"));
+        assert_eq!(
+            unsafe { c_to_string(c.title) }.as_deref(),
+            Some("Documents")
+        );
+        assert_eq!(
+            unsafe { c_to_string(c.app_name) }.as_deref(),
+            Some("Finder")
+        );
         assert_eq!(c.pid, 42);
         assert!(c.has_bounds);
         assert_eq!(c.bounds.x, 10.0);

@@ -1,4 +1,5 @@
 use crate::error::{clear_last_error, set_last_error, AdResult};
+use crate::ffi_try::trap_panic;
 use crate::types::{AdImageBuffer, AdImageFormat, AdScreenshotKind, AdScreenshotTarget};
 use crate::AdAdapter;
 use agent_desktop_core::adapter::{ImageFormat, ScreenshotTarget as CoreScreenshotTarget};
@@ -11,37 +12,39 @@ pub unsafe extern "C" fn ad_screenshot(
     target: *const AdScreenshotTarget,
     out: *mut AdImageBuffer,
 ) -> AdResult {
-    let adapter = &*adapter;
-    let t = &*target;
-    let core_target = match t.kind {
-        AdScreenshotKind::Screen => CoreScreenshotTarget::Screen(t.screen_index as usize),
-        AdScreenshotKind::Window => CoreScreenshotTarget::Window(t.pid),
-        AdScreenshotKind::FullScreen => CoreScreenshotTarget::FullScreen,
-    };
+    trap_panic(|| unsafe {
+        let adapter = &*adapter;
+        let t = &*target;
+        let core_target = match t.kind {
+            AdScreenshotKind::Screen => CoreScreenshotTarget::Screen(t.screen_index as usize),
+            AdScreenshotKind::Window => CoreScreenshotTarget::Window(t.pid),
+            AdScreenshotKind::FullScreen => CoreScreenshotTarget::FullScreen,
+        };
 
-    match adapter.inner.screenshot(core_target) {
-        Ok(img) => {
-            clear_last_error();
-            let data_len = img.data.len() as u64;
-            let mut boxed = img.data.into_boxed_slice();
-            let data_ptr = boxed.as_mut_ptr();
-            std::mem::forget(boxed);
+        match adapter.inner.screenshot(core_target) {
+            Ok(img) => {
+                clear_last_error();
+                let data_len = img.data.len() as u64;
+                let mut boxed = img.data.into_boxed_slice();
+                let data_ptr = boxed.as_mut_ptr();
+                std::mem::forget(boxed);
 
-            *out = AdImageBuffer {
-                data: data_ptr,
-                data_len,
-                format: match img.format {
-                    ImageFormat::Png => AdImageFormat::Png,
-                    ImageFormat::Jpg => AdImageFormat::Jpg,
-                },
-                width: img.width,
-                height: img.height,
-            };
-            AdResult::Ok
+                *out = AdImageBuffer {
+                    data: data_ptr,
+                    data_len,
+                    format: match img.format {
+                        ImageFormat::Png => AdImageFormat::Png,
+                        ImageFormat::Jpg => AdImageFormat::Jpg,
+                    },
+                    width: img.width,
+                    height: img.height,
+                };
+                AdResult::Ok
+            }
+            Err(e) => {
+                set_last_error(&e);
+                crate::error::last_error_code()
+            }
         }
-        Err(e) => {
-            set_last_error(&e);
-            crate::error::last_error_code()
-        }
-    }
+    })
 }

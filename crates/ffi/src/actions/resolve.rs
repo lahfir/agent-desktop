@@ -1,5 +1,6 @@
 use crate::convert::string::c_to_string;
 use crate::error::{self, AdResult};
+use crate::ffi_try::trap_panic;
 use crate::types::{AdNativeHandle, AdRefEntry};
 use crate::AdAdapter;
 use agent_desktop_core::refs::RefEntry as CoreRefEntry;
@@ -15,44 +16,46 @@ pub unsafe extern "C" fn ad_resolve_element(
     entry: *const AdRefEntry,
     out: *mut AdNativeHandle,
 ) -> AdResult {
-    let adapter = &*adapter;
-    let entry = &*entry;
-    let role = match c_to_string(entry.role) {
-        Some(s) => s,
-        None => {
-            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                agent_desktop_core::error::ErrorCode::InvalidArgs,
-                "role is null or invalid UTF-8",
-            ));
-            return AdResult::ErrInvalidArgs;
+    trap_panic(|| unsafe {
+        let adapter = &*adapter;
+        let entry = &*entry;
+        let role = match c_to_string(entry.role) {
+            Some(s) => s,
+            None => {
+                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    "role is null or invalid UTF-8",
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let name = c_to_string(entry.name);
+        let bounds_hash = if entry.has_bounds_hash {
+            Some(entry.bounds_hash)
+        } else {
+            None
+        };
+        let core_entry = CoreRefEntry {
+            pid: entry.pid,
+            role,
+            name,
+            value: None,
+            states: vec![],
+            bounds: None,
+            bounds_hash,
+            available_actions: vec![],
+            source_app: None,
+        };
+        match adapter.inner.resolve_element(&core_entry) {
+            Ok(handle) => {
+                (*out).ptr = handle.as_raw();
+                error::clear_last_error();
+                AdResult::Ok
+            }
+            Err(e) => {
+                error::set_last_error(&e);
+                error::last_error_code()
+            }
         }
-    };
-    let name = c_to_string(entry.name);
-    let bounds_hash = if entry.has_bounds_hash {
-        Some(entry.bounds_hash)
-    } else {
-        None
-    };
-    let core_entry = CoreRefEntry {
-        pid: entry.pid,
-        role,
-        name,
-        value: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash,
-        available_actions: vec![],
-        source_app: None,
-    };
-    match adapter.inner.resolve_element(&core_entry) {
-        Ok(handle) => {
-            (*out).ptr = handle.as_raw();
-            error::clear_last_error();
-            AdResult::Ok
-        }
-        Err(e) => {
-            error::set_last_error(&e);
-            error::last_error_code()
-        }
-    }
+    })
 }

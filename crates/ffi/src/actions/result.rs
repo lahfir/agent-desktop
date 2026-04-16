@@ -44,31 +44,34 @@ pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
 /// or null. After this call all pointers inside the struct are invalid.
 #[no_mangle]
 pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
-    if result.is_null() {
-        return;
-    }
-    let r = &mut *result;
-    free_c_string(r.action as *mut _);
-    free_c_string(r.ref_id as *mut _);
-    if !r.post_state.is_null() {
-        let state = &mut *r.post_state;
-        free_c_string(state.role as *mut _);
-        free_c_string(state.value as *mut _);
-        if !state.states.is_null() && state.state_count > 0 {
-            let slice = std::slice::from_raw_parts_mut(state.states, state.state_count as usize);
-            for ptr in slice.iter() {
-                free_c_string(*ptr);
-            }
-            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                state.states,
-                state.state_count as usize,
-            )));
+    crate::ffi_try::trap_panic_void(|| unsafe {
+        if result.is_null() {
+            return;
         }
-        drop(Box::from_raw(r.post_state));
-        r.post_state = ptr::null_mut();
-    }
-    r.action = ptr::null();
-    r.ref_id = ptr::null();
+        let r = &mut *result;
+        free_c_string(r.action as *mut _);
+        free_c_string(r.ref_id as *mut _);
+        if !r.post_state.is_null() {
+            let state = &mut *r.post_state;
+            free_c_string(state.role as *mut _);
+            free_c_string(state.value as *mut _);
+            if !state.states.is_null() && state.state_count > 0 {
+                let slice =
+                    std::slice::from_raw_parts_mut(state.states, state.state_count as usize);
+                for ptr in slice.iter() {
+                    free_c_string(*ptr);
+                }
+                drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                    state.states,
+                    state.state_count as usize,
+                )));
+            }
+            drop(Box::from_raw(r.post_state));
+            r.post_state = ptr::null_mut();
+        }
+        r.action = ptr::null();
+        r.ref_id = ptr::null();
+    })
 }
 
 #[cfg(test)]

@@ -99,6 +99,19 @@ pub(crate) fn clear_last_error() {
     });
 }
 
+/// Sets the last-error using a `'static CStr` message. Never allocates,
+/// never panics — safe to call from a panic handler.
+pub(crate) fn set_last_error_static(code: AdResult, message: &'static CStr) {
+    LAST_ERROR.with(|cell| {
+        *cell.borrow_mut() = Some(StoredError {
+            code,
+            message: MessageSource::Static(message),
+            suggestion: None,
+            platform_detail: None,
+        });
+    });
+}
+
 pub(crate) fn last_error_code() -> AdResult {
     LAST_ERROR.with(|cell| {
         cell.borrow()
@@ -110,36 +123,42 @@ pub(crate) fn last_error_code() -> AdResult {
 
 #[no_mangle]
 pub extern "C" fn ad_last_error_code() -> AdResult {
-    last_error_code()
+    crate::ffi_try::trap_panic(last_error_code)
 }
 
 #[no_mangle]
 pub extern "C" fn ad_last_error_message() -> *const c_char {
-    LAST_ERROR.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map(|e| e.message.as_ptr())
-            .unwrap_or(std::ptr::null())
+    crate::ffi_try::trap_panic_const_ptr(|| {
+        LAST_ERROR.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .map(|e| e.message.as_ptr())
+                .unwrap_or(std::ptr::null())
+        })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn ad_last_error_suggestion() -> *const c_char {
-    LAST_ERROR.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .and_then(|e| e.suggestion.as_ref().map(|s| s.as_ptr()))
-            .unwrap_or(std::ptr::null())
+    crate::ffi_try::trap_panic_const_ptr(|| {
+        LAST_ERROR.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .and_then(|e| e.suggestion.as_ref().map(|s| s.as_ptr()))
+                .unwrap_or(std::ptr::null())
+        })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
-    LAST_ERROR.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .and_then(|e| e.platform_detail.as_ref().map(|s| s.as_ptr()))
-            .unwrap_or(std::ptr::null())
+    crate::ffi_try::trap_panic_const_ptr(|| {
+        LAST_ERROR.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .and_then(|e| e.platform_detail.as_ref().map(|s| s.as_ptr()))
+                .unwrap_or(std::ptr::null())
+        })
     })
 }
 
