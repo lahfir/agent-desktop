@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/lahfir/agent-desktop/compare/v0.1.12...v0.1.13) (2026-04-17)
+
+
+### Features
+
+* **ffi:** ship C-ABI cdylib with review hardening and release pipeline ([#26](https://github.com/lahfir/agent-desktop/issues/26)) ([3cffbd6](https://github.com/lahfir/agent-desktop/commit/3cffbd67f6b27f42001643bef9fd2530cb7f9003))
+
 ## [0.1.12](https://github.com/lahfir/agent-desktop/compare/v0.1.11...v0.1.12) (2026-04-16)
 
 
