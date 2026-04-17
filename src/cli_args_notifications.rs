@@ -35,4 +35,16 @@ pub struct NotificationActionCliArgs {
         help = "Name of the action button to click (e.g., Reply, Open)"
     )]
     pub action: String,
+    #[arg(
+        long,
+        help = "Expected app name of the notification at INDEX. If set and NC reordered, the action is refused with NOTIFICATION_NOT_FOUND instead of pressing the wrong notification.",
+        value_name = "APP"
+    )]
+    pub expected_app: Option<String>,
+    #[arg(
+        long,
+        help = "Expected title of the notification at INDEX. Same reorder-safety behavior as --expected-app.",
+        value_name = "TITLE"
+    )]
+    pub expected_title: Option<String>,
 }

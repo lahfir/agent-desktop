@@ -23,6 +23,7 @@ Cargo.lock
 # Claude Code
 .claude/
 .agents/
+AGENTS.md
 
 # Environment
 .env

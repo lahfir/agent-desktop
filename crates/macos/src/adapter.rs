@@ -6,7 +6,7 @@ use agent_desktop_core::{
     },
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
-    notification::{NotificationFilter, NotificationInfo},
+    notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
     refs::RefEntry,
 };
 use rustc_hash::FxHashSet;
@@ -65,6 +65,17 @@ impl PlatformAdapter for MacOSAdapter {
 
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         crate::tree::resolve::resolve_element_impl(entry)
+    }
+
+    fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
+        let raw = handle.as_raw();
+        if raw.is_null() {
+            return Ok(());
+        }
+        unsafe {
+            core_foundation::base::CFRelease(raw as core_foundation::base::CFTypeRef);
+        }
+        Ok(())
     }
 
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
@@ -201,9 +212,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn notification_action(
         &self,
         index: usize,
+        identity: Option<&NotificationIdentity>,
         action_name: &str,
     ) -> Result<ActionResult, AdapterError> {
-        crate::notifications::actions::notification_action(index, action_name)
+        crate::notifications::actions::notification_action(index, identity, action_name)
     }
 
     fn get_subtree(

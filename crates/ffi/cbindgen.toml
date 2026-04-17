@@ -1,0 +1,29 @@
+language = "C"
+include_guard = "AGENT_DESKTOP_H"
+no_includes = true
+sys_includes = ["stdint.h", "stdbool.h", "stddef.h"]
+style = "both"
+usize_is_size_t = true
+
+[export]
+# Force-emit the enums whose discriminants are the valid values for
+# public `int32_t` fields (AdAction.kind, AdScrollParams.direction, etc.).
+# cbindgen would otherwise drop these because no struct/function field
+# names them directly — we intentionally store the raw i32 on the ABI so
+# foreign callers can't UB with an invalid bit pattern, but C consumers
+# still need the named constants (AD_ACTION_KIND_CLICK etc.) to keep the
+# contract documented and type-checkable.
+include = [
+    "AdActionKind",
+    "AdDirection",
+    "AdModifier",
+    "AdMouseButton",
+    "AdMouseEventKind",
+    "AdScreenshotKind",
+    "AdSnapshotSurface",
+    "AdWindowOpKind",
+]
+
+[enum]
+rename_variants = "ScreamingSnakeCase"
+prefix_with_name = true

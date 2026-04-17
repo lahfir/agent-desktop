@@ -143,6 +143,8 @@ pub fn dispatch(
                 notification_action::NotificationActionArgs {
                     index,
                     action: req_str(&args, "action")?,
+                    expected_app: str_field(&args, "expected_app"),
+                    expected_title: str_field(&args, "expected_title"),
                 },
                 adapter,
             )

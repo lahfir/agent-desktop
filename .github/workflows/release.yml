@@ -41,7 +41,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    # Both arch targets build in parallel; one failure doesn't block the other.
     strategy:
       fail-fast: false
       matrix:
@@ -97,24 +96,146 @@ jobs:
             agent-desktop-v*.tar.gz.sha256
           retention-days: 1
 
+  # FFI cdylib for language-binding consumers (Python/Swift/Go/Ruby/Node/C).
+  # Ships alongside CLI tarballs on the same release tag; npm stays CLI-only.
+  build-ffi:
+    name: Build FFI (${{ matrix.target }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+            lib_name: libagent_desktop_ffi.dylib
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+            lib_name: libagent_desktop_ffi.dylib
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            archive: tar.gz
+            lib_name: libagent_desktop_ffi.so
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+            archive: tar.gz
+            lib_name: libagent_desktop_ffi.so
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive: zip
+            lib_name: agent_desktop_ffi.dll
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-
+
+      - name: Build FFI cdylib (release-ffi profile)
+        run: cargo build --profile release-ffi -p agent-desktop-ffi --target ${{ matrix.target }}
+
+      # build.rs bakes install_name=@rpath/... ; a regression here silently
+      # breaks Swift/SPM consumers, so verify before shipping.
+      - name: Verify macOS install_name
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          ACTUAL=$(otool -D target/${{ matrix.target }}/release-ffi/${{ matrix.lib_name }} | tail -1)
+          EXPECTED="@rpath/libagent_desktop_ffi.dylib"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "FAIL: install_name is '$ACTUAL', expected '$EXPECTED'"
+            exit 1
+          fi
+          echo "OK: install_name = $ACTUAL"
+
+      - name: Stage tarball contents
+        shell: bash
+        run: |
+          VERSION=${{ needs.release-please.outputs.version }}
+          STAGE="agent-desktop-ffi-v${VERSION}-${{ matrix.target }}"
+          mkdir -p "$STAGE/lib" "$STAGE/include"
+          cp "target/${{ matrix.target }}/release-ffi/${{ matrix.lib_name }}" "$STAGE/lib/"
+          cp crates/ffi/include/agent_desktop.h "$STAGE/include/"
+          cp LICENSE "$STAGE/"
+          cat > "$STAGE/README.md" <<EOF
+          # agent-desktop FFI cdylib — v${VERSION} (${{ matrix.target }})
+
+          - \`lib/${{ matrix.lib_name }}\` — shared library
+          - \`include/agent_desktop.h\` — cbindgen header
+          - \`LICENSE\` — Apache-2.0
+
+          Docs: https://github.com/lahfir/agent-desktop/tree/main/skills/agent-desktop-ffi
+
+          macOS \`install_name\` is \`@rpath/libagent_desktop_ffi.dylib\` — linking
+          consumers need \`-rpath\` pointing at the dylib's directory; \`dlopen\` /
+          ctypes callers resolve by path and need nothing.
+          EOF
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tar -czf "${STAGE}.tar.gz" "${STAGE}"
+          shasum -a 256 "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
+
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${env:STAGE}" -DestinationPath "${env:STAGE}.zip"
+          $hash = (Get-FileHash "${env:STAGE}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${env:STAGE}.zip" | Out-File -Encoding ascii "${env:STAGE}.zip.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ffi-${{ matrix.target }}
+          path: |
+            agent-desktop-ffi-v*.tar.gz
+            agent-desktop-ffi-v*.tar.gz.sha256
+            agent-desktop-ffi-v*.zip
+            agent-desktop-ffi-v*.zip.sha256
+          retention-days: 1
+
   publish-github:
     name: Publish to GitHub Release
-    needs: [release-please, build]
+    needs: [release-please, build, build-ffi]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write        # Sigstore OIDC exchange
+      attestations: write    # write provenance bundle back to GitHub
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: binary-*
+          pattern: "{binary,ffi}-*"
           merge-multiple: true
 
       - name: Create checksums file
         run: |
           cat *.sha256 > checksums.txt
-          echo "Checksums:"
           cat checksums.txt
 
       - name: Upload assets to GitHub Release
@@ -123,8 +244,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release upload ${{ needs.release-please.outputs.tag_name }} \
-            *.tar.gz checksums.txt \
+            *.tar.gz *.zip checksums.txt \
             --clobber
+
+      # Keyless Sigstore provenance. Verify with:
+      #   gh attestation verify <file> --repo lahfir/agent-desktop
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            *.tar.gz
+            *.zip
+            checksums.txt
 
   publish-npm:
     name: Publish to npm
@@ -148,9 +279,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Expected: 2 CLI tarballs + 4 FFI tarballs + 1 FFI zip + checksums = 8.
           ASSETS=$(gh release view ${{ needs.release-please.outputs.tag_name }} --json assets --jq '.assets | length')
-          if [ "$ASSETS" -lt 3 ]; then
-            echo "FAIL: expected at least 3 assets (2 tarballs + checksums), found ${ASSETS}"
+          if [ "$ASSETS" -lt 8 ]; then
+            echo "FAIL: expected at least 8 assets, found ${ASSETS}"
             exit 1
           fi
           echo "OK: ${ASSETS} assets found on release"

@@ -1,5 +1,5 @@
 [workspace]
-members  = ["crates/core", "crates/macos", "crates/windows", "crates/linux", "src"]
+members  = ["crates/core", "crates/macos", "crates/windows", "crates/linux", "crates/ffi", "src"]
 resolver = "2"
 
 [workspace.package]
@@ -35,3 +35,10 @@ lto           = false
 codegen-units = 16
 strip         = false
 debug         = 1
+
+# Dedicated profile for the FFI cdylib. Overrides panic = "abort" so
+# catch_unwind actually catches at the extern "C" boundary — the CLI
+# release profile stays abort for size reasons.
+[profile.release-ffi]
+inherits = "release"
+panic    = "unwind"

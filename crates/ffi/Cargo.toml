@@ -1,0 +1,25 @@
+[package]
+name    = "agent-desktop-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+agent-desktop-core.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+agent-desktop-macos = { path = "../macos" }
+libc                = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+agent-desktop-windows = { path = "../windows" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+agent-desktop-linux = { path = "../linux" }
+
+[build-dependencies]
+cbindgen = "= 0.27.0"

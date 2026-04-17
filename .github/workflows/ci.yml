@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
-    branches: [main, master]
+  workflow_dispatch:
 
 # Cancel in-progress runs for the same ref so stale PR builds don't burn minutes.
 concurrency:
@@ -75,6 +75,13 @@ jobs:
       - name: Unit tests
         run: cargo test --lib --workspace
 
+      # The FFI crate ships integration harnesses under crates/ffi/tests/ that
+      # exercise the C-ABI from outside the crate (raw extern "C" decls, enum
+      # fuzzing, out-param zeroing, last-error lifetimes). The workspace --lib
+      # run skips them, so wire them in explicitly so regressions fail PR CI.
+      - name: FFI integration tests
+        run: cargo test -p agent-desktop-ffi --tests
+
       # Use the ci profile (no LTO, opt-level 1) — fast compile, still checks the binary builds.
       - name: Build binary (ci profile)
         run: cargo build --profile ci
@@ -89,3 +96,29 @@ jobs:
             exit 1
           fi
           echo "OK: binary within 15MB limit"
+
+      - name: FFI cdylib build (release-ffi profile)
+        run: cargo build --profile release-ffi -p agent-desktop-ffi
+
+      - name: FFI header drift check
+        run: |
+          # build.rs stamps target/ffi-header-path.txt with the absolute path
+          # to the header produced by the most recent build, so the drift
+          # check always compares against the just-generated artifact rather
+          # than an arbitrary match from `find | head -1` over a warm cache.
+          STAMP=target/ffi-header-path.txt
+          if [ ! -f "$STAMP" ]; then
+            echo "FAIL: $STAMP missing; build.rs did not stamp header path"
+            exit 1
+          fi
+          GENERATED=$(cat "$STAMP")
+          if [ ! -f "$GENERATED" ]; then
+            echo "FAIL: stamped header path does not exist: $GENERATED"
+            exit 1
+          fi
+          if ! diff -u crates/ffi/include/agent_desktop.h "$GENERATED"; then
+            echo "FAIL: crates/ffi/include/agent_desktop.h is out of date"
+            echo "Run 'scripts/update-ffi-header.sh' locally and commit the regenerated header."
+            exit 1
+          fi
+          echo "OK: FFI header is in sync with source"
