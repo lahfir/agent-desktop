@@ -1,5 +1,5 @@
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
@@ -51,4 +51,34 @@ fn main() {
     // script auto-copied it, the drift check would self-heal instead of
     // catching stale headers. Developers update the committed header by
     // running `scripts/update-ffi-header.sh`.
+
+    // Stamp the absolute path to the just-generated header at a stable,
+    // deterministic location that CI and scripts can read without ever
+    // resorting to `find target | head -1` (which picks arbitrarily when
+    // multiple `agent-desktop-ffi-<hash>/` build dirs are cached). Walking
+    // 4 parents up from OUT_DIR yields the cargo target root:
+    //   {target}/{profile}/build/{pkg-hash}/out  →  {target}
+    if let Some(target_root) = target_root_from_out_dir(Path::new(&out_dir)) {
+        let stamp = target_root.join("ffi-header-path.txt");
+        if let Err(err) = std::fs::write(&stamp, out_path.to_string_lossy().as_bytes()) {
+            println!(
+                "cargo:warning=failed to stamp FFI header path at {:?}: {}",
+                stamp, err
+            );
+        }
+    } else {
+        println!(
+            "cargo:warning=could not infer cargo target root from OUT_DIR={}; skipping ffi-header-path.txt",
+            out_dir
+        );
+    }
+}
+
+fn target_root_from_out_dir(out_dir: &Path) -> Option<PathBuf> {
+    // OUT_DIR = .../target/<profile>/build/<pkg-hash>/out
+    let mut current = out_dir;
+    for _ in 0..4 {
+        current = current.parent()?;
+    }
+    Some(current.to_path_buf())
 }

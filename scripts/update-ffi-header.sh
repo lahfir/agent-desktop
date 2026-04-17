@@ -2,18 +2,27 @@
 set -euo pipefail
 
 # Regenerate the committed FFI header from source.
-# Run this after changing any `#[no_mangle] pub extern "C"` signatures
-# in crates/ffi/src/ and commit the result.
+#
+# Run this after changing any `#[no_mangle] pub extern "C"` signatures in
+# crates/ffi/src/ and commit the result. build.rs stamps the absolute path
+# to the generated header at target/ffi-header-path.txt so we never have to
+# guess which of several cached `agent-desktop-ffi-<hash>/` build dirs is
+# current — `find target | head -1` would pick arbitrarily.
 
-cargo build -p agent-desktop-ffi 2>/dev/null
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
 
-GENERATED=$(find target -path '*/agent-desktop-ffi-*/out/agent_desktop.h' -newer crates/ffi/include/agent_desktop.h | head -1)
-if [ -z "$GENERATED" ]; then
-  GENERATED=$(find target -path '*/agent-desktop-ffi-*/out/agent_desktop.h' | head -1)
+cargo build -p agent-desktop-ffi >/dev/null 2>&1
+
+STAMP=target/ffi-header-path.txt
+if [ ! -f "$STAMP" ]; then
+  echo "ERROR: $STAMP was not produced by build.rs. Check the build output." >&2
+  exit 1
 fi
 
-if [ -z "$GENERATED" ]; then
-  echo "ERROR: cbindgen did not produce a header. Check build output." >&2
+GENERATED=$(cat "$STAMP")
+if [ ! -f "$GENERATED" ]; then
+  echo "ERROR: stamped header path does not exist: $GENERATED" >&2
   exit 1
 fi
 
