@@ -5,17 +5,9 @@ fn main() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
     println!("cargo:rerun-if-changed=src/");
 
-    // macOS Mach-O install_name: consumers that link the dylib at build
-    // time (Swift Package Manager, cmake, meson) embed the library's
-    // install_name into the consuming binary's load commands. Cargo
-    // defaults to the absolute build-machine path — useless once the
-    // dylib is extracted from a release tarball on someone else's
-    // machine. Baking `@rpath/...` here lets consumers resolve the
-    // library through their own `-rpath` / `DYLD_LIBRARY_PATH` /
-    // `@loader_path` lookup chain exactly the way every other
-    // distributed macOS dylib does it (wasmtime, rustls-ffi, etc.).
-    // Python `ctypes.CDLL("./libfoo.dylib")` and Go cgo tolerate either
-    // install_name; Swift linkers do not.
+    // Cargo's default install_name is the absolute build-machine path,
+    // which breaks linking consumers (Swift/SPM, clang) once the dylib
+    // is extracted from a release tarball. @rpath is the portable form.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rustc-cdylib-link-arg=-Wl,-install_name,@rpath/libagent_desktop_ffi.dylib");
     }
@@ -51,28 +43,18 @@ fn main() {
         Err(err) => panic!("cbindgen generation failed: {}", err),
     };
 
-    // cbindgen 0.27 returns `false` when the header file content hasn't changed and the
-    // existing file already matches — that's a clean no-op, not an error. We just need a
-    // valid file at `out_path` for downstream build consumers.
     bindings.write_to_file(&out_path);
     if !out_path.exists() {
         panic!("cbindgen produced no header at {:?}", out_path);
     }
 
-    // NOTE: We intentionally do NOT copy the generated header back into
-    // `crates/ffi/include/`. That committed header is the ABI contract
-    // checked into source control. CI's "FFI header drift check" compares
-    // $OUT_DIR/agent_desktop.h against the committed copy; if the build
-    // script auto-copied it, the drift check would self-heal instead of
-    // catching stale headers. Developers update the committed header by
-    // running `scripts/update-ffi-header.sh`.
+    // Deliberately NOT copying into crates/ffi/include/ — the committed
+    // header is the ABI contract. Auto-copy would self-heal CI drift checks.
+    // Developers refresh it via scripts/update-ffi-header.sh.
 
-    // Stamp the absolute path to the just-generated header at a stable,
-    // deterministic location that CI and scripts can read without ever
-    // resorting to `find target | head -1` (which picks arbitrarily when
-    // multiple `agent-desktop-ffi-<hash>/` build dirs are cached). Walking
-    // 4 parents up from OUT_DIR yields the cargo target root:
-    //   {target}/{profile}/build/{pkg-hash}/out  →  {target}
+    // Stamp the absolute path of the generated header at a stable location
+    // so CI and scripts don't have to `find target | head -1` (ambiguous
+    // under warm caches with multiple pkg-hash dirs).
     if let Some(target_root) = target_root_from_out_dir(Path::new(&out_dir)) {
         let stamp = target_root.join("ffi-header-path.txt");
         if let Err(err) = std::fs::write(&stamp, out_path.to_string_lossy().as_bytes()) {
