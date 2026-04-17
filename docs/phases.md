@@ -38,6 +38,125 @@ Each phase is strictly additive. Core engine, CLI parser, JSON contract, error t
 
 ---
 
+## Command Surface Architecture (DRY invariant)
+
+Every command in agent-desktop lives **exactly once** in `crates/core/src/commands/` and flows automatically to every transport (CLI, FFI, MCP) and every platform (macOS, Windows, Linux). No transport has per-platform code; no platform has per-transport code. The only place a new command branches is into the `PlatformAdapter` trait method calls it makes — and even those are written once per adapter in each platform crate, never per transport.
+
+### Layering
+
+```
+                          ┌─────────────────────────────────┐
+                          │   crates/core/src/commands/     │
+                          │   one file per command,         │
+                          │   operates on &dyn PlatformAdapter │
+                          └─────────┬───────────┬───────────┘
+                                    │           │
+                 ┌──────────────────┼───────────┼──────────────────┐
+                 │                  │           │                  │
+                 ▼                  ▼           ▼                  ▼
+    ┌─────────────────┐  ┌───────────────┐  ┌────────────┐  ┌─────────────────┐
+    │   src/cli.rs    │  │ crates/ffi/   │  │ crates/mcp/│  │   (future)      │
+    │   (clap derive) │  │ ad_* extern C │  │ #[tool]    │  │   HTTP / gRPC   │
+    └────────┬────────┘  └───────┬───────┘  └──────┬─────┘  └────────┬────────┘
+             │                   │                 │                 │
+             └───────────────────┴─────────────────┴─────────────────┘
+                                       │
+                                       ▼
+                          ┌─────────────────────────────────┐
+                          │   PlatformAdapter trait         │
+                          │   (defined in crates/core)      │
+                          └─────────┬──────────┬────────────┘
+                                    │          │
+                 ┌──────────────────┼──────────┼──────────────────┐
+                 ▼                  ▼          ▼                  ▼
+          crates/macos/     crates/windows/   crates/linux/   (future platforms)
+```
+
+### What each layer contains
+
+| Layer | Scope | Per-command cost | Per-platform cost |
+|-------|-------|------------------|-------------------|
+| `crates/core/src/commands/<name>.rs` | Args struct + `execute(args, adapter)` function, platform-agnostic | **1 file** | 0 |
+| `crates/core/src/adapter.rs` (trait) | One method per distinct low-level operation (e.g. `watch_element`, `set_text_selection`) | 0 for most commands; ≤1 trait method when the command needs a new primitive | 0 |
+| `crates/macos/`, `crates/windows/`, `crates/linux/` | Trait method implementations, one file per operation domain | 0 | **1 implementation per new trait method, per adapter** (real per-platform work) |
+| `src/cli.rs` (clap enum) + `src/dispatch.rs` (match arm) | CLI transport | 2 lines (enum variant + match arm) | 0 |
+| `crates/ffi/src/<domain>/<name>.rs` | One `ad_*` extern "C" wrapper per command | ~30 lines of marshaling | 0 |
+| `crates/mcp/src/tools.rs` (registry) | One `#[tool]`-annotated wrapper per command | 1 annotation on the core `execute` function | 0 |
+
+**Concretely:** adding `text select-range` in Phase 2 means:
+
+1. Write `crates/core/src/commands/text_select_range.rs` with `TextSelectRangeArgs` + `execute(args, adapter)`. Calls `adapter.set_text_selection(handle, range)`.
+2. Add one method `set_text_selection` to `PlatformAdapter` with a `not_supported` default.
+3. Implement it in `crates/macos/src/actions/text_ops.rs` via `kAXSelectedTextRangeAttribute`.
+4. Implement it in `crates/windows/src/actions/text_ops.rs` via `TextPattern.SetSelection`.
+5. Implement it in `crates/linux/src/actions/text_ops.rs` via `org.a11y.atspi.Text.AddSelection` (Phase 3).
+6. CLI: add 1 variant to `cli.rs` enum + 1 arm to `dispatch.rs`.
+7. FFI: add `crates/ffi/src/observation/text_select_range.rs` with `ad_text_select_range(adapter, ref, start, length)` — ~30 lines of marshaling.
+8. MCP: no file change. The `#[mcp_tool]` registry sees the new command automatically via the inventory submit below.
+
+### Shared command registry pattern
+
+Every command's `execute` function is annotated once; the registry is populated at link time via `inventory::submit!` (or `linkme`). Transports iterate the registry — they do not hand-maintain a list:
+
+```rust
+// crates/core/src/commands/click.rs  — the SINGLE source of truth for Click
+
+use schemars::JsonSchema;
+
+#[derive(Debug, clap::Parser, JsonSchema, serde::Deserialize)]
+pub struct ClickArgs {
+    /// The ref to click, e.g. @e5
+    #[arg(value_name = "REF")]
+    pub ref_id: String,
+}
+
+pub fn execute(args: ClickArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    let entry = RefMap::load()?.resolve(&args.ref_id)?;
+    let handle = adapter.resolve_element(&entry)?;
+    let result = adapter.execute_action(&handle, Action::Click)?;
+    Ok(json!({ "action": result.action }))
+}
+
+// Registered once, visible to every transport.
+inventory::submit! {
+    CommandDescriptor {
+        cli_name: "click",
+        mcp_name: "desktop_click",
+        description: "Press the element identified by @ref (AXPress / UIA InvokePattern / AT-SPI Action.DoAction(0))",
+        args_schema: || schema_for!(ClickArgs),
+        invoke: invoke_typed::<ClickArgs>(execute),
+        annotations: ToolAnnotations {
+            read_only: false,
+            destructive: false,
+            idempotent: false,
+            ..Default::default()
+        },
+    }
+}
+```
+
+- `crates/core/src/command_registry.rs` defines `CommandDescriptor` and the `invoke_typed` generic helper (parse JSON → Args → execute → JSON back).
+- `src/dispatch.rs` walks `inventory::iter::<CommandDescriptor>` and matches on `cli_name` — replaces the hand-maintained match when Phase 2 lands the registry (today's dispatch is the bootstrap form).
+- `crates/ffi/src/...` walks the same registry to generate `ad_<name>` wrappers via a `build.rs` codegen step (Phase 2 work) — so adding a CLI command *also* emits the FFI entry automatically. Bespoke marshaling lives in per-type `convert/` helpers, not per-command.
+- `crates/mcp/src/server.rs` walks the same registry and registers each as an `rmcp` tool with the auto-generated JSON Schema. **Zero per-platform code in the MCP crate. Zero per-command MCP code beyond the one-line `inventory::submit!`.**
+
+### Why this works
+
+- **Rust has no runtime reflection**, but the `inventory` / `linkme` crates provide compile-time plugin registration with zero runtime overhead.
+- **`schemars` derives JSON Schema** from the same Args struct that clap derives CLI parsing from — one type, two bindings for free, a third for MCP.
+- **`rmcp` (the official MCP Rust SDK) accepts `JsonSchema`-derived types directly** via its `#[tool]` macro, so MCP registration is a trivial pass-through.
+- **`PlatformAdapter` is dyn-compatible** and passed as `&dyn PlatformAdapter` to every `execute` function; the binary crate's `build_adapter()` is the one-and-only place a concrete adapter is chosen per `#[cfg(target_os)]`.
+
+### What this means for the phases below
+
+- **Phase 2 ships the registry migration** as part of the core-extension work. After Phase 2, adding a new command is additive in exactly the places listed in the table above — never per-transport-per-platform.
+- **Phase 3's Linux adapter** implements the new trait methods from Phase 2 but writes zero command files, zero CLI dispatch, zero FFI wrappers, zero MCP tool code. Pure platform impl.
+- **Phase 4 (MCP)** is a new crate + stdio/HTTP transport + registry walker. It does not enumerate 53 tools by hand. The tool table in Phase 4 is a snapshot of what the registry produces, not a manual list.
+
+Every objective in Phases 2–5 below assumes this invariant. If any task description implies per-transport or per-platform command-surface duplication, it's a wording bug — the actual implementation follows the registry pattern.
+
+---
+
 ## Phase 1 — Foundation + macOS MVP
 
 **Status: Completed** — shipped incrementally across v0.1.0 – v0.1.12.
@@ -546,6 +665,10 @@ Phase 2 brings agent-desktop to Windows. It is also the phase that closes the cr
 
 Core engine, CLI parser, JSON contract invariants, and command-registration pattern are preserved. What Phase 2 legitimately changes: `AccessibilityNode` field set, `Action` enum variants, `ErrorCode` variants, `PlatformAdapter` trait size. Every change is additive (`#[non_exhaustive]` already guards the enums) and every macOS backfill lands atomically with the Windows implementation so the two platforms never drift.
 
+Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, every new command added in Phase 2 (`watch`, `text select-range`, `text get-selection`, `text insert-at-caret`, etc.) lives in **exactly one file** under `crates/core/src/commands/` and auto-registers into the CLI, FFI, and MCP transports via `inventory::submit!`. The per-platform work is the three `PlatformAdapter` method implementations (one each in `crates/macos/`, `crates/windows/`, `crates/linux/`) — nothing repeats across transports.
+
+P2-O16 (FFI parity expansion) also migrates the FFI wrappers from hand-written to codegen: a `build.rs` step in `crates/ffi/` walks the registry and emits one `ad_<name>` extern "C" function per `CommandDescriptor`, using the per-type marshaling helpers in `crates/ffi/src/convert/`. After this migration, the FFI crate holds marshaling primitives, not command wrappers. The `crates/mcp/` crate follows the same walk-the-registry pattern with `rmcp`'s `#[tool]` shape — so Phase 4 can ship its MCP server without hand-maintaining the tool list.
+
 ### Objectives
 
 Core + Windows parity (original scope):
@@ -572,7 +695,7 @@ Cross-platform core extensions (new, landed alongside Windows):
 | P2-O13 | Modern per-window screenshot APIs | macOS: replace `/usr/sbin/screencapture` subprocess with `SCScreenshotManager.captureImage(contentFilter:config:)` filtered to a specific `CGWindowID` from `SCShareableContent.windows`. Windows: `Windows.Graphics.Capture` via `GraphicsCaptureItem.CreateFromWindowHandle(HWND)` + `Direct3D11CaptureFramePool`. No subprocess, honours platform capture permission, ~10× faster for per-window captures |
 | P2-O14 | Toolbar and missing surfaces | Both platforms add `SnapshotSurface::Toolbar`. macOS additionally adds `Spotlight` (pid of `/System/Library/CoreServices/Spotlight.app`), `Dock` (pid of `/System/Library/CoreServices/Dock.app`), and `MenuBarExtras` (enumerates `SystemUIServer`, `ControlCenter`, and per-app `AXExtrasMenuBar`). Windows adds `SystemTray` (as structured surface, not just tray commands) |
 | P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override |
-| P2-O16 | FFI parity expansion | Every new trait method from P2-O11 / O12 / O13 / O14 gets a matching `ad_*` extern "C" entry point shipped in the same PR as the Rust method. Backfill pre-existing CLI-parity gaps: `ad_snapshot` (runs the full refmap pipeline, returns `AdSnapshot { tree, refmap }`), `ad_execute_by_ref(adapter, "@e5", action, out)`, `ad_wait(adapter, AdWaitCondition, timeout, out)`, `ad_version() -> *const c_char`, `ad_abi_version() -> u32` (packed major/minor/patch) with `AD_ABI_VERSION_MAJOR` cbindgen `[defines]` export, `ad_status(adapter, out)`, `ad_set_log_callback(fn(level, msg))` that installs a `tracing_subscriber` layer so dlopen consumers see debug output |
+| P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks the compile-time `CommandDescriptor` registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry (plus its JSON Schema via `schemars` and its MCP tool in Phase 4). Marshaling helpers stay in `crates/ffi/src/convert/` — these are per-type, not per-command. In the same migration: backfill `ad_snapshot` (full refmap pipeline), `ad_execute_by_ref(adapter, "@e5", action, out)`, `ad_wait(…)`, `ad_version`, `ad_abi_version() -> u32` with `AD_ABI_VERSION_MAJOR` cbindgen `[defines]` export, `ad_status`, `ad_set_log_callback(fn(level, msg))` installing a `tracing_subscriber` layer so dlopen consumers see debug output |
 | P2-O17 | Screen Recording / Automation permission detection (macOS backfill) | `check_permissions()` returns a richer `PermissionStatus` with a tri-state for AX, Screen Recording (`CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`), and Automation (`AEDeterminePermissionToAutomateTarget`). Failures surface as `PermDenied` / `AutomationPermissionDenied` with concrete System Settings paths |
 
 ### Cross-Platform Trait Extensions
@@ -884,7 +1007,7 @@ Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 
 **Status: Planned**
 
-Phase 3 completes the three-platform story. The Linux adapter implements the original adapter surface **plus** every cross-platform extension landed in Phase 2 (event subscriptions, text ranges, modern screenshot, stable-selector fields, Toolbar surface, new Action variants, new ErrorCode variants). Each has a canonical AT-SPI2 / D-Bus / Wayland-portal implementation. Core engine, trait contract, and FFI surface are untouched — Phase 3 is pure adapter code plus AT-SPI-specific compat notes.
+Phase 3 completes the three-platform story. The Linux adapter implements the original adapter surface **plus** every cross-platform extension landed in Phase 2 (event subscriptions, text ranges, modern screenshot, stable-selector fields, Toolbar surface, new Action variants, new ErrorCode variants). Each has a canonical AT-SPI2 / D-Bus / Wayland-portal implementation. Core engine, trait contract, command-registry, CLI dispatch, FFI wrappers, and MCP transport are all untouched — per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, Phase 3 is **pure `PlatformAdapter` trait implementation code**, nothing else. No new command files, no CLI dispatch changes, no FFI wrappers, no MCP tool registrations.
 
 ### Objectives
 
@@ -1184,7 +1307,7 @@ Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 
 Phase 4 adds a new I/O layer. Core engine and all three platform adapters are unchanged. The MCP server wraps existing command logic in JSON-RPC tool definitions, enabling agent-desktop to work as an MCP-native desktop automation server for Claude Desktop, Cursor, VS Code Copilot, Gemini CLI, Microsoft Agent Framework 1.0, and any other MCP-compatible host.
 
-By Phase 4 the CLI already covers 53 commands on three platforms, the FFI ships as a shared library for in-process consumers, and the cross-platform event / text-range / stable-selector primitives from Phase 2 / 3 are in place. MCP mode is primarily a **transport + discovery layer** on top of them. Every MCP tool maps 1:1 to a CLI command — no fork in semantics, no parallel codepath.
+By Phase 4 the CLI already covers 53+ commands on three platforms, the FFI ships as a shared library for in-process consumers, and the cross-platform event / text-range / stable-selector primitives from Phase 2 / 3 are in place. MCP mode is a **transport + discovery layer**, nothing more. Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant at the top of this document, the MCP crate contains zero per-tool and zero per-platform code — it walks the same compile-time `inventory` registry the CLI and FFI use, and dispatches to the same `execute(args, adapter)` functions. New commands added in Phase 2 or Phase 5 (e.g. `watch_element`, `text select-range`, `find --visual`) become MCP tools automatically with no changes to `crates/mcp/`.
 
 ### Objectives
 
@@ -1211,19 +1334,62 @@ The binary crate's `main.rs` detects mode:
 
 This is the invariant: every MCP tool maps 1:1 to a CLI command. `agent-desktop snapshot --app Finder` is identical to invoking the MCP `desktop_snapshot` tool. Testing, debugging, and documentation are never fragmented.
 
-### New Crate: `agent-desktop-mcp`
+### New Crate: `agent-desktop-mcp` (platform-agnostic, no per-command code)
+
+The MCP crate is small and generic by design. It contains **zero per-tool files and zero per-platform code**. Per the Command Surface Architecture invariant at the top of this document, every CLI command auto-registers into a shared `inventory` registry; the MCP server iterates that registry at startup and exposes each entry as an MCP tool.
 
 ```
 crates/mcp/src/
 ├── lib.rs              # mod declarations + re-exports
-├── server.rs           # MCP server bootstrap, initialize handler, capabilities reporting
-├── tools.rs            # Tool definitions with #[tool] macro, parameter JSON Schemas
-└── transport.rs        # Stdio transport (primary), optional HTTP+SSE
+├── server.rs           # rmcp server bootstrap, initialize handler, walks the command registry
+├── transport.rs        # stdio (primary), Streamable HTTP (P4-O12), SSE (legacy)
+├── capability.rs       # P4-O9 tier gating (observation / interactive / destructive)
+├── resources.rs        # P4-O6 resource types (refmap / snapshot / permissions / events / audit)
+├── notifications.rs    # P4-O7 watch event forwarder, P4-O8 progress forwarder
+└── schema.rs           # Translates CommandDescriptor → rmcp tool definition
 ```
 
-### MCP Tool Surface
+That's the whole crate. It doesn't know what `desktop_click` does — it reads the `CommandDescriptor` registered by `crates/core/src/commands/click.rs` and forwards invocations through the same `execute(args, adapter)` function the CLI uses. Adding a command in Phase 2 (`text select-range`, `watch_element`) or Phase 5 (`find --visual`, `audit tail`) means **zero lines of MCP code** — the new command shows up automatically in `tools/list`.
 
-Each MCP tool maps 1:1 to a CLI command. Tool names are prefixed with `desktop_` to avoid collision with other MCP servers. Annotations match the Phase 4 capability tiers (P4-O9): tools with `destructiveHint: true` only run when the `destructive` capability was negotiated at `initialize`.
+### MCP tool registration — the one-time rewrite
+
+```rust
+// crates/mcp/src/server.rs  (illustrative, ~80 lines total for the crate)
+
+pub async fn serve(adapter: Box<dyn PlatformAdapter>) -> Result<()> {
+    let mut server = rmcp::ServerBuilder::new("agent-desktop", env!("CARGO_PKG_VERSION"));
+
+    // Walk the compile-time registry. No hand-maintained tool list.
+    for cmd in inventory::iter::<CommandDescriptor>() {
+        // Skip tools disallowed by current permission set (P4-O11).
+        if !cmd.available_under(&adapter.check_permissions()) { continue; }
+
+        server.tool(rmcp::Tool {
+            name: cmd.mcp_name,
+            description: cmd.description,
+            input_schema: (cmd.args_schema)(),       // schemars-derived
+            annotations: cmd.annotations.into(),     // ReadOnlyHint etc.
+        }, {
+            let adapter = Arc::clone(&adapter);
+            move |args: Value| async move {
+                // Capability tier check (P4-O9).
+                capability::gate(cmd, &session)?;
+                // Invoke the same execute() the CLI uses.
+                let value = (cmd.invoke)(args, adapter.as_ref())?;
+                // Audit log entry (Phase 5 P5-O5).
+                audit::record(cmd.mcp_name, &args, &value, session.trace_id);
+                Ok(value)
+            }
+        });
+    }
+
+    server.run(stdio_transport()).await
+}
+```
+
+### Tool Surface (what the registry produces)
+
+Each MCP tool maps 1:1 to a CLI command via `CommandDescriptor`. Tool names are prefixed `desktop_` to avoid collision with other MCP servers. The tables below are a **snapshot of what the registry emits**, not hand-written entries. Adding a tool means adding a command file in `crates/core/src/commands/`; the tables refresh on regen.
 
 Observation tools (always available):
 
@@ -1728,6 +1894,16 @@ Per the [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 3. **Every new mode** (MCP, daemon) gets its own skill file
 4. **Breaking changes** to JSON output or CLI flags must update all affected skill files
 5. **Skill files are reviewed** as part of the PR checklist for any command-surface change
+
+### Command Surface DRYness (enforced across all phases)
+
+See [Command Surface Architecture](#command-surface-architecture-dry-invariant) for the full layering. Summary of the invariant enforced on every PR:
+
+- A new command creates exactly **one** file under `crates/core/src/commands/`.
+- That file registers itself via `inventory::submit! { CommandDescriptor { … } }`.
+- The CLI, FFI, and MCP transports each walk that registry at startup / build time; none of them hand-maintains a command list.
+- Per-platform work is limited to the `PlatformAdapter` trait implementations in `crates/{macos,windows,linux}/` — never per-transport, never per-command.
+- PRs that add a command to a single transport without updating the shared registry fail review. If a task in this document sounds like it requires per-transport duplication, it's a wording bug — the actual implementation follows the registry pattern.
 
 ### CI Matrix Evolution
 
