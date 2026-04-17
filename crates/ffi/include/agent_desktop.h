@@ -5,11 +5,67 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+enum AdActionKind {
+  AD_ACTION_KIND_CLICK = 0,
+  AD_ACTION_KIND_DOUBLE_CLICK = 1,
+  AD_ACTION_KIND_RIGHT_CLICK = 2,
+  AD_ACTION_KIND_TRIPLE_CLICK = 3,
+  AD_ACTION_KIND_SET_VALUE = 4,
+  AD_ACTION_KIND_SET_FOCUS = 5,
+  AD_ACTION_KIND_EXPAND = 6,
+  AD_ACTION_KIND_COLLAPSE = 7,
+  AD_ACTION_KIND_SELECT = 8,
+  AD_ACTION_KIND_TOGGLE = 9,
+  AD_ACTION_KIND_CHECK = 10,
+  AD_ACTION_KIND_UNCHECK = 11,
+  AD_ACTION_KIND_SCROLL = 12,
+  AD_ACTION_KIND_SCROLL_TO = 13,
+  AD_ACTION_KIND_PRESS_KEY = 14,
+  AD_ACTION_KIND_KEY_DOWN = 15,
+  AD_ACTION_KIND_KEY_UP = 16,
+  AD_ACTION_KIND_TYPE_TEXT = 17,
+  AD_ACTION_KIND_CLEAR = 18,
+  AD_ACTION_KIND_HOVER = 19,
+  AD_ACTION_KIND_DRAG = 20,
+};
+typedef int32_t AdActionKind;
+
+enum AdDirection {
+  AD_DIRECTION_UP = 0,
+  AD_DIRECTION_DOWN = 1,
+  AD_DIRECTION_LEFT = 2,
+  AD_DIRECTION_RIGHT = 3,
+};
+typedef int32_t AdDirection;
+
 enum AdImageFormat {
   AD_IMAGE_FORMAT_PNG = 0,
   AD_IMAGE_FORMAT_JPG = 1,
 };
 typedef int32_t AdImageFormat;
+
+enum AdModifier {
+  AD_MODIFIER_CMD = 0,
+  AD_MODIFIER_CTRL = 1,
+  AD_MODIFIER_ALT = 2,
+  AD_MODIFIER_SHIFT = 3,
+};
+typedef int32_t AdModifier;
+
+enum AdMouseButton {
+  AD_MOUSE_BUTTON_LEFT = 0,
+  AD_MOUSE_BUTTON_RIGHT = 1,
+  AD_MOUSE_BUTTON_MIDDLE = 2,
+};
+typedef int32_t AdMouseButton;
+
+enum AdMouseEventKind {
+  AD_MOUSE_EVENT_KIND_MOVE = 0,
+  AD_MOUSE_EVENT_KIND_DOWN = 1,
+  AD_MOUSE_EVENT_KIND_UP = 2,
+  AD_MOUSE_EVENT_KIND_CLICK = 3,
+};
+typedef int32_t AdMouseEventKind;
 
 enum AdResult {
   AD_RESULT_OK = 0,
@@ -27,6 +83,33 @@ enum AdResult {
   AD_RESULT_ERR_INTERNAL = -12,
 };
 typedef int32_t AdResult;
+
+enum AdScreenshotKind {
+  AD_SCREENSHOT_KIND_SCREEN = 0,
+  AD_SCREENSHOT_KIND_WINDOW = 1,
+  AD_SCREENSHOT_KIND_FULL_SCREEN = 2,
+};
+typedef int32_t AdScreenshotKind;
+
+enum AdSnapshotSurface {
+  AD_SNAPSHOT_SURFACE_WINDOW = 0,
+  AD_SNAPSHOT_SURFACE_FOCUSED = 1,
+  AD_SNAPSHOT_SURFACE_MENU = 2,
+  AD_SNAPSHOT_SURFACE_MENUBAR = 3,
+  AD_SNAPSHOT_SURFACE_SHEET = 4,
+  AD_SNAPSHOT_SURFACE_POPOVER = 5,
+  AD_SNAPSHOT_SURFACE_ALERT = 6,
+};
+typedef int32_t AdSnapshotSurface;
+
+enum AdWindowOpKind {
+  AD_WINDOW_OP_KIND_RESIZE = 0,
+  AD_WINDOW_OP_KIND_MOVE = 1,
+  AD_WINDOW_OP_KIND_MINIMIZE = 2,
+  AD_WINDOW_OP_KIND_MAXIMIZE = 3,
+  AD_WINDOW_OP_KIND_RESTORE = 4,
+};
+typedef int32_t AdWindowOpKind;
 
 typedef struct AdAdapter AdAdapter;
 
