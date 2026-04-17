@@ -1,4 +1,4 @@
-use crate::convert::string::c_to_string;
+use crate::convert::string::{c_to_string, try_c_to_string};
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdNativeHandle, AdRefEntry};
@@ -36,7 +36,21 @@ pub unsafe extern "C" fn ad_resolve_element(
                 return AdResult::ErrInvalidArgs;
             }
         };
-        let name = c_to_string(entry.name);
+        // Fail closed on invalid UTF-8 for `name`: conflating "null" with
+        // "bad bytes" would widen a caller-specified filter into an
+        // unfiltered re-resolution. try_c_to_string keeps null → None and
+        // promotes invalid UTF-8 to an explicit InvalidArgs, matching the
+        // optional-filter contract used by ad_list_* entrypoints.
+        let name = match try_c_to_string(entry.name) {
+            Ok(value) => value,
+            Err(()) => {
+                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    "name is not valid UTF-8",
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
         let bounds_hash = if entry.has_bounds_hash {
             Some(entry.bounds_hash)
         } else {

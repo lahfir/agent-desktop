@@ -18,7 +18,8 @@
 use agent_desktop_ffi::error::AdResult;
 use agent_desktop_ffi::{
     AdAction, AdActionResult, AdAdapter, AdAppList, AdDirection, AdDragParams, AdFindQuery,
-    AdKeyCombo, AdNativeHandle, AdPoint, AdRect, AdScrollParams, AdWindowInfo, AdWindowList,
+    AdKeyCombo, AdNativeHandle, AdPoint, AdRect, AdRefEntry, AdScrollParams, AdWindowInfo,
+    AdWindowList,
 };
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -67,6 +68,12 @@ extern "C" {
     ) -> AdResult;
 
     fn ad_free_handle(adapter: *const AdAdapter, handle: *mut AdNativeHandle) -> AdResult;
+
+    fn ad_resolve_element(
+        adapter: *const AdAdapter,
+        entry: *const AdRefEntry,
+        out: *mut AdNativeHandle,
+    ) -> AdResult;
 }
 
 fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
@@ -356,6 +363,38 @@ fn free_handle_zeroes_ptr_so_double_free_is_noop() {
 
         let rc = ad_free_handle(adapter, &mut handle);
         assert_eq!(rc, AdResult::Ok);
+    });
+}
+
+#[test]
+fn resolve_element_rejects_invalid_utf8_name() {
+    // Regression for todo 004: prior c_to_string(entry.name) conflated
+    // null with invalid UTF-8, so a non-null buffer with bogus bytes in
+    // the `name` slot was treated as "no name filter" and widened the
+    // re-resolution match. Must now fail closed with InvalidArgs.
+    with_adapter(|adapter| unsafe {
+        let role = std::ffi::CString::new("button").unwrap();
+        let bad_name: [u8; 2] = [0xC3, 0x00]; // partial multi-byte + NUL
+        let entry = AdRefEntry {
+            pid: 0,
+            role: role.as_ptr(),
+            name: bad_name.as_ptr() as *const c_char,
+            bounds_hash: 0,
+            has_bounds_hash: false,
+        };
+        let mut out = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
+        let rc = ad_resolve_element(adapter, &entry, &mut out);
+        // Either the UTF-8 check wins (ErrInvalidArgs) or the main-thread
+        // guard wins on worker threads (ErrInternal). Either way, no
+        // silent widening, no UB, and the out-handle stays null.
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "must reject without UB, got {:?}",
+            rc
+        );
+        assert!(out.ptr.is_null());
     });
 }
 
