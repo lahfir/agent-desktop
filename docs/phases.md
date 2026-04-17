@@ -4,11 +4,31 @@
 
 ---
 
+## Release Tracker
+
+Most recent shipments against this roadmap:
+
+| Version | Date       | What shipped |
+|---------|------------|--------------|
+| v0.1.13 | 2026-04-17 | FFI cdylib on 5 platforms (aarch64/x86_64 macOS + Linux, x86_64 Windows MSVC), Sigstore build-provenance attestations, FFI review hardening (#26 — 50 commits) |
+| v0.1.12 | 2026-03–04 | Progressive skeleton traversal + ref-rooted drill-down (#20) |
+| v0.1.11 | 2026-02–03 | Skill-install prompt fix on all success paths |
+| v0.1.9  | 2026-01–02 | Scalable skill architecture + ClawHub auto-publish (#14) |
+| v0.1.8  | 2026-01    | `--compact` flag to collapse single-child unnamed nodes |
+| v0.1.7  | 2025-12    | Electron / web app accessibility-tree compatibility |
+
+- Phase 1 completion: incremental across v0.1.0 – v0.1.8 (macOS MVP, 53 commands, core engine).
+- Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms).
+- Phase 2+: not yet started. See **Gap Analysis — 2026-04-17 Research** at the bottom of this document for the latest re-prioritization evidence.
+
+---
+
 ## Phase Overview
 
 | Phase | Name | Status | Platforms |
 |-------|------|--------|-----------|
-| 1 | Foundation + macOS MVP | **Completed** | macOS |
+| 1 | Foundation + macOS MVP | **Completed** (v0.1.0 – v0.1.12) | macOS |
+| 1.5 | FFI Distribution (C-ABI cdylib) | **Completed** (v0.1.13) | macOS, Windows, Linux |
 | 2 | Windows Adapter | Planned | macOS, Windows |
 | 3 | Linux Adapter | Planned | macOS, Windows, Linux |
 | 4 | MCP Server Mode | Planned | All |
@@ -20,7 +40,7 @@ Each phase is strictly additive. Core engine, CLI parser, JSON contract, error t
 
 ## Phase 1 — Foundation + macOS MVP
 
-**Status: Completed**
+**Status: Completed** — shipped incrementally across v0.1.0 – v0.1.12.
 
 Phase 1 is the load-bearing phase. It establishes every shared abstraction, every trait boundary, every output contract, every error type, the complete command trait and registry, and the full workspace structure. All subsequent phases build on top of this foundation without modifying core.
 
@@ -32,10 +52,10 @@ Phase 1 is the load-bearing phase. It establishes every shared abstraction, ever
 | P1-O2 | Platform adapter trait | Trait compiles with mock adapter; macOS adapter satisfies all trait methods |
 | P1-O3 | Ref-based interaction | `click @e3` successfully invokes AXPress on the resolved element |
 | P1-O4 | Context efficiency | Typical Finder snapshot < 500 tokens (measured via tiktoken) |
-| P1-O5 | Typed JSON contract | Output validates against JSON Schema; schema is versioned |
+| P1-O5 | Typed JSON contract | Output envelope carries `version: "1.0"`. **Partial**: dedicated `schemas/` JSON-Schema files were never delivered — deferred to Phase 5 quality gates. |
 | P1-O6 | Permission detection | Missing Accessibility permission prints specific macOS setup instructions |
-| P1-O7 | Command extensibility | Adding a new command requires exactly 1 new file + 2 registration lines |
-| P1-O8 | 50 working commands | All commands pass integration tests |
+| P1-O7 | Command extensibility | Adding a new command is ~4 registration points: `commands/{name}.rs` + `commands/mod.rs` + `src/cli.rs` variant + `src/dispatch.rs` match arm |
+| P1-O8 | 53 working commands | All commands pass integration tests |
 | P1-O9 | CI pipeline | GitHub Actions macOS runner executes full test suite on every PR |
 | P1-O10 | Progressive skeleton traversal | Skeleton + drill-down workflow achieves 78%+ token savings on Electron apps |
 
@@ -46,28 +66,25 @@ agent-desktop/
 ├── Cargo.toml              # workspace: members, shared deps
 ├── rust-toolchain.toml     # pinned Rust version
 ├── clippy.toml             # project-wide lint config
-├── schemas/                # JSON Schema files for output validation
-│   ├── snapshot_response.json
-│   ├── action_response.json
-│   └── error_response.json
+├── LICENSE                 # Apache-2.0 (shipped in every release tarball)
 ├── crates/
 │   ├── core/               # agent-desktop-core (platform-agnostic)
 │   │   └── src/
 │   │       ├── lib.rs          # public re-exports only
 │   │       ├── node.rs         # AccessibilityNode, Rect, WindowInfo
 │   │       ├── adapter.rs      # PlatformAdapter trait
-│   │       ├── action.rs       # Action enum, ActionResult, InputEvent, WindowOp
-│   │       ├── refs.rs         # RefAllocator, RefMap, RefEntry
-│   │       ├── ref_alloc.rs      # Shared ref-allocation logic (RefAllocConfig, allocate_refs, INTERACTIVE_ROLES, is_collapsible)
-│   │       ├── snapshot_ref.rs   # Ref-rooted drill-down (run_from_ref) — delegates allocation to ref_alloc
+│   │       ├── action.rs       # Action enum, ActionResult
+│   │       ├── refs.rs         # RefMap, RefEntry (persisted at ~/.agent-desktop/last_refmap.json)
+│   │       ├── ref_alloc.rs    # INTERACTIVE_ROLES, allocate_refs, is_collapsible, transform_tree
+│   │       ├── snapshot_ref.rs # Ref-rooted drill-down (run_from_ref)
 │   │       ├── snapshot.rs     # SnapshotEngine (filter, allocate, serialize)
-│   │       ├── error.rs        # ErrorCode enum, AdapterError, AppError
-│   │       ├── output.rs       # Response envelope, JSON formatting
-│   │       ├── command.rs      # Command trait + CommandRegistry
-│   │       └── commands/       # one file per command
-│   ├── macos/              # agent-desktop-macos (Phase 1)
+│   │       ├── error.rs        # ErrorCode enum (12 variants), AdapterError, AppError
+│   │       ├── notification.rs # NotificationInfo, NotificationFilter, NotificationIdentity
+│   │       └── commands/       # one file per command (direct match, no Command trait)
+│   ├── macos/              # agent-desktop-macos (Phase 1, shipped)
 │   ├── windows/            # agent-desktop-windows (stub → Phase 2)
-│   └── linux/              # agent-desktop-linux (stub → Phase 3)
+│   ├── linux/              # agent-desktop-linux (stub → Phase 3)
+│   └── ffi/                # agent-desktop-ffi (cdylib, shipped v0.1.13; see Phase 1.5)
 ├── src/                    # agent-desktop binary (entry point)
 │   ├── main.rs
 │   ├── cli.rs
@@ -81,42 +98,62 @@ agent-desktop/
 
 ### PlatformAdapter Trait
 
-The single most important abstraction. Every platform-specific operation goes through this trait. Core never imports platform crates. 12 methods with default implementations returning `not_supported()`:
+The single most important abstraction. Every platform-specific operation goes through this trait. Core never imports platform crates. The trait currently exposes ~27 methods with default implementations returning `not_supported()` — see `crates/core/src/adapter.rs` for the canonical definition. Key method shapes:
 
 ```rust
 pub trait PlatformAdapter: Send + Sync {
-    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>>;
-    fn list_apps(&self) -> Result<Vec<AppInfo>>;
-    fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode>;
-    fn execute_action(&self, handle: &NativeHandle, action: Action) -> Result<ActionResult>;
-    fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle>;
+    // Core observation
+    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError>;
+    fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError>;
+    fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
+    fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
+    fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError>;
+
+    // Interaction
+    fn execute_action(&self, handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError>;
+    fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
+    fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError>;
+    fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError>;
+    fn drag(&self, params: DragParams) -> Result<(), AdapterError>;
+    fn press_key_for_app(&self, pid: i32, combo: KeyCombo) -> Result<(), AdapterError>;
+
+    // Lifecycle + windowing
     fn check_permissions(&self) -> PermissionStatus;
-    fn focus_window(&self, win: &WindowInfo) -> Result<()>;
-    fn launch_app(&self, id: &str, wait: bool) -> Result<WindowInfo>;
-    fn close_app(&self, id: &str, force: bool) -> Result<()>;
-    fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer>;
-    fn get_clipboard(&self) -> Result<String>;
-    fn set_clipboard(&self, text: &str) -> Result<()>;
-    fn synthesize_input(&self, input: InputEvent) -> Result<()>;
-    fn manage_window(&self, win: &WindowInfo, op: WindowOp) -> Result<()>;
-    fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode>;
-    fn list_notifications(&self) -> Result<Vec<NotificationInfo>>;
-    fn dismiss_notification(&self, id: &str) -> Result<()>;
-    fn interact_notification(&self, id: &str, action_name: &str) -> Result<ActionResult>;
-    fn list_tray_items(&self) -> Result<Vec<TrayItemInfo>>;
-    fn interact_tray_item(&self, id: &str, action: Action) -> Result<ActionResult>;
+    fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError>;
+    fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError>;
+    fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError>;
+    fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError>;
+    fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError>;
+
+    // Capture + clipboard
+    fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError>;
+    fn get_clipboard(&self) -> Result<String, AdapterError>;
+    fn set_clipboard(&self, text: &str) -> Result<(), AdapterError>;
+    fn clear_clipboard(&self) -> Result<(), AdapterError>;
+
+    // Notifications (macOS shipped; Windows/Linux planned)
+    fn list_notifications(&self, filter: &NotificationFilter) -> Result<Vec<NotificationInfo>, AdapterError>;
+    fn dismiss_notification(&self, index: usize, app_filter: Option<&str>) -> Result<NotificationInfo, AdapterError>;
+    fn dismiss_all_notifications(&self, app_filter: Option<&str>) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError>;
+    fn notification_action(&self, index: usize, identity: Option<&NotificationIdentity>, action_name: &str) -> Result<ActionResult, AdapterError>;
+
+    // Property probes
+    fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError>;
+    fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError>;
+    fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<bool, AdapterError>;
 }
 ```
 
 ### Key Supporting Types
 
-- `Action` — Click, DoubleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Scroll(Direction, Amount), PressKey(KeyCombo)
-- `InputEvent` — MouseMove(x,y), MouseClick(x,y,button,count), MouseDown(button), MouseUp(button), MouseWheel(dy,dx), KeyDown(key), KeyUp(key), Drag(from,to)
-- `WindowOp` — Resize(w,h), Move(x,y), Minimize, Maximize, Restore, Close
-- `ScreenshotTarget` — Screen(index), Window(id), Element(NativeHandle), FullScreen
-- `NotificationInfo` — id, app_name, title, body, timestamp, actions: Vec\<String\>, is_persistent
-- `TrayItemInfo` — id, app_name, title, tooltip, has_menu
-- `TreeOptions` — `max_depth`, `include_bounds`, `interactive_only`, `compact`, `surface`, `skeleton` (root is CLI-only via `SnapshotArgs.root_ref`, not plumbed into `TreeOptions`)
+- `Action` — `#[non_exhaustive]` enum. Current variants: Click, DoubleClick, TripleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Check, Uncheck, Scroll(Direction, Amount), ScrollTo, PressKey(KeyCombo), KeyDown(KeyCombo), KeyUp(KeyCombo), TypeText(String), Clear, Hover, Drag(DragParams)
+- `MouseEvent`, `DragParams`, `KeyCombo` — dedicated types (not unified under an `InputEvent` enum)
+- `WindowOp` — Resize{w,h}, Move{x,y}, Minimize, Maximize, Restore, Close
+- `ScreenshotTarget` — FullScreen, Window(WindowInfo), Element(NativeHandle)
+- `NotificationInfo` — index, app_name, title, body, actions: Vec<String>
+- `NotificationIdentity` — expected_app, expected_title (used for NC-reorder-safe `notification_action`)
+- `SurfaceInfo` — kind, label, bounds (for `list-surfaces` command)
+- `TreeOptions` — max_depth, include_bounds, interactive_only, compact, surface, skeleton (root is CLI-only via `SnapshotArgs.root_ref`, not plumbed into `TreeOptions`)
 
 ### macOS Adapter Implementation
 
@@ -147,11 +184,7 @@ crates/macos/src/
 │   ├── mod.rs          # re-exports
 │   ├── list.rs         # List notifications via Notification Center AX tree
 │   ├── dismiss.rs      # Dismiss individual or all notifications via AXPress
-│   └── interact.rs     # Click notification action buttons
-├── tray/
-│   ├── mod.rs          # re-exports
-│   ├── list.rs         # List menu bar extras via SystemUIServer AX tree
-│   └── interact.rs     # Click menu bar extras, expand menus
+│   └── actions.rs      # Click notification action buttons (identity-verified)
 └── system/
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # launch, close, focus via NSWorkspace / AppleScript
@@ -257,7 +290,7 @@ The `wait` command has been extended with notification and menu support:
 - `wait --notification --text "Download complete"` — Wait for a notification containing specific text
 - `wait --menu` / `wait --menu-closed` — Wait for context menu open/close
 
-### Commands Shipped (57)
+### Commands Shipped (53)
 
 | Category | Commands | Count |
 |----------|----------|-------|
@@ -268,11 +301,12 @@ The `wait` command has been extended with notification and menu support:
 | Keyboard | `press`, `key-down`, `key-up` | 3 |
 | Mouse | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` | 6 |
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | 3 |
-| Notification | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | 4 |
-| System Tray | `list-tray-items`, `click-tray-item`, `open-tray-menu` | 3 |
+| Notification (macOS) | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | 4 |
 | Wait | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) | 1 |
 | System | `status`, `permissions`, `version` | 3 |
 | Batch | `batch` | 1 |
+
+> System Tray / Menu Bar Extras commands are listed under "Not Yet Implemented" above — they never shipped in Phase 1.
 
 ### JSON Output Contract
 
@@ -311,25 +345,26 @@ Serialization rules: omit null/None fields (`skip_serializing_if`), omit empty a
 
 ### Error Taxonomy
 
+The `ErrorCode` enum in `crates/core/src/error.rs` exposes exactly 12 variants:
+
 | Code | Category | Example | Recovery Suggestion |
 |------|----------|---------|---------------------|
 | `PERM_DENIED` | Permission | Accessibility not granted | Open System Settings > Privacy > Accessibility and add your terminal |
-| `ELEMENT_NOT_FOUND` | Ref | @e12 not in current RefMap | Run 'snapshot' to refresh, then retry with updated ref |
-| `APP_NOT_FOUND` | Application | --app 'Photoshop' not running | Launch the application first with 'launch Photoshop' |
+| `ELEMENT_NOT_FOUND` | Ref | @e12 could not be resolved | Run 'snapshot' to refresh, then retry with updated ref |
+| `APP_NOT_FOUND` | Application | --app 'Photoshop' not running | Launch the application first |
 | `ACTION_FAILED` | Execution | AXPress returned error on disabled button | Element may be disabled. Check states before acting |
-| `ACTION_NOT_SUPPORTED` | Execution | Expand on a button element | This element does not support the requested action |
-| `TREE_TIMEOUT` | Performance | Traversal exceeded 5s | Try --max-depth 3 or target a specific window |
-| `STALE_REF` | Ref | RefMap is from a previous snapshot | UI may have changed. Run 'snapshot' again |
+| `ACTION_NOT_SUPPORTED` | Execution | Expand on a button | This element does not support the requested action |
+| `STALE_REF` | Ref | RefMap is from a previous snapshot | Run 'snapshot' (or `snapshot --skeleton`) to refresh |
 | `WINDOW_NOT_FOUND` | Window | --window w-999 does not exist | Run 'list-windows' to see available windows |
-| `PLATFORM_UNSUPPORTED` | Platform | Linux adapter not yet shipped | This platform ships in Phase 3. Currently macOS only |
-| `CLIPBOARD_EMPTY` | Clipboard | clipboard get but clipboard is empty | No text content in clipboard. Copy something first |
-| `TIMEOUT` | Wait | wait --element exceeded timeout | Element did not appear within timeout. Increase --timeout or check app state |
-| `NOTIFICATION_NOT_FOUND` | Notification | Notification ID not found | Notification may have been dismissed or expired. Run 'list-notifications' to see current notifications |
-| `NOTIFICATION_UNSUPPORTED` | Notification | Notification daemon does not support listing | This notification daemon does not expose a history API. Consider using 'wait --notification' to catch notifications in real-time |
-| `TRAY_NOT_FOUND` | System Tray | Tray item not found | Tray item may have been removed. Run 'list-tray-items' to see current items |
-| `TRAY_UNSUPPORTED` | System Tray | No system tray available | System tray not available on this desktop environment. On GNOME, install the AppIndicator extension |
+| `PLATFORM_NOT_SUPPORTED` | Platform | Windows/Linux adapter not yet shipped | This platform ships in Phase 2/3 |
+| `TIMEOUT` | Wait / Traversal | wait --element exceeded timeout | Increase --timeout or check app state |
+| `INVALID_ARGS` | Input | Bad CLI argument or unknown ref format | Fix the argument per CLI help |
+| `NOTIFICATION_NOT_FOUND` | Notification | Notification ID not found / NC reordered | Run 'list-notifications' to see current notifications |
+| `INTERNAL` | Internal | Unexpected error or caught panic | Re-run with verbose logging |
 
 Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/parse error.
+
+> Codes the earlier draft listed but that **do not exist** in the codebase: `TREE_TIMEOUT` (use `TIMEOUT`), `CLIPBOARD_EMPTY` (no special code; empty clipboard returns empty string), `NOTIFICATION_UNSUPPORTED` (use `PLATFORM_NOT_SUPPORTED`), `TRAY_NOT_FOUND` / `TRAY_UNSUPPORTED` (tray commands never shipped). Deferred-work additions (see Gap Analysis at bottom): `PERMISSION_REVOKED`, `RESOURCE_EXHAUSTED`, `AX_MESSAGING_TIMEOUT`, `AUTOMATION_PERMISSION_DENIED`.
 
 ### Testing
 
@@ -366,11 +401,16 @@ Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/par
 
 ### CI
 
-- GitHub Actions macOS runner on every PR
-- `cargo clippy --all-targets -- -D warnings` (zero warnings)
-- `cargo test --workspace`
-- `cargo tree -p agent-desktop-core` must not contain platform crate names
-- Binary size check: fail if release binary exceeds 15MB
+Current `.github/workflows/ci.yml` on every PR:
+- `fmt` job on `ubuntu-latest`: `cargo fmt --all -- --check`
+- `test` job on `macos-latest`:
+  - `cargo tree -p agent-desktop-core` must contain zero platform crate names (dependency isolation)
+  - `cargo clippy --all-targets -- -D warnings`
+  - `cargo test --lib --workspace`
+  - `cargo test -p agent-desktop-ffi --tests` (c_abi_harness + c_header_compile + error_lifetime integration suites)
+  - `cargo build --profile ci` (fast CLI binary) + 15 MB size check
+  - `cargo build --profile release-ffi -p agent-desktop-ffi` (the shipped cdylib profile)
+  - FFI header drift check — diffs `crates/ffi/include/agent_desktop.h` against the build-stamped `target/ffi-header-path.txt`
 
 ### Dependencies
 
@@ -380,6 +420,8 @@ Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/par
 | `serde` + `serde_json` | 1.x | JSON serialization |
 | `thiserror` | 2.x | Error derive macros |
 | `tracing` | 0.1+ | Structured logging |
+| `tracing-subscriber` | 0.3 | env-filter log formatter |
+| `rustc-hash` | 2.1 | Faster hashing for ref maps and visited sets |
 | `base64` | 0.22+ | Screenshot encoding |
 | `accessibility-sys` | 0.1+ | macOS AXUIElement FFI |
 | `core-foundation` | 0.10+ | macOS CF types |
@@ -392,6 +434,107 @@ Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/par
 - [x] Architecture diagram
 - [x] Claude Code skills: `.claude/skills/agent-desktop/` (core, platform-agnostic) + `.claude/skills/agent-desktop-macos/` (macOS-specific)
 - [x] Quick reference slash command: `.claude/commands/desktop.md`
+
+---
+
+## Phase 1.5 — FFI Distribution (C-ABI cdylib)
+
+**Status: Completed — v0.1.13 (2026-04-17).**
+
+Phase 1.5 ships `crates/ffi/` as a first-class distribution target. The CLI stays the primary surface; the cdylib lets Python (ctypes), Swift, Node (ffi-napi), Go (cgo), Ruby (fiddle), and C consumers call `PlatformAdapter` directly without spawning `agent-desktop` per call.
+
+### Objectives
+
+| ID | Objective | Metric |
+|----|-----------|--------|
+| P1.5-O1 | Stable C-ABI surface | `crates/ffi/include/agent_desktop.h` drift-checked in CI via a deterministic `ffi-header-path.txt` stamp |
+| P1.5-O2 | 5-platform release | Tarballs for aarch64/x86_64 apple-darwin, aarch64/x86_64 unknown-linux-gnu, and x86_64 pc-windows-msvc on every tagged release |
+| P1.5-O3 | Panic safety | Dedicated `release-ffi` profile overrides `panic = "abort"` → `"unwind"`; `catch_unwind` wraps every `extern "C"` boundary via `trap_panic` / `trap_panic_ptr` / `trap_panic_const_ptr` / `trap_panic_void` |
+| P1.5-O4 | Main-thread safety (macOS) | `require_main_thread()` guard in every build profile; worker-thread call returns `AD_RESULT_ERR_INTERNAL` with a static `'static CStr` message |
+| P1.5-O5 | Enum UB immunity | Public ABI struct fields store raw `i32`; every entry validates discriminants at the boundary via `try_from_c_enum!` |
+| P1.5-O6 | Out-param zeroing before any guard | Every fallible entry zeroes `*out` before pointer / UTF-8 / main-thread checks, so a worker-thread early return never leaves a stale caller buffer |
+| P1.5-O7 | Sigstore build-provenance | `actions/attest-build-provenance@v4.1.0` signs every release artifact; consumers verify with `gh attestation verify <file> --repo lahfir/agent-desktop` |
+| P1.5-O8 | Skill documentation | `skills/agent-desktop-ffi/SKILL.md` + references: `build-and-link.md`, `ownership.md`, `threading.md`, `error-handling.md` |
+| P1.5-O9 | README surface | "Language bindings (FFI)" section on the project README with platform→artifact table, Python dlopen snippet, and Sigstore verify one-liner |
+
+### Crate Layout
+
+```
+crates/ffi/
+├── Cargo.toml           # crate-type = ["cdylib", "rlib"]
+├── cbindgen.toml        # [export].include forces emission of AdActionKind / AdDirection / AdModifier / AdMouseButton / AdMouseEventKind / AdScreenshotKind / AdSnapshotSurface / AdWindowOpKind even though the public ABI stores raw i32
+├── build.rs             # runs cbindgen into $OUT_DIR, stamps target/ffi-header-path.txt, bakes install_name = @rpath/libagent_desktop_ffi.dylib on macOS
+├── include/
+│   └── agent_desktop.h  # committed, drift-checked against the OUT_DIR output
+├── src/                 # ad_* extern "C" entrypoints, organized by domain
+│   ├── types/           # 34 one-type-per-file modules (AdAction, AdRect, AdWindowList, ...)
+│   ├── convert/         # string / rect / window / app / surface / notification helpers
+│   ├── tree/            # BFS flat-tree layout (flatten.rs, get.rs, free.rs)
+│   ├── actions/         # conversion, resolve, execute, result, native_handle
+│   ├── apps/ windows/ input/ screenshot/ surfaces/ notifications/ observation/
+│   ├── error.rs         # AdResult, errno-style TLS last-error (message/suggestion/platform_detail)
+│   ├── ffi_try.rs       # panic boundary helpers (trap_panic_*)
+│   ├── enum_validation.rs # try_from_c_enum! macro, fuzz tests
+│   └── main_thread.rs   # require_main_thread() guard
+├── tests/
+│   ├── c_abi_harness.rs    # raw extern "C" decls, enum fuzzing, out-param zeroing, null tolerance
+│   ├── c_header_compile.rs # shells out to `cc` to verify every AD_* constant is usable from C
+│   └── error_lifetime.rs   # last-error pointer stability across successful follow-up calls
+└── examples/
+    └── panic_spike.rs   # demonstrates panic boundary on the release-ffi profile
+```
+
+### Release Artifacts
+
+Shipped via `.github/workflows/release.yml` `build-ffi` matrix job:
+
+| Target | Runner | Archive | Library |
+|--------|--------|---------|---------|
+| aarch64-apple-darwin | macos-latest | `.tar.gz` | `libagent_desktop_ffi.dylib` |
+| x86_64-apple-darwin | macos-latest | `.tar.gz` | `libagent_desktop_ffi.dylib` |
+| x86_64-unknown-linux-gnu | ubuntu-22.04 | `.tar.gz` | `libagent_desktop_ffi.so` |
+| aarch64-unknown-linux-gnu | ubuntu-22.04-arm | `.tar.gz` | `libagent_desktop_ffi.so` |
+| x86_64-pc-windows-msvc | windows-latest | `.zip` | `agent_desktop_ffi.dll` |
+
+Each archive contains `lib/`, `include/agent_desktop.h`, `LICENSE`, and a short `README.md`. macOS tarballs have their `install_name` verified `@rpath/libagent_desktop_ffi.dylib` via `otool -D` before upload. Linux binaries use `ubuntu-22.04` (glibc 2.35) as the baseline for maximum distro coverage.
+
+### Build Profile
+
+```toml
+[profile.release-ffi]
+inherits = "release"
+panic    = "unwind"   # allow catch_unwind at the extern "C" boundary
+```
+
+Regular `release` profile keeps `panic = "abort"` for the CLI binary, so a panic there aborts the process rather than cascading through the FFI layer.
+
+### CI Hooks Added
+
+- `cargo build --profile release-ffi -p agent-desktop-ffi` on every PR
+- `cargo test -p agent-desktop-ffi --tests` runs the 3 integration suites
+- FFI header drift check diffs the committed header against the OUT_DIR output discovered via `target/ffi-header-path.txt` (deterministic even with warm caches and multiple `agent-desktop-ffi-<hash>/` directories)
+
+### New Dependencies
+
+| Crate | Version | Scope | Purpose |
+|-------|---------|-------|---------|
+| `cbindgen` | = 0.27.0 (pinned) | `crates/ffi` build-dep | C header generation |
+| `libc` | 0.2+ | `crates/ffi` macOS target | `pthread_main_np` for main-thread check |
+
+### Forward Compatibility
+
+- Pre-1.0 the ABI is explicitly unstable; consumers pin the artifact version alongside the cdylib version.
+- Any new `PlatformAdapter` method that lands in Phase 2/3 must add a matching `ad_*` FFI wrapper in the same PR that adds the adapter method.
+- MCP server mode (Phase 4) is a parallel transport, not an FFI consumer — it calls `PlatformAdapter` directly.
+
+### Known Gaps (surfaced by 2026-04-17 research)
+
+- `ad_abi_version()` export is still missing (consumers have no runtime compat check)
+- CLI-flagship primitives (`snapshot` with refs + refmap, `batch`, `wait`, `version`, `status`) are not wired through FFI — consumers today cannot replay the `click @e5` idiom without shelling out to the CLI
+- No `tracing::` log callback — in-process consumers lose debug output
+- No `pyo3` / `maturin` wheel or `cffi` wrapper ships with the repo
+
+These items are tracked under **Gap Analysis — 2026-04-17 Research** at the bottom of this document.
 
 ---
 
@@ -1238,7 +1381,8 @@ The README is updated at the end of each phase to reflect the current state:
 
 | Phase | README Changes |
 |-------|---------------|
-| Phase 1 | Initial README: npm + source installation, core workflow, all 50 commands, JSON output, ref system, error codes, platform support table (macOS only) |
+| Phase 1 | Initial README: npm + source installation, core workflow, all 53 commands, JSON output, ref system, error codes, platform support table (macOS only) |
+| Phase 1.5 | Add "Language bindings (FFI)" section: platform→artifact table, 5-line Python dlopen snippet, `shasum -a 256 -c checksums.txt` + `gh attestation verify` verification, link to `skills/agent-desktop-ffi/` |
 | Phase 2 | Add Windows: `.exe` installation, Windows permissions, update platform table, Windows build instructions |
 | Phase 3 | Add Linux: binary installation, AT-SPI2 setup, update platform table, Linux build instructions, minimum OS versions |
 | Phase 4 | Add MCP Server: `--mcp` usage, Claude Desktop config, Cursor config, tool-to-CLI mapping |
@@ -1258,8 +1402,9 @@ Per the [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 
 | Phase | CI Runners |
 |-------|-----------|
-| Phase 1 | macOS |
-| Phase 2 | macOS + Windows |
+| Phase 1 | `macos-latest` (tests + CLI build) + `ubuntu-latest` (`fmt` job) |
+| Phase 1.5 | Same as Phase 1 on PRs; release workflow fans out to `macos-latest` × 2 darwin arches + `ubuntu-22.04` + `ubuntu-22.04-arm` + `windows-latest` for the FFI matrix |
+| Phase 2 | macOS + Windows (CLI tests on Windows) |
 | Phase 3 | macOS + Windows + Ubuntu |
 | Phase 4 | macOS + Windows + Ubuntu (+ MCP protocol tests) |
 | Phase 5 | macOS + Windows + Ubuntu (+ daemon tests, package build verification) |
@@ -1271,7 +1416,9 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | Dependency | Introduced In | Purpose |
 |------------|---------------|---------|
 | `clap` 4.x, `serde` 1.x, `thiserror` 2.x, `tracing` 0.1+, `base64` 0.22+ | Phase 1 | Core: CLI, JSON, errors, logging, encoding |
+| `tracing-subscriber` 0.3, `rustc-hash` 2.1 | Phase 1 | Log formatter + fast hashing |
 | `accessibility-sys` 0.1+, `core-foundation` 0.10+, `core-graphics` 0.24+ | Phase 1 | macOS AX API FFI |
+| `cbindgen` = 0.27.0 (pinned), `libc` 0.2+ | Phase 1.5 | C header generation + macOS `pthread_main_np` for FFI main-thread guard |
 | `uiautomation` 0.24+ | Phase 2 | Windows UIA wrapper |
 | `atspi` 0.28+ + `zbus` 5.x | Phase 3 | Linux AT-SPI2 client via D-Bus |
 | `tokio` 1.x | Phase 3 | Async runtime (required by atspi/zbus) |
@@ -1307,3 +1454,85 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | R6 | MCP spec changes break compat | Low | Medium | Pin `rmcp` version. Monitor spec under Linux Foundation governance. |
 | R7 | Tree traversal too slow (>5s) | Medium | Medium | Depth limiting via `--max-depth`. Focused-window-only. Cached subtrees in Phase 5 daemon. Progressive skeleton traversal (`--skeleton` + `--root`) reduces token consumption 78-96% for dense apps. |
 | R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. Progressive skeleton traversal with scoped invalidation provides a stable drill-down workflow for navigating complex UIs. |
+
+---
+
+## Gap Analysis — 2026-04-17 Research
+
+Four parallel research agents (codebase-internal, external web + Apple/Microsoft/Linux docs, MCP/context7, competitive) produced an evidence-backed gap report right after the Phase 1.5 ship. This section captures the priority-ordered findings so future phases can be re-scoped against current 2026 expectations. Every item cites a file path, an Apple/MS/Linux API, or a competitor repo; nothing here is vibes-based.
+
+### P0 — category-defining gaps
+
+**1. MCP mode should move from Phase 4 → Phase 2 ahead of Windows/Linux.** 2026 is MCP-native: Playwright MCP, `mcp-server-macos-use`, `mcp-desktop-automation`, `computer-use-mcp`, and Microsoft Agent Framework 1.0 (April 2026) all discover tools through MCP. Shipping macOS-only via CLI in 2026 means no default integration with Claude Desktop, Cursor, VS Code Copilot, Gemini, or Microsoft Agent. `skills/agent-desktop/references/commands-*.md` already lists the full tool surface — porting to MCP is mostly a transport layer. See Playwright MCP's `e1/e2` ref shape (https://playwright.dev/mcp/snapshots) for the idiom we should match.
+
+**2. Tree-diff on every action (`wait --event` push from `AXObserver`).** Our closest direct competitor (`macos-use`, https://github.com/mediar-ai/mcp-server-macos-use) returns the AX diff on every call — "added elements, removed elements, modified attributes" — and that single ergonomic halves an agent's re-snapshot token cost. We currently ship `wait --element` polling only. Apple ships `AXObserverCreate` + `AXObserverAddNotification` with a `CFRunLoopSource`; see `crates/macos/src/system/wait.rs` for the polling site to replace. Relevant notifications: `kAXValueChangedNotification`, `kAXFocusedUIElementChangedNotification`, `kAXUIElementDestroyedNotification`, `kAXWindowCreatedNotification`, `kAXMenuOpenedNotification`, `kAXMenuClosedNotification`, `kAXApplicationShownNotification`.
+
+**3. Text range primitives (macOS).** Every writing / code-editor / Terminal / Notes agent hits this wall: no `AXSelectedTextRange` read or write, no `AXStringForRangeParameterizedAttribute`, no `AXBoundsForRangeParameterizedAttribute`. Land a `crates/macos/src/actions/text_ops.rs` backed by `AXValueCreate(kAXValueCFRangeType, ...)`; add new `Action::SelectRange { start, len }` / `GetSelectedText` / `InsertAtCaret`. Without this we can read a text field's value but cannot reliably position a caret inside it.
+
+**4. FFI CLI-parity gap — no `ad_snapshot` / `ad_execute_by_ref("@e5")` / `ad_wait` / `ad_version`.** The cdylib ships `ad_get_tree` (raw, refless) and `ad_execute_action(handle, …)`, but a Python/Swift/Go consumer cannot replay the flagship CLI idiom `agent-desktop click @e5`. Every CLI action command (`crates/core/src/commands/click.rs`, `focus.rs`, `toggle.rs`) walks `RefMap::load()` — the FFI never reads the refmap. Ship either (a) `ad_execute_by_ref(adapter, "@e5", action)` or (b) an opaque `ad_refmap_load()` + `ad_refmap_resolve("@e5")`. Also export `ad_abi_version() -> u32` — today a consumer built against 0.1.13 can silently load 0.2.0 and crash at runtime.
+
+**5. `AccessibilityNode` is lossy — no `identifier` / `subrole` / `role_description` / `placeholder` / `selected` / `checked`.** macOS exposes `kAXIdentifierAttribute`, `kAXSubroleAttribute`, `kAXRoleDescriptionAttribute`, `kAXPlaceholderValueAttribute`, `kAXSelectedAttribute`. Windows UIA `AutomationId` and Linux AT-SPI `accessible-id` map 1:1 to `identifier` — this is the cross-platform anchor that makes selectors stable across sessions. Expanding the struct in `crates/core/src/node.rs` unblocks every "find the button with data-testid X" pattern.
+
+**6. ScreenCaptureKit replacement for `/usr/sbin/screencapture` subprocess.** `crates/macos/src/system/screenshot.rs:12-32` shells out to the system binary — on Sonoma+ it's sandbox-flaky and ~300 ms cold. `SCScreenshotManager.captureImage(contentFilter:config:)` over a `SCShareableContent.windows` target is ~10× faster, no subprocess, and respects Screen Recording TCC explicitly. Pair with `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` so `check_permissions()` catches missing Screen Recording grant (today it only checks AX).
+
+**7. Electron `AXEnhancedUserInterface` toggle.** Our own skill docs (`skills/agent-desktop-macos/references/electron-compat.md`) identify this, but the adapter never writes it. Chromium-backed apps (VS Code, Cursor, Slack post-Sept-2024 rewrite, Teams) drop descendants unless we flip `AXEnhancedUserInterface = YES` on the app root. Add a probe in `crates/macos/src/tree/builder.rs` that gates on known Electron bundle IDs.
+
+**8. `AXDOMIdentifier` / `AXDOMClassList` readout on web content.** `data-testid`-style selectors — the single highest-leverage attribute for reliable Electron/Safari agents — are invisible to us today. Promote them to first-class `AccessibilityNode` fields (`dom_id`, `dom_classes`) populated in `crates/macos/src/tree/builder.rs` under an `--include-dom` flag so the default envelope stays lean.
+
+**9. No one-command install (`brew`, `winget`).** `agent-browser` ships via npm + Homebrew + Cargo. We ship only npm. For Phase 5, land `brew install lahfir/tap/agent-desktop` and `winget install agent-desktop` — the install-friction fight is real for Framework integration.
+
+### P1 — important gaps
+
+**10. Sandbox + `--dry-run` + `--confirm` + append-only audit log trio.** EU AI Act Article 14 + OWASP Agentic Top-10 (2026) + every HITL framework (LangGraph, Mastra, Permit.io) converge on: destructive actions route through a policy check, with an immutable trace. `--dry-run` (resolve ref, compute would-be action, emit JSON, don't execute), `--confirm` (stderr prompt with timeout), `~/.agent-desktop/audit.jsonl`. None ship today.
+
+**11. Missing surfaces: Toolbar, Spotlight (macOS 26), Dock, menu-bar status items.** `crates/macos/src/tree/surfaces.rs` has 7 surfaces but not these four. Safari's URL bar, every Xcode toolbar button, the Tahoe Spotlight actions pane, Dock badges (e.g. "is Slack badged?"), and menu-bar extras (Bartender, Dropbox, Rectangle) are all first-class agent targets today.
+
+**12. Missing `Action` variants: `LongPress`, `ForceClick`, `ShowMenu`, `FileDrop`, `AXRaise`, `AXCancel`.** We call `AXShowMenu` / `AXRaise` / `AXCancel` internally as fallbacks inside the activation chain but never expose them. Force-click opens Dictionary, Xcode jump-to-def, Finder Quick Look — otherwise unreachable. File-promise drag (`NSPasteboard`) is the "drag this file into the upload box" primitive agents need constantly.
+
+**13. Missing `ErrorCode` variants.** Agent 1 flagged: `PermissionRevoked` (TCC yanked mid-session, distinct from `PermDenied`), `ResourceExhausted` (refmap > 1 MB guard, tree size caps), `AxMessagingTimeout` (AX-specific timeout distinct from orchestration `Timeout`), `AutomationPermissionDenied` (`osascript` automation grant).
+
+**14. `tracing::` log callback over FFI.** Zero `tracing::` lines in `crates/ffi/`. A consumer that dlopens the dylib loses every debug/info/warn the core emits. wasmtime ships `wasmtime_log_set_callback`; we should ship `ad_set_log_callback(fn(level, msg))` that installs a `tracing_subscriber` layer.
+
+**15. No OCR / vision fallback for inaccessible UIs.** UI-TARS-2 hits 47.5% on OSWorld as pure-vision baseline; Claude Opus 4.7 hits 72.7%. Our tool returns `ACTION_FAILED` on empty AX trees, leaving Canvas apps, Flutter-desktop, games, remote desktop stuck. A tight `find --visual "label"` backed by macOS Vision framework `VNRecognizeTextRequest` (free, no Tesseract dep) closes the gap without abandoning AX-first.
+
+**16. `pyo3` + `maturin` Python wheel OR `cffi` helper OR `uniffi` multi-language bindgen.** Today ctypes is the only documented consumer. A maturin wheel with `__enter__`/`__exit__` adapter context managers and automatic last-error → Python exception is the highest-ROI ergonomics improvement for the primary consumer language. Alternative: `uniffi` emits Python/Swift/Kotlin/Ruby from one UDL — biggest bang for buck if we want to cover four languages at once.
+
+**17. Structured session trace with `--trace-id` + `~/.agent-desktop/traces/{uuid}.jsonl`.** Playwright 1.59 added `page.screencast`, Browserbase exports HAR+video, Amazon Bedrock AgentCore emits rrweb-style replays correlated with OpenTelemetry. Every 2026 tool ships a visual receipt. Our JSON envelope is per-command only — no session ID, no event stream, no replay artifact.
+
+### P2 — nice-to-have parity / polish
+
+- **Iterator helper for `AdNodeTree`** — current `(*mut AdNode, u32)` forces callers to hand-slice `child_start..child_start+child_count`. wasmtime ships an iterator macro; rustls-ffi ships `rustls_slice_*` types.
+- **Static `#[repr(i32)]` discriminant assertions.** Today variants are hand-numbered in `agent_desktop.h` with no compile-time guard; a refactor reorder would silently renumber. Add `assert_eq!(AdActionKind::Click as i32, 0)` blocks.
+- **`ad_get` only supports `value` / `bounds`.** CLI supports 6 properties (`text`, `value`, `title`, `bounds`, `role`, `states`). FFI is strictly weaker.
+- **Pixel-precision scroll.** `crates/macos/src/input/mouse.rs::synthesize_scroll_at` uses line units; WebKit surfaces often ignore tiny deltas. Add `--pixels` flag.
+- **Per-app Automation (TCC) detection.** `close_app` runs `osascript` which triggers Automation grant; today we squeeze the failure into `ActionFailed`. `AEDeterminePermissionToAutomateTarget()` gives a specific error.
+- **No pkg-config `.pc` file in the release.** Blocks easy integration on Linux/BSD; `cargo-c` could generate both the `.pc` and the `rpath` fix for free.
+- **Widget + Writing Tools + Live Translation + Game Mode surfaces (macOS 15+).** Niche today, routine by macOS 27.
+
+### Recommended re-prioritization for Phase 2+
+
+Based on the above, the 2026-Q2 order most likely to keep the project competitive:
+
+1. **Phase 2 (new scope): MCP Server Mode** — expose the 53 commands as MCP tools, export `last_refmap.json` as an MCP resource, follow Playwright MCP's `{ref: "e5"}` shape. ~2 weeks; unblocks every framework integration.
+2. **Phase 2b: AX Observer + tree-diff API + text-range primitives + ScreenCaptureKit.** The macOS modernization bundle. Each item has a concrete Apple API and lands in a known file; combined effect is a dramatic latency + token-budget win.
+3. **Phase 2c: FFI parity (ad_snapshot, ad_execute_by_ref, ad_wait, ad_version, log callback) + Python wheel.** Makes in-process consumers first-class.
+4. **Phase 3 (re-scoped): Windows adapter via UIA.** UI-TARS / Computer Use already ship Windows; don't fall further behind. FlaUI or raw `windows-rs` UIA bindings.
+5. **Phase 4: Linux adapter via AT-SPI2.** Historically the smallest slice of the agent market; keep it planned but behind Windows.
+6. **Phase 5: Sandbox + dry-run + audit + OCR fallback + brew/winget install.** Production hardening + vision fallback + distribution breadth.
+
+### Evidence appendix — external references cited
+
+- Playwright MCP (e1/e2 refs, `browser.bind()`, `page.screencast`): https://github.com/microsoft/playwright-mcp
+- `macos-use` MCP server (tree-diff on every action): https://github.com/mediar-ai/mcp-server-macos-use
+- Cua (YC X25, sandbox VMs): https://github.com/trycua/cua
+- ByteDance UI-TARS-2: https://github.com/bytedance/UI-TARS-desktop
+- Microsoft Agent Framework 1.0 (MCP-first, April 2026): https://opensource.microsoft.com/blog/2026/04/02/introducing-the-agent-governance-toolkit-open-source-runtime-security-for-ai-agents/
+- Anthropic Computer Use: https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool
+- OpenAI CUA: https://openai.com/index/computer-using-agent/
+- OSWorld-Verified (April 2026): https://xlang.ai/blog/osworld-verified
+- AX Observer API: https://developer.apple.com/documentation/applicationservices/1462089-axobserveraddnotification
+- ScreenCaptureKit (WWDC22): https://developer.apple.com/videos/play/wwdc2022/10156/
+- OWASP Agentic Top-10 (2026): https://www.authensor.com/updates/owasp-agentic-top-10-explained
+- wasmtime C API (byte-vec + log-callback + version macros): https://github.com/bytecodealliance/wasmtime/tree/main/crates/c-api
+- rustls-ffi (cargo-c + pkg-config): https://github.com/rustls/rustls-ffi
+- uniffi (multi-language bindgen): https://github.com/mozilla/uniffi-rs
