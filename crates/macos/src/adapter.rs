@@ -6,7 +6,7 @@ use agent_desktop_core::{
     },
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
-    notification::{NotificationFilter, NotificationInfo},
+    notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
     refs::RefEntry,
 };
 use rustc_hash::FxHashSet;
@@ -212,9 +212,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn notification_action(
         &self,
         index: usize,
+        identity: Option<&NotificationIdentity>,
         action_name: &str,
     ) -> Result<ActionResult, AdapterError> {
-        crate::notifications::actions::notification_action(index, action_name)
+        crate::notifications::actions::notification_action(index, identity, action_name)
     }
 
     fn get_subtree(

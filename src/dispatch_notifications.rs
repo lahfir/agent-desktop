@@ -37,6 +37,8 @@ pub fn dispatch_notification(
             notification_action::NotificationActionArgs {
                 index: a.index as usize,
                 action: a.action,
+                expected_app: a.expected_app,
+                expected_title: a.expected_title,
             },
             adapter,
         ),

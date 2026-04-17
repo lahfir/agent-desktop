@@ -623,13 +623,34 @@ AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEve
  * action names are those reported in `AdNotificationInfo.actions`
  * (e.g. `"Reply"`, `"Open"`).
  *
+ * ## Identity / reorder safety
+ *
+ * Notification Center reindexes entries on every listing — a new
+ * notification arriving (or another one being dismissed) shifts which
+ * notification sits at any given `index`. Calling this function with
+ * an index obtained from a prior `ad_list_notifications` can therefore
+ * press the action button on a different notification than the host
+ * intended.
+ *
+ * `expected_app` and `expected_title` let the host pin the targeted
+ * notification to an observed fingerprint. If either pointer is
+ * non-null, the row currently at `index` must match that field or the
+ * call fails closed with `AD_RESULT_ERR_NOTIFICATION_NOT_FOUND`. Both
+ * null preserves the legacy index-only behavior for hosts that do
+ * their own reconciliation.
+ *
  * # Safety
  * `adapter` must be valid. `action_name` must be a non-null UTF-8
- * C string. `out` must be a valid writable `*mut AdActionResult`;
- * on error it is zero-initialized.
+ * C string. `expected_app` and `expected_title` must each be null
+ * or a NUL-terminated UTF-8 C string. Invalid UTF-8 in either field
+ * is rejected with `AD_RESULT_ERR_INVALID_ARGS` rather than silently
+ * treated as "no fingerprint". `out` must be a valid writable
+ * `*mut AdActionResult`; on error it is zero-initialized.
  */
 AdResult ad_notification_action(const struct AdAdapter *adapter,
                                 uint32_t index,
+                                const char *expected_app,
+                                const char *expected_title,
                                 const char *action_name,
                                 struct AdActionResult *out);
 

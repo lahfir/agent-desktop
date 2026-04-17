@@ -20,7 +20,7 @@ free function. Always call it; the allocator the FFI uses is Rust's
 | `ad_resolve_element(adapter, entry, &handle)`           | `ad_free_handle(adapter, &handle)` — `*mut AdNativeHandle`; the call zeroes `handle.ptr` on success so a follow-up call is a no-op |
 | `ad_find(adapter, win, query, &handle)`                 | same as `ad_resolve_element`            |
 | `ad_execute_action(adapter, handle, action, &out)`      | `ad_free_action_result(&out)`           |
-| `ad_notification_action(adapter, idx, name, &out)`      | `ad_free_action_result(&out)`           |
+| `ad_notification_action(adapter, idx, expected_app, expected_title, name, &out)` | `ad_free_action_result(&out)` — pass the `app_name`/`title` you observed in `ad_list_notifications` (either may be null) so NC reorder between list and press is caught with `ERR_NOTIFICATION_NOT_FOUND` instead of pressing a different notification |
 | `ad_screenshot(adapter, target, &buf)`                  | `ad_image_buffer_free(buf)` (buf is opaque; read via `ad_image_buffer_{data,size,width,height,format}`) |
 | `ad_get_clipboard(adapter, &text)`                      | `ad_free_string(text)`                  |
 | `ad_get(adapter, handle, property, &text)`              | `ad_free_string(text)` (text may be null on "property absent"; `ad_free_string(NULL)` is a no-op) |

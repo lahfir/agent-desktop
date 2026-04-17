@@ -183,7 +183,7 @@ agent-desktop list-notifications --text "deploy" --limit 5  # Filter by text
 agent-desktop dismiss-notification 1            # Dismiss by index
 agent-desktop dismiss-all-notifications         # Dismiss all
 agent-desktop dismiss-all-notifications --app "Slack"  # Dismiss all from app
-agent-desktop notification-action 1 --action "Reply"   # Click action button
+agent-desktop notification-action 1 "Reply" --expected-app Slack   # Click action (with NC reorder guard)
 ```
 
 ### Clipboard

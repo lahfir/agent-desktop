@@ -1,7 +1,7 @@
 use agent_desktop_core::{
     action::ActionResult,
     error::{AdapterError, ErrorCode},
-    notification::{NotificationFilter, NotificationInfo},
+    notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
 };
 
 use super::nc_session::NcSession;
@@ -25,9 +25,13 @@ pub fn dismiss_all(
     result
 }
 
-pub fn notification_action(index: usize, action_name: &str) -> Result<ActionResult, AdapterError> {
+pub fn notification_action(
+    index: usize,
+    identity: Option<&NotificationIdentity>,
+    action_name: &str,
+) -> Result<ActionResult, AdapterError> {
     let session = NcSession::open()?;
-    let result = action_impl(index, action_name);
+    let result = action_impl(index, identity, action_name);
     session.close()?;
     result
 }
@@ -117,7 +121,11 @@ fn try_dismiss_button(children: &[crate::tree::AXElement]) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn action_impl(index: usize, action_name: &str) -> Result<ActionResult, AdapterError> {
+fn action_impl(
+    index: usize,
+    identity: Option<&NotificationIdentity>,
+    action_name: &str,
+) -> Result<ActionResult, AdapterError> {
     use crate::actions::ax_helpers::try_ax_action;
     use crate::tree::{copy_ax_array, copy_string_attr};
     use accessibility_sys::{kAXChildrenAttribute, kAXRoleAttribute};
@@ -129,6 +137,27 @@ fn action_impl(index: usize, action_name: &str) -> Result<ActionResult, AdapterE
         .into_iter()
         .find(|e| e.info.index == index)
         .ok_or_else(|| AdapterError::notification_not_found(index))?;
+
+    // Fingerprint check: NC may have reordered between the host's
+    // list_notifications call and now. When identity fields are
+    // provided, refuse to press an action on a row whose fingerprint
+    // doesn't match. Fail closed with NotificationNotFound so the host
+    // treats this exactly like "the notification disappeared" — which
+    // is precisely what happened from the host's perspective.
+    if let Some(id) = identity {
+        if !id.is_empty() && !id.matches(&entry.info) {
+            return Err(AdapterError::new(
+                ErrorCode::NotificationNotFound,
+                format!(
+                    "Notification at index {index} does not match the expected identity (app={:?}, title={:?}); NC likely reordered",
+                    id.expected_app, id.expected_title
+                ),
+            )
+            .with_suggestion(
+                "Run list-notifications again and retry with the freshly-observed index",
+            ));
+        }
+    }
 
     let children = copy_ax_array(&entry.element, kAXChildrenAttribute).unwrap_or_default();
     let action_lower = action_name.to_lowercase();
@@ -206,6 +235,10 @@ fn dismiss_all_impl(
 }
 
 #[cfg(not(target_os = "macos"))]
-fn action_impl(_index: usize, _action_name: &str) -> Result<ActionResult, AdapterError> {
+fn action_impl(
+    _index: usize,
+    _identity: Option<&NotificationIdentity>,
+    _action_name: &str,
+) -> Result<ActionResult, AdapterError> {
     Err(AdapterError::not_supported("notification_action"))
 }

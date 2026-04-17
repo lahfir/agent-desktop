@@ -2,7 +2,7 @@ use crate::{
     action::{Action, ActionResult, DragParams, MouseEvent, WindowOp},
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
-    notification::{NotificationFilter, NotificationInfo},
+    notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
     refs::RefEntry,
 };
 use std::marker::PhantomData;
@@ -248,9 +248,21 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("dismiss_all_notifications"))
     }
 
+    /// Press a named action button on the notification at `index`.
+    ///
+    /// `identity` lets the caller pin the targeted notification to an
+    /// expected app / title fingerprint. Notification Center reindexes
+    /// entries between listings, so index-only targeting can press the
+    /// wrong button if a notification arrives or is dismissed between
+    /// `list_notifications` and this call. When any identity field is
+    /// `Some`, implementations must return
+    /// `ErrorCode::NotificationNotFound` if the row at `index` does not
+    /// match. Passing an empty identity (or `None`) preserves legacy
+    /// index-only behavior for callers that reconcile themselves.
     fn notification_action(
         &self,
         _index: usize,
+        _identity: Option<&NotificationIdentity>,
         _action_name: &str,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::not_supported("notification_action"))
