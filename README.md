@@ -11,6 +11,7 @@
 ## Key Features
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
+- **C-ABI cdylib** (`libagent_desktop_ffi`): Load once from Python / Swift / Go / Ruby / Node / C instead of forking the CLI per call
 - **53 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using deterministic element references (`@e1`, `@e2`)
@@ -50,6 +51,38 @@ macOS requires Accessibility permission. Grant it in **System Settings > Privacy
 ```bash
 agent-desktop permissions --request   # trigger system dialog
 ```
+
+## Language bindings (FFI)
+
+Every GitHub Release ships a prebuilt C-ABI cdylib alongside the CLI tarballs. Hosts that need in-process calls (Python agents, Swift apps, Go services, Node tools, Ruby scripts, C/C++ code) `dlopen` the dylib and call the functions declared in `agent_desktop.h` — no fork-exec per command.
+
+| Platform             | Artifact |
+|----------------------|----------|
+| macOS arm64          | `agent-desktop-ffi-v<ver>-aarch64-apple-darwin.tar.gz` |
+| macOS x86_64         | `agent-desktop-ffi-v<ver>-x86_64-apple-darwin.tar.gz` |
+| Linux x86_64 (glibc) | `agent-desktop-ffi-v<ver>-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux arm64  (glibc) | `agent-desktop-ffi-v<ver>-aarch64-unknown-linux-gnu.tar.gz` |
+| Windows x86_64 (MSVC)| `agent-desktop-ffi-v<ver>-x86_64-pc-windows-msvc.zip` |
+
+Each archive contains `lib/libagent_desktop_ffi.{dylib,so,dll}`, `include/agent_desktop.h`, `LICENSE`, and a short README. Verify the download with the release's `checksums.txt`:
+
+```bash
+shasum -a 256 -c checksums.txt
+gh attestation verify agent-desktop-ffi-v*.tar.gz --repo lahfir/agent-desktop   # Sigstore provenance
+```
+
+Minimal Python round-trip:
+
+```python
+import ctypes
+lib = ctypes.CDLL("./lib/libagent_desktop_ffi.dylib")
+lib.ad_adapter_create.restype = ctypes.c_void_p
+adapter = lib.ad_adapter_create()
+# ... call ad_list_apps / ad_get_tree / ad_execute_action, see docs below
+lib.ad_adapter_destroy(adapter)
+```
+
+Full consumer guide — error-handling contract, ownership rules, threading constraints, every entrypoint with Safety docs: [`skills/agent-desktop-ffi/`](skills/agent-desktop-ffi/).
 
 ## Core Workflow for AI
 

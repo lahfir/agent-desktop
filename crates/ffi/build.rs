@@ -5,6 +5,21 @@ fn main() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
     println!("cargo:rerun-if-changed=src/");
 
+    // macOS Mach-O install_name: consumers that link the dylib at build
+    // time (Swift Package Manager, cmake, meson) embed the library's
+    // install_name into the consuming binary's load commands. Cargo
+    // defaults to the absolute build-machine path — useless once the
+    // dylib is extracted from a release tarball on someone else's
+    // machine. Baking `@rpath/...` here lets consumers resolve the
+    // library through their own `-rpath` / `DYLD_LIBRARY_PATH` /
+    // `@loader_path` lookup chain exactly the way every other
+    // distributed macOS dylib does it (wasmtime, rustls-ffi, etc.).
+    // Python `ctypes.CDLL("./libfoo.dylib")` and Go cgo tolerate either
+    // install_name; Swift linkers do not.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-cdylib-link-arg=-Wl,-install_name,@rpath/libagent_desktop_ffi.dylib");
+    }
+
     let crate_dir = match env::var("CARGO_MANIFEST_DIR") {
         Ok(d) => d,
         Err(_) => {
