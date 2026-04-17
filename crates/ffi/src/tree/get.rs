@@ -39,10 +39,11 @@ fn core_surface(s: AdSnapshotSurface) -> SnapshotSurface {
 ///   concern, so agent-facing code that needs them should drive them
 ///   externally (resolve via `ad_find` + `ad_free_handle`, or call the
 ///   CLI if refs are required).
-/// - `interactive_only` and `compact` follow the adapter's semantics,
-///   which may diverge in small ways from the post-processed shapes
-///   the CLI emits (e.g. the compact path in the CLI also considers
-///   descriptive metadata not reachable from here).
+/// - `include_bounds`, `interactive_only`, and `compact` are honored
+///   after the adapter returns the raw tree, using
+///   `ref_alloc::transform_tree`. Because refs are not allocated here,
+///   the `interactive_only` cut is role-based rather than ref-based;
+///   otherwise the semantics match the CLI snapshot path.
 /// - No skeleton/drill-down pipeline is wired through — `skeleton` is
 ///   always false on the underlying `TreeOptions`.
 ///
@@ -107,7 +108,20 @@ pub unsafe extern "C" fn ad_get_tree(
 
         match adapter.inner.get_tree(&core_win, &core_opts) {
             Ok(tree) => {
-                unsafe { *out = flatten_tree(&tree) };
+                // Adapters return a full raw tree; flags live on the core
+                // TreeOptions but the macOS adapter only consumes
+                // `max_depth` and `skeleton`. Apply shape transformations
+                // here so the FFI behavior matches what AdTreeOptions
+                // documents. ref_alloc::transform_tree is the ref-free
+                // variant of allocate_refs and matches its semantics for
+                // compact/interactive_only/include_bounds.
+                let shaped = agent_desktop_core::ref_alloc::transform_tree(
+                    tree,
+                    core_opts.include_bounds,
+                    core_opts.interactive_only,
+                    core_opts.compact,
+                );
+                unsafe { *out = flatten_tree(&shaped) };
                 AdResult::Ok
             }
             Err(e) => {

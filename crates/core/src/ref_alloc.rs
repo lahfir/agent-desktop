@@ -62,6 +62,51 @@ pub(crate) fn is_collapsible(node: &AccessibilityNode) -> bool {
         && node.children.len() == 1
 }
 
+/// Applies `include_bounds`, `interactive_only`, and `compact` semantics
+/// to a raw adapter tree **without** allocating refs. Used by the FFI
+/// `ad_get_tree` path, which exposes a raw tree (no CLI/JSON ref pipeline).
+///
+/// - `include_bounds = false` strips `bounds` from every node.
+/// - `compact = true` collapses single-child chains whose own node has
+///   no semantic payload (same criterion `allocate_refs` uses).
+/// - `interactive_only = true` prunes leaves whose role is not in
+///   `INTERACTIVE_ROLES` and that have no children and no
+///   `children_count` marker. Unlike the ref-allocating variant, the
+///   decision is role-based (no ref_id to check), which matches the FFI
+///   contract that refs are never set on raw trees.
+pub fn transform_tree(
+    mut node: AccessibilityNode,
+    include_bounds: bool,
+    interactive_only: bool,
+    compact: bool,
+) -> AccessibilityNode {
+    if !include_bounds {
+        node.bounds = None;
+    }
+
+    node.children = node
+        .children
+        .into_iter()
+        .filter_map(|child| {
+            let child = transform_tree(child, include_bounds, interactive_only, compact);
+            if compact && is_collapsible(&child) {
+                return child.children.into_iter().next();
+            }
+            if interactive_only
+                && !INTERACTIVE_ROLES.contains(&child.role.as_str())
+                && child.children.is_empty()
+                && child.children_count.is_none()
+            {
+                None
+            } else {
+                Some(child)
+            }
+        })
+        .collect();
+
+    node
+}
+
 pub(crate) struct RefAllocConfig<'a> {
     pub include_bounds: bool,
     pub interactive_only: bool,
@@ -123,4 +168,89 @@ pub(crate) fn allocate_refs(
         .collect();
 
     node
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::{AccessibilityNode, Rect};
+
+    fn node(role: &str, name: Option<&str>) -> AccessibilityNode {
+        AccessibilityNode {
+            ref_id: None,
+            role: role.into(),
+            name: name.map(str::to_string),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            bounds: Some(Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }),
+            children_count: None,
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn transform_tree_include_bounds_false_strips_bounds() {
+        let n = node("group", None);
+        let out = transform_tree(n, false, false, false);
+        assert!(out.bounds.is_none());
+    }
+
+    #[test]
+    fn transform_tree_include_bounds_true_preserves_bounds() {
+        let n = node("group", None);
+        let out = transform_tree(n, true, false, false);
+        assert!(out.bounds.is_some());
+    }
+
+    #[test]
+    fn transform_tree_interactive_only_prunes_noninteractive_leaves() {
+        let mut root = node("window", Some("w"));
+        root.children = vec![node("group", None), node("button", Some("OK"))];
+        let out = transform_tree(root, true, true, false);
+        assert_eq!(out.children.len(), 1);
+        assert_eq!(out.children[0].role, "button");
+    }
+
+    #[test]
+    fn transform_tree_interactive_only_keeps_named_containers_with_children() {
+        let mut labeled = node("group", Some("Toolbar"));
+        labeled.children = vec![node("button", Some("Save"))];
+        let mut root = node("window", Some("w"));
+        root.children = vec![labeled];
+        let out = transform_tree(root, true, true, false);
+        assert_eq!(out.children.len(), 1);
+        assert_eq!(out.children[0].children.len(), 1);
+    }
+
+    #[test]
+    fn transform_tree_compact_collapses_empty_single_child_chain() {
+        let mut outer = node("group", None);
+        let mut inner = node("group", None);
+        inner.children = vec![node("button", Some("Go"))];
+        outer.children = vec![inner];
+        let mut root = node("window", Some("w"));
+        root.children = vec![outer];
+        let out = transform_tree(root, true, false, true);
+        assert_eq!(out.children.len(), 1);
+        assert_eq!(out.children[0].role, "button");
+    }
+
+    #[test]
+    fn transform_tree_compact_preserves_labeled_containers() {
+        let mut named = node("group", Some("Toolbar"));
+        named.children = vec![node("button", Some("Save"))];
+        let mut root = node("window", Some("w"));
+        root.children = vec![named];
+        let out = transform_tree(root, true, false, true);
+        assert_eq!(out.children.len(), 1);
+        assert_eq!(out.children[0].role, "group");
+        assert_eq!(out.children[0].name.as_deref(), Some("Toolbar"));
+    }
 }
