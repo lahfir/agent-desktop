@@ -340,3 +340,7 @@ cargo clippy --all-targets -- -D warnings # lint (must pass with zero warnings)
 ## License
 
 Apache-2.0
+
+## Download History
+
+[![Download History](https://skill-history.com/chart/lahfir/agent-desktop.svg)](https://skill-history.com/lahfir/agent-desktop)
