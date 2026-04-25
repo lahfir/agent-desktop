@@ -19,7 +19,8 @@ Most recent shipments against this roadmap:
 
 - Phase 1 completion: incremental across v0.1.0 – v0.1.8 (macOS MVP, 53 commands, core engine).
 - Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms).
-- Phase 2+: not yet started. See **Gap Analysis — 2026-04-17 Research** at the bottom of this document for the latest re-prioritization evidence.
+- Phase 2: planned. Full scope defined in `docs/plans/2026-04-18-001-feat-phase2-windows-crossplatform-plan.md` (superseding `docs/brainstorms/2026-02-25-windows-adapter-phase2-brainstorm.md` and `docs/plans/2026-02-25-feat-windows-adapter-phase2-plan.md`). Research-driven refinements to the brainstorm are captured in the plan's §Headless-First Invariant, §Key Technical Decisions, and §Review-Driven Refinements sections.
+- Phase 3+: planned. See Phase 2 plan for trait method defaults that Phase 3 backfills.
 
 ---
 
@@ -653,13 +654,39 @@ Regular `release` profile keeps `panic = "abort"` for the CLI binary, so a panic
 - No `tracing::` log callback — in-process consumers lose debug output
 - No `pyo3` / `maturin` wheel or `cffi` wrapper ships with the repo
 
-These items are tracked under **Gap Analysis — 2026-04-17 Research** at the bottom of this document.
+These items are tracked in the Phase 2 plan (`docs/plans/2026-04-18-001-feat-phase2-windows-crossplatform-plan.md`) — specifically Unit 2 (registry migration via `build.rs` filesystem enumeration, NOT inventory/linkme), Unit 2.5 (`ad_set_log_callback` with redaction), and Unit 2.6 (`ad_execute_by_ref` + descriptor confirms).
 
 ---
 
 ## Phase 2 — Windows Adapter + Cross-Platform Feature Parity
 
-**Status: Planned**
+**Status: Planned** — authoritative plan: `docs/plans/2026-04-18-001-feat-phase2-windows-crossplatform-plan.md`. This section remains the high-level objective catalogue; the plan owns implementation-unit detail, research-driven refinements, and the progressive-commit / swarm strategy.
+
+### Core invariants (research-driven — from Phase 2 plan §Headless-First Invariant)
+
+1. **Headless-first.** Every command — existing and Phase 2 — must work without foreground activation, visible GUI, focus steal, or physical cursor movement (except for explicit mouse commands). This is enforced as an integration-test invariant: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for non-mouse commands.
+2. **Skeleton traversal is platform-agnostic.** The novel progressive skeleton pattern (depth-3 clamp + `children_count` annotation + drill-down via `--root @ref` + scoped invalidation via `RefMap::remove_by_root_ref`) lives entirely in `crates/core/src/snapshot_ref.rs`. Windows adapter contributes ~50 LOC glue: `ControlViewWalker` (NOT `RawViewWalker` or `ContentViewWalker`) + `FindAll(TreeScope_Children, TrueCondition)` for `children_count` + fresh `UICacheRequest` per drill-down.
+3. **Asymmetric event threading.** `watch_element` uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery).
+4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Phase 2 uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The "one command per file" CLAUDE.md rule becomes the codegen contract.
+5. **v0.1.14 prep release.** Ships `#[non_exhaustive]` on `ErrorCode` + `ad_abi_version()` + `ad_init(expected_major)` + `AD_RESULT_UNKNOWN` sentinel before any ABI break, giving consumers time to adapt. v0.2.0 then ships only unavoidable breaks (`PermissionStatus` tri-state, MSRV 1.82, new variants).
+6. **`DeliverFiles` replaces `FileDrop`.** Headless-first forbids `NSDraggingSession` on macOS; the new action uses a 4-tier fallback (URL scheme → `NSWorkspace.open` with `activates: false` → pasteboard + `Cmd-V` → AppleScript). Windows keeps `IDataObject + DoDragDrop` (OLE drag is headless on Windows).
+
+### Windows Engineering Invariants (from Phase 2 plan Unit 3)
+
+1. `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` at startup.
+2. `CoInitializeEx(NULL, COINIT_MULTITHREADED)` on main thread (UIA prefers MTA).
+3. Never cache `IUIAutomationElement` across apartments.
+4. UIA-first, SendInput-fallback (UIA patterns are focus-independent; `SendInput` is focus-dependent + UIPI-blocked for elevated targets).
+5. `PostMessage WM_KEYDOWN` is DEAD for Chromium/UWP/games — not a viable alternative.
+6. UIPI elevation detection via `GetTokenInformation(TokenIntegrityLevel)`. Ship `uiAccess=true` as optional signed release, not default.
+7. `RemoveAutomationEventHandler` with post-remove-barrier pattern (Arc<Handler> outlives final callback dispatch).
+8. HRESULT format in `platform_detail`: `COM HRESULT 0x80070005 (E_ACCESSDENIED: Access is denied)`.
+9. `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` for legacy screenshot (mitigates DWM black frames). `windows-capture` (modern) handles composition correctly.
+10. `ElementFromHandle(hwnd)` is headless-safe on any visible/minimized window — the foundation of observation headlessness.
+11. `Windows.Graphics.Capture` requires DWM (Windows 10 1903+) in an interactive session; returns `PlatformNotSupported` in Session 0 / Server Core.
+12. Session isolation: cannot drive windows in other user sessions.
+
+
 
 Phase 2 brings agent-desktop to Windows. It is also the phase that closes the cross-platform feature-parity gaps surfaced after the v0.1.13 FFI ship — shipping Windows meaningfully requires new core abstractions (stable identifiers, event subscriptions, text-range primitives) that Windows UIA exposes natively and the macOS adapter currently does not surface. Every new trait method added here is implemented on both platforms in the same PR pair: Windows ships the native version, macOS backfills using the equivalent AX API. Linux (Phase 3) mirrors both against AT-SPI2.
 
@@ -688,7 +715,7 @@ Cross-platform core extensions (new, landed alongside Windows):
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P2-O8 | `AccessibilityNode` stable-selector fields | Every node carries `identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` (all `Option<String>` / `Vec<String>` with `skip_serializing_if`). Populated by Windows UIA `AutomationId` / `LocalizedControlType` / `HelpText`, by macOS `kAXIdentifierAttribute` / `kAXSubroleAttribute` / `kAXRoleDescriptionAttribute` / `kAXPlaceholderValueAttribute` / `kAXDOMIdentifierAttribute` / `kAXDOMClassListAttribute`. Snapshot regression fixtures show stable IDs across re-drills |
-| P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `FileDrop(Vec<PathBuf>)`, `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`, `Watch(WatchSpec)`. Each has a macOS AX API mapping, a Windows UIA pattern mapping, and a new CLI subcommand. The `#[non_exhaustive]` attribute keeps this SemVer-safe |
+| P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Phase 2 plan §Headless-First Invariant and Unit 12), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch_element` is an adapter method, **not** an `Action` variant (plan §KD8 + origin brainstorm §D8). Each has a macOS AX API mapping (all AX calls on main thread per plan §KD9), a Windows UIA pattern mapping, and a new CLI subcommand. The `#[non_exhaustive]` attribute keeps this SemVer-safe; C-ABI consumers use `default:` / wildcard fallthrough plus the exported `AD_RESULT_UNKNOWN = -99` sentinel (plan §KD17) |
 | P2-O10 | `ErrorCode` expansion | Add `PermissionRevoked` (distinct from `PermDenied` — TCC yanked mid-session), `ResourceExhausted` (refmap >1 MB, tree node-count cap), `AxMessagingTimeout` (AX-specific timeout separate from orchestration `Timeout`), `AutomationPermissionDenied` (macOS `osascript` grant). Tri-state permission probe at startup distinguishes "never granted" from "revoked" |
 | P2-O11 | Event-subscription primitive (push, not poll) | New trait method `watch_element(handle, events: &[EventKind], timeout_ms: u64) -> Result<Vec<ElementEvent>>`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource` (no more polling in `system/wait.rs`). Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. New `wait --event value-changed --ref @e5 --timeout 3000` CLI flag. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals |
 | P2-O12 | Text range primitives | Read caret, read selection, select a range by offsets, read text at range, insert at caret. macOS: `kAXSelectedTextRangeAttribute` (settable), `AXStringForRangeParameterizedAttribute`, `AXBoundsForRangeParameterizedAttribute`, `AXRangeForLineParameterizedAttribute`, `AXValueCreate(kAXValueCFRangeType, …)`. Windows: `TextPattern.GetSelection`, `TextPattern.DocumentRange`, `TextRange.Select`, `TextRange.Move`, `TextRange.GetText`, `TextRange.GetBoundingRectangles`. Commands: `text get-selection`, `text select-range <ref> <start> <len>`, `text insert-at-caret <ref> <string>`, `text at-offset <ref> <start> <len>` |
@@ -757,7 +784,7 @@ New supporting types (land in `crates/core/src/`):
 | `ShowMenu` action | `AXPerformAction(kAXShowMenuAction)` | `ExpandCollapsePattern.Expand` + UIA right-click fallback | AT-SPI2 `Action.DoAction("popup")` |
 | `WindowRaise` | `AXUIElementSetAttributeValue(kAXRaiseAction)` | `SetForegroundWindow` + `SetWindowPos(HWND_TOP)` | `wmctrl -a` / `xdotool windowactivate` |
 | `Cancel` | `AXPerformAction(kAXCancelAction)` | UIA `WindowPattern.Close` on dialog or `InvokePattern` on cancel button | AT-SPI2 `Action.DoAction("cancel")` or synthesize Escape |
-| `FileDrop(Vec<PathBuf>)` | `NSPasteboard` file-promise drag via `NSFilePromiseProvider` | `IDataObject` + `DoDragDrop` via `ole32` | XDND protocol via `xdotool` file-drag extension |
+| `DeliverFiles(Vec<PathBuf>)` | 4-tier headless fallback: (1) app-native URL scheme, (2) `NSWorkspace.open(urls:withApplicationAt:configuration:)` with `activates: false`, (3) `NSPasteboard.public.file-url` + `CGEventPostToPid(cmd+v)`, (4) `osascript open`. NEVER `NSDraggingSession` (not headless-compatible — Phase 2 plan Unit 12 research) | `IDataObject` + `DoDragDrop` via OLE (headless on Windows; OLE drag is window-server-native, unlike macOS AppKit-mediated drag) | XDND protocol via `xdotool` file-drag extension — Phase 3 |
 | Screen Recording permission | `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` | Implicit for `Windows.Graphics.Capture` — prompts on first use | PipeWire portal permission dialog |
 | Automation permission | `AEDeterminePermissionToAutomateTarget` | N/A (no equivalent restriction) | N/A |
 
@@ -887,7 +914,9 @@ Chromium-based apps (Electron, Chrome, Edge, VS Code) expose deep, noisy accessi
 | Crate | Version | Scope | Purpose |
 |-------|---------|-------|---------|
 | `uiautomation` | 0.24+ | Windows | UIA client wrapper, tree walker, patterns |
-| `windows` | 0.58+ | Windows | Raw Win32 / WinRT bindings for SendInput, clipboard, `Windows.Graphics.Capture`, D3D11 frame pool |
+| `windows` | 0.62.2 | Windows | Raw Win32 / WinRT bindings for SendInput, clipboard, `Windows.Graphics.Capture`, D3D11 frame pool. Pinned to 0.62.2 to match `windows-capture 1.5.x`'s own pin. |
+| `windows-capture` | 1.5.4 | Windows | Modern per-window screenshot via `Windows.Graphics.Capture` — headless in any interactive session. Replaces `PrintWindow + PW_RENDERFULLCONTENT` legacy fallback. |
+| `screencapturekit` | 1.5 (crates.io) | macOS | Published crates.io canonical crate — the doom-fish fork is the maintained successor, NOT a git-SHA pin. |
 | `objc2` | 0.5+ | macOS (new for P2-O13 / O17) | Safe bridging to `SCScreenshotManager`, `CGPreflightScreenCaptureAccess`, `NSFilePromiseProvider` — replaces ad-hoc `objc` message sends |
 | `screencapturekit` | 0.3+ | macOS (new for P2-O13) | Thin wrapper around the `ScreenCaptureKit` framework (`SCShareableContent`, `SCScreenshotManager`) |
 
@@ -896,7 +925,8 @@ Added to `Cargo.toml` as target-gated dependencies:
 [target.'cfg(target_os = "windows")'.dependencies]
 agent-desktop-windows = { path = "crates/windows" }
 uiautomation = "0.24"
-windows = { version = "0.58", features = ["Win32_UI_Input", "Win32_System_Com", "Graphics_Capture", "Win32_Graphics_Direct3D11"] }
+windows = { version = "0.62.2", features = ["Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Com", "Win32_System_DataExchange", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Graphics_Capture", "Win32_Graphics_Direct3D11"] }
+windows-capture = "1.5.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2         = "0.5"
@@ -1927,10 +1957,22 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | `accessibility-sys` 0.1+, `core-foundation` 0.10+, `core-graphics` 0.24+ | Phase 1 | macOS AX API FFI |
 | `cbindgen` = 0.27.0 (pinned), `libc` 0.2+ | Phase 1.5 | C header generation + macOS `pthread_main_np` for FFI main-thread guard |
 | `uiautomation` 0.24+ | Phase 2 | Windows UIA wrapper |
+| `windows` 0.62.2 | Phase 2 | Win32 / WinRT bindings (pinned to match `windows-capture 1.5` pin) |
+| `windows-capture` 1.5.4 | Phase 2 | Modern `Windows.Graphics.Capture` screenshot |
+| `objc2` 0.6 | Phase 2 | macOS safe Objective-C bridging (scoped to `system/screenshot.rs` + `system/permissions.rs`; CI grep guard) |
+| `screencapturekit` 1.5 (crates.io) | Phase 2 | ScreenCaptureKit wrapper — published canonical crate, not git fork |
 | `atspi` 0.28+ + `zbus` 5.x | Phase 3 | Linux AT-SPI2 client via D-Bus |
 | `tokio` 1.x | Phase 3 | Async runtime (required by atspi/zbus) |
 | `rmcp` 0.15.0+ | Phase 4 | Official MCP Rust SDK |
-| `schemars` 0.8+ | Phase 4 | JSON Schema generation for MCP tool parameters |
+| `schemars` 1.2 | Phase 4 | JSON Schema generation for MCP tool parameters (deferred from Phase 2 per plan §KD15 — no Phase 2 consumer) |
+
+### Explicitly NOT Added (research-rejected)
+
+| Crate | Rejected at | Reason |
+|-------|-------------|--------|
+| `inventory` 0.3 | Phase 2 plan review | Link-GC unreliable across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Research Topic B: `inventory::submit!` ctor sites are stripped when an rlib is linked into a binary that never references a symbol from that rlib. Replaced with `build.rs` filesystem enumeration. |
+| `linkme` | Phase 2 plan review | Named linker sections have active Windows/lld-link edge cases (issues #70, #85, #114). Same reason as `inventory` rejection. |
+| `xtask` workspace crate | Phase 2 plan review | Not needed once codegen is pure `build.rs`. Replaced with a tiny `build-helpers/` workspace crate holding the shared filesystem-enumeration function. |
 
 ### Platform API Quick Reference
 
@@ -1960,4 +2002,7 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | R5 | Rust a11y crate maintenance stalls | Low | High | Pin versions, maintain patches. `atspi` backed by Odilia project. Fork-ready. |
 | R6 | MCP spec changes break compat | Low | Medium | Pin `rmcp` version. Monitor spec under Linux Foundation governance. |
 | R7 | Tree traversal too slow (>5s) | Medium | Medium | Depth limiting via `--max-depth`. Focused-window-only. Cached subtrees in Phase 5 daemon. Progressive skeleton traversal (`--skeleton` + `--root`) reduces token consumption 78-96% for dense apps. |
-| R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. Progressive skeleton traversal with scoped invalidation provides a stable drill-down workflow for navigating complex UIs. |
+| R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. Progressive skeleton traversal with scoped invalidation provides a stable drill-down workflow for navigating complex UIs. **Phase 2**: stable-selector fields (`identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` via `StableSelectors` flatten) + identifier-preferred resolver drop `STALE_REF` rate on Electron / localized apps. |
+| R9 | Headless operation requirement | High | Critical | **Phase 2 plan §Headless-First Invariant** codifies the contract: UIA-first / AX-first paths for all actions; `NSDraggingSession` rejected for FileDrop (replaced by `DeliverFiles` 4-tier fallback); `ad_init()` version handshake; integration tests assert no focus steal and no cursor movement for non-mouse commands. |
+| R10 | Command registry link-GC | Medium | High | Research Topic B confirmed `inventory`/`linkme` are unreliable across linkers for cdylib consumers. Resolved by pure `build.rs` filesystem enumeration — zero linker magic. |
+| R11 | Skeleton traversal cross-platform | Low | High | Core is already platform-agnostic (`crates/core/src/snapshot_ref.rs`); Windows needs ~50 LOC glue (`ControlViewWalker` + `FindAll(TreeScope_Children, TrueCondition)` + fresh `UICacheRequest` per drill-down). Research Topic 4 confirmed `ElementFromHandle(hwnd)` is headless-safe. |
