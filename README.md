@@ -21,11 +21,13 @@
   <img src="docs/architecture.png" alt="agent-desktop architecture diagram" width="800" />
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./.github/stats/chart-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./.github/stats/chart-light.svg">
-  <img alt="GitHub stars and ClawHub downloads for lahfir/agent-desktop" src="./.github/stats/chart-light.svg" width="100%">
-</picture>
+<a href="https://star-history.com/#lahfir/agent-desktop&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=lahfir/agent-desktop&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=lahfir/agent-desktop&type=Date">
+    <img alt="Star history for lahfir/agent-desktop" src="https://api.star-history.com/svg?repos=lahfir/agent-desktop&type=Date">
+  </picture>
+</a>
 
 ## Key Features
 
