@@ -15,7 +15,7 @@ function gh(args) {
   return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 });
 }
 
-async function fetchClawHubStats(slug) {
+async function fetchClawHubSkill(slug) {
   const res = await fetch(`${CONVEX_URL}/api/query`, {
     method: "POST",
     headers: {
@@ -33,7 +33,23 @@ async function fetchClawHubStats(slug) {
   if (body.status !== "success") {
     throw new Error(`ClawHub error: ${body.errorMessage ?? "unknown"}`);
   }
-  return body.value.skill.stats;
+  return body.value.skill;
+}
+
+function backfillClawHubDaily(createdAtMs, currentDownloads, todayIso) {
+  const startMs = new Date(
+    new Date(createdAtMs).toISOString().slice(0, 10) + "T00:00:00Z",
+  ).getTime();
+  const endMs = new Date(todayIso + "T00:00:00Z").getTime();
+  const days = Math.max(1, Math.round((endMs - startMs) / 86400000));
+  const out = [];
+  for (let i = 0; i <= days; i++) {
+    const dayMs = startMs + i * 86400000;
+    const iso = new Date(dayMs).toISOString().slice(0, 10);
+    const value = Math.round((currentDownloads * i) / days);
+    out.push([iso, value]);
+  }
+  return out;
 }
 
 function fetchStarHistory(repo) {
@@ -96,16 +112,23 @@ async function main() {
   console.log(`[seed] github series: ${ghDaily.length} daily points`);
 
   console.log("[seed] fetching ClawHub stats...");
-  const stats = await fetchClawHubStats(SLUG);
-  const downloads = Math.round(stats.downloads ?? 0);
-  console.log(`[seed] clawhub downloads=${downloads} stars=${stats.stars ?? 0}`);
+  const skill = await fetchClawHubSkill(SLUG);
+  const downloads = Math.round(skill.stats?.downloads ?? 0);
+  const createdAtMs = skill.createdAt ?? skill._creationTime ?? Date.now();
+  console.log(
+    `[seed] clawhub downloads=${downloads} createdAt=${new Date(createdAtMs).toISOString().slice(0, 10)}`,
+  );
+
+  const chDaily = backfillClawHubDaily(createdAtMs, downloads, today);
+  console.log(`[seed] clawhub series: ${chDaily.length} daily points (linear backfill)`);
 
   const history = {
     repo: REPO,
     slug: SLUG,
+    clawhub_created_at: new Date(createdAtMs).toISOString().slice(0, 10),
     subtitle: "GitHub stars · ClawHub downloads — updated daily",
     github_stars: ghDaily,
-    clawhub_downloads: [[today, downloads]],
+    clawhub_downloads: chDaily,
     sources: {
       github: `https://github.com/${REPO}`,
       clawhub: `https://clawhub.ai/${REPO.split("/")[0]}/${SLUG}`,

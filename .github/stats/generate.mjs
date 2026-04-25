@@ -162,18 +162,17 @@ function renderChart(theme, history, meta) {
     valToY(v, max2),
   ]);
 
-  const series2HasHistory = pts2.length >= 2;
-
   const line1Path = catmullRomPath(pts1);
-  const line2Path = series2HasHistory ? catmullRomPath(pts2) : "";
+  const line2Path = catmullRomPath(pts2);
 
   const area1Path =
     pts1.length >= 2
       ? `${line1Path} L ${pts1[pts1.length - 1][0].toFixed(2)} ${(PAD.top + PLOT_H).toFixed(2)} L ${pts1[0][0].toFixed(2)} ${(PAD.top + PLOT_H).toFixed(2)} Z`
       : "";
-  const area2Path = series2HasHistory
-    ? `${line2Path} L ${pts2[pts2.length - 1][0].toFixed(2)} ${(PAD.top + PLOT_H).toFixed(2)} L ${pts2[0][0].toFixed(2)} ${(PAD.top + PLOT_H).toFixed(2)} Z`
-    : "";
+  const area2Path =
+    pts2.length >= 2
+      ? `${line2Path} L ${pts2[pts2.length - 1][0].toFixed(2)} ${(PAD.top + PLOT_H).toFixed(2)} L ${pts2[0][0].toFixed(2)} ${(PAD.top + PLOT_H).toFixed(2)} Z`
+      : "";
 
   const yTicks1 = gridTicks(max1);
   const yTicks2 = gridTicks(max2);
@@ -293,15 +292,11 @@ function renderChart(theme, history, meta) {
     }
 
     ${
-      series2HasHistory
+      pts2.length >= 2
         ? `<path d="${line2Path}" fill="none" stroke="url(#stroke2)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow2)" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100">
       <animate attributeName="stroke-dashoffset" from="100" to="0" dur="1.4s" begin="0.15s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1" keyTimes="0;1" values="100;0"/>
     </path>`
-        : lastPt2
-          ? `<line x1="${PAD.left}" x2="${(W - PAD.right).toFixed(2)}" y1="${lastPt2[1].toFixed(2)}" y2="${lastPt2[1].toFixed(2)}" stroke="${t.line2}" stroke-width="1.5" stroke-dasharray="5 5" opacity="0">
-      <animate attributeName="opacity" from="0" to="0.7" dur="0.6s" begin="0.4s" fill="freeze"/>
-    </line>`
-          : ""
+        : ""
     }
 
     ${
@@ -318,24 +313,11 @@ function renderChart(theme, history, meta) {
         ? `<g opacity="0">
       <circle cx="${lastPt2[0].toFixed(2)}" cy="${lastPt2[1].toFixed(2)}" r="7" fill="${t.line2}" opacity="0.22"/>
       <circle cx="${lastPt2[0].toFixed(2)}" cy="${lastPt2[1].toFixed(2)}" r="4" fill="${t.bg}" stroke="${t.line2}" stroke-width="2"/>
-      <animate attributeName="opacity" from="0" to="1" begin="${series2HasHistory ? "1.55s" : "1.0s"}" dur="0.4s" fill="freeze"/>
+      <animate attributeName="opacity" from="0" to="1" begin="1.55s" dur="0.4s" fill="freeze"/>
     </g>`
         : ""
     }
   </g>
-
-  ${
-    !series2HasHistory && lastPt2
-      ? `<text x="${(lastPt2[0] - 12).toFixed(2)}" y="${(lastPt2[1] - 10).toFixed(2)}" text-anchor="end" font-family="${FONT}" font-size="11" font-weight="600" fill="${t.line2}" opacity="0" style="font-variant-numeric: tabular-nums;">
-    ${fmtNumber(last2)} downloads
-    <animate attributeName="opacity" from="0" to="1" begin="1.2s" dur="0.4s" fill="freeze"/>
-  </text>
-  <text x="${(lastPt2[0] - 12).toFixed(2)}" y="${(lastPt2[1] + 4).toFixed(2)}" text-anchor="end" font-family="${FONT}" font-size="9" fill="${t.textSoft}" opacity="0">
-    daily history starts now
-    <animate attributeName="opacity" from="0" to="0.85" begin="1.4s" dur="0.4s" fill="freeze"/>
-  </text>`
-      : ""
-  }
 
   <text x="${W - PAD.right}" y="${H - 12}" text-anchor="end" font-family="${FONT}" font-size="10" fill="${t.textSoft}" opacity="0.7">
     Updated ${meta.updatedAt}
