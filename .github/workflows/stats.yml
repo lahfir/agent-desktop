@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: stats
@@ -18,8 +19,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
@@ -33,14 +32,23 @@ jobs:
       - name: Regenerate chart SVGs
         run: node .github/stats/generate.mjs
 
-      - name: Commit and push if changed
-        run: |
-          if git diff --quiet -- .github/stats/; then
-            echo "No stats change."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/stats/history.json .github/stats/chart-light.svg .github/stats/chart-dark.svg
-          git commit -m "chore(stats): refresh history and chart"
-          git push
+      - name: Open or update stats PR
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.8
+        with:
+          token: ${{ github.token }}
+          branch: stats/auto-update
+          delete-branch: true
+          commit-message: "chore(stats): refresh history and chart"
+          title: "chore(stats): daily refresh"
+          body: |
+            Daily stats refresh from `.github/workflows/stats.yml`.
+
+            Updates `history.json` and regenerates `chart-light.svg` / `chart-dark.svg`.
+            Same branch reused on every run, so at most one stats PR is open at any time.
+          add-paths: |
+            .github/stats/history.json
+            .github/stats/chart-light.svg
+            .github/stats/chart-dark.svg
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          labels: stats, automated
