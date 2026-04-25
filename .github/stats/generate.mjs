@@ -191,7 +191,7 @@ function renderChart(theme, history, meta) {
   const FONT =
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
   <title id="title">${meta.repo} — GitHub stars and ClawHub downloads over time</title>
   <desc id="desc">Time-series chart showing GitHub stars and ClawHub downloads for ${meta.repo}.</desc>
   <defs>
