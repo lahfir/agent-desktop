@@ -1,4 +1,17 @@
-# agent-desktop
+<h1 align="center">AGENT DESKTOP</h1>
+
+<p align="center">
+  <strong>OBSERVE. DECIDE. ACT.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/lahfir/agent-desktop/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/lahfir/agent-desktop/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/lahfir/agent-desktop/releases"><img src="https://img.shields.io/github/v/release/lahfir/agent-desktop?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://www.npmjs.com/package/agent-desktop"><img src="https://img.shields.io/npm/v/agent-desktop?label=npm&style=for-the-badge" alt="npm version"></a>
+  <a href="https://clawhub.ai/lahfir/agent-desktop"><img src="https://img.shields.io/badge/ClawHub-skill-f97316?style=for-the-badge" alt="ClawHub skill"></a>
+  <a href="https://skills.sh/lahfir/agent-desktop/agent-desktop"><img src="https://img.shields.io/badge/skills.sh-listed-8b5cf6?style=for-the-badge" alt="skills.sh listing"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg?style=for-the-badge" alt="Apache-2.0 License"></a>
+</p>
 
 **agent-desktop** is a native desktop automation CLI designed for AI agents, built with Rust. It gives structured access to any application through OS accessibility trees — no screenshots, no pixel matching, no browser required.
 
@@ -7,6 +20,12 @@
 <p align="center">
   <img src="docs/architecture.png" alt="agent-desktop architecture diagram" width="800" />
 </p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/stats/chart-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./.github/stats/chart-light.svg">
+  <img alt="GitHub stars and ClawHub downloads for lahfir/agent-desktop" src="./.github/stats/chart-light.svg" width="100%">
+</picture>
 
 ## Key Features
 
