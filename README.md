@@ -348,5 +348,3 @@ Apache-2.0
   <source media="(prefers-color-scheme: light)" srcset="./.github/stats/chart-light.svg">
   <img alt="GitHub stars and ClawHub downloads for lahfir/agent-desktop" src="./.github/stats/chart-light.svg" width="100%">
 </picture>
-
-GitHub stars are reconstructed from the full star event timeline. ClawHub downloads are recorded daily by [`.github/workflows/stats.yml`](./.github/workflows/stats.yml) — historical download data is not exposed by the marketplace, so the ClawHub line starts the day daily polling began.
