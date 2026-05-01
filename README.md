@@ -13,6 +13,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg?style=for-the-badge" alt="Apache-2.0 License"></a>
 </p>
 
+<p align="center">
+  <img src="assets/Tutorial.gif" alt="agent-desktop tutorial demo" width="800" />
+</p>
+
 **agent-desktop** is a native desktop automation CLI designed for AI agents, built with Rust. It gives structured access to any application through OS accessibility trees — no screenshots, no pixel matching, no browser required.
 
 ## Architecture
