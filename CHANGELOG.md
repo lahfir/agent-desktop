@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/lahfir/agent-desktop/compare/v0.1.13...v0.1.14) (2026-05-04)
+
+
+### Features
+
+* bundle skill docs and refactor --help for AI agents ([#36](https://github.com/lahfir/agent-desktop/issues/36)) ([b04d6f9](https://github.com/lahfir/agent-desktop/commit/b04d6f97317af67648890d2d3b5ead0d27c466c9))
+
 ## [0.1.13](https://github.com/lahfir/agent-desktop/compare/v0.1.12...v0.1.13) (2026-04-17)
 
 
