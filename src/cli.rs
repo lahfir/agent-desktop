@@ -2,115 +2,18 @@ use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::*;
 pub use crate::cli_args_notifications::*;
+pub use crate::cli_args_skills::*;
+
+const BEFORE_HELP: &str = include_str!("help_before.txt");
+const AFTER_HELP: &str = include_str!("help_after.txt");
 
 #[derive(Parser, Debug)]
 #[command(
     name = "agent-desktop",
     about = "Desktop automation CLI for AI agents",
     long_about = None,
-    after_help = "\
-OBSERVATION
-  snapshot                   Accessibility tree as JSON with @ref IDs
-  screenshot                 PNG screenshot of an application window
-  find                       Search elements by role, name, value, or text
-  get <ref> <property>       Read element property: text, value, title, bounds, role, states
-  is <ref> <property>        Check state: visible, enabled, checked, focused, expanded
-  list-surfaces              Available surfaces for an app
-
-INTERACTION
-  click <ref>                Click element (kAXPress)
-  double-click <ref>         Double-click element
-  triple-click <ref>         Triple-click element (select line/paragraph)
-  right-click <ref>          Right-click and open context menu
-  type <ref> <text>          Focus element and type text
-  set-value <ref> <value>    Set value attribute directly
-  clear <ref>                Clear element value to empty string
-  focus <ref>                Set keyboard focus
-  select <ref> <value>       Select option in list or dropdown
-  toggle <ref>               Toggle checkbox or switch
-  check <ref>                Set checkbox/switch to checked (idempotent)
-  uncheck <ref>              Set checkbox/switch to unchecked (idempotent)
-  expand <ref>               Expand disclosure triangle or tree item
-  collapse <ref>             Collapse disclosure triangle or tree item
-  scroll <ref>               Scroll element (--direction, --amount)
-  scroll-to <ref>            Scroll element into visible area
-
-KEYBOARD
-  press <combo>              Key combo: return, escape, cmd+c, shift+tab ...
-  key-down <combo>           Hold a key or modifier down
-  key-up <combo>             Release a held key or modifier
-
-MOUSE
-  hover <ref|--xy>           Move cursor to element or coordinates
-  drag                       Drag from one element/point to another
-  mouse-move --xy x,y        Move cursor to absolute coordinates
-  mouse-click --xy x,y       Click at coordinates (--button, --count)
-  mouse-down --xy x,y        Press mouse button at coordinates
-  mouse-up --xy x,y          Release mouse button at coordinates
-
-APP & WINDOW
-  launch <app>               Launch app and wait until window is visible
-  close-app <app>            Quit app gracefully (--force to kill)
-  list-windows               All visible windows (--app to filter)
-  list-apps                  All running GUI applications
-  focus-window               Bring window to front
-  resize-window              Resize window (--width, --height)
-  move-window                Move window (--x, --y)
-  minimize                   Minimize window
-  maximize                   Maximize/zoom window
-  restore                    Restore minimized/maximized window
-
-NOTIFICATIONS
-  list-notifications         List notifications from Notification Center
-  dismiss-notification <n>   Dismiss notification by index
-  dismiss-all-notifications  Dismiss all notifications
-  notification-action <n> <action>  Click action button on notification
-
-CLIPBOARD
-  clipboard-get              Read plain-text clipboard
-  clipboard-set <text>       Write text to clipboard
-  clipboard-clear            Clear the clipboard
-
-WAIT
-  wait [ms]                  Pause for N milliseconds
-  wait --element <ref>       Block until element appears (--timeout ms)
-  wait --window <title>      Block until window appears
-  wait --text <text>         Block until text appears in app
-  wait --notification        Block until a new notification arrives
-
-SYSTEM
-  status                     Adapter health, platform, and permission state
-  permissions                Check accessibility permission (--request to prompt)
-  version                    Version string (--json for machine-readable)
-
-BATCH
-  batch <json>               Run commands from a JSON array (--stop-on-error)
-
-REF IDs
-  snapshot assigns @e1, @e2, ... to interactive elements in depth-first order.
-  Use a ref wherever <ref> appears. Refs are snapshot-scoped; run snapshot
-  again after UI changes.
-
-KEY COMBOS
-  Single keys:               return, escape, tab, space, delete, up, down, left, right
-  Function keys:             f1 - f12
-  With modifiers:            cmd+c, cmd+v, cmd+z, cmd+shift+z, ctrl+a, shift+tab
-  Modifiers:                 cmd, ctrl, alt, shift
-
-EXAMPLES
-  agent-desktop snapshot --app \"System Settings\" -i
-  agent-desktop find --role button --name \"OK\"
-  agent-desktop click @e5
-  agent-desktop check @e3
-  agent-desktop type @e2 \"hello@example.com\"
-  agent-desktop press cmd+z
-  agent-desktop drag --from @e1 --to @e5
-  agent-desktop hover @e5
-  agent-desktop minimize --app TextEdit
-  agent-desktop resize-window --app TextEdit --width 800 --height 600
-  agent-desktop mouse-click --xy 500,300
-  agent-desktop wait --text \"Loading complete\" --app Safari --timeout 5000
-  agent-desktop batch '[{\"command\":\"click\",\"args\":{\"ref_id\":\"@e1\"}}]'"
+    before_help = BEFORE_HELP,
+    after_help = AFTER_HELP,
 )]
 pub struct Cli {
     #[arg(
@@ -233,6 +136,8 @@ pub enum Commands {
     Version(VersionArgs),
     #[command(about = "Execute multiple commands from a JSON array (--stop-on-error)")]
     Batch(BatchArgs),
+    #[command(about = "Bundled skill docs for AI agents (list, get, path)")]
+    Skills(SkillsArgs),
 }
 
 impl Commands {
@@ -291,6 +196,7 @@ impl Commands {
             Self::Permissions(_) => "permissions",
             Self::Version(_) => "version",
             Self::Batch(_) => "batch",
+            Self::Skills(_) => "skills",
         }
     }
 }

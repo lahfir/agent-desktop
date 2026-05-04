@@ -9,8 +9,9 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 53 commands across observation, interaction, keyboard/mouse, app lifecycle,
-  notifications (macOS), clipboard, and wait.
+  Covers 54 commands across observation, interaction, keyboard/mouse, app lifecycle,
+  notifications (macOS), clipboard, wait, and a `skills` command that prints these
+  bundled docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
   "take screenshot", "desktop automation", "agent-desktop", or any desktop GUI interaction task.
@@ -110,7 +111,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `TIMEOUT` | Wait condition not met | Increase --timeout |
 | `INVALID_ARGS` | Bad arguments | Check command syntax |
 
-## Command Quick Reference (53 commands)
+## Command Quick Reference (54 commands)
 
 ### Observation
 ```
@@ -211,6 +212,8 @@ agent-desktop permissions                       # Check permission
 agent-desktop permissions --request             # Trigger permission dialog
 agent-desktop version --json                    # Version info
 agent-desktop batch '[...]' --stop-on-error     # Batch commands
+agent-desktop skills                            # List bundled skill docs
+agent-desktop skills get desktop --full         # Load this skill + all references
 ```
 
 ## Key Principles for Agents

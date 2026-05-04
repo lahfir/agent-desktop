@@ -3,6 +3,7 @@ mod batch_dispatch_ext;
 mod cli;
 mod cli_args;
 mod cli_args_notifications;
+mod cli_args_skills;
 mod dispatch;
 mod dispatch_notifications;
 
@@ -46,23 +47,37 @@ fn main() {
 
     let cmd_name = cmd.name();
 
-    match &cmd {
+    match cmd {
         Commands::Version(a) => {
             let result = agent_desktop_core::commands::version::execute(
                 agent_desktop_core::commands::version::VersionArgs { json: a.json },
             );
             finish(cmd_name, result);
-            return;
         }
         Commands::Status => {
             let adapter = build_adapter();
             let result = agent_desktop_core::commands::status::execute(&adapter);
             finish(cmd_name, result);
-            return;
         }
-        _ => {}
+        Commands::Skills(a) => {
+            let result = match a.action.unwrap_or(cli::SkillsAction::List) {
+                cli::SkillsAction::List => agent_desktop_core::commands::skills::list(),
+                cli::SkillsAction::Path => agent_desktop_core::commands::skills::path(),
+                cli::SkillsAction::Get(g) => agent_desktop_core::commands::skills::get(
+                    agent_desktop_core::commands::skills::GetArgs {
+                        name: g.name,
+                        full: g.full,
+                        reference: g.reference,
+                    },
+                ),
+            };
+            finish(cmd_name, result);
+        }
+        cmd => run_with_adapter(cmd, cmd_name),
     }
+}
 
+fn run_with_adapter(cmd: Commands, cmd_name: &str) {
     let adapter = build_adapter();
 
     if let agent_desktop_core::adapter::PermissionStatus::Denied { suggestion } =

@@ -37,7 +37,7 @@
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
 - **C-ABI cdylib** (`libagent_desktop_ffi`): Load once from Python / Swift / Go / Ruby / Node / C instead of forking the CLI per call
-- **53 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management
+- **54 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, plus a bundled `skills` doc loader
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using deterministic element references (`@e1`, `@e2`)
 - **AX-first interactions**: Every action exhausts pure accessibility API strategies before falling back to mouse events

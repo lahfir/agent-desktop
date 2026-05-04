@@ -7,13 +7,13 @@ use agent_desktop_core::{
         is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize,
         minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
         resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
-        snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
+        skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
     },
     error::AppError,
 };
 use serde_json::Value;
 
-use crate::cli::Commands;
+use crate::cli::{Commands, SkillsAction};
 
 pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
@@ -300,6 +300,16 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         }
 
         Commands::Version(a) => version::execute(version::VersionArgs { json: a.json }),
+
+        Commands::Skills(a) => match a.action.unwrap_or(SkillsAction::List) {
+            SkillsAction::List => skills::list(),
+            SkillsAction::Path => skills::path(),
+            SkillsAction::Get(g) => skills::get(skills::GetArgs {
+                name: g.name,
+                full: g.full,
+                reference: g.reference,
+            }),
+        },
 
         Commands::Batch(a) => {
             let commands = batch::parse_commands(&a.commands_json)?;

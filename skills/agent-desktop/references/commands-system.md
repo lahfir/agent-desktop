@@ -259,3 +259,35 @@ agent-desktop version
 agent-desktop version --json
 ```
 Returns version string. Use `--json` for `{ "version": "0.1.3", "platform": "macos", "arch": "aarch64" }`.
+
+## Skills (bundled docs)
+
+Skill markdown ships compiled into the binary. Use these to load up-to-date guidance without hitting the network.
+
+### skills (or `skills list`)
+```bash
+agent-desktop skills
+```
+Lists every bundled skill with aliases, summaries, and reference filenames.
+
+### skills get
+```bash
+agent-desktop skills get desktop                  # Primary guide (this skill's main file)
+agent-desktop skills get desktop --full           # Main + every reference inlined with `--- references/<file> ---` separators
+agent-desktop skills get desktop workflows        # Single reference; bare stem or `references/workflows.md` both work
+agent-desktop skills get ffi                      # Specialized: embedding via the C ABI
+```
+
+| Arg / Flag | Description |
+|------------|-------------|
+| `<name>` | Skill name or alias. `desktop` ↔ `agent-desktop`, `ffi` ↔ `agent-desktop-ffi`. |
+| `<reference>` (positional) | Reference filename (stem or full `references/<file>.md`). Omit for the main guide. |
+| `--full` | Inline every reference after the main file. Ignored when a specific reference is requested. |
+
+JSON envelope contains the markdown under `data.content`. Pipe to `jq -r .data.content` (or extract with `python3 -c`) to print just the markdown.
+
+### skills path
+```bash
+agent-desktop skills path
+```
+Reports `{ "location": "embedded", ... }` — skills are baked into this binary via `include_str!`. To extract a copy on disk, redirect `skills get <name>` output into a file.

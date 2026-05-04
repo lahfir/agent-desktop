@@ -1,0 +1,15 @@
+For AI agents — read this first:
+  agent-desktop skills get desktop --full
+
+  Bundled skill docs travel with the binary, so they always match this
+  exact version. They cover the snapshot/ref loop, JSON envelope contract,
+  error codes with recovery hints, and copy-paste patterns for forms,
+  menus, dialogs, and async waits. Specialized skills go deeper on macOS
+  internals (TCC, AX API, surfaces, Notification Center) and on embedding
+  agent-desktop through its C ABI.
+
+    skills                       List bundled skills with summaries
+    skills get desktop           Primary guide — overview + the observe-act loop
+    skills get desktop --full    Same, plus every reference file inlined
+    skills get <name>            Open a focused skill (e.g. macos, ffi)
+    skills path                  Where skills live (compiled into this binary)

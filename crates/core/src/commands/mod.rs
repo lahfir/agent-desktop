@@ -44,6 +44,7 @@ pub mod scroll;
 pub mod scroll_to;
 pub mod select;
 pub mod set_value;
+pub mod skills;
 pub mod snapshot;
 pub mod status;
 pub mod toggle;

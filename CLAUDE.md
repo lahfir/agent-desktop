@@ -429,9 +429,9 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Implemented Commands (53)
+## Implemented Commands (54)
 
-> **Platform note:** All 53 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
+> **Platform note:** All 54 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
 
 | Category | Commands |
 |----------|----------|
@@ -444,7 +444,7 @@ Target binary size: <15MB per platform.
 | Notifications (4) *(macOS)* | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` |
 | Clipboard (3) | `clipboard-get`, `clipboard-set`, `clipboard-clear` |
 | Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) |
-| System (3) | `status`, `permissions`, `version` |
+| System (4) | `status`, `permissions`, `version`, `skills` |
 | Batch (1) | `batch` |
 
 ## Non-Goals
