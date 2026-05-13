@@ -5,6 +5,8 @@ mod cli_args_actions;
 mod cli_args_notifications;
 mod cli_args_skills;
 mod cli_args_system;
+#[cfg(test)]
+mod command_contract_tests;
 mod command_policy;
 mod dispatch;
 mod dispatch_notifications;

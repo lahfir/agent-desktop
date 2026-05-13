@@ -1,8 +1,6 @@
-/// Direct probe of macOS AX APIs — no abstraction.
-/// Reveals exactly what the raw APIs return and validates click behavior.
-///
-///   cargo run -p agent-desktop-macos --example ax_probe -- <AppName>
-use std::ffi::c_void;
+//! Direct probe of macOS AX APIs with raw API output and click validation.
+//!
+//!   cargo run -p agent-desktop-macos --example ax_probe -- <AppName>
 
 #[cfg(target_os = "macos")]
 fn main() {
@@ -295,7 +293,7 @@ fn cg_click(x: f64, y: f64) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn cg_scroll(x: f64, y: f64, dx: i32, dy: i32) -> bool {
+fn cg_scroll(_x: f64, _y: f64, dx: i32, dy: i32) -> bool {
     use core_graphics::{
         event::{CGEvent, CGEventTapLocation, ScrollEventUnit},
         event_source::{CGEventSource, CGEventSourceStateID},
@@ -314,11 +312,11 @@ fn cg_scroll(x: f64, y: f64, dx: i32, dy: i32) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn speed_test(app: accessibility_sys::AXUIElementRef, pid: i32) {
+fn speed_test(app: accessibility_sys::AXUIElementRef, _pid: i32) {
     use accessibility_sys::*;
     use core_foundation::{
         array::CFArray,
-        base::{CFRelease, CFType, CFTypeRef, TCFType},
+        base::{CFRelease, CFTypeRef, TCFType},
         string::CFString,
     };
     use std::time::Instant;

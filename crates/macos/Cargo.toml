@@ -26,12 +26,4 @@ dev-tools = []
 name = "ax_probe"
 required-features = ["dev-tools"]
 
-[[example]]
-name = "axprobe"
-required-features = ["dev-tools"]
-
-[[example]]
-name = "axprobe2"
-required-features = ["dev-tools"]
-
 [build-dependencies]
