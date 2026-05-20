@@ -5,11 +5,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lahfir/agent-desktop.git"
+    "url": "git+https://github.com/lahfir/agent-desktop.git"
   },
   "homepage": "https://github.com/lahfir/agent-desktop",
   "bin": {
-    "agent-desktop": "./bin/agent-desktop.js"
+    "agent-desktop": "bin/agent-desktop.js"
   },
   "scripts": {
     "postinstall": "node scripts/postinstall.js"
