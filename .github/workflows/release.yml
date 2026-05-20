@@ -3,6 +3,26 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Release tag to build and publish, for example v0.2.0
+        required: true
+        type: string
+      version:
+        description: Semver version without the v prefix, for example 0.2.0
+        required: true
+        type: string
+      publish_npm:
+        description: Publish the npm package after GitHub assets are uploaded
+        required: true
+        default: true
+        type: boolean
+      publish_skills:
+        description: Publish skills after the release is built
+        required: true
+        default: true
+        type: boolean
 
 # One release run per commit — never cancel, just queue.
 concurrency:
@@ -23,25 +43,45 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+      release_created: ${{ steps.release.outputs.release_created || steps.manual.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.manual.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major && format('{0}.{1}.{2}', steps.release.outputs.major, steps.release.outputs.minor, steps.release.outputs.patch) || steps.manual.outputs.version }}
+      publish_npm: ${{ steps.manual.outputs.publish_npm || 'true' }}
+      publish_skills: ${{ steps.manual.outputs.publish_skills || steps.release.outputs.release_created }}
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        if: github.event_name != 'workflow_dispatch'
         id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Use manual release inputs
+        if: github.event_name == 'workflow_dispatch'
+        id: manual
+        run: |
+          {
+            echo "release_created=true"
+            echo "tag_name=${{ inputs.tag_name }}"
+            echo "version=${{ inputs.version }}"
+            echo "publish_npm=${{ inputs.publish_npm }}"
+            echo "publish_skills=${{ inputs.publish_skills }}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Sync Cargo.lock on release PR
-        if: steps.release.outputs.release_created != 'true'
+        if: github.event_name != 'workflow_dispatch' && steps.release.outputs.release_created != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           BRANCH="release-please--branches--main--components--agent-desktop"
-          if ! gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+          OPEN_RELEASE_PRS=$(gh pr list \
+            --head "$BRANCH" \
+            --state open \
+            --json number \
+            --jq 'length')
+          if [ "$OPEN_RELEASE_PRS" = "0" ]; then
             echo "No open release PR branch to sync"
             exit 0
           fi
@@ -278,6 +318,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          gh release view ${{ needs.release-please.outputs.tag_name }} >/dev/null 2>&1 \
+            || gh release create ${{ needs.release-please.outputs.tag_name }} \
+              --title ${{ needs.release-please.outputs.tag_name }} \
+              --notes "Release ${{ needs.release-please.outputs.tag_name }}"
           gh release upload ${{ needs.release-please.outputs.tag_name }} \
             ./*.tar.gz ./*.zip checksums.txt \
             --clobber
@@ -295,6 +339,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     needs: [release-please, publish-github]
+    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_npm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -344,7 +389,7 @@ jobs:
   publish-skills:
     name: Publish Skills to ClawHub
     needs: [release-please]
-    if: needs.release-please.outputs.release_created == 'true'
+    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_skills == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
