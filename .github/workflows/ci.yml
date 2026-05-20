@@ -69,6 +69,9 @@ jobs:
           fi
           echo "OK: core crate has no platform dependencies"
 
+      - name: Check release metadata consistency
+        run: scripts/check-release-consistency.sh
+
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
 

@@ -46,7 +46,7 @@ jobs:
             exit 0
           fi
 
-          git init release-pr
+          git init -b main release-pr
           cd release-pr
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git"
           git fetch --depth=1 origin "$BRANCH"
@@ -54,7 +54,8 @@ jobs:
 
           rustup show
           VERSION=$(sed -n 's/.*version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)
-          cargo update --offline -p agent-desktop --precise "$VERSION"
+          cargo update -p agent-desktop --precise "$VERSION"
+          scripts/check-release-consistency.sh
 
           if git diff --quiet -- Cargo.lock; then
             echo "Cargo.lock already matches release version ${VERSION}"
