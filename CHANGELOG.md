@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/lahfir/agent-desktop/compare/v0.1.14...v0.2.0) (2026-05-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* chain execution deadlines now return TIMEOUT instead of ACTION_FAILED when the target app does not respond before the chain deadline.
+
+### Refactoring
+
+* unify command execution contracts ([1291a9c](https://github.com/lahfir/agent-desktop/commit/1291a9cdbf0566424d38da1eab397d6d4091c06c))
+
 ## [0.1.14](https://github.com/lahfir/agent-desktop/compare/v0.1.13...v0.1.14) (2026-05-04)
 
 
