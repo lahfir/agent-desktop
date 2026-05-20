@@ -1,15 +1,42 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require('child_process');
+const { readFileSync } = require('fs');
 const { join } = require('path');
 
 const root = join(__dirname, '..');
 const npmDir = join(root, 'npm');
+const pkg = require(join(npmDir, 'package.json'));
+const releaseWorkflow = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
 const expectedFiles = [
   'bin/agent-desktop.js',
   'package.json',
   'scripts/postinstall.js',
 ];
+
+if (pkg.bin?.['agent-desktop'] !== 'bin/agent-desktop.js') {
+  throw new Error('npm bin path must be bin/agent-desktop.js');
+}
+
+if (pkg.repository?.url !== 'git+https://github.com/lahfir/agent-desktop.git') {
+  throw new Error('npm repository URL must be normalized for npm publish');
+}
+
+if (releaseWorkflow.includes('secrets.NPM_TOKEN') || releaseWorkflow.includes('NODE_AUTH_TOKEN')) {
+  throw new Error('release workflow must use npm trusted publishing, not long-lived npm tokens');
+}
+
+if (!releaseWorkflow.includes('id-token: write')) {
+  throw new Error('release workflow must grant id-token: write for npm trusted publishing');
+}
+
+if (!releaseWorkflow.includes('package-manager-cache: false')) {
+  throw new Error('release workflow must disable package manager caching for npm publishing');
+}
+
+if (!releaseWorkflow.includes('npm publish --access public')) {
+  throw new Error('release workflow must publish npm through the trusted-publishing command');
+}
 
 const output = execFileSync('npm', ['pack', '--dry-run', '--json'], {
   cwd: npmDir,
