@@ -59,13 +59,26 @@ jobs:
       - name: Use manual release inputs
         if: github.event_name == 'workflow_dispatch'
         id: manual
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          VERSION: ${{ inputs.version }}
+          PUBLISH_NPM: ${{ inputs.publish_npm }}
+          PUBLISH_SKILLS: ${{ inputs.publish_skills }}
         run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: ${VERSION}" >&2
+            exit 1
+          fi
+          if [[ "$TAG_NAME" != "v${VERSION}" ]]; then
+            echo "Tag ${TAG_NAME} must match version ${VERSION}" >&2
+            exit 1
+          fi
           {
             echo "release_created=true"
-            echo "tag_name=${{ inputs.tag_name }}"
-            echo "version=${{ inputs.version }}"
-            echo "publish_npm=${{ inputs.publish_npm }}"
-            echo "publish_skills=${{ inputs.publish_skills }}"
+            echo "tag_name=${TAG_NAME}"
+            echo "version=${VERSION}"
+            echo "publish_npm=${PUBLISH_NPM}"
+            echo "publish_skills=${PUBLISH_SKILLS}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sync Cargo.lock on release PR
@@ -156,8 +169,9 @@ jobs:
           fi
 
       - name: Create tarball
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
         run: |
-          VERSION=${{ needs.release-please.outputs.version }}
           TARBALL="agent-desktop-v${VERSION}-${{ matrix.target }}.tar.gz"
           tar -czf "${TARBALL}" -C target/${{ matrix.target }}/release agent-desktop
           shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256"
@@ -244,8 +258,9 @@ jobs:
 
       - name: Stage tarball contents
         shell: bash
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
         run: |
-          VERSION=${{ needs.release-please.outputs.version }}
           STAGE="agent-desktop-ffi-v${VERSION}-${{ matrix.target }}"
           mkdir -p "$STAGE/lib" "$STAGE/include"
           cp "target/${{ matrix.target }}/release-ffi/${{ matrix.lib_name }}" "$STAGE/lib/"
@@ -317,12 +332,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
-          gh release view ${{ needs.release-please.outputs.tag_name }} >/dev/null 2>&1 \
-            || gh release create ${{ needs.release-please.outputs.tag_name }} \
-              --title ${{ needs.release-please.outputs.tag_name }} \
-              --notes "Release ${{ needs.release-please.outputs.tag_name }}"
-          gh release upload ${{ needs.release-please.outputs.tag_name }} \
+          gh release view "$TAG_NAME" >/dev/null 2>&1 \
+            || gh release create "$TAG_NAME" \
+              --title "$TAG_NAME" \
+              --notes "Release ${TAG_NAME}"
+          gh release upload "$TAG_NAME" \
             ./*.tar.gz ./*.zip checksums.txt \
             --clobber
 
@@ -358,9 +374,10 @@ jobs:
       - name: Verify GitHub Release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
           # Expected: 2 CLI tarballs + 4 FFI tarballs + 1 FFI zip + checksums = 8.
-          ASSETS=$(gh release view ${{ needs.release-please.outputs.tag_name }} --json assets --jq '.assets | length')
+          ASSETS=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
           if [ "$ASSETS" -lt 8 ]; then
             echo "FAIL: expected at least 8 assets, found ${ASSETS}"
             exit 1
@@ -368,12 +385,14 @@ jobs:
           echo "OK: ${ASSETS} assets found on release"
 
       - name: Prepare npm package
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
         run: |
-          VERSION=${{ needs.release-please.outputs.version }}
           cd npm
           node -e "
+            const version = process.env.VERSION;
             const pkg = require('./package.json');
-            pkg.version = '${VERSION}';
+            pkg.version = version;
             require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
           echo "npm package version set to ${VERSION}"
