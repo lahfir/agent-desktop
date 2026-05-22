@@ -62,6 +62,7 @@ pub unsafe extern "C" fn ad_resolve_element(
             role,
             name,
             value: None,
+            description: None,
             states: vec![],
             bounds: None,
             bounds_hash,

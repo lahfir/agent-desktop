@@ -80,6 +80,7 @@ fn save_refmap(source_app: Option<String>) -> String {
         role: "button".into(),
         name: Some("Open".into()),
         value: None,
+        description: None,
         states: Vec::new(),
         bounds: None,
         bounds_hash: None,

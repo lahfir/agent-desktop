@@ -50,6 +50,7 @@ fn snapshot_id() -> String {
         role: "textfield".into(),
         name: Some("Target".into()),
         value: None,
+        description: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

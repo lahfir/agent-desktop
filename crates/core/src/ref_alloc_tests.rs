@@ -106,11 +106,13 @@ fn ref_entry_drops_empty_identity_text() {
 fn ref_entry_preserves_meaningful_identity_text() {
     let mut button = node("button", Some("Save"));
     button.value = Some("Primary".into());
+    button.description = Some("Commits changes".into());
 
     let entry = ref_entry_from_node(&button, 7, None, None, None, None, &[0]);
 
     assert_eq!(entry.name.as_deref(), Some("Save"));
     assert_eq!(entry.value.as_deref(), Some("Primary"));
+    assert_eq!(entry.description.as_deref(), Some("Commits changes"));
 }
 
 #[test]

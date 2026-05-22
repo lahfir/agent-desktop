@@ -11,6 +11,7 @@ fn entry(
         role: "cell".into(),
         name: Some("Investors".into()),
         value: None,
+        description: None,
         states: vec![],
         bounds: None,
         bounds_hash,
@@ -108,10 +109,38 @@ fn empty_identity_matches_missing_or_empty_ax_text() {
     entry.role = "menubutton".into();
     entry.name = Some(String::new());
 
-    assert!(identity_matches(&entry, None, None));
-    assert!(identity_matches(&entry, Some(""), None));
-    assert!(identity_matches(&entry, None, Some("")));
-    assert!(!identity_matches(&entry, Some("Insert Shape"), None));
+    assert!(identity_matches(&entry, None, None, None));
+    assert!(identity_matches(&entry, Some(""), None, None));
+    assert!(identity_matches(&entry, None, Some(""), None));
+    assert!(!identity_matches(&entry, Some("Insert Shape"), None, None));
+}
+
+#[test]
+fn description_identity_matches_blank_title_controls() {
+    let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
+    entry.role = "button".into();
+    entry.name = None;
+    entry.description = Some("Insert Text Box".into());
+
+    assert!(identity_matches(
+        &entry,
+        Some(""),
+        None,
+        Some("Insert Text Box")
+    ));
+    assert!(identity_matches(
+        &entry,
+        Some("Insert Text Box"),
+        None,
+        None
+    ));
+    assert!(!identity_matches(&entry, Some(""), None, None));
+    assert!(!identity_matches(
+        &entry,
+        Some(""),
+        None,
+        Some("Insert Shape")
+    ));
 }
 
 #[test]
@@ -119,8 +148,8 @@ fn meaningful_identity_still_requires_matching_text() {
     let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
     entry.name = Some("Zoom".into());
 
-    assert!(identity_matches(&entry, Some("Zoom"), None));
-    assert!(identity_matches(&entry, None, Some("Zoom")));
-    assert!(!identity_matches(&entry, None, None));
-    assert!(!identity_matches(&entry, Some(""), None));
+    assert!(identity_matches(&entry, Some("Zoom"), None, None));
+    assert!(identity_matches(&entry, None, Some("Zoom"), None));
+    assert!(!identity_matches(&entry, None, None, None));
+    assert!(!identity_matches(&entry, Some(""), None, None));
 }

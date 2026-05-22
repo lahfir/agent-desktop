@@ -15,10 +15,11 @@ use super::element::{
 #[cfg(target_os = "macos")]
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
     tracing::debug!(
-        "resolve: searching pid={} role={} name={:?} bounds_hash={:?}",
+        "resolve: searching pid={} role={} name={:?} description={:?} bounds_hash={:?}",
         entry.pid,
         entry.role,
         entry.name.as_deref().unwrap_or("(none)"),
+        entry.description.as_deref().unwrap_or("(none)"),
         entry.bounds_hash
     );
     let resolve_depth: u8 = 50;
@@ -53,9 +54,10 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
     Err(AdapterError::new(
         ErrorCode::StaleRef,
         format!(
-            "Element not found: role={}, name={:?}",
+            "Element not found: role={}, name={:?}, description={:?}",
             entry.role,
-            entry.name.as_deref().unwrap_or("(none)")
+            entry.name.as_deref().unwrap_or("(none)"),
+            entry.description.as_deref().unwrap_or("(none)")
         ),
     )
     .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref."))
@@ -270,17 +272,27 @@ fn identity_matches(
     entry: &RefEntry,
     actual_name: Option<&str>,
     actual_value: Option<&str>,
+    actual_description: Option<&str>,
 ) -> bool {
-    let expected_name = meaningful_text(entry.name.as_deref());
-    let expected_value = meaningful_text(entry.value.as_deref());
-    let actual_name = meaningful_text(actual_name);
-    let actual_value = meaningful_text(actual_value);
+    let expected = [
+        meaningful_text(entry.name.as_deref()),
+        meaningful_text(entry.value.as_deref()),
+        meaningful_text(entry.description.as_deref()),
+    ];
+    let actual = [
+        meaningful_text(actual_name),
+        meaningful_text(actual_value),
+        meaningful_text(actual_description),
+    ];
 
-    match (expected_name, expected_value) {
-        (Some(expected), _) => Some(expected) == actual_name || Some(expected) == actual_value,
-        (None, Some(expected)) => Some(expected) == actual_value || Some(expected) == actual_name,
-        (None, None) => actual_name.is_none() && actual_value.is_none(),
+    if expected.iter().all(Option::is_none) {
+        return actual.iter().all(Option::is_none);
     }
+
+    expected
+        .iter()
+        .flatten()
+        .any(|expected| actual.iter().flatten().any(|actual| actual == expected))
 }
 
 #[cfg(target_os = "macos")]
@@ -304,7 +316,13 @@ fn element_matches_path_entry(el: &AXElement, entry: &RefEntry) -> bool {
 
     let elem_name = promoted_label.or_else(|| resolve_element_name(el));
     let elem_value = crate::tree::copy_value_typed(el);
-    identity_matches(entry, elem_name.as_deref(), elem_value.as_deref())
+    let elem_description = copy_string_attr(el, accessibility_sys::kAXDescriptionAttribute);
+    identity_matches(
+        entry,
+        elem_name.as_deref(),
+        elem_value.as_deref(),
+        elem_description.as_deref(),
+    )
 }
 
 #[cfg(target_os = "macos")]

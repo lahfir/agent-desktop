@@ -31,6 +31,7 @@ pub(crate) fn ref_entry_from_node(
         role: node.role.clone(),
         name: meaningful_string(node.name.clone()),
         value: meaningful_string(node.value.clone()),
+        description: meaningful_string(node.description.clone()),
         states: node.states.clone(),
         bounds: node.bounds,
         bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),

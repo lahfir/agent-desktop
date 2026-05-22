@@ -76,6 +76,7 @@ fn entry() -> RefEntry {
         role: "button".into(),
         name: Some("OK".into()),
         value: None,
+        description: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

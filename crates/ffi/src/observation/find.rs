@@ -96,6 +96,7 @@ pub unsafe extern "C" fn ad_find(
             role: matched.role.clone(),
             name: matched.name.clone(),
             value: matched.value.clone(),
+            description: matched.description.clone(),
             states: matched.states.clone(),
             bounds: matched.bounds,
             bounds_hash,
