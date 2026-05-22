@@ -29,8 +29,8 @@ pub(crate) fn ref_entry_from_node(
     RefEntry {
         pid,
         role: node.role.clone(),
-        name: node.name.clone(),
-        value: node.value.clone(),
+        name: meaningful_string(node.name.clone()),
+        value: meaningful_string(node.value.clone()),
         states: node.states.clone(),
         bounds: node.bounds,
         bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
@@ -207,6 +207,10 @@ fn strip_ref_bounds_when_hidden(entry: &mut RefEntry, include_bounds: bool) {
         entry.bounds = None;
         entry.bounds_hash = None;
     }
+}
+
+fn meaningful_string(value: Option<String>) -> Option<String> {
+    value.filter(|text| !text.is_empty())
 }
 
 #[cfg(test)]

@@ -92,6 +92,28 @@ fn ref_entry_prefers_platform_actions() {
 }
 
 #[test]
+fn ref_entry_drops_empty_identity_text() {
+    let mut button = node("button", Some(""));
+    button.value = Some(String::new());
+
+    let entry = ref_entry_from_node(&button, 7, None, None, None, None, &[0]);
+
+    assert!(entry.name.is_none());
+    assert!(entry.value.is_none());
+}
+
+#[test]
+fn ref_entry_preserves_meaningful_identity_text() {
+    let mut button = node("button", Some("Save"));
+    button.value = Some("Primary".into());
+
+    let entry = ref_entry_from_node(&button, 7, None, None, None, None, &[0]);
+
+    assert_eq!(entry.name.as_deref(), Some("Save"));
+    assert_eq!(entry.value.as_deref(), Some("Primary"));
+}
+
+#[test]
 fn allocate_refs_records_structural_paths() {
     let mut root = node("window", Some("w"));
     let mut group = node("group", Some("List"));

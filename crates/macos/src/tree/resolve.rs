@@ -271,11 +271,21 @@ fn identity_matches(
     actual_name: Option<&str>,
     actual_value: Option<&str>,
 ) -> bool {
-    match (entry.name.as_deref(), entry.value.as_deref()) {
+    let expected_name = meaningful_text(entry.name.as_deref());
+    let expected_value = meaningful_text(entry.value.as_deref());
+    let actual_name = meaningful_text(actual_name);
+    let actual_value = meaningful_text(actual_value);
+
+    match (expected_name, expected_value) {
         (Some(expected), _) => Some(expected) == actual_name || Some(expected) == actual_value,
         (None, Some(expected)) => Some(expected) == actual_value || Some(expected) == actual_name,
         (None, None) => actual_name.is_none() && actual_value.is_none(),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn meaningful_text(value: Option<&str>) -> Option<&str> {
+    value.filter(|text| !text.is_empty())
 }
 
 #[cfg(target_os = "macos")]

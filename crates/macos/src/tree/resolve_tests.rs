@@ -101,3 +101,26 @@ fn source_window_number_parses_window_ids_only() {
         None
     );
 }
+
+#[test]
+fn empty_identity_matches_missing_or_empty_ax_text() {
+    let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
+    entry.role = "menubutton".into();
+    entry.name = Some(String::new());
+
+    assert!(identity_matches(&entry, None, None));
+    assert!(identity_matches(&entry, Some(""), None));
+    assert!(identity_matches(&entry, None, Some("")));
+    assert!(!identity_matches(&entry, Some("Insert Shape"), None));
+}
+
+#[test]
+fn meaningful_identity_still_requires_matching_text() {
+    let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
+    entry.name = Some("Zoom".into());
+
+    assert!(identity_matches(&entry, Some("Zoom"), None));
+    assert!(identity_matches(&entry, None, Some("Zoom")));
+    assert!(!identity_matches(&entry, None, None));
+    assert!(!identity_matches(&entry, Some(""), None));
+}
