@@ -32,7 +32,7 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
                 tracing::debug!("resolve: found path match");
                 return Ok(handle);
             }
-            if requires_scoped_path_resolution(entry) {
+            if should_retry_scoped_path_resolution(entry, !path_roots.is_empty()) {
                 if attempt + 1 < attempts && std::time::Instant::now() < deadline {
                     std::thread::sleep(std::time::Duration::from_millis(75));
                 }
@@ -78,6 +78,11 @@ fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
         && entry.bounds_hash.is_none()
         && !entry.path.is_empty()
         && (entry.source_window_id.is_some() || entry.source_window_title.is_some())
+}
+
+#[cfg(target_os = "macos")]
+fn should_retry_scoped_path_resolution(entry: &RefEntry, found_scoped_root: bool) -> bool {
+    found_scoped_root && requires_scoped_path_resolution(entry)
 }
 
 #[cfg(target_os = "macos")]

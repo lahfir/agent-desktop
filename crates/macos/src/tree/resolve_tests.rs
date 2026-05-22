@@ -88,6 +88,21 @@ fn no_bounds_source_window_refs_require_scoped_path_resolution() {
 }
 
 #[test]
+fn scoped_path_retry_requires_a_resolved_scope_root() {
+    let no_bounds_entry = entry(None, Some("w-10"), Some("Freeform"), None);
+
+    assert!(should_retry_scoped_path_resolution(&no_bounds_entry, true));
+    assert!(!should_retry_scoped_path_resolution(
+        &no_bounds_entry,
+        false
+    ));
+    assert!(!should_retry_scoped_path_resolution(
+        &entry(Some(42), Some("w-10"), Some("Freeform"), None),
+        true
+    ));
+}
+
+#[test]
 fn source_window_number_parses_window_ids_only() {
     assert_eq!(
         source_window_number(&entry(None, Some("w-42"), None, None)),
