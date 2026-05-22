@@ -63,7 +63,7 @@ CLIPBOARD
 WAIT
   wait [ms]                  Pause for N milliseconds
   wait --element <ref>       Block until element appears (--timeout ms)
-  wait --element <ref> --snapshot <id>  Wait against a specific snapshot refmap
+  wait --element <ref> --snapshot <snapshot_id>  Wait against a specific snapshot refmap
   wait --window <title>      Block until window appears
   wait --text <text>         Block until text appears in app
   wait --menu --app <app>    Block until a menu surface is open
@@ -82,7 +82,7 @@ BATCH
 REF IDs
   snapshot assigns @e1, @e2, ... to interactive elements in depth-first order.
   Use a ref wherever <ref> appears. Refs are snapshot-scoped. Pass
-  --snapshot <id> to pin a command to a known snapshot; when omitted,
+  --snapshot <snapshot_id> to pin a command to a known snapshot; when omitted,
   ref commands use the latest saved snapshot. Run snapshot again after UI changes.
 
 KEY COMBOS
@@ -106,4 +106,4 @@ EXAMPLES
   agent-desktop resize-window --app TextEdit --width 800 --height 600
   agent-desktop mouse-click --xy 500,300
   agent-desktop wait --text "Loading complete" --app Safari --timeout 5000
-  agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1"}}]'
+  agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'

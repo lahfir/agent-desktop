@@ -168,7 +168,7 @@ Pauses for N milliseconds. Use between actions that need time to settle.
 
 ### wait (element)
 ```bash
-agent-desktop wait --element @e5 --snapshot s... --timeout 5000 --app "App"
+agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 --app "App"
 ```
 Blocks until the element ref appears in the accessibility tree. Useful after triggering UI changes.
 
@@ -213,10 +213,10 @@ Blocks until the menu surface is dismissed.
 
 ### batch
 ```bash
-agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1"}},{"command":"wait","args":{"ms":500}},{"command":"click","args":{"ref_id":"@e2"}}]'
+agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}},{"command":"wait","args":{"ms":500}},{"command":"click","args":{"ref_id":"@e2","snapshot":"<snapshot_id>"}}]'
 agent-desktop batch '[...]' --stop-on-error
 ```
-Execute multiple commands in sequence from a JSON array. Each entry has `command` (string) and `args` (object).
+Execute multiple commands in sequence from a JSON array. Each entry has `command` (string) and `args` (object). Use `args`, not `params`. For ref-consuming commands, pass the output `snapshot_id` as the `snapshot` field.
 
 Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
 
@@ -227,9 +227,9 @@ Batch uses the same typed `Commands` enum, command policy preflight, permission 
 **Batch format:**
 ```json
 [
-  { "command": "click", "args": { "ref_id": "@e1", "snapshot": "s8f3k2p9" } },
+  { "command": "click", "args": { "ref_id": "@e1", "snapshot": "<snapshot_id>" } },
   { "command": "wait", "args": { "ms": 500 } },
-  { "command": "type", "args": { "ref_id": "@e2", "snapshot": "s8f3k2p9", "text": "hello" } }
+  { "command": "type", "args": { "ref_id": "@e2", "snapshot": "<snapshot_id>", "text": "hello" } }
 ]
 ```
 
@@ -251,7 +251,7 @@ Batch uses the same typed `Commands` enum, command policy preflight, permission 
 ```json
 [
   { "command": "snapshot", "args": { "app": "Slack", "skeleton": true, "interactive_only": true } },
-  { "command": "snapshot", "args": { "app": "Slack", "root": "@e3", "snapshot": "s8f3k2p9", "interactive_only": true } }
+  { "command": "snapshot", "args": { "app": "Slack", "root": "@e3", "snapshot": "<snapshot_id>", "interactive_only": true } }
 ]
 ```
 

@@ -265,8 +265,8 @@ agent-desktop wait --menu --timeout 3000                     # wait for menu
 
 ```bash
 agent-desktop batch '[
-  {"command": "click", "args": {"ref_id": "@e2", "snapshot": "s8f3k2p9"}},
-  {"command": "type", "args": {"ref_id": "@e5", "snapshot": "s8f3k2p9", "text": "hello"}},
+  {"command": "click", "args": {"ref_id": "@e2", "snapshot": "<snapshot_id>"}},
+  {"command": "type", "args": {"ref_id": "@e5", "snapshot": "<snapshot_id>", "text": "hello"}},
   {"command": "press", "args": {"combo": "return"}}
 ]' --stop-on-error
 ```
@@ -296,7 +296,7 @@ agent-desktop snapshot [OPTIONS]
 | `--max-depth <N>` | 10 | Maximum tree depth |
 | `--skeleton` | off | Shallow 3-level overview; truncated containers show `children_count` and get refs as drill targets |
 | `--root <REF>` | - | Start traversal from this ref; merges into existing refmap with scoped invalidation |
-| `--snapshot <ID>` | latest | Snapshot ID to use when resolving `--root` |
+| `--snapshot <snapshot_id>` | latest | Snapshot ID to use when resolving `--root` |
 | `--surface <TYPE>` | window | `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
 
 ## JSON Output

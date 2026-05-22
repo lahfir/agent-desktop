@@ -4,7 +4,7 @@ Commands for modifying UI state — clicking, typing, selecting, scrolling, and 
 
 Ref-based actions are headless by default. They try semantic accessibility operations and do not silently steal focus, move the cursor, synthesize keyboard input, or use the pasteboard. Physical/headed interaction is reserved for explicit `focus`, `press`, `hover`, `drag`, and `mouse-*` commands or an explicit FFI policy. The `type` command has an explicit focus-fallback tier for callers that opt into focus changes while still forbidding cursor movement; the default CLI path remains AX-value-first and headless.
 
-All ref-based interaction commands accept `--snapshot <id>`. Omit it for the latest saved snapshot, or pass the `snapshot_id` returned by `snapshot` to keep scripts pinned to the exact ref map they observed.
+All ref-based interaction commands accept `--snapshot <snapshot_id>`. Omit it for the latest saved snapshot, or pass the `snapshot_id` returned by `snapshot` to keep scripts pinned to the exact ref map they observed.
 
 ## Click Actions
 
@@ -13,7 +13,7 @@ Click commands use semantic AX activation first. In the default headless policy,
 ### click
 ```bash
 agent-desktop click @e5
-agent-desktop click @e5 --snapshot s...
+agent-desktop click @e5 --snapshot <snapshot_id>
 ```
 Primary activation. Tries verified AXPress > AXConfirm > AXOpen > AXPick > child activation > selection/value relays > custom actions > ancestor activation. Focus-stealing and coordinate fallback steps are not used by the default ref command path.
 

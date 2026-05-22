@@ -22,7 +22,11 @@ fn default_scroll_direction() -> String {
 pub(crate) struct TypeArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(value_name = "TEXT", allow_hyphen_values = true, help = "Text to type")]
     pub text: String,
@@ -33,7 +37,11 @@ pub(crate) struct TypeArgs {
 pub(crate) struct SetValueArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(
         value_name = "VALUE",
@@ -48,7 +56,11 @@ pub(crate) struct SetValueArgs {
 pub(crate) struct SelectArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(value_name = "VALUE", help = "Option to select")]
     pub value: String,
@@ -59,7 +71,11 @@ pub(crate) struct SelectArgs {
 pub(crate) struct ScrollArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(
         long,
@@ -100,7 +116,11 @@ pub(crate) struct KeyComboArgs {
 pub(crate) struct HoverArgs {
     #[arg(value_name = "REF", help = "Element ref to hover over")]
     pub ref_id: Option<String>,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(long, help = "Absolute coordinates as x,y")]
     pub xy: Option<String>,
@@ -119,7 +139,11 @@ pub(crate) struct DragCliArgs {
     pub to: Option<String>,
     #[arg(long, name = "to-xy", help = "Destination coordinates as x,y")]
     pub to_xy: Option<String>,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(long, help = "Drag duration in milliseconds")]
     pub duration: Option<u64>,

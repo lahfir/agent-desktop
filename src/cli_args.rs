@@ -83,7 +83,11 @@ pub(crate) struct SnapshotArgs {
     pub skeleton: bool,
     #[arg(long, help = "Start traversal from this ref instead of window root")]
     pub root: Option<String>,
-    #[arg(long, help = "Snapshot ID to use when resolving --root")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID to use when resolving --root"
+    )]
     pub snapshot: Option<String>,
 }
 
@@ -158,7 +162,11 @@ pub(crate) struct ScreenshotArgs {
 pub(crate) struct GetArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(
         long,
@@ -174,7 +182,11 @@ pub(crate) struct GetArgs {
 pub(crate) struct IsArgs {
     #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
     pub ref_id: String,
-    #[arg(long, help = "Snapshot ID returned by snapshot; omit to use latest")]
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID returned by snapshot; omit to use latest"
+    )]
     pub snapshot: Option<String>,
     #[arg(
         long,
@@ -192,6 +204,7 @@ pub(crate) struct RefArgs {
     pub ref_id: String,
     #[arg(
         long = "snapshot",
+        value_name = "SNAPSHOT_ID",
         help = "Snapshot ID returned by snapshot; omit to use latest"
     )]
     #[serde(rename = "snapshot", alias = "snapshot_id")]

@@ -103,6 +103,7 @@ pub(crate) struct WaitArgs {
     pub element: Option<String>,
     #[arg(
         long,
+        value_name = "SNAPSHOT_ID",
         help = "Snapshot ID returned by snapshot for --element waits; omit to use latest"
     )]
     pub snapshot: Option<String>,

@@ -87,7 +87,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - In skeleton mode, named/described containers at truncation boundary also get refs (drill-down targets with empty `available_actions`)
 - Static text, groups, containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
-- Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <id>`
+- Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <snapshot_id>`
 - `last_refmap.json` is only a latest-snapshot inspection artifact. The command path uses snapshot-scoped storage.
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
@@ -129,18 +129,18 @@ agent-desktop snapshot --app "App" -i                       # Full tree (simple 
 agent-desktop snapshot --app "App" --surface menu -i        # Surface snapshot
 agent-desktop screenshot --app "App" out.png                # PNG screenshot
 agent-desktop find --app "App" --role button                # Search elements
-agent-desktop get @e1 --snapshot s... --property text       # Read element property
-agent-desktop is @e1 --snapshot s... --property enabled     # Check element state
+agent-desktop get @e1 --snapshot <snapshot_id> --property text       # Read element property
+agent-desktop is @e1 --snapshot <snapshot_id> --property enabled     # Check element state
 agent-desktop list-surfaces --app "App"                     # Available surfaces
 ```
 
 ### Interaction
 ```
-agent-desktop click @e5 --snapshot s...         # AX-first click, no cursor move by default
+agent-desktop click @e5 --snapshot <snapshot_id> # AX-first click, no cursor move by default
 agent-desktop double-click @e3                  # AXOpen; physical double-click uses mouse-click --count 2
 agent-desktop triple-click @e2                  # Physical triple-click uses mouse-click --count 3
 agent-desktop right-click @e5                   # Right-click; menu returned when verified
-agent-desktop type @e2 --snapshot s... "hello"  # Headless AX text insertion when supported
+agent-desktop type @e2 --snapshot <snapshot_id> "hello"  # Headless AX text insertion when supported
 agent-desktop set-value @e2 "new value"         # Set value directly
 agent-desktop clear @e2                         # Clear element value
 agent-desktop focus @e2                         # Set keyboard focus
@@ -205,7 +205,7 @@ agent-desktop clipboard-clear                   # Clear clipboard
 ### Wait
 ```
 agent-desktop wait 1000                         # Pause 1 second
-agent-desktop wait --element @e5 --snapshot s... --timeout 5000 # Wait for element
+agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 # Wait for element
 agent-desktop wait --window "Title"             # Wait for window
 agent-desktop wait --text "Done" --app "App"    # Wait for text
 agent-desktop wait --menu --app "App"           # Wait for menu surface

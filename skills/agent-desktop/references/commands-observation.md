@@ -13,7 +13,7 @@ agent-desktop snapshot --app "App" --surface menu
 agent-desktop snapshot --app "App" --window-id "w-1234"
 agent-desktop snapshot --app "App" -i --compact
 agent-desktop snapshot --app "App" --skeleton -i
-agent-desktop snapshot --root @e12 --snapshot s8f3k2p9 -i
+agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 ```
 
 | Flag | Default | Description |
@@ -27,7 +27,7 @@ agent-desktop snapshot --root @e12 --snapshot s8f3k2p9 -i
 | `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
 | `--skeleton` | false | Clamp traversal to depth 3 and add `children_count` to truncated containers |
 | `--root <REF>` | | Drill down from a ref discovered in a previous snapshot. Cannot be combined with `--surface` |
-| `--snapshot <ID>` | latest | Snapshot ID to use when resolving `--root` |
+| `--snapshot <snapshot_id>` | latest | Snapshot ID to use when resolving `--root` |
 
 **Output structure:**
 ```json
@@ -78,7 +78,7 @@ agent-desktop snapshot --root @e12 --snapshot s8f3k2p9 -i
 - Starts tree traversal from the given ref instead of the window root
 - Merges new refs into the existing refmap with scoped invalidation: only refs from the previous drill of the same root are replaced, leaving all other refs intact
 - Cannot be combined with `--surface`
-- Use `--snapshot <ID>` when drilling from a specific snapshot rather than the latest snapshot pointer
+- Use `--snapshot <snapshot_id>` when drilling from a specific snapshot rather than the latest snapshot pointer
 
 **Progressive drill-down workflow:**
 ```bash
@@ -86,10 +86,10 @@ agent-desktop snapshot --root @e12 --snapshot s8f3k2p9 -i
 agent-desktop snapshot --skeleton --app Slack -i
 
 # Step 2: Drill into a discovered region
-agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i
+agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 
 # Step 3: Re-drill same region (scoped invalidation replaces @e3's refs)
-agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i
+agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 ```
 
 **Tips:**
@@ -146,7 +146,7 @@ Read a specific property from an element.
 
 ```bash
 agent-desktop get @e1 --property text
-agent-desktop get @e1 --snapshot s8f3k2p9 --property text
+agent-desktop get @e1 --snapshot <snapshot_id> --property text
 agent-desktop get @e2 --property value
 agent-desktop get @e3 --property bounds
 agent-desktop get @e4 --property role
@@ -169,7 +169,7 @@ Check a boolean state on an element.
 
 ```bash
 agent-desktop is @e1 --property visible
-agent-desktop is @e1 --snapshot s8f3k2p9 --property visible
+agent-desktop is @e1 --snapshot <snapshot_id> --property visible
 agent-desktop is @e2 --property enabled
 agent-desktop is @e3 --property checked
 agent-desktop is @e4 --property focused

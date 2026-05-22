@@ -231,7 +231,7 @@ Large apps (Xcode, Safari with many tabs) can have deep trees.
 - Use `-i` to filter to interactive elements only
 - Use `--max-depth 5` to limit depth
 - Use `--compact` to remove empty structural nodes
-- Use `--skeleton` for dense apps, then `snapshot --root @ref --snapshot <id>` to drill down
+- Use `--skeleton` for dense apps, then `snapshot --root @ref --snapshot <snapshot_id>` to drill down
 - Target a specific window with `--window-id`
 - Use `find` instead of full snapshot when you know what you're looking for
 
