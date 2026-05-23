@@ -88,22 +88,17 @@ fn no_bounds_source_window_refs_require_scoped_path_resolution() {
 }
 
 #[test]
-fn scoped_path_retry_requires_a_resolved_scope_root() {
+fn scoped_path_retry_fails_closed_when_scope_is_unresolved() {
     let no_bounds_entry = entry(None, Some("w-10"), Some("Freeform"), None);
 
-    assert!(should_retry_scoped_path_resolution(&no_bounds_entry, true));
-    assert!(!should_retry_scoped_path_resolution(
-        &description_entry(),
-        false
-    ));
-    assert!(!should_retry_scoped_path_resolution(
-        &no_bounds_entry,
-        false
-    ));
-    assert!(!should_retry_scoped_path_resolution(
-        &entry(Some(42), Some("w-10"), Some("Freeform"), None),
-        true
-    ));
+    assert!(should_retry_scoped_path_resolution(&no_bounds_entry));
+    assert!(should_retry_scoped_path_resolution(&description_entry()));
+    assert!(!should_retry_scoped_path_resolution(&entry(
+        Some(42),
+        Some("w-10"),
+        Some("Freeform"),
+        None
+    )));
 }
 
 #[test]
@@ -111,7 +106,7 @@ fn scoped_path_retry_fails_closed_for_blank_identity_without_bounds() {
     let mut blank = entry(None, Some("w-10"), Some("Freeform"), None);
     blank.name = None;
 
-    assert!(should_retry_scoped_path_resolution(&blank, false));
+    assert!(should_retry_scoped_path_resolution(&blank));
 }
 
 #[test]

@@ -6,6 +6,7 @@ pub mod capabilities;
 pub mod element;
 pub mod element_bounds;
 pub mod resolve;
+mod resolve_bounds;
 mod resolve_identity;
 pub mod roles;
 pub mod surfaces;

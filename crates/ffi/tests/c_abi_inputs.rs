@@ -50,11 +50,7 @@ fn resolve_element_rejects_invalid_utf8_name() {
             ptr: std::ptr::null(),
         };
         let rc = ad_resolve_element(adapter, &entry, &mut out);
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "must reject without UB, got {:?}",
-            rc
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.ptr.is_null());
     });
 }
@@ -76,11 +72,7 @@ fn resolve_element_rejects_invalid_utf8_description() {
             ptr: std::ptr::null(),
         };
         let rc = ad_resolve_element(adapter, &entry, &mut out);
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "must reject without UB, got {:?}",
-            rc
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.ptr.is_null());
     });
 }

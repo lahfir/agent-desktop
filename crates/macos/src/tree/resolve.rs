@@ -11,6 +11,7 @@ use super::element::{
     child_attributes, copy_ax_array, copy_element_attr, copy_i64_attr, copy_string_attr,
     element_for_pid, resolve_element_name,
 };
+use super::resolve_bounds::{bounds_match, should_prune_by_bounds};
 use super::resolve_identity::{has_meaningful_identity, identity_matches};
 
 #[cfg(target_os = "macos")]
@@ -33,7 +34,7 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
                 tracing::debug!("resolve: found path match");
                 return Ok(handle);
             }
-            if should_retry_scoped_path_resolution(entry, !path_roots.is_empty()) {
+            if should_retry_scoped_path_resolution(entry) {
                 if attempt + 1 < attempts && std::time::Instant::now() < deadline {
                     std::thread::sleep(std::time::Duration::from_millis(75));
                 }
@@ -88,8 +89,8 @@ fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn should_retry_scoped_path_resolution(entry: &RefEntry, found_scoped_root: bool) -> bool {
-    requires_scoped_path_resolution(entry) && (found_scoped_root || !can_use_broad_search(entry))
+fn should_retry_scoped_path_resolution(entry: &RefEntry) -> bool {
+    requires_scoped_path_resolution(entry)
 }
 
 #[cfg(target_os = "macos")]
@@ -307,46 +308,6 @@ fn element_matches_path_entry(el: &AXElement, entry: &RefEntry) -> bool {
         elem_value.as_deref(),
         elem_description.as_deref(),
     )
-}
-
-#[cfg(target_os = "macos")]
-fn bounds_match(el: &AXElement, entry: &RefEntry) -> bool {
-    match entry.bounds_hash {
-        Some(expected) => {
-            let actual = crate::tree::read_bounds(el).map(|b| b.bounds_hash());
-            actual.map(|h| h == expected).unwrap_or(false)
-        }
-        None => true,
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn should_prune_by_bounds(el: &AXElement, entry: &RefEntry, depth: u8) -> bool {
-    if depth == 0 || entry.bounds.is_none() || entry.bounds_hash.is_none() {
-        return false;
-    }
-    let Some(candidate) = crate::tree::read_bounds(el) else {
-        return false;
-    };
-    let Some(target) = entry.bounds.as_ref() else {
-        return false;
-    };
-    !rects_overlap(&candidate, target)
-}
-
-#[cfg(target_os = "macos")]
-fn rects_overlap(
-    candidate: &agent_desktop_core::node::Rect,
-    target: &agent_desktop_core::node::Rect,
-) -> bool {
-    let candidate_right = candidate.x + candidate.width;
-    let candidate_bottom = candidate.y + candidate.height;
-    let target_right = target.x + target.width;
-    let target_bottom = target.y + target.height;
-    candidate.x <= target_right
-        && candidate_right >= target.x
-        && candidate.y <= target_bottom
-        && candidate_bottom >= target.y
 }
 
 #[cfg(target_os = "macos")]
