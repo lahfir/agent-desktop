@@ -93,6 +93,10 @@ fn scoped_path_retry_requires_a_resolved_scope_root() {
 
     assert!(should_retry_scoped_path_resolution(&no_bounds_entry, true));
     assert!(!should_retry_scoped_path_resolution(
+        &description_entry(),
+        false
+    ));
+    assert!(!should_retry_scoped_path_resolution(
         &no_bounds_entry,
         false
     ));
@@ -100,6 +104,24 @@ fn scoped_path_retry_requires_a_resolved_scope_root() {
         &entry(Some(42), Some("w-10"), Some("Freeform"), None),
         true
     ));
+}
+
+#[test]
+fn scoped_path_retry_fails_closed_for_blank_identity_without_bounds() {
+    let mut blank = entry(None, Some("w-10"), Some("Freeform"), None);
+    blank.name = None;
+
+    assert!(should_retry_scoped_path_resolution(&blank, false));
+}
+
+#[test]
+fn broad_search_requires_bounds_or_meaningful_identity() {
+    let mut blank = entry(None, None, None, None);
+    blank.name = None;
+
+    assert!(!can_use_broad_search(&blank));
+    assert!(can_use_broad_search(&description_entry()));
+    assert!(can_use_broad_search(&entry(Some(42), None, None, None)));
 }
 
 #[test]
@@ -118,53 +140,10 @@ fn source_window_number_parses_window_ids_only() {
     );
 }
 
-#[test]
-fn empty_identity_matches_missing_or_empty_ax_text() {
-    let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
-    entry.role = "menubutton".into();
-    entry.name = Some(String::new());
-
-    assert!(identity_matches(&entry, None, None, None));
-    assert!(identity_matches(&entry, Some(""), None, None));
-    assert!(identity_matches(&entry, None, Some(""), None));
-    assert!(!identity_matches(&entry, Some("Insert Shape"), None, None));
-}
-
-#[test]
-fn description_identity_matches_blank_title_controls() {
+fn description_entry() -> RefEntry {
     let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
     entry.role = "button".into();
     entry.name = None;
     entry.description = Some("Insert Text Box".into());
-
-    assert!(identity_matches(
-        &entry,
-        Some(""),
-        None,
-        Some("Insert Text Box")
-    ));
-    assert!(identity_matches(
-        &entry,
-        Some("Insert Text Box"),
-        None,
-        None
-    ));
-    assert!(!identity_matches(&entry, Some(""), None, None));
-    assert!(!identity_matches(
-        &entry,
-        Some(""),
-        None,
-        Some("Insert Shape")
-    ));
-}
-
-#[test]
-fn meaningful_identity_still_requires_matching_text() {
-    let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
-    entry.name = Some("Zoom".into());
-
-    assert!(identity_matches(&entry, Some("Zoom"), None, None));
-    assert!(identity_matches(&entry, None, Some("Zoom"), None));
-    assert!(!identity_matches(&entry, None, None, None));
-    assert!(!identity_matches(&entry, Some(""), None, None));
+    entry
 }

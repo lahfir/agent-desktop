@@ -27,53 +27,12 @@ pub unsafe extern "C" fn ad_resolve_element(
         crate::pointer_guard::guard_non_null!(entry, c"entry is null");
         let adapter = &*adapter;
         let entry = &*entry;
-        let role = match c_to_string(entry.role) {
-            Some(s) => s,
-            None => {
-                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    "role is null or invalid UTF-8",
-                ));
-                return AdResult::ErrInvalidArgs;
+        let core_entry = match core_ref_entry_from_ffi(entry) {
+            Ok(entry) => entry,
+            Err(err) => {
+                error::set_last_error(&err);
+                return error::last_error_code();
             }
-        };
-        // Fail closed on invalid UTF-8 for `name`: conflating "null" with
-        // "bad bytes" would widen a caller-specified filter into an
-        // unfiltered re-resolution. try_c_to_string keeps null → None and
-        // promotes invalid UTF-8 to an explicit InvalidArgs, matching the
-        // optional-filter contract used by ad_list_* entrypoints.
-        let name = match try_c_to_string(entry.name) {
-            Ok(value) => value,
-            Err(()) => {
-                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    "name is not valid UTF-8",
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-        let bounds_hash = if entry.has_bounds_hash {
-            Some(entry.bounds_hash)
-        } else {
-            None
-        };
-        let core_entry = CoreRefEntry {
-            pid: entry.pid,
-            role,
-            name,
-            value: None,
-            description: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash,
-            available_actions: vec![],
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
-            root_ref: None,
-            path_is_absolute: false,
-            path: smallvec::SmallVec::new(),
         };
         match adapter.inner.resolve_element(&core_entry) {
             Ok(handle) => {
@@ -88,3 +47,56 @@ pub unsafe extern "C" fn ad_resolve_element(
         }
     })
 }
+
+unsafe fn core_ref_entry_from_ffi(
+    entry: &AdRefEntry,
+) -> Result<CoreRefEntry, agent_desktop_core::error::AdapterError> {
+    let role = unsafe { c_to_string(entry.role) }.ok_or_else(|| {
+        agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            "role is null or invalid UTF-8",
+        )
+    })?;
+    let name = unsafe { optional_string(entry.name, "name") }?;
+    let description = unsafe { optional_string(entry.description, "description") }?;
+    let bounds_hash = if entry.has_bounds_hash {
+        Some(entry.bounds_hash)
+    } else {
+        None
+    };
+
+    Ok(CoreRefEntry {
+        pid: entry.pid,
+        role,
+        name,
+        value: None,
+        description,
+        states: vec![],
+        bounds: None,
+        bounds_hash,
+        available_actions: vec![],
+        source_app: None,
+        source_window_id: None,
+        source_window_title: None,
+        source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
+        root_ref: None,
+        path_is_absolute: false,
+        path: smallvec::SmallVec::new(),
+    })
+}
+
+unsafe fn optional_string(
+    ptr: *const std::os::raw::c_char,
+    field: &str,
+) -> Result<Option<String>, agent_desktop_core::error::AdapterError> {
+    unsafe { try_c_to_string(ptr) }.map_err(|()| {
+        agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("{field} is not valid UTF-8"),
+        )
+    })
+}
+
+#[cfg(test)]
+#[path = "resolve_tests.rs"]
+mod tests;

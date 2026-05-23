@@ -42,6 +42,33 @@ fn resolve_element_rejects_invalid_utf8_name() {
             pid: 0,
             role: role.as_ptr(),
             name: bad_name.as_ptr() as *const c_char,
+            description: std::ptr::null(),
+            bounds_hash: 0,
+            has_bounds_hash: false,
+        };
+        let mut out = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
+        let rc = ad_resolve_element(adapter, &entry, &mut out);
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "must reject without UB, got {:?}",
+            rc
+        );
+        assert!(out.ptr.is_null());
+    });
+}
+
+#[test]
+fn resolve_element_rejects_invalid_utf8_description() {
+    with_adapter(|adapter| unsafe {
+        let role = std::ffi::CString::new("button").unwrap();
+        let bad_description: [u8; 2] = [0xC3, 0x00];
+        let entry = AdRefEntry {
+            pid: 0,
+            role: role.as_ptr(),
+            name: std::ptr::null(),
+            description: bad_description.as_ptr() as *const c_char,
             bounds_hash: 0,
             has_bounds_hash: false,
         };

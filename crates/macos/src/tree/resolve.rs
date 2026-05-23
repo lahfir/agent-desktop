@@ -11,6 +11,7 @@ use super::element::{
     child_attributes, copy_ax_array, copy_element_attr, copy_i64_attr, copy_string_attr,
     element_for_pid, resolve_element_name,
 };
+use super::resolve_identity::{has_meaningful_identity, identity_matches};
 
 #[cfg(target_os = "macos")]
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
@@ -38,6 +39,12 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
                 }
                 continue;
             }
+        }
+        if !can_use_broad_search(entry) {
+            if attempt + 1 < attempts && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(75));
+            }
+            continue;
         }
         let roots = candidate_roots(entry);
         if let Ok(handle) = find_entry_in_roots(&roots, entry, resolve_depth, deadline) {
@@ -82,7 +89,12 @@ fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
 
 #[cfg(target_os = "macos")]
 fn should_retry_scoped_path_resolution(entry: &RefEntry, found_scoped_root: bool) -> bool {
-    found_scoped_root && requires_scoped_path_resolution(entry)
+    requires_scoped_path_resolution(entry) && (found_scoped_root || !can_use_broad_search(entry))
+}
+
+#[cfg(target_os = "macos")]
+fn can_use_broad_search(entry: &RefEntry) -> bool {
+    entry.bounds_hash.is_some() || has_meaningful_identity(entry)
 }
 
 #[cfg(target_os = "macos")]
@@ -270,39 +282,6 @@ pub fn find_element_recursive(
 
     ancestors.remove(&ptr_key);
     Err(AdapterError::element_not_found("element"))
-}
-
-#[cfg(target_os = "macos")]
-fn identity_matches(
-    entry: &RefEntry,
-    actual_name: Option<&str>,
-    actual_value: Option<&str>,
-    actual_description: Option<&str>,
-) -> bool {
-    let expected = [
-        meaningful_text(entry.name.as_deref()),
-        meaningful_text(entry.value.as_deref()),
-        meaningful_text(entry.description.as_deref()),
-    ];
-    let actual = [
-        meaningful_text(actual_name),
-        meaningful_text(actual_value),
-        meaningful_text(actual_description),
-    ];
-
-    if expected.iter().all(Option::is_none) {
-        return actual.iter().all(Option::is_none);
-    }
-
-    expected
-        .iter()
-        .flatten()
-        .any(|expected| actual.iter().flatten().any(|actual| actual == expected))
-}
-
-#[cfg(target_os = "macos")]
-fn meaningful_text(value: Option<&str>) -> Option<&str> {
-    value.filter(|text| !text.is_empty())
 }
 
 #[cfg(target_os = "macos")]

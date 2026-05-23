@@ -233,6 +233,7 @@ typedef struct AdRefEntry {
   int32_t pid;
   const char *role;
   const char *name;
+  const char *description;
   uint64_t bounds_hash;
   bool has_bounds_hash;
 } AdRefEntry;
