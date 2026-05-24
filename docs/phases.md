@@ -601,31 +601,32 @@ These items are tracked in the Phase 2 plan (`docs/plans/2026-04-18-001-feat-pha
 
 ### Core invariants (research-driven — from Phase 2 plan §Headless-First Invariant)
 
-1. **Headless-first.** Every command — existing and Phase 2 — must work without foreground activation, visible GUI, focus steal, or physical cursor movement (except for explicit mouse commands). This is enforced as an integration-test invariant: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for non-mouse commands.
+1. **Headless-first inside the active desktop session.** Every command — existing and Phase 2 — must run without an agent-desktop GUI, foreground activation, focus steal, or physical cursor movement (except for explicit mouse commands). Windows, macOS, and Linux still require the target app to exist in the current user's interactive desktop/display session for accessibility and capture APIs. Session 0, Server Core, secure desktops, locked desktops, and other-user sessions return `PLATFORM_NOT_SUPPORTED`, `PERM_DENIED`, or `WINDOW_NOT_FOUND` with `platform_detail`, not silent best effort. The invariant is enforced by integration tests: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for non-mouse commands.
 2. **Skeleton traversal is platform-agnostic.** The novel progressive skeleton pattern (depth-3 clamp + `children_count` annotation + drill-down via `--root @ref` + scoped invalidation via `RefMap::remove_by_root_ref`) lives entirely in `crates/core/src/snapshot_ref.rs`. Windows adapter contributes ~50 LOC glue: `ControlViewWalker` (NOT `RawViewWalker` or `ContentViewWalker`) + `FindAll(TreeScope_Children, TrueCondition)` for `children_count` + fresh `UICacheRequest` per drill-down.
 3. **Asymmetric event threading.** `watch_element` uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery).
 4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Phase 2 uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The "one command per file" CLAUDE.md rule becomes the codegen contract.
 5. **FFI compatibility gates.** v0.1.14 adds explicit FFI result codes for snapshot-not-found and policy-denied paths. Phase 2 still owns `ad_abi_version()`, `ad_init(expected_major)`, and any broader ABI-version handshake before new cross-platform ABI surface ships.
-6. **`DeliverFiles` replaces `FileDrop`.** Headless-first forbids `NSDraggingSession` on macOS; the new action uses a 4-tier fallback (URL scheme → `NSWorkspace.open` with `activates: false` → pasteboard + `Cmd-V` → AppleScript). Windows keeps `IDataObject + DoDragDrop` (OLE drag is headless on Windows).
+6. **`DeliverFiles` replaces `FileDrop`.** Headless-first forbids `NSDraggingSession` on macOS; the new action uses a 4-tier fallback (URL scheme → `NSWorkspace.open` with `activates: false` → pasteboard + `Cmd-V` → AppleScript). Windows primary delivery is app/shell delivery (`ShellExecuteEx`, app URI handlers, `IFileOperation` for filesystem destinations, and `CF_HDROP` clipboard paste where accepted). `IDataObject + DoDragDrop` is an explicit policy-gated fallback/spike for targets that require drag semantics; it is never the default headless path.
 
 ### Windows Engineering Invariants (from Phase 2 plan Unit 3)
 
 1. `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` at startup.
-2. `CoInitializeEx(NULL, COINIT_MULTITHREADED)` on main thread (UIA prefers MTA).
-3. Never cache `IUIAutomationElement` across apartments.
+2. `CoInitializeEx(NULL, COINIT_MULTITHREADED)` on main thread and on every dedicated UIA worker thread (UIA prefers MTA).
+3. Never cache `IUIAutomationElement` across apartments. Event handlers are created, registered, removed, and drained on the same dedicated MTA thread; worker code re-resolves from `RefEntry` instead of moving elements across apartments.
 4. UIA-first, SendInput-fallback (UIA patterns are focus-independent; `SendInput` is focus-dependent + UIPI-blocked for elevated targets).
 5. `PostMessage WM_KEYDOWN` is DEAD for Chromium/UWP/games — not a viable alternative.
 6. UIPI elevation detection via `GetTokenInformation(TokenIntegrityLevel)`. Ship `uiAccess=true` as optional signed release, not default.
 7. `RemoveAutomationEventHandler` with post-remove-barrier pattern (Arc<Handler> outlives final callback dispatch).
 8. HRESULT format in `platform_detail`: `COM HRESULT 0x80070005 (E_ACCESSDENIED: Access is denied)`.
 9. `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` for legacy screenshot (mitigates DWM black frames). `windows-capture` (modern) handles composition correctly.
-10. `ElementFromHandle(hwnd)` is headless-safe on any visible/minimized window — the foundation of observation headlessness.
-11. `Windows.Graphics.Capture` requires DWM (Windows 10 1903+) in an interactive session; returns `PlatformNotSupported` in Session 0 / Server Core.
+10. `ElementFromHandle(hwnd)` is headless-safe for same-user, same-session visible/minimized windows at an accessible integrity level — the foundation of observation headlessness.
+11. `Windows.Graphics.Capture` requires DWM (Windows 10 1903+) in an active interactive session; returns `PlatformNotSupported` in Session 0, Server Core, secure desktop, or locked/remote sessions where capture is unavailable.
 12. Session isolation: cannot drive windows in other user sessions.
+13. `SetForegroundWindow` / `SetWindowPos(HWND_TOP)` is allowed only for explicit focus/window commands whose `InteractionPolicy` permits focus steal. It is never a fallback for semantic ref actions.
 
 
 
-Phase 2 brings agent-desktop to Windows. It is also the phase that closes the cross-platform feature-parity gaps surfaced after the v0.1.13 FFI ship — shipping Windows meaningfully requires new core abstractions (stable identifiers, event subscriptions, text-range primitives) that Windows UIA exposes natively and the macOS adapter currently does not surface. Every new trait method added here is implemented on both platforms in the same PR pair: Windows ships the native version, macOS backfills using the equivalent AX API. Linux (Phase 3) mirrors both against AT-SPI2.
+Phase 2 brings agent-desktop to Windows. It is also the phase that closes the cross-platform feature-parity gaps surfaced after the v0.1.13 FFI ship — shipping Windows meaningfully requires new core abstractions (stable identifiers, event subscriptions, text-range primitives, shell surfaces, and Windows-specific tray/taskbar affordances) that Windows UIA exposes natively and the macOS adapter currently does not surface. Every new trait method added here is implemented on both platforms in the same PR pair when there is a real cross-platform analogue. True Windows shell concepts return `PLATFORM_NOT_SUPPORTED` on other adapters through the same core command path, never through side-channel code. Linux (Phase 3) mirrors the portable parts against AT-SPI2.
 
 Core engine, CLI parser, JSON contract invariants, and command-registration pattern are preserved. What Phase 2 legitimately changes: `AccessibilityNode` field set, `Action` enum variants, `ErrorCode` variants, `PlatformAdapter` trait size. Every change is additive (`#[non_exhaustive]` already guards the enums) and every macOS backfill lands atomically with the Windows implementation so the two platforms never drift.
 
@@ -644,23 +645,24 @@ Core + Windows parity (original scope):
 | P2-O3 | Windows input synthesis | `click`, `type`, `press`, all mouse commands working via UIA + SendInput |
 | P2-O4 | Windows screenshot | `screenshot` produces PNG via `Windows.Graphics.Capture` API |
 | P2-O5 | Windows clipboard | `clipboard-get` / `clipboard-set` / `clipboard-clear` working via Win32 Clipboard API |
-| P2-O6 | Windows CI | GitHub Actions Windows runner executes full test suite on every PR |
+| P2-O6 | Windows CI | GitHub Actions Windows runner executes build, clippy, unit, contract, and non-interactive tests on every PR. UIA/shell integration tests that require Explorer, Start, Action Center, or an unlocked desktop run on a labeled interactive/self-hosted Windows job or are skipped with explicit `PLATFORM_NOT_SUPPORTED` assertions |
 | P2-O7 | Windows binary release | Prebuilt `.exe` published via GitHub Releases and npm; Phase 1.5 FFI cdylib for Windows already ships |
 
 Cross-platform core extensions (new, landed alongside Windows):
 
 | ID | Objective | Metric |
 |----|-----------|--------|
-| P2-O8 | `AccessibilityNode` stable-selector fields | Every node carries `identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` (all `Option<String>` / `Vec<String>` with `skip_serializing_if`). Populated by Windows UIA `AutomationId` / `LocalizedControlType` / `HelpText`, by macOS `kAXIdentifierAttribute` / `kAXSubroleAttribute` / `kAXRoleDescriptionAttribute` / `kAXPlaceholderValueAttribute` / `kAXDOMIdentifierAttribute` / `kAXDOMClassListAttribute`. Snapshot regression fixtures show stable IDs across re-drills |
+| P2-O8 | `AccessibilityNode` stable-selector fields | Nodes may carry `identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` (all `Option<String>` / `Vec<String>` with `skip_serializing_if`). Populated where the platform/app exposes stable selectors: Windows UIA `AutomationId` / `LocalizedControlType` / `HelpText`; macOS `kAXIdentifierAttribute` / `kAXSubroleAttribute` / `kAXRoleDescriptionAttribute` / `kAXPlaceholderValueAttribute` / `kAXDOMIdentifierAttribute` / `kAXDOMClassListAttribute`. Resolver prefers stable selectors when present and falls back to the existing fingerprint; tests require known controls with explicit IDs to preserve them across re-drills, not every real-app node |
 | P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Phase 2 plan §Headless-First Invariant and Unit 12), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch_element` is an adapter method, **not** an `Action` variant (plan §KD8 + origin brainstorm §D8). Each has a macOS AX API mapping (all AX calls on main thread per plan §KD9), a Windows UIA pattern mapping, and a new CLI subcommand. The `#[non_exhaustive]` attribute keeps this SemVer-safe; C-ABI consumers use `default:` / wildcard fallthrough plus the exported `AD_RESULT_UNKNOWN = -99` sentinel (plan §KD17) |
 | P2-O10 | `ErrorCode` expansion | Add `PermissionRevoked` (distinct from `PermDenied` — TCC yanked mid-session), `ResourceExhausted` (refmap >1 MB, tree node-count cap), `AxMessagingTimeout` (AX-specific timeout separate from orchestration `Timeout`), `AutomationPermissionDenied` (macOS `osascript` grant). Tri-state permission probe at startup distinguishes "never granted" from "revoked" |
 | P2-O11 | Event-subscription primitive (push, not poll) | New trait method `watch_element(handle, events: &[EventKind], timeout_ms: u64) -> Result<Vec<ElementEvent>>`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource` (no more polling in `system/wait.rs`). Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. New `wait --event value-changed --ref @e5 --timeout 3000` CLI flag. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals |
 | P2-O12 | Text range primitives | Read caret, read selection, select a range by offsets, read text at range, insert at caret. macOS: `kAXSelectedTextRangeAttribute` (settable), `AXStringForRangeParameterizedAttribute`, `AXBoundsForRangeParameterizedAttribute`, `AXRangeForLineParameterizedAttribute`, `AXValueCreate(kAXValueCFRangeType, …)`. Windows: `TextPattern.GetSelection`, `TextPattern.DocumentRange`, `TextRange.Select`, `TextRange.Move`, `TextRange.GetText`, `TextRange.GetBoundingRectangles`. Commands: `text get-selection`, `text select-range <ref> <start> <len>`, `text insert-at-caret <ref> <string>`, `text at-offset <ref> <start> <len>` |
-| P2-O13 | Modern per-window screenshot APIs | macOS: replace `/usr/sbin/screencapture` subprocess with `SCScreenshotManager.captureImage(contentFilter:config:)` filtered to a specific `CGWindowID` from `SCShareableContent.windows`. Windows: `Windows.Graphics.Capture` via `GraphicsCaptureItem.CreateFromWindowHandle(HWND)` + `Direct3D11CaptureFramePool`. No subprocess, honours platform capture permission, ~10× faster for per-window captures |
-| P2-O14 | Toolbar and missing surfaces | Both platforms add `SnapshotSurface::Toolbar`. macOS additionally adds `Spotlight` (pid of `/System/Library/CoreServices/Spotlight.app`), `Dock` (pid of `/System/Library/CoreServices/Dock.app`), and `MenuBarExtras` (enumerates `SystemUIServer`, `ControlCenter`, and per-app `AXExtrasMenuBar`). Windows adds `SystemTray` (as structured surface, not just tray commands) |
+| P2-O13 | Modern per-window screenshot APIs | macOS: replace `/usr/sbin/screencapture` subprocess with `SCScreenshotManager.captureImage(contentFilter:config:)` filtered to a specific `CGWindowID` from `SCShareableContent.windows`. Windows: `Windows.Graphics.Capture` via `GraphicsCaptureItem.CreateFromWindowHandle(HWND)` + `Direct3D11CaptureFramePool` when supported by the OS/session. No subprocess on the modern path, explicit fallback to legacy capture when unavailable, and permission/support failures map to structured `PERM_DENIED` / `PLATFORM_NOT_SUPPORTED` with `platform_detail` |
+| P2-O14 | Toolbar and missing surfaces | Both platforms add `SnapshotSurface::Toolbar`. macOS additionally adds `Spotlight` (pid of `/System/Library/CoreServices/Spotlight.app`), `Dock` (pid of `/System/Library/CoreServices/Dock.app`), and `MenuBarExtras` (enumerates `SystemUIServer`, `ControlCenter`, and per-app `AXExtrasMenuBar`). Windows adds structured shell surfaces for `Taskbar`, `SystemTray`, `SystemTrayOverflow`, `StartMenu`, `ActionCenter`, and `QuickSettings` where the current Windows build/session exposes them |
 | P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override |
-| P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks the compile-time `CommandDescriptor` registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry (plus its JSON Schema via `schemars` and its MCP tool in Phase 4). Marshaling helpers stay in `crates/ffi/src/convert/` — these are per-type, not per-command. In the same migration: backfill `ad_snapshot` (full refmap pipeline), `ad_execute_by_ref(adapter, "@e5", action, out)`, `ad_wait(…)`, `ad_version`, `ad_abi_version() -> u32` with `AD_ABI_VERSION_MAJOR` cbindgen `[defines]` export, `ad_status`, `ad_set_log_callback(fn(level, msg))` installing a `tracing_subscriber` layer so dlopen consumers see debug output |
+| P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks the compile-time `CommandDescriptor` registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry and the same descriptor metadata can feed JSON Schema / MCP generation in Phase 4. Marshaling helpers stay in `crates/ffi/src/convert/` — these are per-type, not per-command. In the same migration: backfill `ad_snapshot` (full refmap pipeline), `ad_execute_by_ref(adapter, "@e5", action, out)`, `ad_wait(…)`, `ad_version`, `ad_abi_version() -> u32` with `AD_ABI_VERSION_MAJOR` cbindgen `[defines]` export, `ad_status`, `ad_set_log_callback(fn(level, msg))` installing a `tracing_subscriber` layer so dlopen consumers see debug output |
 | P2-O17 | Screen Recording / Automation permission detection | macOS Phase 1 already exposes `PermissionReport { accessibility, screen_recording, automation }`. Phase 2 decides whether a distinct `AutomationPermissionDenied` code is still needed once Apple Event automation paths exist |
+| P2-O18 | Windows shell surface coverage | Add explicit shell coverage for Start menu/search, taskbar, system tray/overflow, Action Center/notification center, Quick Settings, multi-monitor/DPI, virtual desktop detection, UAC/elevated targets, RDP/locked-session behavior, and Explorer-specific file destinations. New commands are added only where a ref-based `snapshot --surface …` loop cannot expose the surface first; Windows-only behavior still routes through core command files and adapter trait defaults |
 
 ### Cross-Platform Trait Extensions
 
@@ -719,10 +721,10 @@ New supporting types (land in `crates/core/src/`):
 | `LongPress` | `CGEventCreateMouseEvent(…Down…)` + sleep + `…Up` | `SendInput` hold + release | Coordinate via `ydotool/xdotool` |
 | `ForceClick` | `CGEventSetIntegerValueField(kCGMouseEventPressure, …)` + `kCGEventMouseSubtypeTabletPoint` | Pen input `SendInput` with `PEN_FLAGS_BARREL` | Not natively supported — return `ActionNotSupported` |
 | `ShowMenu` action | `AXPerformAction(kAXShowMenuAction)` | `ExpandCollapsePattern.Expand` + UIA right-click fallback | AT-SPI2 `Action.DoAction("popup")` |
-| `WindowRaise` | `AXUIElementSetAttributeValue(kAXRaiseAction)` | `SetForegroundWindow` + `SetWindowPos(HWND_TOP)` | `wmctrl -a` / `xdotool windowactivate` |
+| `WindowRaise` | `AXUIElementSetAttributeValue(kAXRaiseAction)` | `SetForegroundWindow` + `SetWindowPos(HWND_TOP)` only under explicit focus/window policy | `wmctrl -a` / `xdotool windowactivate` only under explicit focus/window policy |
 | `Cancel` | `AXPerformAction(kAXCancelAction)` | UIA `WindowPattern.Close` on dialog or `InvokePattern` on cancel button | AT-SPI2 `Action.DoAction("cancel")` or synthesize Escape |
-| `DeliverFiles(Vec<PathBuf>)` | 4-tier headless fallback: (1) app-native URL scheme, (2) `NSWorkspace.open(urls:withApplicationAt:configuration:)` with `activates: false`, (3) `NSPasteboard.public.file-url` + `CGEventPostToPid(cmd+v)`, (4) `osascript open`. NEVER `NSDraggingSession` (not headless-compatible — Phase 2 plan Unit 12 research) | `IDataObject` + `DoDragDrop` via OLE (headless on Windows; OLE drag is window-server-native, unlike macOS AppKit-mediated drag) | XDND protocol via `xdotool` file-drag extension — Phase 3 |
-| Screen Recording permission | `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` | Implicit for `Windows.Graphics.Capture` — prompts on first use | PipeWire portal permission dialog |
+| `DeliverFiles(Vec<PathBuf>)` | 4-tier headless fallback: (1) app-native URL scheme, (2) `NSWorkspace.open(urls:withApplicationAt:configuration:)` with `activates: false`, (3) `NSPasteboard.public.file-url` + `CGEventPostToPid(cmd+v)`, (4) `osascript open`. NEVER `NSDraggingSession` (not headless-compatible — Phase 2 plan Unit 12 research) | App/shell delivery first: app URI handlers, `ShellExecuteEx`, `IFileOperation` for filesystem destinations, and `CF_HDROP` clipboard paste where accepted. `IDataObject + DoDragDrop` is policy-gated fallback/spike only | Portal/native file-transfer path where available; XDND is Phase 3 research, not default |
+| Screen Recording permission | `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` | No macOS-style TCC field. Use `GraphicsCaptureSession::IsSupported` / capture API failures to report `not_required`, `unknown`, `PERM_DENIED`, or `PLATFORM_NOT_SUPPORTED` with `platform_detail` | PipeWire portal permission dialog |
 | Automation permission | `AEDeterminePermissionToAutomateTarget` | N/A (no equivalent restriction) | N/A |
 
 ### Windows Adapter Implementation
@@ -763,9 +765,10 @@ crates/windows/src/
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # Process launch via CreateProcess, close via TerminateProcess
     ├── window_ops.rs   # SetWindowPos, ShowWindow for resize/move/minimize/maximize/restore
-    ├── key_dispatch.rs # App-targeted key press via SetForegroundWindow + SendInput
+    ├── key_dispatch.rs # Explicit focus-policy key press via SetForegroundWindow + SendInput
     ├── permissions.rs  # COM security check, UAC elevation detection
-    ├── screenshot.rs   # BitBlt / PrintWindow or xcap crate
+    ├── screenshot.rs   # Windows.Graphics.Capture modern backend + PrintWindow legacy
+    ├── shell_surfaces.rs # Start, taskbar, Action Center, Quick Settings
     └── wait.rs         # wait utilities (polling UIA element existence)
 ```
 
@@ -785,24 +788,43 @@ crates/windows/src/
 | Keyboard | `SendInput` API | `INPUT_KEYBOARD` structs with virtual key codes and scan codes |
 | Mouse | `SendInput` API | `INPUT_MOUSE` structs with `MOUSEEVENTF_*` flags |
 | Clipboard | `OpenClipboard` / `GetClipboardData` / `SetClipboardData` | Win32 APIs, handle `CF_UNICODETEXT` format |
-| Screenshot | `Windows.Graphics.Capture` | Modern per-window capture via `GraphicsCaptureItem.CreateFromWindowHandle` + `Direct3D11CaptureFramePool`. Prompts for capture permission on first use, no subprocess, respects DWM compositing. `BitBlt` / `PrintWindow` retained as `ScreenshotBackend::Legacy` fallback for pre-Windows-10 1903 environments |
+| Screenshot | `Windows.Graphics.Capture` | Modern per-window capture via `GraphicsCaptureItem.CreateFromWindowHandle` + `Direct3D11CaptureFramePool` when WGC is supported by the OS/session. No subprocess, respects DWM compositing. `BitBlt` / `PrintWindow` retained as `ScreenshotBackend::Legacy` fallback for pre-Windows-10 1903 or unavailable WGC environments |
 | App launch | `CreateProcess` / `ShellExecuteEx` | Launch by name or path, wait for main window |
 | App close | `WM_CLOSE` / `TerminateProcess` | Graceful close first, force kill with `--force` |
 | Window ops | `SetWindowPos` / `ShowWindow` | Resize, move, minimize (`SW_MINIMIZE`), maximize (`SW_MAXIMIZE`), restore (`SW_RESTORE`) |
 | Permissions | COM security / UAC | Detect elevation requirements; return `PERM_DENIED` if UIA access blocked |
-| Notifications | UIA + Action Center | Toast notifications accessible via UIA tree of `Windows.UI.Notifications.Manager`. List via `IUIAutomationElement` traversal of Action Center pane. Dismiss via `InvokePattern` on close button. Interact via `InvokePattern` on action buttons. Do Not Disturb (Focus Assist) state via `WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED` or registry query |
+| Notifications | UserNotificationListener + UIA Action Center fallback | Prefer `UserNotificationListener` where app identity/capability and explicit user permission are available. Otherwise Action Center UIA traversal is best-effort fallback: list/dismiss/interact only when the shell exposes stable UIA elements. Do Not Disturb (Focus Assist) state via supported shell APIs or documented registry fallback |
 | System tray | UIA + Shell_TrayWnd | System tray items accessible via UIA tree of `Shell_TrayWnd` class. Overflow items in `NotifyIconOverflowWindow`. List via `IUIAutomationTreeWalker` on tray area. Click via `InvokePattern` or coordinate-based `SendInput`. Expand overflow via click on chevron button |
+| Start menu / search | UIA + explicit shell open command | `open-system-surface --surface start-menu` opens the Start surface under explicit shell-surface policy, then agents use `snapshot --surface start-menu` + refs. App launching remains `launch`; Start is for shell workflows and search results |
+| Taskbar | UIA + Shell_TrayWnd task list | `snapshot --surface taskbar` exposes pinned/running app buttons as refs. Taskbar button invocation uses `InvokePattern` when available; focus-changing activation is allowed only for explicit `focus-window` / `WindowRaise` policy |
+| Quick Settings | UIA shell flyout | `open-system-surface --surface quick-settings` exposes Wi-Fi, Bluetooth, audio, display, and accessibility toggles as refs when the shell exports them. Unsupported Windows builds return `PLATFORM_NOT_SUPPORTED` |
+| Virtual desktops | `IVirtualDesktopManager` detection | Use public COM detection for "current desktop" filtering and diagnostics. Moving windows between virtual desktops is deferred unless a stable public API path is validated |
+| Multi-monitor / DPI | Per-monitor DPI + Win32 monitor APIs | All bounds are physical pixels normalized by the same DPI-aware process mode; tests cover mixed-DPI monitor layouts before any coordinate fallback ships |
+
+### Windows-specific command surface (P2-O18)
+
+Windows-specific commands are allowed when the operating-system concept has no portable equivalent, but they still follow the repository rules: one core command file, typed CLI/batch dispatch, adapter trait default returning `PLATFORM_NOT_SUPPORTED`, skill docs, and tests. The preferred path remains generic: expose shell UI as a surface, then let agents interact with refs.
+
+Planned Windows shell commands:
+
+| Command | Purpose | Platform behavior |
+|---------|---------|-------------------|
+| `open-system-surface --surface <kind>` | Opens an OS shell surface so agents can immediately call `snapshot --surface <kind>` and act by refs | Windows kinds: `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow`, `action-center`, `quick-settings`. macOS may support `spotlight`, `dock`, `menu-bar-extras`, `notification-center`. Unsupported kinds return `PLATFORM_NOT_SUPPORTED` |
+| `list-tray-items` / `click-tray-item` / `open-tray-menu` | Structured tray workflows where the shell surface is not attached to a normal app window | Windows implementation uses `Shell_TrayWnd` / `NotifyIconOverflowWindow`; macOS maps to menu bar extras. Linux maps to StatusNotifier in Phase 3 |
+
+No Windows-specific command bypasses refs for ordinary app controls. If a Windows workflow can be represented as `snapshot --app`, `snapshot --surface`, `find`, `click`, `type`, `press`, or `wait`, it uses the existing command surface.
 
 ### Notification Management (New Feature — Windows Implementation)
 
-Windows notification management must be implemented from scratch as part of Phase 2. The macOS notification implementation (completed as a follow-up to Phase 1) serves as the reference pattern — same `PlatformAdapter` trait methods (`list_notifications`, `dismiss_notification`, `dismiss_all_notifications`, `notification_action`), same JSON output contract, same 1-based indexing.
+Windows notification management must be implemented from scratch as part of Phase 2. The macOS notification implementation (completed as a follow-up to Phase 1) serves as the reference pattern — same `PlatformAdapter` trait methods (`list_notifications`, `dismiss_notification`, `dismiss_all_notifications`, `notification_action`), same JSON output contract, same 1-based indexing. Full notification parity is gated on a spike because Windows has two materially different surfaces: notification-listener APIs that require user permission/app identity, and shell UIA traversal that is best effort.
 
 **Implementation approach:**
-- **List notifications:** Open Action Center via UIA (`Windows.UI.Notifications`). Traverse the notification list — each toast is a UIA element with `Name` (title), `FullDescription` (body), app info, and child action buttons
-- **Dismiss:** `InvokePattern.Invoke()` on the notification's dismiss/close button. For "dismiss all", invoke the "Clear all" button in Action Center
-- **Interact with actions:** Resolve action buttons within a toast element tree, invoke via `InvokePattern`
-- **Focus Assist / Do Not Disturb:** Query via `WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED` state notification or registry key `HKCU\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.notifications.quiethourssettings`
-- **Edge case:** Some notifications may be transient (disappear after timeout). The `wait --notification` command should monitor for new toasts via UIA event subscription (`UIA_Notification_EventId`)
+- **Primary list path:** Use `UserNotificationListener` when package identity/capability and explicit user permission are available. If permission is denied, return `PERM_DENIED` with a permission-specific suggestion.
+- **Fallback list path:** Open Action Center with `open-system-surface --surface action-center`; traverse exposed shell UIA elements only when they provide stable names/descriptions/action buttons.
+- **Dismiss:** Prefer notification-listener APIs where supported; otherwise invoke the notification's dismiss/close button through UIA. For "dismiss all", invoke the shell's "Clear all" control only when present.
+- **Interact with actions:** Resolve action buttons within the notification tree and invoke via the primary API or `InvokePattern`.
+- **Focus Assist / Do Not Disturb:** Query through supported shell APIs first. Registry/WNF probes are best-effort diagnostics, not the sole source of truth.
+- **Edge case:** Some notifications may be transient (disappear after timeout). The `wait --notification` command should monitor for new toasts via event subscription where supported; otherwise it polls the notification-listener or Action Center fallback within the normal wait deadline.
 
 ### System Tray (New Feature — Windows Implementation)
 
@@ -843,8 +865,11 @@ Chromium-based apps (Electron, Chrome, Edge, VS Code) expose deep, noisy accessi
 
 ### Minimum OS Requirements
 
-- Windows 10 1809+ (October 2018 update)
-- UIA COM interfaces available since Windows 7, but modern patterns require 10+
+- Windows 10 1809+ for the baseline UIA adapter, app/window operations, clipboard, and legacy screenshot fallback
+- Windows 10 1903+ for `Windows.Graphics.Capture` per-window modern screenshot
+- Newer Windows 10/11 builds may expose richer Quick Settings / notification / shell UIA trees; commands report `PLATFORM_NOT_SUPPORTED` or degrade to the documented fallback when a shell surface is absent
+- UIA COM interfaces are available before Windows 10, but Phase 2 does not support pre-1809 as a release target
+- Session 0, Server Core, secure desktop, locked desktop, and other-user sessions are explicitly unsupported for observation/action/capture
 
 ### New Dependencies
 
@@ -852,22 +877,29 @@ Chromium-based apps (Electron, Chrome, Edge, VS Code) expose deep, noisy accessi
 |-------|---------|-------|---------|
 | `uiautomation` | 0.24+ | Windows | UIA client wrapper, tree walker, patterns |
 | `windows` | 0.62.2 | Windows | Raw Win32 / WinRT bindings for SendInput, clipboard, `Windows.Graphics.Capture`, D3D11 frame pool. Pinned to 0.62.2 to match `windows-capture 1.5.x`'s own pin. |
-| `windows-capture` | 1.5.4 | Windows | Modern per-window screenshot via `Windows.Graphics.Capture` — headless in any interactive session. Replaces `PrintWindow + PW_RENDERFULLCONTENT` legacy fallback. |
+| `windows-capture` | 1.5.4 | Windows | Modern per-window screenshot via `Windows.Graphics.Capture` in supported interactive sessions. Replaces `PrintWindow + PW_RENDERFULLCONTENT` as default, keeps legacy fallback. |
 | `screencapturekit` | 1.5 (crates.io) | macOS | Published crates.io canonical crate — the doom-fish fork is the maintained successor, NOT a git-SHA pin. |
-| `objc2` | 0.5+ | macOS (new for P2-O13 / O17) | Safe bridging to `SCScreenshotManager`, `CGPreflightScreenCaptureAccess`, `NSFilePromiseProvider` — replaces ad-hoc `objc` message sends |
-| `screencapturekit` | 0.3+ | macOS (new for P2-O13) | Thin wrapper around the `ScreenCaptureKit` framework (`SCShareableContent`, `SCScreenshotManager`) |
+| `objc2` | 0.6 | macOS (new for P2-O13 / O17) | Safe bridging to `SCScreenshotManager`, `CGPreflightScreenCaptureAccess`, and AppKit/Foundation calls scoped to screenshot/permissions code |
 
-Added to `Cargo.toml` as target-gated dependencies:
+Added as target-gated dependencies in the owning platform crates. The binary crate only depends on the platform crate for the current target.
 ```toml
+# src/Cargo.toml
 [target.'cfg(target_os = "windows")'.dependencies]
 agent-desktop-windows = { path = "crates/windows" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+agent-desktop-macos = { path = "crates/macos" }
+
+# crates/windows/Cargo.toml
+[target.'cfg(target_os = "windows")'.dependencies]
 uiautomation = "0.24"
 windows = { version = "0.62.2", features = ["Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Com", "Win32_System_DataExchange", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Graphics_Capture", "Win32_Graphics_Direct3D11"] }
 windows-capture = "1.5.4"
 
+# crates/macos/Cargo.toml
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2         = "0.5"
-screencapturekit = "0.3"
+objc2 = { version = "0.6", features = ["Foundation", "AppKit"] }
+screencapturekit = "1.5"
 ```
 
 ### Testing
@@ -882,6 +914,7 @@ screencapturekit = "0.3"
 - Snapshot Explorer — non-empty tree with refs, buttons, text fields
 - Snapshot Notepad — text area with value, menu items
 - Snapshot Settings — modern WinUI controls
+- Snapshot Taskbar / Start / Quick Settings / Action Center surfaces where the runner exposes an interactive Explorer shell; otherwise assert `PLATFORM_NOT_SUPPORTED` with a clear `platform_detail`
 - Click button in test app — verify action succeeded
 - Type text into Notepad via ref — verify content changed
 - Set-value on a text field — verify value set via UIA
@@ -894,9 +927,9 @@ screencapturekit = "0.3"
 - Chromium detection — verify warning when tree is empty
 - Electron app snapshot (VS Code) — default depth finds 50+ refs via web-aware depth-skip
 - Electron surface detection — file picker dialog detected as sheet surface
-- List notifications — returns non-empty list when notifications exist
-- Dismiss notification — verify notification removed from Action Center
-- Notification action — click action button on a test toast notification
+- List notifications — primary listener path when permission/app identity is available; Action Center UIA fallback otherwise
+- Dismiss notification — verify removal through listener or Action Center fallback; skip with `PLATFORM_NOT_SUPPORTED` on unsupported shell builds
+- Notification action — click action button on a test toast notification when the platform exposes one
 - List tray items — returns known system tray entries (volume, network, clock)
 - Click tray item — verify tray menu opens
 
@@ -905,11 +938,11 @@ screencapturekit = "0.3"
 - All error codes produce identical JSON envelope format
 
 **Cross-platform extension tests (P2-O8 through O17):**
-- Stable-selector fields: every interactive node emits `identifier` on both platforms (UIA `AutomationId` on Windows, `AXIdentifier` on macOS) for a target app with known IDs (e.g. Calculator's `AutomationId` on Windows, a test harness app exporting `accessibilityIdentifier` on macOS)
+- Stable-selector fields: known interactive controls emit `identifier` on both platforms when the app exposes one (UIA `AutomationId` on Windows, `AXIdentifier` on macOS); controls without stable IDs omit the field and still resolve through the fingerprint fallback
 - Event subscription: `watch --event value-changed --ref @e3 --timeout 2000` receives an event within 500 ms of a programmatic value change on both platforms
 - Text ranges: `text select-range @e1 5 10` + `text get-selection @e1` round-trips to `{start:5, length:10}` on both platforms for a multi-line text editor (TextEdit / Notepad)
 - Text insert-at-caret: `text insert-at-caret @e1 "hello"` produces matching `value` on both platforms with the caret advanced correctly
-- Modern screenshot: `screenshot --window <id>` PNG matches a reference capture within SSIM threshold; cold latency <50 ms on both platforms (vs ~300 ms macOS subprocess baseline)
+- Modern screenshot: `screenshot --window <id>` PNG matches a reference capture within SSIM threshold on supported OS/session combinations; cold latency <50 ms on both platforms where modern capture is available (vs ~300 ms macOS subprocess baseline)
 - Toolbar surface: `snapshot --surface toolbar` on Safari (macOS) and Edge (Windows) returns the toolbar's children with refs
 - Electron deep-tree: VS Code snapshot with `--force-electron-a11y` exposes ≥100 refs at default depth on both platforms
 - Screen Recording permission: on a macOS runner without Screen Recording, `screenshot --window` returns `PermDenied` with the Screen Recording suggestion (distinct from AX denial)
@@ -943,7 +976,7 @@ Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 
 - [ ] Create `.claude/skills/agent-desktop-windows/SKILL.md`:
   - UIA permission model and UAC handling
-  - Windows-specific behaviors (UIA patterns, WinUI3 quirks, COM initialization)
+  - Windows-specific behaviors (UIA patterns, WinUI3 quirks, COM initialization, Start/taskbar/Action Center/Quick Settings shell surfaces, virtual desktop detection, mixed-DPI coordinates)
   - Chromium/Electron compatibility: depth-skip, resolver depth, surface detection patterns
   - `--force-renderer-accessibility` guidance for empty trees
   - Windows error codes and `platform_detail` examples (HRESULT codes)
@@ -999,7 +1032,7 @@ Cross-platform extensions (Linux implementations of Phase 2 primitives):
 | P3-O10 | AT-SPI2 Text interface (P2-O12 parity) | Text range primitives via `org.a11y.atspi.Text` D-Bus methods: `GetText(start, end)`, `GetCaretOffset`, `SetCaretOffset`, `GetNSelections`, `GetSelection(n)`, `AddSelection(start, end)`, `RemoveSelection(n)`. `InsertAtCaret` uses `org.a11y.atspi.EditableText.InsertText(position, text, length)` |
 | P3-O11 | PipeWire modern screenshot (P2-O13 parity) | `screenshot --window <id>` via `org.freedesktop.portal.ScreenCast` (Wayland) + `org.freedesktop.portal.RemoteDesktop` for capture permission flow. XDG desktop portal handles the user consent dialog exactly like `SCScreenshotManager` does on macOS. X11 fallback uses `XGetImage` for the lowest-permission path |
 | P3-O12 | Toolbar + surfaces (P2-O14 parity) | `SnapshotSurface::Toolbar` via AT-SPI2 `Role::ToolBar`. Dock / taskbar surface via per-DE panel process walk (GNOME Shell process for gnome-shell extensions, Plasma `plasmashell` for KDE). StatusNotifierWatcher already scoped in the original Phase 3 tray spec |
-| P3-O13 | Action variants on Linux (P2-O9 parity) | `Action::LongPress` via timed `xdotool/ydotool` button-hold; `Action::ShowMenu` via `org.a11y.atspi.Action.DoAction("popup")`; `Action::Cancel` via `Action.DoAction("cancel")` or Escape synthesis; `Action::FileDrop` via XDND (`xdotool key`+selection protocol on X11, portal-based FileTransfer on Wayland); `Action::ForceClick` returns `ActionNotSupported` on Linux (no pressure input primitive) |
+| P3-O13 | Action variants on Linux (P2-O9 parity) | `Action::LongPress` via timed `xdotool/ydotool` button-hold; `Action::ShowMenu` via `org.a11y.atspi.Action.DoAction("popup")`; `Action::Cancel` via `Action.DoAction("cancel")` or Escape synthesis; `Action::DeliverFiles` via portal/native file-transfer where available with XDND as a researched fallback; `Action::ForceClick` returns `ActionNotSupported` on Linux (no pressure input primitive) |
 | P3-O14 | FFI cdylib continues to ship | Phase 1.5 already publishes Linux FFI for x86_64 + aarch64; Phase 3 adds each new `ad_*` entrypoint's Linux implementation and extends the header drift check. No new FFI bindings to design — just implementations for the platform-specific methods under the existing trait |
 | P3-O15 | Flatpak / Snap compatibility note | AT-SPI2 requires `--talk-name=org.a11y.Bus` permission inside sandboxed runtimes. Skill docs include the exact Flatpak override and Snap plug grants, so sandboxed consumers aren't silently empty-tree |
 
@@ -1368,7 +1401,7 @@ Observation tools (always available):
 | `desktop_is` | `is <state> <ref>` | Boolean |
 | `desktop_list_windows` | `list-windows` | Array of windows |
 | `desktop_list_apps` | `list-apps` | Array of apps |
-| `desktop_list_surfaces` | `list-surfaces` | Array of surfaces (incl. Toolbar / Spotlight / Dock / MenuBarExtras from P2-O14) |
+| `desktop_list_surfaces` | `list-surfaces` | Array of surfaces (incl. Toolbar / Spotlight / Dock / MenuBarExtras and Windows shell surfaces from P2-O14/P2-O18) |
 | `desktop_list_notifications` | `list-notifications` | Array of notifications |
 | `desktop_screenshot` | `screenshot` | Base64 PNG (or MCP resource link) |
 | `desktop_clipboard_get` | `clipboard-get` | Clipboard text |
@@ -1634,7 +1667,7 @@ When daemon is not running, CLI falls back to direct execution (same as Phases 1
 
 ### Safety Trio: `--dry-run` / `--confirm` / Audit Log (P5-O5)
 
-Every destructive operation — `close-app`, `dismiss-all-notifications`, `set-value` (writes), `clear`, `drag`, `file-drop`, `notification-action`, `batch` containing any of the above — supports three layered safety primitives that compose:
+Every destructive operation — `close-app`, `dismiss-all-notifications`, `set-value` (writes), `clear`, `drag`, `deliver-files`, `notification-action`, `batch` containing any of the above — supports three layered safety primitives that compose:
 
 1. **`--dry-run`** resolves refs, validates all inputs, evaluates the policy, computes the would-be `data` / `error` fields, and emits the normal JSON envelope with `dry_run: true` added. No adapter call happens. The ref stays valid for a subsequent non-dry-run invocation within the same snapshot.
 2. **`--confirm`** prints a structured prompt to stderr:
