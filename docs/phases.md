@@ -1,6 +1,6 @@
 # agent-desktop — Phase Roadmap
 
-> Source of truth for the phased delivery plan. Derived from [PRD v2.0](./agent_desktop_prd_v2.pdf) and the [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md).
+> Public source of truth for shipped and planned platform work.
 
 ---
 
@@ -20,8 +20,8 @@ Most recent shipments against this roadmap:
 
 - Phase 1 completion: incremental across v0.1.0 – v0.1.14 (macOS MVP, 54 commands, unified core engine).
 - Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms).
-- Phase 2: planned. Full scope defined in `docs/plans/2026-04-18-001-feat-phase2-windows-crossplatform-plan.md` (superseding `docs/brainstorms/2026-02-25-windows-adapter-phase2-brainstorm.md` and `docs/plans/2026-02-25-feat-windows-adapter-phase2-plan.md`). Research-driven refinements to the brainstorm are captured in the plan's §Headless-First Invariant, §Key Technical Decisions, and §Review-Driven Refinements sections.
-- Phase 3+: planned. See Phase 2 plan for trait method defaults that Phase 3 backfills.
+- Phase 2: planned. Public scope is summarized in the Phase 2 section below.
+- Phase 3+: planned. See each phase section below for the additive platform work and trait defaults that later phases backfill.
 
 ---
 
@@ -487,10 +487,8 @@ Current `.github/workflows/ci.yml` on every PR:
 ### Documentation Delivered
 
 - [x] README with installation (npm + source), core workflow, command reference, JSON output, ref system, platform support table
-- [x] PRD v2.0
 - [x] Architecture diagram
-- [x] Claude Code skills: `.claude/skills/agent-desktop/` (core, platform-agnostic) + `.claude/skills/agent-desktop-macos/` (macOS-specific)
-- [x] Quick reference slash command: `.claude/commands/desktop.md`
+- [x] Agent skills: `skills/agent-desktop/` (core + macOS references) and `skills/agent-desktop-ffi/`
 
 ---
 
@@ -510,7 +508,7 @@ Phase 1.5 ships `crates/ffi/` as a first-class distribution target. The CLI stay
 | P1.5-O4 | Main-thread safety (macOS) | `require_main_thread()` guard in every build profile; worker-thread call returns `AD_RESULT_ERR_INTERNAL` with a static `'static CStr` message |
 | P1.5-O5 | Enum UB immunity | Public ABI struct fields store raw `i32`; every entry validates discriminants at the boundary via `try_from_c_enum!` |
 | P1.5-O6 | Out-param zeroing before any guard | Every fallible entry zeroes `*out` before pointer / UTF-8 / main-thread checks, so a worker-thread early return never leaves a stale caller buffer |
-| P1.5-O7 | Sigstore build-provenance | `actions/attest-build-provenance@v4.1.0` signs every release artifact; consumers verify with `gh attestation verify <file> --repo lahfir/agent-desktop` |
+| P1.5-O7 | Sigstore build-provenance | `actions/attest-build-provenance@v4.1.0` signs every release artifact; consumers verify with `gh attestation verify <file> --repo <owner>/agent-desktop` |
 | P1.5-O8 | Skill documentation | `skills/agent-desktop-ffi/SKILL.md` + references: `build-and-link.md`, `ownership.md`, `threading.md`, `error-handling.md` |
 | P1.5-O9 | README surface | "Language bindings (FFI)" section on the project README with platform→artifact table, Python dlopen snippet, and Sigstore verify one-liner |
 
@@ -591,20 +589,20 @@ Regular `release` profile keeps `panic = "abort"` for the CLI binary, so a panic
 - No `tracing::` log callback — in-process consumers lose debug output
 - No `pyo3` / `maturin` wheel or `cffi` wrapper ships with the repo
 
-These items are tracked in the Phase 2 plan (`docs/plans/2026-04-18-001-feat-phase2-windows-crossplatform-plan.md`) — specifically Unit 2 (registry migration via `build.rs` filesystem enumeration, NOT inventory/linkme), Unit 2.5 (`ad_set_log_callback` with redaction), and Unit 2.6 (`ad_execute_by_ref` + descriptor confirms).
+These items are tracked under P2-O16 below: registry migration via `build.rs` filesystem enumeration, `ad_set_log_callback` with redaction, and `ad_execute_by_ref` + descriptor confirms.
 
 ---
 
 ## Phase 2 — Windows Adapter + Cross-Platform Feature Parity
 
-**Status: Planned** — authoritative plan: `docs/plans/2026-04-18-001-feat-phase2-windows-crossplatform-plan.md`. This section remains the high-level objective catalogue; the plan owns implementation-unit detail, research-driven refinements, and the progressive-commit / swarm strategy.
+**Status: Planned** — this section is the public objective catalogue and implementation contract.
 
 ### Core invariants (research-driven — from Phase 2 plan §Headless-First Invariant)
 
 1. **Headless-first inside the active desktop session.** Every command — existing and Phase 2 — must run without an agent-desktop GUI, foreground activation, focus steal, or physical cursor movement (except for explicit mouse commands). Windows, macOS, and Linux still require the target app to exist in the current user's interactive desktop/display session for accessibility and capture APIs. Session 0, Server Core, secure desktops, locked desktops, and other-user sessions return `PLATFORM_NOT_SUPPORTED`, `PERM_DENIED`, or `WINDOW_NOT_FOUND` with `platform_detail`, not silent best effort. The invariant is enforced by integration tests: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for non-mouse commands.
 2. **Skeleton traversal is platform-agnostic.** The novel progressive skeleton pattern (depth-3 clamp + `children_count` annotation + drill-down via `--root @ref` + scoped invalidation via `RefMap::remove_by_root_ref`) lives entirely in `crates/core/src/snapshot_ref.rs`. Windows adapter contributes ~50 LOC glue: `ControlViewWalker` (NOT `RawViewWalker` or `ContentViewWalker`) + `FindAll(TreeScope_Children, TrueCondition)` for `children_count` + fresh `UICacheRequest` per drill-down.
 3. **Asymmetric event threading.** `watch_element` uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery).
-4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Phase 2 uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The "one command per file" CLAUDE.md rule becomes the codegen contract.
+4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Phase 2 uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The repository's "one command per file" rule becomes the codegen contract.
 5. **FFI compatibility gates.** v0.1.14 adds explicit FFI result codes for snapshot-not-found and policy-denied paths. Phase 2 still owns `ad_abi_version()`, `ad_init(expected_major)`, and any broader ABI-version handshake before new cross-platform ABI surface ships.
 6. **`DeliverFiles` replaces `FileDrop`.** Headless-first forbids `NSDraggingSession` on macOS; the new action uses a 4-tier fallback (URL scheme → `NSWorkspace.open` with `activates: false` → pasteboard + `Cmd-V` → AppleScript). Windows primary delivery is app/shell delivery (`ShellExecuteEx`, app URI handlers, `IFileOperation` for filesystem destinations, and `CF_HDROP` clipboard paste where accepted). `IDataObject + DoDragDrop` is an explicit policy-gated fallback/spike for targets that require drag semantics; it is never the default headless path.
 
@@ -972,9 +970,9 @@ screencapturekit = "1.5"
 
 ### Skill Update
 
-Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
+Skill docs are part of the release surface and must stay in sync with command behavior.
 
-- [ ] Create `.claude/skills/agent-desktop-windows/SKILL.md`:
+- [ ] Create `skills/agent-desktop-windows/SKILL.md`:
   - UIA permission model and UAC handling
   - Windows-specific behaviors (UIA patterns, WinUI3 quirks, COM initialization, Start/taskbar/Action Center/Quick Settings shell surfaces, virtual desktop detection, mixed-DPI coordinates)
   - Chromium/Electron compatibility: depth-skip, resolver depth, surface detection patterns
@@ -1268,9 +1266,9 @@ Note: `tokio` is introduced here for the first time. Phases 1-2 are fully synchr
 
 ### Skill Update
 
-Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
+Skill docs are part of the release surface and must stay in sync with command behavior.
 
-- [ ] Create `.claude/skills/agent-desktop-linux/SKILL.md`:
+- [ ] Create `skills/agent-desktop-linux/SKILL.md`:
   - AT-SPI2/D-Bus setup and bus detection
   - Wayland vs X11 differences (input via xdotool/ydotool, clipboard via wl-clipboard/xclip, screenshot via PipeWire/XGetImage)
   - Required system tools: `xdotool` or `ydotool`, `xclip` or `wl-clipboard`
@@ -1564,9 +1562,9 @@ Provide ready-to-use config snippets for:
 
 ### Skill Update
 
-Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
+Skill maintenance rules:
 
-- [ ] Create `.claude/skills/agent-desktop-mcp/SKILL.md`:
+- [ ] Create `skills/agent-desktop-mcp/SKILL.md`:
   - MCP tool surface documentation (all tools, parameters, annotations)
   - Transport configuration (stdio setup, optional SSE)
   - Session management (RefMap scoping, initialize flow)
@@ -1764,11 +1762,11 @@ Spans are OpenTelemetry-compliant so `agent-desktop trace export <uuid> --otlp` 
 
 | Platform | Package Manager | Format | Install Command | Signing |
 |----------|----------------|--------|-----------------|---------|
-| macOS | Homebrew | Formula in `lahfir/homebrew-tap` | `brew install lahfir/tap/agent-desktop` | Sigstore `cosign verify-blob` against release tarball |
+| macOS | Homebrew | Formula in `<owner>/homebrew-tap` | `brew install <owner>/tap/agent-desktop` | Sigstore `cosign verify-blob` against release tarball |
 | Windows | winget | Manifest in `microsoft/winget-pkgs` | `winget install agent-desktop` | Sigstore attestation check via `gh attestation verify` |
 | Windows | scoop | Manifest in `scoop-extras` bucket | `scoop install agent-desktop` | Sigstore attestation check |
 | Linux | snap | Snap package on snapcraft.io | `snap install agent-desktop` | Snap-native signature (snapd-signed) |
-| Linux | apt | `.deb` in custom PPA (`ppa:lahfir/agent-desktop`) | `apt install agent-desktop` | Debian-native `Release.gpg` signature |
+| Linux | apt | `.deb` in custom PPA (`ppa:<owner>/agent-desktop`) | `apt install agent-desktop` | Debian-native `Release.gpg` signature |
 | All | `cargo install` | crates.io (the CLI binary crate, not the workspace) | `cargo install agent-desktop` | Sigstore provenance on the crates.io release |
 
 Each package manager distribution includes:
@@ -1835,7 +1833,7 @@ Each package manager distribution includes:
 
 ### Skill Update
 
-Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
+Skill maintenance rules:
 
 - [ ] Update `commands-system.md`:
   - Add `session list` command documentation
@@ -1887,10 +1885,10 @@ The README is updated at the end of each phase to reflect the current state:
 
 ### Skill Maintenance Rules
 
-Per the [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
+Skill maintenance rules:
 
 1. **Every new command** must be added to the appropriate `commands-*.md` file
-2. **Every new platform** gets its own skill directory under `.claude/skills/agent-desktop-{platform}/`
+2. **Every new platform** gets its own skill directory under `skills/agent-desktop-{platform}/`
 3. **Every new mode** (MCP, daemon) gets its own skill file
 4. **Breaking changes** to JSON output or CLI flags must update all affected skill files
 5. **Skill files are reviewed** as part of the PR checklist for any command-surface change
