@@ -384,3 +384,83 @@ cargo clippy --all-targets -- -D warnings # lint (must pass with zero warnings)
 ## License
 
 Apache-2.0
+
+---
+
+## FAQ (Frequently Asked Questions)
+
+### What is Agent Desktop?
+Agent Desktop is a **native desktop automation CLI designed for AI agents**, built with Rust. It gives structured access to any application through OS accessibility trees — no screenshots, no pixel matching, no browser required.
+
+### How does Agent Desktop work?
+
+| Component | Function |
+|-----------|----------|
+| **Native Rust CLI** | Fast, single binary, no runtime dependencies |
+| **C-ABI cdylib** | Load once from Python/Swift/Go/Ruby/Node/C instead of forking |
+| **54 Commands** | Observation, interaction, keyboard, mouse, notifications, clipboard |
+| **Snapshot & Refs** | AI-optimized workflow using compact snapshot IDs and refs (`@e1`, `@e2`) |
+| **Structured JSON** | Machine-readable responses with error codes and recovery hints |
+
+### What are the key features?
+
+| Feature | Benefit |
+|---------|---------|
+| **Native Rust CLI** | Fast, single binary, zero dependencies |
+| **Progressive Skeleton Traversal** | 78–96% token reduction on dense apps |
+| **Headless Interactions** | Ref actions use accessibility APIs, no side effects |
+| **Structured JSON Output** | Machine-readable with error codes and recovery hints |
+| **Works with Any App** | Finder, Safari, System Settings, Xcode, Slack, etc. |
+| **Cross-Language FFI** | Python/Swift/Go/Ruby/Node/C bindings available |
+
+### What platforms are supported?
+
+| Feature | macOS | Windows | Linux |
+|---------|:-----:|:-------:|:-----:|
+| Accessibility tree | **Yes** | Planned | Planned |
+| Click/type/keyboard | **Yes** | Planned | Planned |
+| Mouse input | **Yes** | Planned | Planned |
+| Screenshot | **Yes** | Planned | Planned |
+| Clipboard | **Yes** | Planned | Planned |
+| App/window management | **Yes** | Planned | Planned |
+| Notifications | **Yes** | Planned | Planned |
+
+### How to install?
+
+**CLI (npm):**
+```bash
+npm install -g agent-desktop
+agent-desktop snapshot --app Safari
+```
+
+**FFI Library (Rust):**
+```bash
+cargo build --release
+# Outputs: libagent_desktop_ffi.dylib/.so/.dll
+```
+
+### What is the Ref System?
+`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`.
+
+**Interactive roles that receive refs:**
+`button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `incrementor`, `menubutton`, `switch`, `colorwell`, `dockitem`.
+
+**Stale ref recovery flow:**
+```
+snapshot → act → STALE_REF? → snapshot again → retry
+```
+
+### Is it free and open source?
+Yes! Agent Desktop is **Apache-2.0 licensed**. Use it freely for personal and commercial projects.
+
+### Where can I get help?
+
+| Resource | Link |
+|----------|------|
+| **Repository** | [github.com/lahfir/agent-desktop](https://github.com/lahfir/agent-desktop) |
+| **ClawHub Skill** | [clawhub.ai/lahfir/agent-desktop](https://clawhub.ai/lahfir/agent-desktop) |
+| **npm Package** | [npmjs.com/package/agent-desktop](https://www.npmjs.com/package/agent-desktop) |
+| **CI Status** | [GitHub Actions](https://github.com/lahfir/agent-desktop/actions/workflows/ci.yml?query=branch%3Amain) |
+| **Releases** | [GitHub Releases](https://github.com/lahfir/agent-desktop/releases) |
+| **Issues** | [GitHub Issues](https://github.com/lahfir/agent-desktop/issues) |
+
