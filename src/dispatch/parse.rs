@@ -80,5 +80,5 @@ pub(crate) fn parse_xy_opt(s: Option<&str>) -> Result<Option<(f64, f64)>, AppErr
 }
 
 #[cfg(test)]
-#[path = "dispatch_parse_tests.rs"]
+#[path = "parse_tests.rs"]
 mod tests;

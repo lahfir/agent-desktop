@@ -1,6 +1,11 @@
 use clap::{Parser, ValueEnum};
 use serde::Deserialize;
 
+pub(crate) mod actions;
+pub(crate) mod notifications;
+pub(crate) mod skills;
+pub(crate) mod system;
+
 fn default_max_depth() -> u8 {
     10
 }

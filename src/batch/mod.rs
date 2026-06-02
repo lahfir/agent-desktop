@@ -12,8 +12,10 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     cli::Commands,
-    cli_args_skills::{SkillsAction, SkillsArgs, SkillsGetArgs},
-    cli_args_system::BatchArgs,
+    cli_args::{
+        skills::{SkillsAction, SkillsArgs, SkillsGetArgs},
+        system::BatchArgs,
+    },
 };
 
 pub(crate) fn execute(
@@ -184,5 +186,4 @@ fn parse_skills(args: Value) -> Result<SkillsArgs, AppError> {
 }
 
 #[cfg(test)]
-#[path = "batch_tests.rs"]
 mod tests;

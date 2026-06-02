@@ -3,20 +3,20 @@ use std::path::PathBuf;
 
 use crate::cli_args::{
     FindArgs, GetArgs, IsArgs, ListSurfacesArgs, RefArgs, ScreenshotArgs, SnapshotArgs,
-};
-use crate::cli_args_actions::{
-    DragCliArgs, HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs, PressArgs,
-    ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
-};
-use crate::cli_args_notifications::{
-    DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
-    NotificationActionCliArgs,
-};
-use crate::cli_args_skills::SkillsArgs;
-use crate::cli_args_system::{
-    AppRefArgs, BatchArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
-    ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
-    VersionArgs, WaitArgs,
+    actions::{
+        DragCliArgs, HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs,
+        PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
+    },
+    notifications::{
+        DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
+        NotificationActionCliArgs,
+    },
+    skills::SkillsArgs,
+    system::{
+        AppRefArgs, BatchArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
+        ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
+        VersionArgs, WaitArgs,
+    },
 };
 
 const BEFORE_HELP: &str = include_str!("help_before.txt");
@@ -240,3 +240,7 @@ impl Commands {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "contract_tests.rs"]
+mod contract_tests;

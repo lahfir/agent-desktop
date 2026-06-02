@@ -1,16 +1,8 @@
 mod batch;
 mod cli;
 mod cli_args;
-mod cli_args_actions;
-mod cli_args_notifications;
-mod cli_args_skills;
-mod cli_args_system;
-#[cfg(test)]
-mod command_contract_tests;
 mod command_policy;
 mod dispatch;
-mod dispatch_notifications;
-mod dispatch_parse;
 
 use agent_desktop_core::{
     adapter::PlatformAdapter,
@@ -19,7 +11,7 @@ use agent_desktop_core::{
 };
 use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
-use cli_args_skills::SkillsAction;
+use cli_args::skills::SkillsAction;
 use std::io::{BufWriter, Write};
 
 fn main() {
