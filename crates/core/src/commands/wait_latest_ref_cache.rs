@@ -47,3 +47,7 @@ impl<'a> LatestRefCache<'a> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "wait_latest_ref_cache_tests.rs"]
+mod tests;

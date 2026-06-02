@@ -20,6 +20,19 @@ pub struct RefArgs {
     pub snapshot_id: Option<String>,
 }
 
+pub(crate) struct PointResolveArgs<'a> {
+    pub ref_id: Option<&'a str>,
+    pub xy: Option<(f64, f64)>,
+    pub snapshot_id: Option<&'a str>,
+    pub missing_input_message: &'a str,
+}
+
+struct ActionabilityTarget<'a> {
+    ref_id: &'a str,
+    entry: &'a RefEntry,
+    handle: &'a NativeHandle,
+}
+
 #[cfg(test)]
 pub(crate) fn resolve_ref<'a>(
     ref_id: &str,
@@ -157,52 +170,59 @@ pub(crate) fn execute_ref_action_result_with_context(
     context: &CommandContext,
 ) -> Result<(RefEntry, ActionResult), AppError> {
     let (entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
-    check_actionability_with_trace(ref_id, &entry, handle.handle(), adapter, &request, context)?;
+    check_actionability_with_trace(
+        ActionabilityTarget {
+            ref_id,
+            entry: &entry,
+            handle: handle.handle(),
+        },
+        adapter,
+        &request,
+        context,
+    )?;
     let result = adapter.execute_action(handle.handle(), request)?;
     context.trace("action.dispatch.ok", json!({ "ref": ref_id }))?;
     Ok((entry, result))
 }
 
-pub(crate) fn check_actionability_with_trace(
-    ref_id: &str,
-    entry: &RefEntry,
-    handle: &NativeHandle,
+fn check_actionability_with_trace(
+    target: ActionabilityTarget<'_>,
     adapter: &dyn PlatformAdapter,
     request: &ActionRequest,
     context: &CommandContext,
 ) -> Result<(), AppError> {
     context.trace(
         "actionability.check.start",
-        json!({ "ref": ref_id, "action": request.action.name() }),
+        json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
-    crate::actionability::check_live(entry, handle, adapter, request).inspect_err(|err| {
-        let _ = context.trace(
-            "actionability.check.error",
-            json!({
-                "ref": ref_id,
-                "action": request.action.name(),
-                "code": err.code.as_str(),
-                "message": err.message.clone()
-            }),
-        );
-    })?;
+    crate::actionability::check_live(target.entry, target.handle, adapter, request).inspect_err(
+        |err| {
+            let _ = context.trace(
+                "actionability.check.error",
+                json!({
+                    "ref": target.ref_id,
+                    "action": request.action.name(),
+                    "code": err.code.as_str(),
+                    "message": err.message.clone()
+                }),
+            );
+        },
+    )?;
     context.trace(
         "actionability.check.ok",
-        json!({ "ref": ref_id, "action": request.action.name() }),
+        json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
     Ok(())
 }
 
 pub(crate) fn resolve_point_from_ref_or_xy_with_context(
-    ref_id: Option<&str>,
-    xy: Option<(f64, f64)>,
-    snapshot_id: Option<&str>,
+    args: PointResolveArgs<'_>,
     adapter: &dyn PlatformAdapter,
-    missing_input_message: impl Into<String>,
     context: &CommandContext,
 ) -> Result<Point, AppError> {
-    if let Some(ref_id) = ref_id {
-        let (_entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
+    if let Some(ref_id) = args.ref_id {
+        let (_entry, handle) =
+            resolve_ref_with_context(ref_id, args.snapshot_id, adapter, context)?;
         let bounds = adapter
             .get_element_bounds(handle.handle())?
             .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
@@ -211,10 +231,10 @@ pub(crate) fn resolve_point_from_ref_or_xy_with_context(
             y: bounds.y + bounds.height / 2.0,
         });
     }
-    if let Some((x, y)) = xy {
+    if let Some((x, y)) = args.xy {
         return Ok(Point { x, y });
     }
-    Err(AppError::invalid_input(missing_input_message.into()))
+    Err(AppError::invalid_input(args.missing_input_message))
 }
 
 pub(crate) fn window_op_command(

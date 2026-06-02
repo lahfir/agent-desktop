@@ -143,10 +143,6 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("execute_action"))
     }
 
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::not_supported("resolve_element"))
-    }
-
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Err(AdapterError::not_supported("resolve_element_strict"))
     }
@@ -213,6 +209,13 @@ pub trait PlatformAdapter: Send + Sync {
 
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
         Err(AdapterError::not_supported("get_live_state"))
+    }
+
+    fn get_live_actions(
+        &self,
+        _handle: &NativeHandle,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        Err(AdapterError::not_supported("get_live_actions"))
     }
 
     fn press_key_for_app(

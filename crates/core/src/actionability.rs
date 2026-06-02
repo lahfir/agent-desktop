@@ -29,7 +29,7 @@ pub struct ActionabilityReport {
     pub checks: Vec<ActionabilityCheck>,
 }
 
-pub fn check(
+pub(crate) fn check(
     entry: &RefEntry,
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
@@ -70,6 +70,9 @@ pub fn check_live(
     }
     if let Some(bounds) = adapter.get_element_bounds(handle).ok().flatten() {
         observed.bounds = Some(bounds);
+    }
+    if let Some(actions) = adapter.get_live_actions(handle).ok().flatten() {
+        observed.available_actions = actions;
     }
     check(&observed, request)
 }
@@ -115,7 +118,7 @@ fn policy_check(request: &ActionRequest) -> ActionabilityCheck {
             "action requires cursor movement but policy denies it",
         );
     }
-    if request.action.requires_focus_policy() && !request.policy.allow_focus_steal {
+    if request.action.may_use_focus_fallback() && !request.policy.allow_focus_steal {
         return fail("policy", "action requires focus but policy denies it");
     }
     pass("policy")

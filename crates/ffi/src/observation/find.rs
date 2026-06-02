@@ -109,7 +109,7 @@ pub unsafe extern "C" fn ad_find(
             path_is_absolute: false,
             path: smallvec::SmallVec::new(),
         };
-        match adapter.inner.resolve_element(&ref_entry) {
+        match adapter.inner.resolve_element_strict(&ref_entry) {
             Ok(handle) => {
                 let handle = ManuallyDrop::new(handle);
                 (*out_handle).ptr = handle.as_raw();

@@ -124,6 +124,60 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn trace_rejects_loose_existing_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = std::env::temp_dir().join(format!(
+            "agent-desktop-loose-trace-{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, "").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let err = CommandContext::new(None, Some(path.clone()), false).unwrap_err();
+
+        assert_eq!(err.code(), "INVALID_ARGS");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn trace_redacts_sensitive_text_and_value_fields() {
+        let path = std::env::temp_dir().join(format!(
+            "agent-desktop-redacted-trace-{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let context = CommandContext::new(None, Some(path.clone()), true).unwrap();
+        context
+            .trace(
+                "event",
+                serde_json::json!({
+                    "text": "secret",
+                    "value": "hidden",
+                    "nested": { "expected": "token" }
+                }),
+            )
+            .unwrap();
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        let event: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
+        assert_eq!(event["text"]["redacted"], true);
+        assert_eq!(event["text"]["chars"], 6);
+        assert_eq!(event["value"]["redacted"], true);
+        assert_eq!(event["nested"]["expected"]["redacted"], true);
+        assert!(!body.contains("secret"));
+        assert!(!body.contains("hidden"));
+        assert!(!body.contains("token"));
+        let _ = std::fs::remove_file(path);
+    }
+
     #[test]
     fn trace_strict_requires_trace_path() {
         let err = CommandContext::new(None, None, true).unwrap_err();

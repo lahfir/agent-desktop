@@ -9,6 +9,7 @@ use crate::{
 struct LiveAdapter {
     state: Option<ElementState>,
     bounds: Option<Rect>,
+    actions: Option<Vec<String>>,
 }
 
 impl PlatformAdapter for LiveAdapter {
@@ -18,6 +19,13 @@ impl PlatformAdapter for LiveAdapter {
 
     fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
         Ok(self.bounds)
+    }
+
+    fn get_live_actions(
+        &self,
+        _handle: &NativeHandle,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        Ok(self.actions.clone())
     }
 }
 
@@ -113,6 +121,16 @@ fn command_aliases_match_platform_capabilities() {
     assert!(check(&editable, &ActionRequest::headless(Action::Clear)).is_ok());
 
     let mut scrollable = entry();
+    scrollable.available_actions = vec!["Scroll".into()];
+    assert!(
+        check(
+            &scrollable,
+            &ActionRequest::headless(Action::Scroll(Direction::Down, 1))
+        )
+        .is_ok()
+    );
+    assert!(check(&scrollable, &ActionRequest::headless(Action::ScrollTo)).is_err());
+
     scrollable.available_actions = vec!["ScrollTo".into()];
     assert!(
         check(
@@ -135,6 +153,7 @@ fn live_actionability_overrides_stale_snapshot_state() {
             value: None,
         }),
         bounds: stale.bounds,
+        actions: Some(vec!["Click".into()]),
     };
 
     let report = check_live(
@@ -146,4 +165,46 @@ fn live_actionability_overrides_stale_snapshot_state() {
     .unwrap();
 
     assert!(report.actionable);
+}
+
+#[test]
+fn live_actionability_uses_actions_gained_after_snapshot() {
+    let mut stale = entry();
+    stale.available_actions = vec![];
+    let adapter = LiveAdapter {
+        state: None,
+        bounds: stale.bounds,
+        actions: Some(vec!["Click".into()]),
+    };
+
+    let report = check_live(
+        &stale,
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap();
+
+    assert!(report.actionable);
+}
+
+#[test]
+fn live_actionability_fails_when_action_disappears_after_snapshot() {
+    let stale = entry();
+    let adapter = LiveAdapter {
+        state: None,
+        bounds: stale.bounds,
+        actions: Some(vec![]),
+    };
+
+    let err = check_live(
+        &stale,
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::ActionFailed);
+    assert!(err.message.contains("supported_action"));
 }

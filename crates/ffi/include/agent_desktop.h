@@ -615,6 +615,13 @@ const char *ad_last_error_suggestion(void);
 const char *ad_last_error_platform_detail(void);
 
 /**
+ * Returns a borrowed JSON string with structured details for the last
+ * error, or null if the adapter didn't supply one. Same lifetime rules
+ * as `ad_last_error_message`.
+ */
+const char *ad_last_error_details(void);
+
+/**
  * Reads the current clipboard text and writes an owned C string into
  * `*out`. The caller must free the returned pointer with
  * `ad_free_string`. On error `*out` is left null.

@@ -77,7 +77,7 @@ pub(crate) fn satisfied(predicate: &ElementPredicate, observed: &Value) -> bool 
         ElementPredicate::Enabled => observed["enabled"].as_bool() == Some(true),
         ElementPredicate::Visible => observed["visible"].as_bool() == Some(true),
         ElementPredicate::Actionable => observed["actionable"].as_bool() == Some(true),
-        ElementPredicate::Value(expected) => observed["value"].as_str() == Some(expected.as_str()),
+        ElementPredicate::Value(_) => observed["matched"].as_bool() == Some(true),
     }
 }
 
@@ -132,5 +132,11 @@ fn value(
         .ok()
         .flatten()
         .or(entry.value.clone());
-    json!({ "value": observed, "expected": expected })
+    let matched = observed.as_deref() == Some(expected);
+    json!({
+        "matched": matched,
+        "value_present": observed.is_some(),
+        "value_chars": observed.as_ref().map(|value| value.chars().count()),
+        "expected_chars": expected.chars().count()
+    })
 }

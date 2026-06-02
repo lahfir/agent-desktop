@@ -150,6 +150,26 @@ fn only_element_not_found_is_retryable_resolution_error() {
     )));
 }
 
+#[test]
+fn ambiguous_candidate_classification_reports_structured_details() {
+    let err = match classify_candidates(
+        vec![
+            AXElement(std::ptr::null_mut()),
+            AXElement(std::ptr::null_mut()),
+        ],
+        &entry(None, Some("w-42"), Some("Documents"), None),
+    ) {
+        Ok(_) => panic!("expected ambiguous target"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code, ErrorCode::AmbiguousTarget);
+    let details = err.details.unwrap();
+    assert_eq!(details["candidate_count"], 2);
+    assert_eq!(details["role"], "cell");
+    assert_eq!(details["source_window_id"], "w-42");
+}
+
 fn description_entry() -> RefEntry {
     let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
     entry.role = "button".into();

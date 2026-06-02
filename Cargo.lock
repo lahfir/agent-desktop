@@ -50,6 +50,7 @@ dependencies = [
  "agent-desktop-macos",
  "agent-desktop-windows",
  "libc",
+ "serde_json",
  "smallvec",
 ]
 

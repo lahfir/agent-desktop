@@ -21,6 +21,7 @@ impl TraceConfig {
         let writer = match path.as_deref() {
             Some(path) => match open_trace_file(path) {
                 Ok(file) => Some(Arc::new(Mutex::new(file))),
+                Err(err) if err.code() == "INVALID_ARGS" => return Err(err),
                 Err(err) if strict => return Err(err),
                 Err(err) => {
                     tracing::warn!("trace open failed: {err}");
@@ -63,7 +64,9 @@ fn open_trace_file(path: &Path) -> Result<std::fs::File, AppError> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    options.open(path).map_err(AppError::from)
+    let file = options.open(path).map_err(AppError::from)?;
+    reject_loose_trace_permissions(&file)?;
+    Ok(file)
 }
 
 fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(), AppError> {
@@ -78,7 +81,7 @@ fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(
                 .as_millis()
         ),
     );
-    if let Value::Object(fields) = fields {
+    if let Value::Object(fields) = sanitize_trace_value(fields) {
         for (key, value) in fields {
             body.insert(key, value);
         }
@@ -86,4 +89,56 @@ fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(
     serde_json::to_writer(&mut *file, &Value::Object(body))?;
     use std::io::Write;
     file.write_all(b"\n").map_err(AppError::from)
+}
+
+#[cfg(unix)]
+fn reject_loose_trace_permissions(file: &std::fs::File) -> Result<(), AppError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mode = file.metadata()?.permissions().mode() & 0o777;
+    if mode & 0o077 == 0 {
+        return Ok(());
+    }
+    Err(AppError::invalid_input_with_suggestion(
+        "Trace file must not be readable or writable by group/other",
+        "Use a new --trace path or run chmod 600 on the existing trace file.",
+    ))
+}
+
+#[cfg(not(unix))]
+fn reject_loose_trace_permissions(_file: &std::fs::File) -> Result<(), AppError> {
+    Ok(())
+}
+
+fn sanitize_trace_value(value: Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| {
+                    if is_sensitive_trace_key(&key) {
+                        (key, redacted_value(value))
+                    } else {
+                        (key, sanitize_trace_value(value))
+                    }
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(sanitize_trace_value).collect()),
+        other => other,
+    }
+}
+
+fn is_sensitive_trace_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    key.contains("text") || key.contains("value") || key == "expected"
+}
+
+fn redacted_value(value: Value) -> Value {
+    match value {
+        Value::String(text) => json!({ "redacted": true, "chars": text.chars().count() }),
+        Value::Array(items) => json!({ "redacted": true, "items": items.len() }),
+        Value::Object(map) => json!({ "redacted": true, "keys": map.len() }),
+        Value::Null => Value::Null,
+        _ => json!({ "redacted": true }),
+    }
 }

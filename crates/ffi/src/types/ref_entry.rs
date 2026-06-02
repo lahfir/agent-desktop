@@ -26,9 +26,9 @@ pub struct AdRefEntry {
     pub path_count: usize,
 }
 
-pub const AD_REF_ENTRY_SIZE: usize = std::mem::size_of::<AdRefEntry>();
+pub const AD_REF_ENTRY_SIZE: usize = 192;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_ref_entry_size() -> usize {
-    AD_REF_ENTRY_SIZE
+    std::mem::size_of::<AdRefEntry>()
 }

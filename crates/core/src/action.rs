@@ -64,7 +64,8 @@ impl Action {
             Self::Select(_) => &["Select", "Click"],
             Self::Toggle => &["Toggle", "Click"],
             Self::Check | Self::Uncheck => &["Toggle", "Click"],
-            Self::Scroll(_, _) | Self::ScrollTo => &["ScrollTo"],
+            Self::Scroll(_, _) => &["Scroll", "ScrollTo"],
+            Self::ScrollTo => &["ScrollTo"],
             Self::PressKey(_) => &["PressKey"],
             Self::KeyDown(_) => &["KeyDown"],
             Self::KeyUp(_) => &["KeyUp"],
@@ -76,10 +77,6 @@ impl Action {
 
     pub fn requires_cursor_policy(&self) -> bool {
         matches!(self, Self::Hover | Self::Drag(_))
-    }
-
-    pub fn requires_focus_policy(&self) -> bool {
-        matches!(self, Self::TypeText(_) | Self::PressKey(_))
     }
 
     pub fn may_use_focus_fallback(&self) -> bool {

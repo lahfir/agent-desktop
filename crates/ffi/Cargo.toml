@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 smallvec.workspace = true
+serde_json.workspace = true
 agent-desktop-core.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

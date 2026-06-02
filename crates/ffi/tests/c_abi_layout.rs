@@ -25,14 +25,12 @@ fn rect_and_point_layouts_are_memcpyable() {
 
 #[test]
 fn ref_entry_layout_is_guarded_for_c_consumers() {
-    assert_eq!(
-        agent_desktop_ffi::types::ref_entry::AD_REF_ENTRY_SIZE,
-        size_of::<AdRefEntry>()
-    );
+    assert_eq!(agent_desktop_ffi::types::ref_entry::AD_REF_ENTRY_SIZE, 192);
     assert_eq!(
         unsafe { common::ad_ref_entry_size() },
-        size_of::<AdRefEntry>()
+        agent_desktop_ffi::types::ref_entry::AD_REF_ENTRY_SIZE
     );
+    assert_eq!(size_of::<AdRefEntry>(), 192);
     assert_eq!(align_of::<AdRefEntry>(), align_of::<usize>());
     assert_eq!(offset_of!(AdRefEntry, pid), 0);
 

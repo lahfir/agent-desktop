@@ -12,6 +12,7 @@ unsafe extern "C" {
         out: *mut agent_desktop_ffi::AdWindowInfo,
     ) -> AdResult;
     fn ad_last_error_message() -> *const std::os::raw::c_char;
+    fn ad_last_error_details() -> *const std::os::raw::c_char;
     fn ad_last_error_code() -> AdResult;
 }
 
@@ -34,7 +35,9 @@ fn last_error_pointer_survives_across_successful_calls() {
         ));
 
         let first_msg_ptr = ad_last_error_message();
+        let first_details_ptr = ad_last_error_details();
         assert!(!first_msg_ptr.is_null());
+        assert!(first_details_ptr.is_null());
         let first_msg = CStr::from_ptr(first_msg_ptr).to_string_lossy().into_owned();
 
         for _ in 0..10 {
@@ -45,6 +48,7 @@ fn last_error_pointer_survives_across_successful_calls() {
 
         let later_msg_ptr = ad_last_error_message();
         assert_eq!(first_msg_ptr, later_msg_ptr);
+        assert_eq!(first_details_ptr, ad_last_error_details());
         let later_msg = CStr::from_ptr(later_msg_ptr).to_string_lossy().into_owned();
         assert_eq!(first_msg, later_msg);
         assert_eq!(ad_last_error_code(), rc);

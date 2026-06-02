@@ -188,26 +188,16 @@ fn wait_for_element(
                         }));
                     }
                 }
-                Err(err) if fixed_refmap.is_none() && err.code == ErrorCode::StaleRef => {
+                Err(err) if is_retryable_wait_resolution_error(&err.code) => {
                     last_observed = json!({
                         "error": err.code.as_str(),
                         "message": err.message
                     });
-                    if let Some(cache) = latest_cache.as_mut() {
-                        cache.refresh_if_due();
+                    if fixed_refmap.is_none() {
+                        if let Some(cache) = latest_cache.as_mut() {
+                            cache.refresh_if_due();
+                        }
                     }
-                }
-                Err(err) if err.code == ErrorCode::StaleRef => {
-                    last_observed = json!({
-                        "error": err.code.as_str(),
-                        "message": err.message
-                    });
-                }
-                Err(err) if err.code == ErrorCode::ElementNotFound => {
-                    last_observed = json!({
-                        "error": err.code.as_str(),
-                        "message": err.message
-                    });
                 }
                 Err(err) => return Err(AppError::Adapter(err)),
             }
@@ -271,6 +261,16 @@ fn wait_for_window(
     }
 }
 
+fn is_retryable_wait_resolution_error(code: &ErrorCode) -> bool {
+    matches!(
+        code,
+        ErrorCode::StaleRef
+            | ErrorCode::ElementNotFound
+            | ErrorCode::AmbiguousTarget
+            | ErrorCode::Timeout
+    )
+}
+
 fn wait_for_text(
     text: String,
     expected_count: Option<usize>,
@@ -316,7 +316,7 @@ fn wait_for_text(
                 ))
                 .with_details(json!({
                     "predicate": "text",
-                    "text": text,
+                    "text_chars": text.chars().count(),
                     "timeout_ms": timeout_ms,
                     "expected_count": expected_count
                 })),
@@ -357,7 +357,7 @@ fn wait_for_notification(
                     "predicate": "notification",
                     "timeout_ms": args.timeout_ms,
                     "app": args.app.clone(),
-                    "text": args.text.clone()
+                    "text_chars": args.text.as_ref().map(|text| text.chars().count())
                 })),
             ));
         }
@@ -384,3 +384,7 @@ fn wait_for_notification(
 #[cfg(test)]
 #[path = "wait_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "wait_element_tests.rs"]
+mod element_tests;

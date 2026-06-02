@@ -81,10 +81,6 @@ impl PlatformAdapter for MacOSAdapter {
         execute_action_impl(handle, request)
     }
 
-    fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
-    }
-
     fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         crate::tree::resolve::resolve_element_impl(entry)
     }
@@ -187,6 +183,24 @@ impl PlatformAdapter for MacOSAdapter {
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_state"))
+    }
+
+    fn get_live_actions(&self, handle: &NativeHandle) -> Result<Option<Vec<String>>, AdapterError> {
+        #[cfg(target_os = "macos")]
+        {
+            use crate::tree::AXElement;
+            use std::mem::ManuallyDrop;
+            let el = ManuallyDrop::new(AXElement(
+                handle.as_raw() as accessibility_sys::AXUIElementRef
+            ));
+            let state = crate::actions::post_state::read_element_state(&el);
+            Ok(Some(crate::tree::action_list::platform_available_actions(
+                &el,
+                &state.role,
+            )))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Err(AdapterError::not_supported("get_live_actions"))
     }
 
     fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {

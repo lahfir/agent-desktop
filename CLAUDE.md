@@ -184,8 +184,9 @@ Phases 2–4 add adapters, transports, and production readiness work. Nothing in
 
 ```
 PERM_DENIED, ELEMENT_NOT_FOUND, APP_NOT_FOUND, ACTION_FAILED,
-ACTION_NOT_SUPPORTED, STALE_REF, WINDOW_NOT_FOUND,
-PLATFORM_NOT_SUPPORTED, TIMEOUT, INVALID_ARGS, INTERNAL
+ACTION_NOT_SUPPORTED, STALE_REF, AMBIGUOUS_TARGET, WINDOW_NOT_FOUND,
+PLATFORM_NOT_SUPPORTED, TIMEOUT, INVALID_ARGS, NOTIFICATION_NOT_FOUND,
+SNAPSHOT_NOT_FOUND, POLICY_DENIED, INTERNAL
 ```
 
 ### Exit Codes
@@ -271,7 +272,7 @@ Every command produces a response envelope:
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -287,7 +288,7 @@ Error responses:
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": false,
   "command": "click",
   "error": {

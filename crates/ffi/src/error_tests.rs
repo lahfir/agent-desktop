@@ -24,6 +24,14 @@ fn last_error_platform_detail_str() -> Option<String> {
     })
 }
 
+fn last_error_details_str() -> Option<String> {
+    LAST_ERROR.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .and_then(|e| e.details.as_ref().map(|s| s.to_string_lossy().into_owned()))
+    })
+}
+
 #[test]
 fn test_no_error_initially() {
     clear_last_error();
@@ -47,6 +55,23 @@ fn test_set_and_get_error() {
     assert_eq!(last_error_message_str().unwrap(), "element @e5 gone");
     assert_eq!(last_error_suggestion_str().unwrap(), "run snapshot");
     assert!(last_error_platform_detail_str().is_none());
+    assert!(last_error_details_str().is_none());
+}
+
+#[test]
+fn test_set_and_get_structured_details() {
+    let err = AdapterError::new(ErrorCode::AmbiguousTarget, "ambiguous").with_details(
+        serde_json::json!({
+            "candidate_count": 2,
+            "role": "button"
+        }),
+    );
+    set_last_error(&err);
+
+    let details: serde_json::Value =
+        serde_json::from_str(&last_error_details_str().unwrap()).unwrap();
+    assert_eq!(details["candidate_count"], 2);
+    assert_eq!(details["role"], "button");
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use crate::{
     action::{MouseButton, MouseEvent, MouseEventKind, Point},
     adapter::PlatformAdapter,
-    commands::helpers::resolve_point_from_ref_or_xy_with_context,
+    commands::helpers::{PointResolveArgs, resolve_point_from_ref_or_xy_with_context},
     context::CommandContext,
     error::AppError,
 };
@@ -37,11 +37,13 @@ fn resolve_hover_point(
     context: &CommandContext,
 ) -> Result<Point, AppError> {
     resolve_point_from_ref_or_xy_with_context(
-        args.ref_id.as_deref(),
-        args.xy,
-        args.snapshot_id.as_deref(),
+        PointResolveArgs {
+            ref_id: args.ref_id.as_deref(),
+            xy: args.xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        },
         adapter,
-        "Provide a ref (@e1) or --xy x,y",
         context,
     )
 }

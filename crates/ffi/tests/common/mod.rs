@@ -19,6 +19,7 @@ unsafe extern "C" {
 
     pub fn ad_last_error_code() -> AdResult;
     pub fn ad_last_error_message() -> *const c_char;
+    pub fn ad_last_error_details() -> *const c_char;
 
     pub fn ad_list_apps(adapter: *const AdAdapter, out: *mut *mut AdAppList) -> AdResult;
     pub fn ad_app_list_count(list: *const AdAppList) -> u32;
