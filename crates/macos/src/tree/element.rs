@@ -100,7 +100,16 @@ mod imp {
             .collect();
 
         let get = |i: usize| items.get(i).and_then(|v| v.clone());
-        NodeAttrs::enabled_by_default(get(0), get(1), get(2), get(3), get(4))
+        NodeAttrs::with_enabled_default(
+            NodeAttrs {
+                role: get(0),
+                title: get(1),
+                description: get(2),
+                value: get(3),
+                enabled: true,
+            },
+            get(4),
+        )
     }
 
     fn fetch_node_attrs_slow(el: &AXElement) -> NodeAttrs {

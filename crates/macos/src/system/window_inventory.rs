@@ -30,12 +30,12 @@ fn apps_from_window_records(records: &[cg_window::WindowRecord]) -> Vec<AppInfo>
 
 pub(crate) fn list_windows(
     filter: &WindowFilter,
-    app_for_name: impl Fn(&str) -> Option<AppInfo>,
+    app_for_name: impl FnMut(&str, &[AppInfo]) -> Option<AppInfo>,
 ) -> Vec<WindowInfo> {
     list_windows_with_sources(
         filter,
         app_for_name,
-        visible_windows_once,
+        cg_window::visible_window_records,
         ax_window_for_app,
         std::thread::sleep,
     )
@@ -43,8 +43,8 @@ pub(crate) fn list_windows(
 
 fn list_windows_with_sources(
     filter: &WindowFilter,
-    app_for_name: impl Fn(&str) -> Option<AppInfo>,
-    mut visible_windows: impl FnMut(&WindowFilter) -> Vec<WindowInfo>,
+    mut app_for_name: impl FnMut(&str, &[AppInfo]) -> Option<AppInfo>,
+    mut visible_records: impl FnMut() -> Vec<cg_window::WindowRecord>,
     mut ax_window_for_app: impl FnMut(&AppInfo) -> Option<WindowInfo>,
     mut sleep: impl FnMut(Duration),
 ) -> Vec<WindowInfo> {
@@ -52,14 +52,16 @@ fn list_windows_with_sources(
     let mut app_loaded = false;
 
     for attempt in 0..3 {
-        let windows = visible_windows(filter);
+        let records = visible_records();
+        let windows = visible_windows_from_records(filter, &records);
         if !windows.is_empty() {
             return windows;
         }
 
         if let Some(app_name) = filter.app.as_deref() {
             if !app_loaded {
-                app = app_for_name(app_name);
+                let visible_apps = apps_from_window_records(&records);
+                app = app_for_name(app_name, &visible_apps);
                 app_loaded = true;
             }
             if let Some(app) = app.as_ref() {
@@ -67,7 +69,6 @@ fn list_windows_with_sources(
                     if !filter.focused_only || window.is_focused {
                         return vec![window];
                     }
-                    continue;
                 }
             }
         }
@@ -82,11 +83,15 @@ fn list_windows_with_sources(
     Vec::new()
 }
 
-fn visible_windows_once(filter: &WindowFilter) -> Vec<WindowInfo> {
+fn visible_windows_from_records(
+    filter: &WindowFilter,
+    records: &[cg_window::WindowRecord],
+) -> Vec<WindowInfo> {
     let app_filter = filter.app.as_deref().unwrap_or("").to_ascii_lowercase();
-    let candidates = cg_window::visible_window_records()
-        .into_iter()
+    let candidates = records
+        .iter()
         .filter(|record| matches_app_filter(&record.app_name, &app_filter))
+        .cloned()
         .collect();
 
     windows_from_records(candidates, filter.focused_only)
@@ -149,7 +154,7 @@ fn windows_from_records_with_focus(
 }
 
 fn matches_app_filter(app_name: &str, app_filter: &str) -> bool {
-    app_filter.is_empty() || app_name.to_ascii_lowercase().contains(app_filter)
+    app_filter.is_empty() || app_name.eq_ignore_ascii_case(app_filter)
 }
 
 fn should_retry_empty(filter: &WindowFilter, app: Option<&AppInfo>) -> bool {

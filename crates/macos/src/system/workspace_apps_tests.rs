@@ -21,3 +21,8 @@ fn ns_string_accepts_cf_string_object() {
 
     assert_eq!(unsafe { ns_string(value) }.as_deref(), Some("Mail"));
 }
+
+#[test]
+fn autorelease_pool_ignores_null_push_result() {
+    drop(AutoreleasePool(None));
+}

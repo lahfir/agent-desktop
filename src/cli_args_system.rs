@@ -36,7 +36,7 @@ pub(crate) struct CloseAppArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ListWindowsArgs {
-    #[arg(long, help = "Filter running apps by case-insensitive name substring")]
+    #[arg(long, help = "Filter to application by exact case-insensitive name")]
     pub app: Option<String>,
 }
 

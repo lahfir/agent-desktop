@@ -7,17 +7,20 @@ type Class = *mut c_void;
 type Sel = *mut c_void;
 const RTLD_LAZY: i32 = 1;
 
-struct AutoreleasePool(Id);
+struct AutoreleasePool(Option<Id>);
 
 impl AutoreleasePool {
     unsafe fn new() -> Self {
-        Self(unsafe { objc_autoreleasePoolPush() })
+        let pool = unsafe { objc_autoreleasePoolPush() };
+        Self((!pool.is_null()).then_some(pool))
     }
 }
 
 impl Drop for AutoreleasePool {
     fn drop(&mut self) {
-        unsafe { objc_autoreleasePoolPop(self.0) };
+        if let Some(pool) = self.0 {
+            unsafe { objc_autoreleasePoolPop(pool) };
+        }
     }
 }
 
@@ -54,22 +57,14 @@ pub(crate) fn list_apps() -> Vec<AppInfo> {
 }
 
 fn appkit_loaded() -> bool {
-    static APPKIT_LOADED: OnceLock<()> = OnceLock::new();
-    if APPKIT_LOADED.get().is_some() {
-        return true;
-    }
-
-    let loaded = unsafe {
+    static APPKIT_LOADED: OnceLock<bool> = OnceLock::new();
+    *APPKIT_LOADED.get_or_init(|| unsafe {
         !dlopen(
             c"/System/Library/Frameworks/AppKit.framework/AppKit".as_ptr(),
             RTLD_LAZY,
         )
         .is_null()
-    };
-    if loaded {
-        let _ = APPKIT_LOADED.set(());
-    }
-    loaded
+    })
 }
 
 fn apps_from_running_array(

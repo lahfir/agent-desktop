@@ -5,6 +5,7 @@ mod imp {
     use core_foundation::base::{CFRetain, CFType, CFTypeRef, TCFType};
     use core_foundation_sys::base::{CFGetTypeID, CFRelease};
 
+    /// Takes ownership of a non-null +1 create-rule reference and releases mismatched values.
     pub(crate) fn created_ax_element(value: CFTypeRef) -> Option<AXElement> {
         if value.is_null() {
             return None;

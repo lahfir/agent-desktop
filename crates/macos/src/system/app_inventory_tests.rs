@@ -70,10 +70,10 @@ fn find_app_in_apps_rejects_contains_match() {
 #[test]
 fn find_app_with_process_fallback_uses_process_entries_after_primary_miss() {
     let primary = vec![app("Finder", 10)];
-    let process = vec![app("Mail", 11)];
 
     assert_eq!(
-        find_app_with_process_fallback(&primary, process, "Mail").map(|app| app.pid),
+        find_app_with_process_fallback(&primary, || vec![app("Mail", 11)], "Mail")
+            .map(|app| app.pid),
         Some(11)
     );
 }
@@ -81,20 +81,66 @@ fn find_app_with_process_fallback_uses_process_entries_after_primary_miss() {
 #[test]
 fn find_app_with_process_fallback_prefers_primary_entries() {
     let primary = vec![app("Mail", 10)];
-    let process = vec![app("Mail", 11)];
+    let mut process_called = false;
 
     assert_eq!(
-        find_app_with_process_fallback(&primary, process, "Mail").map(|app| app.pid),
+        find_app_with_process_fallback(
+            &primary,
+            || {
+                process_called = true;
+                vec![app("Mail", 11)]
+            },
+            "Mail"
+        )
+        .map(|app| app.pid),
         Some(10)
     );
+    assert!(!process_called);
 }
 
 #[test]
 fn find_app_with_process_fallback_does_not_cross_match_helpers() {
     let primary = Vec::new();
-    let process = vec![app("Mail Helper", 11)];
 
-    assert!(find_app_with_process_fallback(&primary, process, "Mail").is_none());
+    assert!(
+        find_app_with_process_fallback(&primary, || vec![app("Mail Helper", 11)], "Mail").is_none()
+    );
+}
+
+#[test]
+fn list_apps_from_sources_includes_process_apps_when_primary_has_entries() {
+    let apps = list_apps_from_sources(vec![app("Finder", 10)], Vec::new(), vec![app("Mail", 11)]);
+
+    assert_eq!(
+        apps.iter().map(|app| app.name.as_str()).collect::<Vec<_>>(),
+        vec!["Finder", "Mail"]
+    );
+}
+
+#[test]
+fn app_for_name_from_sources_uses_visible_entries_without_process_lookup() {
+    let mut process_called = false;
+    let app = app_for_name_from_sources("Finder", Vec::new(), &[app("Finder", 10)], || {
+        process_called = true;
+        Vec::new()
+    });
+
+    assert_eq!(app.map(|app| app.pid), Some(10));
+    assert!(!process_called);
+}
+
+#[test]
+fn apps_from_windows_deduplicates_visible_window_apps() {
+    let apps = apps_from_windows(vec![
+        window("Finder", 10, "Documents", 1),
+        window("Finder", 10, "Downloads", 2),
+        window("Mail", 11, "Inbox", 3),
+    ]);
+
+    assert_eq!(
+        apps.iter().map(|app| app.name.as_str()).collect::<Vec<_>>(),
+        vec!["Finder", "Mail"]
+    );
 }
 
 #[test]
@@ -107,4 +153,15 @@ fn sort_apps_orders_by_name_then_pid() {
         apps.iter().map(|app| app.pid).collect::<Vec<_>>(),
         vec![1, 2, 3]
     );
+}
+
+fn window(app_name: &str, pid: i32, title: &str, window_number: i64) -> WindowInfo {
+    WindowInfo {
+        id: format!("w-{window_number}"),
+        title: title.to_string(),
+        app: app_name.to_string(),
+        pid,
+        bounds: None,
+        is_focused: false,
+    }
 }

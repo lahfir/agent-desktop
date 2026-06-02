@@ -23,9 +23,14 @@ fn apps_from_window_records_keeps_same_name_with_distinct_pids() {
 }
 
 #[test]
-fn matches_app_filter_accepts_case_insensitive_substring() {
-    assert!(matches_app_filter("Docker Desktop", "docker"));
+fn matches_app_filter_accepts_exact_case_insensitive_name() {
+    assert!(matches_app_filter("Docker Desktop", "docker desktop"));
     assert!(!matches_app_filter("Finder", "docker"));
+}
+
+#[test]
+fn matches_app_filter_rejects_substring_match() {
+    assert!(!matches_app_filter("Mail Helper", "mail"));
 }
 
 #[test]
@@ -104,25 +109,98 @@ fn list_windows_retries_after_unfocused_ax_fallback_for_focused_filter() {
     };
     let app = app("Mail", 42);
     let mut visible_calls = 0;
+    let mut ax_calls = 0;
 
     let windows = list_windows_with_sources(
         &filter,
-        |_| Some(app.clone()),
-        |_| {
+        |_, _| Some(app.clone()),
+        || {
             visible_calls += 1;
-            if visible_calls == 2 {
-                vec![window("Mail", 42, "Inbox", 7, true)]
-            } else {
-                Vec::new()
-            }
+            Vec::new()
         },
-        |_| Some(window("Mail", 42, "Inbox", 7, false)),
+        |_| {
+            ax_calls += 1;
+            Some(window("Mail", 42, "Inbox", 7, ax_calls == 2))
+        },
         |_| {},
     );
 
     assert_eq!(windows.len(), 1);
     assert_eq!(windows[0].title, "Inbox");
     assert_eq!(visible_calls, 2);
+    assert_eq!(ax_calls, 2);
+}
+
+#[test]
+fn list_windows_sleeps_between_unfocused_ax_fallback_retries() {
+    let filter = WindowFilter {
+        app: Some("Mail".to_string()),
+        focused_only: true,
+    };
+    let app = app("Mail", 42);
+    let mut sleep_calls = 0;
+
+    let windows = list_windows_with_sources(
+        &filter,
+        |_, _| Some(app.clone()),
+        Vec::new,
+        |_| Some(window("Mail", 42, "Inbox", 7, false)),
+        |_| sleep_calls += 1,
+    );
+
+    assert!(windows.is_empty());
+    assert_eq!(sleep_calls, 2);
+}
+
+#[test]
+fn list_windows_without_app_filter_retries_empty_records() {
+    let filter = WindowFilter {
+        app: None,
+        focused_only: false,
+    };
+    let mut visible_calls = 0;
+    let mut app_resolver_called = false;
+
+    let windows = list_windows_with_sources(
+        &filter,
+        |_, _| {
+            app_resolver_called = true;
+            None
+        },
+        || {
+            visible_calls += 1;
+            Vec::new()
+        },
+        |_| None,
+        |_| {},
+    );
+
+    assert!(windows.is_empty());
+    assert_eq!(visible_calls, 3);
+    assert!(!app_resolver_called);
+}
+
+#[test]
+fn list_windows_stops_when_named_app_is_missing() {
+    let filter = WindowFilter {
+        app: Some("Missing".to_string()),
+        focused_only: true,
+    };
+    let mut visible_calls = 0;
+
+    let windows = list_windows_with_sources(
+        &filter,
+        |_, _| None,
+        || {
+            visible_calls += 1;
+            Vec::new()
+        },
+        |_| None,
+        |_| {},
+    );
+
+    assert!(windows.is_empty());
+    assert_eq!(visible_calls, 1);
 }
 
 #[test]

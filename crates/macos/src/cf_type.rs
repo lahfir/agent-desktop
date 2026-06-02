@@ -15,6 +15,7 @@ mod imp {
         string::CFStringGetTypeID,
     };
 
+    /// Takes ownership of a non-null +1 create-rule reference and releases mismatched values.
     pub(crate) fn created_cf_array(value: CFTypeRef) -> Option<CFArray<CFType>> {
         if value.is_null() {
             return None;
