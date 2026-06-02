@@ -43,12 +43,32 @@ pub(crate) fn resolve_ref_with_context<'a>(
     )?;
     let refmap = store.load(snapshot_id).map_err(|e| {
         tracing::debug!("refmap load failed: {e}");
+        let _ = context.trace(
+            "ref.resolve.error",
+            json!({
+                "ref": ref_id,
+                "snapshot_id": snapshot_id,
+                "code": "STALE_REF",
+                "message": e.to_string()
+            }),
+        );
         AppError::stale_ref(ref_id)
     })?;
-    let entry = refmap
-        .get(ref_id)
-        .ok_or_else(|| AppError::stale_ref(ref_id))?
-        .clone();
+    let entry = match refmap.get(ref_id) {
+        Some(entry) => entry.clone(),
+        None => {
+            context.trace(
+                "ref.resolve.error",
+                json!({
+                    "ref": ref_id,
+                    "snapshot_id": snapshot_id,
+                    "code": "STALE_REF",
+                    "message": "ref not found in current RefMap"
+                }),
+            )?;
+            return Err(AppError::stale_ref(ref_id));
+        }
+    };
     tracing::debug!(
         "resolve: {} -> pid={} role={} name={:?}",
         ref_id,
@@ -65,7 +85,17 @@ pub(crate) fn resolve_ref_with_context<'a>(
             "name": entry.name
         }),
     )?;
-    let handle = adapter.resolve_element_strict(&entry)?;
+    let handle = adapter.resolve_element_strict(&entry).inspect_err(|err| {
+        let _ = context.trace(
+            "ref.resolve.error",
+            json!({
+                "ref": ref_id,
+                "snapshot_id": snapshot_id,
+                "code": err.code.as_str(),
+                "message": err.message.clone()
+            }),
+        );
+    })?;
     tracing::debug!("resolve: {} resolved successfully", ref_id);
     context.trace("ref.resolve.ok", json!({ "ref": ref_id }))?;
     Ok((entry, ResolvedElement::new(adapter, handle)))
@@ -115,7 +145,17 @@ pub(crate) fn execute_ref_action_with_context(
         "actionability.check.start",
         json!({ "ref": args.ref_id, "action": request.action.name() }),
     )?;
-    crate::actionability::check(&_entry, &request)?;
+    crate::actionability::check(&_entry, &request).inspect_err(|err| {
+        let _ = context.trace(
+            "actionability.check.error",
+            json!({
+                "ref": args.ref_id,
+                "action": request.action.name(),
+                "code": err.code.as_str(),
+                "message": err.message.clone()
+            }),
+        );
+    })?;
     context.trace(
         "actionability.check.ok",
         json!({ "ref": args.ref_id, "action": request.action.name() }),

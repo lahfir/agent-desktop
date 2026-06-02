@@ -75,6 +75,29 @@ fn snapshot_with_one_ref() -> String {
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
 }
 
+fn snapshot_with_disabled_ref() -> String {
+    let mut refmap = RefMap::new();
+    refmap.allocate(RefEntry {
+        pid: 1,
+        role: "button".into(),
+        name: Some("Run".into()),
+        value: None,
+        description: None,
+        states: vec!["disabled".into()],
+        bounds: None,
+        bounds_hash: None,
+        available_actions: vec!["Click".into()],
+        source_app: None,
+        source_window_id: None,
+        source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
+        root_ref: None,
+        path_is_absolute: false,
+        path: smallvec::SmallVec::new(),
+    });
+    RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
+}
+
 #[test]
 fn snapshot_pinned_missing_ref_is_invalid_args() {
     let _guard = HomeGuard::new();
@@ -216,6 +239,35 @@ fn element_wait_value_predicate_matches_live_value() {
 
     assert_eq!(value["predicate"], "value");
     assert_eq!(value["observed"]["value"], "ready");
+}
+
+#[test]
+fn element_wait_timeout_reports_last_actionability_observation() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_disabled_ref();
+    let adapter = PredicateAdapter {
+        state: Some(ElementState {
+            role: "button".into(),
+            states: vec!["disabled".into()],
+            value: None,
+        }),
+        value: None,
+        bounds: None,
+    };
+
+    let err = wait_for_element(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Actionable,
+        1,
+        &adapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "TIMEOUT");
+    assert!(err.to_string().contains("\"actionable\":false"));
+    assert!(err.to_string().contains("entry state contains disabled"));
 }
 
 #[test]

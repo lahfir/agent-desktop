@@ -163,7 +163,7 @@ fn wait_for_element(
         ));
     }
 
-    let last_observed = json!(null);
+    let mut last_observed = json!(null);
     loop {
         let entry = fixed_refmap
             .as_ref()
@@ -172,15 +172,15 @@ fn wait_for_element(
         if let Some(entry) = entry {
             match adapter.resolve_element_strict(&entry) {
                 Ok(handle) => {
-                    let observed = wait_predicate::matches(&entry, &handle, &predicate, adapter);
+                    last_observed = wait_predicate::observe(&entry, &handle, &predicate, adapter);
                     let _ = adapter.release_handle(&handle);
-                    if let Some(observed) = observed {
+                    if wait_predicate::satisfied(&predicate, &last_observed) {
                         let elapsed = start.elapsed().as_millis();
                         return Ok(json!({
                             "found": true,
                             "ref": ref_id,
                             "predicate": predicate.name(),
-                            "observed": observed,
+                            "observed": last_observed,
                             "elapsed_ms": elapsed
                         }));
                     }
