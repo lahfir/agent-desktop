@@ -22,6 +22,9 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
 
     if let Some(windows) = copy_ax_array(&app, kAXWindowsAttribute) {
         for win in &windows {
+            if !is_window_candidate(win) {
+                continue;
+            }
             let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
@@ -31,6 +34,9 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
             }
         }
         for win in &windows {
+            if !is_window_candidate(win) {
+                continue;
+            }
             let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
@@ -40,11 +46,11 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
             }
         }
         for win in &windows {
-            if count_children(win, None) > 0 {
+            if is_window_candidate(win) && count_children(win, None) > 0 {
                 return win.clone();
             }
         }
-        if let Some(first) = windows.into_iter().next() {
+        if let Some(first) = windows.into_iter().find(is_window_candidate) {
             return first;
         }
     }
@@ -62,6 +68,11 @@ fn window_titles_are_partial_match(candidate_title: &str, requested_title: &str)
     !candidate_title.is_empty()
         && !requested_title.is_empty()
         && (candidate_title.contains(requested_title) || requested_title.contains(candidate_title))
+}
+
+#[cfg(target_os = "macos")]
+fn is_window_candidate(el: &AXElement) -> bool {
+    copy_string_attr(el, kAXRoleAttribute).as_deref() == Some("AXWindow")
 }
 
 #[cfg(target_os = "macos")]
