@@ -54,6 +54,7 @@ pub mod uncheck;
 pub mod version;
 pub mod wait;
 pub(crate) mod wait_latest_ref_cache;
+pub(crate) mod wait_mode;
 pub(crate) mod wait_predicate;
 pub(crate) mod wait_text_match;
 pub(crate) mod wait_timeout;

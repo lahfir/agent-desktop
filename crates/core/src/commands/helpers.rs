@@ -180,7 +180,7 @@ pub(crate) fn execute_ref_action_result_with_context(
         &request,
         context,
     )?;
-    let result = adapter.execute_action(handle.handle(), request)?;
+    let result = crate::ref_action::execute_checked(adapter, handle.handle(), request)?;
     context.trace("action.dispatch.ok", json!({ "ref": ref_id }))?;
     Ok((entry, result))
 }
@@ -195,7 +195,7 @@ fn check_actionability_with_trace(
         "actionability.check.start",
         json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
-    crate::actionability::check_live(target.entry, target.handle, adapter, request).inspect_err(
+    crate::ref_action::check_resolved(adapter, target.entry, target.handle, request).inspect_err(
         |err| {
             let _ = context.trace(
                 "actionability.check.error",

@@ -1,6 +1,10 @@
 use crate::{
-    action::ElementState, adapter::PlatformAdapter, commands::helpers::resolve_ref_with_context,
-    context::CommandContext, error::AppError, refs::RefEntry,
+    action::ElementState,
+    adapter::{PlatformAdapter, optional_live_read},
+    commands::helpers::resolve_ref_with_context,
+    context::CommandContext,
+    error::AppError,
+    refs::RefEntry,
 };
 use serde_json::{Value, json};
 
@@ -31,10 +35,7 @@ pub fn execute_with_context(
 ) -> Result<Value, AppError> {
     let (entry, handle) =
         resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
-    let state = adapter
-        .get_live_state(handle.handle())
-        .ok()
-        .flatten()
+    let state = optional_live_read(adapter.get_live_state(handle.handle()))?
         .unwrap_or_else(|| state_from_ref_entry(&entry));
 
     let prop_name = match args.property {

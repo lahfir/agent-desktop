@@ -15,6 +15,14 @@ impl PlatformAdapter for AmbiguousResolveAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Err(AdapterError::ambiguous_target("2 candidates matched"))
     }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
+    }
 }
 
 struct TransientResolveAdapter {
@@ -28,6 +36,14 @@ impl PlatformAdapter for TransientResolveAdapter {
         }
         Ok(NativeHandle::null())
     }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
+    }
 }
 
 struct PermissionResolveAdapter;
@@ -35,6 +51,22 @@ struct PermissionResolveAdapter;
 impl PlatformAdapter for PermissionResolveAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Err(AdapterError::permission_denied())
+    }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
+    }
+}
+
+struct StrictOnlyResolveAdapter;
+
+impl PlatformAdapter for StrictOnlyResolveAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
     }
 }
 
@@ -141,6 +173,24 @@ fn element_wait_passes_remaining_budget_to_resolver() {
     let captured = adapter.captured_ms.lock().unwrap();
     assert_eq!(captured.len(), 1);
     assert!(captured[0] <= 75);
+}
+
+#[test]
+fn element_wait_requires_timeout_aware_resolution() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+
+    let err = wait_for_element(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Exists,
+        250,
+        &StrictOnlyResolveAdapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "PLATFORM_NOT_SUPPORTED");
 }
 
 #[test]

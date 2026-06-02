@@ -140,31 +140,12 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
             return AdResult::ErrInvalidArgs;
         };
         let request = action_request(policy, core_action);
-        let native_handle = match adapter.inner.resolve_element_strict(&core_entry) {
-            Ok(handle) => handle,
-            Err(err) => {
-                error::set_last_error(&err);
-                return error::last_error_code();
-            }
-        };
-        if let Err(err) = agent_desktop_core::actionability::check_live(
-            &core_entry,
-            &native_handle,
+        match agent_desktop_core::ref_action::execute_entry(
             adapter.inner.as_ref(),
-            &request,
+            &core_entry,
+            request,
         ) {
-            let _ = adapter.inner.release_handle(&native_handle);
-            error::set_last_error(&err);
-            return error::last_error_code();
-        }
-        let result = adapter.inner.execute_action(&native_handle, request);
-        let release = adapter.inner.release_handle(&native_handle);
-        match result {
             Ok(result) => {
-                if let Err(err) = release {
-                    error::set_last_error(&err);
-                    return error::last_error_code();
-                }
                 *out = action_result_to_c(&result);
                 AdResult::Ok
             }

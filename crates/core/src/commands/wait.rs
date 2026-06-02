@@ -1,19 +1,22 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
     commands::{
-        helpers::resolve_app_pid, wait_latest_ref_cache::LatestRefCache, wait_predicate,
-        wait_text_match, wait_timeout,
+        helpers::resolve_app_pid, wait_latest_ref_cache::LatestRefCache, wait_mode::WaitMode,
+        wait_predicate, wait_text_match, wait_timeout,
     },
     context::CommandContext,
     error::{AppError, ErrorCode},
     notification::NotificationFilter,
-    refs::validate_ref_id,
     refs_store::RefStore,
     search_text, snapshot,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+use crate::commands::wait_mode::validate_wait_mode;
+
+#[derive(Clone)]
 pub struct WaitArgs {
     pub ms: Option<u64>,
     pub element: Option<String>,
@@ -40,99 +43,41 @@ pub fn execute_with_context(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    validate_wait_mode(&args)?;
-
-    if let Some(ms) = args.ms {
-        std::thread::sleep(Duration::from_millis(ms));
-        return Ok(json!({ "waited_ms": ms }));
-    }
-
-    if args.menu || args.menu_closed {
-        let pid = resolve_app_pid(args.app.as_deref(), adapter)?;
-        let start = Instant::now();
-        adapter
-            .wait_for_menu(pid, args.menu, args.timeout_ms)
-            .map_err(AppError::Adapter)?;
-        let elapsed = start.elapsed().as_millis();
-        return Ok(json!({ "found": true, "elapsed_ms": elapsed }));
-    }
-
-    if args.notification {
-        return wait_for_notification(&args, adapter);
-    }
-
-    if let Some(ref_id) = args.element {
-        validate_ref_id(&ref_id)?;
-        let predicate =
-            wait_predicate::ElementPredicate::parse(args.predicate.as_deref(), args.value)?;
-        return wait_for_element(
+    let timeout_ms = args.timeout_ms;
+    match WaitMode::from_args(args)? {
+        WaitMode::Sleep(ms) => {
+            std::thread::sleep(Duration::from_millis(ms));
+            Ok(json!({ "waited_ms": ms }))
+        }
+        WaitMode::Menu { app, open } => wait_for_menu(app, open, timeout_ms, adapter),
+        WaitMode::Notification { app, text } => {
+            wait_for_notification(app, text, timeout_ms, adapter)
+        }
+        WaitMode::Element {
             ref_id,
-            args.snapshot_id,
+            snapshot_id,
             predicate,
-            args.timeout_ms,
-            adapter,
-            context,
-        );
+        } => wait_for_element(ref_id, snapshot_id, predicate, timeout_ms, adapter, context),
+        WaitMode::Window(title) => wait_for_window(title, timeout_ms, adapter),
+        WaitMode::Text { text, count, app } => {
+            wait_for_text(text, count, app, timeout_ms, adapter, context)
+        }
     }
-
-    if let Some(title) = args.window {
-        return wait_for_window(title, args.timeout_ms, adapter);
-    }
-
-    if let Some(text) = args.text {
-        return wait_for_text(
-            text,
-            args.count,
-            args.app,
-            args.timeout_ms,
-            adapter,
-            context,
-        );
-    }
-
-    Err(AppError::invalid_input(
-        "Provide a duration (ms), --menu, --notification, --element <ref>, --window <title>, or --text <text>",
-    ))
 }
 
-fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
-    if args.predicate.is_some() && args.element.is_none() {
-        return Err(AppError::invalid_input_with_suggestion(
-            "--predicate requires --element",
-            "Use --element <ref> with --predicate, or remove --predicate.",
-        ));
-    }
-    if args.value.is_some() && args.element.is_none() {
-        return Err(AppError::invalid_input_with_suggestion(
-            "--value requires --element and --predicate value",
-            "Use --element <ref> --predicate value --value <expected>.",
-        ));
-    }
-    if args.count.is_some() && args.text.is_none() {
-        return Err(AppError::invalid_input_with_suggestion(
-            "--count requires --text",
-            "Use --text <text> --count <expected>, or remove --count.",
-        ));
-    }
-    let selected = [
-        args.ms.is_some(),
-        args.element.is_some(),
-        args.window.is_some(),
-        args.text.is_some() && !args.notification,
-        args.menu,
-        args.menu_closed,
-        args.notification,
-    ]
-    .into_iter()
-    .filter(|selected| *selected)
-    .count();
-    if selected <= 1 {
-        return Ok(());
-    }
-    Err(AppError::invalid_input_with_suggestion(
-        "wait accepts exactly one mode",
-        "Use one of: ms, --element, --window, --text, --menu, --menu-closed, or --notification.",
-    ))
+fn wait_for_menu(
+    app: Option<String>,
+    open: bool,
+    timeout_ms: u64,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    let pid = resolve_app_pid(app.as_deref(), adapter)?;
+    let start = Instant::now();
+    adapter
+        .wait_for_menu(pid, open, timeout_ms)
+        .map_err(AppError::Adapter)?;
+    let elapsed = start.elapsed().as_millis();
+    Ok(json!({ "found": true, "elapsed_ms": elapsed }))
 }
 
 fn wait_for_element(
@@ -179,8 +124,9 @@ fn wait_for_element(
             }
             match adapter.resolve_element_strict_with_timeout(&entry, remaining) {
                 Ok(handle) => {
-                    last_observed = wait_predicate::observe(&entry, &handle, &predicate, adapter);
+                    let observed = wait_predicate::observe(&entry, &handle, &predicate, adapter);
                     let _ = adapter.release_handle(&handle);
+                    last_observed = observed.map_err(AppError::Adapter)?;
                     if wait_predicate::satisfied(&predicate, &last_observed) {
                         let elapsed = start.elapsed().as_millis();
                         return Ok(json!({
@@ -280,7 +226,7 @@ fn wait_for_text(
 
     loop {
         if let Ok(result) = snapshot::build(adapter, &opts, app.as_deref(), None) {
-            let matches = wait_text_match::find_all(&result.tree, &normalized_text);
+            let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
             let matched = expected_count
                 .map(|expected| matches.len() == expected)
                 .unwrap_or_else(|| !matches.is_empty());
@@ -322,12 +268,14 @@ fn wait_for_text(
 }
 
 fn wait_for_notification(
-    args: &WaitArgs,
+    app: Option<String>,
+    text: Option<String>,
+    timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
     let filter = NotificationFilter {
-        app: args.app.clone(),
-        text: args.text.clone(),
+        app: app.clone(),
+        text: text.clone(),
         ..Default::default()
     };
     let baseline = adapter
@@ -336,21 +284,20 @@ fn wait_for_notification(
     let baseline_indices: std::collections::HashSet<usize> =
         baseline.iter().map(|n| n.index).collect();
     let start = Instant::now();
-    let timeout = Duration::from_millis(args.timeout_ms);
+    let timeout = Duration::from_millis(timeout_ms);
 
     loop {
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
             return Err(AppError::Adapter(
                 crate::error::AdapterError::timeout(format!(
-                    "No new notification within {}ms",
-                    args.timeout_ms
+                    "No new notification within {timeout_ms}ms"
                 ))
                 .with_details(json!({
                     "predicate": "notification",
-                    "timeout_ms": args.timeout_ms,
-                    "app": args.app.clone(),
-                    "text_chars": args.text.as_ref().map(|text| text.chars().count())
+                    "timeout_ms": timeout_ms,
+                    "app": app.clone(),
+                    "text_chars": text.as_ref().map(|text| text.chars().count())
                 })),
             ));
         }

@@ -3,7 +3,7 @@ use crate::{
     action::{
         ActionRequest, ActionResult, DragParams, ElementState, KeyCombo, MouseEvent, WindowOp,
     },
-    error::AdapterError,
+    error::{AdapterError, ErrorCode},
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
     refs::RefEntry,
@@ -61,6 +61,23 @@ pub struct LiveElement {
     pub state: Option<ElementState>,
     pub bounds: Option<Rect>,
     pub available_actions: Option<Vec<String>>,
+}
+
+pub(crate) fn optional_live_read<T>(
+    result: Result<Option<T>, AdapterError>,
+) -> Result<Option<T>, AdapterError> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(err) if is_live_read_unsupported(&err) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+fn is_live_read_unsupported(err: &AdapterError) -> bool {
+    matches!(
+        err.code,
+        ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
+    )
 }
 
 pub enum ScreenshotTarget {
@@ -156,10 +173,14 @@ pub trait PlatformAdapter: Send + Sync {
 
     fn resolve_element_strict_with_timeout(
         &self,
-        entry: &RefEntry,
+        _entry: &RefEntry,
         _timeout: std::time::Duration,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(
+            AdapterError::not_supported("resolve_element_strict_with_timeout").with_suggestion(
+                "Platform adapters must implement timeout-aware resolution for wait --element",
+            ),
+        )
     }
 
     /// Releases a platform-specific element handle returned from
@@ -235,9 +256,9 @@ pub trait PlatformAdapter: Send + Sync {
 
     fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
         Ok(LiveElement {
-            state: self.get_live_state(handle).ok().flatten(),
-            bounds: self.get_element_bounds(handle).ok().flatten(),
-            available_actions: self.get_live_actions(handle).ok().flatten(),
+            state: optional_live_read(self.get_live_state(handle))?,
+            bounds: optional_live_read(self.get_element_bounds(handle))?,
+            available_actions: optional_live_read(self.get_live_actions(handle))?,
         })
     }
 

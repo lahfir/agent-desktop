@@ -156,6 +156,25 @@ agent-desktop snapshot -i               # re-observe after UI changes
 Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
 ```
 
+### Shared sessions for multi-agent workflows
+
+Use the same `--session <id>` when multiple agents coordinate on one desktop task. A session is the ref storage namespace; each snapshot in that session gets its own `snapshot_id`, and the session also keeps a latest-snapshot pointer. Pass `--snapshot <id>` when an agent must act on a specific observation, or omit it when the agent should use that session's latest snapshot.
+
+```mermaid
+flowchart LR
+    S["--session release-fix"] --> A["snapshot -> s1"]
+    S --> B["snapshot -> s2"]
+    A --> C["Agent A: click @e4 --snapshot s1"]
+    B --> D["Agent B: wait --element @e9 --predicate actionable"]
+    S --> E["latest_snapshot_id points at newest snapshot"]
+```
+
+```bash
+agent-desktop --session release-fix snapshot --app Xcode -i --compact
+agent-desktop --session release-fix wait --element @e9 --predicate actionable --timeout 5000
+agent-desktop --session release-fix click @e9
+```
+
 ## Commands
 
 ### Observation
@@ -256,8 +275,12 @@ agent-desktop clipboard-clear            # clear clipboard
 ```bash
 agent-desktop wait 500                                       # sleep 500ms
 agent-desktop wait --element @e3 --timeout 5000              # wait for element
+agent-desktop wait --element @e3 --predicate actionable      # wait until safe to act
+agent-desktop wait --element @e5 --predicate value --value ready
 agent-desktop wait --window "Save" --timeout 10000           # wait for window
 agent-desktop wait --text "Loading complete" --app Safari    # wait for text
+agent-desktop wait --text "Done" --count 1 --app Xcode       # wait for exact match count
+agent-desktop wait --notification --text "Build Succeeded"   # wait for new matching notification
 agent-desktop wait --menu --timeout 3000                     # wait for menu
 ```
 
@@ -362,7 +385,7 @@ Static elements (labels, groups, containers) appear in the tree for context but 
 
 Reliability contract:
 
-- `--session <id>` scopes the latest snapshot pointer and refmap to one caller.
+- `--session <id>` scopes snapshots, refs, and the latest snapshot pointer to one caller or agent team.
 - Ref actions use strict re-identification and return `STALE_REF` instead of acting on a changed target.
 - Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - Actions run an actionability preflight before dispatch: visibility, enabled state, supported action, policy, and editability.

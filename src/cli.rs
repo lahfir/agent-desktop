@@ -39,7 +39,11 @@ pub(crate) struct Cli {
     )]
     pub verbose: bool,
 
-    #[arg(long, global = true, help = "Scope ref snapshots to a session id")]
+    #[arg(
+        long,
+        global = true,
+        help = "Scope snapshots, refs, and latest pointer to a session id"
+    )]
     pub session: Option<String>,
 
     #[arg(

@@ -1,6 +1,6 @@
 use crate::{
-    adapter::{NativeHandle, PlatformAdapter},
-    error::AppError,
+    adapter::{NativeHandle, PlatformAdapter, optional_live_read},
+    error::{AdapterError, AppError, ErrorCode},
     refs::RefEntry,
 };
 use serde_json::{Value, json};
@@ -61,9 +61,9 @@ pub(crate) fn observe(
     handle: &NativeHandle,
     predicate: &ElementPredicate,
     adapter: &dyn PlatformAdapter,
-) -> Value {
+) -> Result<Value, AdapterError> {
     match predicate {
-        ElementPredicate::Exists => json!({ "exists": true }),
+        ElementPredicate::Exists => Ok(json!({ "exists": true })),
         ElementPredicate::Enabled => enabled(entry, handle, adapter),
         ElementPredicate::Visible => visible(entry, handle, adapter),
         ElementPredicate::Actionable => actionable(entry, handle, adapter),
@@ -91,33 +91,41 @@ fn reject_unused_value(value: Option<String>) -> Result<(), AppError> {
     ))
 }
 
-fn enabled(entry: &RefEntry, handle: &NativeHandle, adapter: &dyn PlatformAdapter) -> Value {
-    let enabled = adapter
-        .get_live_state(handle)
-        .ok()
-        .flatten()
+fn enabled(
+    entry: &RefEntry,
+    handle: &NativeHandle,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AdapterError> {
+    let enabled = optional_live_read(adapter.get_live_state(handle))?
         .map(|state| !state.states.iter().any(|item| item == "disabled"))
         .unwrap_or_else(|| !entry.states.iter().any(|item| item == "disabled"));
-    json!({ "enabled": enabled })
+    Ok(json!({ "enabled": enabled }))
 }
 
-fn visible(entry: &RefEntry, handle: &NativeHandle, adapter: &dyn PlatformAdapter) -> Value {
-    let bounds = adapter
-        .get_element_bounds(handle)
-        .ok()
-        .flatten()
-        .or(entry.bounds);
+fn visible(
+    entry: &RefEntry,
+    handle: &NativeHandle,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AdapterError> {
+    let bounds = optional_live_read(adapter.get_element_bounds(handle))?.or(entry.bounds);
     let visible = bounds
         .map(|bounds| bounds.width > 0.0 && bounds.height > 0.0)
         .unwrap_or(false);
-    json!({ "visible": visible })
+    Ok(json!({ "visible": visible }))
 }
 
-fn actionable(entry: &RefEntry, handle: &NativeHandle, adapter: &dyn PlatformAdapter) -> Value {
+fn actionable(
+    entry: &RefEntry,
+    handle: &NativeHandle,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AdapterError> {
     let request = crate::action::ActionRequest::headless(crate::action::Action::Click);
     match crate::actionability::check_live(entry, handle, adapter, &request) {
-        Ok(report) => json!(report),
-        Err(err) => json!({ "actionable": false, "error": err.message }),
+        Ok(report) => Ok(json!(report)),
+        Err(err) if err.code == ErrorCode::ActionFailed => {
+            Ok(json!({ "actionable": false, "error": err.message }))
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -126,17 +134,13 @@ fn value(
     handle: &NativeHandle,
     expected: &str,
     adapter: &dyn PlatformAdapter,
-) -> Value {
-    let observed = adapter
-        .get_live_value(handle)
-        .ok()
-        .flatten()
-        .or(entry.value.clone());
+) -> Result<Value, AdapterError> {
+    let observed = optional_live_read(adapter.get_live_value(handle))?.or(entry.value.clone());
     let matched = observed.as_deref() == Some(expected);
-    json!({
+    Ok(json!({
         "matched": matched,
         "value_present": observed.is_some(),
         "value_chars": observed.as_ref().map(|value| value.chars().count()),
         "expected_chars": expected.chars().count()
-    })
+    }))
 }

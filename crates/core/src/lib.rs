@@ -10,6 +10,7 @@ pub mod notification;
 pub mod output;
 pub mod permission_report;
 pub mod permission_state;
+pub mod ref_action;
 pub mod ref_alloc;
 pub mod refs;
 mod refs_lock;

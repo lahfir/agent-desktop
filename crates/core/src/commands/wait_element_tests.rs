@@ -9,6 +9,7 @@ use crate::{
     refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 struct NoopAdapter;
 
@@ -23,6 +24,14 @@ struct PredicateAdapter {
 impl PlatformAdapter for PredicateAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
+    }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: std::time::Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
     }
 
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
@@ -47,6 +56,14 @@ impl PlatformAdapter for FlippingPredicateAdapter {
         Ok(NativeHandle::null())
     }
 
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: std::time::Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
+    }
+
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
         let states = self.states.lock().unwrap().pop().unwrap_or_default();
         Ok(Some(ElementState {
@@ -54,6 +71,33 @@ impl PlatformAdapter for FlippingPredicateAdapter {
             states,
             value: None,
         }))
+    }
+}
+
+struct LiveErrorPredicateAdapter {
+    releases: AtomicU32,
+}
+
+impl PlatformAdapter for LiveErrorPredicateAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: std::time::Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
+    }
+
+    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        Err(AdapterError::permission_denied())
+    }
+
+    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
+        self.releases.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 }
 
@@ -125,7 +169,7 @@ fn element_wait_enabled_predicate_uses_live_state() {
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Enabled,
-        1,
+        50,
         &adapter,
         &crate::context::CommandContext::default(),
     )
@@ -244,4 +288,26 @@ fn element_wait_actionable_retries_until_live_state_converges() {
 
     assert_eq!(value["predicate"], "actionable");
     assert_eq!(value["observed"]["actionable"], true);
+}
+
+#[test]
+fn element_wait_propagates_live_read_errors_after_releasing_handle() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+    let adapter = LiveErrorPredicateAdapter {
+        releases: AtomicU32::new(0),
+    };
+
+    let err = wait_for_element(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Enabled,
+        250,
+        &adapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "PERM_DENIED");
+    assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
 }

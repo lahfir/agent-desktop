@@ -7,6 +7,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "helpers",
     "mod",
     "wait_latest_ref_cache",
+    "wait_mode",
     "wait_predicate",
     "wait_text_match",
     "wait_timeout",

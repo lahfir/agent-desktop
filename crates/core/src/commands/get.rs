@@ -1,5 +1,7 @@
 use crate::{
-    adapter::PlatformAdapter, commands::helpers::resolve_ref_with_context, context::CommandContext,
+    adapter::{PlatformAdapter, optional_live_read},
+    commands::helpers::resolve_ref_with_context,
+    context::CommandContext,
     error::AppError,
 };
 use serde_json::{Value, json};
@@ -31,7 +33,7 @@ pub fn execute(
         GetProperty::Role => json!(entry.role),
         GetProperty::Title => json!(entry.name),
         GetProperty::Text | GetProperty::Value => {
-            let live = adapter.get_live_value(handle.handle()).ok().flatten();
+            let live = optional_live_read(adapter.get_live_value(handle.handle()))?;
             json!(live.or(entry.value))
         }
         GetProperty::Bounds => json!(entry.bounds),

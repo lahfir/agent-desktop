@@ -87,7 +87,8 @@ REF IDs
   Use a ref wherever <ref> appears. Refs are snapshot-scoped. Pass
   --snapshot <snapshot_id> to pin a command to a known snapshot; when omitted,
   ref commands use the latest saved snapshot. Run snapshot again after UI changes.
-  Use --session <id> to isolate latest snapshots for concurrent agents.
+  Use --session <id> as a shared namespace for concurrent agents; each session
+  stores multiple snapshot IDs plus its own latest-snapshot pointer.
   Ref actions use strict resolution: stale targets return STALE_REF; duplicate
   plausible targets return AMBIGUOUS_TARGET instead of choosing arbitrarily.
   Ref actions run actionability checks before dispatch. Use --trace <path> to

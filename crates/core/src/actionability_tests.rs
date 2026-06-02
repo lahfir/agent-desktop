@@ -65,6 +65,18 @@ impl PlatformAdapter for CombinedLiveAdapter {
     }
 }
 
+struct LiveReadErrorAdapter;
+
+impl PlatformAdapter for LiveReadErrorAdapter {
+    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        Err(AdapterError::permission_denied())
+    }
+}
+
+struct UnsupportedLiveAdapter;
+
+impl PlatformAdapter for UnsupportedLiveAdapter {}
+
 fn entry() -> RefEntry {
     RefEntry {
         pid: 1,
@@ -286,4 +298,30 @@ fn empty_live_actions_do_not_erase_snapshot_capabilities() {
     .unwrap();
 
     assert!(report.actionable);
+}
+
+#[test]
+fn unsupported_live_reads_fall_back_to_snapshot_entry() {
+    let report = check_live(
+        &entry(),
+        &NativeHandle::null(),
+        &UnsupportedLiveAdapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap();
+
+    assert!(report.actionable);
+}
+
+#[test]
+fn live_read_errors_are_not_silently_downgraded_to_snapshot_data() {
+    let err = check_live(
+        &entry(),
+        &NativeHandle::null(),
+        &LiveReadErrorAdapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::PermDenied);
 }
