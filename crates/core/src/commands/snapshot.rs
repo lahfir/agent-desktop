@@ -1,5 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface},
+    context::CommandContext,
     error::AppError,
     refs::validate_ref_id,
     snapshot, snapshot_ref,
@@ -38,6 +39,14 @@ fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
 }
 
 pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    execute_with_context(args, adapter, &CommandContext::default())
+}
+
+pub fn execute_with_context(
+    args: SnapshotArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     tracing::debug!(
         "tree: snapshot app={:?} window_id={:?} max_depth={} interactive_only={} compact={}",
         args.app.as_deref().unwrap_or("(focused)"),
@@ -56,19 +65,21 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
             ));
         }
         validate_ref_id(root)?;
-        return format_result(snapshot_ref::run_from_ref(
+        return format_result(snapshot_ref::run_from_ref_with_context(
             adapter,
             &opts,
             root,
             args.snapshot_id.as_deref(),
+            context,
         )?);
     }
 
-    let result = snapshot::run(
+    let result = snapshot::run_with_context(
         adapter,
         &opts,
         args.app.as_deref(),
         args.window_id.as_deref(),
+        context,
     )?;
 
     format_result(result)

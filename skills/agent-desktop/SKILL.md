@@ -91,6 +91,10 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - `last_refmap.json` is only a latest-snapshot inspection artifact. The command path uses snapshot-scoped storage.
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
+- **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
+- **Actionability:** ref actions check visibility, enabled state, supported action, policy, and editability before dispatch.
+- **Sessions:** use `--session <id>` for concurrent or multi-agent runs; batch entries may override with `"session": "id"`.
+- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; add `--trace-strict` only when trace write failures should fail the command.
 
 ## JSON Output Contract
 
@@ -111,6 +115,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `ACTION_FAILED` | AX action rejected | Try an explicit alternative command |
 | `ACTION_NOT_SUPPORTED` | Element can't do this | Use different command |
 | `STALE_REF` | Ref from old snapshot | Re-run snapshot |
+| `AMBIGUOUS_TARGET` | Multiple elements matched the old ref identity | Re-run snapshot and choose a more specific ref |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired | Run `snapshot` again and use the returned ID |
 | `POLICY_DENIED` | A physical/headed path was blocked | Use an explicit mouse/focus/keyboard command if physical interaction is intended |
 | `WINDOW_NOT_FOUND` | No matching window | Check app name, use list-windows |
@@ -206,6 +211,7 @@ agent-desktop clipboard-clear                   # Clear clipboard
 ```
 agent-desktop wait 1000                         # Pause 1 second
 agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 # Wait for element
+agent-desktop wait --element @e5 --predicate actionable --timeout 5000 # Wait until actionable
 agent-desktop wait --window "Title"             # Wait for window
 agent-desktop wait --text "Done" --app "App"    # Wait for text
 agent-desktop wait --menu --app "App"           # Wait for menu surface
@@ -237,3 +243,5 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused.
 10. **Batch for performance.** Multiple commands in one invocation.
 11. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use explicit `focus`, `press`, `hover`, `drag`, or `mouse-*` commands only when physical/headed interaction is intended.
+12. **Use sessions for parallel work.** Add `--session <id>` when multiple agents or batches can run at once.
+13. **Trace hard failures.** Add `--trace /tmp/agent-desktop.jsonl` when diagnosing stale, ambiguous, or actionability failures.

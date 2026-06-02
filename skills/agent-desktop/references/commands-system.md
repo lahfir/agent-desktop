@@ -201,6 +201,9 @@ Blocks until the menu surface is dismissed.
 | (positional) | | Milliseconds to pause |
 | `--element` | | Ref to wait for |
 | `--snapshot` | latest | Snapshot ID for `--element` waits |
+| `--predicate` | exists | Element predicate: `exists`, `enabled`, `visible`, `actionable`, `value` |
+| `--value` | | Expected text for `--predicate value` |
+| `--count` | | Expected match count for `--text` waits |
 | `--window` | | Window title to wait for |
 | `--text` | | Text to wait for; with `--notification`, filters notification title/body |
 | `--menu` | false | Wait for menu surface to open |
@@ -215,10 +218,13 @@ Blocks until the menu surface is dismissed.
 ```bash
 agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}},{"command":"wait","args":{"ms":500}},{"command":"click","args":{"ref_id":"@e2","snapshot":"<snapshot_id>"}}]'
 agent-desktop batch '[...]' --stop-on-error
+agent-desktop --session run-a batch '[{"command":"status","session":"run-b","args":{}}]'
 ```
 Execute multiple commands in sequence from a JSON array. Each entry has `command` (string) and `args` (object). Use `args`, not `params`. For ref-consuming commands, pass the output `snapshot_id` as the `snapshot` field.
 
 Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
+
+Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level `--session`. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -229,7 +235,8 @@ Batch uses the same typed `Commands` enum, command policy preflight, permission 
 [
   { "command": "click", "args": { "ref_id": "@e1", "snapshot": "<snapshot_id>" } },
   { "command": "wait", "args": { "ms": 500 } },
-  { "command": "type", "args": { "ref_id": "@e2", "snapshot": "<snapshot_id>", "text": "hello" } }
+  { "command": "type", "args": { "ref_id": "@e2", "snapshot": "<snapshot_id>", "text": "hello" } },
+  { "command": "status", "session": "other-agent", "args": {} }
 ]
 ```
 

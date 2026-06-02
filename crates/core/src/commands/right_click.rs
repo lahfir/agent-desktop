@@ -1,7 +1,8 @@
 use crate::{
     action::{Action, ActionRequest},
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
-    commands::helpers::{RefArgs, find_window_for_pid, resolve_ref},
+    commands::helpers::{RefArgs, find_window_for_pid, resolve_ref_with_context},
+    context::CommandContext,
     error::AppError,
     refs::RefEntry,
     snapshot,
@@ -9,10 +10,31 @@ use crate::{
 use serde_json::{Value, json};
 
 pub fn execute(args: RefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    execute_with_context(args, adapter, &CommandContext::default())
+}
+
+pub fn execute_with_context(
+    args: RefArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (entry, handle) =
+        resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
     let request = ActionRequest::headless(Action::RightClick);
+    context.trace(
+        "actionability.check.start",
+        serde_json::json!({ "ref": args.ref_id, "action": request.action.name() }),
+    )?;
     crate::actionability::check(&entry, &request)?;
+    context.trace(
+        "actionability.check.ok",
+        serde_json::json!({ "ref": args.ref_id, "action": request.action.name() }),
+    )?;
     let result = adapter.execute_action(handle.handle(), request)?;
+    context.trace(
+        "action.dispatch.ok",
+        serde_json::json!({ "ref": args.ref_id }),
+    )?;
     let mut response = serde_json::to_value(&result)?;
 
     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -23,7 +45,7 @@ pub fn execute(args: RefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, Ap
         ..Default::default()
     };
     let probe_app = probe_app_name(adapter, &entry);
-    match snapshot::run(adapter, &opts, probe_app.as_deref(), None) {
+    match snapshot::run_with_context(adapter, &opts, probe_app.as_deref(), None, context) {
         Ok(snap) => match serde_json::to_value(&snap.tree) {
             Ok(menu_json) => {
                 response["menu"] = menu_json;

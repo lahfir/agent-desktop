@@ -26,6 +26,34 @@ pub enum Action {
     Drag(DragParams),
 }
 
+impl Action {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Click => "click",
+            Self::DoubleClick => "double-click",
+            Self::RightClick => "right-click",
+            Self::TripleClick => "triple-click",
+            Self::SetValue(_) => "set-value",
+            Self::SetFocus => "focus",
+            Self::Expand => "expand",
+            Self::Collapse => "collapse",
+            Self::Select(_) => "select",
+            Self::Toggle => "toggle",
+            Self::Check => "check",
+            Self::Uncheck => "uncheck",
+            Self::Scroll(_, _) => "scroll",
+            Self::ScrollTo => "scroll-to",
+            Self::PressKey(_) => "press",
+            Self::KeyDown(_) => "key-down",
+            Self::KeyUp(_) => "key-up",
+            Self::TypeText(_) => "type",
+            Self::Clear => "clear",
+            Self::Hover => "hover",
+            Self::Drag(_) => "drag",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionRequest {
     pub action: Action,

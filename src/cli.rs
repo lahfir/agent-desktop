@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 use crate::cli_args::{
     FindArgs, GetArgs, IsArgs, ListSurfacesArgs, RefArgs, ScreenshotArgs, SnapshotArgs,
@@ -37,6 +38,23 @@ pub(crate) struct Cli {
         help = "Enable debug logging to stderr"
     )]
     pub verbose: bool,
+
+    #[arg(long, global = true, help = "Scope ref snapshots to a session id")]
+    pub session: Option<String>,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Append reliability trace JSONL to this path"
+    )]
+    pub trace: Option<PathBuf>,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Fail the command if writing --trace fails"
+    )]
+    pub trace_strict: bool,
 
     #[command(subcommand)]
     pub command: Option<Commands>,

@@ -1,6 +1,6 @@
 use crate::{
-    action::ElementState, adapter::PlatformAdapter, commands::helpers::resolve_ref,
-    error::AppError, refs::RefEntry,
+    action::ElementState, adapter::PlatformAdapter, commands::helpers::resolve_ref_with_context,
+    context::CommandContext, error::AppError, refs::RefEntry,
 };
 use serde_json::{Value, json};
 
@@ -20,7 +20,16 @@ pub enum IsProperty {
 
 /// State is read live when the platform supports it, then falls back to snapshot state.
 pub fn execute(args: IsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    execute_with_context(args, adapter, &CommandContext::default())
+}
+
+pub fn execute_with_context(
+    args: IsArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (entry, handle) =
+        resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
     let state = adapter
         .get_live_state(handle.handle())
         .ok()

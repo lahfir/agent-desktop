@@ -9,8 +9,19 @@ impl PlatformAdapter for NoopAdapter {}
 fn item(command: &str, args: Value) -> BatchCommand {
     BatchCommand {
         command: command.to_string(),
+        session: None,
         args,
     }
+}
+
+#[test]
+fn parses_optional_batch_session_scope() {
+    let commands = agent_desktop_core::commands::batch::parse_commands(
+        r#"[{"command":"status","session":"agent-a","args":{}}]"#,
+    )
+    .unwrap();
+
+    assert_eq!(commands[0].session.as_deref(), Some("agent-a"));
 }
 
 #[test]
@@ -63,7 +74,13 @@ fn stop_on_error_halts_after_first_failure() {
         stop_on_error: true,
     };
 
-    let value = execute(args, &NoopAdapter, &PermissionReport::default()).unwrap();
+    let value = execute(
+        args,
+        &NoopAdapter,
+        &PermissionReport::default(),
+        &agent_desktop_core::CommandContext::default(),
+    )
+    .unwrap();
     let results = value["results"].as_array().unwrap();
 
     assert_eq!(results.len(), 1);

@@ -2,6 +2,7 @@ use agent_desktop_core::{
     PermissionReport,
     adapter::PlatformAdapter,
     commands::batch::BatchCommand,
+    context::CommandContext,
     error::AppError,
     output::{ENVELOPE_VERSION, ErrorPayload},
 };
@@ -19,15 +20,17 @@ pub(crate) fn execute(
     args: BatchArgs,
     adapter: &dyn PlatformAdapter,
     permission_report: &PermissionReport,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
     let commands = agent_desktop_core::commands::batch::parse_commands(&args.commands_json)?;
     let mut results = Vec::new();
 
     for item in commands {
         let command = item.command.clone();
+        let item_context = context.for_batch_item(item.session.clone())?;
         let result = parse_command(item).and_then(|typed| {
             crate::command_policy::preflight(&typed, permission_report)?;
-            crate::dispatch::dispatch(typed, adapter, permission_report)
+            crate::dispatch::dispatch(typed, adapter, permission_report, &item_context)
         });
         let ok = result.is_ok();
         results.push(batch_entry(&command, result));

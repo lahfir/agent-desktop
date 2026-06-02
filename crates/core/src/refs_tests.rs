@@ -243,6 +243,49 @@ fn test_refstore_snapshot_roundtrip_and_latest_pointer() {
 }
 
 #[test]
+fn test_refstore_sessions_are_isolated_from_default_store() {
+    let _guard = HomeGuard::new();
+    let default_store = RefStore::new().unwrap();
+    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
+    let session_b = RefStore::for_session(Some("agent-b")).unwrap();
+
+    let mut default_map = RefMap::new();
+    default_map.allocate(entry("button", Some("Default")));
+    let default_id = default_store.save_new_snapshot(&default_map).unwrap();
+
+    let mut session_map = RefMap::new();
+    session_map.allocate(entry("button", Some("Session A")));
+    let session_id = session_a.save_new_snapshot(&session_map).unwrap();
+
+    assert_eq!(default_store.load(None).unwrap().len(), 1);
+    assert_eq!(
+        default_store
+            .load(Some(&default_id))
+            .unwrap()
+            .get("@e1")
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Default")
+    );
+    assert_eq!(
+        session_a
+            .load(Some(&session_id))
+            .unwrap()
+            .get("@e1")
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Session A")
+    );
+    assert!(session_b.load(None).is_err());
+    assert_ne!(
+        default_store.latest_snapshot_id(),
+        session_a.latest_snapshot_id()
+    );
+}
+
+#[test]
 fn test_save_existing_snapshot_does_not_promote_latest_pointer() {
     let _guard = HomeGuard::new();
     let store = RefStore::new().unwrap();

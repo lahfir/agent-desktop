@@ -34,7 +34,7 @@ pub unsafe extern "C" fn ad_resolve_element(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
-        match adapter.inner.resolve_element(&core_entry) {
+        match adapter.inner.resolve_element_strict(&core_entry) {
             Ok(handle) => {
                 let handle = ManuallyDrop::new(handle);
                 (*out).ptr = handle.as_raw();
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn ad_resolve_element(
     })
 }
 
-unsafe fn core_ref_entry_from_ffi(
+pub(crate) unsafe fn core_ref_entry_from_ffi(
     entry: &AdRefEntry,
 ) -> Result<CoreRefEntry, agent_desktop_core::error::AdapterError> {
     let role = unsafe { c_to_string(entry.role) }.ok_or_else(|| {
@@ -58,30 +58,53 @@ unsafe fn core_ref_entry_from_ffi(
         )
     })?;
     let name = unsafe { optional_string(entry.name, "name") }?;
+    let value = unsafe { optional_string(entry.value, "value") }?;
     let description = unsafe { optional_string(entry.description, "description") }?;
+    let states = unsafe { string_array(entry.states, entry.state_count, "states") }?;
+    let available_actions = unsafe {
+        string_array(
+            entry.available_actions,
+            entry.available_action_count,
+            "available_actions",
+        )
+    }?;
+    let bounds = if entry.has_bounds {
+        Some(agent_desktop_core::node::Rect {
+            x: entry.bounds.x,
+            y: entry.bounds.y,
+            width: entry.bounds.width,
+            height: entry.bounds.height,
+        })
+    } else {
+        None
+    };
     let bounds_hash = if entry.has_bounds_hash {
         Some(entry.bounds_hash)
     } else {
         None
     };
+    let source_surface = source_surface_from_c(entry.source_surface)?;
+    let path = unsafe { ref_path(entry.path, entry.path_count)? };
 
     Ok(CoreRefEntry {
         pid: entry.pid,
         role,
         name,
-        value: None,
+        value,
         description,
-        states: vec![],
-        bounds: None,
+        states,
+        bounds,
         bounds_hash,
-        available_actions: vec![],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        available_actions,
+        source_app: unsafe { optional_string(entry.source_app, "source_app") }?,
+        source_window_id: unsafe { optional_string(entry.source_window_id, "source_window_id") }?,
+        source_window_title: unsafe {
+            optional_string(entry.source_window_title, "source_window_title")
+        }?,
+        source_surface,
+        root_ref: unsafe { optional_string(entry.root_ref, "root_ref") }?,
+        path_is_absolute: entry.path_is_absolute,
+        path,
     })
 }
 
@@ -95,6 +118,75 @@ unsafe fn optional_string(
             format!("{field} is not valid UTF-8"),
         )
     })
+}
+
+unsafe fn string_array(
+    ptr: *const *const std::os::raw::c_char,
+    len: usize,
+    field: &str,
+) -> Result<Vec<String>, agent_desktop_core::error::AdapterError> {
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    if ptr.is_null() {
+        return Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("{field} count is nonzero but pointer is null"),
+        ));
+    }
+    let items = unsafe { std::slice::from_raw_parts(ptr, len) };
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| unsafe {
+            c_to_string(*item).ok_or_else(|| {
+                agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    format!("{field}[{index}] is null or invalid UTF-8"),
+                )
+            })
+        })
+        .collect()
+}
+
+unsafe fn ref_path(
+    ptr: *const u32,
+    len: usize,
+) -> Result<smallvec::SmallVec<[usize; 8]>, agent_desktop_core::error::AdapterError> {
+    if len == 0 {
+        return Ok(smallvec::SmallVec::new());
+    }
+    if ptr.is_null() {
+        return Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            "path_count is nonzero but path pointer is null",
+        ));
+    }
+    let mut path = smallvec::SmallVec::new();
+    path.extend(
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+            .iter()
+            .map(|item| *item as usize),
+    );
+    Ok(path)
+}
+
+fn source_surface_from_c(
+    raw: i32,
+) -> Result<agent_desktop_core::adapter::SnapshotSurface, agent_desktop_core::error::AdapterError> {
+    match raw {
+        0 => Ok(agent_desktop_core::adapter::SnapshotSurface::Window),
+        1 => Ok(agent_desktop_core::adapter::SnapshotSurface::Focused),
+        2 => Ok(agent_desktop_core::adapter::SnapshotSurface::Menu),
+        3 => Ok(agent_desktop_core::adapter::SnapshotSurface::Menubar),
+        4 => Ok(agent_desktop_core::adapter::SnapshotSurface::Sheet),
+        5 => Ok(agent_desktop_core::adapter::SnapshotSurface::Popover),
+        6 => Ok(agent_desktop_core::adapter::SnapshotSurface::Alert),
+        _ => Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            "invalid source_surface discriminant",
+        )),
+    }
 }
 
 #[cfg(test)]

@@ -1,10 +1,11 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::{helpers::resolve_app_pid, wait_predicate},
+    commands::{helpers::resolve_app_pid, wait_latest_ref_cache::LatestRefCache, wait_predicate},
+    context::CommandContext,
     error::{AppError, ErrorCode},
     node::AccessibilityNode,
     notification::NotificationFilter,
-    refs::{RefMap, validate_ref_id},
+    refs::validate_ref_id,
     refs_store::RefStore,
     search_text, snapshot,
 };
@@ -28,6 +29,14 @@ pub struct WaitArgs {
 }
 
 pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    execute_with_context(args, adapter, &CommandContext::default())
+}
+
+pub fn execute_with_context(
+    args: WaitArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     validate_wait_mode(&args)?;
 
     if let Some(ms) = args.ms {
@@ -59,6 +68,7 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
             predicate,
             args.timeout_ms,
             adapter,
+            context,
         );
     }
 
@@ -67,7 +77,14 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
     }
 
     if let Some(text) = args.text {
-        return wait_for_text(text, args.count, args.app, args.timeout_ms, adapter);
+        return wait_for_text(
+            text,
+            args.count,
+            args.app,
+            args.timeout_ms,
+            adapter,
+            context,
+        );
     }
 
     Err(AppError::invalid_input(
@@ -121,10 +138,11 @@ fn wait_for_element(
     predicate: wait_predicate::ElementPredicate,
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
-    let store = RefStore::new()?;
+    let store = RefStore::for_session(context.session_id.as_deref())?;
     let fixed_refmap = match snapshot_id.as_deref() {
         Some(id) => Some(store.load_snapshot(id)?),
         None => None,
@@ -190,54 +208,6 @@ fn wait_for_element(
         std::thread::sleep(remaining.min(Duration::from_millis(100)));
     }
 }
-
-struct LatestRefCache<'a> {
-    store: &'a RefStore,
-    snapshot_id: Option<String>,
-    refmap: RefMap,
-    last_refresh: Instant,
-}
-
-impl<'a> LatestRefCache<'a> {
-    fn new(store: &'a RefStore) -> Result<Self, AppError> {
-        let snapshot_id = store.latest_snapshot_id();
-        let refmap = if let Some(id) = snapshot_id.as_deref() {
-            store.load_snapshot(id)?
-        } else {
-            store.load_latest()?
-        };
-        Ok(Self {
-            store,
-            snapshot_id,
-            refmap,
-            last_refresh: Instant::now() - Duration::from_millis(500),
-        })
-    }
-
-    fn entry(&self, ref_id: &str) -> Option<crate::refs::RefEntry> {
-        self.refmap.get(ref_id).cloned()
-    }
-
-    fn refresh_if_due(&mut self) {
-        if self.last_refresh.elapsed() < Duration::from_millis(500) {
-            return;
-        }
-        self.last_refresh = Instant::now();
-        if let Some(snapshot_id) = self.store.latest_snapshot_id() {
-            if self.snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
-                return;
-            }
-            if let Ok(refmap) = self.store.load_snapshot(&snapshot_id) {
-                self.snapshot_id = Some(snapshot_id);
-                self.refmap = refmap;
-            }
-        } else if let Ok(refmap) = self.store.load_latest() {
-            self.refmap = refmap;
-            self.snapshot_id = self.store.latest_snapshot_id();
-        }
-    }
-}
-
 fn wait_for_window(
     title: String,
     timeout_ms: u64,
@@ -274,6 +244,7 @@ fn wait_for_text(
     app: Option<String>,
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
@@ -288,7 +259,8 @@ fn wait_for_text(
                 .map(|expected| matches.len() == expected)
                 .unwrap_or_else(|| !matches.is_empty());
             if matched {
-                let snapshot_id = RefStore::new()?.save_new_snapshot(&result.refmap)?;
+                let snapshot_id = RefStore::for_session(context.session_id.as_deref())?
+                    .save_new_snapshot(&result.refmap)?;
                 let elapsed = start.elapsed().as_millis();
                 let found = matches.first();
                 return Ok(json!({

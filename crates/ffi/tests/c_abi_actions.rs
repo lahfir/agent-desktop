@@ -2,7 +2,8 @@ mod common;
 
 use common::{
     AdActionResult, AdNativeHandle, AdPolicyKind, AdResult, ad_execute_action,
-    ad_execute_action_with_policy, default_action, with_adapter,
+    ad_execute_action_with_policy, ad_execute_ref_action_with_policy, default_action,
+    default_ref_entry, with_adapter,
 };
 
 #[test]
@@ -57,6 +58,30 @@ fn execute_action_rejects_null_handle_ptr() {
         assert!(matches!(
             rc,
             AdResult::ErrInvalidArgs | AdResult::ErrInternal
+        ));
+    });
+}
+
+#[test]
+fn execute_ref_action_applies_actionability_before_resolve() {
+    with_adapter(|adapter| unsafe {
+        let role = std::ffi::CString::new("button").unwrap();
+        let mut entry = default_ref_entry();
+        entry.role = role.as_ptr();
+        let action = default_action();
+        let mut out: AdActionResult = std::mem::zeroed();
+
+        let rc = ad_execute_ref_action_with_policy(
+            adapter,
+            &entry,
+            &action,
+            AdPolicyKind::Headless as i32,
+            &mut out,
+        );
+
+        assert!(matches!(
+            rc,
+            AdResult::ErrActionFailed | AdResult::ErrInternal
         ));
     });
 }

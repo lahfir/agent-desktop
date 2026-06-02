@@ -9,6 +9,7 @@ use agent_desktop_core::{
         resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
         skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
     },
+    context::CommandContext,
     error::AppError,
 };
 use serde_json::Value;
@@ -24,10 +25,11 @@ pub(crate) fn dispatch(
     cmd: Commands,
     adapter: &dyn PlatformAdapter,
     permission_report: &PermissionReport,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
     match cmd {
-        Commands::Snapshot(a) => snapshot::execute(
+        Commands::Snapshot(a) => snapshot::execute_with_context(
             snapshot::SnapshotArgs {
                 app: a.app,
                 window_id: a.window_id,
@@ -41,6 +43,7 @@ pub(crate) fn dispatch(
                 snapshot_id: a.snapshot,
             },
             adapter,
+            context,
         ),
 
         Commands::Find(a) => find::execute(
@@ -57,6 +60,7 @@ pub(crate) fn dispatch(
                 limit: a.limit,
             },
             adapter,
+            context,
         ),
 
         Commands::Screenshot(a) => screenshot::execute(
@@ -75,21 +79,23 @@ pub(crate) fn dispatch(
                 property: parse_get_property(&a.property)?,
             },
             adapter,
+            context,
         ),
 
-        Commands::Is(a) => is_check::execute(
+        Commands::Is(a) => is_check::execute_with_context(
             is_check::IsArgs {
                 ref_id: a.ref_id,
                 snapshot_id: a.snapshot,
                 property: parse_is_property(&a.property)?,
             },
             adapter,
+            context,
         ),
 
-        Commands::Click(a) => click::execute(ref_args(a), adapter),
-        Commands::DoubleClick(a) => double_click::execute(ref_args(a), adapter),
-        Commands::TripleClick(a) => triple_click::execute(ref_args(a), adapter),
-        Commands::RightClick(a) => right_click::execute(ref_args(a), adapter),
+        Commands::Click(a) => click::execute(ref_args(a), adapter, context),
+        Commands::DoubleClick(a) => double_click::execute(ref_args(a), adapter, context),
+        Commands::TripleClick(a) => triple_click::execute(ref_args(a), adapter, context),
+        Commands::RightClick(a) => right_click::execute_with_context(ref_args(a), adapter, context),
 
         Commands::Type(a) => type_text::execute(
             type_text::TypeArgs {
@@ -98,6 +104,7 @@ pub(crate) fn dispatch(
                 text: a.text,
             },
             adapter,
+            context,
         ),
 
         Commands::SetValue(a) => set_value::execute(
@@ -107,16 +114,17 @@ pub(crate) fn dispatch(
                 value: a.value,
             },
             adapter,
+            context,
         ),
 
-        Commands::Clear(a) => clear::execute(ref_args(a), adapter),
+        Commands::Clear(a) => clear::execute(ref_args(a), adapter, context),
 
-        Commands::Focus(a) => focus::execute(ref_args(a), adapter),
-        Commands::Toggle(a) => toggle::execute(ref_args(a), adapter),
-        Commands::Check(a) => check::execute(ref_args(a), adapter),
-        Commands::Uncheck(a) => uncheck::execute(ref_args(a), adapter),
-        Commands::Expand(a) => expand::execute(ref_args(a), adapter),
-        Commands::Collapse(a) => collapse::execute(ref_args(a), adapter),
+        Commands::Focus(a) => focus::execute(ref_args(a), adapter, context),
+        Commands::Toggle(a) => toggle::execute(ref_args(a), adapter, context),
+        Commands::Check(a) => check::execute(ref_args(a), adapter, context),
+        Commands::Uncheck(a) => uncheck::execute(ref_args(a), adapter, context),
+        Commands::Expand(a) => expand::execute(ref_args(a), adapter, context),
+        Commands::Collapse(a) => collapse::execute(ref_args(a), adapter, context),
 
         Commands::Select(a) => select::execute(
             select::SelectArgs {
@@ -125,6 +133,7 @@ pub(crate) fn dispatch(
                 value: a.value,
             },
             adapter,
+            context,
         ),
 
         Commands::Scroll(a) => scroll::execute(
@@ -135,9 +144,10 @@ pub(crate) fn dispatch(
                 amount: a.amount,
             },
             adapter,
+            context,
         ),
 
-        Commands::ScrollTo(a) => scroll_to::execute(ref_args(a), adapter),
+        Commands::ScrollTo(a) => scroll_to::execute(ref_args(a), adapter, context),
 
         Commands::Press(a) => press::execute(
             press::PressArgs {
@@ -161,6 +171,7 @@ pub(crate) fn dispatch(
                 duration_ms: a.duration,
             },
             adapter,
+            context,
         ),
 
         Commands::Drag(a) => drag::execute(
@@ -173,6 +184,7 @@ pub(crate) fn dispatch(
                 duration_ms: a.duration,
             },
             adapter,
+            context,
         ),
 
         Commands::MouseMove(a) => {
@@ -289,7 +301,7 @@ pub(crate) fn dispatch(
         Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
         Commands::ClipboardClear => clipboard_clear::execute(adapter),
 
-        Commands::Wait(a) => wait::execute(
+        Commands::Wait(a) => wait::execute_with_context(
             wait::WaitArgs {
                 ms: a.ms,
                 element: a.element,
@@ -306,9 +318,12 @@ pub(crate) fn dispatch(
                 app: a.app,
             },
             adapter,
+            context,
         ),
 
-        Commands::Status => status::execute_with_report(adapter, permission_report),
+        Commands::Status => {
+            status::execute_with_report_with_context(adapter, permission_report, context)
+        }
 
         Commands::Permissions(a) => permissions::execute_with_report(
             permissions::PermissionsArgs { request: a.request },
@@ -328,7 +343,7 @@ pub(crate) fn dispatch(
             }),
         },
 
-        Commands::Batch(a) => crate::batch::execute(a, adapter, permission_report),
+        Commands::Batch(a) => crate::batch::execute(a, adapter, permission_report, context),
     }
 }
 

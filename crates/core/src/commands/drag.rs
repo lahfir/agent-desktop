@@ -1,7 +1,8 @@
 use crate::{
     action::{DragParams, Point},
     adapter::PlatformAdapter,
-    commands::helpers::resolve_point_from_ref_or_xy,
+    commands::helpers::resolve_point_from_ref_or_xy_with_context,
+    context::CommandContext,
     error::AppError,
 };
 use serde_json::{Value, json};
@@ -15,13 +16,18 @@ pub struct DragArgs {
     pub duration_ms: Option<u64>,
 }
 
-pub fn execute(args: DragArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub fn execute(
+    args: DragArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     let from = resolve_point(
         &args.from_ref,
         args.from_xy,
         "from",
         args.snapshot_id.as_deref(),
         adapter,
+        context,
     )?;
     let to = resolve_point(
         &args.to_ref,
@@ -29,6 +35,7 @@ pub fn execute(args: DragArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
         "to",
         args.snapshot_id.as_deref(),
         adapter,
+        context,
     )?;
     let params = DragParams {
         from: from.clone(),
@@ -49,12 +56,14 @@ fn resolve_point(
     label: &str,
     snapshot_id: Option<&str>,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<Point, AppError> {
-    resolve_point_from_ref_or_xy(
+    resolve_point_from_ref_or_xy_with_context(
         ref_id.as_deref(),
         xy,
         snapshot_id,
         adapter,
         format!("Provide --{label} <ref> or --{label}-xy x,y"),
+        context,
     )
 }

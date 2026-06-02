@@ -230,21 +230,36 @@ typedef struct AdActionResult {
   struct AdElementState *post_state;
 } AdActionResult;
 
-typedef struct AdRefEntry {
-  int32_t pid;
-  const char *role;
-  const char *name;
-  const char *description;
-  uint64_t bounds_hash;
-  bool has_bounds_hash;
-} AdRefEntry;
-
 typedef struct AdRect {
   double x;
   double y;
   double width;
   double height;
 } AdRect;
+
+typedef struct AdRefEntry {
+  int32_t pid;
+  const char *role;
+  const char *name;
+  const char *value;
+  const char *description;
+  const char *const *states;
+  uintptr_t state_count;
+  const char *const *available_actions;
+  uintptr_t available_action_count;
+  struct AdRect bounds;
+  bool has_bounds;
+  uint64_t bounds_hash;
+  bool has_bounds_hash;
+  const char *source_app;
+  const char *source_window_id;
+  const char *source_window_title;
+  int32_t source_surface;
+  const char *root_ref;
+  bool path_is_absolute;
+  const uint32_t *path;
+  uintptr_t path_count;
+} AdRefEntry;
 
 typedef struct AdWindowInfo {
   const char *id;
@@ -399,6 +414,20 @@ AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
                                        const struct AdAction *action,
                                        int32_t policy,
                                        struct AdActionResult *out);
+
+/**
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `entry` must be a non-null pointer to a valid `AdRefEntry`.
+ * `action` must be a non-null pointer to a valid `AdAction`.
+ * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
+ */
+AdResult ad_execute_ref_action_with_policy(const struct AdAdapter *adapter,
+                                           const struct AdRefEntry *entry,
+                                           const struct AdAction *action,
+                                           int32_t policy,
+                                           struct AdActionResult *out);
 
 /**
  * Releases a handle previously returned by `ad_resolve_element` and

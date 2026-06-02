@@ -10,6 +10,7 @@ pub struct BatchArgs {
 #[derive(Debug, Deserialize)]
 pub struct BatchCommand {
     pub command: String,
+    pub session: Option<String>,
     #[serde(default)]
     pub args: Value,
 }

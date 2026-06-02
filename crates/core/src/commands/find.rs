@@ -1,5 +1,6 @@
 use crate::{
-    adapter::PlatformAdapter, error::AppError, node::AccessibilityNode, search_text, snapshot,
+    adapter::PlatformAdapter, context::CommandContext, error::AppError, node::AccessibilityNode,
+    search_text, snapshot,
 };
 use serde_json::{Value, json};
 
@@ -18,13 +19,17 @@ pub struct FindArgs {
     pub limit: Option<usize>,
 }
 
-pub fn execute(args: FindArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub fn execute(
+    args: FindArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     validate_find_mode(&args)?;
     let opts = crate::adapter::TreeOptions::default();
     let result = if args.count {
         snapshot::build(adapter, &opts, args.app.as_deref(), None)?
     } else {
-        snapshot::run(adapter, &opts, args.app.as_deref(), None)?
+        snapshot::run_with_context(adapter, &opts, args.app.as_deref(), None, context)?
     };
     let query = FindQuery::from_args(&args);
 

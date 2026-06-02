@@ -269,6 +269,11 @@ agent-desktop batch '[
   {"command": "type", "args": {"ref_id": "@e5", "snapshot": "<snapshot_id>", "text": "hello"}},
   {"command": "press", "args": {"combo": "return"}}
 ]' --stop-on-error
+
+agent-desktop --session run-a batch '[
+  {"command": "snapshot", "args": {"app": "Finder", "interactive_only": true}},
+  {"command": "status", "session": "run-b", "args": {}}
+]'
 ```
 
 ### System
@@ -354,10 +359,19 @@ Interactive roles that receive refs: `button`, `textfield`, `checkbox`, `link`, 
 
 Static elements (labels, groups, containers) appear in the tree for context but have no ref.
 
+Reliability contract:
+
+- `--session <id>` scopes the latest snapshot pointer and refmap to one caller.
+- Ref actions use strict re-identification and return `STALE_REF` instead of acting on a changed target.
+- Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
+- Actions run an actionability preflight before dispatch: visibility, enabled state, supported action, policy, and editability.
+- `wait --element @e3 --predicate actionable` polls until the target can be acted on.
+- `--trace <path>` appends JSONL diagnostics outside stdout; add `--trace-strict` to fail if trace writing fails.
+
 Stale ref recovery:
 
 ```
-snapshot → act → STALE_REF? → snapshot again → retry
+snapshot → act → STALE_REF or AMBIGUOUS_TARGET? → wait/snapshot again → retry with the new ref
 ```
 
 ## Platform Support
