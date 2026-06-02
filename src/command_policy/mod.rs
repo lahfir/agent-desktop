@@ -212,5 +212,4 @@ fn requires_screen_recording(permission: PermissionNeed) -> bool {
 }
 
 #[cfg(test)]
-#[path = "command_policy_tests.rs"]
 mod tests;

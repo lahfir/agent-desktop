@@ -1,3 +1,6 @@
+mod notifications;
+mod parse;
+
 use agent_desktop_core::{
     PermissionReport,
     adapter::PlatformAdapter,
@@ -15,8 +18,8 @@ use agent_desktop_core::{
 use serde_json::Value;
 
 use crate::cli::Commands;
-use crate::cli_args_skills::SkillsAction;
-use crate::dispatch_parse::{
+use crate::cli_args::skills::SkillsAction;
+use parse::{
     parse_direction, parse_get_property, parse_is_property, parse_mouse_button, parse_xy,
     parse_xy_opt,
 };
@@ -293,9 +296,7 @@ pub(crate) fn dispatch(
         Commands::ListNotifications(_)
         | Commands::DismissNotification(_)
         | Commands::DismissAllNotifications(_)
-        | Commands::NotificationAction(_) => {
-            crate::dispatch_notifications::dispatch_notification(cmd, adapter)
-        }
+        | Commands::NotificationAction(_) => notifications::dispatch_notification(cmd, adapter),
 
         Commands::ClipboardGet => clipboard_get::execute(adapter),
         Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
