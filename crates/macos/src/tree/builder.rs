@@ -22,12 +22,18 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
 
     if let Some(windows) = copy_ax_array(&app, kAXWindowsAttribute) {
         for win in &windows {
+            if !is_window_candidate(win) {
+                continue;
+            }
             let title = copy_string_attr(win, kAXTitleAttribute);
             if title.as_deref() == Some(win_title) {
                 return win.clone();
             }
         }
         for win in &windows {
+            if !is_window_candidate(win) {
+                continue;
+            }
             let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
@@ -36,12 +42,17 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
                 return win.clone();
             }
         }
-        if let Some(first) = windows.into_iter().next() {
+        if let Some(first) = windows.into_iter().find(is_window_candidate) {
             return first;
         }
     }
 
     app
+}
+
+#[cfg(target_os = "macos")]
+fn is_window_candidate(el: &AXElement) -> bool {
+    copy_string_attr(el, kAXRoleAttribute).as_deref() == Some("AXWindow")
 }
 
 #[cfg(target_os = "macos")]
