@@ -1,4 +1,5 @@
 use super::*;
+use crate::tree::resolve_roots::source_window_number;
 
 fn entry(
     bounds_hash: Option<u64>,

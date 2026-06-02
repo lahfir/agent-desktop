@@ -1,11 +1,13 @@
 use crate::error::AppError;
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Default)]
 pub struct TraceConfig {
     pub path: Option<PathBuf>,
     pub strict: bool,
+    writer: Option<Arc<Mutex<std::fs::File>>>,
 }
 
 impl TraceConfig {
@@ -16,14 +18,33 @@ impl TraceConfig {
                 "Provide --trace <path> or remove --trace-strict.",
             ));
         }
-        Ok(Self { path, strict })
+        let writer = match path.as_deref() {
+            Some(path) => match open_trace_file(path) {
+                Ok(file) => Some(Arc::new(Mutex::new(file))),
+                Err(err) if strict => return Err(err),
+                Err(err) => {
+                    tracing::warn!("trace open failed: {err}");
+                    None
+                }
+            },
+            None => None,
+        };
+        Ok(Self {
+            path,
+            strict,
+            writer,
+        })
     }
 
     pub fn emit(&self, event: &str, fields: Value) -> Result<(), AppError> {
-        let Some(path) = self.path.as_deref() else {
+        let Some(writer) = self.writer.as_ref() else {
             return Ok(());
         };
-        match write_event(path, event, fields) {
+        match writer
+            .lock()
+            .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))
+            .and_then(|mut file| write_event(&mut file, event, fields))
+        {
             Ok(()) => Ok(()),
             Err(err) if self.strict => Err(err),
             Err(err) => {
@@ -34,7 +55,18 @@ impl TraceConfig {
     }
 }
 
-fn write_event(path: &Path, event: &str, fields: Value) -> Result<(), AppError> {
+fn open_trace_file(path: &Path) -> Result<std::fs::File, AppError> {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path).map_err(AppError::from)
+}
+
+fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(), AppError> {
     let mut body = Map::new();
     body.insert("event".to_string(), json!(event));
     body.insert(
@@ -51,12 +83,7 @@ fn write_event(path: &Path, event: &str, fields: Value) -> Result<(), AppError> 
             body.insert(key, value);
         }
     }
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(AppError::from)?;
-    serde_json::to_writer(&mut file, &Value::Object(body))?;
+    serde_json::to_writer(&mut *file, &Value::Object(body))?;
     use std::io::Write;
     file.write_all(b"\n").map_err(AppError::from)
 }

@@ -1,9 +1,11 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::{helpers::resolve_app_pid, wait_latest_ref_cache::LatestRefCache, wait_predicate},
+    commands::{
+        helpers::resolve_app_pid, wait_latest_ref_cache::LatestRefCache, wait_predicate,
+        wait_text_match,
+    },
     context::CommandContext,
     error::{AppError, ErrorCode},
-    node::AccessibilityNode,
     notification::NotificationFilter,
     refs::validate_ref_id,
     refs_store::RefStore,
@@ -28,6 +30,7 @@ pub struct WaitArgs {
     pub app: Option<String>,
 }
 
+#[cfg(test)]
 pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     execute_with_context(args, adapter, &CommandContext::default())
 }
@@ -219,7 +222,13 @@ fn wait_for_element(
                     "Element {ref_id} did not satisfy predicate '{}' within {timeout_ms}ms; last_observed={last_observed}",
                     predicate.name()
                 ),
-            )));
+            )
+            .with_details(json!({
+                "ref": ref_id,
+                "predicate": predicate.name(),
+                "timeout_ms": timeout_ms,
+                "last_observed": last_observed
+            }))));
         }
         std::thread::sleep(remaining.min(Duration::from_millis(100)));
     }
@@ -244,13 +253,21 @@ fn wait_for_window(
             }
         }
 
-        if start.elapsed() >= timeout {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("Window with title '{title}' not found within {timeout_ms}ms"),
-            )));
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            return Err(AppError::Adapter(
+                crate::error::AdapterError::timeout(format!(
+                    "Window with title '{title}' not found within {timeout_ms}ms"
+                ))
+                .with_details(json!({
+                    "predicate": "window",
+                    "title": title,
+                    "timeout_ms": timeout_ms
+                })),
+            ));
         }
 
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(remaining.min(Duration::from_millis(100)));
     }
 }
 
@@ -270,7 +287,7 @@ fn wait_for_text(
 
     loop {
         if let Ok(result) = snapshot::build(adapter, &opts, app.as_deref(), None) {
-            let matches = find_all_text_in_tree(&result.tree, &normalized_text);
+            let matches = wait_text_match::find_all(&result.tree, &normalized_text);
             let matched = expected_count
                 .map(|expected| matches.len() == expected)
                 .unwrap_or_else(|| !matches.is_empty());
@@ -293,19 +310,22 @@ fn wait_for_text(
 
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("Text '{text}' did not match within {timeout_ms}ms"),
-            )));
+            return Err(AppError::Adapter(
+                crate::error::AdapterError::timeout(format!(
+                    "Text '{text}' did not match within {timeout_ms}ms"
+                ))
+                .with_details(json!({
+                    "predicate": "text",
+                    "text": text,
+                    "timeout_ms": timeout_ms,
+                    "expected_count": expected_count
+                })),
+            ));
         }
 
         std::thread::sleep(remaining.min(interval));
         interval = (interval * 2).min(Duration::from_millis(1000));
     }
-}
-
-struct TextMatch {
-    ref_id: Option<String>,
-    role: String,
 }
 
 fn wait_for_notification(
@@ -322,15 +342,24 @@ fn wait_for_notification(
         .map_err(AppError::Adapter)?;
     let baseline_indices: std::collections::HashSet<usize> =
         baseline.iter().map(|n| n.index).collect();
-    let interval = Duration::from_millis(500);
-    let deadline = Instant::now() + Duration::from_millis(args.timeout_ms);
     let start = Instant::now();
+    let timeout = Duration::from_millis(args.timeout_ms);
 
     loop {
-        if Instant::now() > deadline {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("No new notification within {}ms", args.timeout_ms),
-            )));
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            return Err(AppError::Adapter(
+                crate::error::AdapterError::timeout(format!(
+                    "No new notification within {}ms",
+                    args.timeout_ms
+                ))
+                .with_details(json!({
+                    "predicate": "notification",
+                    "timeout_ms": args.timeout_ms,
+                    "app": args.app.clone(),
+                    "text": args.text.clone()
+                })),
+            ));
         }
         let current = adapter
             .list_notifications(&filter)
@@ -339,7 +368,7 @@ fn wait_for_notification(
             .iter()
             .find(|n| !baseline_indices.contains(&n.index))
         else {
-            std::thread::sleep(interval);
+            std::thread::sleep(remaining.min(Duration::from_millis(500)));
             continue;
         };
         let elapsed = start.elapsed().as_millis();
@@ -349,25 +378,6 @@ fn wait_for_notification(
             "notification": notif,
             "elapsed_ms": elapsed,
         }));
-    }
-}
-
-fn find_all_text_in_tree(node: &AccessibilityNode, text_lower: &str) -> Vec<TextMatch> {
-    let mut matches = Vec::new();
-    collect_text_matches(node, text_lower, &mut matches);
-    matches
-}
-
-fn collect_text_matches(node: &AccessibilityNode, text_lower: &str, matches: &mut Vec<TextMatch>) {
-    if search_text::node_contains(node, text_lower) {
-        matches.push(TextMatch {
-            ref_id: node.ref_id.clone(),
-            role: node.role.clone(),
-        });
-    }
-
-    for child in &node.children {
-        collect_text_matches(child, text_lower, matches);
     }
 }
 

@@ -58,7 +58,7 @@ impl StubAdapter {
 }
 
 impl PlatformAdapter for StubAdapter {
-    fn resolve_element(
+    fn resolve_element_strict(
         &self,
         _entry: &crate::refs::RefEntry,
     ) -> Result<NativeHandle, AdapterError> {

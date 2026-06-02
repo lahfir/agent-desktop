@@ -14,7 +14,7 @@ struct ProbeFailingAdapter {
 }
 
 impl PlatformAdapter for ProbeFailingAdapter {
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 

@@ -42,6 +42,8 @@ pub struct ErrorPayload {
     pub retry_command: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform_detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 impl Response {
@@ -81,6 +83,7 @@ impl ErrorPayload {
             suggestion: None,
             retry_command: None,
             platform_detail: None,
+            details: None,
         }
     }
 

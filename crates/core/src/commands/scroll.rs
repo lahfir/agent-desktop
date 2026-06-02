@@ -1,7 +1,7 @@
 use crate::{
     action::{Action, ActionRequest, Direction},
     adapter::PlatformAdapter,
-    commands::helpers::{check_actionability_with_trace, resolve_ref_with_context},
+    commands::helpers::execute_ref_action_result_with_context,
     context::CommandContext,
     error::AppError,
 };
@@ -19,21 +19,13 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let (entry, handle) =
-        resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
     let request = ActionRequest::headless(Action::Scroll(args.direction, args.amount));
-    check_actionability_with_trace(
+    let (_entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
-        &entry,
-        handle.handle(),
+        args.snapshot_id.as_deref(),
         adapter,
-        &request,
+        request,
         context,
-    )?;
-    let result = adapter.execute_action(handle.handle(), request)?;
-    context.trace(
-        "action.dispatch.ok",
-        serde_json::json!({ "ref": args.ref_id }),
     )?;
     Ok(serde_json::to_value(result)?)
 }

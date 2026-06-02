@@ -9,6 +9,7 @@ use crate::{
     snapshot::SnapshotResult,
 };
 
+#[cfg(test)]
 pub fn run_from_ref(
     adapter: &dyn PlatformAdapter,
     opts: &TreeOptions,

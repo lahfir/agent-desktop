@@ -13,7 +13,7 @@ struct ReleaseCountingAdapter {
 }
 
 impl PlatformAdapter for ReleaseCountingAdapter {
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
@@ -28,7 +28,7 @@ struct RecordingAdapter {
 }
 
 impl PlatformAdapter for RecordingAdapter {
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
@@ -110,6 +110,13 @@ fn entry() -> RefEntry {
     }
 }
 
+fn text_entry() -> RefEntry {
+    let mut entry = entry();
+    entry.role = "textfield".into();
+    entry.available_actions = vec!["SetValue".into()];
+    entry
+}
+
 #[test]
 fn resolved_element_releases_handle_once_on_drop() {
     let _guard = HomeGuard::new();
@@ -169,6 +176,42 @@ fn execute_ref_action_does_not_dispatch_ambiguous_target() {
 
     assert_eq!(err.code(), "AMBIGUOUS_TARGET");
     assert_eq!(adapter.executed.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn ref_action_trace_does_not_include_typed_text_payload() {
+    let _guard = HomeGuard::new();
+    let mut refmap = RefMap::new();
+    refmap.allocate(text_entry());
+    let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
+    let adapter = RecordingAdapter {
+        request: Mutex::new(None),
+    };
+    let trace_path = std::env::temp_dir().join(format!(
+        "agent-desktop-type-trace-{}.jsonl",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let context = CommandContext::new(None, Some(trace_path.clone()), true).unwrap();
+    let args = RefArgs {
+        ref_id: "@e1".into(),
+        snapshot_id: Some(snapshot_id),
+    };
+
+    execute_ref_action_with_context(
+        args,
+        &adapter,
+        ActionRequest::focus_fallback(Action::TypeText("super-secret".into())),
+        &context,
+    )
+    .unwrap();
+
+    let trace = std::fs::read_to_string(&trace_path).unwrap();
+    assert!(trace.contains("\"action\":\"type\""));
+    assert!(!trace.contains("super-secret"));
+    let _ = std::fs::remove_file(trace_path);
 }
 
 #[test]
