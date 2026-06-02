@@ -1,5 +1,5 @@
 use crate::{
-    action::{DragParams, Point},
+    action::DragParams,
     adapter::PlatformAdapter,
     commands::helpers::{PointResolveArgs, resolve_point_from_ref_or_xy_with_context},
     context::CommandContext,
@@ -21,8 +21,26 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let from = resolve_from_point(&args, adapter, context)?;
-    let to = resolve_to_point(&args, adapter, context)?;
+    let from = resolve_point_from_ref_or_xy_with_context(
+        PointResolveArgs {
+            ref_id: args.from_ref.as_deref(),
+            xy: args.from_xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide --from <ref> or --from-xy x,y",
+        },
+        adapter,
+        context,
+    )?;
+    let to = resolve_point_from_ref_or_xy_with_context(
+        PointResolveArgs {
+            ref_id: args.to_ref.as_deref(),
+            xy: args.to_xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide --to <ref> or --to-xy x,y",
+        },
+        adapter,
+        context,
+    )?;
     let params = DragParams {
         from: from.clone(),
         to: to.clone(),
@@ -34,38 +52,4 @@ pub fn execute(
         "from": { "x": from.x, "y": from.y },
         "to": { "x": to.x, "y": to.y }
     }))
-}
-
-fn resolve_from_point(
-    args: &DragArgs,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-) -> Result<Point, AppError> {
-    resolve_point_from_ref_or_xy_with_context(
-        PointResolveArgs {
-            ref_id: args.from_ref.as_deref(),
-            xy: args.from_xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide --from <ref> or --from-xy x,y",
-        },
-        adapter,
-        context,
-    )
-}
-
-fn resolve_to_point(
-    args: &DragArgs,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-) -> Result<Point, AppError> {
-    resolve_point_from_ref_or_xy_with_context(
-        PointResolveArgs {
-            ref_id: args.to_ref.as_deref(),
-            xy: args.to_xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide --to <ref> or --to-xy x,y",
-        },
-        adapter,
-        context,
-    )
 }

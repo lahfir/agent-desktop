@@ -63,15 +63,16 @@ pub fn check_live(
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
     let mut observed = entry.clone();
-    if let Some(state) = adapter.get_live_state(handle).ok().flatten() {
+    let live = adapter.get_live_element(handle).unwrap_or_default();
+    if let Some(state) = live.state {
         observed.role = state.role;
         observed.states = state.states;
         observed.value = state.value.or(observed.value);
     }
-    if let Some(bounds) = adapter.get_element_bounds(handle).ok().flatten() {
+    if let Some(bounds) = live.bounds {
         observed.bounds = Some(bounds);
     }
-    if let Some(actions) = adapter.get_live_actions(handle).ok().flatten()
+    if let Some(actions) = live.available_actions
         && !actions.is_empty()
     {
         observed.available_actions = actions;

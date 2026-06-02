@@ -56,6 +56,13 @@ impl Default for TreeOptions {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct LiveElement {
+    pub state: Option<ElementState>,
+    pub bounds: Option<Rect>,
+    pub available_actions: Option<Vec<String>>,
+}
+
 pub enum ScreenshotTarget {
     Screen(usize),
     /// Capture the frontmost window owned by this process ID.
@@ -224,6 +231,14 @@ pub trait PlatformAdapter: Send + Sync {
         _handle: &NativeHandle,
     ) -> Result<Option<Vec<String>>, AdapterError> {
         Err(AdapterError::not_supported("get_live_actions"))
+    }
+
+    fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
+        Ok(LiveElement {
+            state: self.get_live_state(handle).ok().flatten(),
+            bounds: self.get_element_bounds(handle).ok().flatten(),
+            available_actions: self.get_live_actions(handle).ok().flatten(),
+        })
     }
 
     fn press_key_for_app(
