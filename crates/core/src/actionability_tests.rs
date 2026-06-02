@@ -63,6 +63,7 @@ fn disabled_entry_fails_before_action_dispatch() {
 
     assert_eq!(err.code, ErrorCode::ActionFailed);
     assert!(err.message.contains("enabled"));
+    assert_eq!(err.details.as_ref().unwrap()["actionable"], false);
 }
 
 #[test]

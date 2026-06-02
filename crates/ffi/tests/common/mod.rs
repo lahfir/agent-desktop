@@ -11,6 +11,8 @@ pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 
 unsafe extern "C" {
+    pub fn ad_ref_entry_size() -> usize;
+
     pub fn ad_adapter_create() -> *mut AdAdapter;
     pub fn ad_adapter_destroy(adapter: *mut AdAdapter);
     pub fn ad_check_permissions(adapter: *const AdAdapter) -> AdResult;

@@ -276,6 +276,14 @@ fn element_wait_timeout_reports_last_actionability_observation() {
     assert_eq!(err.code(), "TIMEOUT");
     assert!(err.to_string().contains("\"actionable\":false"));
     assert!(err.to_string().contains("entry state contains disabled"));
+    match err {
+        AppError::Adapter(adapter_error) => {
+            let details = adapter_error.details.unwrap();
+            assert_eq!(details["predicate"], "actionable");
+            assert_eq!(details["last_observed"]["actionable"], false);
+        }
+        _ => panic!("expected adapter error"),
+    }
 }
 
 #[test]

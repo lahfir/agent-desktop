@@ -112,6 +112,7 @@ fn finish(cmd_name: &str, result: Result<serde_json::Value, agent_desktop_core::
             }
             if let AppError::Adapter(adapter_error) = &e {
                 payload.platform_detail = adapter_error.platform_detail.clone();
+                payload.details = adapter_error.details.clone();
             }
             emit_response(&Response::err(cmd_name, payload));
             std::process::exit(1);

@@ -82,7 +82,7 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        crate::tree::resolve::resolve_element_impl(entry)
+        self.resolve_element_strict(entry)
     }
 
     fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {

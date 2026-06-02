@@ -1,9 +1,7 @@
 use crate::{
     action::{Action, ActionRequest},
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
-    commands::helpers::{
-        RefArgs, check_actionability_with_trace, find_window_for_pid, resolve_ref_with_context,
-    },
+    commands::helpers::{RefArgs, execute_ref_action_result_with_context, find_window_for_pid},
     context::CommandContext,
     error::AppError,
     refs::RefEntry,
@@ -11,6 +9,7 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+#[cfg(test)]
 pub fn execute(args: RefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     execute_with_context(args, adapter, &CommandContext::default())
 }
@@ -20,21 +19,13 @@ pub fn execute_with_context(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let (entry, handle) =
-        resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
     let request = ActionRequest::headless(Action::RightClick);
-    check_actionability_with_trace(
+    let (entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
-        &entry,
-        handle.handle(),
+        args.snapshot_id.as_deref(),
         adapter,
-        &request,
+        request,
         context,
-    )?;
-    let result = adapter.execute_action(handle.handle(), request)?;
-    context.trace(
-        "action.dispatch.ok",
-        serde_json::json!({ "ref": args.ref_id }),
     )?;
     let mut response = serde_json::to_value(&result)?;
 

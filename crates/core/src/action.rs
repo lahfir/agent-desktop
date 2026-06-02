@@ -52,6 +52,39 @@ impl Action {
             Self::Drag(_) => "drag",
         }
     }
+
+    pub fn semantic_capabilities(&self) -> &'static [&'static str] {
+        match self {
+            Self::Click | Self::DoubleClick | Self::TripleClick => &["Click"],
+            Self::RightClick => &["RightClick", "Click"],
+            Self::SetValue(_) | Self::Clear => &["SetValue"],
+            Self::SetFocus => &["SetFocus"],
+            Self::Expand => &["Expand"],
+            Self::Collapse => &["Collapse"],
+            Self::Select(_) => &["Select", "Click"],
+            Self::Toggle => &["Toggle", "Click"],
+            Self::Check | Self::Uncheck => &["Toggle", "Click"],
+            Self::Scroll(_, _) | Self::ScrollTo => &["ScrollTo"],
+            Self::PressKey(_) => &["PressKey"],
+            Self::KeyDown(_) => &["KeyDown"],
+            Self::KeyUp(_) => &["KeyUp"],
+            Self::TypeText(_) => &["TypeText", "SetValue"],
+            Self::Hover => &["Hover"],
+            Self::Drag(_) => &["Drag"],
+        }
+    }
+
+    pub fn requires_cursor_policy(&self) -> bool {
+        matches!(self, Self::Hover | Self::Drag(_))
+    }
+
+    pub fn requires_focus_policy(&self) -> bool {
+        matches!(self, Self::TypeText(_) | Self::PressKey(_))
+    }
+
+    pub fn may_use_focus_fallback(&self) -> bool {
+        matches!(self, Self::TypeText(_) | Self::PressKey(_))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
