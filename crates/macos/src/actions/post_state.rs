@@ -1,4 +1,7 @@
-use agent_desktop_core::action::{Action, ElementState};
+use agent_desktop_core::{
+    action::{Action, ElementState},
+    adapter::LiveElement,
+};
 
 #[cfg(target_os = "macos")]
 pub(crate) fn read_post_state(
@@ -19,10 +22,31 @@ pub(crate) fn read_post_state(
 }
 
 pub(crate) fn read_element_state(el: &crate::tree::AXElement) -> ElementState {
-    let value = crate::tree::copy_value_typed(el);
-    let role = crate::actions::ax_helpers::element_role(el).unwrap_or_default();
+    let attrs = crate::tree::element::fetch_node_attrs(el);
+    let role = normalized_role(attrs.role.as_deref());
+    element_state_from_attrs(el, attrs, role)
+}
+
+pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
+    let attrs = crate::tree::element::fetch_node_attrs(el);
+    let role = normalized_role(attrs.role.as_deref());
+    let state = element_state_from_attrs(el, attrs, role.clone());
+    LiveElement {
+        state: Some(state),
+        bounds: crate::tree::read_bounds(el),
+        available_actions: Some(crate::tree::action_list::platform_available_actions(
+            el, &role,
+        )),
+    }
+}
+
+fn element_state_from_attrs(
+    el: &crate::tree::AXElement,
+    attrs: crate::tree::NodeAttrs,
+    role: String,
+) -> ElementState {
+    let value = attrs.value;
     let focused = crate::tree::element::copy_bool_attr(el, "AXFocused").unwrap_or(false);
-    let enabled = crate::tree::element::copy_bool_attr(el, "AXEnabled").unwrap_or(true);
     let expanded = crate::tree::element::copy_bool_attr(el, "AXExpanded")
         .or_else(|| crate::tree::element::copy_bool_attr(el, "AXDisclosing"))
         .unwrap_or(false);
@@ -30,7 +54,7 @@ pub(crate) fn read_element_state(el: &crate::tree::AXElement) -> ElementState {
     if focused {
         states.push("focused".into());
     }
-    if !enabled {
+    if !attrs.enabled {
         states.push("disabled".into());
     }
     if expanded {
@@ -44,6 +68,13 @@ pub(crate) fn read_element_state(el: &crate::tree::AXElement) -> ElementState {
         states,
         value,
     }
+}
+
+fn normalized_role(ax_role: Option<&str>) -> String {
+    ax_role
+        .map(crate::tree::roles::ax_role_to_str)
+        .unwrap_or("unknown")
+        .to_string()
 }
 
 fn value_is_checked(value: Option<&str>) -> bool {

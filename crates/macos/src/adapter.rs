@@ -2,8 +2,8 @@ use agent_desktop_core::{
     PermissionReport,
     action::{ActionRequest, ActionResult, DragParams, ElementState, MouseEvent, WindowOp},
     adapter::{
-        ImageBuffer, NativeHandle, PlatformAdapter, ScreenshotTarget, SnapshotSurface, TreeOptions,
-        WindowFilter,
+        ImageBuffer, LiveElement, NativeHandle, PlatformAdapter, ScreenshotTarget, SnapshotSurface,
+        TreeOptions, WindowFilter,
     },
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
@@ -209,6 +209,20 @@ impl PlatformAdapter for MacOSAdapter {
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_actions"))
+    }
+
+    fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
+        #[cfg(target_os = "macos")]
+        {
+            use crate::tree::AXElement;
+            use std::mem::ManuallyDrop;
+            let el = ManuallyDrop::new(AXElement(
+                handle.as_raw() as accessibility_sys::AXUIElementRef
+            ));
+            Ok(crate::actions::post_state::read_live_element(&el))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Err(AdapterError::not_supported("get_live_element"))
     }
 
     fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {

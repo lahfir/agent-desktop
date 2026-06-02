@@ -67,8 +67,9 @@ fn has_scroll_mechanism(el: &AXElement, role: &str, has: &impl Fn(&str) -> bool)
         || has("AXScrollUpByPage")
         || has("AXScrollLeftByPage")
         || has("AXScrollRightByPage")
-        || copy_element_attr(el, "AXVerticalScrollBar").is_some()
-        || copy_element_attr(el, "AXHorizontalScrollBar").is_some()
+        || (role_may_own_scrollbars(role)
+            && (copy_element_attr(el, "AXVerticalScrollBar").is_some()
+                || copy_element_attr(el, "AXHorizontalScrollBar").is_some()))
 }
 
 fn role_supports_scroll(role: &str) -> bool {
@@ -78,9 +79,24 @@ fn role_supports_scroll(role: &str) -> bool {
     )
 }
 
+fn role_may_own_scrollbars(role: &str) -> bool {
+    matches!(
+        role,
+        "application"
+            | "window"
+            | "sheet"
+            | "dialog"
+            | "group"
+            | "splitter"
+            | "webarea"
+            | "grid"
+            | "unknown"
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{role_allows_context_menu_action, role_supports_scroll};
+    use super::{role_allows_context_menu_action, role_may_own_scrollbars, role_supports_scroll};
 
     #[test]
     fn menu_opening_controls_do_not_advertise_right_click() {
@@ -95,5 +111,13 @@ mod tests {
         assert!(role_supports_scroll("scrollarea"));
         assert!(role_supports_scroll("browser"));
         assert!(!role_supports_scroll("button"));
+    }
+
+    #[test]
+    fn scrollbar_probe_is_limited_to_container_like_roles() {
+        assert!(role_may_own_scrollbars("group"));
+        assert!(role_may_own_scrollbars("webarea"));
+        assert!(!role_may_own_scrollbars("button"));
+        assert!(!role_may_own_scrollbars("cell"));
     }
 }

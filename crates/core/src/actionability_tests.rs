@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     action::{Action, ActionRequest, Direction, ElementState},
-    adapter::{NativeHandle, PlatformAdapter, SnapshotSurface},
+    adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
     node::Rect,
     refs::RefEntry,
 };
@@ -26,6 +26,42 @@ impl PlatformAdapter for LiveAdapter {
         _handle: &NativeHandle,
     ) -> Result<Option<Vec<String>>, AdapterError> {
         Ok(self.actions.clone())
+    }
+}
+
+struct CombinedLiveAdapter;
+
+impl PlatformAdapter for CombinedLiveAdapter {
+    fn get_live_element(&self, _handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
+        Ok(LiveElement {
+            state: Some(ElementState {
+                role: "button".into(),
+                states: vec![],
+                value: None,
+            }),
+            bounds: Some(Rect {
+                x: 1.0,
+                y: 1.0,
+                width: 20.0,
+                height: 20.0,
+            }),
+            available_actions: Some(vec!["Click".into()]),
+        })
+    }
+
+    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        panic!("check_live should use get_live_element")
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        panic!("check_live should use get_live_element")
+    }
+
+    fn get_live_actions(
+        &self,
+        _handle: &NativeHandle,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        panic!("check_live should use get_live_element")
     }
 }
 
@@ -160,6 +196,29 @@ fn live_actionability_overrides_stale_snapshot_state() {
         &stale,
         &NativeHandle::null(),
         &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap();
+
+    assert!(report.actionable);
+}
+
+#[test]
+fn live_actionability_uses_combined_live_element_read() {
+    let mut stale = entry();
+    stale.states.push("disabled".into());
+    stale.bounds = Some(Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 0.0,
+        height: 20.0,
+    });
+    stale.available_actions = vec![];
+
+    let report = check_live(
+        &stale,
+        &NativeHandle::null(),
+        &CombinedLiveAdapter,
         &ActionRequest::headless(Action::Click),
     )
     .unwrap();
