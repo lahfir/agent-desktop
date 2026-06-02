@@ -1,7 +1,9 @@
 use super::*;
 use crate::{
-    adapter::PlatformAdapter,
+    action::ElementState,
+    adapter::{NativeHandle, PlatformAdapter},
     error::{AdapterError, ErrorCode},
+    node::Rect,
     notification::{NotificationFilter, NotificationInfo},
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
@@ -11,6 +13,30 @@ use crate::{
 struct NoopAdapter;
 
 impl PlatformAdapter for NoopAdapter {}
+
+struct PredicateAdapter {
+    state: Option<ElementState>,
+    value: Option<String>,
+    bounds: Option<Rect>,
+}
+
+impl PlatformAdapter for PredicateAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        Ok(self.state.clone())
+    }
+
+    fn get_live_value(&self, _handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
+        Ok(self.value.clone())
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        Ok(self.bounds)
+    }
+}
 
 struct NotificationErrorAdapter;
 
@@ -54,7 +80,14 @@ fn snapshot_pinned_missing_ref_is_invalid_args() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
-    let err = wait_for_element("@e2".into(), Some(snapshot_id), 1, &NoopAdapter).unwrap_err();
+    let err = wait_for_element(
+        "@e2".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Exists,
+        1,
+        &NoopAdapter,
+    )
+    .unwrap_err();
 
     assert_eq!(err.code(), "INVALID_ARGS");
     assert!(err.suggestion().is_some());
@@ -67,6 +100,9 @@ fn notification_wait_propagates_adapter_error() {
             ms: None,
             element: None,
             snapshot_id: None,
+            predicate: None,
+            value: None,
+            count: None,
             window: None,
             text: None,
             timeout_ms: 1,
@@ -89,6 +125,9 @@ fn rejects_multiple_wait_modes() {
             ms: Some(1),
             element: Some("@e1".into()),
             snapshot_id: None,
+            predicate: None,
+            value: None,
+            count: None,
             window: None,
             text: None,
             timeout_ms: 1,
@@ -111,6 +150,9 @@ fn notification_wait_allows_text_filter() {
         ms: None,
         element: None,
         snapshot_id: None,
+        predicate: None,
+        value: None,
+        count: None,
         window: None,
         text: Some("done".into()),
         timeout_ms: 1,
@@ -121,6 +163,78 @@ fn notification_wait_allows_text_filter() {
     });
 
     assert!(result.is_ok());
+}
+
+#[test]
+fn element_wait_enabled_predicate_uses_live_state() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+    let adapter = PredicateAdapter {
+        state: Some(ElementState {
+            role: "button".into(),
+            states: vec![],
+            value: None,
+        }),
+        value: None,
+        bounds: None,
+    };
+
+    let value = wait_for_element(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Enabled,
+        1,
+        &adapter,
+    )
+    .unwrap();
+
+    assert_eq!(value["predicate"], "enabled");
+    assert_eq!(value["observed"]["enabled"], true);
+}
+
+#[test]
+fn element_wait_value_predicate_matches_live_value() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+    let adapter = PredicateAdapter {
+        state: None,
+        value: Some("ready".into()),
+        bounds: None,
+    };
+
+    let value = wait_for_element(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Value("ready".into()),
+        1,
+        &adapter,
+    )
+    .unwrap();
+
+    assert_eq!(value["predicate"], "value");
+    assert_eq!(value["observed"]["value"], "ready");
+}
+
+#[test]
+fn predicate_requires_element_mode() {
+    let err = validate_wait_mode(&WaitArgs {
+        ms: None,
+        element: None,
+        snapshot_id: None,
+        predicate: Some("enabled".into()),
+        value: None,
+        count: None,
+        window: None,
+        text: None,
+        timeout_ms: 1,
+        menu: false,
+        menu_closed: false,
+        notification: false,
+        app: None,
+    })
+    .unwrap_err();
+
+    assert_eq!(err.code(), "INVALID_ARGS");
 }
 
 #[test]

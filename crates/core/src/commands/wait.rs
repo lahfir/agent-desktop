@@ -1,6 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::helpers::resolve_app_pid,
+    commands::{helpers::resolve_app_pid, wait_predicate},
     error::{AppError, ErrorCode},
     node::AccessibilityNode,
     notification::NotificationFilter,
@@ -15,6 +15,9 @@ pub struct WaitArgs {
     pub ms: Option<u64>,
     pub element: Option<String>,
     pub snapshot_id: Option<String>,
+    pub predicate: Option<String>,
+    pub value: Option<String>,
+    pub count: Option<usize>,
     pub window: Option<String>,
     pub text: Option<String>,
     pub timeout_ms: u64,
@@ -48,7 +51,15 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
 
     if let Some(ref_id) = args.element {
         validate_ref_id(&ref_id)?;
-        return wait_for_element(ref_id, args.snapshot_id, args.timeout_ms, adapter);
+        let predicate =
+            wait_predicate::ElementPredicate::parse(args.predicate.as_deref(), args.value)?;
+        return wait_for_element(
+            ref_id,
+            args.snapshot_id,
+            predicate,
+            args.timeout_ms,
+            adapter,
+        );
     }
 
     if let Some(title) = args.window {
@@ -56,7 +67,7 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
     }
 
     if let Some(text) = args.text {
-        return wait_for_text(text, args.app, args.timeout_ms, adapter);
+        return wait_for_text(text, args.count, args.app, args.timeout_ms, adapter);
     }
 
     Err(AppError::invalid_input(
@@ -65,6 +76,24 @@ pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
 }
 
 fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
+    if args.predicate.is_some() && args.element.is_none() {
+        return Err(AppError::invalid_input_with_suggestion(
+            "--predicate requires --element",
+            "Use --element <ref> with --predicate, or remove --predicate.",
+        ));
+    }
+    if args.value.is_some() && args.element.is_none() {
+        return Err(AppError::invalid_input_with_suggestion(
+            "--value requires --element and --predicate value",
+            "Use --element <ref> --predicate value --value <expected>.",
+        ));
+    }
+    if args.count.is_some() && args.text.is_none() {
+        return Err(AppError::invalid_input_with_suggestion(
+            "--count requires --text",
+            "Use --text <text> --count <expected>, or remove --count.",
+        ));
+    }
     let selected = [
         args.ms.is_some(),
         args.element.is_some(),
@@ -89,6 +118,7 @@ fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
 fn wait_for_element(
     ref_id: String,
     snapshot_id: Option<String>,
+    predicate: wait_predicate::ElementPredicate,
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
@@ -115,17 +145,27 @@ fn wait_for_element(
         ));
     }
 
+    let last_observed = json!(null);
     loop {
         let entry = fixed_refmap
             .as_ref()
             .and_then(|r| r.get(&ref_id).cloned())
             .or_else(|| latest_cache.as_ref().and_then(|c| c.entry(&ref_id)));
         if let Some(entry) = entry {
-            match adapter.resolve_element(&entry) {
+            match adapter.resolve_element_strict(&entry) {
                 Ok(handle) => {
+                    let observed = wait_predicate::matches(&entry, &handle, &predicate, adapter);
                     let _ = adapter.release_handle(&handle);
-                    let elapsed = start.elapsed().as_millis();
-                    return Ok(json!({ "found": true, "ref": ref_id, "elapsed_ms": elapsed }));
+                    if let Some(observed) = observed {
+                        let elapsed = start.elapsed().as_millis();
+                        return Ok(json!({
+                            "found": true,
+                            "ref": ref_id,
+                            "predicate": predicate.name(),
+                            "observed": observed,
+                            "elapsed_ms": elapsed
+                        }));
+                    }
                 }
                 Err(err) if fixed_refmap.is_none() && err.code == ErrorCode::StaleRef => {
                     if let Some(cache) = latest_cache.as_mut() {
@@ -141,7 +181,10 @@ fn wait_for_element(
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
             return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("Element {ref_id} not found within {timeout_ms}ms"),
+                format!(
+                    "Element {ref_id} did not satisfy predicate '{}' within {timeout_ms}ms; last_observed={last_observed}",
+                    predicate.name()
+                ),
             )));
         }
         std::thread::sleep(remaining.min(Duration::from_millis(100)));
@@ -227,6 +270,7 @@ fn wait_for_window(
 
 fn wait_for_text(
     text: String,
+    expected_count: Option<usize>,
     app: Option<String>,
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
@@ -239,14 +283,20 @@ fn wait_for_text(
 
     loop {
         if let Ok(result) = snapshot::build(adapter, &opts, app.as_deref(), None) {
-            if let Some(found) = find_text_in_tree(&result.tree, &normalized_text) {
+            let matches = find_all_text_in_tree(&result.tree, &normalized_text);
+            let matched = expected_count
+                .map(|expected| matches.len() == expected)
+                .unwrap_or_else(|| !matches.is_empty());
+            if matched {
                 let snapshot_id = RefStore::new()?.save_new_snapshot(&result.refmap)?;
                 let elapsed = start.elapsed().as_millis();
+                let found = matches.first();
                 return Ok(json!({
                     "found": true,
                     "text": text,
-                    "ref": found.ref_id,
-                    "role": found.role,
+                    "ref": found.and_then(|found| found.ref_id.clone()),
+                    "role": found.map(|found| found.role.clone()),
+                    "count": matches.len(),
                     "snapshot_id": snapshot_id,
                     "elapsed_ms": elapsed
                 }));
@@ -256,7 +306,7 @@ fn wait_for_text(
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
             return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("Text '{text}' not found within {timeout_ms}ms"),
+                format!("Text '{text}' did not match within {timeout_ms}ms"),
             )));
         }
 
@@ -314,20 +364,23 @@ fn wait_for_notification(
     }
 }
 
-fn find_text_in_tree(node: &AccessibilityNode, text_lower: &str) -> Option<TextMatch> {
+fn find_all_text_in_tree(node: &AccessibilityNode, text_lower: &str) -> Vec<TextMatch> {
+    let mut matches = Vec::new();
+    collect_text_matches(node, text_lower, &mut matches);
+    matches
+}
+
+fn collect_text_matches(node: &AccessibilityNode, text_lower: &str, matches: &mut Vec<TextMatch>) {
     if search_text::node_contains(node, text_lower) {
-        return Some(TextMatch {
+        matches.push(TextMatch {
             ref_id: node.ref_id.clone(),
             role: node.role.clone(),
         });
     }
 
     for child in &node.children {
-        if let Some(found) = find_text_in_tree(child, text_lower) {
-            return Some(found);
-        }
+        collect_text_matches(child, text_lower, matches);
     }
-    None
 }
 
 #[cfg(test)]

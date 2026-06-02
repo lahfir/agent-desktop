@@ -85,6 +85,10 @@ impl PlatformAdapter for MacOSAdapter {
         crate::tree::resolve::resolve_element_impl(entry)
     }
 
+    fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        crate::tree::resolve::resolve_element_impl(entry)
+    }
+
     fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
         let raw = handle.as_raw();
         if raw.is_null() {

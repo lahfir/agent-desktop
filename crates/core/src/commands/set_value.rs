@@ -13,10 +13,9 @@ pub struct SetValueArgs {
 }
 
 pub fn execute(args: SetValueArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
-    let result = adapter.execute_action(
-        handle.handle(),
-        ActionRequest::headless(Action::SetValue(args.value)),
-    )?;
+    let (entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    let request = ActionRequest::headless(Action::SetValue(args.value));
+    crate::actionability::check(&entry, &request)?;
+    let result = adapter.execute_action(handle.handle(), request)?;
     Ok(serde_json::to_value(result)?)
 }

@@ -41,7 +41,7 @@ pub(crate) fn resolve_ref<'a>(
         entry.role,
         entry.name.as_deref().unwrap_or("(none)")
     );
-    let handle = adapter.resolve_element(&entry)?;
+    let handle = adapter.resolve_element_strict(&entry)?;
     tracing::debug!("resolve: {} resolved successfully", ref_id);
     Ok((entry, ResolvedElement::new(adapter, handle)))
 }
@@ -75,6 +75,7 @@ pub(crate) fn execute_ref_action(
     request: ActionRequest,
 ) -> Result<Value, AppError> {
     let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    crate::actionability::check(&_entry, &request)?;
     let result = adapter.execute_action(handle.handle(), request)?;
     Ok(serde_json::to_value(result)?)
 }

@@ -175,23 +175,22 @@ fn candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
 
 #[cfg(target_os = "macos")]
 fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-    use core_foundation::base::{CFRetain, CFTypeRef};
-
     if entry.path.is_empty() {
         return Err(AdapterError::element_not_found("element"));
     }
 
+    let mut matches = Vec::new();
+    let mut seen = FxHashSet::default();
     for root in roots {
         let Some(candidate) = element_at_path(root, &entry.path) else {
             continue;
         };
-        if element_matches_entry(&candidate, entry) {
-            unsafe { CFRetain(candidate.0 as CFTypeRef) };
-            return Ok(unsafe { NativeHandle::from_ptr(candidate.0 as *const _) });
+        if element_matches_entry(&candidate, entry) && seen.insert(candidate.0 as usize) {
+            matches.push(candidate);
         }
     }
 
-    Err(AdapterError::element_not_found("element"))
+    classify_candidates(matches, entry)
 }
 
 #[cfg(target_os = "macos")]
@@ -212,34 +211,65 @@ fn find_entry_in_roots(
     resolve_depth: u8,
     deadline: std::time::Instant,
 ) -> Result<NativeHandle, AdapterError> {
+    let mut matches = Vec::new();
+    let mut seen_matches = FxHashSet::default();
     for root in roots {
         let mut visited = FxHashSet::default();
-        if let Ok(handle) =
-            find_element_recursive(root, entry, 0, resolve_depth, &mut visited, deadline)
-        {
-            return Ok(handle);
-        }
+        let mut context = CollectContext {
+            entry,
+            max_depth: resolve_depth,
+            ancestors: &mut visited,
+            seen_matches: &mut seen_matches,
+            matches: &mut matches,
+            deadline,
+        };
+        collect_elements_recursive(root, 0, &mut context)?;
     }
-    Err(AdapterError::element_not_found("element"))
+    classify_candidates(matches, entry)
 }
 
-/// Depth-first search for a single element matching `entry`.
-///
-/// `deadline` is shared across retry attempts so the total wall-clock time is
-/// bounded at five seconds.
 #[cfg(target_os = "macos")]
-pub fn find_element_recursive(
-    el: &AXElement,
+fn classify_candidates(
+    mut matches: Vec<AXElement>,
     entry: &RefEntry,
-    depth: u8,
-    max_depth: u8,
-    ancestors: &mut FxHashSet<usize>,
-    deadline: std::time::Instant,
 ) -> Result<NativeHandle, AdapterError> {
-    use accessibility_sys::kAXRoleAttribute;
     use core_foundation::base::{CFRetain, CFTypeRef};
 
-    if std::time::Instant::now() > deadline {
+    match matches.len() {
+        0 => Err(AdapterError::element_not_found("element")),
+        1 => {
+            let candidate = matches.remove(0);
+            unsafe { CFRetain(candidate.0 as CFTypeRef) };
+            Ok(unsafe { NativeHandle::from_ptr(candidate.0 as *const _) })
+        }
+        count => Err(AdapterError::ambiguous_target(format!(
+            "Ambiguous target: {count} candidates matched role={}, name={:?}, description={:?}",
+            entry.role,
+            entry.name.as_deref().unwrap_or("(none)"),
+            entry.description.as_deref().unwrap_or("(none)")
+        ))),
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct CollectContext<'a> {
+    entry: &'a RefEntry,
+    max_depth: u8,
+    ancestors: &'a mut FxHashSet<usize>,
+    seen_matches: &'a mut FxHashSet<usize>,
+    matches: &'a mut Vec<AXElement>,
+    deadline: std::time::Instant,
+}
+
+#[cfg(target_os = "macos")]
+fn collect_elements_recursive(
+    el: &AXElement,
+    depth: u8,
+    context: &mut CollectContext<'_>,
+) -> Result<(), AdapterError> {
+    use accessibility_sys::kAXRoleAttribute;
+
+    if std::time::Instant::now() > context.deadline {
         return Err(
             AdapterError::new(ErrorCode::Timeout, "Element resolution timed out")
                 .with_suggestion("Retry the command, or run 'snapshot' if the UI changed."),
@@ -247,42 +277,29 @@ pub fn find_element_recursive(
     }
 
     let ptr_key = el.0 as usize;
-    if !ancestors.insert(ptr_key) {
-        return Err(AdapterError::element_not_found("element"));
+    if !context.ancestors.insert(ptr_key) {
+        return Ok(());
     }
 
     let ax_role = copy_string_attr(el, kAXRoleAttribute);
     let normalized = crate::tree::roles::normalized_role_for_element(el, ax_role.as_deref());
 
-    if normalized == entry.role && element_matches_entry(el, entry) {
-        ancestors.remove(&ptr_key);
-        unsafe { CFRetain(el.0 as CFTypeRef) };
-        return Ok(unsafe { NativeHandle::from_ptr(el.0 as *const _) });
+    if normalized == context.entry.role
+        && element_matches_entry(el, context.entry)
+        && context.seen_matches.insert(ptr_key)
+    {
+        context.matches.push(el.clone());
     }
 
-    if depth >= max_depth {
-        ancestors.remove(&ptr_key);
-        return Err(AdapterError::element_not_found("element"));
-    }
-
-    if should_prune_by_bounds(el, entry, depth) {
-        ancestors.remove(&ptr_key);
-        return Err(AdapterError::element_not_found("element"));
-    }
-
-    let children = resolve_children(el, ax_role.as_deref());
-
-    for child in &children {
-        if let Ok(handle) =
-            find_element_recursive(child, entry, depth + 1, max_depth, ancestors, deadline)
-        {
-            ancestors.remove(&ptr_key);
-            return Ok(handle);
+    if depth < context.max_depth && !should_prune_by_bounds(el, context.entry, depth) {
+        let children = resolve_children(el, ax_role.as_deref());
+        for child in &children {
+            collect_elements_recursive(child, depth + 1, context)?;
         }
     }
 
-    ancestors.remove(&ptr_key);
-    Err(AdapterError::element_not_found("element"))
+    context.ancestors.remove(&ptr_key);
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -333,16 +350,4 @@ mod tests;
 #[cfg(not(target_os = "macos"))]
 pub fn resolve_element_impl(_entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
     Err(AdapterError::not_supported("resolve_element"))
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn find_element_recursive(
-    _el: &AXElement,
-    _entry: &RefEntry,
-    _depth: u8,
-    _max_depth: u8,
-    _ancestors: &mut FxHashSet<usize>,
-    _deadline: std::time::Instant,
-) -> Result<NativeHandle, AdapterError> {
-    Err(AdapterError::not_supported("find_element_recursive"))
 }

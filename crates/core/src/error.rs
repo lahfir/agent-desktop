@@ -10,6 +10,7 @@ pub enum ErrorCode {
     ActionFailed,
     ActionNotSupported,
     StaleRef,
+    AmbiguousTarget,
     WindowNotFound,
     PlatformNotSupported,
     Timeout,
@@ -29,6 +30,7 @@ impl ErrorCode {
             ErrorCode::ActionFailed => "ACTION_FAILED",
             ErrorCode::ActionNotSupported => "ACTION_NOT_SUPPORTED",
             ErrorCode::StaleRef => "STALE_REF",
+            ErrorCode::AmbiguousTarget => "AMBIGUOUS_TARGET",
             ErrorCode::WindowNotFound => "WINDOW_NOT_FOUND",
             ErrorCode::PlatformNotSupported => "PLATFORM_NOT_SUPPORTED",
             ErrorCode::Timeout => "TIMEOUT",
@@ -85,6 +87,11 @@ impl AdapterError {
         .with_suggestion(
             "Run 'snapshot' (or 'snapshot --skeleton') to refresh, then retry with updated ref",
         )
+    }
+
+    pub fn ambiguous_target(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::AmbiguousTarget, message)
+            .with_suggestion("Run 'snapshot' to refresh, then retry with a more specific ref")
     }
 
     pub fn not_supported(method: &str) -> Self {
@@ -225,5 +232,14 @@ mod tests {
             suggestion.contains("skeleton"),
             "stale-ref suggestion should mention skeleton refresh, got: {suggestion}"
         );
+    }
+
+    #[test]
+    fn ambiguous_target_error_has_machine_readable_code() {
+        let err = AdapterError::ambiguous_target("2 candidates matched");
+
+        assert_eq!(err.code, ErrorCode::AmbiguousTarget);
+        assert_eq!(err.code.as_str(), "AMBIGUOUS_TARGET");
+        assert!(err.suggestion.is_some());
     }
 }

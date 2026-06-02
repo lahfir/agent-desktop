@@ -11,6 +11,7 @@ const fn error_code_variant_count() -> usize {
         ErrorCode::ActionFailed,
         ErrorCode::ActionNotSupported,
         ErrorCode::StaleRef,
+        ErrorCode::AmbiguousTarget,
         ErrorCode::WindowNotFound,
         ErrorCode::PlatformNotSupported,
         ErrorCode::Timeout,
@@ -36,6 +37,7 @@ const fn ad_result_error_variant_count() -> usize {
         AdResult::ErrActionFailed,
         AdResult::ErrActionNotSupported,
         AdResult::ErrStaleRef,
+        AdResult::ErrAmbiguousTarget,
         AdResult::ErrWindowNotFound,
         AdResult::ErrPlatformNotSupported,
         AdResult::ErrTimeout,
@@ -77,6 +79,7 @@ pub enum AdResult {
     ErrInternal = -12,
     ErrSnapshotNotFound = -13,
     ErrPolicyDenied = -14,
+    ErrAmbiguousTarget = -15,
 }
 
 const _: () = assert!(AdResult::ErrPermDenied as i32 == -1);
@@ -93,6 +96,7 @@ const _: () = assert!(AdResult::ErrNotificationNotFound as i32 == -11);
 const _: () = assert!(AdResult::ErrInternal as i32 == -12);
 const _: () = assert!(AdResult::ErrSnapshotNotFound as i32 == -13);
 const _: () = assert!(AdResult::ErrPolicyDenied as i32 == -14);
+const _: () = assert!(AdResult::ErrAmbiguousTarget as i32 == -15);
 
 enum MessageSource {
     Owned(CString),
@@ -137,6 +141,7 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
         ErrorCode::ActionFailed => AdResult::ErrActionFailed,
         ErrorCode::ActionNotSupported => AdResult::ErrActionNotSupported,
         ErrorCode::StaleRef => AdResult::ErrStaleRef,
+        ErrorCode::AmbiguousTarget => AdResult::ErrAmbiguousTarget,
         ErrorCode::WindowNotFound => AdResult::ErrWindowNotFound,
         ErrorCode::PlatformNotSupported => AdResult::ErrPlatformNotSupported,
         ErrorCode::Timeout => AdResult::ErrTimeout,

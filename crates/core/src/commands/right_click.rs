@@ -10,8 +10,9 @@ use serde_json::{Value, json};
 
 pub fn execute(args: RefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     let (entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
-    let result =
-        adapter.execute_action(handle.handle(), ActionRequest::headless(Action::RightClick))?;
+    let request = ActionRequest::headless(Action::RightClick);
+    crate::actionability::check(&entry, &request)?;
+    let result = adapter.execute_action(handle.handle(), request)?;
     let mut response = serde_json::to_value(&result)?;
 
     std::thread::sleep(std::time::Duration::from_millis(200));

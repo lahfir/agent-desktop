@@ -147,6 +147,10 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("resolve_element"))
     }
 
+    fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element(entry)
+    }
+
     /// Releases a platform-specific element handle returned from
     /// `resolve_element`. Adapter methods that receive `&NativeHandle`
     /// borrow it only; they must not consume or release it. macOS
