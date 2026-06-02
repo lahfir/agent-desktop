@@ -7,6 +7,7 @@ use rustc_hash::FxHashSet;
 
 use super::AXElement;
 use super::element::{child_attributes, copy_ax_array, copy_string_attr, resolve_element_name};
+use super::element_dedupe::ElementDedupe;
 use super::resolve_bounds::{bounds_match, should_prune_by_bounds};
 use super::resolve_identity::{has_meaningful_identity, identity_matches};
 use super::resolve_roots::{candidate_roots, path_candidate_roots};
@@ -126,7 +127,7 @@ fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHan
     }
 
     let mut matches = Vec::new();
-    let mut seen = FxHashSet::default();
+    let mut dedupe = ElementDedupe::default();
     for root in roots {
         if matches.len() > 1 {
             break;
@@ -134,8 +135,8 @@ fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHan
         let Some(candidate) = element_at_path(root, &entry.path) else {
             continue;
         };
-        if element_matches_entry(&candidate, entry) && seen.insert(candidate.0 as usize) {
-            matches.push(candidate);
+        if element_matches_entry(&candidate, entry) {
+            dedupe.push(&mut matches, candidate);
         }
     }
 
@@ -161,7 +162,7 @@ fn find_entry_in_roots(
     deadline: std::time::Instant,
 ) -> Result<NativeHandle, AdapterError> {
     let mut matches = Vec::new();
-    let mut seen_matches = FxHashSet::default();
+    let mut seen_matches = ElementDedupe::default();
     for root in roots {
         if matches.len() > 1 {
             break;
@@ -217,7 +218,7 @@ struct CollectContext<'a> {
     entry: &'a RefEntry,
     max_depth: u8,
     ancestors: &'a mut FxHashSet<usize>,
-    seen_matches: &'a mut FxHashSet<usize>,
+    seen_matches: &'a mut ElementDedupe,
     matches: &'a mut Vec<AXElement>,
     deadline: std::time::Instant,
 }
@@ -250,9 +251,8 @@ fn collect_elements_recursive(
 
     if normalized == context.entry.role
         && element_matches_entry_with_role(el, context.entry, ax_role.as_deref())
-        && context.seen_matches.insert(ptr_key)
+        && context.seen_matches.push_clone(context.matches, el)
     {
-        context.matches.push(el.clone());
         if context.matches.len() > 1 {
             context.ancestors.remove(&ptr_key);
             return Ok(());

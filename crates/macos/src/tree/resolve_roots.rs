@@ -1,11 +1,11 @@
 use agent_desktop_core::{adapter::SnapshotSurface, refs::RefEntry};
-use rustc_hash::FxHashSet;
 
 use super::AXElement;
 use super::builder::window_element_for;
 use super::element::{
     copy_ax_array, copy_element_attr, copy_i64_attr, copy_string_attr, element_for_pid,
 };
+use super::element_dedupe::ElementDedupe;
 
 #[cfg(target_os = "macos")]
 pub(super) fn path_candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
@@ -19,28 +19,27 @@ pub(super) fn path_candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
 pub(super) fn candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
     let root = element_for_pid(entry.pid);
     let mut roots = Vec::new();
-    let mut seen = FxHashSet::default();
+    let mut dedupe = ElementDedupe::default();
     if let Some(source_window_title) = entry.source_window_title.as_deref() {
-        push_unique_root(
+        dedupe.push(
             &mut roots,
-            &mut seen,
             window_element_for(entry.pid, source_window_title),
         );
     }
     if let Some(focused) = copy_element_attr(&root, "AXFocusedWindow") {
-        push_unique_root(&mut roots, &mut seen, focused);
+        dedupe.push(&mut roots, focused);
     }
     if let Some(main) = copy_element_attr(&root, "AXMainWindow") {
-        push_unique_root(&mut roots, &mut seen, main);
+        dedupe.push(&mut roots, main);
     }
     for window in copy_ax_array(&root, "AXWindows").unwrap_or_default() {
-        push_unique_root(&mut roots, &mut seen, window);
+        dedupe.push(&mut roots, window);
     }
     if let Some(menubar) = crate::tree::menubar_for_pid(entry.pid) {
-        push_unique_root(&mut roots, &mut seen, menubar);
+        dedupe.push(&mut roots, menubar);
     }
     if let Some(menu) = crate::tree::menu_element_for_pid(entry.pid) {
-        push_unique_root(&mut roots, &mut seen, menu);
+        dedupe.push(&mut roots, menu);
     }
     if roots.is_empty() {
         roots.push(root);
@@ -87,11 +86,4 @@ pub(super) fn source_window_number(entry: &RefEntry) -> Option<i64> {
         .strip_prefix("w-")?
         .parse()
         .ok()
-}
-
-#[cfg(target_os = "macos")]
-fn push_unique_root(roots: &mut Vec<AXElement>, seen: &mut FxHashSet<usize>, root: AXElement) {
-    if seen.insert(root.0 as usize) {
-        roots.push(root);
-    }
 }

@@ -37,6 +37,12 @@ pub fn is_expandable_role(role: &str) -> bool {
     matches!(role, "combobox" | "menubutton" | "treeitem")
 }
 
+/// Returns true for roles whose `value` changes during normal interaction and
+/// must not be treated as stable ref identity.
+pub fn is_mutable_value_role(role: &str) -> bool {
+    matches!(role, "combobox" | "incrementor" | "slider" | "textfield")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +106,15 @@ mod tests {
         for role in ["statictext", "image", "group", "list", "table"] {
             assert!(!is_interactive_role(role));
         }
+    }
+
+    #[test]
+    fn mutable_value_roles_are_interactive() {
+        for role in ["combobox", "incrementor", "slider", "textfield"] {
+            assert!(is_mutable_value_role(role));
+            assert!(is_interactive_role(role));
+        }
+        assert!(!is_mutable_value_role("cell"));
+        assert!(!is_mutable_value_role("button"));
     }
 }

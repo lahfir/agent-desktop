@@ -6,6 +6,7 @@ pub mod builder;
 pub mod capabilities;
 pub mod element;
 pub mod element_bounds;
+pub(crate) mod element_dedupe;
 pub(crate) mod node_attrs;
 pub mod resolve;
 mod resolve_bounds;
