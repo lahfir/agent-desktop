@@ -1,7 +1,7 @@
 use super::AXElement;
 use super::{
     capabilities::{copy_action_names, is_attr_settable},
-    copy_element_attr,
+    copy_first_element_attr,
 };
 
 #[cfg(target_os = "macos")]
@@ -68,8 +68,8 @@ fn has_scroll_mechanism(el: &AXElement, role: &str, has: &impl Fn(&str) -> bool)
         || has("AXScrollLeftByPage")
         || has("AXScrollRightByPage")
         || (role_may_own_scrollbars(role)
-            && (copy_element_attr(el, "AXVerticalScrollBar").is_some()
-                || copy_element_attr(el, "AXHorizontalScrollBar").is_some()))
+            && copy_first_element_attr(el, &["AXVerticalScrollBar", "AXHorizontalScrollBar"])
+                .is_some())
 }
 
 fn role_supports_scroll(role: &str) -> bool {

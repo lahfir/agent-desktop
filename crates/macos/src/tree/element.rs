@@ -262,6 +262,35 @@ mod imp {
         ax_value::created_ax_element(value)
     }
 
+    pub fn copy_first_element_attr(el: &AXElement, attrs: &[&str]) -> Option<AXElement> {
+        if attrs.is_empty() {
+            return None;
+        }
+        let cf_names: Vec<CFString> = attrs.iter().map(|attr| CFString::new(attr)).collect();
+        let cf_refs: Vec<_> = cf_names.iter().map(|s| s.as_concrete_TypeRef()).collect();
+        let names_arr = CFArray::from_copyable(&cf_refs);
+        let mut result_ref: CFTypeRef = std::ptr::null_mut();
+        let err = unsafe {
+            AXUIElementCopyMultipleAttributeValues(
+                el.0,
+                names_arr.as_concrete_TypeRef(),
+                0,
+                &mut result_ref as *mut _ as *mut _,
+            )
+        };
+        if !result_ref.is_null() {
+            let arr = created_cf_array(result_ref);
+            if err == kAXErrorSuccess
+                && let Some(arr) = arr
+            {
+                return arr
+                    .into_iter()
+                    .find_map(|item| ax_value::retained_ax_element(&item));
+            }
+        }
+        attrs.iter().find_map(|attr| copy_element_attr(el, attr))
+    }
+
     pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
         unsafe {
             for attr_name in child_attributes(ax_role) {
@@ -326,6 +355,10 @@ mod imp {
         None
     }
 
+    pub fn copy_first_element_attr(_el: &AXElement, _attrs: &[&str]) -> Option<AXElement> {
+        None
+    }
+
     pub fn count_children(_element: &AXElement, _ax_role: Option<&str>) -> u32 {
         0
     }
@@ -347,7 +380,7 @@ mod imp {
 }
 
 pub use imp::{
-    copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_element_attr, copy_i64_attr,
-    copy_string_attr, copy_value_typed, count_children, element_for_pid, fetch_node_attrs,
-    resolve_element_name,
+    copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_element_attr,
+    copy_first_element_attr, copy_i64_attr, copy_string_attr, copy_value_typed, count_children,
+    element_for_pid, fetch_node_attrs, resolve_element_name,
 };

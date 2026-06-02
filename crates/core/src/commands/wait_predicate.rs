@@ -1,4 +1,5 @@
 use crate::{
+    actionability::{bounds_are_visible, states_are_enabled},
     adapter::{NativeHandle, PlatformAdapter, optional_live_read},
     error::{AdapterError, AppError, ErrorCode},
     refs::RefEntry,
@@ -97,8 +98,8 @@ fn enabled(
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AdapterError> {
     let enabled = optional_live_read(adapter.get_live_state(handle))?
-        .map(|state| !state.states.iter().any(|item| item == "disabled"))
-        .unwrap_or_else(|| !entry.states.iter().any(|item| item == "disabled"));
+        .map(|state| states_are_enabled(&state.states))
+        .unwrap_or_else(|| states_are_enabled(&entry.states));
     Ok(json!({ "enabled": enabled }))
 }
 
@@ -108,10 +109,7 @@ fn visible(
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AdapterError> {
     let bounds = optional_live_read(adapter.get_element_bounds(handle))?.or(entry.bounds);
-    let visible = bounds
-        .map(|bounds| bounds.width > 0.0 && bounds.height > 0.0)
-        .unwrap_or(false);
-    Ok(json!({ "visible": visible }))
+    Ok(json!({ "visible": bounds_are_visible(bounds) }))
 }
 
 fn actionable(

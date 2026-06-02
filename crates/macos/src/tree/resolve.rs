@@ -43,7 +43,7 @@ pub fn resolve_element_with_timeout(
                 Err(err) if is_retryable_resolution_error(&err) => {}
                 Err(err) => return Err(err),
             }
-            if should_retry_scoped_path_resolution(entry) {
+            if requires_scoped_path_resolution(entry) {
                 if attempt + 1 < attempts {
                     sleep_before_retry(deadline);
                 }
@@ -112,11 +112,6 @@ fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
         && entry.bounds_hash.is_none()
         && !entry.path.is_empty()
         && (entry.source_window_id.is_some() || entry.source_window_title.is_some())
-}
-
-#[cfg(target_os = "macos")]
-fn should_retry_scoped_path_resolution(entry: &RefEntry) -> bool {
-    requires_scoped_path_resolution(entry)
 }
 
 #[cfg(target_os = "macos")]

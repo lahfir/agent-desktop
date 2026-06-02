@@ -22,16 +22,12 @@ struct PredicateAdapter {
 }
 
 impl PlatformAdapter for PredicateAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
     fn resolve_element_strict_with_timeout(
         &self,
-        entry: &RefEntry,
+        _entry: &RefEntry,
         _timeout: std::time::Duration,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Ok(NativeHandle::null())
     }
 
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
@@ -52,16 +48,12 @@ struct FlippingPredicateAdapter {
 }
 
 impl PlatformAdapter for FlippingPredicateAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
     fn resolve_element_strict_with_timeout(
         &self,
-        entry: &RefEntry,
+        _entry: &RefEntry,
         _timeout: std::time::Duration,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Ok(NativeHandle::null())
     }
 
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
@@ -79,16 +71,12 @@ struct LiveErrorPredicateAdapter {
 }
 
 impl PlatformAdapter for LiveErrorPredicateAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
     fn resolve_element_strict_with_timeout(
         &self,
-        entry: &RefEntry,
+        _entry: &RefEntry,
         _timeout: std::time::Duration,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Ok(NativeHandle::null())
     }
 
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {

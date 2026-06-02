@@ -116,21 +116,10 @@ fn batch_entry(command: &str, result: Result<Value, AppError>) -> Value {
             json!({ "version": ENVELOPE_VERSION, "ok": true, "command": command, "data": data })
         }
         Err(err) => {
-            json!({ "version": ENVELOPE_VERSION, "ok": false, "command": command, "error": error_payload(err) })
+            let error = ErrorPayload::from_app_error(&err);
+            json!({ "version": ENVELOPE_VERSION, "ok": false, "command": command, "error": error })
         }
     }
-}
-
-fn error_payload(err: AppError) -> ErrorPayload {
-    let mut payload = ErrorPayload::new(err.code(), err.to_string());
-    if let Some(suggestion) = err.suggestion() {
-        payload = payload.with_suggestion(suggestion);
-    }
-    if let AppError::Adapter(adapter_error) = err {
-        payload.platform_detail = adapter_error.platform_detail;
-        payload.details = adapter_error.details;
-    }
-    payload
 }
 
 fn decode<T>(command: &str, args: Value) -> Result<T, AppError>

@@ -15,7 +15,6 @@ mod dispatch_parse;
 use agent_desktop_core::{
     adapter::PlatformAdapter,
     context::CommandContext,
-    error::AppError,
     output::{ENVELOPE_VERSION, ErrorPayload, Response},
 };
 use clap::{CommandFactory, Parser};
@@ -106,15 +105,10 @@ fn finish(cmd_name: &str, result: Result<serde_json::Value, agent_desktop_core::
             std::process::exit(0);
         }
         Err(e) => {
-            let mut payload = ErrorPayload::new(e.code(), e.to_string());
-            if let Some(s) = e.suggestion() {
-                payload = payload.with_suggestion(s);
-            }
-            if let AppError::Adapter(adapter_error) = &e {
-                payload.platform_detail = adapter_error.platform_detail.clone();
-                payload.details = adapter_error.details.clone();
-            }
-            emit_response(&Response::err(cmd_name, payload));
+            emit_response(&Response::err(
+                cmd_name,
+                agent_desktop_core::ErrorPayload::from_app_error(&e),
+            ));
             std::process::exit(1);
         }
     }

@@ -127,12 +127,12 @@ pub fn run_with_context(
     context: &CommandContext,
 ) -> Result<SnapshotResult, AppError> {
     let mut result = build(adapter, opts, app_name, window_id)?;
-    let store = RefStore::for_session(context.session_id.as_deref())?;
+    let store = RefStore::for_session(context.session_id())?;
     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
     result.snapshot_id = Some(snapshot_id);
-    context.trace(
+    context.trace_lazy(
         "snapshot.saved",
-        serde_json::json!({ "snapshot_id": result.snapshot_id, "ref_count": result.refmap.len() }),
+        || serde_json::json!({ "snapshot_id": result.snapshot_id, "ref_count": result.refmap.len() }),
     )?;
     Ok(result)
 }
@@ -173,7 +173,7 @@ pub fn append_surface_refs_with_context(
         ..Default::default()
     };
     let raw_tree = adapter.get_tree(&window, &opts)?;
-    let store = RefStore::for_session(context.session_id.as_deref())?;
+    let store = RefStore::for_session(context.session_id())?;
     let mut refmap = store.load_latest()?;
     let config = RefAllocConfig {
         include_bounds: false,

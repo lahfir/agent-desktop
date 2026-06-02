@@ -32,7 +32,7 @@ pub fn run_from_ref_with_context(
     snapshot_id: Option<&str>,
     context: &CommandContext,
 ) -> Result<SnapshotResult, AppError> {
-    let store = RefStore::for_session(context.session_id.as_deref())?;
+    let store = RefStore::for_session(context.session_id())?;
     let mut refmap = store.load(snapshot_id)?;
     let active_snapshot_id = snapshot_id
         .map(str::to_string)
@@ -76,14 +76,13 @@ pub fn run_from_ref_with_context(
     } else {
         Some(store.save_new_snapshot(&refmap)?)
     };
-    context.trace(
-        "snapshot.root.saved",
+    context.trace_lazy("snapshot.root.saved", || {
         serde_json::json!({
             "root_ref": root_ref_id,
             "snapshot_id": saved_snapshot_id,
             "ref_count": refmap.len()
-        }),
-    )?;
+        })
+    })?;
 
     let window =
         crate::window_lookup::find_window_for_pid(entry.pid, adapter).unwrap_or(WindowInfo {

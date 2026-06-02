@@ -49,36 +49,34 @@ pub(crate) fn resolve_ref_with_context<'a>(
     context: &CommandContext,
 ) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
     validate_ref_id(ref_id)?;
-    let store = RefStore::for_session(context.session_id.as_deref())?;
-    context.trace(
+    let store = RefStore::for_session(context.session_id())?;
+    context.trace_lazy(
         "ref.resolve.start",
-        json!({ "ref": ref_id, "snapshot_id": snapshot_id }),
+        || json!({ "ref": ref_id, "snapshot_id": snapshot_id }),
     )?;
     let refmap = store.load(snapshot_id).map_err(|e| {
         tracing::debug!("refmap load failed: {e}");
-        let _ = context.trace(
-            "ref.resolve.error",
+        let _ = context.trace_lazy("ref.resolve.error", || {
             json!({
                 "ref": ref_id,
                 "snapshot_id": snapshot_id,
                 "code": "STALE_REF",
                 "message": e.to_string()
-            }),
-        );
+            })
+        });
         AppError::stale_ref(ref_id)
     })?;
     let entry = match refmap.get(ref_id) {
         Some(entry) => entry.clone(),
         None => {
-            context.trace(
-                "ref.resolve.error",
+            context.trace_lazy("ref.resolve.error", || {
                 json!({
                     "ref": ref_id,
                     "snapshot_id": snapshot_id,
                     "code": "STALE_REF",
                     "message": "ref not found in current RefMap"
-                }),
-            )?;
+                })
+            })?;
             return Err(AppError::stale_ref(ref_id));
         }
     };
@@ -89,28 +87,26 @@ pub(crate) fn resolve_ref_with_context<'a>(
         entry.role,
         entry.name.as_deref().unwrap_or("(none)")
     );
-    context.trace(
-        "ref.resolve.entry",
+    context.trace_lazy("ref.resolve.entry", || {
         json!({
             "ref": ref_id,
             "pid": entry.pid,
             "role": entry.role,
             "name": entry.name
-        }),
-    )?;
+        })
+    })?;
     let handle = adapter.resolve_element_strict(&entry).inspect_err(|err| {
-        let _ = context.trace(
-            "ref.resolve.error",
+        let _ = context.trace_lazy("ref.resolve.error", || {
             json!({
                 "ref": ref_id,
                 "snapshot_id": snapshot_id,
                 "code": err.code.as_str(),
                 "message": err.message.clone()
-            }),
-        );
+            })
+        });
     })?;
     tracing::debug!("resolve: {} resolved successfully", ref_id);
-    context.trace("ref.resolve.ok", json!({ "ref": ref_id }))?;
+    context.trace_lazy("ref.resolve.ok", || json!({ "ref": ref_id }))?;
     Ok((entry, ResolvedElement::new(adapter, handle)))
 }
 
@@ -180,8 +176,8 @@ pub(crate) fn execute_ref_action_result_with_context(
         &request,
         context,
     )?;
-    let result = crate::ref_action::execute_checked(adapter, handle.handle(), request)?;
-    context.trace("action.dispatch.ok", json!({ "ref": ref_id }))?;
+    let result = adapter.execute_action(handle.handle(), request)?;
+    context.trace_lazy("action.dispatch.ok", || json!({ "ref": ref_id }))?;
     Ok((entry, result))
 }
 
@@ -191,26 +187,25 @@ fn check_actionability_with_trace(
     request: &ActionRequest,
     context: &CommandContext,
 ) -> Result<(), AppError> {
-    context.trace(
+    context.trace_lazy(
         "actionability.check.start",
-        json!({ "ref": target.ref_id, "action": request.action.name() }),
+        || json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
     crate::ref_action::check_resolved(adapter, target.entry, target.handle, request).inspect_err(
         |err| {
-            let _ = context.trace(
-                "actionability.check.error",
+            let _ = context.trace_lazy("actionability.check.error", || {
                 json!({
                     "ref": target.ref_id,
                     "action": request.action.name(),
                     "code": err.code.as_str(),
                     "message": err.message.clone()
-                }),
-            );
+                })
+            });
         },
     )?;
-    context.trace(
+    context.trace_lazy(
         "actionability.check.ok",
-        json!({ "ref": target.ref_id, "action": request.action.name() }),
+        || json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
     Ok(())
 }

@@ -1,5 +1,6 @@
 use crate::AdAdapter;
 use crate::convert::string::{c_to_string, try_c_to_string};
+use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdNativeHandle, AdRefEntry};
@@ -83,7 +84,7 @@ pub(crate) unsafe fn core_ref_entry_from_ffi(
     } else {
         None
     };
-    let source_surface = source_surface_from_c(entry.source_surface)?;
+    let source_surface = snapshot_surface_from_c(entry.source_surface, "source_surface")?;
     let path = unsafe { ref_path(entry.path, entry.path_count)? };
 
     Ok(CoreRefEntry {
@@ -169,24 +170,6 @@ unsafe fn ref_path(
             .map(|item| *item as usize),
     );
     Ok(path)
-}
-
-fn source_surface_from_c(
-    raw: i32,
-) -> Result<agent_desktop_core::adapter::SnapshotSurface, agent_desktop_core::error::AdapterError> {
-    match raw {
-        0 => Ok(agent_desktop_core::adapter::SnapshotSurface::Window),
-        1 => Ok(agent_desktop_core::adapter::SnapshotSurface::Focused),
-        2 => Ok(agent_desktop_core::adapter::SnapshotSurface::Menu),
-        3 => Ok(agent_desktop_core::adapter::SnapshotSurface::Menubar),
-        4 => Ok(agent_desktop_core::adapter::SnapshotSurface::Sheet),
-        5 => Ok(agent_desktop_core::adapter::SnapshotSurface::Popover),
-        6 => Ok(agent_desktop_core::adapter::SnapshotSurface::Alert),
-        _ => Err(agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
-            "invalid source_surface discriminant",
-        )),
-    }
 }
 
 #[cfg(test)]

@@ -30,7 +30,7 @@ pub fn execute_with_report_with_context(
     let permissions =
         permissions::execute_with_report(PermissionsArgs { request: false }, adapter, report)?;
 
-    let store = RefStore::for_session(context.session_id.as_deref()).ok();
+    let store = RefStore::for_session(context.session_id()).ok();
     let ref_count = store
         .as_ref()
         .and_then(|s| s.load_latest().ok())

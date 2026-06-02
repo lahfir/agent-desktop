@@ -90,7 +90,7 @@ fn wait_for_element(
 ) -> Result<Value, AppError> {
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
-    let store = RefStore::for_session(context.session_id.as_deref())?;
+    let store = RefStore::for_session(context.session_id())?;
     let fixed_refmap = match snapshot_id.as_deref() {
         Some(id) => Some(store.load_snapshot(id)?),
         None => None,
@@ -231,7 +231,7 @@ fn wait_for_text(
                 .map(|expected| matches.len() == expected)
                 .unwrap_or_else(|| !matches.is_empty());
             if matched {
-                let snapshot_id = RefStore::for_session(context.session_id.as_deref())?
+                let snapshot_id = RefStore::for_session(context.session_id())?
                     .save_new_snapshot(&result.refmap)?;
                 let elapsed = start.elapsed().as_millis();
                 let found = matches.first();

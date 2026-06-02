@@ -1,11 +1,11 @@
 use crate::{error::AppError, trace::TraceConfig};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandContext {
-    pub session_id: Option<String>,
-    pub trace: TraceConfig,
+    session_id: Option<String>,
+    trace: TraceConfig,
 }
 
 impl CommandContext {
@@ -36,6 +36,18 @@ impl CommandContext {
 
     pub fn trace(&self, event: &str, fields: Value) -> Result<(), AppError> {
         self.trace.emit(event, fields)
+    }
+
+    pub fn trace_lazy(&self, event: &str, fields: impl FnOnce() -> Value) -> Result<(), AppError> {
+        self.trace.emit_lazy(event, fields)
+    }
+
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
+    }
+
+    pub fn trace_path(&self) -> Option<&Path> {
+        self.trace.path()
     }
 }
 
@@ -102,6 +114,21 @@ mod tests {
         assert!(best_effort.trace("event", serde_json::json!({})).is_ok());
 
         assert!(CommandContext::new(None, Some(missing), true).is_err());
+    }
+
+    #[test]
+    fn trace_lazy_does_not_build_fields_when_trace_is_disabled() {
+        let context = CommandContext::default();
+        let built = std::cell::Cell::new(false);
+
+        context
+            .trace_lazy("event", || {
+                built.set(true);
+                serde_json::json!({})
+            })
+            .unwrap();
+
+        assert!(!built.get());
     }
 
     #[cfg(unix)]
@@ -202,8 +229,8 @@ mod tests {
         let inherited = parent.for_batch_item(None).unwrap();
         let overridden = parent.for_batch_item(Some("child".into())).unwrap();
 
-        assert_eq!(inherited.session_id.as_deref(), Some("parent"));
-        assert_eq!(overridden.session_id.as_deref(), Some("child"));
-        assert!(overridden.trace.path.is_some());
+        assert_eq!(inherited.session_id(), Some("parent"));
+        assert_eq!(overridden.session_id(), Some("child"));
+        assert!(overridden.trace_path().is_some());
     }
 }

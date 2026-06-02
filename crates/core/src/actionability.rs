@@ -2,6 +2,7 @@ use crate::{
     action::{Action, ActionRequest},
     adapter::{NativeHandle, PlatformAdapter},
     error::{AdapterError, ErrorCode},
+    node::Rect,
     refs::RefEntry,
 };
 use serde::Serialize;
@@ -84,17 +85,25 @@ fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
     let Some(bounds) = entry.bounds else {
         return unknown("visible", "bounds unavailable");
     };
-    if bounds.width <= 0.0 || bounds.height <= 0.0 {
+    if !bounds_are_visible(Some(bounds)) {
         return fail("visible", "bounds are zero-sized");
     }
     pass("visible")
 }
 
 fn enabled_check(entry: &RefEntry) -> ActionabilityCheck {
-    if entry.states.iter().any(|state| state == "disabled") {
+    if !states_are_enabled(&entry.states) {
         return fail("enabled", "entry state contains disabled");
     }
     pass("enabled")
+}
+
+pub fn states_are_enabled(states: &[String]) -> bool {
+    !states.iter().any(|state| state == "disabled")
+}
+
+pub fn bounds_are_visible(bounds: Option<Rect>) -> bool {
+    bounds.is_some_and(|bounds| bounds.width > 0.0 && bounds.height > 0.0)
 }
 
 fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> ActionabilityCheck {

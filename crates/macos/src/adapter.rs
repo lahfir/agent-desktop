@@ -168,12 +168,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            Ok(crate::tree::copy_value_typed(&el))
+            Ok(with_borrowed_ax_element(
+                handle,
+                crate::tree::copy_value_typed,
+            ))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_value"))
@@ -182,12 +180,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_state(&self, handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            Ok(Some(crate::actions::post_state::read_element_state(&el)))
+            Ok(Some(with_borrowed_ax_element(
+                handle,
+                crate::actions::post_state::read_element_state,
+            )))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_state"))
@@ -196,16 +192,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_actions(&self, handle: &NativeHandle) -> Result<Option<Vec<String>>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            let state = crate::actions::post_state::read_element_state(&el);
-            Ok(Some(crate::tree::action_list::platform_available_actions(
-                &el,
-                &state.role,
-            )))
+            Ok(Some(with_borrowed_ax_element(handle, |el| {
+                let state = crate::actions::post_state::read_element_state(el);
+                crate::tree::action_list::platform_available_actions(el, &state.role)
+            })))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_actions"))
@@ -214,12 +204,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            Ok(crate::actions::post_state::read_live_element(&el))
+            Ok(with_borrowed_ax_element(
+                handle,
+                crate::actions::post_state::read_live_element,
+            ))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_element"))
@@ -228,12 +216,7 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            Ok(crate::tree::read_bounds(&el))
+            Ok(with_borrowed_ax_element(handle, crate::tree::read_bounds))
         }
         #[cfg(not(target_os = "macos"))]
         {
@@ -302,29 +285,25 @@ impl PlatformAdapter for MacOSAdapter {
         handle: &NativeHandle,
         opts: &TreeOptions,
     ) -> Result<AccessibilityNode, AdapterError> {
-        use crate::tree::AXElement;
-        use std::mem::ManuallyDrop;
-
-        let el = ManuallyDrop::new(AXElement(
-            handle.as_raw() as accessibility_sys::AXUIElementRef
-        ));
-        let mut ancestors = FxHashSet::default();
-        let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
-        crate::tree::build_subtree(
-            &el,
-            0,
-            0,
-            opts.max_depth,
-            &mut ancestors,
-            opts.skeleton,
-            &context,
-        )
-        .ok_or_else(|| {
-            AdapterError::new(
-                agent_desktop_core::error::ErrorCode::ElementNotFound,
-                "Element no longer exists in accessibility tree",
+        with_borrowed_ax_element(handle, |el| {
+            let mut ancestors = FxHashSet::default();
+            let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
+            crate::tree::build_subtree(
+                el,
+                0,
+                0,
+                opts.max_depth,
+                &mut ancestors,
+                opts.skeleton,
+                &context,
             )
-            .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+            .ok_or_else(|| {
+                AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::ElementNotFound,
+                    "Element no longer exists in accessibility tree",
+                )
+                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+            })
         })
     }
 }
@@ -333,11 +312,18 @@ fn execute_action_impl(
     handle: &NativeHandle,
     request: ActionRequest,
 ) -> Result<ActionResult, AdapterError> {
-    use crate::tree::AXElement;
+    with_borrowed_ax_element(handle, |el| crate::actions::perform_action(el, &request))
+}
+
+#[cfg(target_os = "macos")]
+fn with_borrowed_ax_element<T>(
+    handle: &NativeHandle,
+    f: impl FnOnce(&crate::tree::AXElement) -> T,
+) -> T {
     use std::mem::ManuallyDrop;
 
-    let el = ManuallyDrop::new(AXElement(
+    let el = ManuallyDrop::new(crate::tree::AXElement(
         handle.as_raw() as accessibility_sys::AXUIElementRef
     ));
-    crate::actions::perform_action(&el, &request)
+    f(&el)
 }

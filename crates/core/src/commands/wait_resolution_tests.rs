@@ -12,16 +12,12 @@ use std::time::Duration;
 struct AmbiguousResolveAdapter;
 
 impl PlatformAdapter for AmbiguousResolveAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::ambiguous_target("2 candidates matched"))
-    }
-
     fn resolve_element_strict_with_timeout(
         &self,
-        entry: &RefEntry,
+        _entry: &RefEntry,
         _timeout: Duration,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(AdapterError::ambiguous_target("2 candidates matched"))
     }
 }
 
@@ -30,35 +26,27 @@ struct TransientResolveAdapter {
 }
 
 impl PlatformAdapter for TransientResolveAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict_with_timeout(
+        &self,
+        _entry: &RefEntry,
+        _timeout: Duration,
+    ) -> Result<NativeHandle, AdapterError> {
         if let Some(code) = self.errors.lock().unwrap().pop() {
             return Err(AdapterError::new(code, "transient resolution failure"));
         }
         Ok(NativeHandle::null())
-    }
-
-    fn resolve_element_strict_with_timeout(
-        &self,
-        entry: &RefEntry,
-        _timeout: Duration,
-    ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
     }
 }
 
 struct PermissionResolveAdapter;
 
 impl PlatformAdapter for PermissionResolveAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::permission_denied())
-    }
-
     fn resolve_element_strict_with_timeout(
         &self,
-        entry: &RefEntry,
+        _entry: &RefEntry,
         _timeout: Duration,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(AdapterError::permission_denied())
     }
 }
 

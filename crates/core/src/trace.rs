@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Default)]
 pub struct TraceConfig {
-    pub path: Option<PathBuf>,
-    pub strict: bool,
+    path: Option<PathBuf>,
+    strict: bool,
     writer: Option<Arc<Mutex<std::fs::File>>>,
 }
 
@@ -38,13 +38,17 @@ impl TraceConfig {
     }
 
     pub fn emit(&self, event: &str, fields: Value) -> Result<(), AppError> {
+        self.emit_lazy(event, || fields)
+    }
+
+    pub fn emit_lazy(&self, event: &str, fields: impl FnOnce() -> Value) -> Result<(), AppError> {
         let Some(writer) = self.writer.as_ref() else {
             return Ok(());
         };
         match writer
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))
-            .and_then(|mut file| write_event(&mut file, event, fields))
+            .and_then(|mut file| write_event(&mut file, event, fields()))
         {
             Ok(()) => Ok(()),
             Err(err) if self.strict => Err(err),
@@ -53,6 +57,10 @@ impl TraceConfig {
                 Ok(())
             }
         }
+    }
+
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
     }
 }
 

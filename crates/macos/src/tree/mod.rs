@@ -19,8 +19,8 @@ pub use build_context::TreeBuildContext;
 pub use builder::{build_subtree, window_element_for};
 pub use capabilities::same_element;
 pub use element::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_i64_attr, copy_string_attr,
-    copy_value_typed, element_for_pid, resolve_element_name,
+    copy_ax_array, copy_bool_attr, copy_element_attr, copy_first_element_attr, copy_i64_attr,
+    copy_string_attr, copy_value_typed, element_for_pid, resolve_element_name,
 };
 pub use element_bounds::read_bounds;
 pub(crate) use node_attrs::NodeAttrs;
