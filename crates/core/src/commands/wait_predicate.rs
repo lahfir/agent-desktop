@@ -66,7 +66,7 @@ pub(crate) fn observe(
         ElementPredicate::Exists => json!({ "exists": true }),
         ElementPredicate::Enabled => enabled(entry, handle, adapter),
         ElementPredicate::Visible => visible(entry, handle, adapter),
-        ElementPredicate::Actionable => actionable(entry),
+        ElementPredicate::Actionable => actionable(entry, handle, adapter),
         ElementPredicate::Value(expected) => value(entry, handle, expected, adapter),
     }
 }
@@ -113,9 +113,9 @@ fn visible(entry: &RefEntry, handle: &NativeHandle, adapter: &dyn PlatformAdapte
     json!({ "visible": visible })
 }
 
-fn actionable(entry: &RefEntry) -> Value {
+fn actionable(entry: &RefEntry, handle: &NativeHandle, adapter: &dyn PlatformAdapter) -> Value {
     let request = crate::action::ActionRequest::headless(crate::action::Action::Click);
-    match crate::actionability::check(entry, &request) {
+    match crate::actionability::check_live(entry, handle, adapter, &request) {
         Ok(report) => json!(report),
         Err(err) => json!({ "actionable": false, "error": err.message }),
     }

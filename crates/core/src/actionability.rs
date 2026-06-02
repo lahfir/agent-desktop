@@ -1,5 +1,6 @@
 use crate::{
     action::{Action, ActionRequest},
+    adapter::{NativeHandle, PlatformAdapter},
     error::{AdapterError, ErrorCode},
     refs::RefEntry,
 };
@@ -52,6 +53,24 @@ pub fn check(
     .with_suggestion("Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended."))
 }
 
+pub fn check_live(
+    entry: &RefEntry,
+    handle: &NativeHandle,
+    adapter: &dyn PlatformAdapter,
+    request: &ActionRequest,
+) -> Result<ActionabilityReport, AdapterError> {
+    let mut observed = entry.clone();
+    if let Some(state) = adapter.get_live_state(handle).ok().flatten() {
+        observed.role = state.role;
+        observed.states = state.states;
+        observed.value = state.value.or(observed.value);
+    }
+    if let Some(bounds) = adapter.get_element_bounds(handle).ok().flatten() {
+        observed.bounds = Some(bounds);
+    }
+    check(&observed, request)
+}
+
 fn visibility_check(entry: &RefEntry, action: &Action) -> ActionabilityCheck {
     let Some(bounds) = entry.bounds else {
         return unknown("visible", "bounds unavailable");
@@ -76,12 +95,7 @@ fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> Actionab
     if requires_physical_policy(&request.action) {
         return pass("supported_action");
     }
-    let expected = action_name(&request.action);
-    if entry
-        .available_actions
-        .iter()
-        .any(|action| action == expected)
-    {
+    if supported_by_available_actions(&request.action, &entry.available_actions) {
         return pass("supported_action");
     }
     if may_use_fallback(&request.action, request) {
@@ -90,6 +104,7 @@ fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> Actionab
             "semantic action unavailable but fallback policy allows attempt",
         );
     }
+    let expected = action_capabilities(&request.action).join(" or ");
     fail("supported_action", format!("{expected} is not available"))
 }
 
@@ -139,29 +154,31 @@ fn failure_reasons(report: &ActionabilityReport) -> String {
         .join(", ")
 }
 
-fn action_name(action: &Action) -> &'static str {
+fn action_capabilities(action: &Action) -> &'static [&'static str] {
     match action {
-        Action::Click => "Click",
-        Action::DoubleClick => "DoubleClick",
-        Action::RightClick => "RightClick",
-        Action::TripleClick => "TripleClick",
-        Action::SetValue(_) => "SetValue",
-        Action::SetFocus => "SetFocus",
-        Action::Expand => "Expand",
-        Action::Collapse => "Collapse",
-        Action::Select(_) => "Select",
-        Action::Toggle => "Toggle",
-        Action::Check => "Check",
-        Action::Uncheck => "Uncheck",
-        Action::Scroll(_, _) | Action::ScrollTo => "Scroll",
-        Action::PressKey(_) => "PressKey",
-        Action::KeyDown(_) => "KeyDown",
-        Action::KeyUp(_) => "KeyUp",
-        Action::TypeText(_) => "TypeText",
-        Action::Clear => "Clear",
-        Action::Hover => "Hover",
-        Action::Drag(_) => "Drag",
+        Action::Click | Action::DoubleClick | Action::TripleClick => &["Click"],
+        Action::RightClick => &["RightClick", "Click"],
+        Action::SetValue(_) | Action::Clear => &["SetValue"],
+        Action::SetFocus => &["SetFocus"],
+        Action::Expand => &["Expand"],
+        Action::Collapse => &["Collapse"],
+        Action::Select(_) => &["Select", "Click"],
+        Action::Toggle => &["Toggle", "Click"],
+        Action::Check | Action::Uncheck => &["Toggle", "Click"],
+        Action::Scroll(_, _) | Action::ScrollTo => &["ScrollTo"],
+        Action::PressKey(_) => &["PressKey"],
+        Action::KeyDown(_) => &["KeyDown"],
+        Action::KeyUp(_) => &["KeyUp"],
+        Action::TypeText(_) => &["TypeText", "SetValue"],
+        Action::Hover => &["Hover"],
+        Action::Drag(_) => &["Drag"],
     }
+}
+
+fn supported_by_available_actions(action: &Action, available_actions: &[String]) -> bool {
+    action_capabilities(action)
+        .iter()
+        .any(|expected| available_actions.iter().any(|action| action == expected))
 }
 
 fn may_use_fallback(action: &Action, request: &ActionRequest) -> bool {

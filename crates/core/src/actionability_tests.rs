@@ -1,10 +1,25 @@
 use super::*;
 use crate::{
-    action::{Action, ActionRequest},
-    adapter::SnapshotSurface,
+    action::{Action, ActionRequest, Direction, ElementState},
+    adapter::{NativeHandle, PlatformAdapter, SnapshotSurface},
     node::Rect,
     refs::RefEntry,
 };
+
+struct LiveAdapter {
+    state: Option<ElementState>,
+    bounds: Option<Rect>,
+}
+
+impl PlatformAdapter for LiveAdapter {
+    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        Ok(self.state.clone())
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        Ok(self.bounds)
+    }
+}
 
 fn entry() -> RefEntry {
     RefEntry {
@@ -81,4 +96,53 @@ fn cursor_movement_requires_physical_policy() {
     let err = check(&entry(), &ActionRequest::headless(Action::Hover)).unwrap_err();
 
     assert!(err.message.contains("policy"));
+}
+
+#[test]
+fn command_aliases_match_platform_capabilities() {
+    let click_entry = entry();
+    assert!(check(&click_entry, &ActionRequest::headless(Action::DoubleClick)).is_ok());
+    assert!(check(&click_entry, &ActionRequest::headless(Action::TripleClick)).is_ok());
+    assert!(check(&click_entry, &ActionRequest::headless(Action::Check)).is_ok());
+    assert!(check(&click_entry, &ActionRequest::headless(Action::Uncheck)).is_ok());
+
+    let mut editable = entry();
+    editable.role = "textfield".into();
+    editable.available_actions = vec!["SetValue".into()];
+    assert!(check(&editable, &ActionRequest::headless(Action::Clear)).is_ok());
+
+    let mut scrollable = entry();
+    scrollable.available_actions = vec!["ScrollTo".into()];
+    assert!(
+        check(
+            &scrollable,
+            &ActionRequest::headless(Action::Scroll(Direction::Down, 1))
+        )
+        .is_ok()
+    );
+    assert!(check(&scrollable, &ActionRequest::headless(Action::ScrollTo)).is_ok());
+}
+
+#[test]
+fn live_actionability_overrides_stale_snapshot_state() {
+    let mut stale = entry();
+    stale.states.push("disabled".into());
+    let adapter = LiveAdapter {
+        state: Some(ElementState {
+            role: "button".into(),
+            states: vec![],
+            value: None,
+        }),
+        bounds: stale.bounds,
+    };
+
+    let report = check_live(
+        &stale,
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap();
+
+    assert!(report.actionable);
 }

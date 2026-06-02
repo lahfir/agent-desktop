@@ -135,6 +135,20 @@ fn source_window_number_parses_window_ids_only() {
     );
 }
 
+#[test]
+fn only_element_not_found_is_retryable_resolution_error() {
+    assert!(is_retryable_resolution_error(
+        &AdapterError::element_not_found("element")
+    ));
+    assert!(!is_retryable_resolution_error(
+        &AdapterError::ambiguous_target("2 candidates matched")
+    ));
+    assert!(!is_retryable_resolution_error(&AdapterError::new(
+        ErrorCode::Timeout,
+        "resolution timed out"
+    )));
+}
+
 fn description_entry() -> RefEntry {
     let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
     entry.role = "button".into();

@@ -30,9 +30,13 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
     for attempt in 0..attempts {
         if can_use_path_fast_path(entry) {
             let path_roots = path_candidate_roots(entry);
-            if let Ok(handle) = find_entry_by_path(&path_roots, entry) {
-                tracing::debug!("resolve: found path match");
-                return Ok(handle);
+            match find_entry_by_path(&path_roots, entry) {
+                Ok(handle) => {
+                    tracing::debug!("resolve: found path match");
+                    return Ok(handle);
+                }
+                Err(err) if is_retryable_resolution_error(&err) => {}
+                Err(err) => return Err(err),
             }
             if should_retry_scoped_path_resolution(entry) {
                 if attempt + 1 < attempts && std::time::Instant::now() < deadline {
@@ -48,9 +52,13 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
             continue;
         }
         let roots = candidate_roots(entry);
-        if let Ok(handle) = find_entry_in_roots(&roots, entry, resolve_depth, deadline) {
-            tracing::debug!("resolve: found exact match");
-            return Ok(handle);
+        match find_entry_in_roots(&roots, entry, resolve_depth, deadline) {
+            Ok(handle) => {
+                tracing::debug!("resolve: found exact match");
+                return Ok(handle);
+            }
+            Err(err) if is_retryable_resolution_error(&err) => {}
+            Err(err) => return Err(err),
         }
 
         if attempt + 1 < attempts && std::time::Instant::now() < deadline {
@@ -69,6 +77,11 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
         ),
     )
     .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref."))
+}
+
+#[cfg(target_os = "macos")]
+fn is_retryable_resolution_error(err: &AdapterError) -> bool {
+    err.code == ErrorCode::ElementNotFound
 }
 
 #[cfg(target_os = "macos")]

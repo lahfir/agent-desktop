@@ -1,6 +1,6 @@
 use crate::{
     action::{ActionRequest, Point, WindowOp},
-    adapter::{PlatformAdapter, WindowFilter},
+    adapter::{NativeHandle, PlatformAdapter, WindowFilter},
     context::CommandContext,
     error::AppError,
     node::WindowInfo,
@@ -141,15 +141,36 @@ pub(crate) fn execute_ref_action_with_context(
 ) -> Result<Value, AppError> {
     let (_entry, handle) =
         resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
+    check_actionability_with_trace(
+        &args.ref_id,
+        &_entry,
+        handle.handle(),
+        adapter,
+        &request,
+        context,
+    )?;
+    let result = adapter.execute_action(handle.handle(), request)?;
+    context.trace("action.dispatch.ok", json!({ "ref": args.ref_id }))?;
+    Ok(serde_json::to_value(result)?)
+}
+
+pub(crate) fn check_actionability_with_trace(
+    ref_id: &str,
+    entry: &RefEntry,
+    handle: &NativeHandle,
+    adapter: &dyn PlatformAdapter,
+    request: &ActionRequest,
+    context: &CommandContext,
+) -> Result<(), AppError> {
     context.trace(
         "actionability.check.start",
-        json!({ "ref": args.ref_id, "action": request.action.name() }),
+        json!({ "ref": ref_id, "action": request.action.name() }),
     )?;
-    crate::actionability::check(&_entry, &request).inspect_err(|err| {
+    crate::actionability::check_live(entry, handle, adapter, request).inspect_err(|err| {
         let _ = context.trace(
             "actionability.check.error",
             json!({
-                "ref": args.ref_id,
+                "ref": ref_id,
                 "action": request.action.name(),
                 "code": err.code.as_str(),
                 "message": err.message.clone()
@@ -158,11 +179,9 @@ pub(crate) fn execute_ref_action_with_context(
     })?;
     context.trace(
         "actionability.check.ok",
-        json!({ "ref": args.ref_id, "action": request.action.name() }),
+        json!({ "ref": ref_id, "action": request.action.name() }),
     )?;
-    let result = adapter.execute_action(handle.handle(), request)?;
-    context.trace("action.dispatch.ok", json!({ "ref": args.ref_id }))?;
-    Ok(serde_json::to_value(result)?)
+    Ok(())
 }
 
 pub(crate) fn resolve_point_from_ref_or_xy_with_context(
