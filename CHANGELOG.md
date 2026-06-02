@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/lahfir/agent-desktop/compare/v0.2.1...v0.2.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* **macos:** guard CFArray casts with type-ID check (fixes Mail.app crash) ([#50](https://github.com/lahfir/agent-desktop/issues/50)) ([c02cb5e](https://github.com/lahfir/agent-desktop/commit/c02cb5ecb7314f053d63937437e5f5ba48de3209))
+
 ## [0.2.1](https://github.com/lahfir/agent-desktop/compare/v0.2.0...v0.2.1) (2026-05-23)
 
 
