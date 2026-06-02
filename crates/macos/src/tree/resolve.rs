@@ -1,18 +1,15 @@
 use agent_desktop_core::{
-    adapter::{NativeHandle, SnapshotSurface},
+    adapter::NativeHandle,
     error::{AdapterError, ErrorCode},
     refs::RefEntry,
 };
 use rustc_hash::FxHashSet;
 
 use super::AXElement;
-use super::builder::window_element_for;
-use super::element::{
-    child_attributes, copy_ax_array, copy_element_attr, copy_i64_attr, copy_string_attr,
-    element_for_pid, resolve_element_name,
-};
+use super::element::{child_attributes, copy_ax_array, copy_string_attr, resolve_element_name};
 use super::resolve_bounds::{bounds_match, should_prune_by_bounds};
 use super::resolve_identity::{has_meaningful_identity, identity_matches};
+use super::resolve_roots::{candidate_roots, path_candidate_roots};
 
 #[cfg(target_os = "macos")]
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
@@ -112,81 +109,6 @@ fn can_use_broad_search(entry: &RefEntry) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn path_candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
-    if entry.bounds_hash.is_some() {
-        return candidate_roots(entry);
-    }
-    scoped_surface_root(entry).into_iter().collect()
-}
-
-#[cfg(target_os = "macos")]
-fn scoped_surface_root(entry: &RefEntry) -> Option<AXElement> {
-    match entry.source_surface {
-        SnapshotSurface::Window => exact_source_window_root(entry),
-        SnapshotSurface::Focused => crate::tree::focused_surface_for_pid(entry.pid),
-        SnapshotSurface::Menu => crate::tree::menu_element_for_pid(entry.pid),
-        SnapshotSurface::Menubar => crate::tree::menubar_for_pid(entry.pid),
-        SnapshotSurface::Sheet => crate::tree::sheet_for_pid(entry.pid),
-        SnapshotSurface::Popover => crate::tree::popover_for_pid(entry.pid),
-        SnapshotSurface::Alert => crate::tree::alert_for_pid(entry.pid),
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn exact_source_window_root(entry: &RefEntry) -> Option<AXElement> {
-    let root = element_for_pid(entry.pid);
-    let windows = copy_ax_array(&root, "AXWindows")?;
-    if let Some(source_window_number) = source_window_number(entry) {
-        if let Some(window) = windows
-            .iter()
-            .find(|win| copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number))
-        {
-            return Some(window.clone());
-        }
-    }
-    let source_window_title = entry.source_window_title.as_deref()?;
-    windows
-        .into_iter()
-        .find(|win| copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title))
-}
-
-#[cfg(target_os = "macos")]
-fn source_window_number(entry: &RefEntry) -> Option<i64> {
-    entry
-        .source_window_id
-        .as_deref()?
-        .strip_prefix("w-")?
-        .parse()
-        .ok()
-}
-
-#[cfg(target_os = "macos")]
-fn candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
-    let root = element_for_pid(entry.pid);
-    let mut roots = Vec::new();
-    if let Some(source_window_title) = entry.source_window_title.as_deref() {
-        roots.push(window_element_for(entry.pid, source_window_title));
-    }
-    if let Some(focused) = copy_element_attr(&root, "AXFocusedWindow") {
-        roots.push(focused);
-    }
-    if let Some(main) = copy_element_attr(&root, "AXMainWindow") {
-        roots.push(main);
-    }
-    roots.extend(copy_ax_array(&root, "AXWindows").unwrap_or_default());
-    if let Some(menubar) = crate::tree::menubar_for_pid(entry.pid) {
-        roots.push(menubar);
-    }
-    if let Some(menu) = crate::tree::menu_element_for_pid(entry.pid) {
-        roots.push(menu);
-    }
-    if roots.is_empty() {
-        roots.push(root);
-    }
-    roots
-}
-
-#[cfg(target_os = "macos")]
 fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
     if entry.path.is_empty() {
         return Err(AdapterError::element_not_found("element"));
@@ -195,6 +117,9 @@ fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHan
     let mut matches = Vec::new();
     let mut seen = FxHashSet::default();
     for root in roots {
+        if matches.len() > 1 {
+            break;
+        }
         let Some(candidate) = element_at_path(root, &entry.path) else {
             continue;
         };
@@ -227,6 +152,9 @@ fn find_entry_in_roots(
     let mut matches = Vec::new();
     let mut seen_matches = FxHashSet::default();
     for root in roots {
+        if matches.len() > 1 {
+            break;
+        }
         let mut visited = FxHashSet::default();
         let mut context = CollectContext {
             entry,
@@ -260,7 +188,16 @@ fn classify_candidates(
             entry.role,
             entry.name.as_deref().unwrap_or("(none)"),
             entry.description.as_deref().unwrap_or("(none)")
-        ))),
+        ))
+        .with_details(serde_json::json!({
+            "candidate_count": count,
+            "role": entry.role,
+            "name": entry.name,
+            "description": entry.description,
+            "source_app": entry.source_app,
+            "source_window_id": entry.source_window_id,
+            "source_window_title": entry.source_window_title
+        }))),
     }
 }
 
@@ -282,6 +219,9 @@ fn collect_elements_recursive(
 ) -> Result<(), AdapterError> {
     use accessibility_sys::kAXRoleAttribute;
 
+    if context.matches.len() > 1 {
+        return Ok(());
+    }
     if std::time::Instant::now() > context.deadline {
         return Err(
             AdapterError::new(ErrorCode::Timeout, "Element resolution timed out")
@@ -298,10 +238,14 @@ fn collect_elements_recursive(
     let normalized = crate::tree::roles::normalized_role_for_element(el, ax_role.as_deref());
 
     if normalized == context.entry.role
-        && element_matches_entry(el, context.entry)
+        && element_matches_entry_with_role(el, context.entry, ax_role.as_deref())
         && context.seen_matches.insert(ptr_key)
     {
         context.matches.push(el.clone());
+        if context.matches.len() > 1 {
+            context.ancestors.remove(&ptr_key);
+            return Ok(());
+        }
     }
 
     if depth < context.max_depth && !should_prune_by_bounds(el, context.entry, depth) {
@@ -317,14 +261,26 @@ fn collect_elements_recursive(
 
 #[cfg(target_os = "macos")]
 fn element_matches_entry(el: &AXElement, entry: &RefEntry) -> bool {
-    element_matches_path_entry(el, entry) && bounds_match(el, entry)
+    let ax_role = copy_string_attr(el, accessibility_sys::kAXRoleAttribute);
+    element_matches_entry_with_role(el, entry, ax_role.as_deref())
 }
 
 #[cfg(target_os = "macos")]
-fn element_matches_path_entry(el: &AXElement, entry: &RefEntry) -> bool {
-    let ax_role = copy_string_attr(el, accessibility_sys::kAXRoleAttribute);
-    let (normalized, promoted_label) =
-        crate::tree::roles::normalized_role_and_label(el, ax_role.as_deref());
+fn element_matches_entry_with_role(
+    el: &AXElement,
+    entry: &RefEntry,
+    ax_role: Option<&str>,
+) -> bool {
+    element_matches_path_entry_with_role(el, entry, ax_role) && bounds_match(el, entry)
+}
+
+#[cfg(target_os = "macos")]
+fn element_matches_path_entry_with_role(
+    el: &AXElement,
+    entry: &RefEntry,
+    ax_role: Option<&str>,
+) -> bool {
+    let (normalized, promoted_label) = crate::tree::roles::normalized_role_and_label(el, ax_role);
     if normalized != entry.role {
         return false;
     }

@@ -261,6 +261,10 @@ typedef struct AdRefEntry {
   uintptr_t path_count;
 } AdRefEntry;
 
+#define AD_REF_ENTRY_SIZE (sizeof(AdRefEntry))
+
+uintptr_t ad_ref_entry_size(void);
+
 typedef struct AdWindowInfo {
   const char *id;
   const char *title;

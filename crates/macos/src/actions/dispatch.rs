@@ -212,9 +212,29 @@ mod imp {
 
         let mut result = ActionResult::new(label);
         if let Some(state) = crate::actions::post_state::read_post_state(el, action) {
+            verify_post_state(action, &state)?;
             result = result.with_state(state);
         }
         Ok(result)
+    }
+
+    fn verify_post_state(
+        action: &Action,
+        state: &agent_desktop_core::action::ElementState,
+    ) -> Result<(), AdapterError> {
+        if matches!(action, Action::Clear)
+            && state
+                .value
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+        {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Clear reported success but element value is still non-empty",
+            )
+            .with_suggestion("Retry 'clear', or use 'press cmd+a' then 'press delete'."));
+        }
+        Ok(())
     }
 
     pub(crate) fn ax_press_or_fail(el: &AXElement, context: &str) -> Result<(), AdapterError> {
@@ -226,6 +246,40 @@ mod imp {
             .with_suggestion("Element may not be pressable. Try 'click' instead."));
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use agent_desktop_core::action::ElementState;
+
+        #[test]
+        fn clear_post_state_fails_when_value_remains() {
+            let err = verify_post_state(
+                &Action::Clear,
+                &ElementState {
+                    role: "textfield".into(),
+                    states: vec![],
+                    value: Some("still here".into()),
+                },
+            )
+            .unwrap_err();
+
+            assert_eq!(err.code, ErrorCode::ActionFailed);
+        }
+
+        #[test]
+        fn clear_post_state_accepts_empty_value() {
+            verify_post_state(
+                &Action::Clear,
+                &ElementState {
+                    role: "textfield".into(),
+                    states: vec![],
+                    value: Some(String::new()),
+                },
+            )
+            .unwrap();
+        }
     }
 }
 

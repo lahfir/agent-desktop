@@ -62,6 +62,8 @@ int main(void) {
     (void)AD_WINDOW_OP_KIND_RESIZE;
     (void)AD_IMAGE_FORMAT_PNG;
     (void)AD_RESULT_OK;
+    (void)ad_ref_entry_size;
+    _Static_assert(AD_REF_ENTRY_SIZE == sizeof(AdRefEntry), "AdRefEntry size macro drifted");
     return 0;
 }
 "#;

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -52,6 +53,7 @@ pub struct AdapterError {
     pub source: Option<Box<SourceError>>,
     pub suggestion: Option<String>,
     pub platform_detail: Option<String>,
+    pub details: Option<Value>,
 }
 
 #[derive(Debug, Error, Clone)]
@@ -66,6 +68,7 @@ impl AdapterError {
             source: None,
             suggestion: None,
             platform_detail: None,
+            details: None,
         }
     }
 
@@ -76,6 +79,11 @@ impl AdapterError {
 
     pub fn with_platform_detail(mut self, d: impl Into<String>) -> Self {
         self.platform_detail = Some(d.into());
+        self
+    }
+
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
         self
     }
 

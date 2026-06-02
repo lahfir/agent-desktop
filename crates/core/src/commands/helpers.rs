@@ -1,5 +1,5 @@
 use crate::{
-    action::{ActionRequest, Point, WindowOp},
+    action::{ActionRequest, ActionResult, Point, WindowOp},
     adapter::{NativeHandle, PlatformAdapter, WindowFilter},
     context::CommandContext,
     error::AppError,
@@ -139,19 +139,28 @@ pub(crate) fn execute_ref_action_with_context(
     request: ActionRequest,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let (_entry, handle) =
-        resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
-    check_actionability_with_trace(
+    let (_entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
-        &_entry,
-        handle.handle(),
+        args.snapshot_id.as_deref(),
         adapter,
-        &request,
+        request,
         context,
     )?;
-    let result = adapter.execute_action(handle.handle(), request)?;
-    context.trace("action.dispatch.ok", json!({ "ref": args.ref_id }))?;
     Ok(serde_json::to_value(result)?)
+}
+
+pub(crate) fn execute_ref_action_result_with_context(
+    ref_id: &str,
+    snapshot_id: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+    request: ActionRequest,
+    context: &CommandContext,
+) -> Result<(RefEntry, ActionResult), AppError> {
+    let (entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
+    check_actionability_with_trace(ref_id, &entry, handle.handle(), adapter, &request, context)?;
+    let result = adapter.execute_action(handle.handle(), request)?;
+    context.trace("action.dispatch.ok", json!({ "ref": ref_id }))?;
+    Ok((entry, result))
 }
 
 pub(crate) fn check_actionability_with_trace(

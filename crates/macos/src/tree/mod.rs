@@ -10,6 +10,7 @@ pub(crate) mod node_attrs;
 pub mod resolve;
 mod resolve_bounds;
 mod resolve_identity;
+mod resolve_roots;
 pub mod roles;
 pub mod surfaces;
 

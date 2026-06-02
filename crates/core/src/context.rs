@@ -101,8 +101,27 @@ mod tests {
         let best_effort = CommandContext::new(None, Some(missing.clone()), false).unwrap();
         assert!(best_effort.trace("event", serde_json::json!({})).is_ok());
 
-        let strict = CommandContext::new(None, Some(missing), true).unwrap();
-        assert!(strict.trace("event", serde_json::json!({})).is_err());
+        assert!(CommandContext::new(None, Some(missing), true).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn trace_file_is_private_on_create() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = std::env::temp_dir().join(format!(
+            "agent-desktop-private-trace-{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let context = CommandContext::new(None, Some(path.clone()), true).unwrap();
+        context.trace("event", serde_json::json!({})).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

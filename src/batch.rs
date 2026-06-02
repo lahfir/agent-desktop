@@ -128,6 +128,7 @@ fn error_payload(err: AppError) -> ErrorPayload {
     }
     if let AppError::Adapter(adapter_error) = err {
         payload.platform_detail = adapter_error.platform_detail;
+        payload.details = adapter_error.details;
     }
     payload
 }

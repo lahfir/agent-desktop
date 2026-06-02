@@ -5,6 +5,7 @@ use crate::{
     refs::RefEntry,
 };
 use serde::Serialize;
+use serde_json::json;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -32,12 +33,13 @@ pub fn check(
     entry: &RefEntry,
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
-    let mut checks = vec![pass("unique_target")];
-    checks.push(visibility_check(entry, &request.action));
-    checks.push(enabled_check(entry));
-    checks.push(action_supported_check(entry, request));
-    checks.push(policy_check(request));
-    checks.push(editable_check(entry, &request.action));
+    let checks = vec![
+        visibility_check(entry),
+        enabled_check(entry),
+        action_supported_check(entry, request),
+        policy_check(request),
+        editable_check(entry, &request.action),
+    ];
 
     let actionable = checks
         .iter()
@@ -50,6 +52,7 @@ pub fn check(
         ErrorCode::ActionFailed,
         format!("Target is not actionable: {}", failure_reasons(&report)),
     )
+    .with_details(json!(report))
     .with_suggestion("Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended."))
 }
 
@@ -71,15 +74,12 @@ pub fn check_live(
     check(&observed, request)
 }
 
-fn visibility_check(entry: &RefEntry, action: &Action) -> ActionabilityCheck {
+fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
     let Some(bounds) = entry.bounds else {
         return unknown("visible", "bounds unavailable");
     };
     if bounds.width <= 0.0 || bounds.height <= 0.0 {
         return fail("visible", "bounds are zero-sized");
-    }
-    if matches!(action, Action::Scroll(_, _)) {
-        return pass("visible");
     }
     pass("visible")
 }
@@ -92,7 +92,7 @@ fn enabled_check(entry: &RefEntry) -> ActionabilityCheck {
 }
 
 fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> ActionabilityCheck {
-    if requires_physical_policy(&request.action) {
+    if request.action.requires_cursor_policy() {
         return pass("supported_action");
     }
     if supported_by_available_actions(&request.action, &entry.available_actions) {
@@ -104,18 +104,18 @@ fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> Actionab
             "semantic action unavailable but fallback policy allows attempt",
         );
     }
-    let expected = action_capabilities(&request.action).join(" or ");
+    let expected = request.action.semantic_capabilities().join(" or ");
     fail("supported_action", format!("{expected} is not available"))
 }
 
 fn policy_check(request: &ActionRequest) -> ActionabilityCheck {
-    if requires_cursor_policy(&request.action) && !request.policy.allow_cursor_move {
+    if request.action.requires_cursor_policy() && !request.policy.allow_cursor_move {
         return fail(
             "policy",
             "action requires cursor movement but policy denies it",
         );
     }
-    if requires_focus_policy(&request.action) && !request.policy.allow_focus_steal {
+    if request.action.requires_focus_policy() && !request.policy.allow_focus_steal {
         return fail("policy", "action requires focus but policy denies it");
     }
     pass("policy")
@@ -154,47 +154,15 @@ fn failure_reasons(report: &ActionabilityReport) -> String {
         .join(", ")
 }
 
-fn action_capabilities(action: &Action) -> &'static [&'static str] {
-    match action {
-        Action::Click | Action::DoubleClick | Action::TripleClick => &["Click"],
-        Action::RightClick => &["RightClick", "Click"],
-        Action::SetValue(_) | Action::Clear => &["SetValue"],
-        Action::SetFocus => &["SetFocus"],
-        Action::Expand => &["Expand"],
-        Action::Collapse => &["Collapse"],
-        Action::Select(_) => &["Select", "Click"],
-        Action::Toggle => &["Toggle", "Click"],
-        Action::Check | Action::Uncheck => &["Toggle", "Click"],
-        Action::Scroll(_, _) | Action::ScrollTo => &["ScrollTo"],
-        Action::PressKey(_) => &["PressKey"],
-        Action::KeyDown(_) => &["KeyDown"],
-        Action::KeyUp(_) => &["KeyUp"],
-        Action::TypeText(_) => &["TypeText", "SetValue"],
-        Action::Hover => &["Hover"],
-        Action::Drag(_) => &["Drag"],
-    }
-}
-
 fn supported_by_available_actions(action: &Action, available_actions: &[String]) -> bool {
-    action_capabilities(action)
+    action
+        .semantic_capabilities()
         .iter()
         .any(|expected| available_actions.iter().any(|action| action == expected))
 }
 
 fn may_use_fallback(action: &Action, request: &ActionRequest) -> bool {
-    matches!(action, Action::TypeText(_) | Action::PressKey(_)) && request.policy.allow_focus_steal
-}
-
-fn requires_physical_policy(action: &Action) -> bool {
-    matches!(action, Action::Hover | Action::Drag(_))
-}
-
-fn requires_cursor_policy(action: &Action) -> bool {
-    matches!(action, Action::Hover | Action::Drag(_))
-}
-
-fn requires_focus_policy(action: &Action) -> bool {
-    matches!(action, Action::TypeText(_) | Action::PressKey(_))
+    action.may_use_focus_fallback() && request.policy.allow_focus_steal
 }
 
 fn pass(name: &'static str) -> ActionabilityCheck {

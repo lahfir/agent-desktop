@@ -103,6 +103,7 @@ pub fn build(
     })
 }
 
+#[cfg(test)]
 pub fn run(
     adapter: &dyn PlatformAdapter,
     opts: &TreeOptions,
