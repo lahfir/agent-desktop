@@ -42,6 +42,25 @@ impl PlatformAdapter for RecordingAdapter {
     }
 }
 
+struct AmbiguousAdapter {
+    executed: AtomicU32,
+}
+
+impl PlatformAdapter for AmbiguousAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Err(AdapterError::ambiguous_target("2 candidates matched"))
+    }
+
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+    ) -> Result<ActionResult, AdapterError> {
+        self.executed.fetch_add(1, Ordering::SeqCst);
+        Ok(ActionResult::new("unexpected"))
+    }
+}
+
 struct RestoreWithoutWindowAdapter {
     op_count: AtomicU32,
 }
@@ -80,7 +99,7 @@ fn entry() -> RefEntry {
         states: vec![],
         bounds: None,
         bounds_hash: None,
-        available_actions: vec!["Click".into()],
+        available_actions: vec!["Clear".into(), "Click".into()],
         source_app: None,
         source_window_id: None,
         source_window_title: None,
@@ -124,11 +143,32 @@ fn execute_ref_action_preserves_action_and_policy() {
         snapshot_id: Some(snapshot_id),
     };
 
-    execute_ref_action(args, &adapter, ActionRequest::headless(Action::Clear)).unwrap();
+    execute_ref_action(args, &adapter, ActionRequest::headless(Action::Click)).unwrap();
 
     let request = adapter.request.lock().unwrap().clone().unwrap();
-    assert!(matches!(request.action, Action::Clear));
+    assert!(matches!(request.action, Action::Click));
     assert_eq!(request.policy, InteractionPolicy::headless());
+}
+
+#[test]
+fn execute_ref_action_does_not_dispatch_ambiguous_target() {
+    let _guard = HomeGuard::new();
+    let mut refmap = RefMap::new();
+    refmap.allocate(entry());
+    let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
+    let adapter = AmbiguousAdapter {
+        executed: AtomicU32::new(0),
+    };
+    let args = RefArgs {
+        ref_id: "@e1".into(),
+        snapshot_id: Some(snapshot_id),
+    };
+
+    let err = execute_ref_action(args, &adapter, ActionRequest::headless(Action::Click))
+        .expect_err("ambiguous targets fail before action dispatch");
+
+    assert_eq!(err.code(), "AMBIGUOUS_TARGET");
+    assert_eq!(adapter.executed.load(Ordering::SeqCst), 0);
 }
 
 #[test]

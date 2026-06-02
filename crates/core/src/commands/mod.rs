@@ -53,6 +53,7 @@ pub mod type_text;
 pub mod uncheck;
 pub mod version;
 pub mod wait;
+pub(crate) mod wait_predicate;
 
 #[cfg(test)]
 mod ref_policy_tests;

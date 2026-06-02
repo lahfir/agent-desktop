@@ -25,7 +25,7 @@ pub fn run_from_ref(
         .ok_or_else(|| AppError::stale_ref(root_ref_id))?
         .clone();
 
-    let handle = ResolvedElement::new(adapter, adapter.resolve_element(&entry)?);
+    let handle = ResolvedElement::new(adapter, adapter.resolve_element_strict(&entry)?);
 
     let raw_tree = adapter.get_subtree(handle.handle(), opts)?;
 

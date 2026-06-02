@@ -35,6 +35,7 @@ fn result_discriminants_preserve_existing_abi_values() {
     assert_eq!(AdResult::ErrInternal as i32, -12);
     assert_eq!(AdResult::ErrSnapshotNotFound as i32, -13);
     assert_eq!(AdResult::ErrPolicyDenied as i32, -14);
+    assert_eq!(AdResult::ErrAmbiguousTarget as i32, -15);
 }
 
 #[test]

@@ -1,4 +1,5 @@
 pub mod action;
+pub mod actionability;
 pub mod adapter;
 pub mod commands;
 pub mod error;

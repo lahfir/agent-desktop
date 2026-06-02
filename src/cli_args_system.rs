@@ -107,6 +107,24 @@ pub(crate) struct WaitArgs {
         help = "Snapshot ID returned by snapshot for --element waits; omit to use latest"
     )]
     pub snapshot: Option<String>,
+    #[arg(
+        long,
+        value_name = "PREDICATE",
+        help = "Element wait predicate: exists, enabled, visible, actionable, or value"
+    )]
+    pub predicate: Option<String>,
+    #[arg(
+        long,
+        value_name = "VALUE",
+        help = "Expected value for --predicate value"
+    )]
+    pub value: Option<String>,
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Expected match count for --text waits"
+    )]
+    pub count: Option<usize>,
     #[arg(long, help = "Block until a window with this title appears")]
     pub window: Option<String>,
     #[arg(
