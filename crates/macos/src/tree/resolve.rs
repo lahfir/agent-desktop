@@ -13,6 +13,14 @@ use super::resolve_roots::{candidate_roots, path_candidate_roots};
 
 #[cfg(target_os = "macos")]
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    resolve_element_with_timeout(entry, std::time::Duration::from_secs(5))
+}
+
+#[cfg(target_os = "macos")]
+pub fn resolve_element_with_timeout(
+    entry: &RefEntry,
+    timeout: std::time::Duration,
+) -> Result<NativeHandle, AdapterError> {
     tracing::debug!(
         "resolve: searching pid={} role={} name={:?} description={:?} bounds_hash={:?}",
         entry.pid,
@@ -22,7 +30,7 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
         entry.bounds_hash
     );
     let resolve_depth: u8 = 50;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + timeout;
     let attempts = 4;
     for attempt in 0..attempts {
         if can_use_path_fast_path(entry) {
@@ -36,15 +44,15 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
                 Err(err) => return Err(err),
             }
             if should_retry_scoped_path_resolution(entry) {
-                if attempt + 1 < attempts && std::time::Instant::now() < deadline {
-                    std::thread::sleep(std::time::Duration::from_millis(75));
+                if attempt + 1 < attempts {
+                    sleep_before_retry(deadline);
                 }
                 continue;
             }
         }
         if !can_use_broad_search(entry) {
-            if attempt + 1 < attempts && std::time::Instant::now() < deadline {
-                std::thread::sleep(std::time::Duration::from_millis(75));
+            if attempt + 1 < attempts {
+                sleep_before_retry(deadline);
             }
             continue;
         }
@@ -58,8 +66,8 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
             Err(err) => return Err(err),
         }
 
-        if attempt + 1 < attempts && std::time::Instant::now() < deadline {
-            std::thread::sleep(std::time::Duration::from_millis(75));
+        if attempt + 1 < attempts {
+            sleep_before_retry(deadline);
         }
     }
 
@@ -79,6 +87,14 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
 #[cfg(target_os = "macos")]
 fn is_retryable_resolution_error(err: &AdapterError) -> bool {
     err.code == ErrorCode::ElementNotFound
+}
+
+#[cfg(target_os = "macos")]
+fn sleep_before_retry(deadline: std::time::Instant) {
+    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+    if !remaining.is_zero() {
+        std::thread::sleep(remaining.min(std::time::Duration::from_millis(75)));
+    }
 }
 
 #[cfg(target_os = "macos")]

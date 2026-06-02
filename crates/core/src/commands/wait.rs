@@ -2,7 +2,7 @@ use crate::{
     adapter::{PlatformAdapter, WindowFilter},
     commands::{
         helpers::resolve_app_pid, wait_latest_ref_cache::LatestRefCache, wait_predicate,
-        wait_text_match,
+        wait_text_match, wait_timeout,
     },
     context::CommandContext,
     error::{AppError, ErrorCode},
@@ -173,7 +173,11 @@ fn wait_for_element(
             .and_then(|r| r.get(&ref_id).cloned())
             .or_else(|| latest_cache.as_ref().and_then(|c| c.entry(&ref_id)));
         if let Some(entry) = entry {
-            match adapter.resolve_element_strict(&entry) {
+            let remaining = timeout.saturating_sub(start.elapsed());
+            if remaining.is_zero() {
+                return wait_timeout::element(ref_id, predicate, timeout_ms, last_observed);
+            }
+            match adapter.resolve_element_strict_with_timeout(&entry, remaining) {
                 Ok(handle) => {
                     last_observed = wait_predicate::observe(&entry, &handle, &predicate, adapter);
                     let _ = adapter.release_handle(&handle);
@@ -207,18 +211,7 @@ fn wait_for_element(
 
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!(
-                    "Element {ref_id} did not satisfy predicate '{}' within {timeout_ms}ms; last_observed={last_observed}",
-                    predicate.name()
-                ),
-            )
-            .with_details(json!({
-                "ref": ref_id,
-                "predicate": predicate.name(),
-                "timeout_ms": timeout_ms,
-                "last_observed": last_observed
-            }))));
+            return wait_timeout::element(ref_id, predicate, timeout_ms, last_observed);
         }
         std::thread::sleep(remaining.min(Duration::from_millis(100)));
     }
@@ -388,3 +381,7 @@ mod tests;
 #[cfg(test)]
 #[path = "wait_element_tests.rs"]
 mod element_tests;
+
+#[cfg(test)]
+#[path = "wait_resolution_tests.rs"]
+mod resolution_tests;

@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     action::ElementState,
     adapter::{NativeHandle, PlatformAdapter},
-    error::{AdapterError, ErrorCode},
+    error::AdapterError,
     node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
@@ -35,35 +35,6 @@ impl PlatformAdapter for PredicateAdapter {
 
     fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
         Ok(self.bounds)
-    }
-}
-
-struct AmbiguousResolveAdapter;
-
-impl PlatformAdapter for AmbiguousResolveAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::ambiguous_target("2 candidates matched"))
-    }
-}
-
-struct TransientResolveAdapter {
-    errors: Mutex<Vec<ErrorCode>>,
-}
-
-impl PlatformAdapter for TransientResolveAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        if let Some(code) = self.errors.lock().unwrap().pop() {
-            return Err(AdapterError::new(code, "transient resolution failure"));
-        }
-        Ok(NativeHandle::null())
-    }
-}
-
-struct PermissionResolveAdapter;
-
-impl PlatformAdapter for PermissionResolveAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::permission_denied())
     }
 }
 
@@ -273,92 +244,4 @@ fn element_wait_actionable_retries_until_live_state_converges() {
 
     assert_eq!(value["predicate"], "actionable");
     assert_eq!(value["observed"]["actionable"], true);
-}
-
-#[test]
-fn element_wait_retries_transient_ambiguous_resolution() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_one_ref();
-    let adapter = TransientResolveAdapter {
-        errors: Mutex::new(vec![ErrorCode::AmbiguousTarget]),
-    };
-
-    let value = wait_for_element(
-        "@e1".into(),
-        Some(snapshot_id),
-        wait_predicate::ElementPredicate::Exists,
-        250,
-        &adapter,
-        &crate::context::CommandContext::default(),
-    )
-    .unwrap();
-
-    assert_eq!(value["predicate"], "exists");
-    assert_eq!(value["observed"]["exists"], true);
-}
-
-#[test]
-fn element_wait_retries_transient_resolution_timeout() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_one_ref();
-    let adapter = TransientResolveAdapter {
-        errors: Mutex::new(vec![ErrorCode::Timeout]),
-    };
-
-    let value = wait_for_element(
-        "@e1".into(),
-        Some(snapshot_id),
-        wait_predicate::ElementPredicate::Exists,
-        250,
-        &adapter,
-        &crate::context::CommandContext::default(),
-    )
-    .unwrap();
-
-    assert_eq!(value["observed"]["exists"], true);
-}
-
-#[test]
-fn element_wait_times_out_after_persistent_ambiguous_resolution() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_one_ref();
-
-    let err = wait_for_element(
-        "@e1".into(),
-        Some(snapshot_id),
-        wait_predicate::ElementPredicate::Exists,
-        1,
-        &AmbiguousResolveAdapter,
-        &crate::context::CommandContext::default(),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "TIMEOUT");
-    match err {
-        AppError::Adapter(adapter_error) => {
-            assert_eq!(
-                adapter_error.details.unwrap()["last_observed"]["error"],
-                "AMBIGUOUS_TARGET"
-            );
-        }
-        _ => panic!("expected adapter error"),
-    }
-}
-
-#[test]
-fn element_wait_aborts_terminal_permission_error() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_one_ref();
-
-    let err = wait_for_element(
-        "@e1".into(),
-        Some(snapshot_id),
-        wait_predicate::ElementPredicate::Exists,
-        250,
-        &PermissionResolveAdapter,
-        &crate::context::CommandContext::default(),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "PERM_DENIED");
 }

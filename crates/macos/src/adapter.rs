@@ -85,6 +85,14 @@ impl PlatformAdapter for MacOSAdapter {
         crate::tree::resolve::resolve_element_impl(entry)
     }
 
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        timeout: std::time::Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        crate::tree::resolve::resolve_element_with_timeout(entry, timeout)
+    }
+
     fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
         let raw = handle.as_raw();
         if raw.is_null() {

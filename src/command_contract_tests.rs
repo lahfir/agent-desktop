@@ -9,6 +9,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "wait_latest_ref_cache",
     "wait_predicate",
     "wait_text_match",
+    "wait_timeout",
 ];
 
 const COMMAND_SPECIFIC_TESTS: &[&str] = &[

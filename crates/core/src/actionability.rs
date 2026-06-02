@@ -71,7 +71,9 @@ pub fn check_live(
     if let Some(bounds) = adapter.get_element_bounds(handle).ok().flatten() {
         observed.bounds = Some(bounds);
     }
-    if let Some(actions) = adapter.get_live_actions(handle).ok().flatten() {
+    if let Some(actions) = adapter.get_live_actions(handle).ok().flatten()
+        && !actions.is_empty()
+    {
         observed.available_actions = actions;
     }
     check(&observed, request)

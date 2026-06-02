@@ -55,13 +55,13 @@ fn latest_ref_cache_debounces_consecutive_refreshes() {
 
     let mut cache = LatestRefCache::new(&store).unwrap();
     let pinned_snapshot_id = cache.snapshot_id.clone();
-    let pinned_refresh = cache.last_refresh;
 
     let _ = save_ref(2, None);
 
-    cache.last_refresh = std::time::Instant::now();
+    let debounced_refresh = std::time::Instant::now();
+    cache.last_refresh = debounced_refresh;
     cache.refresh_if_due();
 
     assert_eq!(cache.snapshot_id, pinned_snapshot_id);
-    assert_eq!(cache.last_refresh, pinned_refresh.max(cache.last_refresh));
+    assert_eq!(cache.last_refresh, debounced_refresh);
 }

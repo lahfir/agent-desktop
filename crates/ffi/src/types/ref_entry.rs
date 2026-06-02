@@ -28,6 +28,8 @@ pub struct AdRefEntry {
 
 pub const AD_REF_ENTRY_SIZE: usize = 192;
 
+const _: () = assert!(std::mem::size_of::<AdRefEntry>() == AD_REF_ENTRY_SIZE);
+
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_ref_entry_size() -> usize {
     std::mem::size_of::<AdRefEntry>()

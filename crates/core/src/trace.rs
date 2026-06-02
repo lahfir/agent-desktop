@@ -130,7 +130,10 @@ fn sanitize_trace_value(value: Value) -> Value {
 
 fn is_sensitive_trace_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
-    key.contains("text") || key.contains("value") || key == "expected"
+    matches!(
+        key.as_str(),
+        "text" | "value" | "expected" | "name" | "description" | "message"
+    )
 }
 
 fn redacted_value(value: Value) -> Value {

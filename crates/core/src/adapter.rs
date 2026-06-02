@@ -147,6 +147,14 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("resolve_element_strict"))
     }
 
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: std::time::Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
+    }
+
     /// Releases a platform-specific element handle returned from
     /// `resolve_element`. Adapter methods that receive `&NativeHandle`
     /// borrow it only; they must not consume or release it. macOS

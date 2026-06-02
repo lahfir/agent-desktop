@@ -194,7 +194,7 @@ fn live_actionability_fails_when_action_disappears_after_snapshot() {
     let adapter = LiveAdapter {
         state: None,
         bounds: stale.bounds,
-        actions: Some(vec![]),
+        actions: Some(vec!["SetValue".into()]),
     };
 
     let err = check_live(
@@ -207,4 +207,24 @@ fn live_actionability_fails_when_action_disappears_after_snapshot() {
 
     assert_eq!(err.code, ErrorCode::ActionFailed);
     assert!(err.message.contains("supported_action"));
+}
+
+#[test]
+fn empty_live_actions_do_not_erase_snapshot_capabilities() {
+    let stale = entry();
+    let adapter = LiveAdapter {
+        state: None,
+        bounds: stale.bounds,
+        actions: Some(vec![]),
+    };
+
+    let report = check_live(
+        &stale,
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap();
+
+    assert!(report.actionable);
 }

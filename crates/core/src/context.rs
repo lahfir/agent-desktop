@@ -161,6 +161,8 @@ mod tests {
                 serde_json::json!({
                     "text": "secret",
                     "value": "hidden",
+                    "name": "private label",
+                    "message": "private error",
                     "nested": { "expected": "token" }
                 }),
             )
@@ -171,9 +173,13 @@ mod tests {
         assert_eq!(event["text"]["redacted"], true);
         assert_eq!(event["text"]["chars"], 6);
         assert_eq!(event["value"]["redacted"], true);
+        assert_eq!(event["name"]["redacted"], true);
+        assert_eq!(event["message"]["redacted"], true);
         assert_eq!(event["nested"]["expected"]["redacted"], true);
         assert!(!body.contains("secret"));
         assert!(!body.contains("hidden"));
+        assert!(!body.contains("private label"));
+        assert!(!body.contains("private error"));
         assert!(!body.contains("token"));
         let _ = std::fs::remove_file(path);
     }
