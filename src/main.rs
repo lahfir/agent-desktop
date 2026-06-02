@@ -14,6 +14,7 @@ mod dispatch_parse;
 
 use agent_desktop_core::{
     adapter::PlatformAdapter,
+    context::CommandContext,
     error::AppError,
     output::{ENVELOPE_VERSION, ErrorPayload, Response},
 };
@@ -43,6 +44,13 @@ fn main() {
     };
 
     init_tracing(cli.verbose);
+    let context = match CommandContext::new(cli.session, cli.trace, cli.trace_strict) {
+        Ok(context) => context,
+        Err(err) => {
+            finish("unknown", Err(err));
+            return;
+        }
+    };
 
     let cmd = match cli.command {
         Some(c) => c,
@@ -75,11 +83,11 @@ fn main() {
             };
             finish(cmd_name, result);
         }
-        cmd => run_with_adapter(cmd, cmd_name),
+        cmd => run_with_adapter(cmd, cmd_name, &context),
     }
 }
 
-fn run_with_adapter(cmd: Commands, cmd_name: &str) {
+fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) {
     let adapter = build_adapter();
     let report = adapter.permission_report();
     if let Err(err) = command_policy::preflight(&cmd, &report) {
@@ -87,7 +95,7 @@ fn run_with_adapter(cmd: Commands, cmd_name: &str) {
         return;
     }
 
-    let result = dispatch::dispatch(cmd, &adapter, &report);
+    let result = dispatch::dispatch(cmd, &adapter, &report, context);
     finish(cmd_name, result);
 }
 

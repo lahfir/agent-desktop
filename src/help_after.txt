@@ -63,6 +63,8 @@ CLIPBOARD
 WAIT
   wait [ms]                  Pause for N milliseconds
   wait --element <ref>       Block until element appears (--timeout ms)
+  wait --element <ref> --predicate actionable  Block until element is actionable
+  wait --element <ref> --predicate value --value <text>  Block until value matches
   wait --element <ref> --snapshot <snapshot_id>  Wait against a specific snapshot refmap
   wait --window <title>      Block until window appears
   wait --text <text>         Block until text appears in app
@@ -78,12 +80,19 @@ SYSTEM
 
 BATCH
   batch <json>               Run commands from a JSON array (--stop-on-error)
+  batch items may set "session": "id" to override the inherited --session
 
 REF IDs
   snapshot assigns @e1, @e2, ... to interactive elements in depth-first order.
   Use a ref wherever <ref> appears. Refs are snapshot-scoped. Pass
   --snapshot <snapshot_id> to pin a command to a known snapshot; when omitted,
   ref commands use the latest saved snapshot. Run snapshot again after UI changes.
+  Use --session <id> to isolate latest snapshots for concurrent agents.
+  Ref actions use strict resolution: stale targets return STALE_REF; duplicate
+  plausible targets return AMBIGUOUS_TARGET instead of choosing arbitrarily.
+  Ref actions run actionability checks before dispatch. Use --trace <path> to
+  write JSONL diagnostics outside stdout; add --trace-strict to fail on trace
+  write errors.
 
 KEY COMBOS
   Single keys:               return, escape, tab, space, delete, up, down, left, right
@@ -93,12 +102,12 @@ KEY COMBOS
 
 EXAMPLES
   agent-desktop skills get desktop --full        Load the primary skill (start here)
-  agent-desktop snapshot --app "System Settings" -i
+  agent-desktop --session task-1 snapshot --app "System Settings" -i
   agent-desktop find --role button --name "OK"
   agent-desktop find --role button --limit 20
-  agent-desktop click @e5
-  agent-desktop check @e3
-  agent-desktop type @e2 "hello@example.com"
+  agent-desktop click @e5 --snapshot <snapshot_id>
+  agent-desktop check @e3 --snapshot <snapshot_id>
+  agent-desktop type @e2 --snapshot <snapshot_id> "hello@example.com"
   agent-desktop press cmd+z
   agent-desktop drag --from @e1 --to @e5
   agent-desktop hover @e5
@@ -106,4 +115,17 @@ EXAMPLES
   agent-desktop resize-window --app TextEdit --width 800 --height 600
   agent-desktop mouse-click --xy 500,300
   agent-desktop wait --text "Loading complete" --app Safari --timeout 5000
+  agent-desktop wait --element @e5 --predicate actionable --timeout 5000
+  agent-desktop --session run-a --trace /tmp/ad.jsonl click @e5
   agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'
+  agent-desktop --session run-a batch '[{"command":"status","session":"run-b","args":{}}]'
+
+AGENT LOOP
+  1. Use `skills get desktop --full` when you need detailed guidance.
+  2. Use `--session <id>` when another agent or task may also run commands.
+  3. Observe with `snapshot -i` or `snapshot --skeleton -i --compact`.
+  4. Keep `snapshot_id`; pass it to every ref-consuming action.
+  5. Use `wait --predicate actionable`, `wait --text`, or `wait --window`
+     instead of sleeping blindly.
+  6. On STALE_REF or AMBIGUOUS_TARGET, snapshot again and choose a fresh ref.
+  7. Add `--trace <path>` when diagnosing stale, ambiguous, or actionability failures.

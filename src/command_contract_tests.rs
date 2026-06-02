@@ -3,7 +3,7 @@ use clap::CommandFactory;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-const NON_COMMAND_MODULES: &[&str] = &["helpers", "mod", "wait_predicate"];
+const NON_COMMAND_MODULES: &[&str] = &["helpers", "mod", "wait_latest_ref_cache", "wait_predicate"];
 
 const COMMAND_SPECIFIC_TESTS: &[&str] = &[
     "find",

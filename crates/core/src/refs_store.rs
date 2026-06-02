@@ -1,4 +1,5 @@
 use crate::{
+    context::validate_session_id,
     error::{AdapterError, AppError},
     refs::{RefMap, home_dir, new_snapshot_id, validate_snapshot_id, write_private_file},
     refs_lock::RefStoreLock,
@@ -16,8 +17,21 @@ pub struct RefStore {
 
 impl RefStore {
     pub fn new() -> Result<Self, AppError> {
+        Self::for_session(None)
+    }
+
+    pub fn for_session(session_id: Option<&str>) -> Result<Self, AppError> {
         let home =
             home_dir().ok_or_else(|| AppError::Internal("HOME directory not found".into()))?;
+        if let Some(session_id) = session_id {
+            validate_session_id(session_id)?;
+            return Ok(Self {
+                base_dir: home
+                    .join(".agent-desktop")
+                    .join("sessions")
+                    .join(session_id),
+            });
+        }
         Ok(Self {
             base_dir: home.join(".agent-desktop"),
         })

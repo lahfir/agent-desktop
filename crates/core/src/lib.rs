@@ -2,6 +2,7 @@ pub mod action;
 pub mod actionability;
 pub mod adapter;
 pub mod commands;
+pub mod context;
 pub mod error;
 pub mod hints;
 pub mod node;
@@ -20,6 +21,7 @@ pub mod roles;
 pub(crate) mod search_text;
 pub mod snapshot;
 pub mod snapshot_ref;
+pub mod trace;
 mod window_lookup;
 
 pub use action::{
@@ -30,6 +32,7 @@ pub use adapter::{
     ImageBuffer, ImageFormat, NativeHandle, PlatformAdapter, ScreenshotTarget, TreeOptions,
     WindowFilter,
 };
+pub use context::CommandContext;
 pub use error::{AdapterError, AppError, ErrorCode};
 pub use node::{AccessibilityNode, AppInfo, Rect, WindowInfo};
 pub use notification::{NotificationFilter, NotificationInfo};

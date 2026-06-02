@@ -1,6 +1,7 @@
 use crate::{
     action::{ActionRequest, Point, WindowOp},
     adapter::{PlatformAdapter, WindowFilter},
+    context::CommandContext,
     error::AppError,
     node::WindowInfo,
     refs::{RefEntry, validate_ref_id},
@@ -19,13 +20,27 @@ pub struct RefArgs {
     pub snapshot_id: Option<String>,
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_ref<'a>(
     ref_id: &str,
     snapshot_id: Option<&str>,
     adapter: &'a dyn PlatformAdapter,
 ) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
+    resolve_ref_with_context(ref_id, snapshot_id, adapter, &CommandContext::default())
+}
+
+pub(crate) fn resolve_ref_with_context<'a>(
+    ref_id: &str,
+    snapshot_id: Option<&str>,
+    adapter: &'a dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
     validate_ref_id(ref_id)?;
-    let store = RefStore::new()?;
+    let store = RefStore::for_session(context.session_id.as_deref())?;
+    context.trace(
+        "ref.resolve.start",
+        json!({ "ref": ref_id, "snapshot_id": snapshot_id }),
+    )?;
     let refmap = store.load(snapshot_id).map_err(|e| {
         tracing::debug!("refmap load failed: {e}");
         AppError::stale_ref(ref_id)
@@ -41,8 +56,18 @@ pub(crate) fn resolve_ref<'a>(
         entry.role,
         entry.name.as_deref().unwrap_or("(none)")
     );
+    context.trace(
+        "ref.resolve.entry",
+        json!({
+            "ref": ref_id,
+            "pid": entry.pid,
+            "role": entry.role,
+            "name": entry.name
+        }),
+    )?;
     let handle = adapter.resolve_element_strict(&entry)?;
     tracing::debug!("resolve: {} resolved successfully", ref_id);
+    context.trace("ref.resolve.ok", json!({ "ref": ref_id }))?;
     Ok((entry, ResolvedElement::new(adapter, handle)))
 }
 
@@ -69,26 +94,47 @@ pub(crate) fn resolve_app_pid(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn execute_ref_action(
     args: RefArgs,
     adapter: &dyn PlatformAdapter,
     request: ActionRequest,
 ) -> Result<Value, AppError> {
-    let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    execute_ref_action_with_context(args, adapter, request, &CommandContext::default())
+}
+
+pub(crate) fn execute_ref_action_with_context(
+    args: RefArgs,
+    adapter: &dyn PlatformAdapter,
+    request: ActionRequest,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (_entry, handle) =
+        resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
+    context.trace(
+        "actionability.check.start",
+        json!({ "ref": args.ref_id, "action": request.action.name() }),
+    )?;
     crate::actionability::check(&_entry, &request)?;
+    context.trace(
+        "actionability.check.ok",
+        json!({ "ref": args.ref_id, "action": request.action.name() }),
+    )?;
     let result = adapter.execute_action(handle.handle(), request)?;
+    context.trace("action.dispatch.ok", json!({ "ref": args.ref_id }))?;
     Ok(serde_json::to_value(result)?)
 }
 
-pub(crate) fn resolve_point_from_ref_or_xy(
+pub(crate) fn resolve_point_from_ref_or_xy_with_context(
     ref_id: Option<&str>,
     xy: Option<(f64, f64)>,
     snapshot_id: Option<&str>,
     adapter: &dyn PlatformAdapter,
     missing_input_message: impl Into<String>,
+    context: &CommandContext,
 ) -> Result<Point, AppError> {
     if let Some(ref_id) = ref_id {
-        let (_entry, handle) = resolve_ref(ref_id, snapshot_id, adapter)?;
+        let (_entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
         let bounds = adapter
             .get_element_bounds(handle.handle())?
             .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;

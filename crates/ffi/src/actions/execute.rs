@@ -3,7 +3,7 @@ use crate::actions::conversion::action_from_c;
 use crate::actions::result::action_result_to_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
-use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind};
+use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind, AdRefEntry};
 use agent_desktop_core::{action::ActionRequest, adapter::NativeHandle};
 
 /// # Safety
@@ -41,9 +41,6 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
     trap_panic(|| unsafe {
         crate::pointer_guard::guard_non_null!(out, c"out is null");
         *out = std::mem::zeroed();
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(handle, c"handle is null");
         crate::pointer_guard::guard_non_null!(action, c"action is null");
@@ -83,6 +80,90 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
             }
             Err(e) => {
                 error::set_last_error(&e);
+                error::last_error_code()
+            }
+        }
+    })
+}
+
+/// # Safety
+///
+/// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+/// `entry` must be a non-null pointer to a valid `AdRefEntry`.
+/// `action` must be a non-null pointer to a valid `AdAction`.
+/// `out` must be a non-null pointer to an `AdActionResult` to write the result into.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
+    adapter: *const AdAdapter,
+    entry: *const AdRefEntry,
+    action: *const AdAction,
+    policy: i32,
+    out: *mut AdActionResult,
+) -> AdResult {
+    trap_panic(|| unsafe {
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        *out = std::mem::zeroed();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(entry, c"entry is null");
+        crate::pointer_guard::guard_non_null!(action, c"action is null");
+        let adapter = &*adapter;
+        let entry_ref = &*entry;
+        let core_entry = match crate::actions::resolve::core_ref_entry_from_ffi(entry_ref) {
+            Ok(entry) => entry,
+            Err(err) => {
+                error::set_last_error(&err);
+                return error::last_error_code();
+            }
+        };
+        let action_ref = &*action;
+        let core_action = match action_from_c(action_ref) {
+            Ok(action) => action,
+            Err(msg) => {
+                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    msg,
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let Some(policy) = AdPolicyKind::from_c(policy) else {
+            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                agent_desktop_core::error::ErrorCode::InvalidArgs,
+                "invalid policy kind discriminant",
+            ));
+            return AdResult::ErrInvalidArgs;
+        };
+        let request = action_request(policy, core_action);
+        if let Err(err) = agent_desktop_core::actionability::check(&core_entry, &request) {
+            error::set_last_error(&err);
+            return error::last_error_code();
+        }
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
+        let native_handle = match adapter.inner.resolve_element_strict(&core_entry) {
+            Ok(handle) => handle,
+            Err(err) => {
+                error::set_last_error(&err);
+                return error::last_error_code();
+            }
+        };
+        let result = adapter.inner.execute_action(&native_handle, request);
+        let release = adapter.inner.release_handle(&native_handle);
+        match result {
+            Ok(result) => {
+                if let Err(err) = release {
+                    error::set_last_error(&err);
+                    return error::last_error_code();
+                }
+                *out = action_result_to_c(&result);
+                AdResult::Ok
+            }
+            Err(err) => {
+                error::set_last_error(&err);
                 error::last_error_code()
             }
         }

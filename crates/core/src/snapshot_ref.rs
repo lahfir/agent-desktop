@@ -1,5 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, TreeOptions},
+    context::CommandContext,
     error::AppError,
     node::WindowInfo,
     ref_alloc::{self, RefAllocConfig},
@@ -14,7 +15,23 @@ pub fn run_from_ref(
     root_ref_id: &str,
     snapshot_id: Option<&str>,
 ) -> Result<SnapshotResult, AppError> {
-    let store = RefStore::new()?;
+    run_from_ref_with_context(
+        adapter,
+        opts,
+        root_ref_id,
+        snapshot_id,
+        &CommandContext::default(),
+    )
+}
+
+pub fn run_from_ref_with_context(
+    adapter: &dyn PlatformAdapter,
+    opts: &TreeOptions,
+    root_ref_id: &str,
+    snapshot_id: Option<&str>,
+    context: &CommandContext,
+) -> Result<SnapshotResult, AppError> {
+    let store = RefStore::for_session(context.session_id.as_deref())?;
     let mut refmap = store.load(snapshot_id)?;
     let active_snapshot_id = snapshot_id
         .map(str::to_string)
@@ -58,6 +75,14 @@ pub fn run_from_ref(
     } else {
         Some(store.save_new_snapshot(&refmap)?)
     };
+    context.trace(
+        "snapshot.root.saved",
+        serde_json::json!({
+            "root_ref": root_ref_id,
+            "snapshot_id": saved_snapshot_id,
+            "ref_count": refmap.len()
+        }),
+    )?;
 
     let window =
         crate::window_lookup::find_window_for_pid(entry.pid, adapter).unwrap_or(WindowInfo {

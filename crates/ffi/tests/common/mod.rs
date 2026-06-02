@@ -52,6 +52,13 @@ unsafe extern "C" {
         policy: i32,
         out: *mut AdActionResult,
     ) -> AdResult;
+    pub fn ad_execute_ref_action_with_policy(
+        adapter: *const AdAdapter,
+        entry: *const AdRefEntry,
+        action: *const AdAction,
+        policy: i32,
+        out: *mut AdActionResult,
+    ) -> AdResult;
 
     pub fn ad_find(
         adapter: *const AdAdapter,
@@ -75,6 +82,37 @@ pub fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
         assert!(!adapter.is_null(), "ad_adapter_create must not return null");
         body(adapter);
         ad_adapter_destroy(adapter);
+    }
+}
+
+pub fn default_ref_entry() -> AdRefEntry {
+    AdRefEntry {
+        pid: 0,
+        role: std::ptr::null(),
+        name: std::ptr::null(),
+        value: std::ptr::null(),
+        description: std::ptr::null(),
+        states: std::ptr::null(),
+        state_count: 0,
+        available_actions: std::ptr::null(),
+        available_action_count: 0,
+        bounds: AdRect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        },
+        has_bounds: false,
+        bounds_hash: 0,
+        has_bounds_hash: false,
+        source_app: std::ptr::null(),
+        source_window_id: std::ptr::null(),
+        source_window_title: std::ptr::null(),
+        source_surface: 0,
+        root_ref: std::ptr::null(),
+        path_is_absolute: false,
+        path: std::ptr::null(),
+        path_count: 0,
     }
 }
 

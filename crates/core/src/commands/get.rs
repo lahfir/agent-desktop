@@ -1,4 +1,7 @@
-use crate::{adapter::PlatformAdapter, commands::helpers::resolve_ref, error::AppError};
+use crate::{
+    adapter::PlatformAdapter, commands::helpers::resolve_ref_with_context, context::CommandContext,
+    error::AppError,
+};
 use serde_json::{Value, json};
 
 pub struct GetArgs {
@@ -16,8 +19,13 @@ pub enum GetProperty {
     States,
 }
 
-pub fn execute(args: GetArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+pub fn execute(
+    args: GetArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (entry, handle) =
+        resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
 
     let value = match args.property {
         GetProperty::Role => json!(entry.role),

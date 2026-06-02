@@ -86,6 +86,7 @@ fn snapshot_pinned_missing_ref_is_invalid_args() {
         wait_predicate::ElementPredicate::Exists,
         1,
         &NoopAdapter,
+        &crate::context::CommandContext::default(),
     )
     .unwrap_err();
 
@@ -185,6 +186,7 @@ fn element_wait_enabled_predicate_uses_live_state() {
         wait_predicate::ElementPredicate::Enabled,
         1,
         &adapter,
+        &crate::context::CommandContext::default(),
     )
     .unwrap();
 
@@ -208,6 +210,7 @@ fn element_wait_value_predicate_matches_live_value() {
         wait_predicate::ElementPredicate::Value("ready".into()),
         1,
         &adapter,
+        &crate::context::CommandContext::default(),
     )
     .unwrap();
 
