@@ -63,7 +63,7 @@ fn execute_action_rejects_null_handle_ptr() {
 }
 
 #[test]
-fn execute_ref_action_applies_actionability_before_resolve() {
+fn execute_ref_action_uses_strict_resolution_before_dispatch() {
     with_adapter(|adapter| unsafe {
         let role = std::ffi::CString::new("button").unwrap();
         let mut entry = default_ref_entry();
@@ -81,7 +81,32 @@ fn execute_ref_action_applies_actionability_before_resolve() {
 
         assert!(matches!(
             rc,
-            AdResult::ErrActionFailed | AdResult::ErrInternal
+            AdResult::ErrStaleRef | AdResult::ErrElementNotFound | AdResult::ErrInternal
         ));
     });
+}
+
+#[test]
+fn execute_action_policy_requires_main_thread_on_macos() {
+    let rc = std::thread::spawn(|| unsafe {
+        let action = default_action();
+        let handle = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
+        let mut out: AdActionResult = std::mem::zeroed();
+        ad_execute_action_with_policy(
+            std::ptr::null(),
+            &handle,
+            &action,
+            AdPolicyKind::Headless as i32,
+            &mut out,
+        )
+    })
+    .join()
+    .unwrap();
+
+    #[cfg(target_os = "macos")]
+    assert_eq!(rc, AdResult::ErrInternal);
+    #[cfg(not(target_os = "macos"))]
+    assert_eq!(rc, AdResult::ErrInvalidArgs);
 }

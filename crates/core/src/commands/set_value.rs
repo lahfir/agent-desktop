@@ -1,7 +1,7 @@
 use crate::{
     action::{Action, ActionRequest},
     adapter::PlatformAdapter,
-    commands::helpers::resolve_ref_with_context,
+    commands::helpers::{check_actionability_with_trace, resolve_ref_with_context},
     context::CommandContext,
     error::AppError,
 };
@@ -21,14 +21,13 @@ pub fn execute(
     let (entry, handle) =
         resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
     let request = ActionRequest::headless(Action::SetValue(args.value));
-    context.trace(
-        "actionability.check.start",
-        serde_json::json!({ "ref": args.ref_id, "action": request.action.name() }),
-    )?;
-    crate::actionability::check(&entry, &request)?;
-    context.trace(
-        "actionability.check.ok",
-        serde_json::json!({ "ref": args.ref_id, "action": request.action.name() }),
+    check_actionability_with_trace(
+        &args.ref_id,
+        &entry,
+        handle.handle(),
+        adapter,
+        &request,
+        context,
     )?;
     let result = adapter.execute_action(handle.handle(), request)?;
     context.trace(

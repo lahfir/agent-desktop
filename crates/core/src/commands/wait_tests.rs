@@ -52,6 +52,14 @@ impl PlatformAdapter for NotificationErrorAdapter {
     }
 }
 
+struct AmbiguousResolveAdapter;
+
+impl PlatformAdapter for AmbiguousResolveAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Err(AdapterError::ambiguous_target("2 candidates matched"))
+    }
+}
+
 fn snapshot_with_one_ref() -> String {
     let mut refmap = RefMap::new();
     refmap.allocate(RefEntry {
@@ -268,6 +276,52 @@ fn element_wait_timeout_reports_last_actionability_observation() {
     assert_eq!(err.code(), "TIMEOUT");
     assert!(err.to_string().contains("\"actionable\":false"));
     assert!(err.to_string().contains("entry state contains disabled"));
+}
+
+#[test]
+fn element_wait_actionable_uses_live_state() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_disabled_ref();
+    let adapter = PredicateAdapter {
+        state: Some(ElementState {
+            role: "button".into(),
+            states: vec![],
+            value: None,
+        }),
+        value: None,
+        bounds: None,
+    };
+
+    let value = wait_for_element(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Actionable,
+        1,
+        &adapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(value["predicate"], "actionable");
+    assert_eq!(value["observed"]["actionable"], true);
+}
+
+#[test]
+fn element_wait_propagates_ambiguous_resolution() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+
+    let err = wait_for_element(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Exists,
+        1,
+        &AmbiguousResolveAdapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "AMBIGUOUS_TARGET");
 }
 
 #[test]

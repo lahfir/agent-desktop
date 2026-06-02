@@ -63,7 +63,7 @@ fn snapshot_id() -> String {
             "DoubleClick".into(),
             "Expand".into(),
             "RightClick".into(),
-            "Scroll".into(),
+            "ScrollTo".into(),
             "Select".into(),
             "SetFocus".into(),
             "SetValue".into(),

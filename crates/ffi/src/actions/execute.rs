@@ -41,6 +41,9 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
     trap_panic(|| unsafe {
         crate::pointer_guard::guard_non_null!(out, c"out is null");
         *out = std::mem::zeroed();
+        if let Err(rc) = crate::main_thread::require_main_thread() {
+            return rc;
+        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(handle, c"handle is null");
         crate::pointer_guard::guard_non_null!(action, c"action is null");
@@ -137,13 +140,6 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
             return AdResult::ErrInvalidArgs;
         };
         let request = action_request(policy, core_action);
-        if let Err(err) = agent_desktop_core::actionability::check(&core_entry, &request) {
-            error::set_last_error(&err);
-            return error::last_error_code();
-        }
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         let native_handle = match adapter.inner.resolve_element_strict(&core_entry) {
             Ok(handle) => handle,
             Err(err) => {
@@ -151,6 +147,16 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
                 return error::last_error_code();
             }
         };
+        if let Err(err) = agent_desktop_core::actionability::check_live(
+            &core_entry,
+            &native_handle,
+            adapter.inner.as_ref(),
+            &request,
+        ) {
+            let _ = adapter.inner.release_handle(&native_handle);
+            error::set_last_error(&err);
+            return error::last_error_code();
+        }
         let result = adapter.inner.execute_action(&native_handle, request);
         let release = adapter.inner.release_handle(&native_handle);
         match result {

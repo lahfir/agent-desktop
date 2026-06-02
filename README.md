@@ -340,6 +340,7 @@ Errors include machine-readable codes and recovery hints:
 | `ELEMENT_NOT_FOUND` | No element matched the ref or query |
 | `APP_NOT_FOUND` | Application not running or no windows |
 | `STALE_REF` | Ref is from a previous snapshot |
+| `AMBIGUOUS_TARGET` | Ref recovery matched multiple plausible targets |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired |
 | `POLICY_DENIED` | Physical/headed path blocked by policy |
 | `ACTION_FAILED` | The OS rejected the action |

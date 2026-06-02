@@ -186,11 +186,27 @@ fn wait_for_element(
                     }
                 }
                 Err(err) if fixed_refmap.is_none() && err.code == ErrorCode::StaleRef => {
+                    last_observed = json!({
+                        "error": err.code.as_str(),
+                        "message": err.message
+                    });
                     if let Some(cache) = latest_cache.as_mut() {
                         cache.refresh_if_due();
                     }
                 }
-                Err(_) => {}
+                Err(err) if err.code == ErrorCode::StaleRef => {
+                    last_observed = json!({
+                        "error": err.code.as_str(),
+                        "message": err.message
+                    });
+                }
+                Err(err) if err.code == ErrorCode::ElementNotFound => {
+                    last_observed = json!({
+                        "error": err.code.as_str(),
+                        "message": err.message
+                    });
+                }
+                Err(err) => return Err(AppError::Adapter(err)),
             }
         } else if let Some(cache) = latest_cache.as_mut() {
             cache.refresh_if_due();
