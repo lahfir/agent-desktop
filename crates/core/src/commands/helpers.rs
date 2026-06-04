@@ -27,12 +27,6 @@ pub(crate) struct PointResolveArgs<'a> {
     pub missing_input_message: &'a str,
 }
 
-struct ActionabilityTarget<'a> {
-    ref_id: &'a str,
-    entry: &'a RefEntry,
-    handle: &'a NativeHandle,
-}
-
 #[cfg(test)]
 pub(crate) fn resolve_ref<'a>(
     ref_id: &str,
@@ -166,46 +160,45 @@ pub(crate) fn execute_ref_action_result_with_context(
     context: &CommandContext,
 ) -> Result<(RefEntry, ActionResult), AppError> {
     let (entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
-    check_actionability_with_trace(
-        ActionabilityTarget {
-            ref_id,
-            entry: &entry,
-            handle: handle.handle(),
-        },
-        adapter,
-        &request,
-        context,
+    check_actionability_with_trace(ref_id, &entry, handle.handle(), adapter, &request, context)?;
+    context.trace_lazy(
+        "action.dispatch.start",
+        || json!({ "ref": ref_id, "action": request.action.name() }),
     )?;
+    let action_name = request.action.name();
     let result = adapter.execute_action(handle.handle(), request)?;
-    context.trace_lazy("action.dispatch.ok", || json!({ "ref": ref_id }))?;
+    let _ = context.trace_lazy(
+        "action.dispatch.ok",
+        || json!({ "ref": ref_id, "action": action_name, "result": &result }),
+    );
     Ok((entry, result))
 }
 
 fn check_actionability_with_trace(
-    target: ActionabilityTarget<'_>,
+    ref_id: &str,
+    entry: &RefEntry,
+    handle: &NativeHandle,
     adapter: &dyn PlatformAdapter,
     request: &ActionRequest,
     context: &CommandContext,
 ) -> Result<(), AppError> {
     context.trace_lazy(
         "actionability.check.start",
-        || json!({ "ref": target.ref_id, "action": request.action.name() }),
+        || json!({ "ref": ref_id, "action": request.action.name() }),
     )?;
-    crate::ref_action::check_resolved(adapter, target.entry, target.handle, request).inspect_err(
-        |err| {
-            let _ = context.trace_lazy("actionability.check.error", || {
-                json!({
-                    "ref": target.ref_id,
-                    "action": request.action.name(),
-                    "code": err.code.as_str(),
-                    "message": err.message.clone()
-                })
-            });
-        },
-    )?;
+    crate::actionability::check_live(entry, handle, adapter, request).inspect_err(|err| {
+        let _ = context.trace_lazy("actionability.check.error", || {
+            json!({
+                "ref": ref_id,
+                "action": request.action.name(),
+                "code": err.code.as_str(),
+                "message": err.message.clone()
+            })
+        });
+    })?;
     context.trace_lazy(
         "actionability.check.ok",
-        || json!({ "ref": target.ref_id, "action": request.action.name() }),
+        || json!({ "ref": ref_id, "action": request.action.name() }),
     )?;
     Ok(())
 }

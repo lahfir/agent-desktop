@@ -34,6 +34,7 @@ impl SnapshotSurface {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct TreeOptions {
     pub max_depth: u8,
     pub include_bounds: bool,
@@ -53,6 +54,13 @@ impl Default for TreeOptions {
             surface: SnapshotSurface::Window,
             skeleton: false,
         }
+    }
+}
+
+impl TreeOptions {
+    pub(crate) fn with_ref_identity_bounds(mut self) -> Self {
+        self.include_bounds = true;
+        self
     }
 }
 

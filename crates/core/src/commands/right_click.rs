@@ -9,7 +9,6 @@ use crate::{
 };
 use serde_json::{Value, json};
 
-#[cfg(test)]
 pub fn execute(args: RefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     execute_with_context(args, adapter, &CommandContext::default())
 }

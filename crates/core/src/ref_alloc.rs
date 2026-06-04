@@ -206,7 +206,6 @@ fn allocate_refs_at_path(
 fn strip_ref_bounds_when_hidden(entry: &mut RefEntry, include_bounds: bool) {
     if !include_bounds {
         entry.bounds = None;
-        entry.bounds_hash = None;
     }
 }
 

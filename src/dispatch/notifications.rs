@@ -3,7 +3,7 @@ use agent_desktop_core::{
     commands::{
         dismiss_all_notifications, dismiss_notification, list_notifications, notification_action,
     },
-    error::AppError,
+    error::{AppError, ErrorCode},
 };
 use serde_json::Value;
 
@@ -42,6 +42,11 @@ pub(crate) fn dispatch_notification(
             },
             adapter,
         ),
-        _ => unreachable!(),
+        _ => Err(AppError::Adapter(
+            agent_desktop_core::error::AdapterError::new(
+                ErrorCode::InvalidArgs,
+                "dispatch_notification received a non-notification command",
+            ),
+        )),
     }
 }

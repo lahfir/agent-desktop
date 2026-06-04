@@ -15,7 +15,12 @@ mod imp {
     use super::*;
     use crate::{
         cf_type::created_cf_array,
-        tree::{NodeAttrs, ax_element::AXElement, ax_value, node_attrs::parse_enabled},
+        tree::{
+            NodeAttrs,
+            ax_element::AXElement,
+            ax_value,
+            node_attrs::{parse_bool_attr, parse_enabled},
+        },
     };
     use accessibility_sys::{
         AXUIElementCopyAttributeValue, AXUIElementCopyAttributeValues,
@@ -47,6 +52,9 @@ mod imp {
             kAXDescriptionAttribute,
             kAXValueAttribute,
             kAXEnabledAttribute,
+            "AXFocused",
+            "AXExpanded",
+            "AXDisclosing",
         ];
         let cf_names: Vec<CFString> = attr_names.iter().map(|a| CFString::new(a)).collect();
         let cf_refs: Vec<_> = cf_names.iter().map(|s| s.as_concrete_TypeRef()).collect();
@@ -91,7 +99,7 @@ mod imp {
                         }
                         None
                     }
-                    4 => item
+                    4..=7 => item
                         .downcast::<CFBoolean>()
                         .map(|b| bool::from(b).to_string()),
                     _ => None,
@@ -106,6 +114,9 @@ mod imp {
             description: get(2),
             value: get(3),
             enabled: parse_enabled(get(4)),
+            focused: parse_bool_attr(get(5)),
+            expanded: parse_bool_attr(get(6)),
+            disclosing: parse_bool_attr(get(7)),
         }
     }
 
@@ -121,6 +132,9 @@ mod imp {
             description: desc,
             value: val,
             enabled,
+            focused: copy_bool_attr(el, "AXFocused"),
+            expanded: copy_bool_attr(el, "AXExpanded"),
+            disclosing: copy_bool_attr(el, "AXDisclosing"),
         }
     }
 

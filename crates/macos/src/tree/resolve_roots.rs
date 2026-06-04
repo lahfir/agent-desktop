@@ -19,7 +19,7 @@ pub(super) fn path_candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
 pub(super) fn candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
     let root = element_for_pid(entry.pid);
     let mut roots = Vec::new();
-    let mut dedupe = ElementDedupe::default();
+    let mut dedupe = ElementDedupe;
     if let Some(source_window_title) = entry.source_window_title.as_deref() {
         dedupe.push(
             &mut roots,

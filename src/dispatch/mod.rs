@@ -304,18 +304,22 @@ pub(crate) fn dispatch(
 
         Commands::Wait(a) => wait::execute_with_context(
             wait::WaitArgs {
-                ms: a.ms,
-                element: a.element,
-                snapshot_id: a.snapshot,
-                predicate: a.predicate,
-                value: a.value,
-                count: a.count,
-                window: a.window,
-                text: a.text,
+                mode: wait::WaitModeArgs {
+                    ms: a.mode.ms,
+                    element: a.mode.element,
+                    window: a.mode.window,
+                    text: a.mode.text,
+                    menu: a.mode.menu,
+                    menu_closed: a.mode.menu_closed,
+                    notification: a.mode.notification,
+                },
+                predicate: wait::WaitPredicateArgs {
+                    snapshot_id: a.predicate.snapshot,
+                    predicate: a.predicate.predicate,
+                    value: a.predicate.value,
+                    count: a.predicate.count,
+                },
                 timeout_ms: a.timeout,
-                menu: a.menu,
-                menu_closed: a.menu_closed,
-                notification: a.notification,
                 app: a.app,
             },
             adapter,

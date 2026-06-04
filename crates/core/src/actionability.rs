@@ -30,31 +30,11 @@ pub struct ActionabilityReport {
     pub checks: Vec<ActionabilityCheck>,
 }
 
-pub(crate) fn check(
+pub fn check(
     entry: &RefEntry,
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
-    let checks = vec![
-        visibility_check(entry),
-        enabled_check(entry),
-        action_supported_check(entry, request),
-        policy_check(request),
-        editable_check(entry, &request.action),
-    ];
-
-    let actionable = checks
-        .iter()
-        .all(|check| !matches!(check.status, ActionabilityStatus::Fail));
-    let report = ActionabilityReport { actionable, checks };
-    if report.actionable {
-        return Ok(report);
-    }
-    Err(AdapterError::new(
-        ErrorCode::ActionFailed,
-        format!("Target is not actionable: {}", failure_reasons(&report)),
-    )
-    .with_details(json!(report))
-    .with_suggestion("Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended."))
+    check_with_stability(entry.bounds_hash, entry, request)
 }
 
 pub fn check_live(
@@ -70,15 +50,52 @@ pub fn check_live(
         observed.states = state.states;
         observed.value = state.value.or(observed.value);
     }
-    if let Some(bounds) = live.bounds {
-        observed.bounds = Some(bounds);
-    }
+    observed.bounds = live.bounds;
     if let Some(actions) = live.available_actions
         && !actions.is_empty()
     {
         observed.available_actions = actions;
     }
-    check(&observed, request)
+    check_with_stability(entry.bounds_hash, &observed, request)
+}
+
+fn check_with_stability(
+    expected_bounds_hash: Option<u64>,
+    entry: &RefEntry,
+    request: &ActionRequest,
+) -> Result<ActionabilityReport, AdapterError> {
+    let checks = vec![
+        visibility_check(entry),
+        stability_check(expected_bounds_hash, entry.bounds),
+        enabled_check(entry),
+        action_supported_check(entry, request),
+        policy_check(request),
+        editable_check(entry, &request.action),
+    ];
+
+    let actionable = checks
+        .iter()
+        .all(|check| !matches!(check.status, ActionabilityStatus::Fail));
+    let report = ActionabilityReport { actionable, checks };
+    if report.actionable {
+        return Ok(report);
+    }
+    let code = if failed_check(&report, "stable") {
+        ErrorCode::StaleRef
+    } else {
+        ErrorCode::ActionFailed
+    };
+    let suggestion = if code == ErrorCode::StaleRef {
+        "Run 'snapshot' to refresh, then retry with the updated ref."
+    } else {
+        "Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended."
+    };
+    Err(AdapterError::new(
+        code,
+        format!("Target is not actionable: {}", failure_reasons(&report)),
+    )
+    .with_details(json!(report))
+    .with_suggestion(suggestion))
 }
 
 fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
@@ -89,6 +106,19 @@ fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
         return fail("visible", "bounds are zero-sized");
     }
     pass("visible")
+}
+
+fn stability_check(expected_bounds_hash: Option<u64>, bounds: Option<Rect>) -> ActionabilityCheck {
+    let Some(expected) = expected_bounds_hash else {
+        return unknown("stable", "snapshot bounds hash unavailable");
+    };
+    let Some(bounds) = bounds else {
+        return unknown("stable", "live bounds unavailable");
+    };
+    if bounds.bounds_hash() != expected {
+        return fail("stable", "bounds changed since snapshot");
+    }
+    pass("stable")
 }
 
 fn enabled_check(entry: &RefEntry) -> ActionabilityCheck {
@@ -167,6 +197,13 @@ fn failure_reasons(report: &ActionabilityReport) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn failed_check(report: &ActionabilityReport, name: &str) -> bool {
+    report
+        .checks
+        .iter()
+        .any(|check| check.name == name && matches!(check.status, ActionabilityStatus::Fail))
 }
 
 fn supported_by_available_actions(action: &Action, available_actions: &[String]) -> bool {

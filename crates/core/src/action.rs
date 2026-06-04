@@ -247,6 +247,8 @@ pub struct ActionResult {
     pub ref_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post_state: Option<ElementState>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub steps: Vec<ActionStep>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,12 +260,50 @@ pub struct ElementState {
     pub value: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionStep {
+    pub label: String,
+    pub outcome: ActionStepOutcome,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionStepOutcome {
+    Attempted,
+    Skipped,
+    Succeeded,
+}
+
+impl ActionStep {
+    pub fn attempted(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            outcome: ActionStepOutcome::Attempted,
+        }
+    }
+
+    pub fn skipped(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            outcome: ActionStepOutcome::Skipped,
+        }
+    }
+
+    pub fn succeeded(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            outcome: ActionStepOutcome::Succeeded,
+        }
+    }
+}
+
 impl ActionResult {
     pub fn new(action: impl Into<String>) -> Self {
         Self {
             action: action.into(),
             ref_id: None,
             post_state: None,
+            steps: Vec::new(),
         }
     }
 
@@ -274,6 +314,11 @@ impl ActionResult {
 
     pub fn with_state(mut self, state: ElementState) -> Self {
         self.post_state = Some(state);
+        self
+    }
+
+    pub fn with_steps(mut self, steps: Vec<ActionStep>) -> Self {
+        self.steps = steps;
         self
     }
 }

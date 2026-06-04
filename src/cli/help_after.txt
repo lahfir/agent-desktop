@@ -92,8 +92,8 @@ REF IDs
   Ref actions use strict resolution: stale targets return STALE_REF; duplicate
   plausible targets return AMBIGUOUS_TARGET instead of choosing arbitrarily.
   Ref actions run actionability checks before dispatch. Use --trace <path> to
-  write JSONL diagnostics outside stdout; add --trace-strict to fail on trace
-  write errors.
+  write JSONL diagnostics outside stdout; --trace-strict fails on trace setup
+  and pre-action write errors.
 
 KEY COMBOS
   Single keys:               return, escape, tab, space, delete, up, down, left, right

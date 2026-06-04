@@ -1,4 +1,4 @@
-use agent_desktop_core::action::InteractionPolicy;
+use agent_desktop_core::action::{ActionStep, InteractionPolicy};
 use agent_desktop_core::error::{AdapterError, ErrorCode};
 
 use crate::actions::discovery::ElementCaps;
@@ -23,11 +23,12 @@ mod imp {
         def: &ChainDef,
         ctx: &ChainContext,
         policy: InteractionPolicy,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         let deadline = ctx
             .deadline
             .unwrap_or_else(|| Instant::now() + chain_timeout());
         let total = def.steps.len();
+        let mut steps = Vec::new();
 
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
             ax_helpers::set_messaging_timeout(&crate::tree::element_for_pid(pid), 1.0);
@@ -37,6 +38,7 @@ mod imp {
         if def.pre_scroll {
             tracing::debug!("chain: pre-scroll AXScrollToVisible");
             ax_helpers::ensure_visible(el);
+            steps.push(ActionStep::attempted("AXScrollToVisible"));
         }
 
         for (i, step) in def.steps.iter().enumerate() {
@@ -47,10 +49,12 @@ mod imp {
                     .iter()
                     .find(|s| matches!(s, ChainStep::CGClick { .. }))
                 {
+                    let label = step_label(cg);
                     if physical_click_permitted(policy) && execute_step(el, caps, cg, ctx, policy)?
                     {
                         tracing::debug!("chain: CGClick fallback succeeded");
-                        return Ok(());
+                        steps.push(ActionStep::succeeded(label));
+                        return Ok(steps);
                     }
                 }
                 return Err(
@@ -67,9 +71,11 @@ mod imp {
             let label = step_label(step);
             if execute_step(el, caps, step, ctx, policy)? {
                 tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
-                return Ok(());
+                steps.push(ActionStep::succeeded(label));
+                return Ok(steps);
             }
             tracing::debug!("chain: [{}/{}] {} -> skip", i + 1, total, label);
+            steps.push(ActionStep::skipped(label));
         }
 
         tracing::debug!("chain: all {total} steps exhausted");

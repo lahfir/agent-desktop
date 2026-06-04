@@ -1,19 +1,10 @@
 use crate::{
     action::{ActionRequest, ActionResult},
-    actionability::{self, ActionabilityReport},
-    adapter::{NativeHandle, PlatformAdapter},
+    actionability,
+    adapter::PlatformAdapter,
     error::AdapterError,
     refs::RefEntry,
 };
-
-pub(crate) fn check_resolved(
-    adapter: &dyn PlatformAdapter,
-    entry: &RefEntry,
-    handle: &NativeHandle,
-    request: &ActionRequest,
-) -> Result<ActionabilityReport, AdapterError> {
-    actionability::check_live(entry, handle, adapter, request)
-}
 
 pub fn execute_entry(
     adapter: &dyn PlatformAdapter,
@@ -21,7 +12,7 @@ pub fn execute_entry(
     request: ActionRequest,
 ) -> Result<ActionResult, AdapterError> {
     let handle = adapter.resolve_element_strict(entry)?;
-    let result = check_resolved(adapter, entry, &handle, &request)
+    let result = actionability::check_live(entry, &handle, adapter, &request)
         .and_then(|_| adapter.execute_action(&handle, request));
     let release = adapter.release_handle(&handle);
     match (result, release) {

@@ -90,6 +90,7 @@ mod tests {
                 states: vec!["focused".to_owned(), "enabled".to_owned()],
                 value: Some("OK".to_owned()),
             }),
+            steps: Vec::new(),
         };
         let c_result = action_result_to_c(&core_result);
         unsafe {

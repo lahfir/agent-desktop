@@ -64,6 +64,17 @@ fn rejects_unknown_batch_args() {
 }
 
 #[test]
+fn rejects_unknown_wait_batch_args_after_flattening() {
+    let err = parse_command(item(
+        "wait",
+        serde_json::json!({ "ms": 1, "unexpected": true }),
+    ))
+    .expect_err("unknown wait field is rejected");
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
 fn stop_on_error_halts_after_first_failure() {
     let args = BatchArgs {
         commands_json: serde_json::json!([

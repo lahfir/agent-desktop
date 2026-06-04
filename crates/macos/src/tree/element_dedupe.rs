@@ -1,22 +1,13 @@
-use rustc_hash::FxHashSet;
-
 use super::{AXElement, same_element};
 
 #[derive(Default)]
-pub(crate) struct ElementDedupe {
-    pointer_keys: FxHashSet<usize>,
-}
+pub(crate) struct ElementDedupe;
 
 impl ElementDedupe {
     pub(crate) fn push(&mut self, elements: &mut Vec<AXElement>, element: AXElement) -> bool {
-        let pointer_key = element.0 as usize;
-        if !self.pointer_keys.insert(pointer_key) {
-            return false;
-        }
-        if pointer_key != 0
-            && elements
-                .iter()
-                .any(|existing| equivalent(existing, &element))
+        if elements
+            .iter()
+            .any(|existing| equivalent(existing, &element))
         {
             return false;
         }
@@ -42,13 +33,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pointer_duplicates_are_collapsed_without_semantic_lookup() {
-        let mut dedupe = ElementDedupe::default();
+    fn null_elements_do_not_collapse_without_semantic_identity() {
+        let mut dedupe = ElementDedupe;
         let mut elements = Vec::new();
 
         assert!(dedupe.push(&mut elements, null_element()));
-        assert!(!dedupe.push(&mut elements, null_element()));
-        assert_eq!(elements.len(), 1);
+        assert!(dedupe.push(&mut elements, null_element()));
+        assert_eq!(elements.len(), 2);
     }
 
     #[cfg(target_os = "macos")]

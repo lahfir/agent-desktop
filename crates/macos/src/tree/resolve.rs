@@ -127,7 +127,7 @@ fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHan
     }
 
     let mut matches = Vec::new();
-    let mut dedupe = ElementDedupe::default();
+    let mut dedupe = ElementDedupe;
     for root in roots {
         if matches.len() > 1 {
             break;
@@ -162,7 +162,7 @@ fn find_entry_in_roots(
     deadline: std::time::Instant,
 ) -> Result<NativeHandle, AdapterError> {
     let mut matches = Vec::new();
-    let mut seen_matches = ElementDedupe::default();
+    let mut seen_matches = ElementDedupe;
     for root in roots {
         if matches.len() > 1 {
             break;
@@ -208,9 +208,36 @@ fn classify_candidates(
             "description": entry.description,
             "source_app": entry.source_app,
             "source_window_id": entry.source_window_id,
-            "source_window_title": entry.source_window_title
+            "source_window_title": entry.source_window_title,
+            "candidates": candidate_summaries(&matches)
         }))),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn candidate_summaries(matches: &[AXElement]) -> Vec<serde_json::Value> {
+    matches
+        .iter()
+        .take(10)
+        .enumerate()
+        .map(|(index, element)| {
+            let ax_role = copy_string_attr(element, accessibility_sys::kAXRoleAttribute);
+            let role = crate::tree::roles::normalized_role_for_element(element, ax_role.as_deref());
+            let name = crate::tree::roles::normalized_role_and_label(element, ax_role.as_deref())
+                .1
+                .or_else(|| resolve_element_name(element));
+            let description = copy_string_attr(element, accessibility_sys::kAXDescriptionAttribute);
+            let bounds = crate::tree::read_bounds(element);
+            serde_json::json!({
+                "index": index,
+                "role": role,
+                "name": name,
+                "description": description,
+                "bounds": bounds,
+                "bounds_hash": bounds.as_ref().map(|bounds| bounds.bounds_hash())
+            })
+        })
+        .collect()
 }
 
 #[cfg(target_os = "macos")]

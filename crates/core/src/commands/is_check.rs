@@ -23,7 +23,6 @@ pub enum IsProperty {
 }
 
 /// State is read live when the platform supports it, then falls back to snapshot state.
-#[cfg(test)]
 pub fn execute(args: IsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     execute_with_context(args, adapter, &CommandContext::default())
 }

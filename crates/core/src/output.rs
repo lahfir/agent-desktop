@@ -5,9 +5,7 @@ use crate::error::AppError;
 
 pub const ENVELOPE_VERSION: &str = "2.0";
 
-/// Structured output envelope used by the Phase 3 MCP server transport layer.
-/// CLI commands currently build responses via inline `serde_json::json!` calls in `main.rs`;
-/// this type provides the typed equivalent for programmatic consumers.
+/// Structured output envelope used by the CLI and future programmatic transports.
 #[derive(Debug, Serialize)]
 pub struct Response {
     pub version: &'static str,

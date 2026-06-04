@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
-    adapter::PlatformAdapter,
+    adapter::{PlatformAdapter, WindowFilter},
     error::{AdapterError, ErrorCode},
+    node::WindowInfo,
     notification::{NotificationFilter, NotificationInfo},
 };
 
@@ -23,23 +24,45 @@ impl PlatformAdapter for NotificationErrorAdapter {
     }
 }
 
-#[test]
-fn notification_wait_propagates_adapter_error() {
-    let err = execute(
-        WaitArgs {
+struct WindowErrorAdapter;
+
+impl PlatformAdapter for WindowErrorAdapter {
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Err(AdapterError::permission_denied())
+    }
+}
+
+fn wait_args() -> WaitArgs {
+    WaitArgs {
+        mode: WaitModeArgs {
             ms: None,
             element: None,
+            window: None,
+            text: None,
+            menu: false,
+            menu_closed: false,
+            notification: false,
+        },
+        predicate: WaitPredicateArgs {
             snapshot_id: None,
             predicate: None,
             value: None,
             count: None,
-            window: None,
-            text: None,
-            timeout_ms: 1,
-            menu: false,
-            menu_closed: false,
-            notification: true,
-            app: None,
+        },
+        timeout_ms: 1,
+        app: None,
+    }
+}
+
+#[test]
+fn notification_wait_propagates_adapter_error() {
+    let err = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                notification: true,
+                ..wait_args().mode
+            },
+            ..wait_args()
         },
         &NotificationErrorAdapter,
     )
@@ -52,19 +75,12 @@ fn notification_wait_propagates_adapter_error() {
 fn rejects_multiple_wait_modes() {
     let err = execute(
         WaitArgs {
-            ms: Some(1),
-            element: Some("@e1".into()),
-            snapshot_id: None,
-            predicate: None,
-            value: None,
-            count: None,
-            window: None,
-            text: None,
-            timeout_ms: 1,
-            menu: false,
-            menu_closed: false,
-            notification: false,
-            app: None,
+            mode: WaitModeArgs {
+                ms: Some(1),
+                element: Some("@e1".into()),
+                ..wait_args().mode
+            },
+            ..wait_args()
         },
         &NoopAdapter,
     )
@@ -75,21 +91,48 @@ fn rejects_multiple_wait_modes() {
 }
 
 #[test]
+fn window_wait_propagates_permanent_adapter_error() {
+    let err = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                window: Some("Document".into()),
+                ..wait_args().mode
+            },
+            ..wait_args()
+        },
+        &WindowErrorAdapter,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "PERM_DENIED");
+}
+
+#[test]
+fn text_wait_propagates_permanent_snapshot_error() {
+    let err = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                text: Some("hello".into()),
+                ..wait_args().mode
+            },
+            ..wait_args()
+        },
+        &WindowErrorAdapter,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "PERM_DENIED");
+}
+
+#[test]
 fn notification_wait_allows_text_filter() {
     let result = validate_wait_mode(&WaitArgs {
-        ms: None,
-        element: None,
-        snapshot_id: None,
-        predicate: None,
-        value: None,
-        count: None,
-        window: None,
-        text: Some("done".into()),
-        timeout_ms: 1,
-        menu: false,
-        menu_closed: false,
-        notification: true,
-        app: None,
+        mode: WaitModeArgs {
+            text: Some("done".into()),
+            notification: true,
+            ..wait_args().mode
+        },
+        ..wait_args()
     });
 
     assert!(result.is_ok());
@@ -98,19 +141,11 @@ fn notification_wait_allows_text_filter() {
 #[test]
 fn predicate_requires_element_mode() {
     let err = validate_wait_mode(&WaitArgs {
-        ms: None,
-        element: None,
-        snapshot_id: None,
-        predicate: Some("enabled".into()),
-        value: None,
-        count: None,
-        window: None,
-        text: None,
-        timeout_ms: 1,
-        menu: false,
-        menu_closed: false,
-        notification: false,
-        app: None,
+        predicate: WaitPredicateArgs {
+            predicate: Some("enabled".into()),
+            ..wait_args().predicate
+        },
+        ..wait_args()
     })
     .unwrap_err();
 

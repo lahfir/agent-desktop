@@ -56,7 +56,7 @@ pub(crate) struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Fail the command if writing --trace fails"
+        help = "Fail on trace setup/pre-action write errors"
     )]
     pub trace_strict: bool,
 

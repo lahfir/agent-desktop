@@ -5,10 +5,17 @@ pub(crate) struct NodeAttrs {
     pub(crate) description: Option<String>,
     pub(crate) value: Option<String>,
     pub(crate) enabled: bool,
+    pub(crate) focused: Option<bool>,
+    pub(crate) expanded: Option<bool>,
+    pub(crate) disclosing: Option<bool>,
 }
 
 pub(crate) fn parse_enabled(enabled: Option<String>) -> bool {
     enabled.map(|s| s == "true").unwrap_or(true)
+}
+
+pub(crate) fn parse_bool_attr(value: Option<String>) -> Option<bool> {
+    value.map(|s| s == "true")
 }
 
 #[cfg(test)]

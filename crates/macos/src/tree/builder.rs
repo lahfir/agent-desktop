@@ -168,7 +168,11 @@ pub fn build_subtree(
     if is_secure_text {
         states.push("secure".into());
     }
-    if element_is_expanded(el) {
+    if attrs
+        .expanded
+        .or(attrs.disclosing)
+        .unwrap_or_else(|| element_is_expanded(el))
+    {
         states.push("expanded".into());
     }
     if super::roles::is_toggleable_role(&role) && value_is_checked(value.as_deref()) {

@@ -71,6 +71,7 @@ fn open_trace_file(path: &Path) -> Result<std::fs::File, AppError> {
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
+        options.custom_flags(libc::O_NOFOLLOW);
     }
     let file = options.open(path).map_err(AppError::from)?;
     reject_loose_trace_permissions(&file)?;
@@ -151,5 +152,32 @@ fn redacted_value(value: Value) -> Value {
         Value::Object(map) => json!({ "redacted": true, "keys": map.len() }),
         Value::Null => Value::Null,
         _ => json!({ "redacted": true }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn trace_open_rejects_symlink_paths() {
+        let base = std::env::temp_dir().join(format!(
+            "agent-desktop-trace-symlink-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let target = base.with_extension("target");
+        let link = base.with_extension("link");
+        std::fs::write(&target, b"existing").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let result = open_trace_file(&link);
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_file(&target);
     }
 }

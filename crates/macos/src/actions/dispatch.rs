@@ -64,6 +64,7 @@ mod imp {
     ) -> Result<ActionResult, AdapterError> {
         let action = &request.action;
         let label = action_label(action);
+        let mut steps = Vec::new();
         tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
@@ -72,7 +73,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::CLICK_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::CLICK_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::DoubleClick => {
@@ -86,13 +93,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(
+                steps.extend(execute_chain(
                     el,
                     &caps,
                     &chain_defs::RIGHT_CLICK_CHAIN,
                     &ctx,
                     request.policy,
-                )?;
+                )?);
             }
 
             Action::Toggle => {
@@ -105,13 +112,13 @@ mod imp {
                     dynamic_value: Some(val),
                     deadline: None,
                 };
-                execute_chain(
+                steps.extend(execute_chain(
                     el,
                     &caps,
                     &chain_defs::SET_VALUE_CHAIN,
                     &ctx,
                     request.policy,
-                )?;
+                )?);
             }
 
             Action::SetFocus => {
@@ -120,7 +127,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::FOCUS_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::FOCUS_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::TypeText(text) => {
@@ -137,7 +150,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::EXPAND_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::EXPAND_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::Collapse => {
@@ -146,7 +165,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::COLLAPSE_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::COLLAPSE_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::Select(value) => {
@@ -176,13 +201,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(
+                steps.extend(execute_chain(
                     el,
                     &caps,
                     &chain_defs::SCROLL_TO_CHAIN,
                     &ctx,
                     request.policy,
-                )?;
+                )?);
             }
 
             Action::Clear => {
@@ -191,7 +216,13 @@ mod imp {
                     dynamic_value: Some(""),
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::CLEAR_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::CLEAR_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
@@ -210,7 +241,7 @@ mod imp {
             }
         }
 
-        let mut result = ActionResult::new(label);
+        let mut result = ActionResult::new(label).with_steps(steps);
         if let Some(state) = crate::actions::post_state::read_post_state(el, action) {
             verify_post_state(action, &state)?;
             result = result.with_state(state);

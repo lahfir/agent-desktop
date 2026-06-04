@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Args, Parser};
 use serde::Deserialize;
 
 fn default_launch_timeout() -> u64 {
@@ -97,10 +97,51 @@ pub(crate) struct ClipboardSetArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WaitArgs {
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub mode: WaitModeArgs,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub predicate: WaitPredicateArgs,
+    #[arg(
+        long,
+        default_value = "30000",
+        help = "Timeout in milliseconds for element/window/text waits"
+    )]
+    #[serde(default = "default_wait_timeout")]
+    pub timeout: u64,
+    #[arg(long, help = "Scope element, window, or text wait to this application")]
+    pub app: Option<String>,
+}
+
+#[derive(Args, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WaitModeArgs {
     #[arg(value_name = "MS", help = "Milliseconds to pause")]
     pub ms: Option<u64>,
     #[arg(long, help = "Block until this element ref appears in the tree")]
     pub element: Option<String>,
+    #[arg(long, help = "Block until a window with this title appears")]
+    pub window: Option<String>,
+    #[arg(
+        long,
+        help = "Block until text appears in the app's accessibility tree; with --notification, filter notification text"
+    )]
+    pub text: Option<String>,
+    #[arg(long, help = "Block until a menu surface is open")]
+    #[serde(default)]
+    pub menu: bool,
+    #[arg(long, help = "Block until the menu surface is dismissed")]
+    #[serde(default)]
+    pub menu_closed: bool,
+    #[arg(long, help = "Block until a new notification arrives")]
+    #[serde(default)]
+    pub notification: bool,
+}
+
+#[derive(Args, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WaitPredicateArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
@@ -125,31 +166,6 @@ pub(crate) struct WaitArgs {
         help = "Expected match count for --text waits"
     )]
     pub count: Option<usize>,
-    #[arg(long, help = "Block until a window with this title appears")]
-    pub window: Option<String>,
-    #[arg(
-        long,
-        help = "Block until text appears in the app's accessibility tree; with --notification, filter notification text"
-    )]
-    pub text: Option<String>,
-    #[arg(
-        long,
-        default_value = "30000",
-        help = "Timeout in milliseconds for element/window/text waits"
-    )]
-    #[serde(default = "default_wait_timeout")]
-    pub timeout: u64,
-    #[arg(long, help = "Block until a menu surface is open")]
-    #[serde(default)]
-    pub menu: bool,
-    #[arg(long, help = "Block until the menu surface is dismissed")]
-    #[serde(default)]
-    pub menu_closed: bool,
-    #[arg(long, help = "Block until a new notification arrives")]
-    #[serde(default)]
-    pub notification: bool,
-    #[arg(long, help = "Scope element, window, or text wait to this application")]
-    pub app: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]

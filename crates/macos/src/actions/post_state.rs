@@ -24,13 +24,13 @@ pub(crate) fn read_post_state(
 pub(crate) fn read_element_state(el: &crate::tree::AXElement) -> ElementState {
     let attrs = crate::tree::element::fetch_node_attrs(el);
     let role = normalized_role(attrs.role.as_deref());
-    element_state_from_attrs(el, attrs, role)
+    element_state_from_attrs(attrs, role)
 }
 
 pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
     let attrs = crate::tree::element::fetch_node_attrs(el);
     let role = normalized_role(attrs.role.as_deref());
-    let state = element_state_from_attrs(el, attrs, role.clone());
+    let state = element_state_from_attrs(attrs, role.clone());
     LiveElement {
         state: Some(state),
         bounds: crate::tree::read_bounds(el),
@@ -40,16 +40,10 @@ pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
     }
 }
 
-fn element_state_from_attrs(
-    el: &crate::tree::AXElement,
-    attrs: crate::tree::NodeAttrs,
-    role: String,
-) -> ElementState {
+fn element_state_from_attrs(attrs: crate::tree::NodeAttrs, role: String) -> ElementState {
     let value = attrs.value;
-    let focused = crate::tree::element::copy_bool_attr(el, "AXFocused").unwrap_or(false);
-    let expanded = crate::tree::element::copy_bool_attr(el, "AXExpanded")
-        .or_else(|| crate::tree::element::copy_bool_attr(el, "AXDisclosing"))
-        .unwrap_or(false);
+    let focused = attrs.focused.unwrap_or(false);
+    let expanded = attrs.expanded.or(attrs.disclosing).unwrap_or(false);
     let mut states = Vec::new();
     if focused {
         states.push("focused".into());

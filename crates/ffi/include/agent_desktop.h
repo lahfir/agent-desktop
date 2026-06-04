@@ -393,6 +393,10 @@ typedef struct AdWindowOp {
 } AdWindowOp;
 
 /**
+ * Low-level native-handle action. This does not perform strict ref
+ * re-identification or actionability preflight; callers that want CLI parity
+ * should use `ad_execute_ref_action_with_policy`.
+ *
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -406,6 +410,10 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
                            struct AdActionResult *out);
 
 /**
+ * Low-level native-handle action with explicit interaction policy. This does
+ * not perform strict ref re-identification or actionability preflight; callers
+ * that want CLI parity should use `ad_execute_ref_action_with_policy`.
+ *
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -420,6 +428,9 @@ AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
                                        struct AdActionResult *out);
 
 /**
+ * Strict ref action path matching CLI semantics: resolve the full ref identity,
+ * run actionability preflight, then dispatch using the requested policy.
+ *
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.

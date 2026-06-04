@@ -5,6 +5,10 @@ adapter is the first implementation, but the tests are written against
 `PlatformAdapter` semantics so Windows UIA and Linux AT-SPI can reuse the same
 expectations.
 
+The executable smoke harness lives in `src/tests/conformance.rs`. It uses the
+public `PlatformAdapter` contract to prove stale live identity blocks dispatch
+and stable live identity permits dispatch.
+
 ## Required Gates
 
 | Area | Required behavior |

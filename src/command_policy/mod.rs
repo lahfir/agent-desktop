@@ -157,7 +157,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
             }
         }
         Commands::Wait(args) => {
-            if let Some(ref_id) = &args.element {
+            if let Some(ref_id) = &args.mode.element {
                 validate_ref_id(ref_id)?;
             }
         }

@@ -76,7 +76,7 @@ pub fn build(
         })?
     };
 
-    let raw_tree = adapter.get_tree(&window, opts)?;
+    let raw_tree = adapter.get_tree(&window, &opts.with_ref_identity_bounds())?;
 
     let mut refmap = RefMap::new();
     let config = RefAllocConfig {
@@ -172,7 +172,7 @@ pub fn append_surface_refs_with_context(
         interactive_only: true,
         ..Default::default()
     };
-    let raw_tree = adapter.get_tree(&window, &opts)?;
+    let raw_tree = adapter.get_tree(&window, &opts.with_ref_identity_bounds())?;
     let store = RefStore::for_session(context.session_id())?;
     let mut refmap = store.load_latest()?;
     let config = RefAllocConfig {

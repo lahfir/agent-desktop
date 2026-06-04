@@ -1,5 +1,5 @@
 use super::*;
-use crate::action::{Action, ActionResult, InteractionPolicy};
+use crate::action::{Action, ActionResult, ActionStep, ElementState, InteractionPolicy};
 use crate::adapter::NativeHandle;
 use crate::error::{AdapterError, ErrorCode};
 use crate::node::AppInfo;
@@ -38,7 +38,13 @@ impl PlatformAdapter for RecordingAdapter {
         request: ActionRequest,
     ) -> Result<ActionResult, AdapterError> {
         *self.request.lock().unwrap() = Some(request);
-        Ok(ActionResult::new("ok"))
+        Ok(ActionResult::new("ok")
+            .with_state(ElementState {
+                role: "textfield".into(),
+                states: vec!["focused".into()],
+                value: Some("updated".into()),
+            })
+            .with_steps(vec![ActionStep::succeeded("AXPress")]))
     }
 }
 
@@ -210,6 +216,10 @@ fn ref_action_trace_does_not_include_typed_text_payload() {
 
     let trace = std::fs::read_to_string(&trace_path).unwrap();
     assert!(trace.contains("\"action\":\"type\""));
+    assert!(trace.contains("\"event\":\"action.dispatch.start\""));
+    assert!(trace.contains("\"event\":\"action.dispatch.ok\""));
+    assert!(trace.contains("\"post_state\""));
+    assert!(trace.contains("\"steps\""));
     assert!(!trace.contains("super-secret"));
     let _ = std::fs::remove_file(trace_path);
 }

@@ -18,22 +18,31 @@ use crate::commands::wait_mode::validate_wait_mode;
 
 #[derive(Clone)]
 pub struct WaitArgs {
+    pub mode: WaitModeArgs,
+    pub predicate: WaitPredicateArgs,
+    pub timeout_ms: u64,
+    pub app: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct WaitModeArgs {
     pub ms: Option<u64>,
     pub element: Option<String>,
+    pub window: Option<String>,
+    pub text: Option<String>,
+    pub menu: bool,
+    pub menu_closed: bool,
+    pub notification: bool,
+}
+
+#[derive(Clone)]
+pub struct WaitPredicateArgs {
     pub snapshot_id: Option<String>,
     pub predicate: Option<String>,
     pub value: Option<String>,
     pub count: Option<usize>,
-    pub window: Option<String>,
-    pub text: Option<String>,
-    pub timeout_ms: u64,
-    pub menu: bool,
-    pub menu_closed: bool,
-    pub notification: bool,
-    pub app: Option<String>,
 }
 
-#[cfg(test)]
 pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     execute_with_context(args, adapter, &CommandContext::default())
 }
@@ -173,13 +182,23 @@ fn wait_for_window(
         focused_only: false,
         app: None,
     };
+    let mut last_error = None;
 
     loop {
-        if let Ok(windows) = adapter.list_windows(&filter) {
-            if let Some(win) = windows.into_iter().find(|w| w.title.contains(&title)) {
-                let elapsed = start.elapsed().as_millis();
-                return Ok(json!({ "found": true, "window": win, "elapsed_ms": elapsed }));
+        match adapter.list_windows(&filter) {
+            Ok(windows) => {
+                if let Some(win) = windows.into_iter().find(|w| w.title.contains(&title)) {
+                    let elapsed = start.elapsed().as_millis();
+                    return Ok(json!({ "found": true, "window": win, "elapsed_ms": elapsed }));
+                }
             }
+            Err(err) if is_retryable_wait_poll_error(&err.code) => {
+                last_error = Some(json!({
+                    "code": err.code.as_str(),
+                    "message": err.message
+                }));
+            }
+            Err(err) => return Err(AppError::Adapter(err)),
         }
 
         let remaining = timeout.saturating_sub(start.elapsed());
@@ -191,7 +210,8 @@ fn wait_for_window(
                 .with_details(json!({
                     "predicate": "window",
                     "title": title,
-                    "timeout_ms": timeout_ms
+                    "timeout_ms": timeout_ms,
+                    "last_error": last_error
                 })),
             ));
         }
@@ -223,28 +243,38 @@ fn wait_for_text(
     let opts = crate::adapter::TreeOptions::default();
     let normalized_text = search_text::normalize(&text);
     let mut interval = Duration::from_millis(200);
+    let mut last_error = None;
 
     loop {
-        if let Ok(result) = snapshot::build(adapter, &opts, app.as_deref(), None) {
-            let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
-            let matched = expected_count
-                .map(|expected| matches.len() == expected)
-                .unwrap_or_else(|| !matches.is_empty());
-            if matched {
-                let snapshot_id = RefStore::for_session(context.session_id())?
-                    .save_new_snapshot(&result.refmap)?;
-                let elapsed = start.elapsed().as_millis();
-                let found = matches.first();
-                return Ok(json!({
-                    "found": true,
-                    "text": text,
-                    "ref": found.and_then(|found| found.ref_id.clone()),
-                    "role": found.map(|found| found.role.clone()),
-                    "count": matches.len(),
-                    "snapshot_id": snapshot_id,
-                    "elapsed_ms": elapsed
+        match snapshot::build(adapter, &opts, app.as_deref(), None) {
+            Ok(result) => {
+                let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
+                let matched = expected_count
+                    .map(|expected| matches.len() == expected)
+                    .unwrap_or_else(|| !matches.is_empty());
+                if matched {
+                    let snapshot_id = RefStore::for_session(context.session_id())?
+                        .save_new_snapshot(&result.refmap)?;
+                    let elapsed = start.elapsed().as_millis();
+                    let found = matches.first();
+                    return Ok(json!({
+                        "found": true,
+                        "text": text,
+                        "ref": found.and_then(|found| found.ref_id.clone()),
+                        "role": found.map(|found| found.role.clone()),
+                        "count": matches.len(),
+                        "snapshot_id": snapshot_id,
+                        "elapsed_ms": elapsed
+                    }));
+                }
+            }
+            Err(err) if is_retryable_wait_app_error(&err) => {
+                last_error = Some(json!({
+                    "code": err.code(),
+                    "message": err.to_string()
                 }));
             }
+            Err(err) => return Err(err),
         }
 
         let remaining = timeout.saturating_sub(start.elapsed());
@@ -257,7 +287,8 @@ fn wait_for_text(
                     "predicate": "text",
                     "text_chars": text.chars().count(),
                     "timeout_ms": timeout_ms,
-                    "expected_count": expected_count
+                    "expected_count": expected_count,
+                    "last_error": last_error
                 })),
             ));
         }
@@ -265,6 +296,14 @@ fn wait_for_text(
         std::thread::sleep(remaining.min(interval));
         interval = (interval * 2).min(Duration::from_millis(1000));
     }
+}
+
+fn is_retryable_wait_poll_error(code: &ErrorCode) -> bool {
+    matches!(code, ErrorCode::Timeout | ErrorCode::ElementNotFound)
+}
+
+fn is_retryable_wait_app_error(err: &AppError) -> bool {
+    matches!(err.code(), "TIMEOUT" | "ELEMENT_NOT_FOUND")
 }
 
 fn wait_for_notification(

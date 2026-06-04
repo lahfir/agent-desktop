@@ -148,7 +148,7 @@ fn allocate_refs_records_structural_paths() {
 }
 
 #[test]
-fn allocate_refs_hides_bounds_from_refmap_when_snapshot_hides_bounds() {
+fn allocate_refs_keeps_bounds_hash_when_snapshot_hides_bounds() {
     let mut root = node("window", Some("w"));
     root.children = vec![node("button", Some("Open"))];
     let mut refmap = RefMap::new();
@@ -171,10 +171,20 @@ fn allocate_refs_hides_bounds_from_refmap_when_snapshot_hides_bounds() {
 
     assert!(out.children[0].bounds.is_none());
     assert!(entry.bounds.is_none());
-    assert!(entry.bounds_hash.is_none());
+    assert_eq!(entry.bounds_hash, Some(entry_hash()));
     assert_eq!(entry.path.as_slice(), [0]);
     assert_eq!(entry.source_window_id.as_deref(), Some("w-42"));
     assert_eq!(entry.source_window_title.as_deref(), Some("Documents"));
+}
+
+fn entry_hash() -> u64 {
+    Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 10.0,
+        height: 10.0,
+    }
+    .bounds_hash()
 }
 
 #[test]

@@ -189,6 +189,8 @@ agent-desktop is @e7 --snapshot s8f3k2p9 --property checked # check boolean stat
 agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers, alerts
 ```
 
+`get` and `is` resolve the ref once, prefer live platform reads when available, and fall back only when that live read is unsupported by the adapter.
+
 ### Interaction
 
 ```bash
@@ -388,9 +390,9 @@ Reliability contract:
 - `--session <id>` scopes snapshots, refs, and the latest snapshot pointer to one caller or agent team.
 - Ref actions use strict re-identification and return `STALE_REF` instead of acting on a changed target.
 - Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
-- Actions run an actionability preflight before dispatch: visibility, enabled state, supported action, policy, and editability.
+- Actions run an actionability preflight before dispatch: visibility, stability, enabled state, supported action, policy, and editability.
 - `wait --element @e3 --predicate actionable` polls until the target can be acted on.
-- `--trace <path>` appends JSONL diagnostics outside stdout; add `--trace-strict` to fail if trace writing fails.
+- `--trace <path>` appends JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action trace writes, while post-action success traces are best-effort after the desktop mutation has already happened.
 
 Stale ref recovery:
 

@@ -78,6 +78,12 @@ struct UnsupportedLiveAdapter;
 impl PlatformAdapter for UnsupportedLiveAdapter {}
 
 fn entry() -> RefEntry {
+    let bounds = Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     RefEntry {
         pid: 1,
         role: "button".into(),
@@ -85,13 +91,8 @@ fn entry() -> RefEntry {
         value: None,
         description: None,
         states: vec![],
-        bounds: Some(Rect {
-            x: 1.0,
-            y: 1.0,
-            width: 20.0,
-            height: 20.0,
-        }),
-        bounds_hash: Some(1),
+        bounds: Some(bounds),
+        bounds_hash: Some(bounds.bounds_hash()),
         available_actions: vec!["Click".into()],
         source_app: None,
         source_window_id: None,
@@ -125,12 +126,14 @@ fn disabled_entry_fails_before_action_dispatch() {
 #[test]
 fn zero_sized_bounds_fail_visibility() {
     let mut entry = entry();
-    entry.bounds = Some(Rect {
+    let bounds = Rect {
         x: 1.0,
         y: 1.0,
         width: 0.0,
         height: 20.0,
-    });
+    };
+    entry.bounds = Some(bounds);
+    entry.bounds_hash = Some(bounds.bounds_hash());
 
     let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
 
@@ -278,6 +281,32 @@ fn live_actionability_fails_when_action_disappears_after_snapshot() {
 
     assert_eq!(err.code, ErrorCode::ActionFailed);
     assert!(err.message.contains("supported_action"));
+}
+
+#[test]
+fn live_actionability_fails_stale_when_bounds_changed_after_snapshot() {
+    let stale = entry();
+    let adapter = LiveAdapter {
+        state: None,
+        bounds: Some(Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 20.0,
+            height: 20.0,
+        }),
+        actions: Some(vec!["Click".into()]),
+    };
+
+    let err = check_live(
+        &stale,
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::StaleRef);
+    assert!(err.message.contains("stable"));
 }
 
 #[test]
