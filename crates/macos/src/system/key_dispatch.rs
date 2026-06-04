@@ -1,7 +1,4 @@
-use agent_desktop_core::{
-    action::{ActionResult, KeyCombo},
-    error::AdapterError,
-};
+use agent_desktop_core::{action::KeyCombo, action_result::ActionResult, error::AdapterError};
 
 #[cfg(target_os = "macos")]
 use agent_desktop_core::{action::Modifier, adapter::WindowFilter};

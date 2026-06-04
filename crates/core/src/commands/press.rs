@@ -1,5 +1,6 @@
 use crate::{
-    action::{Action, ActionRequest, KeyCombo, Modifier},
+    action::{Action, KeyCombo, Modifier},
+    action_request::ActionRequest,
     adapter::PlatformAdapter,
     error::AppError,
 };

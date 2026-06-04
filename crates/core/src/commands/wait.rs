@@ -66,11 +66,27 @@ pub fn execute_with_context(
             ref_id,
             snapshot_id,
             predicate,
-        } => wait_for_element(ref_id, snapshot_id, predicate, timeout_ms, adapter, context),
+        } => wait_for_element(
+            ElementWaitInput {
+                ref_id,
+                snapshot_id,
+                predicate,
+                timeout_ms,
+            },
+            adapter,
+            context,
+        ),
         WaitMode::Window(title) => wait_for_window(title, timeout_ms, adapter),
-        WaitMode::Text { text, count, app } => {
-            wait_for_text(text, count, app, timeout_ms, adapter, context)
-        }
+        WaitMode::Text { text, count, app } => wait_for_text(
+            TextWaitInput {
+                text,
+                expected_count: count,
+                app,
+                timeout_ms,
+            },
+            adapter,
+            context,
+        ),
     }
 }
 
@@ -89,14 +105,24 @@ fn wait_for_menu(
     Ok(json!({ "found": true, "elapsed_ms": elapsed }))
 }
 
-fn wait_for_element(
+struct ElementWaitInput {
     ref_id: String,
     snapshot_id: Option<String>,
     predicate: wait_predicate::ElementPredicate,
     timeout_ms: u64,
+}
+
+fn wait_for_element(
+    input: ElementWaitInput,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    let ElementWaitInput {
+        ref_id,
+        snapshot_id,
+        predicate,
+        timeout_ms,
+    } = input;
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
     let store = RefStore::for_session(context.session_id())?;
@@ -203,17 +229,7 @@ fn wait_for_window(
 
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            return Err(AppError::Adapter(
-                crate::error::AdapterError::timeout(format!(
-                    "Window with title '{title}' not found within {timeout_ms}ms"
-                ))
-                .with_details(json!({
-                    "predicate": "window",
-                    "title": title,
-                    "timeout_ms": timeout_ms,
-                    "last_error": last_error
-                })),
-            ));
+            return wait_timeout::window(&title, timeout_ms, last_error);
         }
 
         std::thread::sleep(remaining.min(Duration::from_millis(100)));
@@ -230,14 +246,24 @@ fn is_retryable_wait_resolution_error(code: &ErrorCode) -> bool {
     )
 }
 
-fn wait_for_text(
+struct TextWaitInput {
     text: String,
     expected_count: Option<usize>,
     app: Option<String>,
     timeout_ms: u64,
+}
+
+fn wait_for_text(
+    input: TextWaitInput,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    let TextWaitInput {
+        text,
+        expected_count,
+        app,
+        timeout_ms,
+    } = input;
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
     let opts = crate::adapter::TreeOptions::default();
@@ -279,18 +305,7 @@ fn wait_for_text(
 
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            return Err(AppError::Adapter(
-                crate::error::AdapterError::timeout(format!(
-                    "Text '{text}' did not match within {timeout_ms}ms"
-                ))
-                .with_details(json!({
-                    "predicate": "text",
-                    "text_chars": text.chars().count(),
-                    "timeout_ms": timeout_ms,
-                    "expected_count": expected_count,
-                    "last_error": last_error
-                })),
-            ));
+            return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
         }
 
         std::thread::sleep(remaining.min(interval));
@@ -328,17 +343,7 @@ fn wait_for_notification(
     loop {
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            return Err(AppError::Adapter(
-                crate::error::AdapterError::timeout(format!(
-                    "No new notification within {timeout_ms}ms"
-                ))
-                .with_details(json!({
-                    "predicate": "notification",
-                    "timeout_ms": timeout_ms,
-                    "app": app.clone(),
-                    "text_chars": text.as_ref().map(|text| text.chars().count())
-                })),
-            ));
+            return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms);
         }
         let current = adapter
             .list_notifications(&filter)

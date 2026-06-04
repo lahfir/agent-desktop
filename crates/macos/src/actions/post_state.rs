@@ -1,7 +1,4 @@
-use agent_desktop_core::{
-    action::{Action, ElementState},
-    adapter::LiveElement,
-};
+use agent_desktop_core::{action::Action, adapter::LiveElement, element_state::ElementState};
 
 #[cfg(target_os = "macos")]
 pub(crate) fn read_post_state(

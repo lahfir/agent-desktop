@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    action::ActionResult,
+    action_result::ActionResult,
     error::{AdapterError, ErrorCode},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
 };

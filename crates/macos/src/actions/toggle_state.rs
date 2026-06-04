@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    action::InteractionPolicy,
+    action_request::InteractionPolicy,
     error::{AdapterError, ErrorCode},
 };
 

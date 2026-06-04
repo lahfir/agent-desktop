@@ -63,6 +63,7 @@ agent-desktop is NOT an AI agent. It is a tool that AI agents invoke. It outputs
 ```
 agent-desktop/
 ├── Cargo.toml              # workspace: members, shared deps
+├── CONCEPTS.md             # shared domain vocabulary for refs, snapshots, sessions, actionability, and related concepts
 ├── rust-toolchain.toml     # pinned Rust version
 ├── clippy.toml             # project-wide lint config
 ├── crates/
@@ -77,12 +78,12 @@ agent-desktop/
 │   └── ffi/                # agent-desktop-ffi (cdylib + committed C ABI header)
 ├── src/                    # agent-desktop binary (entry point)
 │   ├── main.rs             # entry point, permission check, JSON envelope
-│   ├── cli.rs              # clap derive enum (Commands)
-│   ├── cli_args.rs         # all command argument structs
-│   ├── batch.rs            # batch JSON → typed Commands
-│   ├── command_policy.rs   # command permission/ref/side-effect policy
-│   ├── dispatch.rs         # command dispatcher + parse helpers
-│   └── dispatch_notifications.rs
+│   ├── batch/              # batch JSON → typed Commands
+│   ├── cli/                # clap derive enum, help text, CLI contract tests
+│   ├── cli_args/           # command argument structs by domain
+│   ├── command_policy/     # permission/ref/side-effect policy
+│   ├── dispatch/           # command dispatcher, parse helpers, notifications
+│   └── tests/              # binary-level conformance tests
 ├── docs/
 │   └── solutions/          # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type); relevant when implementing or debugging in documented areas
 └── tests/
@@ -150,7 +151,7 @@ pub fn dispatch(
 }
 ```
 
-Batch is not a second dispatcher. `src/batch.rs` deserializes JSON entries into the same typed `Commands` enum, runs the same `CommandPolicy` preflight, and calls the same `dispatch()` path as CLI.
+Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries into the same typed `Commands` enum, runs the same `CommandPolicy` preflight, and calls the same `dispatch()` path as CLI.
 
 ### Additive Phase Model
 
@@ -259,7 +260,7 @@ crates/{macos,windows,linux}/src/
 Adding a new command requires exactly these steps:
 1. Create `crates/core/src/commands/{name}.rs` with an `execute()` function
 2. Register it in `crates/core/src/commands/mod.rs`
-3. Add the CLI subcommand variant to `src/cli.rs` (clap derive enum)
+3. Add the CLI subcommand variant to `src/cli/mod.rs` and arguments under `src/cli_args/`
 4. Add a match arm in `dispatch()` in the binary crate
 5. If new `Action` variant needed, add to `crates/core/src/action.rs`
 6. If new adapter method needed, add to `PlatformAdapter` trait with a default returning `Err(AdapterError::not_supported())`

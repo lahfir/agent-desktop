@@ -1,10 +1,13 @@
 use super::*;
-use crate::action::{Action, ActionResult, ActionStep, ElementState, InteractionPolicy};
 use crate::adapter::NativeHandle;
 use crate::error::{AdapterError, ErrorCode};
 use crate::node::AppInfo;
 use crate::refs::RefMap;
 use crate::refs_test_support::HomeGuard;
+use crate::{
+    action::Action, action_request::InteractionPolicy, action_result::ActionResult,
+    action_step::ActionStep, element_state::ElementState,
+};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 

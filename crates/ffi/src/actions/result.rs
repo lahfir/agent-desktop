@@ -1,6 +1,6 @@
 use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
 use crate::types::{AdActionResult, AdElementState};
-use agent_desktop_core::action::ActionResult as CoreActionResult;
+use agent_desktop_core::action_result::ActionResult as CoreActionResult;
 use std::ptr;
 
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
 mod tests {
     use super::*;
     use crate::convert::string::c_to_string;
-    use agent_desktop_core::action::ElementState;
+    use agent_desktop_core::element_state::ElementState;
 
     #[test]
     fn test_action_result_to_c_with_state() {

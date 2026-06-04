@@ -4,23 +4,28 @@ use agent_desktop_core::{
     refs::RefEntry,
 };
 use rustc_hash::FxHashSet;
+use std::time::{Duration, Instant};
 
 use super::AXElement;
-use super::element::{child_attributes, copy_ax_array, copy_string_attr, resolve_element_name};
+use super::attributes::{copy_ax_array, copy_string_attr, set_messaging_timeout};
+use super::element::{child_attributes, resolve_element_name};
 use super::element_dedupe::ElementDedupe;
 use super::resolve_bounds::{bounds_match, should_prune_by_bounds};
+use super::resolve_deadline::{
+    ensure_before_deadline, remaining_before_deadline, sleep_before_retry,
+};
 use super::resolve_identity::{has_meaningful_identity, identity_matches};
 use super::resolve_roots::{candidate_roots, path_candidate_roots};
 
 #[cfg(target_os = "macos")]
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-    resolve_element_with_timeout(entry, std::time::Duration::from_secs(5))
+    resolve_element_with_timeout(entry, Duration::from_secs(5))
 }
 
 #[cfg(target_os = "macos")]
 pub fn resolve_element_with_timeout(
     entry: &RefEntry,
-    timeout: std::time::Duration,
+    timeout: Duration,
 ) -> Result<NativeHandle, AdapterError> {
     tracing::debug!(
         "resolve: searching pid={} role={} name={:?} description={:?} bounds_hash={:?}",
@@ -30,13 +35,12 @@ pub fn resolve_element_with_timeout(
         entry.description.as_deref().unwrap_or("(none)"),
         entry.bounds_hash
     );
-    let resolve_depth: u8 = 50;
-    let deadline = std::time::Instant::now() + timeout;
-    let attempts = 4;
+    let (resolve_depth, attempts) = (50, 4);
+    let deadline = Instant::now() + timeout;
     for attempt in 0..attempts {
         if can_use_path_fast_path(entry) {
-            let path_roots = path_candidate_roots(entry);
-            match find_entry_by_path(&path_roots, entry) {
+            let path_roots = path_candidate_roots(entry, deadline)?;
+            match find_entry_by_path(&path_roots, entry, deadline) {
                 Ok(handle) => {
                     tracing::debug!("resolve: found path match");
                     return Ok(handle);
@@ -57,7 +61,7 @@ pub fn resolve_element_with_timeout(
             }
             continue;
         }
-        let roots = candidate_roots(entry);
+        let roots = candidate_roots(entry, deadline)?;
         match find_entry_in_roots(&roots, entry, resolve_depth, deadline) {
             Ok(handle) => {
                 tracing::debug!("resolve: found exact match");
@@ -91,14 +95,6 @@ fn is_retryable_resolution_error(err: &AdapterError) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn sleep_before_retry(deadline: std::time::Instant) {
-    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-    if !remaining.is_zero() {
-        std::thread::sleep(remaining.min(std::time::Duration::from_millis(75)));
-    }
-}
-
-#[cfg(target_os = "macos")]
 fn can_use_path_fast_path(entry: &RefEntry) -> bool {
     (entry.root_ref.is_none() || entry.path_is_absolute)
         && !entry.path.is_empty()
@@ -121,18 +117,24 @@ fn can_use_broad_search(entry: &RefEntry) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+fn find_entry_by_path(
+    roots: &[AXElement],
+    entry: &RefEntry,
+    deadline: Instant,
+) -> Result<NativeHandle, AdapterError> {
     if entry.path.is_empty() {
         return Err(AdapterError::element_not_found("element"));
     }
+    ensure_before_deadline(deadline)?;
 
     let mut matches = Vec::new();
     let mut dedupe = ElementDedupe;
     for root in roots {
+        ensure_before_deadline(deadline)?;
         if matches.len() > 1 {
             break;
         }
-        let Some(candidate) = element_at_path(root, &entry.path) else {
+        let Some(candidate) = element_at_path(root, &entry.path, deadline)? else {
             continue;
         };
         if element_matches_entry(&candidate, entry) {
@@ -144,14 +146,23 @@ fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHan
 }
 
 #[cfg(target_os = "macos")]
-fn element_at_path(root: &AXElement, path: &[usize]) -> Option<AXElement> {
+fn element_at_path(
+    root: &AXElement,
+    path: &[usize],
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
     let mut current = root.clone();
     for idx in path {
+        ensure_before_deadline(deadline)?;
+        set_messaging_timeout(&current, remaining_before_deadline(deadline)?);
         let ax_role = copy_string_attr(&current, accessibility_sys::kAXRoleAttribute);
-        let children = resolve_children(&current, ax_role.as_deref());
-        current = children.get(*idx)?.clone();
+        let children = resolve_children(&current, ax_role.as_deref(), deadline)?;
+        let Some(child) = children.get(*idx) else {
+            return Ok(None);
+        };
+        current = child.clone();
     }
-    Some(current)
+    Ok(Some(current))
 }
 
 #[cfg(target_os = "macos")]
@@ -159,7 +170,7 @@ fn find_entry_in_roots(
     roots: &[AXElement],
     entry: &RefEntry,
     resolve_depth: u8,
-    deadline: std::time::Instant,
+    deadline: Instant,
 ) -> Result<NativeHandle, AdapterError> {
     let mut matches = Vec::new();
     let mut seen_matches = ElementDedupe;
@@ -247,7 +258,7 @@ struct CollectContext<'a> {
     ancestors: &'a mut FxHashSet<usize>,
     seen_matches: &'a mut ElementDedupe,
     matches: &'a mut Vec<AXElement>,
-    deadline: std::time::Instant,
+    deadline: Instant,
 }
 
 #[cfg(target_os = "macos")]
@@ -261,12 +272,7 @@ fn collect_elements_recursive(
     if context.matches.len() > 1 {
         return Ok(());
     }
-    if std::time::Instant::now() > context.deadline {
-        return Err(
-            AdapterError::new(ErrorCode::Timeout, "Element resolution timed out")
-                .with_suggestion("Retry the command, or run 'snapshot' if the UI changed."),
-        );
-    }
+    ensure_before_deadline(context.deadline)?;
 
     let ptr_key = el.0 as usize;
     if !context.ancestors.insert(ptr_key) {
@@ -287,7 +293,7 @@ fn collect_elements_recursive(
     }
 
     if depth < context.max_depth && !should_prune_by_bounds(el, context.entry, depth) {
-        let children = resolve_children(el, ax_role.as_deref());
+        let children = resolve_children(el, ax_role.as_deref(), context.deadline)?;
         for child in &children {
             collect_elements_recursive(child, depth + 1, context)?;
         }
@@ -335,10 +341,16 @@ fn element_matches_path_entry_with_role(
 }
 
 #[cfg(target_os = "macos")]
-fn resolve_children(el: &AXElement, ax_role: Option<&str>) -> Vec<AXElement> {
+fn resolve_children(
+    el: &AXElement,
+    ax_role: Option<&str>,
+    deadline: Instant,
+) -> Result<Vec<AXElement>, AdapterError> {
     let mut seen = FxHashSet::default();
     let mut result = Vec::new();
     for attr in child_attributes(ax_role) {
+        ensure_before_deadline(deadline)?;
+        set_messaging_timeout(el, remaining_before_deadline(deadline)?);
         if let Some(children) = copy_ax_array(el, attr) {
             for child in children {
                 if seen.insert(child.0 as usize) {
@@ -347,7 +359,7 @@ fn resolve_children(el: &AXElement, ax_role: Option<&str>) -> Vec<AXElement> {
             }
         }
     }
-    result
+    Ok(result)
 }
 
 #[cfg(test)]

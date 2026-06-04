@@ -1,5 +1,5 @@
 use super::*;
-use crate::action::ActionRequest;
+use crate::action_request::ActionRequest;
 use crate::adapter::{NativeHandle, PlatformAdapter};
 use crate::error::AdapterError;
 use crate::node::AccessibilityNode;
@@ -86,7 +86,7 @@ impl PlatformAdapter for StubAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
-    ) -> Result<crate::action::ActionResult, AdapterError> {
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
         Err(AdapterError::not_supported("execute_action"))
     }
 }

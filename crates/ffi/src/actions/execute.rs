@@ -4,7 +4,7 @@ use crate::actions::result::action_result_to_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind, AdRefEntry};
-use agent_desktop_core::{action::ActionRequest, adapter::NativeHandle};
+use agent_desktop_core::{action_request::ActionRequest, adapter::NativeHandle};
 
 /// # Safety
 ///

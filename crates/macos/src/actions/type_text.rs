@@ -1,6 +1,6 @@
 #[cfg(target_os = "macos")]
 use agent_desktop_core::{
-    action::InteractionPolicy,
+    action_request::InteractionPolicy,
     error::{AdapterError, ErrorCode},
 };
 
@@ -83,7 +83,7 @@ fn type_via_ax_value(el: &AXElement, text: &str) -> Result<(), AdapterError> {
 pub(crate) fn execute_type(
     _el: &crate::tree::AXElement,
     _text: &str,
-    _policy: agent_desktop_core::action::InteractionPolicy,
+    _policy: agent_desktop_core::action_request::InteractionPolicy,
 ) -> Result<(), agent_desktop_core::error::AdapterError> {
     Err(agent_desktop_core::error::AdapterError::new(
         agent_desktop_core::error::ErrorCode::PlatformNotSupported,

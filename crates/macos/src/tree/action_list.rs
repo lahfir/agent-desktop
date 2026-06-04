@@ -3,6 +3,7 @@ use super::{
     capabilities::{copy_action_names, is_attr_settable},
     copy_first_element_attr,
 };
+use agent_desktop_core::capability;
 
 #[cfg(target_os = "macos")]
 use accessibility_sys::{kAXFocusedAttribute, kAXValueAttribute};
@@ -14,33 +15,33 @@ pub(crate) fn platform_available_actions(el: &AXElement, role: &str) -> Vec<Stri
     let mut actions = Vec::new();
 
     if has("AXPress") {
-        push_unique(&mut actions, "Click");
+        push_unique(&mut actions, capability::CLICK);
         if crate::tree::roles::is_toggleable_role(role) {
-            push_unique(&mut actions, "Toggle");
+            push_unique(&mut actions, capability::TOGGLE);
         }
         if matches!(role, "combobox" | "menuitem" | "tab") {
-            push_unique(&mut actions, "Select");
+            push_unique(&mut actions, capability::SELECT);
         }
     }
     if has("AXShowMenu") && role_allows_context_menu_action(role) {
-        push_unique(&mut actions, "RightClick");
+        push_unique(&mut actions, capability::RIGHT_CLICK);
     }
     if has("AXScrollToVisible") {
-        push_unique(&mut actions, "Scroll");
-        push_unique(&mut actions, "ScrollTo");
+        push_unique(&mut actions, capability::SCROLL);
+        push_unique(&mut actions, capability::SCROLL_TO);
     }
     if has_scroll_mechanism(el, role, &has) {
-        push_unique(&mut actions, "Scroll");
+        push_unique(&mut actions, capability::SCROLL);
     }
     if has("AXIncrement") || has("AXDecrement") || is_attr_settable(el, kAXValueAttribute) {
-        push_unique(&mut actions, "SetValue");
+        push_unique(&mut actions, capability::SET_VALUE);
     }
     if is_attr_settable(el, kAXFocusedAttribute) {
-        push_unique(&mut actions, "SetFocus");
+        push_unique(&mut actions, capability::SET_FOCUS);
     }
     if is_attr_settable(el, "AXExpanded") {
-        push_unique(&mut actions, "Expand");
-        push_unique(&mut actions, "Collapse");
+        push_unique(&mut actions, capability::EXPAND);
+        push_unique(&mut actions, capability::COLLAPSE);
     }
 
     actions

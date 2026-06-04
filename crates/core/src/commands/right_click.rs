@@ -1,5 +1,6 @@
 use crate::{
-    action::{Action, ActionRequest},
+    action::Action,
+    action_request::ActionRequest,
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
     commands::helpers::{RefArgs, execute_ref_action_result_with_context, find_window_for_pid},
     context::CommandContext,

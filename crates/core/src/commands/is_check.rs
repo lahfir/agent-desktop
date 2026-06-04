@@ -1,8 +1,8 @@
 use crate::{
-    action::ElementState,
     adapter::{PlatformAdapter, optional_live_read},
     commands::helpers::resolve_ref_with_context,
     context::CommandContext,
+    element_state::ElementState,
     error::AppError,
     refs::RefEntry,
 };
@@ -78,21 +78,20 @@ fn is_applicable(property: &IsProperty, entry: &RefEntry, state: &ElementState) 
         IsProperty::Checked => {
             crate::roles::is_toggleable_role(&entry.role)
                 || has_state(state, "checked")
-                || has_available_action(entry, "Toggle")
-                || has_available_action(entry, "Check")
-                || has_available_action(entry, "Uncheck")
+                || crate::capability::contains_any(
+                    &entry.available_actions,
+                    crate::capability::CHECKED_APPLICABILITY,
+                )
         }
         IsProperty::Expanded => {
             crate::roles::is_expandable_role(&entry.role)
                 || has_state(state, "expanded")
-                || has_available_action(entry, "Expand")
-                || has_available_action(entry, "Collapse")
+                || crate::capability::contains_any(
+                    &entry.available_actions,
+                    crate::capability::EXPANDED_APPLICABILITY,
+                )
         }
     }
-}
-
-fn has_available_action(entry: &RefEntry, action: &str) -> bool {
-    entry.available_actions.iter().any(|a| a == action)
 }
 
 #[cfg(test)]

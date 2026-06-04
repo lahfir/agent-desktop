@@ -1,10 +1,13 @@
 use agent_desktop_core::{
     PermissionReport,
-    action::{ActionRequest, ActionResult, DragParams, ElementState, MouseEvent, WindowOp},
+    action::{DragParams, MouseEvent, WindowOp},
+    action_request::ActionRequest,
+    action_result::ActionResult,
     adapter::{
         ImageBuffer, LiveElement, NativeHandle, PlatformAdapter, ScreenshotTarget, SnapshotSurface,
         TreeOptions, WindowFilter,
     },
+    element_state::ElementState,
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
@@ -144,7 +147,7 @@ impl PlatformAdapter for MacOSAdapter {
         &self,
         app_name: &str,
         combo: &agent_desktop_core::action::KeyCombo,
-    ) -> Result<agent_desktop_core::action::ActionResult, AdapterError> {
+    ) -> Result<ActionResult, AdapterError> {
         crate::system::key_dispatch::press_for_app_impl(app_name, combo)
     }
 

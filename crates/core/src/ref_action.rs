@@ -1,9 +1,6 @@
 use crate::{
-    action::{ActionRequest, ActionResult},
-    actionability,
-    adapter::PlatformAdapter,
-    error::AdapterError,
-    refs::RefEntry,
+    action_request::ActionRequest, action_result::ActionResult, actionability,
+    adapter::PlatformAdapter, error::AdapterError, refs::RefEntry,
 };
 
 pub fn execute_entry(

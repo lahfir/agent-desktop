@@ -4,19 +4,6 @@ use crate::refs::{RefEntry, RefMap};
 
 pub(crate) use crate::roles::INTERACTIVE_ROLES;
 
-pub(crate) fn actions_for_role(role: &str) -> Vec<String> {
-    match role {
-        "button" | "link" | "menuitem" | "tab" | "radiobutton" => vec!["Click".into()],
-        "textfield" | "incrementor" => vec!["Click".into(), "SetValue".into(), "SetFocus".into()],
-        "checkbox" => vec!["Click".into(), "Toggle".into()],
-        "combobox" => vec!["Click".into(), "Select".into()],
-        "treeitem" => vec!["Click".into(), "Expand".into(), "Collapse".into()],
-        "slider" => vec!["SetValue".into()],
-        "cell" => vec!["Click".into()],
-        _ => vec!["Click".into()],
-    }
-}
-
 pub(crate) fn ref_entry_from_node(
     node: &AccessibilityNode,
     pid: i32,
@@ -36,7 +23,7 @@ pub(crate) fn ref_entry_from_node(
         bounds: node.bounds,
         bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
         available_actions: if node.available_actions.is_empty() {
-            actions_for_role(&node.role)
+            crate::capability::defaults_for_role(&node.role)
         } else {
             node.available_actions.clone()
         },

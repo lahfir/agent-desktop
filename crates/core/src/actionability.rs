@@ -1,5 +1,7 @@
+use crate::capability;
 use crate::{
-    action::{Action, ActionRequest},
+    action::Action,
+    action_request::ActionRequest,
     adapter::{NativeHandle, PlatformAdapter},
     error::{AdapterError, ErrorCode},
     node::Rect,
@@ -149,7 +151,7 @@ fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> Actionab
             "semantic action unavailable but fallback policy allows attempt",
         );
     }
-    let expected = request.action.semantic_capabilities().join(" or ");
+    let expected = capability::for_action(&request.action).join(" or ");
     fail("supported_action", format!("{expected} is not available"))
 }
 
@@ -179,7 +181,7 @@ fn editable_check(entry: &RefEntry, action: &Action) -> ActionabilityCheck {
     if entry
         .available_actions
         .iter()
-        .any(|action| action == "SetValue")
+        .any(|action| action == capability::SET_VALUE)
     {
         return pass("editable");
     }
@@ -207,8 +209,7 @@ fn failed_check(report: &ActionabilityReport, name: &str) -> bool {
 }
 
 fn supported_by_available_actions(action: &Action, available_actions: &[String]) -> bool {
-    action
-        .semantic_capabilities()
+    capability::for_action(action)
         .iter()
         .any(|expected| available_actions.iter().any(|action| action == expected))
 }

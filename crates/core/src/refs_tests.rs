@@ -1,5 +1,5 @@
 use super::*;
-use crate::{refs_store::RefStore, refs_test_support::HomeGuard};
+use crate::refs_test_support::HomeGuard;
 
 fn entry(role: &str, name: Option<&str>) -> RefEntry {
     RefEntry {
@@ -209,106 +209,6 @@ fn test_save_load_roundtrip_with_home_override() {
 }
 
 #[test]
-fn test_refstore_snapshot_roundtrip_and_latest_pointer() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-    let mut map = RefMap::new();
-    map.allocate(RefEntry {
-        pid: 7,
-        role: "button".into(),
-        name: Some("Send".into()),
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: Some(42),
-        available_actions: vec!["Click".into()],
-        source_app: Some("TestApp".into()),
-        source_window_id: None,
-        source_window_title: Some("Test Window".into()),
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
-    });
-
-    let snapshot_id = store.save_new_snapshot(&map).unwrap();
-
-    assert_eq!(
-        store.latest_snapshot_id().as_deref(),
-        Some(snapshot_id.as_str())
-    );
-    assert_eq!(store.load(Some(&snapshot_id)).unwrap().len(), 1);
-    assert_eq!(store.load(None).unwrap().len(), 1);
-}
-
-#[test]
-fn test_refstore_sessions_are_isolated_from_default_store() {
-    let _guard = HomeGuard::new();
-    let default_store = RefStore::new().unwrap();
-    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
-    let session_b = RefStore::for_session(Some("agent-b")).unwrap();
-
-    let mut default_map = RefMap::new();
-    default_map.allocate(entry("button", Some("Default")));
-    let default_id = default_store.save_new_snapshot(&default_map).unwrap();
-
-    let mut session_map = RefMap::new();
-    session_map.allocate(entry("button", Some("Session A")));
-    let session_id = session_a.save_new_snapshot(&session_map).unwrap();
-
-    assert_eq!(default_store.load(None).unwrap().len(), 1);
-    assert_eq!(
-        default_store
-            .load(Some(&default_id))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
-        Some("Default")
-    );
-    assert_eq!(
-        session_a
-            .load(Some(&session_id))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
-        Some("Session A")
-    );
-    assert!(session_b.load(None).is_err());
-    assert_ne!(
-        default_store.latest_snapshot_id(),
-        session_a.latest_snapshot_id()
-    );
-}
-
-#[test]
-fn test_save_existing_snapshot_does_not_promote_latest_pointer() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-
-    let mut first = RefMap::new();
-    first.allocate(entry("button", Some("First")));
-    let first_id = store.save_new_snapshot(&first).unwrap();
-
-    let mut second = RefMap::new();
-    second.allocate(entry("button", Some("Second")));
-    let second_id = store.save_new_snapshot(&second).unwrap();
-
-    first.allocate(entry("button", Some("First Child")));
-    store.save_existing_snapshot(&first_id, &first).unwrap();
-
-    assert_eq!(
-        store.latest_snapshot_id().as_deref(),
-        Some(second_id.as_str())
-    );
-    assert_eq!(store.load(Some(&first_id)).unwrap().len(), 2);
-}
-
-#[test]
 fn test_snapshot_ids_are_compact_and_valid() {
     let id = new_snapshot_id();
 
@@ -332,20 +232,6 @@ fn test_new_snapshot_id_passes_validation() {
         let id = new_snapshot_id();
         validate_snapshot_id(&id).expect("generated snapshot id must validate");
     }
-}
-
-#[test]
-fn test_refstore_migrates_legacy_latest_refmap() {
-    let _guard = HomeGuard::new();
-    let mut map = RefMap::new();
-    map.allocate(entry("button", Some("Legacy")));
-    map.save().unwrap();
-
-    let store = RefStore::new().unwrap();
-    let loaded = store.load_latest().unwrap();
-
-    assert_eq!(loaded.len(), 1);
-    assert!(store.latest_snapshot_id().is_some());
 }
 
 #[test]

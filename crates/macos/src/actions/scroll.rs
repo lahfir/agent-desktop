@@ -1,5 +1,8 @@
 #[cfg(target_os = "macos")]
-use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::{
+    action_request::InteractionPolicy,
+    error::{AdapterError, ErrorCode},
+};
 
 #[cfg(target_os = "macos")]
 use crate::tree::AXElement;
@@ -9,7 +12,7 @@ pub(crate) fn ax_scroll(
     el: &AXElement,
     direction: &agent_desktop_core::action::Direction,
     amount: u32,
-    policy: agent_desktop_core::action::InteractionPolicy,
+    policy: InteractionPolicy,
 ) -> Result<(), AdapterError> {
     use accessibility_sys::{
         AXUIElementPerformAction, AXUIElementSetAttributeValue, kAXErrorSuccess,

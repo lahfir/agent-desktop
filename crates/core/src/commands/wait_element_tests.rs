@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    action::ElementState,
     adapter::{NativeHandle, PlatformAdapter},
+    element_state::ElementState,
     error::AdapterError,
     node::Rect,
     refs::{RefEntry, RefMap},
@@ -10,6 +10,26 @@ use crate::{
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
+
+fn wait_for_element_test(
+    ref_id: String,
+    snapshot_id: Option<String>,
+    predicate: wait_predicate::ElementPredicate,
+    timeout_ms: u64,
+    adapter: &dyn PlatformAdapter,
+    context: &crate::context::CommandContext,
+) -> Result<Value, AppError> {
+    super::wait_for_element(
+        ElementWaitInput {
+            ref_id,
+            snapshot_id,
+            predicate,
+            timeout_ms,
+        },
+        adapter,
+        context,
+    )
+}
 
 struct NoopAdapter;
 
@@ -125,7 +145,7 @@ fn snapshot_pinned_missing_ref_is_invalid_args() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
-    let err = wait_for_element(
+    let err = wait_for_element_test(
         "@e2".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
@@ -153,7 +173,7 @@ fn element_wait_enabled_predicate_uses_live_state() {
         bounds: None,
     };
 
-    let value = wait_for_element(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Enabled,
@@ -177,7 +197,7 @@ fn element_wait_value_predicate_matches_live_value_without_leaking_it() {
         bounds: None,
     };
 
-    let value = wait_for_element(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Value("ready".into()),
@@ -207,11 +227,11 @@ fn element_wait_timeout_reports_last_actionability_observation() {
         bounds: None,
     };
 
-    let err = wait_for_element(
+    let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Actionable,
-        1,
+        50,
         &adapter,
         &crate::context::CommandContext::default(),
     )
@@ -242,7 +262,7 @@ fn element_wait_actionable_uses_live_state() {
         bounds: None,
     };
 
-    let value = wait_for_element(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Actionable,
@@ -264,7 +284,7 @@ fn element_wait_actionable_retries_until_live_state_converges() {
         states: Mutex::new(vec![vec![], vec!["disabled".into()]]),
     };
 
-    let value = wait_for_element(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Actionable,
@@ -286,7 +306,7 @@ fn element_wait_propagates_live_read_errors_after_releasing_handle() {
         releases: AtomicU32::new(0),
     };
 
-    let err = wait_for_element(
+    let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Enabled,

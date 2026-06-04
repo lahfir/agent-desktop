@@ -13,6 +13,7 @@ const MAX_SAVED_SNAPSHOTS: usize = 512;
 #[derive(Debug, Clone)]
 pub struct RefStore {
     base_dir: PathBuf,
+    allow_legacy_migration: bool,
 }
 
 impl RefStore {
@@ -30,10 +31,12 @@ impl RefStore {
                     .join(".agent-desktop")
                     .join("sessions")
                     .join(session_id),
+                allow_legacy_migration: false,
             });
         }
         Ok(Self {
             base_dir: home.join(".agent-desktop"),
+            allow_legacy_migration: true,
         })
     }
 
@@ -191,6 +194,9 @@ impl RefStore {
     }
 
     fn migrate_legacy_latest(&self) -> Result<Option<RefMap>, AppError> {
+        if !self.allow_legacy_migration {
+            return Ok(None);
+        }
         self.with_write_lock(|| {
             if let Ok(id) = std::fs::read_to_string(self.latest_path()) {
                 let id = id.trim();
@@ -212,3 +218,7 @@ impl RefStore {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "refs_store_tests.rs"]
+mod tests;

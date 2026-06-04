@@ -1,5 +1,6 @@
 use crate::{
-    action::{Action, ActionRequest},
+    action::Action,
+    action_request::ActionRequest,
     adapter::PlatformAdapter,
     commands::helpers::{RefArgs, execute_ref_action_with_context},
     context::CommandContext,

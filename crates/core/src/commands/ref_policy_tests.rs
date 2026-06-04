@@ -1,5 +1,7 @@
 use crate::{
-    action::{Action, ActionRequest, ActionResult, Direction, InteractionPolicy},
+    action::{Action, Direction},
+    action_request::{ActionRequest, InteractionPolicy},
+    action_result::ActionResult,
     adapter::{NativeHandle, PlatformAdapter},
     commands::{
         check, clear, click, collapse, double_click, expand, focus, helpers::RefArgs, right_click,

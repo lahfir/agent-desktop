@@ -1,6 +1,9 @@
 use agent_desktop_core::{
-    action::{Action, ActionRequest, ActionResult, ElementState},
+    action::Action,
+    action_request::ActionRequest,
+    action_result::ActionResult,
     adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
+    element_state::ElementState,
     error::{AdapterError, ErrorCode},
     node::Rect,
     refs::RefEntry,

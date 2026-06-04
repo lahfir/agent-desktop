@@ -9,6 +9,26 @@ use crate::{
 use std::sync::Mutex;
 use std::time::Duration;
 
+fn wait_for_element_test(
+    ref_id: String,
+    snapshot_id: Option<String>,
+    predicate: wait_predicate::ElementPredicate,
+    timeout_ms: u64,
+    adapter: &dyn PlatformAdapter,
+    context: &crate::context::CommandContext,
+) -> Result<Value, AppError> {
+    super::wait_for_element(
+        ElementWaitInput {
+            ref_id,
+            snapshot_id,
+            predicate,
+            timeout_ms,
+        },
+        adapter,
+        context,
+    )
+}
+
 struct AmbiguousResolveAdapter;
 
 impl PlatformAdapter for AmbiguousResolveAdapter {
@@ -104,7 +124,7 @@ fn element_wait_retries_transient_ambiguous_resolution() {
         errors: Mutex::new(vec![ErrorCode::AmbiguousTarget]),
     };
 
-    let value = wait_for_element(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
@@ -126,7 +146,7 @@ fn element_wait_retries_transient_resolution_timeout() {
         errors: Mutex::new(vec![ErrorCode::Timeout]),
     };
 
-    let value = wait_for_element(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
@@ -147,7 +167,7 @@ fn element_wait_passes_remaining_budget_to_resolver() {
         captured_ms: Mutex::new(vec![]),
     };
 
-    let value = wait_for_element(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
@@ -168,7 +188,7 @@ fn element_wait_requires_timeout_aware_resolution() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
-    let err = wait_for_element(
+    let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
@@ -186,7 +206,7 @@ fn element_wait_times_out_after_persistent_ambiguous_resolution() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
-    let err = wait_for_element(
+    let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
@@ -213,7 +233,7 @@ fn element_wait_aborts_terminal_permission_error() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
-    let err = wait_for_element(
+    let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,

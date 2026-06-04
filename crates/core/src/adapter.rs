@@ -1,8 +1,9 @@
 use crate::{
     PermissionReport, PermissionState,
-    action::{
-        ActionRequest, ActionResult, DragParams, ElementState, KeyCombo, MouseEvent, WindowOp,
-    },
+    action::{DragParams, KeyCombo, MouseEvent, WindowOp},
+    action_request::ActionRequest,
+    action_result::ActionResult,
+    element_state::ElementState,
     error::{AdapterError, ErrorCode},
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
@@ -274,7 +275,7 @@ pub trait PlatformAdapter: Send + Sync {
         &self,
         _app_name: &str,
         _combo: &crate::action::KeyCombo,
-    ) -> Result<crate::action::ActionResult, AdapterError> {
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
         Err(AdapterError::not_supported("press_key_for_app"))
     }
 

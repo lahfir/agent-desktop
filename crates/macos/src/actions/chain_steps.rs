@@ -36,7 +36,7 @@ mod imp {
             return ax_helpers::try_ax_action_retried_or_err(el, "AXPress");
         }
         tracing::debug!("verified_press: native element in container, using AXPress");
-        let selected_before = crate::tree::element::copy_bool_attr(el, "AXSelected");
+        let selected_before = crate::tree::copy_bool_attr(el, "AXSelected");
         if !ax_helpers::try_ax_action_retried_or_err(el, "AXPress")? {
             return Ok(false);
         }
@@ -44,7 +44,7 @@ mod imp {
             return Ok(true);
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
-        let selected_after = crate::tree::element::copy_bool_attr(el, "AXSelected");
+        let selected_after = crate::tree::copy_bool_attr(el, "AXSelected");
         if selected_after == Some(true) {
             return Ok(true);
         }

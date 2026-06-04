@@ -1,7 +1,9 @@
 use super::*;
 use crate::{
-    action::{Action, ActionRequest, Direction, ElementState},
+    action::{Action, Direction},
+    action_request::ActionRequest,
     adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
+    element_state::ElementState,
     node::Rect,
     refs::RefEntry,
 };
@@ -156,6 +158,14 @@ fn cursor_movement_requires_physical_policy() {
     let err = check(&entry(), &ActionRequest::headless(Action::Hover)).unwrap_err();
 
     assert!(err.message.contains("policy"));
+}
+
+#[test]
+fn right_click_requires_right_click_capability_before_dispatch() {
+    let err = check(&entry(), &ActionRequest::headless(Action::RightClick)).unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::ActionFailed);
+    assert!(err.message.contains("supported_action"));
 }
 
 #[test]

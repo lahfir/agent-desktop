@@ -117,7 +117,7 @@ fn actionable(
     handle: &NativeHandle,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AdapterError> {
-    let request = crate::action::ActionRequest::headless(crate::action::Action::Click);
+    let request = crate::action_request::ActionRequest::headless(crate::action::Action::Click);
     match crate::actionability::check_live(entry, handle, adapter, &request) {
         Ok(report) => Ok(json!(report)),
         Err(err) if err.code == ErrorCode::ActionFailed => {

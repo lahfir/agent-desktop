@@ -1,8 +1,8 @@
 use agent_desktop_core::{
-    action::{
-        Action, ActionRequest, ActionResult, InteractionPolicy, MouseButton, MouseEvent,
-        MouseEventKind, Point,
-    },
+    action::{Action, MouseButton, MouseEvent, MouseEventKind, Point},
+    action_request::{ActionRequest, InteractionPolicy},
+    action_result::ActionResult,
+    element_state::ElementState,
     error::{AdapterError, ErrorCode},
 };
 
@@ -63,7 +63,7 @@ mod imp {
         request: &ActionRequest,
     ) -> Result<ActionResult, AdapterError> {
         let action = &request.action;
-        let label = action_label(action);
+        let label = action.name();
         let mut steps = Vec::new();
         tracing::debug!("action: perform {label}");
         match action {
@@ -109,7 +109,7 @@ mod imp {
             Action::SetValue(val) => {
                 let caps = discovery::discover(el);
                 let ctx = ChainContext {
-                    dynamic_value: Some(val),
+                    dynamic_value: Some(val.as_str()),
                     deadline: None,
                 };
                 steps.extend(execute_chain(
@@ -137,7 +137,7 @@ mod imp {
             }
 
             Action::TypeText(text) => {
-                crate::actions::type_text::execute_type(el, text, request.policy)?;
+                crate::actions::type_text::execute_type(el, text.as_str(), request.policy)?;
             }
 
             Action::PressKey(combo) => {
@@ -175,7 +175,7 @@ mod imp {
             }
 
             Action::Select(value) => {
-                crate::actions::extras::select_value(el, value)?;
+                crate::actions::extras::select_value(el, value.as_str())?;
             }
 
             Action::Scroll(direction, amount) => {
@@ -237,7 +237,7 @@ mod imp {
             }
 
             _ => {
-                return Err(AdapterError::not_supported(&label));
+                return Err(AdapterError::not_supported(label));
             }
         }
 
@@ -249,10 +249,7 @@ mod imp {
         Ok(result)
     }
 
-    fn verify_post_state(
-        action: &Action,
-        state: &agent_desktop_core::action::ElementState,
-    ) -> Result<(), AdapterError> {
+    fn verify_post_state(action: &Action, state: &ElementState) -> Result<(), AdapterError> {
         if matches!(action, Action::Clear)
             && state
                 .value
@@ -282,7 +279,7 @@ mod imp {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use agent_desktop_core::action::ElementState;
+        use agent_desktop_core::element_state::ElementState;
 
         #[test]
         fn clear_post_state_fails_when_value_remains() {
@@ -331,31 +328,3 @@ pub(crate) use imp::perform_action;
 
 #[cfg(target_os = "macos")]
 pub(crate) use imp::{ax_press_or_fail, click_via_bounds};
-
-fn action_label(action: &Action) -> String {
-    match action {
-        Action::Click => "click",
-        Action::DoubleClick => "double_click",
-        Action::RightClick => "right_click",
-        Action::TripleClick => "triple_click",
-        Action::SetValue(_) => "set_value",
-        Action::SetFocus => "set_focus",
-        Action::Expand => "expand",
-        Action::Collapse => "collapse",
-        Action::Select(_) => "select",
-        Action::Toggle => "toggle",
-        Action::Check => "check",
-        Action::Uncheck => "uncheck",
-        Action::Scroll(_, _) => "scroll",
-        Action::ScrollTo => "scroll_to",
-        Action::PressKey(_) => "press_key",
-        Action::KeyDown(_) => "key_down",
-        Action::KeyUp(_) => "key_up",
-        Action::TypeText(_) => "type_text",
-        Action::Clear => "clear",
-        Action::Hover => "hover",
-        Action::Drag(_) => "drag",
-        _ => "unknown",
-    }
-    .to_string()
-}

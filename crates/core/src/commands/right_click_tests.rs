@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    action::ActionResult,
+    action_result::ActionResult,
     adapter::{NativeHandle, WindowFilter},
     error::{AdapterError, ErrorCode},
     node::WindowInfo,

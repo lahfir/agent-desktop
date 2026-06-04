@@ -151,6 +151,20 @@ fn only_element_not_found_is_retryable_resolution_error() {
 }
 
 #[test]
+fn expired_deadline_fails_before_path_resolution_reads() {
+    let err = match find_entry_by_path(
+        &[],
+        &entry(Some(42), Some("w-42"), Some("Documents"), None),
+        std::time::Instant::now(),
+    ) {
+        Ok(_) => panic!("expected timeout"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code, ErrorCode::Timeout);
+}
+
+#[test]
 fn ambiguous_candidate_classification_reports_structured_details() {
     let err = match classify_candidates(
         vec![

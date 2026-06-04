@@ -1,5 +1,5 @@
-use agent_desktop_core::action::{ActionStep, InteractionPolicy};
 use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::{action_request::InteractionPolicy, action_step::ActionStep};
 
 use crate::actions::discovery::ElementCaps;
 use crate::tree::AXElement;
