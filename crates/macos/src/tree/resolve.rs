@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    adapter::{NativeHandle, SnapshotSurface},
+    adapter::NativeHandle,
     error::{AdapterError, ErrorCode},
     refs::RefEntry,
 };
@@ -15,7 +15,9 @@ use super::resolve_deadline::{
     ensure_before_deadline, remaining_before_deadline, sleep_before_retry,
 };
 use super::resolve_identity::{has_meaningful_identity, identity_matches};
-use super::resolve_roots::{candidate_roots, path_candidate_roots, source_window_number};
+use super::resolve_roots::{
+    candidate_roots, path_candidate_roots, source_window_number, source_window_scope_required,
+};
 
 #[cfg(target_os = "macos")]
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
@@ -32,7 +34,8 @@ pub fn resolve_element_with_timeout(
     for attempt in 0..attempts {
         if can_use_path_fast_path(entry) {
             let path_roots = path_candidate_roots(entry, deadline)?;
-            match find_entry_by_path(&path_roots, entry, deadline) {
+            let scope_verified = path_roots.scope_verified;
+            match find_entry_by_path(&path_roots.roots, entry, scope_verified, deadline) {
                 Ok(handle) => {
                     return Ok(handle);
                 }
@@ -53,7 +56,8 @@ pub fn resolve_element_with_timeout(
             continue;
         }
         let roots = candidate_roots(entry, deadline)?;
-        match find_entry_in_roots(&roots, entry, resolve_depth, deadline) {
+        let scope_verified = roots.scope_verified;
+        match find_entry_in_roots(&roots.roots, entry, resolve_depth, scope_verified, deadline) {
             Ok(handle) => {
                 return Ok(handle);
             }
@@ -95,7 +99,7 @@ fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
     (entry.root_ref.is_none() || entry.path_is_absolute)
         && entry.bounds_hash.is_none()
         && !entry.path.is_empty()
-        && source_window_number(entry).is_some()
+        && source_window_scope_required(entry)
 }
 
 #[cfg(target_os = "macos")]
@@ -107,6 +111,7 @@ fn can_use_broad_search(entry: &RefEntry) -> bool {
 fn find_entry_by_path(
     roots: &[AXElement],
     entry: &RefEntry,
+    source_window_verified: bool,
     deadline: Instant,
 ) -> Result<NativeHandle, AdapterError> {
     if entry.path.is_empty() {
@@ -129,7 +134,7 @@ fn find_entry_by_path(
         }
     }
 
-    classify_candidates(matches, entry)
+    classify_candidates(matches, entry, source_window_verified)
 }
 
 #[cfg(target_os = "macos")]
@@ -157,6 +162,7 @@ fn find_entry_in_roots(
     roots: &[AXElement],
     entry: &RefEntry,
     resolve_depth: u8,
+    source_window_verified: bool,
     deadline: Instant,
 ) -> Result<NativeHandle, AdapterError> {
     let mut matches = Vec::new();
@@ -176,21 +182,20 @@ fn find_entry_in_roots(
         };
         collect_elements_recursive(root, 0, &mut context)?;
     }
-    classify_candidates(matches, entry)
+    classify_candidates(matches, entry, source_window_verified)
 }
 
 #[cfg(target_os = "macos")]
 fn classify_candidates(
     mut matches: Vec<AXElement>,
     entry: &RefEntry,
+    source_window_verified: bool,
 ) -> Result<NativeHandle, AdapterError> {
     match matches.len() {
         0 => Err(AdapterError::element_not_found("element")),
         1 => {
             let candidate = matches.remove(0);
-            if source_window_scope_verifies_lone_match(entry)
-                || verified_bounds_match(&candidate, entry)
-            {
+            if source_window_verified || verified_bounds_match(&candidate, entry) {
                 retained_handle(candidate)
             } else {
                 Err(AdapterError::element_not_found("element"))
@@ -198,11 +203,6 @@ fn classify_candidates(
         }
         _ => classify_ambiguous_candidates(matches, entry),
     }
-}
-
-#[cfg(target_os = "macos")]
-fn source_window_scope_verifies_lone_match(entry: &RefEntry) -> bool {
-    matches!(entry.source_surface, SnapshotSurface::Window) && source_window_number(entry).is_some()
 }
 
 #[cfg(target_os = "macos")]

@@ -10,25 +10,33 @@ use super::element_dedupe::ElementDedupe;
 use super::resolve_deadline::{ensure_before_deadline, remaining_before_deadline};
 
 #[cfg(target_os = "macos")]
+pub(super) struct CandidateRoots {
+    pub roots: Vec<AXElement>,
+    pub scope_verified: bool,
+}
+
+#[cfg(target_os = "macos")]
 pub(super) fn path_candidate_roots(
     entry: &RefEntry,
     deadline: Instant,
-) -> Result<Vec<AXElement>, AdapterError> {
+) -> Result<CandidateRoots, AdapterError> {
     if entry.bounds_hash.is_some() {
         return candidate_roots(entry, deadline);
     }
-    Ok(scoped_surface_root(entry, deadline)?.into_iter().collect())
+    let roots: Vec<_> = scoped_surface_root(entry, deadline)?.into_iter().collect();
+    Ok(CandidateRoots {
+        scope_verified: source_window_scope_required(entry) && !roots.is_empty(),
+        roots,
+    })
 }
 
 #[cfg(target_os = "macos")]
 pub(super) fn candidate_roots(
     entry: &RefEntry,
     deadline: Instant,
-) -> Result<Vec<AXElement>, AdapterError> {
+) -> Result<CandidateRoots, AdapterError> {
     if source_window_scope_required(entry) {
-        return Ok(exact_source_window_number_root(entry, deadline)?
-            .into_iter()
-            .collect());
+        return source_window_scoped_roots(entry, deadline);
     }
 
     let root = element_for_pid(entry.pid);
@@ -61,7 +69,35 @@ pub(super) fn candidate_roots(
     if roots.is_empty() {
         roots.push(root);
     }
-    Ok(roots)
+    Ok(CandidateRoots {
+        roots,
+        scope_verified: false,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn source_window_scoped_roots(
+    entry: &RefEntry,
+    deadline: Instant,
+) -> Result<CandidateRoots, AdapterError> {
+    if let Some(window) = exact_source_window_number_root(entry, deadline)? {
+        return Ok(CandidateRoots {
+            roots: vec![window],
+            scope_verified: true,
+        });
+    }
+    if source_window_title_fallback_allowed(entry) {
+        return Ok(CandidateRoots {
+            roots: exact_source_window_root(entry, deadline)?
+                .into_iter()
+                .collect(),
+            scope_verified: false,
+        });
+    }
+    Ok(CandidateRoots {
+        roots: Vec::new(),
+        scope_verified: false,
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -132,8 +168,15 @@ fn exact_source_window_root(
 }
 
 #[cfg(target_os = "macos")]
-fn source_window_scope_required(entry: &RefEntry) -> bool {
+pub(super) fn source_window_scope_required(entry: &RefEntry) -> bool {
     matches!(entry.source_surface, SnapshotSurface::Window) && source_window_number(entry).is_some()
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn source_window_title_fallback_allowed(entry: &RefEntry) -> bool {
+    source_window_scope_required(entry)
+        && entry.bounds_hash.is_some()
+        && entry.source_window_title.is_some()
 }
 
 #[cfg(target_os = "macos")]
