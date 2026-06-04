@@ -1,5 +1,6 @@
 use super::*;
-use crate::tree::resolve_roots::source_window_number;
+use crate::tree::resolve_roots::{source_window_number, source_window_title_fallback_allowed};
+use agent_desktop_core::adapter::SnapshotSurface;
 
 fn entry(
     bounds_hash: Option<u64>,
@@ -20,7 +21,7 @@ fn entry(
         source_app: None,
         source_window_id: source_window_id.map(String::from),
         source_window_title: source_window_title.map(String::from),
-        source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
+        source_surface: SnapshotSurface::Window,
         root_ref: root_ref.map(String::from),
         path_is_absolute: false,
         path: smallvec::smallvec![0, 1],
@@ -155,6 +156,7 @@ fn expired_deadline_fails_before_path_resolution_reads() {
     let err = match find_entry_by_path(
         &[],
         &entry(Some(42), Some("w-42"), Some("Documents"), None),
+        false,
         std::time::Instant::now(),
     ) {
         Ok(_) => panic!("expected timeout"),
@@ -172,6 +174,7 @@ fn ambiguous_candidate_classification_reports_structured_details() {
             AXElement(std::ptr::null_mut()),
         ],
         &entry(None, Some("w-42"), Some("Documents"), None),
+        true,
     ) {
         Ok(_) => panic!("expected ambiguous target"),
         Err(err) => err,
@@ -189,21 +192,61 @@ fn single_meaningful_identity_candidate_resolves_after_bounds_change() {
     let _handle = classify_candidates(
         vec![AXElement(std::ptr::null_mut())],
         &entry(None, Some("w-42"), Some("Documents"), None),
+        true,
     )
     .expect("unique identity should resolve within the verified source window");
 }
 
 #[test]
-fn single_identity_candidate_without_window_or_bounds_fails_closed() {
+fn cross_window_replacement_without_verified_source_window_fails_closed() {
     let err = match classify_candidates(
         vec![AXElement(std::ptr::null_mut())],
-        &entry(None, None, Some("Documents"), None),
+        &entry(None, Some("w-42"), Some("Documents"), None),
+        false,
     ) {
         Ok(_) => panic!("expected stale candidate to fail closed"),
         Err(err) => err,
     };
 
     assert_eq!(err.code, ErrorCode::ElementNotFound);
+}
+
+#[test]
+fn non_window_identity_candidate_without_bounds_fails_closed() {
+    let mut menu_entry = entry(None, None, None, None);
+    menu_entry.source_surface = SnapshotSurface::Menu;
+
+    let err = match classify_candidates(vec![AXElement(std::ptr::null_mut())], &menu_entry, false) {
+        Ok(_) => panic!("expected stale candidate to fail closed"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code, ErrorCode::ElementNotFound);
+}
+
+#[test]
+fn source_window_title_fallback_requires_bounds_hash() {
+    assert!(source_window_title_fallback_allowed(&entry(
+        Some(42),
+        Some("w-10"),
+        Some("Documents"),
+        None
+    )));
+    assert!(!source_window_title_fallback_allowed(&entry(
+        None,
+        Some("w-10"),
+        Some("Documents"),
+        None
+    )));
+    assert!(!source_window_title_fallback_allowed(&entry(
+        Some(42),
+        Some("w-10"),
+        None,
+        None
+    )));
+    let mut menu_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
+    menu_entry.source_surface = SnapshotSurface::Menu;
+    assert!(!source_window_title_fallback_allowed(&menu_entry));
 }
 
 #[test]
