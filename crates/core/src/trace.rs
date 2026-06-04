@@ -139,19 +139,43 @@ fn sanitize_trace_value(value: Value) -> Value {
 
 fn is_sensitive_trace_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
-    matches!(
-        key.as_str(),
-        "text" | "value" | "expected" | "name" | "description" | "message"
-    )
+    [
+        "text",
+        "value",
+        "expected",
+        "name",
+        "description",
+        "message",
+        "label",
+        "query",
+        "secret",
+        "token",
+        "password",
+    ]
+    .iter()
+    .any(|needle| key.contains(needle))
 }
 
 fn redacted_value(value: Value) -> Value {
     match value {
-        Value::String(text) => json!({ "redacted": true, "chars": text.chars().count() }),
+        Value::String(text) => json!({
+            "redacted": true,
+            "chars_bucket": char_count_bucket(text.chars().count())
+        }),
         Value::Array(items) => json!({ "redacted": true, "items": items.len() }),
         Value::Object(map) => json!({ "redacted": true, "keys": map.len() }),
         Value::Null => Value::Null,
         _ => json!({ "redacted": true }),
+    }
+}
+
+fn char_count_bucket(count: usize) -> &'static str {
+    match count {
+        0 => "0",
+        1..=8 => "1-8",
+        9..=32 => "9-32",
+        33..=128 => "33-128",
+        _ => "129+",
     }
 }
 

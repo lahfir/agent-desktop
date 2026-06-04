@@ -36,7 +36,7 @@ fn path_fast_path_accepts_bounds_or_source_window_identity() {
         None,
         None
     )));
-    assert!(can_use_path_fast_path(&entry(
+    assert!(!can_use_path_fast_path(&entry(
         None,
         None,
         Some("Documents"),
@@ -65,7 +65,7 @@ fn no_bounds_source_window_refs_require_scoped_path_resolution() {
         None,
         None
     )));
-    assert!(requires_scoped_path_resolution(&entry(
+    assert!(!requires_scoped_path_resolution(&entry(
         None,
         None,
         Some("Documents"),
@@ -188,9 +188,22 @@ fn ambiguous_candidate_classification_reports_structured_details() {
 fn single_meaningful_identity_candidate_resolves_after_bounds_change() {
     let _handle = classify_candidates(
         vec![AXElement(std::ptr::null_mut())],
-        &entry(Some(42), Some("w-42"), Some("Documents"), None),
+        &entry(None, Some("w-42"), Some("Documents"), None),
     )
-    .expect("unique identity should resolve even when old bounds no longer match");
+    .expect("unique identity should resolve within the verified source window");
+}
+
+#[test]
+fn single_identity_candidate_without_window_or_bounds_fails_closed() {
+    let err = match classify_candidates(
+        vec![AXElement(std::ptr::null_mut())],
+        &entry(None, None, Some("Documents"), None),
+    ) {
+        Ok(_) => panic!("expected stale candidate to fail closed"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code, ErrorCode::ElementNotFound);
 }
 
 #[test]

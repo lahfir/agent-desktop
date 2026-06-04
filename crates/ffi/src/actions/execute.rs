@@ -167,3 +167,25 @@ fn action_request(
         AdPolicyKind::Physical => ActionRequest::physical(action),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_desktop_core::{action::Action, action_request::InteractionPolicy};
+
+    #[test]
+    fn ffi_policy_kind_maps_to_core_interaction_policy() {
+        assert_eq!(
+            action_request(AdPolicyKind::Headless, Action::Click).policy,
+            InteractionPolicy::headless()
+        );
+        assert_eq!(
+            action_request(AdPolicyKind::FocusFallback, Action::Click).policy,
+            InteractionPolicy::focus_fallback()
+        );
+        assert_eq!(
+            action_request(AdPolicyKind::Physical, Action::Click).policy,
+            InteractionPolicy::physical()
+        );
+    }
+}

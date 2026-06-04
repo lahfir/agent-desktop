@@ -128,3 +128,28 @@ pub enum Modifier {
     Alt,
     Shift,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn action_names_do_not_include_payloads() {
+        let cases = [
+            (Action::SetValue("private".into()), "set-value"),
+            (Action::Select("private".into()), "select"),
+            (Action::TypeText("private".into()), "type"),
+            (
+                Action::PressKey(KeyCombo {
+                    key: "A".into(),
+                    modifiers: vec![Modifier::Cmd],
+                }),
+                "press",
+            ),
+        ];
+
+        for (action, expected) in cases {
+            assert_eq!(action.name(), expected);
+        }
+    }
+}

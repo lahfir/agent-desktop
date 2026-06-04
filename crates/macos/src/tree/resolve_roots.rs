@@ -25,6 +25,12 @@ pub(super) fn candidate_roots(
     entry: &RefEntry,
     deadline: Instant,
 ) -> Result<Vec<AXElement>, AdapterError> {
+    if source_window_scope_required(entry) {
+        return Ok(exact_source_window_number_root(entry, deadline)?
+            .into_iter()
+            .collect());
+    }
+
     let root = element_for_pid(entry.pid);
     prepare_for_read(&root, deadline)?;
     let mut roots = Vec::new();
@@ -65,6 +71,9 @@ fn scoped_surface_root(
 ) -> Result<Option<AXElement>, AdapterError> {
     ensure_before_deadline(deadline)?;
     let root = match entry.source_surface {
+        SnapshotSurface::Window if source_window_scope_required(entry) => {
+            exact_source_window_number_root(entry, deadline)?
+        }
         SnapshotSurface::Window => exact_source_window_root(entry, deadline)?,
         SnapshotSurface::Focused => crate::tree::focused_surface_for_pid(entry.pid),
         SnapshotSurface::Menu => crate::tree::menu_element_for_pid(entry.pid),
@@ -74,6 +83,25 @@ fn scoped_surface_root(
         SnapshotSurface::Alert => crate::tree::alert_for_pid(entry.pid),
     };
     Ok(root)
+}
+
+#[cfg(target_os = "macos")]
+fn exact_source_window_number_root(
+    entry: &RefEntry,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let Some(source_window_number) = source_window_number(entry) else {
+        return Ok(None);
+    };
+    let root = element_for_pid(entry.pid);
+    prepare_for_read(&root, deadline)?;
+    let Some(windows) = copy_ax_array(&root, "AXWindows") else {
+        return Ok(None);
+    };
+    Ok(windows.into_iter().find(|win| {
+        prepare_for_read(win, deadline).is_ok()
+            && copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number)
+    }))
 }
 
 #[cfg(target_os = "macos")]
@@ -101,6 +129,11 @@ fn exact_source_window_root(
         prepare_for_read(win, deadline).is_ok()
             && copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title)
     }))
+}
+
+#[cfg(target_os = "macos")]
+fn source_window_scope_required(entry: &RefEntry) -> bool {
+    matches!(entry.source_surface, SnapshotSurface::Window) && source_window_number(entry).is_some()
 }
 
 #[cfg(target_os = "macos")]

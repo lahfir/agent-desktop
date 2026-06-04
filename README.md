@@ -158,7 +158,7 @@ Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
 
 ### Shared sessions for multi-agent workflows
 
-Use the same `--session <id>` when multiple agents coordinate on one desktop task. A session is the ref storage namespace; each snapshot in that session gets its own `snapshot_id`, and the session also keeps a latest-snapshot pointer. Pass `--snapshot <id>` when an agent must act on a specific observation, or omit it when the agent should use that session's latest snapshot.
+Use the same `--session <id>` when multiple agents coordinate on one desktop task. A session is the ref storage namespace, not a security boundary; each snapshot in that session gets its own `snapshot_id`, and the session also keeps a latest-snapshot pointer. Pass `--snapshot <id>` when an agent must act on a specific observation, or omit it when the agent should use that session's latest snapshot.
 
 ```mermaid
 flowchart LR
