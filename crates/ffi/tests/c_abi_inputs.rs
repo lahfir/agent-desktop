@@ -34,6 +34,18 @@ fn invalid_utf8_app_id_rejected() {
 }
 
 #[test]
+fn resolve_element_rejects_null_role() {
+    with_adapter(|adapter| unsafe {
+        let mut out = AdNativeHandle {
+            ptr: std::ptr::null(),
+        };
+        let rc = ad_resolve_element(adapter, &default_ref_entry(), &mut out);
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
+        assert!(out.ptr.is_null());
+    });
+}
+
+#[test]
 fn resolve_element_rejects_invalid_utf8_name() {
     with_adapter(|adapter| unsafe {
         let role = std::ffi::CString::new("button").unwrap();

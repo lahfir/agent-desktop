@@ -190,6 +190,8 @@ mod tests {
                     "value": "hidden",
                     "name": "private label",
                     "message": "private error",
+                    "post_state": { "value": "deep secret" },
+                    "target_label": "button secret",
                     "nested": { "expected": "token" }
                 }),
             )
@@ -198,10 +200,12 @@ mod tests {
         let body = std::fs::read_to_string(&path).unwrap();
         let event: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
         assert_eq!(event["text"]["redacted"], true);
-        assert_eq!(event["text"]["chars"], 6);
+        assert_eq!(event["text"]["chars_bucket"], "1-8");
         assert_eq!(event["value"]["redacted"], true);
         assert_eq!(event["name"]["redacted"], true);
         assert_eq!(event["message"]["redacted"], true);
+        assert_eq!(event["post_state"]["value"]["redacted"], true);
+        assert_eq!(event["target_label"]["redacted"], true);
         assert_eq!(event["nested"]["expected"]["redacted"], true);
         assert!(!body.contains("secret"));
         assert!(!body.contains("hidden"));

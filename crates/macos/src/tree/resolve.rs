@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    adapter::NativeHandle,
+    adapter::{NativeHandle, SnapshotSurface},
     error::{AdapterError, ErrorCode},
     refs::RefEntry,
 };
@@ -15,7 +15,7 @@ use super::resolve_deadline::{
     ensure_before_deadline, remaining_before_deadline, sleep_before_retry,
 };
 use super::resolve_identity::{has_meaningful_identity, identity_matches};
-use super::resolve_roots::{candidate_roots, path_candidate_roots};
+use super::resolve_roots::{candidate_roots, path_candidate_roots, source_window_number};
 
 #[cfg(target_os = "macos")]
 pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
@@ -27,14 +27,6 @@ pub fn resolve_element_with_timeout(
     entry: &RefEntry,
     timeout: Duration,
 ) -> Result<NativeHandle, AdapterError> {
-    tracing::debug!(
-        "resolve: searching pid={} role={} name={:?} description={:?} bounds_hash={:?}",
-        entry.pid,
-        entry.role,
-        entry.name.as_deref().unwrap_or("(none)"),
-        entry.description.as_deref().unwrap_or("(none)"),
-        entry.bounds_hash
-    );
     let (resolve_depth, attempts) = (50, 4);
     let deadline = Instant::now() + timeout;
     for attempt in 0..attempts {
@@ -42,7 +34,6 @@ pub fn resolve_element_with_timeout(
             let path_roots = path_candidate_roots(entry, deadline)?;
             match find_entry_by_path(&path_roots, entry, deadline) {
                 Ok(handle) => {
-                    tracing::debug!("resolve: found path match");
                     return Ok(handle);
                 }
                 Err(err) if is_retryable_resolution_error(&err) => {}
@@ -64,7 +55,6 @@ pub fn resolve_element_with_timeout(
         let roots = candidate_roots(entry, deadline)?;
         match find_entry_in_roots(&roots, entry, resolve_depth, deadline) {
             Ok(handle) => {
-                tracing::debug!("resolve: found exact match");
                 return Ok(handle);
             }
             Err(err) if is_retryable_resolution_error(&err) => {}
@@ -76,7 +66,6 @@ pub fn resolve_element_with_timeout(
         }
     }
 
-    tracing::debug!("resolve: element not found");
     Err(AdapterError::new(
         ErrorCode::StaleRef,
         format!(
@@ -98,9 +87,7 @@ fn is_retryable_resolution_error(err: &AdapterError) -> bool {
 fn can_use_path_fast_path(entry: &RefEntry) -> bool {
     (entry.root_ref.is_none() || entry.path_is_absolute)
         && !entry.path.is_empty()
-        && (entry.bounds_hash.is_some()
-            || entry.source_window_id.is_some()
-            || entry.source_window_title.is_some())
+        && (entry.bounds_hash.is_some() || source_window_number(entry).is_some())
 }
 
 #[cfg(target_os = "macos")]
@@ -108,7 +95,7 @@ fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
     (entry.root_ref.is_none() || entry.path_is_absolute)
         && entry.bounds_hash.is_none()
         && !entry.path.is_empty()
-        && (entry.source_window_id.is_some() || entry.source_window_title.is_some())
+        && source_window_number(entry).is_some()
 }
 
 #[cfg(target_os = "macos")]
@@ -201,7 +188,9 @@ fn classify_candidates(
         0 => Err(AdapterError::element_not_found("element")),
         1 => {
             let candidate = matches.remove(0);
-            if has_meaningful_identity(entry) || bounds_match(&candidate, entry) {
+            if source_window_scope_verifies_lone_match(entry)
+                || verified_bounds_match(&candidate, entry)
+            {
                 retained_handle(candidate)
             } else {
                 Err(AdapterError::element_not_found("element"))
@@ -212,13 +201,23 @@ fn classify_candidates(
 }
 
 #[cfg(target_os = "macos")]
+fn source_window_scope_verifies_lone_match(entry: &RefEntry) -> bool {
+    matches!(entry.source_surface, SnapshotSurface::Window) && source_window_number(entry).is_some()
+}
+
+#[cfg(target_os = "macos")]
+fn verified_bounds_match(candidate: &AXElement, entry: &RefEntry) -> bool {
+    entry.bounds_hash.is_some() && bounds_match(candidate, entry)
+}
+
+#[cfg(target_os = "macos")]
 fn classify_ambiguous_candidates(
     matches: Vec<AXElement>,
     entry: &RefEntry,
 ) -> Result<NativeHandle, AdapterError> {
     let mut bounds_matches: Vec<_> = matches
         .iter()
-        .filter(|candidate| bounds_match(candidate, entry))
+        .filter(|candidate| verified_bounds_match(candidate, entry))
         .cloned()
         .collect();
     if bounds_matches.len() == 1 {

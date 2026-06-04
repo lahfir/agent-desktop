@@ -69,6 +69,10 @@ Four reference topics, loaded as needed:
   intended, and `AD_POLICY_KIND_PHYSICAL` only for explicit physical/headed
   input semantics.
 
+- **Tracing.** CLI `--trace` is not inherited by the C ABI; FFI hosts should
+  record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs
+  in their own logs.
+
 - **Text input privacy.** On macOS, explicit focus/physical policy can use the
   clipboard briefly for non-ASCII text insertion. Keep the default headless
   policy or set values directly for sensitive text when the target supports it.

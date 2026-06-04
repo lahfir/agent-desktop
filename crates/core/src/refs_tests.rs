@@ -264,6 +264,30 @@ fn test_save_oversize_preserves_previous_file() {
     assert_eq!(entry.name.as_deref(), Some("Original"));
 }
 
+#[cfg(unix)]
+#[test]
+fn test_write_private_file_rejects_tmp_symlink() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-ref-symlink-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("refmap.json");
+    let target = dir.join("target.json");
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&target, b"existing").unwrap();
+    std::os::unix::fs::symlink(&target, &tmp).unwrap();
+
+    let result = write_private_file(&path, b"new");
+
+    assert!(result.is_err());
+    assert_eq!(std::fs::read(&target).unwrap(), b"existing");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn test_root_ref_none_omitted() {
     let entry = entry("button", None);
