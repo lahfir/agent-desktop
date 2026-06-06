@@ -213,6 +213,23 @@ fn ax_window_info_uses_resolved_app_identity() {
     assert_eq!(window.id, "w-7");
 }
 
+#[test]
+fn child_bearing_window_index_prefers_first_window_with_children() {
+    let windows = [0, 7, 3];
+
+    assert_eq!(
+        child_bearing_window_index(&windows, |count| *count),
+        Some(1)
+    );
+}
+
+#[test]
+fn child_bearing_window_index_returns_none_when_all_windows_are_empty() {
+    let windows = [0, 0];
+
+    assert_eq!(child_bearing_window_index(&windows, |count| *count), None);
+}
+
 fn app(name: &str, pid: i32) -> AppInfo {
     AppInfo {
         name: name.to_string(),
