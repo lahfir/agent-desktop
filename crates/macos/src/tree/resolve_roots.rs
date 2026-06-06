@@ -190,9 +190,11 @@ fn window_by_title(
     deadline: Instant,
 ) -> Option<AXElement> {
     let source_window_title = source_window_title?;
-    let index = unique_matching_index(windows, |win| {
-        prepare_for_read(win, deadline).is_ok()
-            && copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title)
+    let index = unique_fallible_matching_index(windows, |win| {
+        prepare_for_read(win, deadline)?;
+        Ok::<bool, AdapterError>(
+            copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title),
+        )
     })?;
     windows.get(index).cloned()
 }
@@ -209,9 +211,9 @@ fn fallback_source_window_root(
     if !sole_source_window_fallback_allowed(entry) {
         return None;
     }
-    let index = unique_matching_index(windows, |win| {
-        prepare_for_read(win, deadline).is_ok()
-            && copy_string_attr(win, "AXRole").as_deref() == Some("AXWindow")
+    let index = unique_fallible_matching_index(windows, |win| {
+        prepare_for_read(win, deadline)?;
+        Ok::<bool, AdapterError>(copy_string_attr(win, "AXRole").as_deref() == Some("AXWindow"))
     })?;
     windows.get(index).cloned()
 }
@@ -248,17 +250,18 @@ fn prepare_for_read(element: &AXElement, deadline: Instant) -> Result<(), Adapte
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn unique_matching_index<T>(
+pub(super) fn unique_fallible_matching_index<T, E>(
     items: &[T],
-    mut matches: impl FnMut(&T) -> bool,
+    mut matches: impl FnMut(&T) -> Result<bool, E>,
 ) -> Option<usize> {
-    let mut matches = items
-        .iter()
-        .enumerate()
-        .filter_map(|(index, item)| matches(item).then_some(index));
-    let first = matches.next()?;
-    if matches.next().is_some() {
-        return None;
+    let mut first = None;
+    for (index, item) in items.iter().enumerate() {
+        match matches(item) {
+            Ok(true) if first.is_none() => first = Some(index),
+            Ok(true) => return None,
+            Ok(false) => {}
+            Err(_) => return None,
+        }
     }
-    Some(first)
+    first
 }

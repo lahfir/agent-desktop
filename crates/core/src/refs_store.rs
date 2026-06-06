@@ -86,11 +86,8 @@ impl RefStore {
     }
 
     pub fn load_latest(&self) -> Result<RefMap, AppError> {
-        if let Ok(id) = std::fs::read_to_string(self.latest_path()) {
-            let id = id.trim();
-            if !id.is_empty() {
-                return self.load_snapshot_from_base(&self.base_dir, id);
-            }
+        if let Some(id) = self.read_latest_snapshot_id()? {
+            return self.load_snapshot_from_base(&self.base_dir, &id);
         }
         if let Some(refmap) = self.migrate_legacy_latest()? {
             return Ok(refmap);
@@ -129,7 +126,7 @@ impl RefStore {
         snapshot_id: &str,
     ) -> Result<Option<RefMap>, AppError> {
         let path = Self::snapshot_path_for_base(base_dir, snapshot_id);
-        let mut file = match open_refmap_file(&path) {
+        let mut file = match open_refstore_file(&path) {
             Ok(file) => file,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err.into()),
@@ -155,10 +152,7 @@ impl RefStore {
     }
 
     pub fn latest_snapshot_id(&self) -> Option<String> {
-        std::fs::read_to_string(self.latest_path())
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+        self.read_latest_snapshot_id().ok().flatten()
     }
 
     fn save_snapshot_unlocked(&self, snapshot_id: &str, refmap: &RefMap) -> Result<(), AppError> {
@@ -175,6 +169,17 @@ impl RefStore {
 
     fn latest_path(&self) -> PathBuf {
         self.base_dir.join(LATEST_SNAPSHOT_FILE)
+    }
+
+    fn read_latest_snapshot_id(&self) -> Result<Option<String>, AppError> {
+        let mut file = match open_refstore_file(&self.latest_path()) {
+            Ok(file) => file,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+        let mut id = String::new();
+        file.read_to_string(&mut id)?;
+        Ok(Some(id.trim().to_string()).filter(|id| !id.is_empty()))
     }
 
     fn snapshot_path(&self, snapshot_id: &str) -> PathBuf {
@@ -284,11 +289,8 @@ impl RefStore {
             return Ok(None);
         }
         self.with_write_lock(|| {
-            if let Ok(id) = std::fs::read_to_string(self.latest_path()) {
-                let id = id.trim();
-                if !id.is_empty() {
-                    return self.load_snapshot_from_base(&self.base_dir, id).map(Some);
-                }
+            if let Some(id) = self.read_latest_snapshot_id()? {
+                return self.load_snapshot_from_base(&self.base_dir, &id).map(Some);
             }
             let refmap = match RefMap::load() {
                 Ok(refmap) => refmap,
@@ -305,7 +307,7 @@ impl RefStore {
     }
 }
 
-fn open_refmap_file(path: &Path) -> std::io::Result<std::fs::File> {
+fn open_refstore_file(path: &Path) -> std::io::Result<std::fs::File> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;

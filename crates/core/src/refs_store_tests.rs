@@ -231,6 +231,25 @@ fn read_snapshot_rejects_symlinked_refmap() {
     assert_eq!(err.code(), "INTERNAL");
 }
 
+#[cfg(unix)]
+#[test]
+fn read_latest_rejects_symlinked_pointer() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+
+    let snapshot_id = store.save_new_snapshot(&map_with("Original")).unwrap();
+    let latest = store.latest_path();
+    let target = store.base_dir.join("latest-target");
+    std::fs::write(&target, snapshot_id).unwrap();
+    std::fs::remove_file(&latest).unwrap();
+    std::os::unix::fs::symlink(&target, &latest).unwrap();
+
+    let err = store.load_latest().unwrap_err();
+
+    assert_eq!(err.code(), "INTERNAL");
+    assert!(store.latest_snapshot_id().is_none());
+}
+
 #[test]
 fn save_existing_snapshot_does_not_promote_latest_pointer() {
     let _guard = HomeGuard::new();
