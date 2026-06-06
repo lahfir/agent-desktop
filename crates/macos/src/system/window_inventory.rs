@@ -166,8 +166,12 @@ fn ax_window_for_app(app_info: &AppInfo) -> Option<WindowInfo> {
     let window = focused_window_element(&app)
         .or_else(|| crate::tree::copy_element_attr(&app, "AXMainWindow"))
         .or_else(|| {
-            crate::tree::copy_ax_array(&app, "AXWindows")
-                .and_then(|windows| windows.into_iter().next())
+            let windows = crate::tree::copy_ax_array(&app, "AXWindows")?;
+            child_bearing_window_index(&windows, |window| {
+                crate::tree::element::count_children(window, None)
+            })
+            .map(|index| windows[index].clone())
+            .or_else(|| windows.into_iter().next())
         })?;
     if crate::tree::copy_string_attr(&window, "AXRole").as_deref() != Some("AXWindow") {
         return None;
@@ -193,6 +197,13 @@ fn ax_window_info(
         bounds: None,
         is_focused,
     }
+}
+
+fn child_bearing_window_index<T>(
+    windows: &[T],
+    mut count_children: impl FnMut(&T) -> u32,
+) -> Option<usize> {
+    windows.iter().position(|window| count_children(window) > 0)
 }
 
 type FocusedWindowIdentity = Option<(Option<String>, Option<i64>)>;
