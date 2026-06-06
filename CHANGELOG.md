@@ -6,7 +6,6 @@
 ### Bug Fixes
 
 * harden macos ax window fallback ([3b266fd](https://github.com/lahfir/agent-desktop/commit/3b266fdf040bf83438f69a400b032fd12b8715c6))
-* resolve fullscreen AX tree retrieval returning ref_count: 0 ([11d01e1](https://github.com/lahfir/agent-desktop/commit/11d01e1c9ff38a8f91149fb5d8d20e6672e3454c))
 * resolve fullscreen AX tree retrieval returning ref_count: 0 ([a52b7c7](https://github.com/lahfir/agent-desktop/commit/a52b7c704a4d13fdc0d6b72f4080bb0fc118be64))
 
 ## [0.2.2](https://github.com/lahfir/agent-desktop/compare/v0.2.1...v0.2.2) (2026-06-02)
