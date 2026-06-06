@@ -1,5 +1,8 @@
 use super::*;
-use crate::tree::resolve_roots::{single_window_fallback_allowed, source_window_number};
+use crate::tree::resolve_roots::{
+    single_window_fallback_allowed, sole_source_window_fallback_allowed, source_window_number,
+    unique_matching_index,
+};
 use agent_desktop_core::adapter::SnapshotSurface;
 
 fn entry(
@@ -241,6 +244,31 @@ fn single_window_fallback_requires_bounds_hash_not_title() {
     let mut menu_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
     menu_entry.source_surface = SnapshotSurface::Menu;
     assert!(!single_window_fallback_allowed(&menu_entry));
+}
+
+#[test]
+fn sole_window_fallback_requires_missing_title() {
+    assert!(sole_source_window_fallback_allowed(&entry(
+        Some(42),
+        Some("w-10"),
+        None,
+        None
+    )));
+    assert!(!sole_source_window_fallback_allowed(&entry(
+        Some(42),
+        Some("w-10"),
+        Some("Documents"),
+        None
+    )));
+}
+
+#[test]
+fn unique_matching_index_fails_closed_on_duplicate_matches() {
+    let values = [1, 2, 3];
+
+    assert_eq!(unique_matching_index(&values, |value| *value == 2), Some(1));
+    assert_eq!(unique_matching_index(&values, |value| *value > 1), None);
+    assert_eq!(unique_matching_index(&values, |value| *value == 4), None);
 }
 
 #[test]

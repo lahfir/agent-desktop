@@ -180,6 +180,58 @@ fn duplicate_explicit_snapshot_id_requires_session() {
 }
 
 #[test]
+fn discover_skips_invalid_session_names_when_detecting_collisions() {
+    let _guard = HomeGuard::new();
+    let default_store = RefStore::new().unwrap();
+    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
+
+    session_a
+        .save_snapshot("sdup2", &map_with("Session A"))
+        .unwrap();
+    let invalid_base = default_store.base_dir.join("sessions").join("bad.session");
+    let invalid_path = RefStore::snapshot_path_for_base(&invalid_base, "sdup2");
+    std::fs::create_dir_all(invalid_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        invalid_path,
+        map_with("Invalid").serialize_with_size_check().unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        default_store
+            .load(Some("sdup2"))
+            .unwrap()
+            .get("@e1")
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Session A")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn read_snapshot_rejects_symlinked_refmap() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+
+    store.save_snapshot("ssym1", &map_with("Original")).unwrap();
+    let path = store.snapshot_path("ssym1");
+    let target = store.base_dir.join("symlink-target-refmap.json");
+    std::fs::write(
+        target.as_path(),
+        map_with("Symlinked").serialize_with_size_check().unwrap(),
+    )
+    .unwrap();
+    std::fs::remove_file(&path).unwrap();
+    std::os::unix::fs::symlink(&target, &path).unwrap();
+
+    let err = store.load(Some("ssym1")).unwrap_err();
+
+    assert_eq!(err.code(), "INTERNAL");
+}
+
+#[test]
 fn save_existing_snapshot_does_not_promote_latest_pointer() {
     let _guard = HomeGuard::new();
     let store = RefStore::new().unwrap();

@@ -129,7 +129,7 @@ impl RefStore {
         snapshot_id: &str,
     ) -> Result<Option<RefMap>, AppError> {
         let path = Self::snapshot_path_for_base(base_dir, snapshot_id);
-        let mut file = match std::fs::File::open(&path) {
+        let mut file = match open_refmap_file(&path) {
             Ok(file) => file,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err.into()),
@@ -251,6 +251,13 @@ impl RefStore {
             if path == self.base_dir {
                 continue;
             }
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            if validate_session_id(name).is_err() {
+                continue;
+            }
             let Ok(file_type) = entry.file_type() else {
                 continue;
             };
@@ -295,6 +302,27 @@ impl RefStore {
             self.set_latest_unlocked(&snapshot_id)?;
             Ok(Some(refmap))
         })
+    }
+}
+
+fn open_refmap_file(path: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+    }
+    #[cfg(not(unix))]
+    {
+        if std::fs::symlink_metadata(path)?.file_type().is_symlink() {
+            return Err(std::io::Error::new(
+                ErrorKind::PermissionDenied,
+                "refmap path must not be a symlink",
+            ));
+        }
+        std::fs::File::open(path)
     }
 }
 

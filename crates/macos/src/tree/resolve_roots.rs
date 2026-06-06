@@ -190,13 +190,11 @@ fn window_by_title(
     deadline: Instant,
 ) -> Option<AXElement> {
     let source_window_title = source_window_title?;
-    windows
-        .iter()
-        .find(|win| {
-            prepare_for_read(win, deadline).is_ok()
-                && copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title)
-        })
-        .cloned()
+    let index = unique_matching_index(windows, |win| {
+        prepare_for_read(win, deadline).is_ok()
+            && copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title)
+    })?;
+    windows.get(index).cloned()
 }
 
 #[cfg(target_os = "macos")]
@@ -208,19 +206,14 @@ fn fallback_source_window_root(
     if let Some(window) = window_by_title(windows, entry.source_window_title.as_deref(), deadline) {
         return Some(window);
     }
-    if !single_window_fallback_allowed(entry) {
+    if !sole_source_window_fallback_allowed(entry) {
         return None;
     }
-    let mut candidates = windows.iter().filter(|win| {
+    let index = unique_matching_index(windows, |win| {
         prepare_for_read(win, deadline).is_ok()
             && copy_string_attr(win, "AXRole").as_deref() == Some("AXWindow")
-    });
-    let first = candidates.next()?;
-    if candidates.next().is_none() {
-        Some(first.clone())
-    } else {
-        None
-    }
+    })?;
+    windows.get(index).cloned()
 }
 
 #[cfg(target_os = "macos")]
@@ -231,6 +224,11 @@ pub(super) fn source_window_scope_required(entry: &RefEntry) -> bool {
 #[cfg(target_os = "macos")]
 pub(super) fn single_window_fallback_allowed(entry: &RefEntry) -> bool {
     source_window_scope_required(entry) && entry.bounds_hash.is_some()
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn sole_source_window_fallback_allowed(entry: &RefEntry) -> bool {
+    single_window_fallback_allowed(entry) && entry.source_window_title.is_none()
 }
 
 #[cfg(target_os = "macos")]
@@ -247,4 +245,20 @@ pub(super) fn source_window_number(entry: &RefEntry) -> Option<i64> {
 fn prepare_for_read(element: &AXElement, deadline: Instant) -> Result<(), AdapterError> {
     set_messaging_timeout(element, remaining_before_deadline(deadline)?);
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn unique_matching_index<T>(
+    items: &[T],
+    mut matches: impl FnMut(&T) -> bool,
+) -> Option<usize> {
+    let mut matches = items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| matches(item).then_some(index));
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(first)
 }
