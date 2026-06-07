@@ -16,6 +16,9 @@ unsafe extern "C" {
     fn ad_last_error_code() -> AdResult;
 }
 
+/// Worker-thread cargo tests hit the main-thread guard first (`ErrInternal`);
+/// main-thread callers would see `ErrInvalidArgs`. The contract under test is
+/// that any failure populates last-error and the pointer stays stable.
 #[test]
 fn last_error_pointer_survives_across_successful_calls() {
     unsafe {
@@ -25,10 +28,6 @@ fn last_error_pointer_survives_across_successful_calls() {
         let bad_id = std::ptr::null();
         let mut out_win: agent_desktop_ffi::AdWindowInfo = std::mem::zeroed();
         let rc = ad_launch_app(adapter, bad_id, 0, &mut out_win);
-        // Worker-thread cargo tests hit the main-thread guard first
-        // (ErrInternal); main-thread callers would see ErrInvalidArgs.
-        // The contract we're testing here is that *some* failure
-        // populates last-error and the pointer stays stable.
         assert!(matches!(
             rc,
             AdResult::ErrInvalidArgs | AdResult::ErrInternal

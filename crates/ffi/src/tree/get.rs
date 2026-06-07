@@ -93,13 +93,6 @@ pub unsafe extern "C" fn ad_get_tree(
 
         match adapter.inner.get_tree(&core_win, &core_opts) {
             Ok(tree) => {
-                // Adapters return a full raw tree; flags live on the core
-                // TreeOptions but the macOS adapter only consumes
-                // `max_depth` and `skeleton`. Apply shape transformations
-                // here so the FFI behavior matches what AdTreeOptions
-                // documents. ref_alloc::transform_tree is the ref-free
-                // variant of allocate_refs and matches its semantics for
-                // compact/interactive_only/include_bounds.
                 let shaped = agent_desktop_core::ref_alloc::transform_tree(
                     tree,
                     core_opts.include_bounds,

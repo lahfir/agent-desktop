@@ -120,6 +120,9 @@ fn try_dismiss_button(children: &[crate::tree::AXElement]) -> bool {
     close_btn.is_some_and(|btn| try_ax_action(btn, "AXPress"))
 }
 
+/// Presses a named action button on the notification at `index`.
+///
+/// When `identity` is provided, rejects rows whose fingerprint no longer matches after NC reordering.
 #[cfg(target_os = "macos")]
 fn action_impl(
     index: usize,
@@ -138,12 +141,6 @@ fn action_impl(
         .find(|e| e.info.index == index)
         .ok_or_else(|| AdapterError::notification_not_found(index))?;
 
-    // Fingerprint check: NC may have reordered between the host's
-    // list_notifications call and now. When identity fields are
-    // provided, refuse to press an action on a row whose fingerprint
-    // doesn't match. Fail closed with NotificationNotFound so the host
-    // treats this exactly like "the notification disappeared" — which
-    // is precisely what happened from the host's perspective.
     if let Some(id) = identity {
         if !id.is_empty() && !id.matches(&entry.info) {
             return Err(AdapterError::new(

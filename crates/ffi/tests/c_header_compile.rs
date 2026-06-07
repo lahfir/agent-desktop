@@ -43,8 +43,6 @@ fn committed_header_compiles_with_every_public_enum_constant() {
 
     let tmp = std::env::temp_dir().join("agent_desktop_header_abi_test.c");
     let obj = std::env::temp_dir().join("agent_desktop_header_abi_test.o");
-    // Touch every named-constant family so a missing enum block in the header
-    // fails compilation with "undeclared identifier".
     let src = r#"
 #include <stdint.h>
 #include <stdbool.h>

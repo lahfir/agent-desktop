@@ -48,9 +48,6 @@ pub unsafe extern "C" fn ad_free_handle(
         if raw.is_null() {
             return AdResult::Ok;
         }
-        // Zero the caller-visible pointer *before* the platform release
-        // so a concurrent or accidental double-call through the same
-        // struct cannot re-enter CFRelease on the same underlying ref.
         (*handle).ptr = std::ptr::null();
         let adapter = &*adapter;
         let native = NativeHandle::from_ptr(raw);

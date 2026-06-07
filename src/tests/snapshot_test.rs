@@ -54,7 +54,7 @@ mod tests {
     fn version_command_outputs_json() {
         let bin = agent_desktop_bin();
         if !bin.exists() {
-            return; // binary not built yet
+            return;
         }
         let output = Command::new(&bin)
             .args(["version", "--json"])

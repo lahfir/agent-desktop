@@ -92,9 +92,11 @@ mod imp {
         focused_window_element(pid)
     }
 
+    /// Returns the focused window or its first child whose role or subrole matches `target`.
+    ///
+    /// The focused window itself may be the target (e.g. Electron sheets).
     fn first_child_with_role_or_subrole(pid: i32, target: &str) -> Option<AXElement> {
         let win = focused_window_element(pid)?;
-        // The focused window itself might be the target surface (e.g. Electron sheets).
         if copy_string_attr(&win, "AXRole").as_deref() == Some(target)
             || copy_string_attr(&win, "AXSubrole").as_deref() == Some(target)
         {
@@ -159,6 +161,7 @@ mod imp {
         open_menubar_menu(pid).is_some() || context_menu_from_app(pid).is_some()
     }
 
+    /// Lists open UI surfaces for the app. The focused window itself counts when its role/subrole matches (e.g. Electron sheets).
     pub fn list_surfaces_for_pid(pid: i32) -> Vec<SurfaceInfo> {
         let mut surfaces = Vec::new();
         let app = element_for_pid(pid);
@@ -229,7 +232,6 @@ mod imp {
         }
 
         if let Some(win) = focused_window_element(pid) {
-            // The focused window itself might be a surface (e.g. Electron sheets).
             let win_role = copy_string_attr(&win, "AXRole");
             let win_subrole = copy_string_attr(&win, "AXSubrole");
             let win_kind = match win_subrole.as_deref() {
