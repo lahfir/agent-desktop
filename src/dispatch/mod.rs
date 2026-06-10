@@ -185,6 +185,7 @@ pub(crate) fn dispatch(
                 to_xy: parse_xy_opt(a.to_xy.as_deref())?,
                 snapshot_id: a.snapshot,
                 duration_ms: a.duration,
+                drop_delay_ms: a.drop_delay,
             },
             adapter,
             context,

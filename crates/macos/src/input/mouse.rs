@@ -39,14 +39,21 @@ mod imp {
             params.to.y,
             params.duration_ms.unwrap_or(300)
         );
+        use std::thread::sleep;
+        use std::time::Duration;
+
+        const PICKUP_DELAY_MS: u64 = 200;
+        const DEFAULT_DROP_DELAY_MS: u64 = 500;
+        const DWELL_TICK_MS: u64 = 16;
+
         let from = CGPoint::new(params.from.x, params.from.y);
         let to = CGPoint::new(params.to.x, params.to.y);
         let duration_ms = params.duration_ms.unwrap_or(300);
-        let steps = (duration_ms / 16).max(4) as usize;
-        let step_delay = std::time::Duration::from_millis(duration_ms / steps as u64);
+        let steps = (duration_ms / DWELL_TICK_MS).max(4) as usize;
+        let step_delay = Duration::from_millis(duration_ms / steps as u64);
 
         post_event(CGEventType::LeftMouseDown, from, CGMouseButton::Left)?;
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep(Duration::from_millis(PICKUP_DELAY_MS));
 
         for i in 1..=steps {
             let t = i as f64 / steps as f64;
@@ -57,11 +64,36 @@ mod imp {
                 CGPoint::new(x, y),
                 CGMouseButton::Left,
             )?;
-            std::thread::sleep(step_delay);
+            sleep(step_delay);
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        dwell_over_destination(
+            to,
+            params.drop_delay_ms.unwrap_or(DEFAULT_DROP_DELAY_MS),
+            DWELL_TICK_MS,
+        )?;
         post_event(CGEventType::LeftMouseUp, to, CGMouseButton::Left)
+    }
+
+    /// Holds the dragged item over the destination while the drop target
+    /// activates. Posting `LeftMouseDragged` on each tick (instead of a dead
+    /// sleep) keeps the destination engaged so the release registers as a
+    /// drop rather than a bare drag — macOS targets can drop the highlight if
+    /// no movement arrives. A zero delay still posts one settling event.
+    fn dwell_over_destination(
+        to: CGPoint,
+        drop_delay_ms: u64,
+        tick_ms: u64,
+    ) -> Result<(), AdapterError> {
+        use std::thread::sleep;
+        use std::time::Duration;
+
+        let ticks = drop_delay_ms.div_ceil(tick_ms).max(1);
+        for _ in 0..ticks {
+            post_event(CGEventType::LeftMouseDragged, to, CGMouseButton::Left)?;
+            sleep(Duration::from_millis(tick_ms));
+        }
+        Ok(())
     }
 
     fn synthesize_click(

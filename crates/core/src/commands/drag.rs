@@ -14,6 +14,7 @@ pub struct DragArgs {
     pub to_xy: Option<(f64, f64)>,
     pub snapshot_id: Option<String>,
     pub duration_ms: Option<u64>,
+    pub drop_delay_ms: Option<u64>,
 }
 
 pub fn execute(
@@ -45,11 +46,20 @@ pub fn execute(
         from: from.clone(),
         to: to.clone(),
         duration_ms: args.duration_ms,
+        drop_delay_ms: args.drop_delay_ms,
     };
     adapter.drag(params)?;
-    Ok(json!({
+    let mut response = json!({
         "dragged": true,
         "from": { "x": from.x, "y": from.y },
         "to": { "x": to.x, "y": to.y }
-    }))
+    });
+    if let Some(drop_delay_ms) = args.drop_delay_ms {
+        response["drop_delay_ms"] = json!(drop_delay_ms);
+    }
+    Ok(response)
 }
+
+#[cfg(test)]
+#[path = "drag_tests.rs"]
+mod tests;

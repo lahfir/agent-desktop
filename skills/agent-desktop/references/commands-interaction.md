@@ -180,6 +180,7 @@ This is an explicit cursor-moving command.
 agent-desktop drag --from @e1 --to @e5
 agent-desktop drag --from-xy 100,200 --to-xy 400,500
 agent-desktop drag --from @e1 --to-xy 400,500 --duration 500
+agent-desktop drag --from @e1 --to @e5 --drop-delay 800
 ```
 
 | Flag | Description |
@@ -188,9 +189,12 @@ agent-desktop drag --from @e1 --to-xy 400,500 --duration 500
 | `--from-xy` | Source coordinates as `x,y` |
 | `--to` | Destination element ref |
 | `--to-xy` | Destination coordinates as `x,y` |
-| `--duration` | Drag duration in milliseconds |
+| `--duration` | Drag duration in milliseconds (movement from source to destination) |
+| `--drop-delay` | Milliseconds to hold over the destination before releasing; default 500 |
 
 Can mix ref and coordinate sources (e.g., `--from @e1 --to-xy 400,500`).
+
+macOS drop targets often need the dragged item to dwell over them before they register as the drop destination — too short and the gesture lands as a drag with no drop. The default 500ms dwell suits most targets; raise `--drop-delay` (e.g. 800–1200) for sluggish destinations like list reorders or cross-window drops. The dwell posts continuous drag events over the destination so it stays highlighted, rather than a dead pause.
 
 ### mouse-move
 ```bash

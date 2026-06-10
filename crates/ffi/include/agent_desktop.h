@@ -200,6 +200,9 @@ typedef struct AdDragParams {
   struct AdPoint from;
   struct AdPoint to;
   uint64_t duration_ms;
+  /* Milliseconds to hold over the destination before releasing, so the drop
+   * target activates (macOS). Zero uses the adapter default (500ms). */
+  uint64_t drop_delay_ms;
 } AdDragParams;
 
 /**
@@ -679,7 +682,9 @@ void ad_free_string(char *s);
 /**
  * Synthesizes a mouse drag from `params.from` to `params.to`. When
  * `params.duration_ms` is zero the drag is instantaneous; a non-zero
- * value asks the platform adapter to interpolate.
+ * value asks the platform adapter to interpolate. `params.drop_delay_ms`
+ * holds the item over the destination before releasing so the drop target
+ * activates; zero uses the adapter default.
  *
  * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.

@@ -136,6 +136,7 @@ pub fn default_action() -> AdAction {
             from: AdPoint { x: 0.0, y: 0.0 },
             to: AdPoint { x: 0.0, y: 0.0 },
             duration_ms: 0,
+            drop_delay_ms: 0,
         },
     }
 }

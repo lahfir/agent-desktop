@@ -89,6 +89,12 @@ pub struct DragParams {
     pub to: Point,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Time to hold the dragged item over the destination before releasing.
+    /// macOS drop targets often need the drag to dwell over them before they
+    /// register as the drop destination; too short and the gesture lands as a
+    /// drag with no drop. `None` uses the adapter default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_delay_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
