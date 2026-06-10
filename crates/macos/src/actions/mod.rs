@@ -3,6 +3,7 @@ pub(crate) mod chain;
 mod chain_context;
 mod chain_def;
 pub(crate) mod chain_defs;
+pub(crate) mod chain_disclosure_steps;
 pub(crate) mod chain_menu_steps;
 mod chain_step;
 pub(crate) mod chain_steps;

@@ -6,7 +6,7 @@ mod imp {
     use crate::actions::{
         ax_helpers,
         chain::{ChainDef, ChainStep},
-        chain_menu_steps, chain_steps,
+        chain_disclosure_steps, chain_menu_steps, chain_steps,
         discovery::ElementCaps,
     };
     use crate::tree::AXElement;
@@ -106,7 +106,7 @@ mod imp {
         pre_scroll: false,
         steps: &[ChainStep::Custom {
             label: "expand_verified",
-            func: chain_steps::press_to_expand,
+            func: chain_disclosure_steps::press_to_expand,
         }],
         suggestion: "This control cannot be expanded via accessibility; try a physical 'click' on its disclosure triangle.",
     };
@@ -115,7 +115,7 @@ mod imp {
         pre_scroll: false,
         steps: &[ChainStep::Custom {
             label: "collapse_verified",
-            func: chain_steps::press_to_collapse,
+            func: chain_disclosure_steps::press_to_collapse,
         }],
         suggestion: "This control cannot be collapsed via accessibility; try a physical 'click' on its disclosure triangle.",
     };
