@@ -37,6 +37,24 @@ pub(crate) fn ref_entry_from_node(
     }
 }
 
+/// An element receives a ref when it is addressable for an action: either its
+/// role is interactive, or it advertises an available action regardless of
+/// role. Container roles like `scrollarea` (Scroll) and `disclosure`
+/// (Expand/Collapse) are not "interactive" by role but are genuinely
+/// actionable, and `scroll` / `expand` / `collapse` need a ref to target
+/// them — so action-bearing elements must be ref-able. A bare `SetFocus`
+/// affordance does not qualify on its own: focusability is not a primary
+/// action and would ref-allocate large numbers of inert containers.
+pub(crate) fn is_ref_able(node: &AccessibilityNode) -> bool {
+    INTERACTIVE_ROLES.contains(&node.role.as_str()) || advertises_primary_action(node)
+}
+
+fn advertises_primary_action(node: &AccessibilityNode) -> bool {
+    node.available_actions
+        .iter()
+        .any(|action| action != crate::capability::SET_FOCUS)
+}
+
 pub(crate) fn is_collapsible(node: &AccessibilityNode) -> bool {
     node.ref_id.is_none()
         && node.name.as_deref().is_none_or(str::is_empty)
@@ -118,9 +136,9 @@ fn allocate_refs_at_path(
     config: &RefAllocConfig,
     path: &mut Vec<usize>,
 ) -> AccessibilityNode {
-    let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
+    let is_ref_able = is_ref_able(&node);
 
-    if is_interactive {
+    if is_ref_able {
         let mut entry = ref_entry_from_node(
             &node,
             config.pid,
@@ -138,10 +156,8 @@ fn allocate_refs_at_path(
 
     let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
         || node.description.as_deref().is_some_and(|d| !d.is_empty());
-    let is_skeleton_anchor = !is_interactive
-        && node.children_count.is_some()
-        && has_label
-        && config.root_ref_id.is_none();
+    let is_skeleton_anchor =
+        !is_ref_able && node.children_count.is_some() && has_label && config.root_ref_id.is_none();
 
     if is_skeleton_anchor {
         let mut entry = ref_entry_from_node(

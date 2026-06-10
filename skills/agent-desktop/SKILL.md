@@ -83,9 +83,10 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 ## Ref System
 
 - Refs assigned depth-first: `@e1`, `@e2`, `@e3`...
-- Only interactive elements get refs: button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell
+- An element gets a ref when it is addressable for an action: an interactive role (button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell, radiobutton, switch, ...) **or** any element advertising an action — so `scrollarea` (Scroll) and `disclosure` (Expand/Collapse) are ref-able and `scroll`/`expand`/`collapse` can target them
+- A `SetFocus`-only affordance does not earn a ref on its own
 - In skeleton mode, named/described containers at truncation boundary also get refs (drill-down targets with empty `available_actions`)
-- Static text, groups, containers remain in tree for context but have no ref
+- Static text and non-actionable groups/containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
 - Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <snapshot_id>`, and explicit snapshot IDs do not require also passing `--session`
 - `last_refmap.json` is only a latest-snapshot inspection artifact. The command path uses snapshot-scoped storage.

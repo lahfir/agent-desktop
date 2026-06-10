@@ -115,6 +115,37 @@ fn ref_entry_preserves_meaningful_identity_text() {
     assert_eq!(entry.description.as_deref(), Some("Commits changes"));
 }
 
+/// scrollarea/disclosure are not interactive roles, but they advertise real
+/// actions and `scroll` / `expand` need a ref to target them.
+#[test]
+fn actionable_container_roles_receive_refs() {
+    let mut scroll = node("scrollarea", Some("Log"));
+    scroll.available_actions = vec!["Scroll".into()];
+    assert!(is_ref_able(&scroll));
+
+    let mut disclosure = node("disclosure", Some("Details"));
+    disclosure.available_actions = vec!["Click".into()];
+    assert!(is_ref_able(&disclosure));
+}
+
+/// A bare SetFocus affordance is not a primary action; ref-allocating every
+/// focusable container would bloat the refmap.
+#[test]
+fn focus_only_container_does_not_receive_a_ref() {
+    let mut group = node("group", Some("Panel"));
+    group.available_actions = vec!["SetFocus".into()];
+    assert!(!is_ref_able(&group));
+
+    let inert = node("statictext", Some("Label"));
+    assert!(!is_ref_able(&inert));
+}
+
+#[test]
+fn interactive_role_is_ref_able_even_without_actions() {
+    let button = node("button", Some("OK"));
+    assert!(is_ref_able(&button));
+}
+
 #[test]
 fn allocate_refs_records_structural_paths() {
     let mut root = node("window", Some("w"));

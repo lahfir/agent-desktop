@@ -310,8 +310,9 @@ Error responses:
 ## Ref System
 
 - Refs allocated in depth-first document order: `@e1`, `@e2`, etc.
-- Only interactive roles receive refs: `button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`
-- Static text, groups, containers do NOT get refs (they remain in tree for context)
+- An element receives a ref when it is **addressable for an action**: its role is interactive (`button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `switch`, `colorwell`, `menubutton`, `incrementor`, `dockitem`), **or** it advertises an available action regardless of role. Container roles such as `scrollarea` (Scroll) and `disclosure` (Expand/Collapse/Click) are not interactive by role but are genuinely actionable, so they are ref-able — `scroll` / `expand` / `collapse` need a ref to target them
+- A bare `SetFocus` affordance does not qualify on its own (focusability is not a primary action), so inert focusable containers stay ref-less
+- Static text and non-actionable groups/containers do NOT get refs (they remain in tree for context)
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
 - Snapshot refs are stored by snapshot ID under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer for commands that omit `--snapshot`
 - `~/.agent-desktop/last_refmap.json` is written only as a latest-snapshot inspection artifact; command code must use `RefStore`
@@ -387,7 +388,7 @@ pub trait PlatformAdapter {
 
 ### Unit Tests (core)
 - `AccessibilityNode` ser/de roundtrips
-- Ref allocator only assigns interactive roles
+- Ref allocator assigns interactive roles and action-bearing elements (not `SetFocus`-only)
 - `SnapshotEngine` filtering
 - Error serialization
 - MockAdapter: in-memory `PlatformAdapter` returning hardcoded trees
