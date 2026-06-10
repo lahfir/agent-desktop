@@ -32,6 +32,7 @@ pub struct ActionabilityReport {
     pub checks: Vec<ActionabilityCheck>,
 }
 
+#[cfg(test)]
 pub fn check(
     entry: &RefEntry,
     request: &ActionRequest,

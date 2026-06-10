@@ -171,7 +171,7 @@ fn action_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::{action::Action, action_request::InteractionPolicy};
+    use agent_desktop_core::{action::Action, interaction_policy::InteractionPolicy};
 
     #[test]
     fn ffi_policy_kind_maps_to_core_interaction_policy() {

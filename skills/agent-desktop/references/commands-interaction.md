@@ -6,6 +6,10 @@ Ref-based actions are headless by default. They try semantic accessibility opera
 
 All ref-based interaction commands accept `--snapshot <snapshot_id>`. Omit it for the active session's latest saved snapshot, or pass the `snapshot_id` returned by `snapshot` to keep scripts pinned to the exact ref map they observed. Explicit snapshot IDs do not require also passing `--session`.
 
+Success responses for ref actions include a `steps` array when the activation chain recorded attempts: each entry is `{ "label": "AXPress", "outcome": "attempted" | "skipped" | "succeeded" }` in execution order, showing which activation path produced the result.
+
+When the actionability preflight blocks an action, the error envelope carries the full report in `error.details`: `{ "actionable": false, "checks": [ { "name": "...", "status": "...", "reason": "..." } ] }`. Check names are `visible`, `stable`, `enabled`, `supported_action`, `policy`, and `editable`; statuses are `pass`, `fail`, and `unknown`. Use the failing check's `reason` to pick recovery: `wait --element <ref> --predicate actionable`, a fresh snapshot, or an explicit focus/physical command when intended.
+
 ## Click Actions
 
 Click commands use semantic AX activation first. In the default headless policy, coordinate click fallback is blocked; use `mouse-click` only when physical cursor movement is intended.

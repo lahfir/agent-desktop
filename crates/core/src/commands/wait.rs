@@ -283,15 +283,18 @@ fn wait_for_text(
                         .save_new_snapshot(&result.refmap)?;
                     let elapsed = start.elapsed().as_millis();
                     let found = matches.first();
-                    return Ok(json!({
+                    let mut body = json!({
                         "found": true,
                         "text": text,
                         "ref": found.and_then(|found| found.ref_id.clone()),
                         "role": found.map(|found| found.role.clone()),
-                        "count": matches.len(),
                         "snapshot_id": snapshot_id,
                         "elapsed_ms": elapsed
-                    }));
+                    });
+                    if expected_count.is_some() {
+                        body["count"] = json!(matches.len());
+                    }
+                    return Ok(body);
                 }
             }
             Err(err) if is_retryable_wait_app_error(&err) => {
@@ -364,6 +367,10 @@ fn wait_for_notification(
         }));
     }
 }
+
+#[cfg(test)]
+#[path = "wait_test_support.rs"]
+mod test_support;
 
 #[cfg(test)]
 #[path = "wait_tests.rs"]

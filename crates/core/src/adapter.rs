@@ -180,16 +180,16 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("resolve_element_strict"))
     }
 
+    /// Resolves an element under a caller deadline. Defaults to delegating
+    /// to [`PlatformAdapter::resolve_element_strict`], ignoring the timeout,
+    /// so adapters that implement only the un-timed variant still support
+    /// `wait --element`. Override to honor the remaining budget.
     fn resolve_element_strict_with_timeout(
         &self,
-        _entry: &RefEntry,
+        entry: &RefEntry,
         _timeout: std::time::Duration,
     ) -> Result<NativeHandle, AdapterError> {
-        Err(
-            AdapterError::not_supported("resolve_element_strict_with_timeout").with_suggestion(
-                "Platform adapters must implement timeout-aware resolution for wait --element",
-            ),
-        )
+        self.resolve_element_strict(entry)
     }
 
     /// Releases a platform-specific element handle returned from

@@ -1,5 +1,14 @@
-use crate::{commands::wait_predicate, error::AppError};
+use crate::{
+    commands::wait_predicate,
+    error::{AdapterError, AppError},
+};
 use serde_json::{Value, json};
+
+fn timeout_err(message: String, details: Value) -> Result<Value, AppError> {
+    Err(AppError::Adapter(
+        AdapterError::timeout(message).with_details(details),
+    ))
+}
 
 pub(crate) fn element(
     ref_id: String,
@@ -7,18 +16,18 @@ pub(crate) fn element(
     timeout_ms: u64,
     last_observed: Value,
 ) -> Result<Value, AppError> {
-    Err(AppError::Adapter(crate::error::AdapterError::timeout(
+    timeout_err(
         format!(
             "Element {ref_id} did not satisfy predicate '{}' within {timeout_ms}ms; last_observed={last_observed}",
             predicate.name()
         ),
+        json!({
+            "ref": ref_id,
+            "predicate": predicate.name(),
+            "timeout_ms": timeout_ms,
+            "last_observed": last_observed
+        }),
     )
-    .with_details(json!({
-        "ref": ref_id,
-        "predicate": predicate.name(),
-        "timeout_ms": timeout_ms,
-        "last_observed": last_observed
-    }))))
 }
 
 pub(crate) fn window(
@@ -26,17 +35,15 @@ pub(crate) fn window(
     timeout_ms: u64,
     last_error: Option<Value>,
 ) -> Result<Value, AppError> {
-    Err(AppError::Adapter(
-        crate::error::AdapterError::timeout(format!(
-            "Window with title '{title}' not found within {timeout_ms}ms"
-        ))
-        .with_details(json!({
+    timeout_err(
+        format!("Window with title '{title}' not found within {timeout_ms}ms"),
+        json!({
             "predicate": "window",
             "title": title,
             "timeout_ms": timeout_ms,
             "last_error": last_error
-        })),
-    ))
+        }),
+    )
 }
 
 pub(crate) fn text(
@@ -45,18 +52,16 @@ pub(crate) fn text(
     expected_count: Option<usize>,
     last_error: Option<Value>,
 ) -> Result<Value, AppError> {
-    Err(AppError::Adapter(
-        crate::error::AdapterError::timeout(format!(
-            "Text '{text}' did not match within {timeout_ms}ms"
-        ))
-        .with_details(json!({
+    timeout_err(
+        format!("Text '{text}' did not match within {timeout_ms}ms"),
+        json!({
             "predicate": "text",
             "text_chars": text.chars().count(),
             "timeout_ms": timeout_ms,
             "expected_count": expected_count,
             "last_error": last_error
-        })),
-    ))
+        }),
+    )
 }
 
 pub(crate) fn notification(
@@ -64,13 +69,13 @@ pub(crate) fn notification(
     text: Option<&String>,
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
-    Err(AppError::Adapter(
-        crate::error::AdapterError::timeout(format!("No new notification within {timeout_ms}ms"))
-            .with_details(json!({
-                "predicate": "notification",
-                "timeout_ms": timeout_ms,
-                "app": app,
-                "text_chars": text.map(|text| text.chars().count())
-            })),
-    ))
+    timeout_err(
+        format!("No new notification within {timeout_ms}ms"),
+        json!({
+            "predicate": "notification",
+            "timeout_ms": timeout_ms,
+            "app": app,
+            "text_chars": text.map(|text| text.chars().count())
+        }),
+    )
 }

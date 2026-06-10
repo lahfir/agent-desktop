@@ -189,6 +189,7 @@ mod tests {
                     "text": "secret",
                     "value": "hidden",
                     "name": "private label",
+                    "description": "private desc",
                     "message": "private error",
                     "post_state": { "value": "deep secret" },
                     "target_label": "button secret",
@@ -203,6 +204,7 @@ mod tests {
         assert_eq!(event["text"]["chars_bucket"], "1-8");
         assert_eq!(event["value"]["redacted"], true);
         assert_eq!(event["name"]["redacted"], true);
+        assert_eq!(event["description"]["redacted"], true);
         assert_eq!(event["message"]["redacted"], true);
         assert_eq!(event["post_state"]["value"]["redacted"], true);
         assert_eq!(event["target_label"]["redacted"], true);
@@ -210,6 +212,7 @@ mod tests {
         assert!(!body.contains("secret"));
         assert!(!body.contains("hidden"));
         assert!(!body.contains("private label"));
+        assert!(!body.contains("private desc"));
         assert!(!body.contains("private error"));
         assert!(!body.contains("token"));
         let _ = std::fs::remove_file(path);

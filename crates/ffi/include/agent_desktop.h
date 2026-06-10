@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* New result codes may be appended in future releases.
+ * Always handle values outside this list. */
 enum AdResult {
   AD_RESULT_OK = 0,
   AD_RESULT_ERR_PERM_DENIED = -1,

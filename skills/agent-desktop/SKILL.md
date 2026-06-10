@@ -94,7 +94,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
 - **Sessions:** use `--session <id>` for concurrent or multi-agent runs that share a latest snapshot pointer; batch entries may override with `"session": "id"`.
-- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened.
+- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened. Trace fields whose keys contain `text`, `value`, `expected`, `name`, `description`, `message`, `label`, `query`, `secret`, `token`, or `password` are redacted to `{ "redacted": true, "chars_bucket": "..." }` at every nesting depth — do not expect raw values in trace files. Top-level `--trace` is inherited by every `batch` entry, including entries with a `session` override.
 
 ## JSON Output Contract
 

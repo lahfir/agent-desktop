@@ -9,25 +9,7 @@ use crate::{
 use std::sync::Mutex;
 use std::time::Duration;
 
-fn wait_for_element_test(
-    ref_id: String,
-    snapshot_id: Option<String>,
-    predicate: wait_predicate::ElementPredicate,
-    timeout_ms: u64,
-    adapter: &dyn PlatformAdapter,
-    context: &crate::context::CommandContext,
-) -> Result<Value, AppError> {
-    super::wait_for_element(
-        ElementWaitInput {
-            ref_id,
-            snapshot_id,
-            predicate,
-            timeout_ms,
-        },
-        adapter,
-        context,
-    )
-}
+use super::test_support::wait_for_element_test;
 
 struct AmbiguousResolveAdapter;
 
@@ -184,11 +166,11 @@ fn element_wait_passes_remaining_budget_to_resolver() {
 }
 
 #[test]
-fn element_wait_requires_timeout_aware_resolution() {
+fn element_wait_delegates_to_strict_only_resolution() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
-    let err = wait_for_element_test(
+    let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
@@ -196,9 +178,10 @@ fn element_wait_requires_timeout_aware_resolution() {
         &StrictOnlyResolveAdapter,
         &crate::context::CommandContext::default(),
     )
-    .unwrap_err();
+    .unwrap();
 
-    assert_eq!(err.code(), "PLATFORM_NOT_SUPPORTED");
+    assert_eq!(value["found"], true);
+    assert_eq!(value["observed"]["exists"], true);
 }
 
 #[test]

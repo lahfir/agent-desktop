@@ -10,7 +10,7 @@ mod imp {
         discovery::ElementCaps,
     };
     use crate::tree::AXElement;
-    use agent_desktop_core::{action::MouseButton, action_request::InteractionPolicy};
+    use agent_desktop_core::{action::MouseButton, interaction_policy::InteractionPolicy};
 
     pub(crate) static CLICK_CHAIN: ChainDef = ChainDef {
         pre_scroll: true,

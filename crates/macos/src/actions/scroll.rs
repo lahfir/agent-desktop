@@ -1,7 +1,7 @@
 #[cfg(target_os = "macos")]
 use agent_desktop_core::{
-    action_request::InteractionPolicy,
     error::{AdapterError, ErrorCode},
+    interaction_policy::InteractionPolicy,
 };
 
 #[cfg(target_os = "macos")]

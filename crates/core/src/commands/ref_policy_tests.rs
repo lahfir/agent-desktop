@@ -1,6 +1,6 @@
 use crate::{
     action::{Action, Direction},
-    action_request::{ActionRequest, InteractionPolicy},
+    action_request::ActionRequest,
     action_result::ActionResult,
     adapter::{NativeHandle, PlatformAdapter},
     commands::{
@@ -9,6 +9,7 @@ use crate::{
     },
     context::CommandContext,
     error::AdapterError,
+    interaction_policy::InteractionPolicy,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,

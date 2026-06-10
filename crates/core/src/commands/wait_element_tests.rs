@@ -11,25 +11,7 @@ use crate::{
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-fn wait_for_element_test(
-    ref_id: String,
-    snapshot_id: Option<String>,
-    predicate: wait_predicate::ElementPredicate,
-    timeout_ms: u64,
-    adapter: &dyn PlatformAdapter,
-    context: &crate::context::CommandContext,
-) -> Result<Value, AppError> {
-    super::wait_for_element(
-        ElementWaitInput {
-            ref_id,
-            snapshot_id,
-            predicate,
-            timeout_ms,
-        },
-        adapter,
-        context,
-    )
-}
+use super::test_support::wait_for_element_test;
 
 struct NoopAdapter;
 

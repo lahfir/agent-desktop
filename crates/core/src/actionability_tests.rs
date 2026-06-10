@@ -161,6 +161,22 @@ fn cursor_movement_requires_physical_policy() {
 }
 
 #[test]
+fn headless_type_text_fails_policy_before_dispatch() {
+    let mut target = entry();
+    target.role = "textfield".into();
+    target.available_actions = vec!["SetValue".into()];
+
+    let err = check(
+        &target,
+        &ActionRequest::headless(Action::TypeText("x".into())),
+    )
+    .unwrap_err();
+
+    assert!(err.message.contains("policy"));
+    assert!(err.message.contains("focus"));
+}
+
+#[test]
 fn right_click_requires_right_click_capability_before_dispatch() {
     let err = check(&entry(), &ActionRequest::headless(Action::RightClick)).unwrap_err();
 

@@ -37,13 +37,27 @@ impl<'a> LatestRefCache<'a> {
             if self.snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
                 return;
             }
-            if let Ok(refmap) = self.store.load_snapshot(&snapshot_id) {
-                self.snapshot_id = Some(snapshot_id);
-                self.refmap = refmap;
+            match self.store.load_snapshot(&snapshot_id) {
+                Ok(refmap) => {
+                    self.snapshot_id = Some(snapshot_id);
+                    self.refmap = refmap;
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "latest snapshot {snapshot_id} unreadable during wait refresh: {err}"
+                    );
+                }
             }
-        } else if let Ok(refmap) = self.store.load_latest() {
-            self.refmap = refmap;
-            self.snapshot_id = self.store.latest_snapshot_id();
+        } else {
+            match self.store.load_latest() {
+                Ok(refmap) => {
+                    self.refmap = refmap;
+                    self.snapshot_id = self.store.latest_snapshot_id();
+                }
+                Err(err) => {
+                    tracing::warn!("latest refmap unreadable during wait refresh: {err}");
+                }
+            }
         }
     }
 }

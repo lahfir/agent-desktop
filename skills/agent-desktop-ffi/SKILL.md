@@ -69,6 +69,13 @@ Four reference topics, loaded as needed:
   intended, and `AD_POLICY_KIND_PHYSICAL` only for explicit physical/headed
   input semantics.
 
+- **Ref-action preflight.** `ad_execute_ref_action_with_policy` resolves the
+  ref strictly and runs the live actionability preflight (visible, stable,
+  enabled, supported action, policy, editable) before dispatching — a disabled
+  or unsupported target fails before any platform call. On
+  `AD_RESULT_ERR_ACTION_FAILED`, the structured check report is available as
+  JSON via `ad_last_error_details()`.
+
 - **Tracing.** CLI `--trace` is not inherited by the C ABI; FFI hosts should
   record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs
   in their own logs.

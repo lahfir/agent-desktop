@@ -3,7 +3,7 @@ pub mod action_request;
 pub mod action_result;
 pub mod action_step;
 pub mod action_step_outcome;
-pub mod actionability;
+pub(crate) mod actionability;
 pub mod adapter;
 pub mod capability;
 pub mod commands;
@@ -11,6 +11,7 @@ pub mod context;
 pub mod element_state;
 pub mod error;
 pub mod hints;
+pub mod interaction_policy;
 pub mod node;
 pub mod notification;
 pub mod output;
@@ -28,14 +29,14 @@ pub mod roles;
 pub(crate) mod search_text;
 pub mod snapshot;
 pub mod snapshot_ref;
-pub mod trace;
+pub(crate) mod trace;
 mod window_lookup;
 
 pub use action::{
     Action, Direction, DragParams, KeyCombo, Modifier, MouseButton, MouseEvent, MouseEventKind,
     Point, WindowOp,
 };
-pub use action_request::{ActionRequest, InteractionPolicy};
+pub use action_request::ActionRequest;
 pub use action_result::ActionResult;
 pub use action_step::ActionStep;
 pub use action_step_outcome::ActionStepOutcome;
@@ -46,6 +47,7 @@ pub use adapter::{
 pub use context::CommandContext;
 pub use element_state::ElementState;
 pub use error::{AdapterError, AppError, ErrorCode};
+pub use interaction_policy::InteractionPolicy;
 pub use node::{AccessibilityNode, AppInfo, Rect, WindowInfo};
 pub use notification::{NotificationFilter, NotificationInfo};
 pub use output::{AppContext, ErrorPayload, Response, WindowContext};

@@ -1,9 +1,10 @@
 use agent_desktop_core::{
     action::{Action, MouseButton, MouseEvent, MouseEventKind, Point},
-    action_request::{ActionRequest, InteractionPolicy},
+    action_request::ActionRequest,
     action_result::ActionResult,
     element_state::ElementState,
     error::{AdapterError, ErrorCode},
+    interaction_policy::InteractionPolicy,
 };
 
 #[cfg(target_os = "macos")]

@@ -185,7 +185,7 @@ Blocks until a window with the given title appears.
 ```bash
 agent-desktop wait --text "Loading complete" --app "Safari" --timeout 5000
 ```
-Blocks until the specified text appears anywhere in the app's accessibility tree.
+Blocks until the specified text appears anywhere in the app's accessibility tree. The success body includes `count` only when `--count` is passed; without it, matching stops at the first hit and no count is reported.
 
 ### wait (menu)
 ```bash
@@ -227,7 +227,7 @@ Execute multiple commands in sequence from a JSON array. Each entry has `command
 
 Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
 
-Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level `--session`. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs.
+Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level `--session`. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs. Top-level `--trace` is inherited by every entry — including entries with a `session` override — so one JSONL file captures the whole batch.
 
 | Flag | Default | Description |
 |------|---------|-------------|
