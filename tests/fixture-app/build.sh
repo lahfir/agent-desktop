@@ -13,10 +13,17 @@ bin="$macos_dir/AgentDeskFixture"
 rm -rf "$app"
 mkdir -p "$macos_dir"
 
+# Pin the SDK and deployment target so the fixture builds reproducibly instead
+# of inheriting whatever the host toolchain defaults to (matches the
+# LSMinimumSystemVersion in the Info.plist below). Compile every .swift file in
+# this directory as one module.
+sdk="$(xcrun --show-sdk-path --sdk macosx)"
+target="$(uname -m)-apple-macos13.0"
 swiftc -O -parse-as-library \
+  -target "$target" -sdk "$sdk" \
   -framework SwiftUI -framework AppKit \
   -o "$bin" \
-  "$here/AgentDeskFixture.swift"
+  "$here"/*.swift
 
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
