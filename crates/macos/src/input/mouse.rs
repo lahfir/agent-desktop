@@ -53,6 +53,7 @@ mod imp {
         let step_delay = Duration::from_millis(duration_ms / steps as u64);
 
         post_event(CGEventType::LeftMouseDown, from, CGMouseButton::Left)?;
+        let mut release = MouseUpGuard { to, armed: true };
         sleep(Duration::from_millis(PICKUP_DELAY_MS));
 
         for i in 1..=steps {
@@ -72,7 +73,25 @@ mod imp {
             params.drop_delay_ms.unwrap_or(DEFAULT_DROP_DELAY_MS),
             DWELL_TICK_MS,
         )?;
+        release.armed = false;
         post_event(CGEventType::LeftMouseUp, to, CGMouseButton::Left)
+    }
+
+    /// Releases the left mouse button if the drag returns early. Every fallible
+    /// step between `LeftMouseDown` and the final `LeftMouseUp` would otherwise
+    /// leave the button logically held down system-wide on error; this guard
+    /// posts the up event on drop unless the happy path already did so.
+    struct MouseUpGuard {
+        to: CGPoint,
+        armed: bool,
+    }
+
+    impl Drop for MouseUpGuard {
+        fn drop(&mut self) {
+            if self.armed {
+                let _ = post_event(CGEventType::LeftMouseUp, self.to, CGMouseButton::Left);
+            }
+        }
     }
 
     /// Holds the dragged item over the destination while the drop target

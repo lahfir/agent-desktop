@@ -120,9 +120,10 @@ fn actionable(
     let request = crate::action_request::ActionRequest::headless(crate::action::Action::Click);
     match crate::actionability::check_live(entry, handle, adapter, &request) {
         Ok(report) => Ok(json!(report)),
-        Err(err) if err.code == ErrorCode::ActionFailed => {
-            Ok(json!({ "actionable": false, "error": err.message }))
-        }
+        Err(err) if err.code == ErrorCode::ActionFailed => match err.details {
+            Some(report) => Ok(report),
+            None => Ok(json!({ "actionable": false, "error": err.message })),
+        },
         Err(err) => Err(err),
     }
 }

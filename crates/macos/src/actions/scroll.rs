@@ -83,7 +83,7 @@ pub(crate) fn ax_scroll(
     if policy.allow_focus_steal && try_focus_child_in_direction(target, direction) {
         return Ok(());
     }
-    if try_select_row_in_direction(target, direction) {
+    if policy.allow_focus_steal && try_select_row_in_direction(target, direction) {
         return Ok(());
     }
 

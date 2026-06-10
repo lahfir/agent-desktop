@@ -121,6 +121,8 @@ unsafe fn optional_string(
     })
 }
 
+const MAX_REF_ARRAY_LEN: usize = 1024;
+
 unsafe fn string_array(
     ptr: *const *const std::os::raw::c_char,
     len: usize,
@@ -128,6 +130,12 @@ unsafe fn string_array(
 ) -> Result<Vec<String>, agent_desktop_core::error::AdapterError> {
     if len == 0 {
         return Ok(Vec::new());
+    }
+    if len > MAX_REF_ARRAY_LEN {
+        return Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("{field} count {len} exceeds MAX_REF_ARRAY_LEN ({MAX_REF_ARRAY_LEN})"),
+        ));
     }
     if ptr.is_null() {
         return Err(agent_desktop_core::error::AdapterError::new(
@@ -156,6 +164,12 @@ unsafe fn ref_path(
 ) -> Result<smallvec::SmallVec<[usize; 8]>, agent_desktop_core::error::AdapterError> {
     if len == 0 {
         return Ok(smallvec::SmallVec::new());
+    }
+    if len > MAX_REF_ARRAY_LEN {
+        return Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("path_count {len} exceeds MAX_REF_ARRAY_LEN ({MAX_REF_ARRAY_LEN})"),
+        ));
     }
     if ptr.is_null() {
         return Err(agent_desktop_core::error::AdapterError::new(

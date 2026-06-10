@@ -25,7 +25,9 @@ fn status_uses_precomputed_permission_report() {
         automation: PermissionState::NotRequired,
     };
 
-    let value = execute_with_report(&DeniedAdapter, &report).unwrap();
+    let value =
+        execute_with_report_with_context(&DeniedAdapter, &report, &CommandContext::default())
+            .unwrap();
     let permissions = value.get("permissions").unwrap();
 
     assert_eq!(permissions["accessibility"]["state"], "granted");

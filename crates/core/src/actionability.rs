@@ -83,22 +83,14 @@ fn check_with_stability(
     if report.actionable {
         return Ok(report);
     }
-    let code = if failed_check(&report, "stable") {
-        ErrorCode::StaleRef
-    } else {
-        ErrorCode::ActionFailed
-    };
-    let suggestion = if code == ErrorCode::StaleRef {
-        "Run 'snapshot' to refresh, then retry with the updated ref."
-    } else {
-        "Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended."
-    };
     Err(AdapterError::new(
-        code,
+        ErrorCode::ActionFailed,
         format!("Target is not actionable: {}", failure_reasons(&report)),
     )
     .with_details(json!(report))
-    .with_suggestion(suggestion))
+    .with_suggestion(
+        "Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended.",
+    ))
 }
 
 fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
@@ -200,13 +192,6 @@ fn failure_reasons(report: &ActionabilityReport) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-fn failed_check(report: &ActionabilityReport, name: &str) -> bool {
-    report
-        .checks
-        .iter()
-        .any(|check| check.name == name && matches!(check.status, ActionabilityStatus::Fail))
 }
 
 fn supported_by_available_actions(action: &Action, available_actions: &[String]) -> bool {

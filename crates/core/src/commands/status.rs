@@ -8,18 +8,6 @@ use crate::{
 };
 use serde_json::{Value, json};
 
-pub fn execute(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let report = adapter.permission_report();
-    execute_with_report(adapter, &report)
-}
-
-pub fn execute_with_report(
-    adapter: &dyn PlatformAdapter,
-    report: &PermissionReport,
-) -> Result<Value, AppError> {
-    execute_with_report_with_context(adapter, report, &CommandContext::default())
-}
-
 pub fn execute_with_report_with_context(
     adapter: &dyn PlatformAdapter,
     report: &PermissionReport,

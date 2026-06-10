@@ -144,7 +144,7 @@ mod imp {
             }
 
             ChainStep::IncrementToDynamic => match ctx.dynamic_value {
-                Some(value) => increment_to_value(el, value),
+                Some(value) => increment_to_value(el, value, ctx.deadline),
                 None => Ok(false),
             },
 
@@ -236,7 +236,11 @@ mod imp {
     /// Steppers and some sliders expose no settable AXValue but step through
     /// these actions. Stops on reaching the target, on no observable progress
     /// (the action stopped moving the value), or after a generous guard.
-    fn increment_to_value(el: &AXElement, target: &str) -> Result<bool, AdapterError> {
+    fn increment_to_value(
+        el: &AXElement,
+        target: &str,
+        deadline: Option<Instant>,
+    ) -> Result<bool, AdapterError> {
         let target: f64 = match target.parse() {
             Ok(t) => t,
             Err(_) => return Ok(false),
@@ -252,6 +256,9 @@ mod imp {
             return Ok(false);
         }
         for _ in 0..1024 {
+            if deadline.is_some_and(|dl| Instant::now() > dl) {
+                break;
+            }
             if (current - target).abs() < 0.5 {
                 return Ok(true);
             }
