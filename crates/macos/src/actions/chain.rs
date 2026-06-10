@@ -11,7 +11,7 @@ pub(crate) use super::chain_step::ChainStep;
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use crate::actions::ax_helpers;
+    use crate::actions::{ax_helpers, chain_verify};
     use std::time::{Duration, Instant};
 
     const DEFAULT_CHAIN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -27,6 +27,7 @@ mod imp {
         let deadline = ctx
             .deadline
             .unwrap_or_else(|| Instant::now() + chain_timeout());
+        let ctx = ctx.with_deadline(deadline);
         let total = def.steps.len();
         let mut steps = Vec::new();
 
@@ -50,7 +51,7 @@ mod imp {
                     .find(|s| matches!(s, ChainStep::CGClick { .. }))
                 {
                     let label = step_label(cg);
-                    if physical_click_permitted(policy) && execute_step(el, caps, cg, ctx, policy)?
+                    if physical_click_permitted(policy) && execute_step(el, caps, cg, &ctx, policy)?
                     {
                         tracing::debug!("chain: CGClick fallback succeeded");
                         steps.push(ActionStep::succeeded(label));
@@ -69,7 +70,7 @@ mod imp {
                 ));
             }
             let label = step_label(step);
-            if execute_step(el, caps, step, ctx, policy)? {
+            if execute_step(el, caps, step, &ctx, policy)? {
                 tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
                 steps.push(ActionStep::succeeded(label));
                 return Ok(steps);
@@ -224,7 +225,7 @@ mod imp {
         } else {
             ax_helpers::set_ax_string_or_err(el, attr, value)?;
         }
-        Ok(dynamic_write_had_effect(
+        Ok(chain_verify::dynamic_write_had_effect(
             attr,
             ax_helpers::element_role(el).as_deref(),
             value,
@@ -280,106 +281,11 @@ mod imp {
 
     fn set_bool_verified(el: &AXElement, attr: &str, value: bool) -> Result<bool, AdapterError> {
         Ok(ax_helpers::set_ax_bool_or_err(el, attr, value)?
-            && bool_write_had_effect(attr, value, crate::tree::copy_bool_attr(el, attr)))
-    }
-
-    fn bool_write_had_effect(attr: &str, expected: bool, observed: Option<bool>) -> bool {
-        !matches!(
-            attr,
-            "AXExpanded" | "AXDisclosing" | "AXSelected" | "AXFocused"
-        ) || observed == Some(expected)
-    }
-
-    fn dynamic_write_had_effect(
-        attr: &str,
-        role: Option<&str>,
-        expected: &str,
-        observed: Option<&str>,
-    ) -> bool {
-        if attr != "AXValue" || role == Some("AXSecureTextField") {
-            return true;
-        }
-        observed == Some(expected) || numbers_match(expected, observed)
-    }
-
-    /// Numeric controls report their value back in their own format (a slider
-    /// set to `50` reads back as `50.00`), so compare numerically when both
-    /// sides parse as numbers.
-    fn numbers_match(expected: &str, observed: Option<&str>) -> bool {
-        match (
-            expected.parse::<f64>(),
-            observed.and_then(|o| o.parse::<f64>().ok()),
-        ) {
-            (Ok(a), Some(b)) => (a - b).abs() < f64::EPSILON,
-            _ => false,
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::{bool_write_had_effect, dynamic_write_had_effect};
-
-        #[test]
-        fn ax_value_write_requires_readback_match() {
-            assert!(!dynamic_write_had_effect(
-                "AXValue",
-                Some("AXTextField"),
-                "",
-                Some("unchanged")
-            ));
-            assert!(dynamic_write_had_effect(
-                "AXValue",
-                Some("AXTextField"),
-                "",
-                Some("")
-            ));
-        }
-
-        #[test]
-        fn non_value_and_secure_writes_trust_ax_success() {
-            assert!(dynamic_write_had_effect(
-                "AXSelected",
-                Some("AXCheckBox"),
-                "true",
-                None
-            ));
-            assert!(dynamic_write_had_effect(
-                "AXValue",
-                Some("AXSecureTextField"),
-                "secret",
-                None
-            ));
-        }
-
-        #[test]
-        fn bool_state_writes_require_readback_match_for_stateful_attrs() {
-            assert!(bool_write_had_effect("AXExpanded", true, Some(true)));
-            assert!(!bool_write_had_effect("AXExpanded", true, Some(false)));
-            assert!(!bool_write_had_effect("AXExpanded", false, None));
-            assert!(bool_write_had_effect("AXFoo", true, None));
-        }
-
-        #[test]
-        fn numeric_value_write_matches_reformatted_readback() {
-            assert!(dynamic_write_had_effect(
-                "AXValue",
-                Some("AXSlider"),
-                "50",
-                Some("50.00")
-            ));
-            assert!(dynamic_write_had_effect(
-                "AXValue",
-                Some("AXIncrementor"),
-                "3",
-                Some("3")
-            ));
-            assert!(!dynamic_write_had_effect(
-                "AXValue",
-                Some("AXSlider"),
-                "50",
-                Some("12.00")
-            ));
-        }
+            && chain_verify::bool_write_had_effect(
+                attr,
+                value,
+                crate::tree::copy_bool_attr(el, attr),
+            ))
     }
 }
 
