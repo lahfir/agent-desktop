@@ -1,4 +1,6 @@
 use crate::{
+    action::Action,
+    action_request::ActionRequest,
     actionability::{bounds_are_visible, states_are_enabled},
     adapter::{NativeHandle, PlatformAdapter, optional_live_read},
     error::{AdapterError, AppError, ErrorCode},
@@ -6,39 +8,50 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+#[derive(Debug)]
 pub(crate) enum ElementPredicate {
     Exists,
     Enabled,
     Visible,
-    Actionable,
+    Actionable(Action),
     Value(String),
 }
 
 impl ElementPredicate {
-    pub(crate) fn parse(predicate: Option<&str>, value: Option<String>) -> Result<Self, AppError> {
+    pub(crate) fn parse(
+        predicate: Option<&str>,
+        value: Option<String>,
+        action: Option<&str>,
+    ) -> Result<Self, AppError> {
         match predicate.unwrap_or("exists") {
             "exists" => {
                 reject_unused_value(value)?;
+                reject_unused_action(action)?;
                 Ok(Self::Exists)
             }
             "enabled" => {
                 reject_unused_value(value)?;
+                reject_unused_action(action)?;
                 Ok(Self::Enabled)
             }
             "visible" => {
                 reject_unused_value(value)?;
+                reject_unused_action(action)?;
                 Ok(Self::Visible)
             }
             "actionable" => {
                 reject_unused_value(value)?;
-                Ok(Self::Actionable)
+                Ok(Self::Actionable(parse_actionability_action(action)?))
             }
-            "value" => value.map(Self::Value).ok_or_else(|| {
-                AppError::invalid_input_with_suggestion(
-                    "--predicate value requires --value",
-                    "Pass --value <expected> with --predicate value.",
-                )
-            }),
+            "value" => {
+                reject_unused_action(action)?;
+                value.map(Self::Value).ok_or_else(|| {
+                    AppError::invalid_input_with_suggestion(
+                        "--predicate value requires --value",
+                        "Pass --value <expected> with --predicate value.",
+                    )
+                })
+            }
             other => Err(AppError::invalid_input_with_suggestion(
                 format!("Unknown wait predicate '{other}'"),
                 "Use one of: exists, enabled, visible, actionable, value.",
@@ -51,10 +64,33 @@ impl ElementPredicate {
             Self::Exists => "exists",
             Self::Enabled => "enabled",
             Self::Visible => "visible",
-            Self::Actionable => "actionable",
+            Self::Actionable(_) => "actionable",
             Self::Value(_) => "value",
         }
     }
+}
+
+fn parse_actionability_action(action: Option<&str>) -> Result<Action, AppError> {
+    match action.unwrap_or("click") {
+        "click" => Ok(Action::Click),
+        "type" => Ok(Action::TypeText(String::new())),
+        "set-value" => Ok(Action::SetValue(String::new())),
+        "clear" => Ok(Action::Clear),
+        other => Err(AppError::invalid_input_with_suggestion(
+            format!("Unknown actionability action '{other}'"),
+            "Use one of: click, type, set-value, clear.",
+        )),
+    }
+}
+
+fn reject_unused_action(action: Option<&str>) -> Result<(), AppError> {
+    if action.is_none() {
+        return Ok(());
+    }
+    Err(AppError::invalid_input_with_suggestion(
+        "--action is only valid with --predicate actionable",
+        "Remove --action or use --predicate actionable.",
+    ))
 }
 
 pub(crate) fn observe(
@@ -67,7 +103,7 @@ pub(crate) fn observe(
         ElementPredicate::Exists => Ok(json!({ "exists": true })),
         ElementPredicate::Enabled => enabled(entry, handle, adapter),
         ElementPredicate::Visible => visible(entry, handle, adapter),
-        ElementPredicate::Actionable => actionable(entry, handle, adapter),
+        ElementPredicate::Actionable(action) => actionable(entry, handle, action, adapter),
         ElementPredicate::Value(expected) => value(entry, handle, expected, adapter),
     }
 }
@@ -77,7 +113,7 @@ pub(crate) fn satisfied(predicate: &ElementPredicate, observed: &Value) -> bool 
         ElementPredicate::Exists => observed["exists"].as_bool() == Some(true),
         ElementPredicate::Enabled => observed["enabled"].as_bool() == Some(true),
         ElementPredicate::Visible => observed["visible"].as_bool() == Some(true),
-        ElementPredicate::Actionable => observed["actionable"].as_bool() == Some(true),
+        ElementPredicate::Actionable(_) => observed["actionable"].as_bool() == Some(true),
         ElementPredicate::Value(_) => observed["matched"].as_bool() == Some(true),
     }
 }
@@ -115,9 +151,10 @@ fn visible(
 fn actionable(
     entry: &RefEntry,
     handle: &NativeHandle,
+    action: &Action,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AdapterError> {
-    let request = crate::action_request::ActionRequest::headless(crate::action::Action::Click);
+    let request = actionability_request(action.clone());
     match crate::actionability::check_live(entry, handle, adapter, &request) {
         Ok(report) => Ok(json!(report)),
         Err(err) if err.code == ErrorCode::ActionFailed => match err.details {
@@ -125,6 +162,16 @@ fn actionable(
             None => Ok(json!({ "actionable": false, "error": err.message })),
         },
         Err(err) => Err(err),
+    }
+}
+
+/// Mirrors the base policy the real command would run with, so the preflight
+/// answers "would this action succeed" rather than always "would a headless
+/// click succeed" — `type` runs with the focus fallback its command uses.
+fn actionability_request(action: Action) -> ActionRequest {
+    match action {
+        Action::TypeText(_) => ActionRequest::focus_fallback(action),
+        _ => ActionRequest::headless(action),
     }
 }
 

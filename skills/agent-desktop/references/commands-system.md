@@ -173,10 +173,13 @@ Pauses for N milliseconds. Use between actions that need time to settle.
 ```bash
 agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 --app "App"
 agent-desktop wait --element @e5 --predicate actionable --timeout 5000
+agent-desktop wait --element @e5 --predicate actionable --action type --timeout 5000
 agent-desktop wait --element @e5 --predicate value --value "Done" --timeout 5000
 ```
 Blocks until the element ref appears in the accessibility tree. Useful after triggering UI changes.
 When `--snapshot` is omitted, the command polls the caller's latest session refmap and refreshes it on the built-in debounce. When `--snapshot` is passed, it resolves that pinned refmap directly. Element resolution is capped by the remaining `--timeout`, and timeout errors include the last observed predicate/actionability state.
+
+`--predicate actionable` checks readiness for a specific action via `--action` (`click` default, `type`, `set-value`, `clear`). Use `--action type` before a wait-then-type flow: the editability check only runs for the editing actions, so the default click check can report ready on a field that cannot accept text.
 
 ### wait (window)
 ```bash
@@ -209,6 +212,7 @@ Blocks until the menu surface is dismissed.
 | `--snapshot` | latest | Snapshot ID for `--element` waits |
 | `--predicate` | exists | Element predicate: `exists`, `enabled`, `visible`, `actionable`, `value` |
 | `--value` | | Expected text for `--predicate value` |
+| `--action` | click | Action checked by `--predicate actionable`: `click`, `type`, `set-value`, `clear` |
 | `--count` | | Expected match count for `--text` waits |
 | `--window` | | Window title to wait for |
 | `--text` | | Text to wait for; with `--notification`, filters notification title/body |

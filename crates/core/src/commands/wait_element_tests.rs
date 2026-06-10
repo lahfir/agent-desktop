@@ -248,7 +248,7 @@ fn element_wait_timeout_reports_last_actionability_observation() {
     let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable,
+        wait_predicate::ElementPredicate::Actionable(crate::action::Action::Click),
         50,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -283,7 +283,7 @@ fn element_wait_actionable_uses_live_state() {
     let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable,
+        wait_predicate::ElementPredicate::Actionable(crate::action::Action::Click),
         1,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -305,7 +305,7 @@ fn element_wait_actionable_retries_until_live_state_converges() {
     let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable,
+        wait_predicate::ElementPredicate::Actionable(crate::action::Action::Click),
         250,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -314,6 +314,58 @@ fn element_wait_actionable_retries_until_live_state_converges() {
 
     assert_eq!(value["predicate"], "actionable");
     assert_eq!(value["observed"]["actionable"], true);
+}
+
+#[test]
+fn element_wait_actionable_type_fails_on_uneditable_role() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+    let adapter = PredicateAdapter {
+        state: Some(ElementState {
+            role: "button".into(),
+            states: vec![],
+            value: None,
+        }),
+        value: None,
+        bounds: None,
+    };
+
+    let err = wait_for_element_test(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Actionable(
+            crate::action::Action::TypeText(String::new()),
+        ),
+        50,
+        &adapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "TIMEOUT");
+    match err {
+        AppError::Adapter(adapter_error) => {
+            let details = adapter_error.details.unwrap();
+            assert_eq!(details["last_observed"]["actionable"], false);
+        }
+        _ => panic!("expected adapter error"),
+    }
+}
+
+#[test]
+fn wait_action_flag_is_rejected_outside_actionable_predicate() {
+    let err =
+        wait_predicate::ElementPredicate::parse(Some("enabled"), None, Some("type")).unwrap_err();
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn wait_actionable_rejects_unknown_action() {
+    let err = wait_predicate::ElementPredicate::parse(Some("actionable"), None, Some("hover"))
+        .unwrap_err();
+
+    assert_eq!(err.code(), "INVALID_ARGS");
 }
 
 #[test]

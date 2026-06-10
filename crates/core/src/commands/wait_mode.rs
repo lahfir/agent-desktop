@@ -50,6 +50,7 @@ impl WaitMode {
             let predicate = wait_predicate::ElementPredicate::parse(
                 args.predicate.predicate.as_deref(),
                 args.predicate.value,
+                args.predicate.action.as_deref(),
             )?;
             return Ok(Self::Element {
                 ref_id,

@@ -162,6 +162,12 @@ pub(crate) struct WaitPredicateArgs {
     pub value: Option<String>,
     #[arg(
         long,
+        value_name = "ACTION",
+        help = "Action for --predicate actionable: click (default), type, set-value, or clear"
+    )]
+    pub action: Option<String>,
+    #[arg(
+        long,
         value_name = "COUNT",
         help = "Expected match count for --text waits"
     )]

@@ -47,6 +47,7 @@ pub fn run_wait_element_command(
                     snapshot_id: Some(snapshot_id),
                     predicate: Some("exists".into()),
                     value: None,
+                    action: None,
                     count: None,
                 },
                 timeout_ms: 100,

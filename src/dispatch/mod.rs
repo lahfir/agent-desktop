@@ -318,6 +318,7 @@ pub(crate) fn dispatch(
                     snapshot_id: a.predicate.snapshot,
                     predicate: a.predicate.predicate,
                     value: a.predicate.value,
+                    action: a.predicate.action,
                     count: a.predicate.count,
                 },
                 timeout_ms: a.timeout,

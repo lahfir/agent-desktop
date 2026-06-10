@@ -95,6 +95,7 @@ fn wait_args() -> WaitArgs {
             snapshot_id: None,
             predicate: None,
             value: None,
+            action: None,
             count: None,
         },
         timeout_ms: 1,

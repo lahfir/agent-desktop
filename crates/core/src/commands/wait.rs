@@ -40,6 +40,7 @@ pub struct WaitPredicateArgs {
     pub snapshot_id: Option<String>,
     pub predicate: Option<String>,
     pub value: Option<String>,
+    pub action: Option<String>,
     pub count: Option<usize>,
 }
 
