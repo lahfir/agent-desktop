@@ -235,7 +235,11 @@ mod tests {
                     "message": "private error",
                     "post_state": { "value": "deep secret" },
                     "target_label": "button secret",
-                    "nested": { "expected": "token" }
+                    "nested": { "expected": "token" },
+                    "title": "private window title",
+                    "url": "https://internal.example/doc",
+                    "help": "private tooltip",
+                    "placeholder": "private placeholder"
                 }),
             )
             .unwrap();
@@ -251,12 +255,20 @@ mod tests {
         assert_eq!(event["post_state"]["value"]["redacted"], true);
         assert_eq!(event["target_label"]["redacted"], true);
         assert_eq!(event["nested"]["expected"]["redacted"], true);
+        assert_eq!(event["title"]["redacted"], true);
+        assert_eq!(event["url"]["redacted"], true);
+        assert_eq!(event["help"]["redacted"], true);
+        assert_eq!(event["placeholder"]["redacted"], true);
         assert!(!body.contains("secret"));
         assert!(!body.contains("hidden"));
         assert!(!body.contains("private label"));
         assert!(!body.contains("private desc"));
         assert!(!body.contains("private error"));
         assert!(!body.contains("token"));
+        assert!(!body.contains("private window title"));
+        assert!(!body.contains("internal.example"));
+        assert!(!body.contains("private tooltip"));
+        assert!(!body.contains("private placeholder"));
         let _ = std::fs::remove_file(path);
     }
 

@@ -151,6 +151,10 @@ fn is_sensitive_trace_key(key: &str) -> bool {
         "secret",
         "token",
         "password",
+        "title",
+        "url",
+        "help",
+        "placeholder",
     ]
     .iter()
     .any(|needle| key.contains(needle))
