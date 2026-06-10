@@ -224,6 +224,14 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("focus_window"))
     }
 
+    /// Brings the application owning `pid` to the foreground. Best-effort guard
+    /// invoked before physical (cursor/keyboard) input that targets a known
+    /// element, so synthetic events land on the intended window rather than
+    /// whatever happens to be frontmost.
+    fn focus_app(&self, _pid: i32) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("focus_app"))
+    }
+
     fn launch_app(&self, _id: &str, _timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
         Err(AdapterError::not_supported("launch_app"))
     }

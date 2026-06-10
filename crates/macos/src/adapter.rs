@@ -119,6 +119,10 @@ impl PlatformAdapter for MacOSAdapter {
         crate::system::app_ops::focus_window_impl(win)
     }
 
+    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
+        crate::system::app_ops::ensure_app_focused(pid)
+    }
+
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
         crate::system::app_ops::launch_app_impl(id, timeout_ms)
     }

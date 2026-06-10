@@ -163,11 +163,11 @@ pub(crate) fn resolve_point_from_ref_or_xy_with_context(
     context: &CommandContext,
 ) -> Result<Point, AppError> {
     if let Some(ref_id) = args.ref_id {
-        let (_entry, handle) =
-            resolve_ref_with_context(ref_id, args.snapshot_id, adapter, context)?;
+        let (entry, handle) = resolve_ref_with_context(ref_id, args.snapshot_id, adapter, context)?;
         let bounds = adapter
             .get_element_bounds(handle.handle())?
             .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
+        let _ = adapter.focus_app(entry.pid);
         return Ok(Point {
             x: bounds.x + bounds.width / 2.0,
             y: bounds.y + bounds.height / 2.0,
