@@ -55,9 +55,25 @@ mod imp {
         Ok(false)
     }
 
+    /// Polls for the disclosed state instead of a fixed settle sleep: fast UIs
+    /// confirm on the first read, while animated disclosures get up to the
+    /// deadline to land before the step is judged ineffective.
     fn disclosure_settled(el: &AXElement, want_expanded: bool) -> bool {
-        std::thread::sleep(std::time::Duration::from_millis(40));
-        disclosed_state(el) == Some(want_expanded)
+        use std::time::{Duration, Instant};
+
+        const POLL_INTERVAL: Duration = Duration::from_millis(5);
+        const SETTLE_DEADLINE: Duration = Duration::from_millis(200);
+
+        let deadline = Instant::now() + SETTLE_DEADLINE;
+        loop {
+            if disclosed_state(el) == Some(want_expanded) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        }
     }
 
     fn disclosed_state(el: &AXElement) -> Option<bool> {

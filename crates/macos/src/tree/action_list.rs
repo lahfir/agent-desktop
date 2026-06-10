@@ -40,7 +40,7 @@ pub(crate) fn platform_available_actions(
     {
         push_unique(&mut actions, capability::SET_VALUE);
     }
-    if is_attr_settable(el, kAXFocusedAttribute) {
+    if role_may_accept_focus(role) && is_attr_settable(el, kAXFocusedAttribute) {
         push_unique(&mut actions, capability::SET_FOCUS);
     }
     if (role_may_expand(role) && is_attr_settable(el, "AXExpanded"))
@@ -73,6 +73,26 @@ fn role_may_bear_value(role: &str) -> bool {
             | "valueindicator"
             | "unknown"
     )
+}
+
+/// Whether a role could carry a settable `AXFocused`, so the `is_settable`
+/// probe is worth an IPC. Interactive controls and focus-holding containers
+/// (tables, outlines, web areas) can; static/decorative roles never do.
+/// `unknown` always probes so an unmapped role never loses a capability.
+fn role_may_accept_focus(role: &str) -> bool {
+    agent_desktop_core::roles::is_interactive_role(role)
+        || matches!(
+            role,
+            "table"
+                | "outline"
+                | "list"
+                | "browser"
+                | "webarea"
+                | "scrollarea"
+                | "group"
+                | "row"
+                | "unknown"
+        )
 }
 
 /// Whether a role could expose a settable `AXExpanded`. Leaf/interactive roles
@@ -137,7 +157,19 @@ fn role_may_own_scrollbars(role: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{role_allows_context_menu_action, role_may_own_scrollbars, role_supports_scroll};
+    use super::{
+        role_allows_context_menu_action, role_may_accept_focus, role_may_own_scrollbars,
+        role_supports_scroll,
+    };
+
+    #[test]
+    fn focus_probe_is_limited_to_focus_bearing_roles() {
+        assert!(role_may_accept_focus("textfield"));
+        assert!(role_may_accept_focus("webarea"));
+        assert!(role_may_accept_focus("unknown"));
+        assert!(!role_may_accept_focus("statictext"));
+        assert!(!role_may_accept_focus("image"));
+    }
 
     #[test]
     fn menu_opening_controls_do_not_advertise_right_click() {

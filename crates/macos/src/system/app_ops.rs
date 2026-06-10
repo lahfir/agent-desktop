@@ -31,8 +31,31 @@ pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
             "Failed to focus app pid={pid}"
         )));
     }
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    wait_until_frontmost(&app_el);
     Ok(())
+}
+
+/// Polls `AXFrontmost` until the app actually reports frontmost instead of a
+/// fixed settle sleep, so an already-frontmost app costs one read and a slow
+/// activation gets the full window. Best-effort: timing out just means the
+/// caller proceeds as before the poll existed.
+#[cfg(target_os = "macos")]
+fn wait_until_frontmost(app_el: &crate::tree::AXElement) {
+    use std::time::{Duration, Instant};
+
+    const POLL_INTERVAL: Duration = Duration::from_millis(1);
+    const FRONTMOST_DEADLINE: Duration = Duration::from_millis(50);
+
+    let deadline = Instant::now() + FRONTMOST_DEADLINE;
+    loop {
+        if crate::tree::copy_bool_attr(app_el, "AXFrontmost") == Some(true) {
+            return;
+        }
+        if Instant::now() >= deadline {
+            return;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
 }
 
 #[cfg(target_os = "macos")]
