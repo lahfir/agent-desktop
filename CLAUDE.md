@@ -48,12 +48,14 @@ Cross-platform Rust CLI + MCP server enabling AI agents to observe and control d
   - `docs:` — documentation only
   - `style:` — formatting, no code change
   - `refactor:` — code change that neither fixes a bug nor adds a feature
+  - `perf:` — performance improvement with no behavior change
   - `chore:` — maintenance tasks, dependencies
   - `ci:` — CI/CD changes
   - `test:` — adding or fixing tests
 - Format: `type: concise imperative description` (lowercase type, no capital after colon)
 - Focus on "why" not "what"
 - Examples: `feat: add scroll-to command`, `fix: prevent stale ref on window resize`, `ci: add binary size check`
+- **Pre-1.0 versioning policy** (release-please `bump-minor-pre-major` + `bump-patch-for-minor-pre-major`): while the version is 0.x, a `BREAKING CHANGE` cuts a **minor** (0.2 → 0.3) and a `feat:` cuts a **patch**. Do not expect a major release before 1.0.
 
 ## Core Principle
 
@@ -302,6 +304,8 @@ Error responses:
   }
 }
 ```
+
+The `error` object may also carry an optional `details` object (e.g. the actionability report on an actionability failure, candidate summaries on `AMBIGUOUS_TARGET`, or the last observed state on a `wait` `TIMEOUT`).
 
 ### Serialization Rules
 
