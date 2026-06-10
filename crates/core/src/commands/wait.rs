@@ -153,7 +153,8 @@ fn wait_for_element(
             if remaining.is_zero() {
                 return wait_timeout::element(ref_id, predicate, timeout_ms, last_observed);
             }
-            match adapter.resolve_element_strict_with_timeout(&entry, remaining) {
+            let attempt = remaining.min(WAIT_RESOLVE_ATTEMPT);
+            match adapter.resolve_element_strict_with_timeout(&entry, attempt) {
                 Ok(handle) => {
                     let observed = wait_predicate::observe(&entry, &handle, &predicate, adapter);
                     let _ = adapter.release_handle(&handle);
@@ -231,6 +232,11 @@ fn wait_for_window(
         std::thread::sleep(remaining.min(Duration::from_millis(100)));
     }
 }
+
+/// Per-attempt cap on ref resolution inside a wait loop, so a slow resolve
+/// cannot consume the whole wait budget on the first poll; the predicate is
+/// re-checked every attempt across the full timeout.
+const WAIT_RESOLVE_ATTEMPT: Duration = Duration::from_millis(750);
 
 fn is_retryable_wait_resolution_error(code: &ErrorCode) -> bool {
     matches!(

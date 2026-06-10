@@ -30,21 +30,34 @@ pub(crate) fn execute_type(
     crate::input::keyboard::synthesize_text(text)
 }
 
+/// Restores the user's clipboard on every scope exit — success, error, or
+/// panic — so a failure or early return mid-paste cannot leave the pasted text
+/// behind. (A SIGKILL between set and restore is unpreventable in any process.)
+#[cfg(target_os = "macos")]
+struct ClipboardRestore {
+    previous: String,
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for ClipboardRestore {
+    fn drop(&mut self) {
+        let _ = crate::input::clipboard::set(&self.previous);
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn type_via_clipboard_paste(el: &AXElement, text: &str) -> Result<(), AdapterError> {
     let before = readable_value(el);
     let previous = crate::input::clipboard::get().unwrap_or_default();
     crate::input::clipboard::set(text)?;
+    let _restore = ClipboardRestore { previous };
     std::thread::sleep(std::time::Duration::from_millis(50));
     let combo = agent_desktop_core::action::KeyCombo {
         key: "v".into(),
         modifiers: vec![agent_desktop_core::action::Modifier::Cmd],
     };
-    let paste_result = crate::input::keyboard::synthesize_key(&combo);
+    crate::input::keyboard::synthesize_key(&combo)?;
     std::thread::sleep(std::time::Duration::from_millis(100));
-    let restore_result = crate::input::clipboard::set(&previous);
-    paste_result?;
-    restore_result?;
     verify_paste_effect(before.as_deref(), readable_value(el).as_deref())
 }
 

@@ -3,9 +3,9 @@ use std::time::{Duration, Instant};
 
 pub(crate) struct LatestRefCache<'a> {
     store: &'a RefStore,
-    pub(crate) snapshot_id: Option<String>,
+    snapshot_id: Option<String>,
     refmap: RefMap,
-    pub(crate) last_refresh: Instant,
+    last_refresh: Instant,
 }
 
 impl<'a> LatestRefCache<'a> {

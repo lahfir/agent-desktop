@@ -1,5 +1,6 @@
 use super::*;
 use crate::adapter::PlatformAdapter;
+use crate::error::{AdapterError, ErrorCode};
 
 struct ProtectiveAdapter;
 
@@ -10,6 +11,14 @@ impl PlatformAdapter for ProtectiveAdapter {
 
     fn close_app(&self, _id: &str, _force: bool) -> Result<(), crate::error::AdapterError> {
         Ok(())
+    }
+}
+
+struct FailingAdapter;
+
+impl PlatformAdapter for FailingAdapter {
+    fn close_app(&self, _id: &str, _force: bool) -> Result<(), AdapterError> {
+        Err(AdapterError::new(ErrorCode::AppNotFound, "no such app"))
     }
 }
 
@@ -42,10 +51,24 @@ fn graceful_close_reports_request_without_claiming_termination() {
     assert_eq!(value["app"], "TextEdit");
     assert_eq!(value["method"], "graceful");
     assert_eq!(value["requested"], true);
-    assert!(
-        value.get("closed").is_none(),
-        "graceful close must not claim a termination it cannot guarantee"
+    assert_eq!(
+        value["closed"], false,
+        "graceful close must not claim a termination it cannot confirm"
     );
+}
+
+#[test]
+fn close_app_propagates_adapter_errors() {
+    let err = execute(
+        CloseAppArgs {
+            app: "Ghost".into(),
+            force: true,
+        },
+        &FailingAdapter,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "APP_NOT_FOUND");
 }
 
 #[test]

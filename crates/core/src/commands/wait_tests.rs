@@ -315,3 +315,49 @@ fn text_wait_with_count_zero_detects_absence() {
     assert_eq!(value["found"], true);
     assert_eq!(value["count"], 0);
 }
+
+struct MenuWaitAdapter {
+    open_seen: std::sync::Mutex<Option<bool>>,
+}
+
+impl PlatformAdapter for MenuWaitAdapter {
+    fn list_apps(&self) -> Result<Vec<crate::node::AppInfo>, AdapterError> {
+        Ok(vec![crate::node::AppInfo {
+            name: "MenuApp".into(),
+            pid: 42,
+            bundle_id: None,
+        }])
+    }
+
+    fn wait_for_menu(&self, _pid: i32, open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
+        *self.open_seen.lock().unwrap() = Some(open);
+        Ok(())
+    }
+}
+
+#[test]
+fn menu_closed_wait_requests_closed_state_and_reports_found() {
+    let adapter = MenuWaitAdapter {
+        open_seen: std::sync::Mutex::new(None),
+    };
+    let value = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                menu_closed: true,
+                ..wait_args().mode
+            },
+            app: Some("MenuApp".into()),
+            ..wait_args()
+        },
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(value["found"], true);
+    assert_eq!(
+        *adapter.open_seen.lock().unwrap(),
+        Some(false),
+        "--menu-closed must wait for the menu to be closed (open=false)"
+    );
+}

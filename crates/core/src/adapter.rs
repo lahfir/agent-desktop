@@ -187,8 +187,12 @@ pub trait PlatformAdapter: Send + Sync {
     fn resolve_element_strict_with_timeout(
         &self,
         entry: &RefEntry,
-        _timeout: std::time::Duration,
+        timeout: std::time::Duration,
     ) -> Result<NativeHandle, AdapterError> {
+        tracing::trace!(
+            ?timeout,
+            "resolve_element_strict_with_timeout: default impl does not enforce the deadline; override to honor it"
+        );
         self.resolve_element_strict(entry)
     }
 
