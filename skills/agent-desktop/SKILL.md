@@ -105,6 +105,8 @@ Every command returns a JSON envelope on stdout:
 **Success:** `{ "version": "2.0", "ok": true, "command": "snapshot", "data": { ... } }`
 **Error:** `{ "version": "2.0", "ok": false, "command": "click", "error": { "code": "STALE_REF", "message": "...", "suggestion": "..." } }`
 
+The `error` object may also carry an optional `details` object (e.g. the actionability report on an actionability failure, candidate summaries on `AMBIGUOUS_TARGET`, or the last observed state on a `wait` `TIMEOUT`). Parse errors leniently — `details` and future fields are additive, so do not reject responses with unknown keys.
+
 Exit codes: `0` success, `1` structured error, `2` argument error.
 
 ### Error Codes

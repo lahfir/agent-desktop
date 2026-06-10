@@ -140,6 +140,17 @@ agent-desktop find --app "App" --role button --limit 20
 }
 ```
 
+**Output (no match — `roles_present` hint):** when a `--role` filter matches nothing, `matches` is empty and `roles_present` lists the roles actually in the searched tree, so you can tell a wrong role name from "none on screen":
+```json
+{
+  "data": {
+    "matches": [],
+    "count": 0,
+    "roles_present": ["button", "cell", "checkbox", "scrollarea", "statictext"]
+  }
+}
+```
+
 ## get
 
 Read a specific property from an element.
