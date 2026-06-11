@@ -31,6 +31,17 @@ mod imp {
     }
 
     pub fn synthesize_drag(params: DragParams) -> Result<(), AdapterError> {
+        drag_sequence(params).map_err(|err| {
+            if err.suggestion.is_some() {
+                return err;
+            }
+            err.with_suggestion(
+                "The drag was aborted: the button was released back at the origin (best-effort) and no drop was committed at the destination. The cursor ends at the origin. Re-check the source state before retrying.",
+            )
+        })
+    }
+
+    fn drag_sequence(params: DragParams) -> Result<(), AdapterError> {
         tracing::debug!(
             "mouse: drag ({:.0},{:.0}) -> ({:.0},{:.0}) duration={}ms",
             params.from.x,
@@ -86,7 +97,12 @@ mod imp {
     /// On any early return, `Drop` cancels the gesture by dragging back to the
     /// origin and releasing there — never at the unreached destination, where
     /// CGEvent's embedded coordinates would silently commit the aborted drag
-    /// as a completed drop.
+    /// as a completed drop. The cancel is best-effort twice over: the
+    /// corrective posts themselves can fail (typically the same systemic
+    /// CGEventSource failure that aborted the drag, leaving the button held
+    /// and the cursor wherever the last successful event put it), and a
+    /// drop target under the origin still sees a self-drop, which most
+    /// targets treat as a no-op.
     struct MouseUpGuard {
         origin: CGPoint,
         armed: bool,
