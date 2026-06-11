@@ -11,6 +11,10 @@ pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
     }
 }
 
+/// Ensures the app is frontmost: a no-op when it already is, otherwise a
+/// best-effort raise confirmed by polling. `Ok` therefore means "frontmost
+/// ensured", not "a raise happened" — callers surfacing `focused:true` get
+/// exactly that ensured semantics.
 #[cfg(target_os = "macos")]
 pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
     tracing::debug!("system: ensure_app_focused pid={pid}");
@@ -18,6 +22,9 @@ pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
     let app_el = crate::tree::element_for_pid(pid);
+    if crate::tree::copy_bool_attr(&app_el, "AXFrontmost") == Some(true) {
+        return Ok(());
+    }
     let frontmost_attr = CFString::new("AXFrontmost");
     let err = unsafe {
         AXUIElementSetAttributeValue(
@@ -43,7 +50,7 @@ pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
 fn wait_until_frontmost(app_el: &crate::tree::AXElement) {
     use std::time::{Duration, Instant};
 
-    const POLL_INTERVAL: Duration = Duration::from_millis(1);
+    const POLL_INTERVAL: Duration = Duration::from_millis(5);
     const FRONTMOST_DEADLINE: Duration = Duration::from_millis(50);
 
     let deadline = Instant::now() + FRONTMOST_DEADLINE;
@@ -89,6 +96,7 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
             "Failed to set AXFrontmost (err={err})"
         )));
     }
+    wait_until_frontmost(&app_el);
 
     let main_win = crate::tree::window_element_for(win.pid, &win.title);
     let raise_action = CFString::new("AXRaise");
