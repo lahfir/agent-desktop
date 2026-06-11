@@ -4,7 +4,12 @@ use crate::{
 };
 use serde_json::{Value, json};
 
-fn timeout_err(message: String, details: Value) -> Result<Value, AppError> {
+/// Builds the wait-loop TIMEOUT error. Every payload carries
+/// `kind: "wait_timeout"` so agents can discriminate it from the chain
+/// deadline TIMEOUT schema (`kind: "chain_deadline"`) without sniffing
+/// field names.
+fn timeout_err(message: String, mut details: Value) -> Result<Value, AppError> {
+    details["kind"] = json!("wait_timeout");
     Err(AppError::Adapter(
         AdapterError::timeout(message).with_details(details),
     ))

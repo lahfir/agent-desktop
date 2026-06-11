@@ -24,9 +24,19 @@ mod imp {
         press_toggle_disclosure(el, false, chain_deadline)
     }
 
+    enum Settle {
+        Confirmed,
+        Failed,
+        DeadlineExpired,
+    }
+
     /// Tries the semantic action / settable attribute, then a press. Each is
     /// confirmed against the disclosed state; an action that succeeds at the AX
-    /// layer but does not move the control is not counted.
+    /// layer but does not move the control is not counted. A settle wait that
+    /// was truncated by the chain deadline is a hard TIMEOUT (mirroring the
+    /// increment path): the press may still land after the truncated wait, so
+    /// reporting a plain step failure would mask a possible mutation as
+    /// ACTION_FAILED.
     fn press_toggle_disclosure(
         el: &AXElement,
         want_expanded: bool,
@@ -42,51 +52,74 @@ mod imp {
         };
         if ax_helpers::has_ax_action(el, action) {
             let _ = ax_helpers::try_ax_action_retried_or_err(el, action)?;
-            if disclosure_settled(el, want_expanded, chain_deadline) {
+            if settled_or_deadline(el, want_expanded, chain_deadline)? {
                 return Ok(true);
             }
         }
         if ax_helpers::is_attr_settable(el, "AXExpanded") {
             let _ = ax_helpers::set_ax_bool_or_err(el, "AXExpanded", want_expanded)?;
-            if disclosure_settled(el, want_expanded, chain_deadline) {
+            if settled_or_deadline(el, want_expanded, chain_deadline)? {
                 return Ok(true);
             }
         }
         if ax_helpers::has_ax_action(el, "AXPress")
             && ax_helpers::try_ax_action_retried_or_err(el, "AXPress")?
-            && disclosure_settled(el, want_expanded, chain_deadline)
+            && settled_or_deadline(el, want_expanded, chain_deadline)?
         {
             return Ok(true);
         }
         Ok(false)
     }
 
+    fn settled_or_deadline(
+        el: &AXElement,
+        want_expanded: bool,
+        chain_deadline: Option<std::time::Instant>,
+    ) -> Result<bool, AdapterError> {
+        match disclosure_settled(el, want_expanded, chain_deadline) {
+            Settle::Confirmed => Ok(true),
+            Settle::Failed => Ok(false),
+            Settle::DeadlineExpired => {
+                Err(crate::actions::chain_verify::disclosure_deadline_error(
+                    want_expanded,
+                    disclosed_state(el),
+                ))
+            }
+        }
+    }
+
     /// Polls for the disclosed state instead of a fixed settle sleep: fast UIs
     /// confirm on the first read, while animated disclosures get up to the
-    /// settle budget — capped to the chain's remaining deadline so a settle
-    /// wait can never overshoot the chain's own budget.
+    /// settle budget. The budget is capped to the chain's remaining deadline;
+    /// an exit forced by that cap (rather than the full budget elapsing) is
+    /// reported as `DeadlineExpired`, never as a plain failure. At least one
+    /// state read always happens, even with the deadline already past.
     fn disclosure_settled(
         el: &AXElement,
         want_expanded: bool,
         chain_deadline: Option<std::time::Instant>,
-    ) -> bool {
+    ) -> Settle {
         use std::time::{Duration, Instant};
 
         const POLL_INTERVAL: Duration = Duration::from_millis(20);
         const SETTLE_BUDGET: Duration = Duration::from_millis(200);
 
-        let mut deadline = Instant::now() + SETTLE_BUDGET;
-        if let Some(chain_dl) = chain_deadline {
-            deadline = deadline.min(chain_dl);
-        }
+        let budget_end = Instant::now() + SETTLE_BUDGET;
+        let deadline = chain_deadline.map_or(budget_end, |dl| dl.min(budget_end));
+        let truncated = deadline < budget_end;
         loop {
             if disclosed_state(el) == Some(want_expanded) {
-                return true;
+                return Settle::Confirmed;
             }
-            if Instant::now() >= deadline {
-                return false;
+            let now = Instant::now();
+            if now >= deadline {
+                return if truncated {
+                    Settle::DeadlineExpired
+                } else {
+                    Settle::Failed
+                };
             }
-            std::thread::sleep(POLL_INTERVAL);
+            std::thread::sleep(POLL_INTERVAL.min(deadline - now));
         }
     }
 

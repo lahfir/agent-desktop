@@ -3,17 +3,38 @@ use agent_desktop_core::error::AdapterError;
 /// Error for a chain deadline expiring mid-increment. Unlike a plain step
 /// "skip", expiry can leave the control at a half-applied value, so the
 /// error must be TIMEOUT (not ACTION_FAILED) and must carry the observed
-/// state — the caller cannot read post-state on the error path.
+/// state — the caller cannot read post-state on the error path. `kind`
+/// discriminates this details schema from other TIMEOUT payloads.
 pub(crate) fn increment_deadline_error(start: f64, current: f64, target: f64) -> AdapterError {
     AdapterError::timeout("Chain deadline expired while stepping the value toward the target")
         .with_suggestion(
             "Re-read the element value before retrying; increase the timeout or AGENT_DESKTOP_CHAIN_TIMEOUT_MS for slow controls.",
         )
         .with_details(serde_json::json!({
+            "kind": "chain_deadline",
             "value_before": start,
             "value_at_timeout": current,
             "target": target,
             "mutated": (current - start).abs() >= f64::EPSILON,
+        }))
+}
+
+/// Error for the chain deadline truncating a disclosure settle wait. The
+/// triggering action may still land after the truncated wait, so the
+/// outcome is unknown — TIMEOUT with the observed state, mirroring
+/// [`increment_deadline_error`], never a plain step failure.
+pub(crate) fn disclosure_deadline_error(
+    want_expanded: bool,
+    observed: Option<bool>,
+) -> AdapterError {
+    AdapterError::timeout("Chain deadline expired while waiting for the disclosure to settle")
+        .with_suggestion(
+            "Re-read the element's expanded state before retrying; increase the timeout or AGENT_DESKTOP_CHAIN_TIMEOUT_MS for slow apps.",
+        )
+        .with_details(serde_json::json!({
+            "kind": "chain_deadline",
+            "wanted_expanded": want_expanded,
+            "observed_expanded": observed,
         }))
 }
 
@@ -70,7 +91,28 @@ mod tests {
     fn increment_deadline_error_reports_unmutated_state() {
         let err = increment_deadline_error(5.0, 5.0, 9.0);
 
-        assert_eq!(err.details.unwrap()["mutated"], false);
+        let details = err.details.unwrap();
+        assert_eq!(details["mutated"], false);
+        assert_eq!(details["kind"], "chain_deadline");
+    }
+
+    #[test]
+    fn disclosure_deadline_error_is_timeout_with_observed_state() {
+        let err = super::disclosure_deadline_error(true, Some(false));
+
+        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::Timeout);
+        let details = err.details.expect("details must carry the observed state");
+        assert_eq!(details["kind"], "chain_deadline");
+        assert_eq!(details["wanted_expanded"], true);
+        assert_eq!(details["observed_expanded"], false);
+        assert!(err.suggestion.is_some());
+    }
+
+    #[test]
+    fn disclosure_deadline_error_reports_unreadable_state_as_null() {
+        let err = super::disclosure_deadline_error(false, None);
+
+        assert!(err.details.unwrap()["observed_expanded"].is_null());
     }
 
     #[test]
