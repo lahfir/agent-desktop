@@ -20,3 +20,13 @@ fn ordinary_apps_are_not_protected() {
     assert!(!is_protected_process("Safari"));
     assert!(!is_protected_process("com.company.MyApp"));
 }
+
+#[test]
+fn adapter_guard_refuses_protected_processes_with_the_cli_contract() {
+    let err = ensure_not_protected("loginwindow").unwrap_err();
+
+    assert_eq!(err.code, agent_desktop_core::error::ErrorCode::InvalidArgs);
+    assert!(err.message.contains("protected"));
+    assert!(err.suggestion.is_some());
+    assert!(ensure_not_protected("TextEdit").is_ok());
+}

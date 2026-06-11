@@ -194,12 +194,31 @@ pub fn is_protected_process(identifier: &str) -> bool {
     PROTECTED_PROCESSES.iter().any(|p| lower.contains(p))
 }
 
+fn ensure_not_protected(id: &str) -> Result<(), AdapterError> {
+    if is_protected_process(id) {
+        return Err(AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("'{id}' is a protected system process and cannot be closed"),
+        )
+        .with_suggestion(
+            "Target a regular application; session-critical processes (loginwindow, WindowServer, Dock, Finder, launchd) are never closed.",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "app_ops_tests.rs"]
 mod tests;
 
+/// Closes an app after the protected-process guard. The guard runs here —
+/// inside the adapter — so every consumer (CLI, FFI, future MCP) refuses
+/// session-critical processes identically; the CLI command's own preflight
+/// is an earlier check against the same predicate, not the enforcement
+/// point. The error mirrors the CLI contract exactly (code and message).
 #[cfg(target_os = "macos")]
 pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
+    ensure_not_protected(id)?;
     tracing::debug!("system: close app={id:?} force={force}");
     use std::process::Command;
     use std::time::Duration;

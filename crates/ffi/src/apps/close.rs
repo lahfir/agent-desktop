@@ -6,7 +6,11 @@ use std::os::raw::c_char;
 
 /// Closes the application identified by `id` (bundle id on macOS,
 /// executable path on other platforms). `force = true` skips the
-/// graceful-shutdown path (equivalent to `kill -9`).
+/// graceful-shutdown path (equivalent to `kill -9`). Session-critical
+/// processes (loginwindow, WindowServer, Dock, Finder, launchd) are
+/// refused with `AD_RESULT_ERR_INVALID_ARGS` — the protected-process
+/// guard is enforced inside the adapter, so FFI and CLI behave
+/// identically.
 ///
 /// # Safety
 /// `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
