@@ -13,7 +13,7 @@ pub(crate) enum ElementPredicate {
     Exists,
     Enabled,
     Visible,
-    Actionable(Action),
+    Actionable(ActionRequest),
     Value(String),
 }
 
@@ -70,12 +70,18 @@ impl ElementPredicate {
     }
 }
 
-fn parse_actionability_action(action: Option<&str>) -> Result<Action, AppError> {
+/// Maps each `--action` name to the exact request its real command would
+/// run with — policy included — so the preflight answers "would this action
+/// succeed". Every name is an explicit arm: a catch-all here would let a
+/// new action silently inherit the wrong policy.
+fn parse_actionability_action(action: Option<&str>) -> Result<ActionRequest, AppError> {
     match action.unwrap_or("click") {
-        "click" => Ok(Action::Click),
-        "type" => Ok(Action::TypeText(String::new())),
-        "set-value" => Ok(Action::SetValue(String::new())),
-        "clear" => Ok(Action::Clear),
+        "click" => Ok(ActionRequest::headless(Action::Click)),
+        "type" => Ok(ActionRequest::focus_fallback(Action::TypeText(
+            String::new(),
+        ))),
+        "set-value" => Ok(ActionRequest::headless(Action::SetValue(String::new()))),
+        "clear" => Ok(ActionRequest::headless(Action::Clear)),
         other => Err(AppError::invalid_input_with_suggestion(
             format!("Unknown actionability action '{other}'"),
             "Use one of: click, type, set-value, clear.",
@@ -103,7 +109,7 @@ pub(crate) fn observe(
         ElementPredicate::Exists => Ok(json!({ "exists": true })),
         ElementPredicate::Enabled => enabled(entry, handle, adapter),
         ElementPredicate::Visible => visible(entry, handle, adapter),
-        ElementPredicate::Actionable(action) => actionable(entry, handle, action, adapter),
+        ElementPredicate::Actionable(request) => actionable(entry, handle, request, adapter),
         ElementPredicate::Value(expected) => value(entry, handle, expected, adapter),
     }
 }
@@ -151,27 +157,16 @@ fn visible(
 fn actionable(
     entry: &RefEntry,
     handle: &NativeHandle,
-    action: &Action,
+    request: &ActionRequest,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AdapterError> {
-    let request = actionability_request(action.clone());
-    match crate::actionability::check_live(entry, handle, adapter, &request) {
+    match crate::actionability::check_live(entry, handle, adapter, request) {
         Ok(report) => Ok(json!(report)),
         Err(err) if err.code == ErrorCode::ActionFailed => match err.details {
             Some(report) => Ok(report),
             None => Ok(json!({ "actionable": false, "error": err.message })),
         },
         Err(err) => Err(err),
-    }
-}
-
-/// Mirrors the base policy the real command would run with, so the preflight
-/// answers "would this action succeed" rather than always "would a headless
-/// click succeed" — `type` runs with the focus fallback its command uses.
-fn actionability_request(action: Action) -> ActionRequest {
-    match action {
-        Action::TypeText(_) => ActionRequest::focus_fallback(action),
-        _ => ActionRequest::headless(action),
     }
 }
 

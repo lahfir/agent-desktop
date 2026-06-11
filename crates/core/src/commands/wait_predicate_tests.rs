@@ -106,7 +106,9 @@ fn element_wait_timeout_reports_last_actionability_observation() {
     let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(crate::action::Action::Click),
+        wait_predicate::ElementPredicate::Actionable(
+            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
+        ),
         50,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -141,7 +143,9 @@ fn element_wait_actionable_uses_live_state() {
     let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(crate::action::Action::Click),
+        wait_predicate::ElementPredicate::Actionable(
+            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
+        ),
         1,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -163,7 +167,9 @@ fn element_wait_actionable_retries_until_live_state_converges() {
     let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(crate::action::Action::Click),
+        wait_predicate::ElementPredicate::Actionable(
+            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
+        ),
         250,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -191,9 +197,11 @@ fn element_wait_actionable_type_fails_on_uneditable_role() {
     let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(crate::action::Action::TypeText(
-            String::new(),
-        )),
+        wait_predicate::ElementPredicate::Actionable(
+            crate::action_request::ActionRequest::focus_fallback(crate::action::Action::TypeText(
+                String::new(),
+            )),
+        ),
         50,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -224,4 +232,38 @@ fn wait_actionable_rejects_unknown_action() {
         .unwrap_err();
 
     assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn actionable_parse_mirrors_each_real_command_policy() {
+    use crate::interaction_policy::InteractionPolicy;
+
+    let request_for = |name: Option<&str>| match wait_predicate::ElementPredicate::parse(
+        Some("actionable"),
+        None,
+        name,
+    )
+    .unwrap()
+    {
+        wait_predicate::ElementPredicate::Actionable(request) => request,
+        other => panic!("expected actionable predicate, got {other:?}"),
+    };
+
+    assert_eq!(request_for(None).policy, InteractionPolicy::headless());
+    assert_eq!(
+        request_for(Some("click")).policy,
+        InteractionPolicy::headless()
+    );
+    assert_eq!(
+        request_for(Some("type")).policy,
+        InteractionPolicy::focus_fallback()
+    );
+    assert_eq!(
+        request_for(Some("set-value")).policy,
+        InteractionPolicy::headless()
+    );
+    assert_eq!(
+        request_for(Some("clear")).policy,
+        InteractionPolicy::headless()
+    );
 }
