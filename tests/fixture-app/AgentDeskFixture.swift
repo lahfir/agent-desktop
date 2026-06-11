@@ -270,10 +270,11 @@ struct ContentView: View {
         Card(title: "Drag & Drop") {
             // Drag the canvas from one point to another within itself: a
             // source-tracked gesture, which synthetic mouse events can drive.
+            // Its harness label lives on the NSView itself (DragCanvasView),
+            // keeping exactly one AX label source.
             DragCanvas(result: $dragCanvasResult)
                 .frame(width: 200, height: 80)
                 .background(Color.purple.opacity(0.12))
-                .accessibilityLabel("drag-canvas")
             StatusReadout(name: "drag-canvas-status", value: dragCanvasResult)
             // A non-interactive image drag source: realistic (file icons, custom
             // views) and intentionally NOT a button, so the CLI is tested on a
