@@ -44,8 +44,6 @@ struct ContentView: View {
     @State private var dropStatus = "empty"
     @State private var rowDropStatus = "empty"
     @State private var dragCanvasResult = "idle"
-    // scroll
-    @State private var scrollOffset = 0
     // native AppKit controls (genuinely AX-settable, unlike SwiftUI's)
     @State private var nativeSliderValue = 0.0
     @State private var nativeStepperValue = 0.0
@@ -90,7 +88,7 @@ struct ContentView: View {
         HStack(alignment: .top, spacing: 16) {
             dragCard
             surfacesCard
-            scrollCard
+            ScrollCard()
         }
     }
 
@@ -344,30 +342,6 @@ struct ContentView: View {
         .frame(width: 320, height: 200)
     }
 
-    // MARK: scroll
-
-    private var scrollCard: some View {
-        Card(title: "Scroll") {
-            StatusReadout(name: "scroll-offset", value: String(scrollOffset))
-            ScrollView {
-                VStack(alignment: .leading) {
-                    GeometryReader { geo in
-                        Color.clear.preference(
-                            key: ScrollOffsetKey.self,
-                            value: geo.frame(in: .named("scroll-space")).minY)
-                    }
-                    .frame(height: 0)
-                    ForEach(1...60, id: \.self) { i in
-                        Text("Scroll Row \(i)").accessibilityLabel("scroll-row-\(i)")
-                    }
-                }
-            }
-            .coordinateSpace(name: "scroll-space")
-            .onPreferenceChange(ScrollOffsetKey.self) { scrollOffset = Int(-$0) }
-            .frame(width: 220, height: 160)
-            .accessibilityLabel("scroll-area")
-        }
-    }
 }
 
 @main

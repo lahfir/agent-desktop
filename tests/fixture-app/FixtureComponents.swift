@@ -75,10 +75,15 @@ struct DragCanvas: NSViewRepresentable {
     @Binding var result: String
     func makeNSView(context: Context) -> DragCanvasView {
         let v = DragCanvasView()
+        // The closure captures `result` by reference; DragCanvasView calls it
+        // directly on each mouseUp, so updateNSView needs no re-sync.
         v.onDrag = { result = $0 }
         return v
     }
-    func updateNSView(_ view: DragCanvasView, context: Context) {}
+    func updateNSView(_ view: DragCanvasView, context: Context) {
+        // Intentionally empty: gesture results flow *out* through the captured
+        // binding (via onDrag), never *in* from SwiftUI state — nothing to sync.
+    }
 }
 
 final class DragCanvasView: NSView {
