@@ -31,6 +31,13 @@ pub(crate) enum ChainStep {
         label: &'static str,
         func: fn(&AXElement, &ElementCaps) -> Result<bool, AdapterError>,
     },
+    /// Like `Custom`, for steps that poll for a settled state and must cap
+    /// that settle wait to the chain's remaining deadline budget.
+    CustomWithDeadline {
+        label: &'static str,
+        func:
+            fn(&AXElement, &ElementCaps, Option<std::time::Instant>) -> Result<bool, AdapterError>,
+    },
     CGClick {
         button: MouseButton,
         count: u32,

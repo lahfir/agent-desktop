@@ -104,7 +104,7 @@ mod imp {
     /// press, and only reports success when the state actually flipped.
     pub(crate) static EXPAND_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
-        steps: &[ChainStep::Custom {
+        steps: &[ChainStep::CustomWithDeadline {
             label: "expand_verified",
             func: chain_disclosure_steps::press_to_expand,
         }],
@@ -113,7 +113,7 @@ mod imp {
 
     pub(crate) static COLLAPSE_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
-        steps: &[ChainStep::Custom {
+        steps: &[ChainStep::CustomWithDeadline {
             label: "collapse_verified",
             func: chain_disclosure_steps::press_to_collapse,
         }],

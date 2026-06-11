@@ -97,6 +97,7 @@ mod imp {
             ChainStep::ChildActions { .. } => "ChildActions",
             ChainStep::AncestorActions { .. } => "AncestorActions",
             ChainStep::Custom { label, .. } => label,
+            ChainStep::CustomWithDeadline { label, .. } => label,
             ChainStep::CGClick { .. } => "CGClick",
         }
     }
@@ -195,6 +196,8 @@ mod imp {
             )),
 
             ChainStep::Custom { label: _, func } => func(el, caps),
+
+            ChainStep::CustomWithDeadline { label: _, func } => func(el, caps, ctx.deadline),
 
             ChainStep::CGClick { button, count } => {
                 Ok(
