@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     adapter::{NativeHandle, PlatformAdapter},
+    commands::wait_predicate,
     error::{AdapterError, ErrorCode},
     refs::{RefEntry, RefMap},
     refs_store::RefStore,

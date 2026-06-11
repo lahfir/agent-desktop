@@ -53,6 +53,7 @@ pub mod type_text;
 pub mod uncheck;
 pub mod version;
 pub mod wait;
+pub(crate) mod wait_element;
 pub(crate) mod wait_latest_ref_cache;
 pub(crate) mod wait_mode;
 pub(crate) mod wait_predicate;

@@ -252,5 +252,13 @@ pub(crate) fn resolve_window_for_app(
 }
 
 #[cfg(test)]
+#[path = "helpers_test_support.rs"]
+mod test_support;
+
+#[cfg(test)]
 #[path = "helpers_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "helpers_ref_action_tests.rs"]
+mod ref_action_tests;
