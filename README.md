@@ -71,7 +71,7 @@ cargo build --release
 cp target/release/agent-desktop /usr/local/bin/
 ```
 
-Requires Rust 1.78+ and macOS 13.0+.
+Requires Rust 1.85+ and macOS 13.0+.
 
 ### Permissions
 
@@ -485,7 +485,7 @@ cargo build --release
 
 ### What is the ref system?
 
-`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`.
+`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the active session's latest snapshot pointer, but explicit snapshot IDs are the deterministic path and do not require also passing `--session`.
 
 Interactive roles that receive refs:
 
