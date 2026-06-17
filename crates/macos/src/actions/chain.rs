@@ -199,9 +199,9 @@ mod imp {
                 *limit,
             )),
 
-            ChainStep::Custom { label: _, func } => func(el, caps),
+            ChainStep::Custom { label: _, func } => func(el),
 
-            ChainStep::CustomWithDeadline { label: _, func } => func(el, caps, ctx.deadline),
+            ChainStep::CustomWithDeadline { label: _, func } => func(el, ctx.deadline),
 
             ChainStep::CGClick { button, count } => {
                 Ok(

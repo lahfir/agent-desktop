@@ -1,6 +1,6 @@
 #[cfg(target_os = "macos")]
 mod imp {
-    use crate::actions::{ax_helpers, discovery::ElementCaps};
+    use crate::actions::ax_helpers;
     use crate::tree::AXElement;
     use agent_desktop_core::error::AdapterError;
 
@@ -9,7 +9,6 @@ mod imp {
     /// confirms the disclosed state flipped.
     pub(crate) fn press_to_expand(
         el: &AXElement,
-        _caps: &ElementCaps,
         chain_deadline: Option<std::time::Instant>,
     ) -> Result<bool, AdapterError> {
         press_toggle_disclosure(el, true, chain_deadline)
@@ -18,7 +17,6 @@ mod imp {
     /// Collapses a press-toggled disclosure, mirroring [`press_to_expand`].
     pub(crate) fn press_to_collapse(
         el: &AXElement,
-        _caps: &ElementCaps,
         chain_deadline: Option<std::time::Instant>,
     ) -> Result<bool, AdapterError> {
         press_toggle_disclosure(el, false, chain_deadline)
@@ -119,4 +117,4 @@ mod imp {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::*;
+pub(crate) use imp::{press_to_collapse, press_to_expand};

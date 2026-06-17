@@ -6,10 +6,14 @@ pub(crate) fn read_post_state(
     action: &Action,
 ) -> Option<ElementState> {
     let delay_ms = match action {
-        Action::Click | Action::Toggle | Action::Check | Action::Uncheck | Action::TypeText(_) => {
-            50
-        }
-        Action::SetValue(_) | Action::Clear | Action::Expand | Action::Collapse => 0,
+        Action::Click | Action::TypeText(_) => 50,
+        Action::Toggle
+        | Action::Check
+        | Action::Uncheck
+        | Action::SetValue(_)
+        | Action::Clear
+        | Action::Expand
+        | Action::Collapse => 0,
         _ => return None,
     };
     if delay_ms > 0 {

@@ -2,6 +2,8 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
 
+use agent_desktop_core::error::{AdapterError, ErrorCode};
+
 pub(crate) fn string_to_c(s: &str) -> *mut c_char {
     match CString::new(s) {
         Ok(cs) => cs.into_raw(),
@@ -107,6 +109,22 @@ pub(crate) unsafe fn try_c_to_string(
     std::str::from_utf8(bytes)
         .map(|s| Some(s.to_owned()))
         .map_err(|_| CStrDecodeError::NotUtf8)
+}
+
+pub(crate) fn optional_adapter_string(
+    ptr: *const c_char,
+    field: &str,
+) -> Result<Option<String>, AdapterError> {
+    unsafe { try_c_to_string(ptr) }
+        .map_err(|err| AdapterError::new(ErrorCode::InvalidArgs, err.describe(field)))
+}
+
+pub(crate) fn required_adapter_string(
+    ptr: *const c_char,
+    field: &str,
+) -> Result<String, AdapterError> {
+    optional_adapter_string(ptr, field)?
+        .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, format!("{field} is null")))
 }
 
 /// Decode an optional filter string, short-circuiting the enclosing

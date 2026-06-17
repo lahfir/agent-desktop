@@ -1,6 +1,7 @@
 pub mod action;
 pub mod action_kind;
 pub mod action_result;
+pub(crate) mod action_step;
 pub mod app_info;
 pub mod app_list;
 pub mod direction;

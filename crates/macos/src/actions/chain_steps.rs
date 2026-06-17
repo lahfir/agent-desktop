@@ -1,21 +1,14 @@
 #[cfg(target_os = "macos")]
 mod imp {
-    use crate::actions::{ax_helpers, discovery::ElementCaps};
+    use crate::actions::ax_helpers;
     use crate::tree::AXElement;
     use agent_desktop_core::error::AdapterError;
 
-    pub(crate) fn do_verified_press(
-        el: &AXElement,
-        caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
-        dispatch_verified_press(el, caps, crate::actions::chain_web_steps::is_in_webarea(el))
+    pub(crate) fn do_verified_press(el: &AXElement) -> Result<bool, AdapterError> {
+        dispatch_verified_press(el, crate::actions::chain_web_steps::is_in_webarea(el))
     }
 
-    fn dispatch_verified_press(
-        el: &AXElement,
-        _caps: &ElementCaps,
-        in_web: bool,
-    ) -> Result<bool, AdapterError> {
+    fn dispatch_verified_press(el: &AXElement, in_web: bool) -> Result<bool, AdapterError> {
         if !in_web {
             return verified_press_native(el);
         }
@@ -55,10 +48,7 @@ mod imp {
         Ok(false)
     }
 
-    pub(crate) fn try_value_relay(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn try_value_relay(el: &AXElement) -> Result<bool, AdapterError> {
         if !ax_helpers::list_ax_actions(el).is_empty() {
             return Ok(false);
         }
@@ -131,7 +121,6 @@ mod imp {
 
     pub(crate) fn element_is_visible_in_scroll_context(
         el: &AXElement,
-        _caps: &ElementCaps,
     ) -> Result<bool, AdapterError> {
         use accessibility_sys::kAXRoleAttribute;
         let Some(bounds) = crate::tree::read_bounds(el) else {
@@ -171,10 +160,7 @@ mod imp {
         x >= outer.x && x <= outer.x + outer.width && y >= outer.y && y <= outer.y + outer.height
     }
 
-    pub(crate) fn try_show_alternate_ui(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn try_show_alternate_ui(el: &AXElement) -> Result<bool, AdapterError> {
         if !ax_helpers::has_ax_action(el, "AXShowAlternateUI") {
             return Ok(false);
         }
@@ -190,10 +176,7 @@ mod imp {
         ))
     }
 
-    pub(crate) fn try_parent_row_select(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn try_parent_row_select(el: &AXElement) -> Result<bool, AdapterError> {
         use accessibility_sys::kAXRoleAttribute;
         let Some(parent) = crate::tree::copy_element_attr(el, "AXParent") else {
             return Ok(false);
@@ -208,10 +191,7 @@ mod imp {
         ax_helpers::set_ax_bool_or_err(&parent, "AXSelected", true)
     }
 
-    pub(crate) fn try_select_containing_item(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn try_select_containing_item(el: &AXElement) -> Result<bool, AdapterError> {
         let mut current = Some(el.clone());
         for _ in 0..4 {
             let Some(candidate) = current else {
@@ -268,10 +248,7 @@ mod imp {
             .any(|selected| crate::tree::same_element(selected, candidate))
     }
 
-    pub(crate) fn try_select_via_parent(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn try_select_via_parent(el: &AXElement) -> Result<bool, AdapterError> {
         use accessibility_sys::kAXRoleAttribute;
         let Some(parent) = crate::tree::copy_element_attr(el, "AXParent") else {
             return Ok(false);
@@ -313,10 +290,7 @@ mod imp {
         err == kAXErrorSuccess
     }
 
-    pub(crate) fn try_custom_actions(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn try_custom_actions(el: &AXElement) -> Result<bool, AdapterError> {
         let has = !crate::tree::copy_ax_array(el, "AXCustomActions")
             .unwrap_or_default()
             .is_empty();
@@ -325,4 +299,11 @@ mod imp {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::*;
+pub(crate) use imp::{
+    do_verified_press, element_is_visible_in_scroll_context, try_custom_actions,
+    try_parent_row_select, try_select_containing_item, try_select_via_parent,
+    try_show_alternate_ui, try_value_relay,
+};
+
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) use imp::{center_is_inside, rect_has_area};

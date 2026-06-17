@@ -1,9 +1,11 @@
 use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
-use crate::types::{AdActionResult, AdElementState};
+use crate::types::{AdActionResult, AdElementState, action_step::AdActionStep};
 use agent_desktop_core::action_result::ActionResult as CoreActionResult;
+use agent_desktop_core::action_step_outcome::ActionStepOutcome;
 use std::ptr;
 
 const MAX_STATE_STRINGS_TO_FREE: usize = 1024;
+const MAX_STEPS_TO_FREE: usize = 1024;
 
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
     let action = string_to_c_lossy(&r.action);
@@ -37,13 +39,18 @@ pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
         action,
         ref_id: ptr::null(),
         post_state,
+        steps: action_steps_to_c(r),
+        step_count: r.steps.len() as u32,
     }
 }
 
 /// # Safety
 ///
-/// `result` must be a pointer to an `AdActionResult` previously written by `ad_execute_action`,
-/// or null. After this call all pointers inside the struct are invalid.
+/// `result` must be null or a pointer to an `AdActionResult` previously written
+/// by `ad_execute_action`, `ad_execute_action_with_policy`,
+/// `ad_execute_ref_action_with_policy`, or `ad_notification_action`. This frees
+/// `post_state`, `steps`, and all nested strings. After this call all pointers
+/// inside the struct are invalid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
     crate::ffi_try::trap_panic_void(|| unsafe {
@@ -53,6 +60,9 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
         let r = &mut *result;
         free_c_string(r.action as *mut _);
         free_c_string(r.ref_id as *mut _);
+        if !r.steps.is_null() {
+            free_step_array(r.steps);
+        }
         if !r.post_state.is_null() {
             let state = &mut *r.post_state;
             free_c_string(state.role as *mut _);
@@ -65,7 +75,39 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
         }
         r.action = ptr::null();
         r.ref_id = ptr::null();
+        r.steps = ptr::null_mut();
+        r.step_count = 0;
     })
+}
+
+fn action_steps_to_c(r: &CoreActionResult) -> *mut AdActionStep {
+    if r.steps.is_empty() {
+        return ptr::null_mut();
+    }
+    let mut steps = r
+        .steps
+        .iter()
+        .map(|step| AdActionStep {
+            label: string_to_c_lossy(step.label()),
+            outcome: string_to_c_lossy(step_outcome_name(&step.outcome)),
+        })
+        .collect::<Vec<_>>();
+    steps.push(AdActionStep {
+        label: ptr::null(),
+        outcome: ptr::null(),
+    });
+    let mut boxed = steps.into_boxed_slice();
+    let raw = boxed.as_mut_ptr();
+    std::mem::forget(boxed);
+    raw
+}
+
+fn step_outcome_name(outcome: &ActionStepOutcome) -> &'static str {
+    match outcome {
+        ActionStepOutcome::Attempted => "attempted",
+        ActionStepOutcome::Skipped => "skipped",
+        ActionStepOutcome::Succeeded => "succeeded",
+    }
 }
 
 unsafe fn free_state_array(states: *mut *mut std::os::raw::c_char) {
@@ -77,6 +119,25 @@ unsafe fn free_state_array(states: *mut *mut std::os::raw::c_char) {
         }
         drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             states,
+            len + 1,
+        )));
+    }
+}
+
+unsafe fn free_step_array(steps: *mut AdActionStep) {
+    unsafe {
+        let mut len = 0;
+        while len < MAX_STEPS_TO_FREE {
+            let step = &mut *steps.add(len);
+            if step.label.is_null() && step.outcome.is_null() {
+                break;
+            }
+            free_c_string(step.label as *mut _);
+            free_c_string(step.outcome as *mut _);
+            len += 1;
+        }
+        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+            steps,
             len + 1,
         )));
     }
@@ -104,6 +165,8 @@ mod tests {
             assert_eq!(c_to_string(c_result.action).as_deref(), Some("click"));
             assert!(c_result.ref_id.is_null());
             assert!(!c_result.post_state.is_null());
+            assert!(c_result.steps.is_null());
+            assert_eq!(c_result.step_count, 0);
             let state = &*c_result.post_state;
             assert_eq!(c_to_string(state.role).as_deref(), Some("button"));
             assert_eq!(c_to_string(state.value).as_deref(), Some("OK"));
@@ -125,10 +188,49 @@ mod tests {
             action: crate::convert::string::string_to_c_lossy("click"),
             ref_id: ptr::null(),
             post_state: Box::into_raw(post_state),
+            steps: ptr::null_mut(),
+            step_count: u32::MAX,
         };
         unsafe { ad_free_action_result(&mut c_result) };
 
         assert!(c_result.post_state.is_null());
+        assert!(c_result.steps.is_null());
+        assert_eq!(c_result.step_count, 0);
+    }
+
+    #[test]
+    fn action_result_to_c_preserves_steps() {
+        let core_result = CoreActionResult::new("click").with_steps(vec![
+            agent_desktop_core::action_step::ActionStep::attempted("AXScrollToVisible"),
+            agent_desktop_core::action_step::ActionStep::succeeded("AXPress"),
+        ]);
+
+        let mut c_result = action_result_to_c(&core_result);
+
+        unsafe {
+            assert_eq!(c_result.step_count, 2);
+            assert!(!c_result.steps.is_null());
+            assert_eq!(
+                c_to_string((*c_result.steps.add(0)).label).as_deref(),
+                Some("AXScrollToVisible")
+            );
+            assert_eq!(
+                c_to_string((*c_result.steps.add(0)).outcome).as_deref(),
+                Some("attempted")
+            );
+            assert_eq!(
+                c_to_string((*c_result.steps.add(1)).label).as_deref(),
+                Some("AXPress")
+            );
+            assert_eq!(
+                c_to_string((*c_result.steps.add(1)).outcome).as_deref(),
+                Some("succeeded")
+            );
+        }
+
+        unsafe { ad_free_action_result(&mut c_result) };
+        assert!(c_result.steps.is_null());
+        assert_eq!(c_result.step_count, 0);
     }
 
     fn state_array(states: &[&str]) -> *mut *mut std::os::raw::c_char {

@@ -64,6 +64,7 @@ pub use error::AdResult;
 pub use types::action::AdAction;
 pub use types::action_kind::AdActionKind;
 pub use types::action_result::AdActionResult;
+pub use types::action_step::AdActionStep;
 pub use types::app_info::AdAppInfo;
 pub use types::app_list::AdAppList;
 pub use types::direction::AdDirection;

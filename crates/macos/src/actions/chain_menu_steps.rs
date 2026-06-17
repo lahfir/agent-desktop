@@ -1,17 +1,14 @@
 #[cfg(target_os = "macos")]
 mod imp {
-    use crate::actions::{ax_helpers, discovery::ElementCaps};
+    use crate::actions::ax_helpers;
     use crate::tree::AXElement;
     use agent_desktop_core::error::AdapterError;
 
-    pub(crate) fn show_menu(el: &AXElement, _caps: &ElementCaps) -> Result<bool, AdapterError> {
+    pub(crate) fn show_menu(el: &AXElement) -> Result<bool, AdapterError> {
         show_menu_on_element(el)
     }
 
-    pub(crate) fn show_menu_on_ancestors(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn show_menu_on_ancestors(el: &AXElement) -> Result<bool, AdapterError> {
         let mut current = crate::tree::copy_element_attr(el, "AXParent");
         for _ in 0..3 {
             let Some(parent) = current else {
@@ -25,10 +22,7 @@ mod imp {
         Ok(false)
     }
 
-    pub(crate) fn show_menu_on_children(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn show_menu_on_children(el: &AXElement) -> Result<bool, AdapterError> {
         for child in crate::tree::copy_ax_array(el, "AXChildren")
             .unwrap_or_default()
             .iter()
@@ -41,10 +35,7 @@ mod imp {
         Ok(false)
     }
 
-    pub(crate) fn select_then_show_menu(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn select_then_show_menu(el: &AXElement) -> Result<bool, AdapterError> {
         if !select_containing_item(el)? {
             return Ok(false);
         }
@@ -52,10 +43,7 @@ mod imp {
         show_menu_on_element(el)
     }
 
-    pub(crate) fn select_then_selected_items_menu(
-        el: &AXElement,
-        _caps: &ElementCaps,
-    ) -> Result<bool, AdapterError> {
+    pub(crate) fn select_then_selected_items_menu(el: &AXElement) -> Result<bool, AdapterError> {
         if !select_containing_item(el)? {
             tracing::debug!("selected-items menu: could not select containing item");
             return Ok(false);
@@ -150,14 +138,7 @@ mod imp {
 
     fn select_containing_item(el: &AXElement) -> Result<bool, AdapterError> {
         Ok(ax_helpers::set_ax_bool_or_err(el, "AXSelected", true)?
-            || crate::actions::chain_steps::try_select_containing_item(
-                el,
-                &ElementCaps {
-                    settable_focus: false,
-                    settable_selected: false,
-                    settable_disclosing: false,
-                },
-            )?)
+            || crate::actions::chain_steps::try_select_containing_item(el)?)
     }
 
     fn window_ancestor(el: &AXElement) -> Option<AXElement> {
@@ -222,26 +203,25 @@ mod imp {
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
-    use crate::actions::discovery::ElementCaps;
     use crate::tree::AXElement;
 
-    pub fn show_menu(_el: &AXElement, _caps: &ElementCaps) -> bool {
+    pub fn show_menu(_el: &AXElement) -> bool {
         false
     }
 
-    pub fn show_menu_on_ancestors(_el: &AXElement, _caps: &ElementCaps) -> bool {
+    pub fn show_menu_on_ancestors(_el: &AXElement) -> bool {
         false
     }
 
-    pub fn show_menu_on_children(_el: &AXElement, _caps: &ElementCaps) -> bool {
+    pub fn show_menu_on_children(_el: &AXElement) -> bool {
         false
     }
 
-    pub fn select_then_show_menu(_el: &AXElement, _caps: &ElementCaps) -> bool {
+    pub fn select_then_show_menu(_el: &AXElement) -> bool {
         false
     }
 
-    pub fn select_then_selected_items_menu(_el: &AXElement, _caps: &ElementCaps) -> bool {
+    pub fn select_then_selected_items_menu(_el: &AXElement) -> bool {
         false
     }
 }

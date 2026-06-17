@@ -24,7 +24,8 @@ use agent_desktop_core::adapter::NativeHandle;
 ///
 /// # Safety
 ///
-/// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+/// `adapter` must be a non-null pointer returned by `ad_adapter_create`
+/// and must be the same live adapter that produced `handle`.
 /// `handle` must be null or a `*mut AdNativeHandle` previously
 /// populated by `ad_resolve_element`. On return `(*handle).ptr` is
 /// `NULL` so a double-call is a no-op instead of a double-free.

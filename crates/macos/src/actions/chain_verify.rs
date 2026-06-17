@@ -82,7 +82,10 @@ fn numbers_match(expected: &str, observed: Option<&str>) -> bool {
         expected.parse::<f64>(),
         observed.and_then(|o| o.parse::<f64>().ok()),
     ) {
-        (Ok(a), Some(b)) => (a - b).abs() < f64::EPSILON,
+        (Ok(a), Some(b)) => {
+            let tolerance = 1e-6_f64.max(a.abs().max(b.abs()) * 1e-9);
+            (a - b).abs() <= tolerance
+        }
         _ => false,
     }
 }
@@ -199,6 +202,12 @@ mod tests {
             Some("AXIncrementor"),
             "3",
             Some("3")
+        ));
+        assert!(dynamic_write_had_effect(
+            "AXValue",
+            Some("AXSlider"),
+            "50",
+            Some("50.0000004")
         ));
         assert!(!dynamic_write_had_effect(
             "AXValue",

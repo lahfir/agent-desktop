@@ -1,38 +1,47 @@
-use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::error::AdapterError;
 use std::time::{Duration, Instant};
 
 pub(crate) fn terminate_app(id: &str, pids: &[i32], timeout: Duration) -> Result<(), AdapterError> {
-    signal_pids(id, pids, Signal::Term)?;
-    let remaining = remaining_pids_after_wait(pids, timeout);
+    let start = Instant::now();
+    let mut failures = signal_failures(pids, Signal::Term);
+    let remaining = remaining_pids_after_wait(pids, timeout.saturating_sub(start.elapsed()));
     if remaining.is_empty() {
         return Ok(());
     }
 
-    signal_pids(id, &remaining, Signal::Kill)?;
-    let still_running = remaining_pids_after_wait(&remaining, timeout);
+    failures.extend(signal_failures(&remaining, Signal::Kill));
+    let still_running =
+        remaining_pids_after_wait(&remaining, timeout.saturating_sub(start.elapsed()));
     if still_running.is_empty() {
         return Ok(());
     }
 
-    Err(AdapterError::timeout(format!(
+    let mut err = AdapterError::timeout(format!(
         "App '{id}' still has running pid(s) after force close: {}",
         format_pids(&still_running)
     ))
-    .with_suggestion("Retry after checking for save dialogs or helper processes with 'list-apps'."))
+    .with_suggestion("Retry after checking for save dialogs or helper processes with 'list-apps'.");
+    if !failures.is_empty() {
+        err = err.with_platform_detail(failures.join("; "));
+    }
+    Err(err)
 }
 
-fn signal_pids(id: &str, pids: &[i32], signal: Signal) -> Result<(), AdapterError> {
+fn signal_failures(pids: &[i32], signal: Signal) -> Vec<String> {
+    collect_signal_failures(pids, signal, signal_result)
+}
+
+fn collect_signal_failures<F>(pids: &[i32], signal: Signal, mut signal_fn: F) -> Vec<String>
+where
+    F: FnMut(i32, Signal) -> Result<bool, String>,
+{
+    let mut failures = Vec::new();
     for &pid in pids {
-        signal_result(pid, signal).map(|_| ()).map_err(|detail| {
-            AdapterError::new(
-                ErrorCode::ActionFailed,
-                format!("Failed to {} app '{id}' pid {pid}", signal.verb()),
-            )
-            .with_platform_detail(detail)
-            .with_suggestion("Use 'list-apps' to verify the running app before retrying.")
-        })?;
+        if let Err(detail) = signal_fn(pid, signal).map(|_| ()) {
+            failures.push(format!("pid {pid} {}: {detail}", signal.verb()));
+        }
     }
-    Ok(())
+    failures
 }
 
 fn remaining_pids_after_wait(pids: &[i32], timeout: Duration) -> Vec<i32> {
@@ -174,8 +183,26 @@ mod tests {
 
     #[test]
     fn missing_pids_are_accepted_during_signal_race() {
-        assert!(signal_pids("missing", &[999_999], Signal::Term).is_ok());
-        assert!(signal_pids("missing", &[999_999], Signal::Kill).is_ok());
+        assert!(signal_failures(&[999_999], Signal::Term).is_empty());
+        assert!(signal_failures(&[999_999], Signal::Kill).is_empty());
+    }
+
+    #[test]
+    fn signal_collection_attempts_every_pid_after_failure() {
+        let mut attempted = Vec::new();
+
+        let failures = collect_signal_failures(&[11, 22, 33], Signal::Term, |pid, _signal| {
+            attempted.push(pid);
+            if pid == 11 {
+                Err("operation not permitted".to_owned())
+            } else {
+                Ok(true)
+            }
+        });
+
+        assert_eq!(attempted, vec![11, 22, 33]);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("pid 11 terminate"));
     }
 
     #[test]

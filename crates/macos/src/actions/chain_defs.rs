@@ -7,7 +7,6 @@ mod imp {
         ax_helpers,
         chain::{ChainDef, ChainStep},
         chain_disclosure_steps, chain_menu_steps, chain_steps,
-        discovery::ElementCaps,
     };
     use crate::tree::AXElement;
     use agent_desktop_core::{action::MouseButton, interaction_policy::InteractionPolicy};
@@ -183,7 +182,6 @@ mod imp {
     /// fails closed under the headless policy.
     pub(crate) fn double_click(
         el: &AXElement,
-        _caps: &ElementCaps,
         policy: InteractionPolicy,
     ) -> Result<(), AdapterError> {
         if ax_helpers::has_ax_action(el, "AXOpen") && ax_helpers::try_ax_action(el, "AXOpen") {
@@ -194,7 +192,6 @@ mod imp {
 
     pub(crate) fn triple_click(
         el: &AXElement,
-        _caps: &ElementCaps,
         policy: InteractionPolicy,
     ) -> Result<(), AdapterError> {
         crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 3, policy)

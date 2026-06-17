@@ -1,3 +1,4 @@
+use crate::types::action_step::AdActionStep;
 use crate::types::element_state::AdElementState;
 use std::os::raw::c_char;
 
@@ -6,9 +7,11 @@ pub struct AdActionResult {
     pub action: *const c_char,
     pub ref_id: *const c_char,
     pub post_state: *mut AdElementState,
+    pub steps: *mut AdActionStep,
+    pub step_count: u32,
 }
 
-pub const AD_ACTION_RESULT_SIZE: usize = 24;
+pub const AD_ACTION_RESULT_SIZE: usize = 40;
 
 const _: () = assert!(std::mem::size_of::<AdActionResult>() == AD_ACTION_RESULT_SIZE);
 

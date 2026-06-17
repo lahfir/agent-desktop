@@ -32,6 +32,10 @@ fn map_with(name: &str) -> RefMap {
     map
 }
 
+fn ref_name(map: &RefMap) -> Option<&str> {
+    map.get("@e1").and_then(|entry| entry.name.as_deref())
+}
+
 #[test]
 fn snapshot_roundtrip_updates_latest_pointer() {
     let _guard = HomeGuard::new();
@@ -89,23 +93,11 @@ fn sessions_are_isolated_from_default_store() {
 
     assert_eq!(default_store.load(None).unwrap().len(), 1);
     assert_eq!(
-        default_store
-            .load(Some(&default_id))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
+        ref_name(&default_store.load(Some(&default_id)).unwrap()),
         Some("Default")
     );
     assert_eq!(
-        session_a
-            .load(Some(&session_id))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
+        ref_name(&session_a.load(Some(&session_id)).unwrap()),
         Some("Session A")
     );
     assert!(session_b.load(None).is_err());
@@ -125,23 +117,11 @@ fn explicit_snapshot_id_loads_across_session_namespaces() {
     let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
 
     assert_eq!(
-        default_store
-            .load(Some(&snapshot_id))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
+        ref_name(&default_store.load(Some(&snapshot_id)).unwrap()),
         Some("Session A")
     );
     assert_eq!(
-        session_b
-            .load(Some(&snapshot_id))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
+        ref_name(&session_b.load(Some(&snapshot_id)).unwrap()),
         Some("Session A")
     );
     assert!(default_store.load(None).is_err());
@@ -160,13 +140,7 @@ fn save_existing_snapshot_updates_discovered_owner_without_promoting_latest() {
         .unwrap();
 
     assert_eq!(
-        session_a
-            .load(Some(&snapshot_id))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
+        ref_name(&session_a.load(Some(&snapshot_id)).unwrap()),
         Some("Updated")
     );
     assert!(default_store.latest_snapshot_id().is_none());
@@ -195,13 +169,7 @@ fn duplicate_explicit_snapshot_id_requires_session() {
     assert_eq!(err.code(), "INVALID_ARGS");
     assert!(err.suggestion().unwrap().contains("--session"));
     assert_eq!(
-        session_a
-            .load(Some("sdup1"))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
+        ref_name(&session_a.load(Some("sdup1")).unwrap()),
         Some("Session A")
     );
 }
@@ -225,13 +193,7 @@ fn discover_skips_invalid_session_names_when_detecting_collisions() {
     .unwrap();
 
     assert_eq!(
-        default_store
-            .load(Some("sdup2"))
-            .unwrap()
-            .get("@e1")
-            .unwrap()
-            .name
-            .as_deref(),
+        ref_name(&default_store.load(Some("sdup2")).unwrap()),
         Some("Session A")
     );
 }
@@ -386,10 +348,7 @@ fn save_existing_recreates_snapshot_pruned_from_every_store() {
         .unwrap();
 
     let reloaded = store.load_snapshot(&snapshot_id).unwrap();
-    assert_eq!(
-        reloaded.get("@e1").unwrap().name.as_deref(),
-        Some("Recreated")
-    );
+    assert_eq!(ref_name(&reloaded), Some("Recreated"));
 }
 
 #[test]

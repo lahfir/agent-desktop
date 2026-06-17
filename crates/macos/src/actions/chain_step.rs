@@ -1,6 +1,6 @@
 use agent_desktop_core::{action::MouseButton, error::AdapterError};
 
-use crate::{actions::discovery::ElementCaps, tree::AXElement};
+use crate::tree::AXElement;
 
 pub(crate) enum ChainStep {
     Action(&'static str),
@@ -29,14 +29,13 @@ pub(crate) enum ChainStep {
     },
     Custom {
         label: &'static str,
-        func: fn(&AXElement, &ElementCaps) -> Result<bool, AdapterError>,
+        func: fn(&AXElement) -> Result<bool, AdapterError>,
     },
     /// Like `Custom`, for steps that poll for a settled state and must cap
     /// that settle wait to the chain's remaining deadline budget.
     CustomWithDeadline {
         label: &'static str,
-        func:
-            fn(&AXElement, &ElementCaps, Option<std::time::Instant>) -> Result<bool, AdapterError>,
+        func: fn(&AXElement, Option<std::time::Instant>) -> Result<bool, AdapterError>,
     },
     CGClick {
         button: MouseButton,

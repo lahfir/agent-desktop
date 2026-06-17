@@ -9,7 +9,8 @@ use agent_desktop_core::{action::Action, action_request::ActionRequest, adapter:
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
-/// `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+/// `handle` must be a non-null pointer to a valid `AdNativeHandle` produced by
+/// the same live adapter. Free the handle before destroying that adapter.
 /// `action` must be a non-null pointer to a valid `AdAction`.
 /// `out` must be a non-null pointer to an `AdActionResult` to write the result into.
 #[unsafe(no_mangle)]
@@ -27,7 +28,8 @@ pub unsafe extern "C" fn ad_execute_action(
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
-/// `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+/// `handle` must be a non-null pointer to a valid `AdNativeHandle` produced by
+/// the same live adapter. Free the handle before destroying that adapter.
 /// `action` must be a non-null pointer to a valid `AdAction`.
 /// `out` must be a non-null pointer to an `AdActionResult` to write the result into.
 #[unsafe(no_mangle)]

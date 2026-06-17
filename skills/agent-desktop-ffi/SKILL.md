@@ -59,8 +59,9 @@ Four reference topics, loaded as needed:
 
 - **Handle release.** Every `ad_resolve_element` result must be
   released with `ad_free_handle(adapter, handle)` on the same adapter
-  that produced it. On macOS this balances the internal `CFRetain`;
-  on Windows/Linux the call is a no-op but safe to issue.
+  that produced it before that adapter is destroyed. On macOS this
+  balances the internal `CFRetain`; on Windows/Linux the call is a no-op
+  but safe to issue.
 
 - **Action policy.** `ad_execute_action` uses the headless policy by
   default, matching CLI ref commands: no focus stealing and no cursor
@@ -77,6 +78,11 @@ Four reference topics, loaded as needed:
   JSON via `ad_last_error_details()`. Details may carry element names, values,
   and window titles from the user's screen — treat them as sensitive
   diagnostics and keep them out of shared log surfaces.
+
+- **Action result steps.** `AdActionResult.steps` mirrors the CLI `steps`
+  array for activation-chain actions. Each entry has `label` and `outcome`
+  strings and is owned by the result; release it with
+  `ad_free_action_result(&out)`.
 
 - **Tracing.** CLI `--trace` is not inherited by the C ABI; FFI hosts should
   record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs

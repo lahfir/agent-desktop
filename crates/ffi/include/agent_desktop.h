@@ -206,7 +206,8 @@ typedef struct AdPoint {
  * do not re-report): 0.x grew this struct 40 -> 48 bytes by adding
  * `drop_delay_ms` (which also grew the embedding `AdAction` — see
  * `AD_ACTION_SIZE`), `AdRefEntry` grew to 192 bytes (`AD_REF_ENTRY_SIZE`),
- * and `AD_POLICY_KIND_PHYSICAL` was renamed to `AD_POLICY_KIND_HEADED`
+ * `AdActionResult` grew to 40 bytes (`AD_ACTION_RESULT_SIZE`) to expose action
+ * steps, and `AD_POLICY_KIND_PHYSICAL` was renamed to `AD_POLICY_KIND_HEADED`
  * with a stable discriminant and intentionally no compatibility alias.
  */
 typedef struct AdDragParams {
@@ -272,16 +273,38 @@ _Static_assert(_Alignof(AdElementState) == 8, "AdElementState ABI alignment chan
 
 uintptr_t ad_element_state_size(void);
 
+typedef struct AdActionStep {
+  const char *label;
+  const char *outcome;
+} AdActionStep;
+
+/*
+ * Result for action calls. `steps` contains `step_count` activation-chain
+ * entries (`label`, `outcome`) when the adapter recorded how the action was
+ * attempted. The array and all nested strings are owned by the result and are
+ * released by `ad_free_action_result`.
+ */
 typedef struct AdActionResult {
   const char *action;
   const char *ref_id;
   struct AdElementState *post_state;
+  struct AdActionStep *steps;
+  uint32_t step_count;
 } AdActionResult;
 
 #define AD_ACTION_RESULT_SIZE (sizeof(AdActionResult))
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdActionResult) == 24, "AdActionResult ABI size changed");
+_Static_assert(sizeof(AdActionStep) == 16, "AdActionStep ABI size changed");
+_Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
+_Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
+_Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+_Static_assert(sizeof(AdActionResult) == 40, "AdActionResult ABI size changed");
 _Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
+_Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");
+_Static_assert(offsetof(AdActionResult, ref_id) == 8, "AdActionResult.ref_id offset changed");
+_Static_assert(offsetof(AdActionResult, post_state) == 16, "AdActionResult.post_state offset changed");
+_Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
+_Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
 #endif
 
 uintptr_t ad_action_result_size(void);
@@ -477,7 +500,8 @@ typedef struct AdWindowOp {
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+ * `handle` must be a non-null pointer to a valid `AdNativeHandle` produced by
+ * the same live adapter. Free the handle before destroying that adapter.
  * `action` must be a non-null pointer to a valid `AdAction`.
  * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
  */
@@ -494,7 +518,8 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+ * `handle` must be a non-null pointer to a valid `AdNativeHandle` produced by
+ * the same live adapter. Free the handle before destroying that adapter.
  * `action` must be a non-null pointer to a valid `AdAction`.
  * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
  */
@@ -538,11 +563,13 @@ AdResult ad_execute_ref_action_with_policy(const struct AdAdapter *adapter,
  * `ad_resolve_element` writes `ptr`. Copying the struct after that
  * point and calling `ad_free_handle` on either copy is undefined —
  * there is no way for the library to detect forged non-null pointers.
- * Callers that legitimately need a "copy" should re-resolve.
+ * Callers that legitimately need a "copy" should re-resolve. The adapter that
+ * produced the handle must stay alive until the handle is freed.
  *
  * # Safety
  *
- * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`
+ * and must be the same live adapter that produced `handle`.
  * `handle` must be null or a `*mut AdNativeHandle` previously
  * populated by `ad_resolve_element`. On return `(*handle).ptr` is
  * `NULL` so a double-call is a no-op instead of a double-free.
@@ -563,8 +590,11 @@ AdResult ad_resolve_element(const struct AdAdapter *adapter,
 /**
  * # Safety
  *
- * `result` must be a pointer to an `AdActionResult` previously written by `ad_execute_action`,
- * or null. After this call all pointers inside the struct are invalid.
+ * `result` must be null or a pointer to an `AdActionResult` previously written
+ * by `ad_execute_action`, `ad_execute_action_with_policy`,
+ * `ad_execute_ref_action_with_policy`, or `ad_notification_action`. This frees
+ * `post_state`, `steps`, and all nested strings. After this call all pointers
+ * inside the struct are invalid.
  */
 void ad_free_action_result(struct AdActionResult *result);
 
@@ -935,7 +965,8 @@ AdResult ad_find(const struct AdAdapter *adapter,
  * The returned string must be freed with `ad_free_string`.
  *
  * # Safety
- * `adapter` must be valid. `handle` must be a non-null `AdNativeHandle`.
+ * `adapter` must be valid. `handle` must be a non-null `AdNativeHandle`
+ * produced by the same live adapter and freed before that adapter is destroyed.
  * `property` must be a non-null UTF-8 C string. `out` must be a valid
  * writable `*mut *mut c_char`; it is null-initialized on entry.
  */

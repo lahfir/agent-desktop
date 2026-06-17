@@ -28,4 +28,8 @@ impl ActionStep {
             outcome: ActionStepOutcome::Succeeded,
         }
     }
+
+    pub fn label(&self) -> &str {
+        &self.label
+    }
 }

@@ -3,9 +3,9 @@
 
 pub use agent_desktop_ffi::error::AdResult;
 pub use agent_desktop_ffi::{
-    AdAction, AdActionResult, AdAdapter, AdAppList, AdDirection, AdDragParams, AdElementState,
-    AdFindQuery, AdKeyCombo, AdNativeHandle, AdPoint, AdPolicyKind, AdRect, AdRefEntry,
-    AdScrollParams, AdWindowInfo, AdWindowList,
+    AdAction, AdActionResult, AdActionStep, AdAdapter, AdAppList, AdDirection, AdDragParams,
+    AdElementState, AdFindQuery, AdKeyCombo, AdNativeHandle, AdPoint, AdPolicyKind, AdRect,
+    AdRefEntry, AdScrollParams, AdWindowInfo, AdWindowList,
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;

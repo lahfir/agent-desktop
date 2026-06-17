@@ -1,6 +1,6 @@
 mod common;
 
-use common::{AdAction, AdActionResult, AdElementState, AdPoint, AdRect, AdRefEntry};
+use common::{AdAction, AdActionResult, AdActionStep, AdElementState, AdPoint, AdRect, AdRefEntry};
 use std::mem::{MaybeUninit, align_of, offset_of, size_of};
 
 #[test]
@@ -35,15 +35,23 @@ fn action_layout_is_guarded_for_c_consumers() {
 fn action_result_layout_is_guarded_for_c_consumers() {
     assert_eq!(
         agent_desktop_ffi::types::action_result::AD_ACTION_RESULT_SIZE,
-        24
+        40
     );
     assert_eq!(
         unsafe { common::ad_action_result_size() },
         agent_desktop_ffi::types::action_result::AD_ACTION_RESULT_SIZE
     );
-    assert_eq!(size_of::<AdActionResult>(), 24);
+    assert_eq!(size_of::<AdActionStep>(), 16);
+    assert_eq!(align_of::<AdActionStep>(), align_of::<usize>());
+    assert_eq!(size_of::<AdActionResult>(), 40);
     assert_eq!(align_of::<AdActionResult>(), align_of::<usize>());
     assert_eq!(offset_of!(AdActionResult, action), 0);
+    assert_eq!(offset_of!(AdActionResult, ref_id), 8);
+    assert_eq!(offset_of!(AdActionResult, post_state), 16);
+    assert_eq!(offset_of!(AdActionResult, steps), 24);
+    assert_eq!(offset_of!(AdActionResult, step_count), 32);
+    assert_eq!(offset_of!(AdActionStep, label), 0);
+    assert_eq!(offset_of!(AdActionStep, outcome), 8);
 }
 
 #[test]

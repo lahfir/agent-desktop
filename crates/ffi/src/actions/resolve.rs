@@ -1,5 +1,5 @@
 use crate::AdAdapter;
-use crate::convert::string::try_c_to_string;
+use crate::convert::string::optional_adapter_string;
 use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
@@ -123,12 +123,7 @@ unsafe fn optional_string(
     ptr: *const std::os::raw::c_char,
     field: &str,
 ) -> Result<Option<String>, agent_desktop_core::error::AdapterError> {
-    unsafe { try_c_to_string(ptr) }.map_err(|err| {
-        agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
-            err.describe(field),
-        )
-    })
+    optional_adapter_string(ptr, field)
 }
 
 fn check_array_len(

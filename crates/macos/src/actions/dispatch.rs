@@ -88,8 +88,7 @@ mod imp {
             }
 
             Action::DoubleClick => {
-                let caps = discovery::discover(el);
-                chain_defs::double_click(el, &caps, request.policy)?;
+                chain_defs::double_click(el, request.policy)?;
             }
 
             Action::RightClick => {
@@ -196,8 +195,7 @@ mod imp {
             }
 
             Action::TripleClick => {
-                let caps = discovery::discover(el);
-                chain_defs::triple_click(el, &caps, request.policy)?;
+                chain_defs::triple_click(el, request.policy)?;
             }
 
             Action::ScrollTo => {

@@ -38,6 +38,10 @@ free function. Always call it; the allocator the FFI uses is Rust's
 - **`ad_free_handle` is safe to double-call** — it zeroes
   `handle.ptr` after the platform release, so a follow-up call sees
   `NULL` and returns `AD_RESULT_OK` without re-entering `CFRelease`.
+- **Adapters must outlive their handles.** Free every handle with the
+  same adapter that produced it before calling `ad_adapter_destroy`.
+  Destroying the adapter first and later freeing its handles is
+  undefined behavior for FFI hosts.
 - Pointers inside a struct (`.id`, `.title`, `.app_name`, each
   `AdNotificationInfo.body`, etc.) are freed by the struct's owning
   free function (list_free / release_fields) — do not
