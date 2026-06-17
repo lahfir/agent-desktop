@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char};
 
 const fn error_code_variant_count() -> usize {
-    let mut count = 0;
     let variants = [
         ErrorCode::PermDenied,
         ErrorCode::ElementNotFound,
@@ -21,12 +20,7 @@ const fn error_code_variant_count() -> usize {
         ErrorCode::PolicyDenied,
         ErrorCode::Internal,
     ];
-    let mut i = 0;
-    while i < variants.len() {
-        count += 1;
-        i += 1;
-    }
-    count
+    variants.len()
 }
 
 const fn ad_result_error_variant_count() -> usize {
@@ -47,13 +41,7 @@ const fn ad_result_error_variant_count() -> usize {
         AdResult::ErrSnapshotNotFound,
         AdResult::ErrPolicyDenied,
     ];
-    let mut count = 0;
-    let mut i = 0;
-    while i < variants.len() {
-        count += 1;
-        i += 1;
-    }
-    count
+    variants.len()
 }
 
 const _: () = assert!(

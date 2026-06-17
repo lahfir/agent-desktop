@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 pub struct ActionResult {
     pub action: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ref_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub post_state: Option<ElementState>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub steps: Vec<ActionStep>,
@@ -16,15 +14,9 @@ impl ActionResult {
     pub fn new(action: impl Into<String>) -> Self {
         Self {
             action: action.into(),
-            ref_id: None,
             post_state: None,
             steps: Vec::new(),
         }
-    }
-
-    pub fn with_ref(mut self, ref_id: impl Into<String>) -> Self {
-        self.ref_id = Some(ref_id.into());
-        self
     }
 
     pub fn with_state(mut self, state: ElementState) -> Self {

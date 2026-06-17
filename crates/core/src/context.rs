@@ -3,7 +3,7 @@ use crate::{
     interaction_policy::InteractionPolicy, trace::TraceConfig,
 };
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandContext {
@@ -86,10 +86,6 @@ impl CommandContext {
 
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
-    }
-
-    pub fn trace_path(&self) -> Option<&Path> {
-        self.trace.path()
     }
 }
 
@@ -279,18 +275,20 @@ mod tests {
 
     #[test]
     fn batch_item_inherits_or_overrides_session_without_trace_loss() {
-        let parent = CommandContext::new(
-            Some("parent".into()),
-            Some(std::env::temp_dir().join("agent-desktop-context-test.jsonl")),
-            false,
-        )
-        .unwrap();
+        let path = std::env::temp_dir().join("agent-desktop-context-test.jsonl");
+        let _ = std::fs::remove_file(&path);
+        let parent = CommandContext::new(Some("parent".into()), Some(path.clone()), false).unwrap();
 
         let inherited = parent.for_batch_item(None).unwrap();
         let overridden = parent.for_batch_item(Some("child".into())).unwrap();
 
         assert_eq!(inherited.session_id(), Some("parent"));
         assert_eq!(overridden.session_id(), Some("child"));
-        assert!(overridden.trace_path().is_some());
+        overridden
+            .trace("batch.child", serde_json::json!({ "ok": true }))
+            .unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("batch.child"));
+        let _ = std::fs::remove_file(path);
     }
 }

@@ -45,7 +45,17 @@ pub fn for_action(action: &Action) -> &'static [&'static str] {
 }
 
 pub fn defaults_for_role(role: &str) -> Vec<String> {
-    role_default_slice(role)
+    let capabilities: &[&str] = match role {
+        "button" | "link" | "menuitem" | "tab" | "radiobutton" => &[CLICK],
+        "textfield" | "incrementor" => &[CLICK, SET_VALUE, SET_FOCUS],
+        "checkbox" => &[CLICK, TOGGLE],
+        "combobox" => &[CLICK, SELECT],
+        "treeitem" => &[CLICK, EXPAND, COLLAPSE],
+        "slider" => &[SET_VALUE],
+        "cell" => &[CLICK],
+        _ => &[CLICK],
+    };
+    capabilities
         .iter()
         .map(|capability| (*capability).to_string())
         .collect()
@@ -59,19 +69,6 @@ pub fn contains_any(actions: &[String], capabilities: &[&str]) -> bool {
     capabilities
         .iter()
         .any(|capability| contains(actions, capability))
-}
-
-fn role_default_slice(role: &str) -> &'static [&'static str] {
-    match role {
-        "button" | "link" | "menuitem" | "tab" | "radiobutton" => &[CLICK],
-        "textfield" | "incrementor" => &[CLICK, SET_VALUE, SET_FOCUS],
-        "checkbox" => &[CLICK, TOGGLE],
-        "combobox" => &[CLICK, SELECT],
-        "treeitem" => &[CLICK, EXPAND, COLLAPSE],
-        "slider" => &[SET_VALUE],
-        "cell" => &[CLICK],
-        _ => &[CLICK],
-    }
 }
 
 #[cfg(test)]

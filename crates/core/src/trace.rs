@@ -7,7 +7,6 @@ const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Default)]
 pub struct TraceConfig {
-    path: Option<PathBuf>,
     strict: bool,
     writer: Option<Arc<Mutex<std::fs::File>>>,
 }
@@ -32,11 +31,7 @@ impl TraceConfig {
             },
             None => None,
         };
-        Ok(Self {
-            path,
-            strict,
-            writer,
-        })
+        Ok(Self { strict, writer })
     }
 
     pub fn emit(&self, event: &str, fields: Value) -> Result<(), AppError> {
@@ -59,10 +54,6 @@ impl TraceConfig {
                 Ok(())
             }
         }
-    }
-
-    pub fn path(&self) -> Option<&Path> {
-        self.path.as_deref()
     }
 }
 

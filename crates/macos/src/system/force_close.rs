@@ -23,7 +23,7 @@ pub(crate) fn terminate_app(id: &str, pids: &[i32], timeout: Duration) -> Result
 
 fn signal_pids(id: &str, pids: &[i32], signal: Signal) -> Result<(), AdapterError> {
     for &pid in pids {
-        send_signal(pid, signal).map_err(|detail| {
+        signal_result(pid, signal).map(|_| ()).map_err(|detail| {
             AdapterError::new(
                 ErrorCode::ActionFailed,
                 format!("Failed to {} app '{id}' pid {pid}", signal.verb()),
@@ -75,10 +75,6 @@ fn child_process_is_running(pid: i32) -> Option<bool> {
         _ if std::io::Error::last_os_error().raw_os_error() == Some(POSIX_ECHILD) => None,
         _ => None,
     }
-}
-
-fn send_signal(pid: i32, signal: Signal) -> Result<(), String> {
-    signal_result(pid, signal).map(|_| ())
 }
 
 fn signal_result(pid: i32, signal: Signal) -> Result<bool, String> {

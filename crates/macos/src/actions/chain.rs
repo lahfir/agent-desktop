@@ -27,7 +27,10 @@ mod imp {
         let deadline = ctx
             .deadline
             .unwrap_or_else(|| Instant::now() + chain_timeout());
-        let ctx = ctx.with_deadline(deadline);
+        let ctx = ChainContext {
+            dynamic_value: ctx.dynamic_value,
+            deadline: Some(deadline),
+        };
         let total = def.steps.len();
         let mut steps = Vec::new();
 

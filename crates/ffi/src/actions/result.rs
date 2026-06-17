@@ -7,7 +7,6 @@ const MAX_STATE_STRINGS_TO_FREE: usize = 1024;
 
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
     let action = string_to_c_lossy(&r.action);
-    let ref_id = opt_string_to_c(r.ref_id.as_deref());
     let post_state = match &r.post_state {
         None => ptr::null_mut(),
         Some(state) => {
@@ -36,7 +35,7 @@ pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
     };
     AdActionResult {
         action,
-        ref_id,
+        ref_id: ptr::null(),
         post_state,
     }
 }
@@ -93,7 +92,6 @@ mod tests {
     fn test_action_result_to_c_with_state() {
         let core_result = CoreActionResult {
             action: "click".to_owned(),
-            ref_id: Some("@e3".to_owned()),
             post_state: Some(ElementState {
                 role: "button".to_owned(),
                 states: vec!["focused".to_owned(), "enabled".to_owned()],
@@ -104,7 +102,7 @@ mod tests {
         let c_result = action_result_to_c(&core_result);
         unsafe {
             assert_eq!(c_to_string(c_result.action).as_deref(), Some("click"));
-            assert_eq!(c_to_string(c_result.ref_id).as_deref(), Some("@e3"));
+            assert!(c_result.ref_id.is_null());
             assert!(!c_result.post_state.is_null());
             let state = &*c_result.post_state;
             assert_eq!(c_to_string(state.role).as_deref(), Some("button"));

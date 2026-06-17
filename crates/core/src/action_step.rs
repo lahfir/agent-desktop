@@ -8,10 +8,6 @@ pub struct ActionStep {
 }
 
 impl ActionStep {
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
     pub fn attempted(label: &'static str) -> Self {
         Self {
             label: label.to_string(),

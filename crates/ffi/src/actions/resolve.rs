@@ -61,12 +61,22 @@ pub(crate) unsafe fn core_ref_entry_from_ffi(
     let name = unsafe { optional_string(entry.name, "name") }?;
     let value = unsafe { optional_string(entry.value, "value") }?;
     let description = unsafe { optional_string(entry.description, "description") }?;
-    let states = unsafe { string_array(entry.states, entry.state_count, &STATES_LIMIT) }?;
+    let states = unsafe {
+        string_array(
+            entry.states,
+            entry.state_count,
+            "states",
+            "AD_MAX_REF_STATES",
+            crate::types::ref_entry::AD_MAX_REF_STATES,
+        )
+    }?;
     let available_actions = unsafe {
         string_array(
             entry.available_actions,
             entry.available_action_count,
-            &ACTIONS_LIMIT,
+            "available_actions",
+            "AD_MAX_REF_ACTIONS",
+            crate::types::ref_entry::AD_MAX_REF_ACTIONS,
         )
     }?;
     let bounds = if entry.has_bounds {
@@ -121,51 +131,23 @@ unsafe fn optional_string(
     })
 }
 
-/// Per-field cap for a counted array crossing the C boundary. `constant`
-/// names the header macro so the error message tells callers which
-/// published limit they exceeded.
-struct ArrayLimit {
-    field: &'static str,
-    constant: &'static str,
-    max: usize,
-}
-
-const STATES_LIMIT: ArrayLimit = ArrayLimit {
-    field: "states",
-    constant: "AD_MAX_REF_STATES",
-    max: crate::types::ref_entry::AD_MAX_REF_STATES,
-};
-
-const ACTIONS_LIMIT: ArrayLimit = ArrayLimit {
-    field: "available_actions",
-    constant: "AD_MAX_REF_ACTIONS",
-    max: crate::types::ref_entry::AD_MAX_REF_ACTIONS,
-};
-
-const PATH_LIMIT: ArrayLimit = ArrayLimit {
-    field: "path",
-    constant: "AD_MAX_REF_PATH_DEPTH",
-    max: crate::types::ref_entry::AD_MAX_REF_PATH_DEPTH,
-};
-
 fn check_array_len(
     len: usize,
     is_null: bool,
-    limit: &ArrayLimit,
+    field: &str,
+    constant: &str,
+    max: usize,
 ) -> Result<(), agent_desktop_core::error::AdapterError> {
-    if len > limit.max {
+    if len > max {
         return Err(agent_desktop_core::error::AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
-            format!(
-                "{} count {len} exceeds {} ({})",
-                limit.field, limit.constant, limit.max
-            ),
+            format!("{field} count {len} exceeds {constant} ({max})"),
         ));
     }
     if is_null {
         return Err(agent_desktop_core::error::AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
-            format!("{} count is nonzero but pointer is null", limit.field),
+            format!("{field} count is nonzero but pointer is null"),
         ));
     }
     Ok(())
@@ -174,18 +156,20 @@ fn check_array_len(
 unsafe fn string_array(
     ptr: *const *const std::os::raw::c_char,
     len: usize,
-    limit: &ArrayLimit,
+    field: &str,
+    constant: &str,
+    max: usize,
 ) -> Result<Vec<String>, agent_desktop_core::error::AdapterError> {
     if len == 0 {
         return Ok(Vec::new());
     }
-    check_array_len(len, ptr.is_null(), limit)?;
+    check_array_len(len, ptr.is_null(), field, constant, max)?;
     let items = unsafe { std::slice::from_raw_parts(ptr, len) };
     items
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            let element = format!("{}[{index}]", limit.field);
+            let element = format!("{field}[{index}]");
             unsafe { optional_string(*item, &element) }?.ok_or_else(|| {
                 agent_desktop_core::error::AdapterError::new(
                     agent_desktop_core::error::ErrorCode::InvalidArgs,
@@ -203,7 +187,13 @@ unsafe fn ref_path(
     if len == 0 {
         return Ok(smallvec::SmallVec::new());
     }
-    check_array_len(len, ptr.is_null(), &PATH_LIMIT)?;
+    check_array_len(
+        len,
+        ptr.is_null(),
+        "path",
+        "AD_MAX_REF_PATH_DEPTH",
+        crate::types::ref_entry::AD_MAX_REF_PATH_DEPTH,
+    )?;
     let mut path = smallvec::SmallVec::new();
     path.extend(
         unsafe { std::slice::from_raw_parts(ptr, len) }
