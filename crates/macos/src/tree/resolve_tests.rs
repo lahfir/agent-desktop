@@ -1,12 +1,10 @@
 use super::*;
 use crate::tree::AXElement;
 use crate::tree::resolve_classify::classify_candidates;
-use crate::tree::resolve_roots::{
-    single_window_fallback_allowed, sole_source_window_fallback_allowed, source_window_number,
-    unique_fallible_matching_index,
-};
+use crate::tree::resolve_roots::{source_window_number, unique_fallible_matching_index};
 use crate::tree::resolve_search::should_stop_collecting;
 use agent_desktop_core::adapter::SnapshotSurface;
+use agent_desktop_core::ref_identity::bounded_window_fallback_allowed;
 
 fn entry(
     bounds_hash: Option<u64>,
@@ -250,14 +248,20 @@ fn non_window_identity_candidate_without_bounds_fails_closed() {
 }
 
 #[test]
-fn single_window_fallback_requires_bounds_hash_not_title() {
-    assert!(single_window_fallback_allowed(&entry(
+fn bounded_window_fallback_requires_bounds_hash_not_stable_title() {
+    assert!(bounded_window_fallback_allowed(&entry(
         Some(42),
         Some("w-10"),
         None,
         None
     )));
-    assert!(!single_window_fallback_allowed(&entry(
+    assert!(bounded_window_fallback_allowed(&entry(
+        Some(42),
+        Some("w-10"),
+        Some("Stale Title"),
+        None
+    )));
+    assert!(!bounded_window_fallback_allowed(&entry(
         None,
         Some("w-10"),
         Some("Documents"),
@@ -265,23 +269,7 @@ fn single_window_fallback_requires_bounds_hash_not_title() {
     )));
     let mut menu_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
     menu_entry.source_surface = SnapshotSurface::Menu;
-    assert!(!single_window_fallback_allowed(&menu_entry));
-}
-
-#[test]
-fn sole_window_fallback_requires_missing_title() {
-    assert!(sole_source_window_fallback_allowed(&entry(
-        Some(42),
-        Some("w-10"),
-        None,
-        None
-    )));
-    assert!(!sole_source_window_fallback_allowed(&entry(
-        Some(42),
-        Some("w-10"),
-        Some("Documents"),
-        None
-    )));
+    assert!(!bounded_window_fallback_allowed(&menu_entry));
 }
 
 #[test]

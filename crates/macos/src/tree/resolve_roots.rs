@@ -1,3 +1,4 @@
+use agent_desktop_core::ref_identity::bounded_window_fallback_allowed;
 use agent_desktop_core::{adapter::SnapshotSurface, error::AdapterError, refs::RefEntry};
 use std::time::Instant;
 
@@ -92,10 +93,11 @@ fn source_window_scoped_roots(
             scope_verified: true,
         });
     }
-    if single_window_fallback_allowed(entry) {
-        if let Some(window) = fallback_source_window_root(&windows, entry, deadline) {
+    if bounded_window_fallback_allowed(entry) {
+        let roots = fallback_source_window_roots(&windows, deadline);
+        if !roots.is_empty() {
             return Ok(CandidateRoots {
-                roots: vec![window],
+                roots,
                 scope_verified: false,
             });
         }
@@ -205,22 +207,16 @@ fn window_by_title(
 }
 
 #[cfg(target_os = "macos")]
-fn fallback_source_window_root(
-    windows: &[AXElement],
-    entry: &RefEntry,
-    deadline: Instant,
-) -> Option<AXElement> {
-    if let Some(window) = window_by_title(windows, entry.source_window_title.as_deref(), deadline) {
-        return Some(window);
+fn fallback_source_window_roots(windows: &[AXElement], deadline: Instant) -> Vec<AXElement> {
+    let mut roots = Vec::new();
+    let mut dedupe = ElementDedupe;
+    for win in windows {
+        if prepare_for_read(win, deadline).is_err() {
+            return Vec::new();
+        }
+        dedupe.push(&mut roots, win.clone());
     }
-    if !sole_source_window_fallback_allowed(entry) {
-        return None;
-    }
-    let index = unique_fallible_matching_index(windows, |win| {
-        prepare_for_read(win, deadline)?;
-        Ok::<bool, AdapterError>(copy_string_attr(win, "AXRole").as_deref() == Some("AXWindow"))
-    })?;
-    windows.get(index).cloned()
+    roots
 }
 
 #[cfg(target_os = "macos")]
@@ -228,17 +224,6 @@ pub(super) fn source_window_scope_required(entry: &RefEntry) -> bool {
     matches!(entry.source_surface, SnapshotSurface::Window) && source_window_number(entry).is_some()
 }
 
-#[cfg(target_os = "macos")]
-pub(super) fn single_window_fallback_allowed(entry: &RefEntry) -> bool {
-    source_window_scope_required(entry) && entry.bounds_hash.is_some()
-}
-
-#[cfg(target_os = "macos")]
-pub(super) fn sole_source_window_fallback_allowed(entry: &RefEntry) -> bool {
-    single_window_fallback_allowed(entry) && entry.source_window_title.is_none()
-}
-
-#[cfg(target_os = "macos")]
 pub(super) fn source_window_number(entry: &RefEntry) -> Option<i64> {
     entry
         .source_window_id

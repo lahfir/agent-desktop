@@ -118,7 +118,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `APP_NOT_FOUND` | App not running | Launch it first |
 | `ACTION_FAILED` | AX action rejected | Try an explicit alternative command |
 | `ACTION_NOT_SUPPORTED` | Element can't do this | Use different command |
-| `STALE_REF` | Ref from old snapshot | Use the `snapshot_id` returned with this ref, or re-run `snapshot` / `snapshot --skeleton` to get fresh refs |
+| `STALE_REF` | Ref could not be re-identified in the live UI | Use the `snapshot_id` returned with this ref; if the UI changed or the target disappeared, re-run `snapshot` / `snapshot --skeleton` to get fresh refs |
 | `AMBIGUOUS_TARGET` | Multiple elements matched the old ref identity | Re-run snapshot and choose a more specific ref |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired | Run `snapshot` again and use the returned ID |
 | `POLICY_DENIED` | A physical/headed path was blocked | Use an explicit mouse/focus/keyboard command if physical interaction is intended |
