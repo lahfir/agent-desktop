@@ -431,8 +431,18 @@ jobs:
 
       - name: Publish all skills to ClawHub
         run: |
-          clawhub sync \
-            --root skills/ \
-            --all \
-            --bump patch \
-            --changelog "Release ${{ needs.release-please.outputs.tag_name }}"
+          set -euo pipefail
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          for skill_dir in skills/*; do
+            [ -d "$skill_dir" ] || continue
+            [ -f "$skill_dir/SKILL.md" ] || continue
+            slug="$(basename "$skill_dir")"
+            clawhub publish "$skill_dir" \
+              --slug "$slug" \
+              --changelog "Release ${{ needs.release-please.outputs.tag_name }}" \
+              --tags latest \
+              --source-repo "${GITHUB_REPOSITORY}" \
+              --source-commit "$SOURCE_COMMIT" \
+              --source-ref "${{ needs.release-please.outputs.tag_name }}" \
+              --source-path "$skill_dir"
+          done
