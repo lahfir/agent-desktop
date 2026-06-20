@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## [0.2.4](https://github.com/lahfir/agent-desktop/compare/v0.2.3...v0.2.4) (2026-06-20)
+## [0.3.0](https://github.com/lahfir/agent-desktop/compare/v0.2.3...v0.3.0) (2026-06-20)
 
 ### ⚠ BREAKING CHANGES
 
