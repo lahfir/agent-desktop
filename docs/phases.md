@@ -10,7 +10,11 @@ Most recent shipments against this roadmap:
 
 | Version | Date       | What shipped |
 |---------|------------|--------------|
-| Unreleased | 2026-06 | Reliability hardening on the Phase 1 contracts: session-scoped latest snapshot pointers, explicit snapshot IDs usable across sessions, actionability checks, JSONL `--trace`, stale-ref diagnostics, and refstore symlink hardening |
+| v0.3.0 | 2026-06-20 | Playwright-grade reliability hardening on the Phase 1 contracts: session-scoped latest snapshot pointers, explicit snapshot IDs usable across sessions, actionability checks, headed/headless policy, JSONL `--trace`, stale-ref diagnostics, and refstore symlink hardening |
+| v0.2.3 | 2026-06-06 | macOS AX window fallback hardening and fullscreen AX tree retrieval fixes |
+| v0.2.2 | 2026-06-02 | macOS CFArray type-safety fix for Mail.app snapshot stability |
+| v0.2.1 | 2026-05-23 | Empty accessibility-identity ref stability fix |
+| v0.2.0 | 2026-05-20 | Unified command execution contracts; chain deadlines now return structured `TIMEOUT` instead of `ACTION_FAILED` |
 | v0.1.14 | 2026-05 | Phase 1 unified core: typed batch/CLI path, `CommandPolicy`, `PermissionReport`, snapshot-scoped `RefStore`, headless `ActionRequest`, macOS screenshot backend boundary |
 | v0.1.13 | 2026-04-17 | FFI cdylib on 5 platforms (aarch64/x86_64 macOS + Linux, x86_64 Windows MSVC), Sigstore build-provenance attestations, FFI review fixes (#26 — 50 commits) |
 | v0.1.12 | 2026-03–04 | Progressive skeleton traversal + ref-rooted drill-down (#20) |
@@ -20,7 +24,7 @@ Most recent shipments against this roadmap:
 | v0.1.7  | 2025-12    | Electron / web app accessibility-tree compatibility |
 
 - Phase 1 completion: incremental across v0.1.0 – v0.1.14 (macOS MVP, 54 commands, unified core engine).
-- Current unreleased hardening extends Phase 1 contracts; it does not change the planned Windows/Linux adapter sequence.
+- v0.3.0 reliability hardening extends the Phase 1 contracts; it does not change the planned Windows/Linux adapter sequence.
 - Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms).
 - Phase 2: planned. Public scope is summarized in the Phase 2 section below.
 - Phase 3+: planned. See each phase section below for the additive platform work and trait defaults that later phases backfill.
@@ -38,7 +42,7 @@ Most recent shipments against this roadmap:
 | 4 | MCP Server Mode | Planned | All |
 | 5 | Production Readiness | Planned | All |
 
-Future platform phases are additive against the Phase 1 contracts: typed command args, `CommandPolicy`, `PermissionReport`, snapshot-scoped refs, session-scoped latest snapshot pointers, `ActionRequest`, JSONL reliability tracing, and the `PlatformAdapter` boundary. Core can still gain explicitly planned additive trait methods, but Windows/Linux should not fork command semantics or duplicate transport dispatch.
+Future platform phases are additive against the Phase 1 + v0.3.0 reliability contracts: typed command args, `CommandPolicy`, `PermissionReport`, snapshot-scoped refs, session-scoped latest snapshot pointers, `ActionRequest`, headed/headless interaction policy, JSONL reliability tracing, and the `PlatformAdapter` boundary. Core can still gain explicitly planned additive trait methods, but Windows/Linux should not fork command semantics or duplicate transport dispatch.
 
 ---
 
