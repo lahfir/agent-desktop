@@ -1,6 +1,6 @@
 ---
 name: agent-desktop
-version: 0.1.14
+version: 0.3.0
 tags: desktop-automation, accessibility, ai-agent, gui-automation, cli
 requirements:
   - agent-desktop
