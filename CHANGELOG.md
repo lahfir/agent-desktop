@@ -2,9 +2,32 @@
 
 ## Unreleased
 
-### Notes
+## [0.3.0](https://github.com/lahfir/agent-desktop/compare/v0.2.3...v0.3.0) (2026-06-20)
 
-* **ffi:** `AdRefEntry` carries additional reliability metadata in this branch; C ABI consumers must rebuild against the updated `agent_desktop.h` header.
+### ⚠ BREAKING CHANGES
+
+* **ffi:** `AD_POLICY_KIND_PHYSICAL` is now `AD_POLICY_KIND_HEADED` (discriminant `2` unchanged).
+* **ffi:** `AdRefEntry` and `AdDragParams` include additional reliability metadata; C ABI consumers must zero-initialize and validate with `AD_REF_ENTRY_SIZE`, `AD_DRAG_PARAMS_SIZE`, and the `ad_*_size()` accessors.
+* `close-app` graceful responses now return `{ "method": "graceful", "requested": true }` instead of claiming `closed: true` before the app has exited.
+
+### Features
+
+* add Playwright-grade ref reliability with strict late resolution, session-scoped snapshots, deterministic stale/ambiguous target handling, and skeleton drill-down preservation ([#54](https://github.com/lahfir/agent-desktop/pull/54)).
+* add Playwright-style headed/headless interaction policy: accessibility-first dispatch remains default, while `--headed` enables focused physical fallbacks only when needed ([#54](https://github.com/lahfir/agent-desktop/pull/54)).
+* add retrying wait predicates, JSONL traces with secret redaction, richer actionability reports, and shared CLI/FFI execution through the same resolver/actionability/dispatch ladder ([#54](https://github.com/lahfir/agent-desktop/pull/54)).
+
+### Bug Fixes
+
+* harden macOS ref actions across focus/window raising, disclosure expansion, scroll, drag, numeric set-value, menu detection, stale-ref recovery, protected-process errors, and close-app confirmation ([#54](https://github.com/lahfir/agent-desktop/pull/54)).
+* fail closed on unsafe fallback ambiguity and stale refs, including symlink-safe refstore/latest-snapshot reads and deadline-bound resolver work ([#54](https://github.com/lahfir/agent-desktop/pull/54)).
+
+### Performance
+
+* reduce repeated live actionability reads and add deadline-bound resolver behavior, with large-app snapshot and per-command CLI wall-clock gates in the E2E suite ([#54](https://github.com/lahfir/agent-desktop/pull/54)).
+
+### Tests
+
+* add real-app E2E coverage for headless/headed ref actions, sessions, snapshots, traces, waits, skeleton drill-down, menus, surfaces, drag, expand/collapse, and performance checks ([#54](https://github.com/lahfir/agent-desktop/pull/54)).
 
 ## [0.2.3](https://github.com/lahfir/agent-desktop/compare/v0.2.2...v0.2.3) (2026-06-06)
 
