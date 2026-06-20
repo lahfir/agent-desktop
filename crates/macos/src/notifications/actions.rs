@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    action::ActionResult,
+    action_result::ActionResult,
     error::{AdapterError, ErrorCode},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
 };
@@ -12,8 +12,7 @@ pub fn dismiss_notification(
 ) -> Result<NotificationInfo, AdapterError> {
     let session = NcSession::open()?;
     let result = dismiss_impl(index, app_filter);
-    session.close()?;
-    result
+    close_session(session, result)
 }
 
 pub fn dismiss_all(
@@ -21,8 +20,7 @@ pub fn dismiss_all(
 ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
     let session = NcSession::open()?;
     let result = dismiss_all_impl(app_filter);
-    session.close()?;
-    result
+    close_session(session, result)
 }
 
 pub fn notification_action(
@@ -32,8 +30,19 @@ pub fn notification_action(
 ) -> Result<ActionResult, AdapterError> {
     let session = NcSession::open()?;
     let result = action_impl(index, identity, action_name);
-    session.close()?;
-    result
+    close_session(session, result)
+}
+
+fn close_session<T>(
+    session: NcSession,
+    result: Result<T, AdapterError>,
+) -> Result<T, AdapterError> {
+    let close_result = session.close();
+    match (result, close_result) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(_), Err(err)) => Err(err),
+        (Err(err), _) => Err(err),
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -120,6 +129,9 @@ fn try_dismiss_button(children: &[crate::tree::AXElement]) -> bool {
     close_btn.is_some_and(|btn| try_ax_action(btn, "AXPress"))
 }
 
+/// Presses a named action button on the notification at `index`.
+///
+/// When `identity` is provided, rejects rows whose fingerprint no longer matches after NC reordering.
 #[cfg(target_os = "macos")]
 fn action_impl(
     index: usize,
@@ -138,12 +150,6 @@ fn action_impl(
         .find(|e| e.info.index == index)
         .ok_or_else(|| AdapterError::notification_not_found(index))?;
 
-    // Fingerprint check: NC may have reordered between the host's
-    // list_notifications call and now. When identity fields are
-    // provided, refuse to press an action on a row whose fingerprint
-    // doesn't match. Fail closed with NotificationNotFound so the host
-    // treats this exactly like "the notification disappeared" — which
-    // is precisely what happened from the host's perspective.
     if let Some(id) = identity {
         if !id.is_empty() && !id.matches(&entry.info) {
             return Err(AdapterError::new(

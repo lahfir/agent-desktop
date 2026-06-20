@@ -2,6 +2,9 @@
 /target/
 **/*.rs.bk
 
+# E2E fixture build artifact (compiled by tests/fixture-app/build.sh on demand)
+/tests/fixture-app/build/
+
 # Cargo
 !Cargo.lock
 

@@ -21,11 +21,10 @@ impl TreeBuildContext {
         }
     }
 
-    pub(crate) fn read_bounds(&self, el: &AXElement) -> Option<agent_desktop_core::node::Rect> {
-        if self.include_bounds {
-            super::read_bounds(el)
-        } else {
-            None
-        }
+    pub(crate) fn bounds_for(
+        &self,
+        bounds: Option<agent_desktop_core::node::Rect>,
+    ) -> Option<agent_desktop_core::node::Rect> {
+        if self.include_bounds { bounds } else { None }
     }
 }

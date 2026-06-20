@@ -2,6 +2,7 @@ pub(crate) mod app_inventory;
 pub mod app_list;
 pub mod app_ops;
 pub(crate) mod cg_window;
+pub(crate) mod force_close;
 pub mod key_dispatch;
 pub mod permissions;
 pub(crate) mod process;

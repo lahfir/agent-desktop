@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    action::ActionResult,
+    action_request::ActionRequest,
+    action_result::ActionResult,
     adapter::{NativeHandle, WindowFilter},
     error::{AdapterError, ErrorCode},
     node::WindowInfo,
@@ -14,7 +15,7 @@ struct ProbeFailingAdapter {
 }
 
 impl PlatformAdapter for ProbeFailingAdapter {
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
@@ -107,6 +108,7 @@ fn returns_action_success_when_menu_probe_fails() {
             snapshot_id: Some(snapshot_id),
         },
         &ProbeFailingAdapter { tree_error: None },
+        &CommandContext::default(),
     )
     .unwrap();
 
@@ -128,6 +130,7 @@ fn element_not_found_menu_probe_uses_right_click_specific_guidance() {
         &ProbeFailingAdapter {
             tree_error: Some(ErrorCode::ElementNotFound),
         },
+        &CommandContext::default(),
     )
     .unwrap();
 

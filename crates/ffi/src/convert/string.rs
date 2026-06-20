@@ -1,6 +1,8 @@
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
+
+use agent_desktop_core::error::{AdapterError, ErrorCode};
 
 pub(crate) fn string_to_c(s: &str) -> *mut c_char {
     match CString::new(s) {
@@ -43,13 +45,42 @@ pub(crate) unsafe fn free_c_string(ptr: *mut c_char) {
     }
 }
 
-pub(crate) unsafe fn c_to_string(ptr: *const c_char) -> Option<String> {
-    unsafe {
-        if ptr.is_null() {
-            return None;
+/// Maximum byte length (excluding the NUL terminator) accepted for any
+/// foreign C string. Bounds both the terminator scan and the resulting
+/// allocation, so a missing NUL or a hostile caller cannot walk arbitrary
+/// memory into a `String`. Sized to roughly match the CLI's argv ceiling so
+/// payload-bearing calls (clipboard-set, type) keep CLI parity rather than
+/// being cut off at a ref-field-sized cap. Mirrored in the header as
+/// `AD_MAX_STRING_BYTES`.
+pub const MAX_C_STRING_BYTES: usize = 1024 * 1024;
+
+pub(crate) enum CStrDecodeError {
+    NotUtf8,
+    TooLong,
+}
+
+impl CStrDecodeError {
+    pub(crate) fn describe(&self, field: &str) -> String {
+        match self {
+            Self::NotUtf8 => format!("{field} is not valid UTF-8"),
+            Self::TooLong => {
+                format!("{field} exceeds AD_MAX_STRING_BYTES ({MAX_C_STRING_BYTES} bytes)")
+            }
         }
-        CStr::from_ptr(ptr).to_str().ok().map(str::to_owned)
     }
+}
+
+unsafe fn bounded_c_bytes<'a>(ptr: *const c_char) -> Result<&'a [u8], CStrDecodeError> {
+    for len in 0..=MAX_C_STRING_BYTES {
+        if unsafe { *ptr.add(len) } == 0 {
+            return Ok(unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), len) });
+        }
+    }
+    Err(CStrDecodeError::TooLong)
+}
+
+pub(crate) unsafe fn c_to_string(ptr: *const c_char) -> Option<String> {
+    unsafe { try_c_to_string(ptr) }.ok().flatten()
 }
 
 /// Tri-state decode of a foreign C string used for optional filter
@@ -58,37 +89,57 @@ pub(crate) unsafe fn c_to_string(ptr: *const c_char) -> Option<String> {
 ///
 /// - `Ok(None)` — pointer is null. Caller should treat as "filter
 ///   absent".
-/// - `Ok(Some(s))` — pointer is non-null and decodes as valid UTF-8.
-/// - `Err(())` — pointer is non-null but the bytes are not UTF-8.
-///   Caller should surface `AD_RESULT_ERR_INVALID_ARGS` instead of
+/// - `Ok(Some(s))` — pointer is non-null, NUL-terminated within
+///   `MAX_C_STRING_BYTES`, and decodes as valid UTF-8.
+/// - `Err(e)` — pointer is non-null but the bytes are not UTF-8 or no
+///   terminator was found within the byte cap. Caller should surface
+///   `AD_RESULT_ERR_INVALID_ARGS` (via `e.describe(field)`) instead of
 ///   treating this as missing.
 ///
 /// # Safety
-/// `ptr` must be null or a NUL-terminated C string.
-pub(crate) unsafe fn try_c_to_string(ptr: *const c_char) -> Result<Option<String>, ()> {
-    unsafe {
-        if ptr.is_null() {
-            return Ok(None);
-        }
-        match CStr::from_ptr(ptr).to_str() {
-            Ok(s) => Ok(Some(s.to_owned())),
-            Err(_) => Err(()),
-        }
+/// `ptr` must be null or point to readable memory that is NUL-terminated
+/// within `MAX_C_STRING_BYTES + 1` bytes.
+pub(crate) unsafe fn try_c_to_string(
+    ptr: *const c_char,
+) -> Result<Option<String>, CStrDecodeError> {
+    if ptr.is_null() {
+        return Ok(None);
     }
+    let bytes = unsafe { bounded_c_bytes(ptr) }?;
+    std::str::from_utf8(bytes)
+        .map(|s| Some(s.to_owned()))
+        .map_err(|_| CStrDecodeError::NotUtf8)
+}
+
+pub(crate) fn optional_adapter_string(
+    ptr: *const c_char,
+    field: &str,
+) -> Result<Option<String>, AdapterError> {
+    unsafe { try_c_to_string(ptr) }
+        .map_err(|err| AdapterError::new(ErrorCode::InvalidArgs, err.describe(field)))
+}
+
+pub(crate) fn required_adapter_string(
+    ptr: *const c_char,
+    field: &str,
+) -> Result<String, AdapterError> {
+    optional_adapter_string(ptr, field)?
+        .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, format!("{field} is null")))
 }
 
 /// Decode an optional filter string, short-circuiting the enclosing
 /// `AdResult`-returning fn with `AD_RESULT_ERR_INVALID_ARGS` (and a
-/// tailored last-error diagnostic) when the pointer is non-null but
-/// the bytes are not UTF-8. Null → `None` (treated as "no filter").
+/// tailored last-error diagnostic) when the pointer is non-null but the
+/// bytes are not UTF-8 or exceed the byte cap. Null → `None` (treated as
+/// "no filter").
 macro_rules! decode_optional_filter {
     ($ptr:expr, $label:expr) => {{
         match $crate::convert::string::try_c_to_string($ptr) {
             Ok(value) => value,
-            Err(()) => {
+            Err(err) => {
                 $crate::error::set_last_error(&agent_desktop_core::error::AdapterError::new(
                     agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    concat!($label, " is not valid UTF-8"),
+                    err.describe($label),
                 ));
                 return $crate::error::AdResult::ErrInvalidArgs;
             }
@@ -169,6 +220,37 @@ mod tests {
     fn try_c_to_string_invalid_utf8_is_err() {
         let bad: [u8; 3] = [0xC3, 0xFF, 0x00];
         let result = unsafe { try_c_to_string(bad.as_ptr() as *const c_char) };
-        assert!(matches!(result, Err(())));
+        assert!(matches!(result, Err(CStrDecodeError::NotUtf8)));
+    }
+
+    #[test]
+    fn try_c_to_string_caps_unterminated_input() {
+        let unterminated = vec![b'a'; MAX_C_STRING_BYTES + 1];
+        let result = unsafe { try_c_to_string(unterminated.as_ptr() as *const c_char) };
+        assert!(matches!(result, Err(CStrDecodeError::TooLong)));
+    }
+
+    #[test]
+    fn try_c_to_string_accepts_exact_cap_length() {
+        let mut max_len = vec![b'a'; MAX_C_STRING_BYTES];
+        max_len.push(0);
+        let result = unsafe { try_c_to_string(max_len.as_ptr() as *const c_char) };
+        assert_eq!(
+            result.ok().flatten().map(|s| s.len()),
+            Some(MAX_C_STRING_BYTES)
+        );
+    }
+
+    #[test]
+    fn decode_error_messages_name_the_field_and_cap() {
+        assert_eq!(
+            CStrDecodeError::NotUtf8.describe("role"),
+            "role is not valid UTF-8"
+        );
+        assert!(
+            CStrDecodeError::TooLong
+                .describe("name")
+                .starts_with("name exceeds AD_MAX_STRING_BYTES")
+        );
     }
 }

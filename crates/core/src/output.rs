@@ -1,11 +1,11 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::error::AppError;
+
 pub const ENVELOPE_VERSION: &str = "2.0";
 
-/// Structured output envelope used by the Phase 3 MCP server transport layer.
-/// CLI commands currently build responses via inline `serde_json::json!` calls in `main.rs`;
-/// this type provides the typed equivalent for programmatic consumers.
+/// Structured output envelope used by the CLI and future programmatic transports.
 #[derive(Debug, Serialize)]
 pub struct Response {
     pub version: &'static str,
@@ -42,6 +42,8 @@ pub struct ErrorPayload {
     pub retry_command: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform_detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 impl Response {
@@ -74,6 +76,18 @@ impl Response {
 }
 
 impl ErrorPayload {
+    pub fn from_app_error(err: &AppError) -> Self {
+        let mut payload = Self::new(err.code(), err.to_string());
+        if let Some(suggestion) = err.suggestion() {
+            payload = payload.with_suggestion(suggestion);
+        }
+        if let AppError::Adapter(adapter_error) = err {
+            payload.platform_detail = adapter_error.platform_detail.clone();
+            payload.details = adapter_error.details.clone();
+        }
+        payload
+    }
+
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
@@ -81,6 +95,7 @@ impl ErrorPayload {
             suggestion: None,
             retry_command: None,
             platform_detail: None,
+            details: None,
         }
     }
 
@@ -92,5 +107,33 @@ impl ErrorPayload {
     pub fn with_retry(mut self, cmd: impl Into<String>) -> Self {
         self.retry_command = Some(cmd.into());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::{AdapterError, ErrorCode};
+    use serde_json::json;
+
+    #[test]
+    fn app_error_payload_preserves_adapter_recovery_fields() {
+        let err = AppError::Adapter(
+            AdapterError::new(ErrorCode::ActionFailed, "not actionable")
+                .with_suggestion("wait and retry")
+                .with_platform_detail("native press action failed")
+                .with_details(json!({ "check": "visible" })),
+        );
+
+        let payload = ErrorPayload::from_app_error(&err);
+
+        assert_eq!(payload.code, "ACTION_FAILED");
+        assert_eq!(payload.message, "not actionable");
+        assert_eq!(payload.suggestion.as_deref(), Some("wait and retry"));
+        assert_eq!(
+            payload.platform_detail.as_deref(),
+            Some("native press action failed")
+        );
+        assert_eq!(payload.details, Some(json!({ "check": "visible" })));
     }
 }

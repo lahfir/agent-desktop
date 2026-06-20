@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* New result codes may be appended in future releases.
+ * Always handle values outside this list. */
 enum AdResult {
   AD_RESULT_OK = 0,
   AD_RESULT_ERR_PERM_DENIED = -1,
@@ -21,6 +23,7 @@ enum AdResult {
   AD_RESULT_ERR_INTERNAL = -12,
   AD_RESULT_ERR_SNAPSHOT_NOT_FOUND = -13,
   AD_RESULT_ERR_POLICY_DENIED = -14,
+  AD_RESULT_ERR_AMBIGUOUS_TARGET = -15,
 };
 typedef int32_t AdResult;
 
@@ -89,7 +92,7 @@ typedef int32_t AdMouseEventKind;
 enum AdPolicyKind {
   AD_POLICY_KIND_HEADLESS = 0,
   AD_POLICY_KIND_FOCUS_FALLBACK = 1,
-  AD_POLICY_KIND_PHYSICAL = 2,
+  AD_POLICY_KIND_HEADED = 2,
 };
 typedef int32_t AdPolicyKind;
 
@@ -193,11 +196,37 @@ typedef struct AdPoint {
   double y;
 } AdPoint;
 
+/*
+ * Caller-allocated drag parameters. Zero-initialize the whole struct before
+ * setting fields: `duration_ms`/`drop_delay_ms` treat 0 as the adapter-default
+ * sentinel, so stack garbage in an unset field would become a real delay.
+ * Validate layout with `AD_DRAG_PARAMS_SIZE` / `ad_drag_params_size()`.
+ *
+ * Layout history (adjudicated pre-1.0 breaks; revalidate sizes on upgrade,
+ * do not re-report): 0.x grew this struct 40 -> 48 bytes by adding
+ * `drop_delay_ms` (which also grew the embedding `AdAction` — see
+ * `AD_ACTION_SIZE`), `AdRefEntry` grew to 192 bytes (`AD_REF_ENTRY_SIZE`),
+ * `AdActionStep` was added as a public 16-byte struct (`AD_ACTION_STEP_SIZE`),
+ * `AdActionResult` grew to 40 bytes (`AD_ACTION_RESULT_SIZE`) to expose action
+ * steps, and `AD_POLICY_KIND_PHYSICAL` was renamed to `AD_POLICY_KIND_HEADED`
+ * with a stable discriminant and intentionally no compatibility alias.
+ */
 typedef struct AdDragParams {
   struct AdPoint from;
   struct AdPoint to;
   uint64_t duration_ms;
+  /* Milliseconds to hold over the destination before releasing, so the drop
+   * target activates (macOS). Zero uses the adapter default (500ms). */
+  uint64_t drop_delay_ms;
 } AdDragParams;
+
+#define AD_DRAG_PARAMS_SIZE (sizeof(AdDragParams))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdDragParams) == 48, "AdDragParams ABI size changed");
+_Static_assert(_Alignof(AdDragParams) == 8, "AdDragParams ABI alignment changed");
+#endif
+
+uintptr_t ad_drag_params_size(void);
 
 /**
  * Action dispatched by `ad_execute_action`.
@@ -207,6 +236,12 @@ typedef struct AdDragParams {
  * an out-of-range value is rejected with
  * `AD_RESULT_ERR_INVALID_ARGS` at the boundary. Valid values are the
  * discriminants of `AdActionKind`.
+ *
+ * `AdDragParams` is embedded by value, so any growth there grows this
+ * struct too. Zero-initialize the whole struct before setting fields and
+ * validate layout with `AD_ACTION_SIZE` / `ad_action_size()` — an
+ * under-allocated action makes the library read past your buffer, and
+ * stack garbage in the embedded `drag` fields becomes a live delay.
  */
 typedef struct AdAction {
   int32_t kind;
@@ -216,6 +251,14 @@ typedef struct AdAction {
   struct AdDragParams drag;
 } AdAction;
 
+#define AD_ACTION_SIZE (sizeof(AdAction))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdAction) == 96, "AdAction ABI size changed");
+_Static_assert(_Alignof(AdAction) == 8, "AdAction ABI alignment changed");
+#endif
+
+uintptr_t ad_action_size(void);
+
 typedef struct AdElementState {
   const char *role;
   char **states;
@@ -223,20 +266,57 @@ typedef struct AdElementState {
   const char *value;
 } AdElementState;
 
+#define AD_ELEMENT_STATE_SIZE (sizeof(AdElementState))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdElementState) == 32, "AdElementState ABI size changed");
+_Static_assert(_Alignof(AdElementState) == 8, "AdElementState ABI alignment changed");
+#endif
+
+uintptr_t ad_element_state_size(void);
+
+typedef struct AdActionStep {
+  const char *label;
+  const char *outcome;
+} AdActionStep;
+
+#define AD_ACTION_STEP_SIZE (sizeof(AdActionStep))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdActionStep) == 16, "AdActionStep ABI size changed");
+_Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
+_Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
+_Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+#endif
+
+uintptr_t ad_action_step_size(void);
+
+/*
+ * Result for action calls. `post_state->states` contains `state_count` strings
+ * when present. `steps` contains `step_count` activation-chain entries
+ * (`label`, `outcome`) when the adapter recorded how the action was attempted.
+ * Non-empty owned arrays are additionally null-sentinel terminated by Rust; C
+ * callers should use the counts for reads and release the unmodified result via
+ * `ad_free_action_result`.
+ */
 typedef struct AdActionResult {
   const char *action;
   const char *ref_id;
   struct AdElementState *post_state;
+  struct AdActionStep *steps;
+  uint32_t step_count;
 } AdActionResult;
 
-typedef struct AdRefEntry {
-  int32_t pid;
-  const char *role;
-  const char *name;
-  const char *description;
-  uint64_t bounds_hash;
-  bool has_bounds_hash;
-} AdRefEntry;
+#define AD_ACTION_RESULT_SIZE (sizeof(AdActionResult))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdActionResult) == 40, "AdActionResult ABI size changed");
+_Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
+_Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");
+_Static_assert(offsetof(AdActionResult, ref_id) == 8, "AdActionResult.ref_id offset changed");
+_Static_assert(offsetof(AdActionResult, post_state) == 16, "AdActionResult.post_state offset changed");
+_Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
+_Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
+#endif
+
+uintptr_t ad_action_result_size(void);
 
 typedef struct AdRect {
   double x;
@@ -244,6 +324,55 @@ typedef struct AdRect {
   double width;
   double height;
 } AdRect;
+
+typedef struct AdRefEntry {
+  int32_t pid;
+  const char *role;
+  const char *name;
+  const char *value;
+  const char *description;
+  const char *const *states;
+  uintptr_t state_count;
+  const char *const *available_actions;
+  uintptr_t available_action_count;
+  struct AdRect bounds;
+  bool has_bounds;
+  uint64_t bounds_hash;
+  bool has_bounds_hash;
+  const char *source_app;
+  const char *source_window_id;
+  const char *source_window_title;
+  int32_t source_surface;
+  const char *root_ref;
+  bool path_is_absolute;
+  const uint32_t *path;
+  uintptr_t path_count;
+} AdRefEntry;
+
+#define AD_REF_ENTRY_SIZE (sizeof(AdRefEntry))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdRefEntry) == 192, "AdRefEntry ABI size changed");
+_Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
+#endif
+
+/*
+ * Per-field input caps enforced when an `AdRefEntry` crosses the boundary
+ * (`ad_resolve_element`, `ad_execute_ref_action_with_policy`). Counts above
+ * a cap are rejected with `AD_RESULT_ERR_INVALID_ARGS`.
+ */
+#define AD_MAX_REF_STATES 64
+#define AD_MAX_REF_ACTIONS 32
+#define AD_MAX_REF_PATH_DEPTH 128
+
+/*
+ * Maximum byte length (excluding the NUL terminator) accepted for any C
+ * string field on any call. Longer or unterminated strings are rejected
+ * with `AD_RESULT_ERR_INVALID_ARGS`. Sized to roughly match the CLI's argv
+ * ceiling so payload-bearing calls (clipboard, type) keep CLI parity.
+ */
+#define AD_MAX_STRING_BYTES 1048576
+
+uintptr_t ad_ref_entry_size(void);
 
 typedef struct AdWindowInfo {
   const char *id;
@@ -373,10 +502,15 @@ typedef struct AdWindowOp {
 } AdWindowOp;
 
 /**
+ * Low-level native-handle action. This does not perform strict ref
+ * re-identification or actionability preflight; callers that want CLI parity
+ * should use `ad_execute_ref_action_with_policy`.
+ *
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+ * `handle` must be a non-null pointer to a valid `AdNativeHandle` produced by
+ * the same live adapter. Free the handle before destroying that adapter.
  * `action` must be a non-null pointer to a valid `AdAction`.
  * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
  */
@@ -386,10 +520,15 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
                            struct AdActionResult *out);
 
 /**
+ * Low-level native-handle action with explicit interaction policy. This does
+ * not perform strict ref re-identification or actionability preflight; callers
+ * that want CLI parity should use `ad_execute_ref_action_with_policy`.
+ *
  * # Safety
  *
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+ * `handle` must be a non-null pointer to a valid `AdNativeHandle` produced by
+ * the same live adapter. Free the handle before destroying that adapter.
  * `action` must be a non-null pointer to a valid `AdAction`.
  * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
  */
@@ -398,6 +537,23 @@ AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
                                        const struct AdAction *action,
                                        int32_t policy,
                                        struct AdActionResult *out);
+
+/**
+ * Strict ref action path matching CLI semantics: resolve the full ref identity,
+ * run actionability preflight, then dispatch using the requested policy.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `entry` must be a non-null pointer to a valid `AdRefEntry`.
+ * `action` must be a non-null pointer to a valid `AdAction`.
+ * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
+ */
+AdResult ad_execute_ref_action_with_policy(const struct AdAdapter *adapter,
+                                           const struct AdRefEntry *entry,
+                                           const struct AdAction *action,
+                                           int32_t policy,
+                                           struct AdActionResult *out);
 
 /**
  * Releases a handle previously returned by `ad_resolve_element` and
@@ -416,11 +572,13 @@ AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
  * `ad_resolve_element` writes `ptr`. Copying the struct after that
  * point and calling `ad_free_handle` on either copy is undefined —
  * there is no way for the library to detect forged non-null pointers.
- * Callers that legitimately need a "copy" should re-resolve.
+ * Callers that legitimately need a "copy" should re-resolve. The adapter that
+ * produced the handle must stay alive until the handle is freed.
  *
  * # Safety
  *
- * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`
+ * and must be the same live adapter that produced `handle`.
  * `handle` must be null or a `*mut AdNativeHandle` previously
  * populated by `ad_resolve_element`. On return `(*handle).ptr` is
  * `NULL` so a double-call is a no-op instead of a double-free.
@@ -441,8 +599,11 @@ AdResult ad_resolve_element(const struct AdAdapter *adapter,
 /**
  * # Safety
  *
- * `result` must be a pointer to an `AdActionResult` previously written by `ad_execute_action`,
- * or null. After this call all pointers inside the struct are invalid.
+ * `result` must be null or a pointer to an `AdActionResult` previously written
+ * by `ad_execute_action`, `ad_execute_action_with_policy`,
+ * `ad_execute_ref_action_with_policy`, or `ad_notification_action`. This frees
+ * `post_state`, `steps`, and all nested strings. After this call all pointers
+ * inside the struct are invalid.
  */
 void ad_free_action_result(struct AdActionResult *result);
 
@@ -476,7 +637,8 @@ AdResult ad_check_permissions(const struct AdAdapter *adapter);
 /**
  * Closes the application identified by `id` (bundle id on macOS,
  * executable path on other platforms). `force = true` skips the
- * graceful-shutdown path (equivalent to `kill -9`).
+ * graceful-shutdown path, sends SIGTERM, escalates survivors to SIGKILL,
+ * and returns success only after termination is verified.
  *
  * # Safety
  * `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
@@ -581,6 +743,15 @@ const char *ad_last_error_suggestion(void);
 const char *ad_last_error_platform_detail(void);
 
 /**
+ * Returns a borrowed JSON string with structured details for the last
+ * error, or null if the adapter didn't supply one. Same lifetime rules
+ * as `ad_last_error_message`. Details may contain element names, values,
+ * and window titles from the user's screen; treat as sensitive
+ * diagnostics and avoid routing to shared log surfaces.
+ */
+const char *ad_last_error_details(void);
+
+/**
  * Reads the current clipboard text and writes an owned C string into
  * `*out`. The caller must free the returned pointer with
  * `ad_free_string`. On error `*out` is left null.
@@ -621,9 +792,12 @@ AdResult ad_clear_clipboard(const struct AdAdapter *adapter);
 void ad_free_string(char *s);
 
 /**
- * Synthesizes a mouse drag from `params.from` to `params.to`. When
- * `params.duration_ms` is zero the drag is instantaneous; a non-zero
- * value asks the platform adapter to interpolate.
+ * Synthesizes an explicit physical mouse drag from `params.from` to
+ * `params.to`. When `params.duration_ms` is zero the drag is instantaneous;
+ * a non-zero value asks the platform adapter to interpolate.
+ * `params.drop_delay_ms` holds the item over the destination before releasing
+ * so the drop target activates; zero uses the adapter default. Callers that
+ * need headless policy enforcement should use ref actions with policy.
  *
  * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -632,9 +806,10 @@ void ad_free_string(char *s);
 AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *params);
 
 /**
- * Dispatches a mouse event (move / down / up / click) at the given
- * screen point. Click count is only consulted when `event.kind` is
- * `CLICK` (e.g., `click_count == 2` for a double-click).
+ * Dispatches an explicit physical mouse event (move / down / up / click)
+ * at the given screen point. Click count is only consulted when `event.kind`
+ * is `CLICK` (e.g., `click_count == 2` for a double-click). Callers that need
+ * headless policy enforcement should use ref actions with policy.
  *
  * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -799,7 +974,8 @@ AdResult ad_find(const struct AdAdapter *adapter,
  * The returned string must be freed with `ad_free_string`.
  *
  * # Safety
- * `adapter` must be valid. `handle` must be a non-null `AdNativeHandle`.
+ * `adapter` must be valid. `handle` must be a non-null `AdNativeHandle`
+ * produced by the same live adapter and freed before that adapter is destroyed.
  * `property` must be a non-null UTF-8 C string. `out` must be a valid
  * writable `*mut *mut c_char`; it is null-initialized on entry.
  */

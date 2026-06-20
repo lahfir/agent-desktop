@@ -1,7 +1,11 @@
 use crate::{
-    action::{MouseButton, MouseEvent, MouseEventKind, Point},
+    action::{MouseButton, MouseEvent, MouseEventKind},
     adapter::PlatformAdapter,
-    commands::helpers::resolve_point_from_ref_or_xy,
+    commands::point_resolve::{
+        PointResolveArgs, focus_for_physical_input, require_cursor_policy,
+        resolve_point_from_ref_or_xy_with_context,
+    },
+    context::CommandContext,
     error::AppError,
 };
 use serde_json::{Value, json};
@@ -13,25 +17,38 @@ pub struct HoverArgs {
     pub duration_ms: Option<u64>,
 }
 
-pub fn execute(args: HoverArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let point = resolve_hover_point(&args, adapter)?;
+pub fn execute(
+    args: HoverArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    require_cursor_policy(context, "hover")?;
+    let resolved = resolve_point_from_ref_or_xy_with_context(
+        PointResolveArgs {
+            ref_id: args.ref_id.as_deref(),
+            xy: args.xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        },
+        adapter,
+        context,
+    )?;
+    let focused = focus_for_physical_input(resolved.pid, adapter, context)?;
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Move,
-        point: point.clone(),
+        point: resolved.point.clone(),
         button: MouseButton::Left,
     })?;
     if let Some(ms) = args.duration_ms {
         std::thread::sleep(std::time::Duration::from_millis(ms));
     }
-    Ok(json!({ "hovered": true, "x": point.x, "y": point.y }))
+    let mut response = json!({ "hovered": true, "x": resolved.point.x, "y": resolved.point.y });
+    if focused {
+        response["focused"] = json!(true);
+    }
+    Ok(response)
 }
 
-fn resolve_hover_point(args: &HoverArgs, adapter: &dyn PlatformAdapter) -> Result<Point, AppError> {
-    resolve_point_from_ref_or_xy(
-        args.ref_id.as_deref(),
-        args.xy,
-        args.snapshot_id.as_deref(),
-        adapter,
-        "Provide a ref (@e1) or --xy x,y",
-    )
-}
+#[cfg(test)]
+#[path = "hover_tests.rs"]
+mod tests;

@@ -216,6 +216,14 @@ pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), AppErr
     std::fs::create_dir_all(dir)?;
 
     let tmp = path.with_extension("tmp");
+    let written = write_tmp_then_rename(&tmp, path, bytes);
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written
+}
+
+fn write_tmp_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), AppError> {
     #[cfg(unix)]
     {
         use std::io::Write;
@@ -225,12 +233,13 @@ pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), AppErr
             .create(true)
             .truncate(true)
             .mode(0o600)
-            .open(&tmp)?;
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(tmp)?;
         file.write_all(bytes)?;
         file.flush()?;
     }
     #[cfg(not(unix))]
-    std::fs::write(&tmp, bytes)?;
+    std::fs::write(tmp, bytes)?;
 
     std::fs::rename(tmp, path)?;
     Ok(())

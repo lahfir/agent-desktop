@@ -1,6 +1,8 @@
 use crate::{
     action::{MouseButton, MouseEvent, MouseEventKind, Point},
     adapter::PlatformAdapter,
+    commands::point_resolve::require_cursor_policy,
+    context::CommandContext,
     error::AppError,
 };
 use serde_json::{Value, json};
@@ -12,7 +14,12 @@ pub struct MouseClickArgs {
     pub count: u32,
 }
 
-pub fn execute(args: MouseClickArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub fn execute(
+    args: MouseClickArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    require_cursor_policy(context, "mouse-click")?;
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Click { count: args.count },
         point: Point {

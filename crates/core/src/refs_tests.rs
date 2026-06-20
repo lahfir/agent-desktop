@@ -1,5 +1,5 @@
 use super::*;
-use crate::{refs_store::RefStore, refs_test_support::HomeGuard};
+use crate::refs_test_support::HomeGuard;
 
 fn entry(role: &str, name: Option<&str>) -> RefEntry {
     RefEntry {
@@ -209,63 +209,6 @@ fn test_save_load_roundtrip_with_home_override() {
 }
 
 #[test]
-fn test_refstore_snapshot_roundtrip_and_latest_pointer() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-    let mut map = RefMap::new();
-    map.allocate(RefEntry {
-        pid: 7,
-        role: "button".into(),
-        name: Some("Send".into()),
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: Some(42),
-        available_actions: vec!["Click".into()],
-        source_app: Some("TestApp".into()),
-        source_window_id: None,
-        source_window_title: Some("Test Window".into()),
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
-    });
-
-    let snapshot_id = store.save_new_snapshot(&map).unwrap();
-
-    assert_eq!(
-        store.latest_snapshot_id().as_deref(),
-        Some(snapshot_id.as_str())
-    );
-    assert_eq!(store.load(Some(&snapshot_id)).unwrap().len(), 1);
-    assert_eq!(store.load(None).unwrap().len(), 1);
-}
-
-#[test]
-fn test_save_existing_snapshot_does_not_promote_latest_pointer() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-
-    let mut first = RefMap::new();
-    first.allocate(entry("button", Some("First")));
-    let first_id = store.save_new_snapshot(&first).unwrap();
-
-    let mut second = RefMap::new();
-    second.allocate(entry("button", Some("Second")));
-    let second_id = store.save_new_snapshot(&second).unwrap();
-
-    first.allocate(entry("button", Some("First Child")));
-    store.save_existing_snapshot(&first_id, &first).unwrap();
-
-    assert_eq!(
-        store.latest_snapshot_id().as_deref(),
-        Some(second_id.as_str())
-    );
-    assert_eq!(store.load(Some(&first_id)).unwrap().len(), 2);
-}
-
-#[test]
 fn test_snapshot_ids_are_compact_and_valid() {
     let id = new_snapshot_id();
 
@@ -289,20 +232,6 @@ fn test_new_snapshot_id_passes_validation() {
         let id = new_snapshot_id();
         validate_snapshot_id(&id).expect("generated snapshot id must validate");
     }
-}
-
-#[test]
-fn test_refstore_migrates_legacy_latest_refmap() {
-    let _guard = HomeGuard::new();
-    let mut map = RefMap::new();
-    map.allocate(entry("button", Some("Legacy")));
-    map.save().unwrap();
-
-    let store = RefStore::new().unwrap();
-    let loaded = store.load_latest().unwrap();
-
-    assert_eq!(loaded.len(), 1);
-    assert!(store.latest_snapshot_id().is_some());
 }
 
 #[test]
@@ -335,9 +264,52 @@ fn test_save_oversize_preserves_previous_file() {
     assert_eq!(entry.name.as_deref(), Some("Original"));
 }
 
+#[cfg(unix)]
+#[test]
+fn test_write_private_file_rejects_tmp_symlink() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-ref-symlink-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("refmap.json");
+    let target = dir.join("target.json");
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&target, b"existing").unwrap();
+    std::os::unix::fs::symlink(&target, &tmp).unwrap();
+
+    let result = write_private_file(&path, b"new");
+
+    assert!(result.is_err());
+    assert_eq!(std::fs::read(&target).unwrap(), b"existing");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn test_root_ref_none_omitted() {
     let entry = entry("button", None);
     let json = serde_json::to_string(&entry).unwrap();
     assert!(!json.contains("root_ref"));
+}
+
+#[test]
+fn test_write_private_file_cleans_tmp_when_rename_fails() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-ref-renamefail-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let path = dir.join("blocked");
+    std::fs::create_dir_all(path.join("child")).unwrap();
+
+    let result = write_private_file(&path, b"new");
+
+    assert!(result.is_err());
+    assert!(!dir.join("blocked.tmp").exists());
+    let _ = std::fs::remove_dir_all(dir);
 }

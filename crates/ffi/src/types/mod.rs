@@ -1,6 +1,7 @@
 pub mod action;
 pub mod action_kind;
 pub mod action_result;
+pub mod action_step;
 pub mod app_info;
 pub mod app_list;
 pub mod direction;
@@ -39,6 +40,7 @@ pub mod window_op_kind;
 pub use action::AdAction;
 pub use action_kind::AdActionKind;
 pub use action_result::AdActionResult;
+pub use action_step::AdActionStep;
 pub use app_info::AdAppInfo;
 pub use app_list::AdAppList;
 pub use direction::AdDirection;

@@ -3,6 +3,26 @@ use agent_desktop_core::node::Rect;
 use super::AXElement;
 
 #[cfg(target_os = "macos")]
+pub(crate) fn rect_from_parts(
+    point: core_graphics::geometry::CGPoint,
+    size: core_graphics::geometry::CGSize,
+) -> Option<Rect> {
+    if !point.x.is_finite()
+        || !point.y.is_finite()
+        || !size.width.is_finite()
+        || !size.height.is_finite()
+    {
+        return None;
+    }
+    Some(Rect {
+        x: point.x,
+        y: point.y,
+        width: size.width,
+        height: size.height,
+    })
+}
+
+#[cfg(target_os = "macos")]
 pub fn read_bounds(el: &AXElement) -> Option<Rect> {
     use accessibility_sys::{
         AXUIElementCopyAttributeValue, AXValueGetValue, kAXErrorSuccess, kAXPositionAttribute,
@@ -58,20 +78,7 @@ pub fn read_bounds(el: &AXElement) -> Option<Rect> {
         return None;
     }
 
-    if !point.x.is_finite()
-        || !point.y.is_finite()
-        || !size.width.is_finite()
-        || !size.height.is_finite()
-    {
-        return None;
-    }
-
-    Some(Rect {
-        x: point.x,
-        y: point.y,
-        width: size.width,
-        height: size.height,
-    })
+    rect_from_parts(point, size)
 }
 
 #[cfg(not(target_os = "macos"))]

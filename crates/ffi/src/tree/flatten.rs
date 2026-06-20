@@ -44,6 +44,7 @@ pub(crate) fn flatten_tree(root: &AccessibilityNode) -> AdNodeTree {
     }
 
     let count = flat.len() as u32;
+    flat.push(sentinel_node());
     let nodes = if flat.is_empty() {
         ptr::null_mut()
     } else {
@@ -53,6 +54,29 @@ pub(crate) fn flatten_tree(root: &AccessibilityNode) -> AdNodeTree {
         ptr
     };
     AdNodeTree { nodes, count }
+}
+
+fn sentinel_node() -> AdNode {
+    AdNode {
+        ref_id: ptr::null(),
+        role: ptr::null(),
+        name: ptr::null(),
+        value: ptr::null(),
+        description: ptr::null(),
+        hint: ptr::null(),
+        states: ptr::null_mut(),
+        state_count: 0,
+        bounds: AdRect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        },
+        has_bounds: false,
+        parent_index: -1,
+        child_start: 0,
+        child_count: 0,
+    }
 }
 
 fn count_nodes(node: &AccessibilityNode) -> usize {
@@ -103,8 +127,9 @@ fn strings_to_c_array(strings: &[String]) -> (*mut *mut c_char, u32) {
     if strings.is_empty() {
         return (ptr::null_mut(), 0);
     }
-    let ptrs: Vec<*mut c_char> = strings.iter().map(|s| string_to_c_lossy(s)).collect();
+    let mut ptrs: Vec<*mut c_char> = strings.iter().map(|s| string_to_c_lossy(s)).collect();
     let count = ptrs.len() as u32;
+    ptrs.push(ptr::null_mut());
     let mut boxed = ptrs.into_boxed_slice();
     let ptr = boxed.as_mut_ptr();
     std::mem::forget(boxed);

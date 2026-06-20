@@ -5,11 +5,16 @@ mod imp {
     use super::*;
     use crate::tree::AXElement;
     use accessibility_sys::{
-        AXUIElementIsAttributeSettable, AXUIElementPerformAction, AXUIElementSetAttributeValue,
-        AXUIElementSetMessagingTimeout, kAXErrorAPIDisabled, kAXErrorCannotComplete,
-        kAXErrorSuccess, kAXFocusedAttribute, kAXValueAttribute,
+        AXUIElementCopyAttributeValue, AXUIElementIsAttributeSettable, AXUIElementPerformAction,
+        AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout, kAXErrorAPIDisabled,
+        kAXErrorCannotComplete, kAXErrorSuccess, kAXFocusedAttribute, kAXValueAttribute,
     };
-    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
+    use core_foundation::{
+        base::{CFType, CFTypeRef, TCFType},
+        boolean::CFBoolean,
+        number::CFNumber,
+        string::CFString,
+    };
     use std::os::raw::c_uchar;
 
     pub(crate) fn try_ax_action(el: &AXElement, name: &str) -> bool {
@@ -170,6 +175,69 @@ mod imp {
         set_ax_string_or_err(el, kAXValueAttribute, val)
     }
 
+    /// Sets `AXValue` with a CoreFoundation type matching the element's
+    /// current value: numeric controls (sliders, steppers, progress) hold a
+    /// `CFNumber` and reject a `CFString`, so a typed write is required. Falls
+    /// back to a string write when the current value is a string or absent.
+    pub(crate) fn set_ax_value_coerced(el: &AXElement, value: &str) -> Result<(), AdapterError> {
+        let cf_attr = CFString::new(kAXValueAttribute);
+        let mut current: CFTypeRef = std::ptr::null_mut();
+        let read = unsafe {
+            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut current)
+        };
+        let coerced: Option<CFType> = if read == kAXErrorSuccess && !current.is_null() {
+            let cur = unsafe { CFType::wrap_under_create_rule(current) };
+            if cur.downcast::<CFNumber>().is_some() {
+                Some(number_cf_from_str(value)?)
+            } else if cur.downcast::<CFBoolean>().is_some() {
+                let truthy = matches!(value, "1" | "true" | "True" | "on" | "yes");
+                Some(CFBoolean::from(truthy).as_CFType())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        match coerced {
+            Some(cf_value) => {
+                let err = unsafe {
+                    AXUIElementSetAttributeValue(
+                        el.0,
+                        cf_attr.as_concrete_TypeRef(),
+                        cf_value.as_CFTypeRef(),
+                    )
+                };
+                if err != kAXErrorSuccess {
+                    ax_error_result(kAXValueAttribute, err)?;
+                    return Err(AdapterError::new(
+                        ErrorCode::ActionFailed,
+                        format!("AXSetAttributeValue(AXValue) failed (err={err})"),
+                    )
+                    .with_suggestion(
+                        "Value may be read-only or out of range. Try 'click' to focus then arrow keys.",
+                    ));
+                }
+                Ok(())
+            }
+            None => set_ax_string_or_err(el, kAXValueAttribute, value),
+        }
+    }
+
+    fn number_cf_from_str(value: &str) -> Result<CFType, AdapterError> {
+        if let Ok(i) = value.parse::<i64>() {
+            return Ok(CFNumber::from(i).as_CFType());
+        }
+        if let Ok(f) = value.parse::<f64>() {
+            return Ok(CFNumber::from(f).as_CFType());
+        }
+        Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            format!("'{value}' is not a number; this control holds a numeric value"),
+        )
+        .with_suggestion("Pass a numeric value, e.g. set-value @e1 50"))
+    }
+
     pub(crate) fn ax_press(el: &AXElement) -> bool {
         try_ax_action(el, "AXPress")
     }
@@ -253,6 +321,9 @@ mod imp {
     pub fn ax_set_value(_el: &AXElement, _val: &str) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("ax_set_value"))
     }
+    pub fn set_ax_value_coerced(_el: &AXElement, _value: &str) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("set_ax_value_coerced"))
+    }
     pub fn ax_press(_el: &AXElement) -> bool {
         false
     }
@@ -264,6 +335,6 @@ mod imp {
 pub(crate) use imp::{
     ax_focus_or_err, ax_press, ax_set_value, element_role, ensure_visible, has_ax_action,
     is_attr_settable, list_ax_actions, set_ax_bool, set_ax_bool_or_err, set_ax_string_or_err,
-    set_messaging_timeout, try_action_from_list, try_ax_action, try_ax_action_retried,
-    try_ax_action_retried_or_err, try_each_ancestor, try_each_child,
+    set_ax_value_coerced, set_messaging_timeout, try_action_from_list, try_ax_action,
+    try_ax_action_retried, try_ax_action_retried_or_err, try_each_ancestor, try_each_child,
 };

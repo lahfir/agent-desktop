@@ -3,7 +3,7 @@
 pub enum AdPolicyKind {
     Headless = 0,
     FocusFallback = 1,
-    Physical = 2,
+    Headed = 2,
 }
 
 #[cfg(test)]
@@ -14,6 +14,6 @@ mod tests {
     fn discriminants_are_abi_stable() {
         assert_eq!(AdPolicyKind::Headless as i32, 0);
         assert_eq!(AdPolicyKind::FocusFallback as i32, 1);
-        assert_eq!(AdPolicyKind::Physical as i32, 2);
+        assert_eq!(AdPolicyKind::Headed as i32, 2);
     }
 }

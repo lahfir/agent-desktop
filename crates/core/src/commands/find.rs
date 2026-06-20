@@ -1,7 +1,9 @@
 use crate::{
-    adapter::PlatformAdapter, error::AppError, node::AccessibilityNode, search_text, snapshot,
+    adapter::PlatformAdapter, context::CommandContext, error::AppError, node::AccessibilityNode,
+    roles, search_text, snapshot,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 const DEFAULT_LIMIT: usize = 50;
 
@@ -18,15 +20,19 @@ pub struct FindArgs {
     pub limit: Option<usize>,
 }
 
-pub fn execute(args: FindArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub fn execute(
+    args: FindArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     validate_find_mode(&args)?;
+    let query = FindQuery::from_args(&args);
     let opts = crate::adapter::TreeOptions::default();
     let result = if args.count {
         snapshot::build(adapter, &opts, args.app.as_deref(), None)?
     } else {
-        snapshot::run(adapter, &opts, args.app.as_deref(), None)?
+        snapshot::run_with_context(adapter, &opts, args.app.as_deref(), None, context)?
     };
-    let query = FindQuery::from_args(&args);
 
     if args.count {
         return Ok(json!({ "count": count_matches(&result.tree, &query) }));
@@ -43,18 +49,74 @@ pub fn execute(args: FindArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
     );
 
     if args.first {
-        return Ok(json!({ "match": matches.into_iter().next() }));
+        return Ok(single_match_response(
+            matches.into_iter().next(),
+            &query,
+            &result.tree,
+        ));
     }
 
     if args.last {
-        return Ok(json!({ "match": matches.into_iter().last() }));
+        return Ok(single_match_response(
+            matches.into_iter().last(),
+            &query,
+            &result.tree,
+        ));
     }
 
     if let Some(n) = args.nth {
-        return Ok(json!({ "match": matches.into_iter().nth(n) }));
+        return Ok(single_match_response(
+            matches.into_iter().nth(n),
+            &query,
+            &result.tree,
+        ));
     }
 
-    Ok(json!({ "matches": matches }))
+    let mut response = json!({ "matches": matches });
+    attach_roles_present_hint(&mut response, matches.is_empty(), &query, &result.tree);
+    Ok(response)
+}
+
+/// When a role-filtered search returns nothing, the caller cannot tell
+/// "no elements of this role are on screen" from "this role name does not
+/// exist." Listing the roles actually present in the searched tree answers
+/// that from live data — no hardcoded vocabulary, so a role any adapter
+/// newly emits shows up here automatically.
+fn attach_roles_present_hint(
+    response: &mut Value,
+    is_empty: bool,
+    query: &FindQuery,
+    tree: &AccessibilityNode,
+) {
+    if !is_empty || query.role.is_none() {
+        return;
+    }
+    let mut present = BTreeSet::new();
+    collect_roles(tree, &mut present);
+    if let Some(obj) = response.as_object_mut() {
+        obj.insert(
+            "roles_present".into(),
+            json!(present.into_iter().collect::<Vec<_>>()),
+        );
+    }
+}
+
+fn single_match_response(
+    found: Option<Value>,
+    query: &FindQuery,
+    tree: &AccessibilityNode,
+) -> Value {
+    let is_empty = found.is_none();
+    let mut response = json!({ "match": found });
+    attach_roles_present_hint(&mut response, is_empty, query, tree);
+    response
+}
+
+fn collect_roles(node: &AccessibilityNode, roles: &mut BTreeSet<String>) {
+    roles.insert(node.role.clone());
+    for child in &node.children {
+        collect_roles(child, roles);
+    }
 }
 
 fn max_matches_for_args(args: &FindArgs) -> Option<usize> {
@@ -87,17 +149,18 @@ fn validate_find_mode(args: &FindArgs) -> Result<(), AppError> {
     Ok(())
 }
 
-struct FindQuery<'a> {
-    role: Option<&'a str>,
+#[derive(Debug)]
+struct FindQuery {
+    role: Option<String>,
     name: Option<String>,
     value: Option<String>,
     text: Option<String>,
 }
 
-impl<'a> FindQuery<'a> {
-    fn from_args(args: &'a FindArgs) -> Self {
+impl FindQuery {
+    fn from_args(args: &FindArgs) -> Self {
         Self {
-            role: args.role.as_deref(),
+            role: args.role.as_deref().map(roles::normalize_role_query),
             name: args.name.as_deref().map(search_text::normalize),
             value: args.value.as_deref().map(search_text::normalize),
             text: args.text.as_deref().map(search_text::normalize),
@@ -125,10 +188,11 @@ fn search_tree(
             .map(String::from)
             .unwrap_or_else(|| format!("(unnamed {})", node.role));
         matches.push(json!({
-            "ref": node.ref_id,
+            "ref_id": node.ref_id,
             "role": node.role,
             "name": display_name,
             "value": node.value,
+            "states": node.states,
             "interactive": interactive,
             "path": path.clone()
         }));
@@ -166,7 +230,7 @@ fn count_matches(node: &AccessibilityNode, query: &FindQuery) -> usize {
 }
 
 fn node_matches(node: &AccessibilityNode, query: &FindQuery) -> bool {
-    let role_match = query.role.is_none_or(|r| node.role == r);
+    let role_match = query.role.as_deref().is_none_or(|r| node.role == r);
     let name_match = query.name.as_deref().is_none_or(|n| {
         node.name
             .as_deref()

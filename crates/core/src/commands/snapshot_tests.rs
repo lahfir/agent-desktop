@@ -63,7 +63,8 @@ fn test_tree_options_suppresses_skeleton_for_drill_down() {
 #[test]
 fn test_root_with_menu_surface_rejected() {
     let args = args_with_surface(SnapshotSurface::Menu);
-    let err = execute(args, &NoopAdapter).expect_err("should reject --root + --surface");
+    let err = execute(args, &NoopAdapter, &CommandContext::default())
+        .expect_err("should reject --root + --surface");
     match err {
         AppError::Adapter(adapter_err) => {
             assert_eq!(adapter_err.code, ErrorCode::InvalidArgs);
@@ -80,7 +81,7 @@ fn test_root_with_menu_surface_rejected() {
 #[test]
 fn test_root_with_window_surface_does_not_short_circuit_validation() {
     let args = args_with_surface(SnapshotSurface::Window);
-    let result = execute(args, &NoopAdapter);
+    let result = execute(args, &NoopAdapter, &CommandContext::default());
     assert!(
         result.is_err(),
         "NoopAdapter cannot satisfy run_from_ref so this must error"
@@ -100,7 +101,8 @@ fn test_invalid_root_ref_format_returns_invalid_args() {
         root_ref: Some("not-a-ref".into()),
         ..base_args()
     };
-    let err = execute(args, &NoopAdapter).expect_err("malformed --root should fail");
+    let err = execute(args, &NoopAdapter, &CommandContext::default())
+        .expect_err("malformed --root should fail");
     match err {
         AppError::Adapter(adapter_err) => {
             assert_eq!(
@@ -119,7 +121,8 @@ fn test_valid_root_ref_format_does_not_trigger_invalid_args() {
         root_ref: Some("@e42".into()),
         ..base_args()
     };
-    let err = execute(args, &NoopAdapter).expect_err("NoopAdapter cannot resolve ref");
+    let err = execute(args, &NoopAdapter, &CommandContext::default())
+        .expect_err("NoopAdapter cannot resolve ref");
     if let AppError::Adapter(adapter_err) = err {
         assert_ne!(
             adapter_err.code,

@@ -83,14 +83,20 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 ## Ref System
 
 - Refs assigned depth-first: `@e1`, `@e2`, `@e3`...
-- Only interactive elements get refs: button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell
+- An element gets a ref when it is addressable for an action: an interactive role (button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell, radiobutton, switch, ...) **or** any element advertising an action — so `scrollarea` (Scroll) and `disclosure` (Expand/Collapse) are ref-able and `scroll`/`expand`/`collapse` can target them
+- A `SetFocus`-only affordance does not earn a ref on its own
 - In skeleton mode, named/described containers at truncation boundary also get refs (drill-down targets with empty `available_actions`)
-- Static text, groups, containers remain in tree for context but have no ref
+- Static text and non-actionable groups/containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
-- Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <snapshot_id>`
+- Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <snapshot_id>`, and explicit snapshot IDs do not require also passing `--session`
 - `last_refmap.json` is only a latest-snapshot inspection artifact. The command path uses snapshot-scoped storage.
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
+- **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
+- **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
+- **Headless vs headed:** ref actions are headless by default (AX-only, no cursor) and fail closed when only a physical gesture would work. `type` uses a focus-fallback base policy because typing needs focus but never moves the cursor. Pass the global `--headed` flag to permit cursor movement and focus stealing so physical fallbacks can complete; the AX path is still tried first, so `--headed` never regresses headless-capable elements. Raw cursor commands (`hover`, `drag`, `mouse-*`) are physical and require `--headed`; keyboard commands (`press`, `key-down`, `key-up`) are explicit low-level input.
+- **Sessions:** use `--session <id>` for concurrent or multi-agent runs that share a latest snapshot pointer; batch entries may override with `"session": "id"`.
+- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened. Trace fields with sensitive key tokens such as `text`, `value`, `expected`, `name`, `username`, `description`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, or `placeholder` are redacted to `{ "redacted": true }` at every nesting depth. Token matching handles snake_case, kebab-case, and camelCase keys (for example, `source_window_title`, `api_token`, and `typedText` redact, while `filename` stays readable). Top-level `--trace` is inherited by every `batch` entry, including entries with a `session` override.
 
 ## JSON Output Contract
 
@@ -98,6 +104,8 @@ Every command returns a JSON envelope on stdout:
 
 **Success:** `{ "version": "2.0", "ok": true, "command": "snapshot", "data": { ... } }`
 **Error:** `{ "version": "2.0", "ok": false, "command": "click", "error": { "code": "STALE_REF", "message": "...", "suggestion": "..." } }`
+
+The `error` object may also carry an optional `details` object (e.g. the actionability report on an actionability failure, candidate summaries on `AMBIGUOUS_TARGET`, or the last observed state on a `wait` `TIMEOUT`). Parse errors leniently — `details` and future fields are additive, so do not reject responses with unknown keys.
 
 Exit codes: `0` success, `1` structured error, `2` argument error.
 
@@ -110,14 +118,18 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `APP_NOT_FOUND` | App not running | Launch it first |
 | `ACTION_FAILED` | AX action rejected | Try an explicit alternative command |
 | `ACTION_NOT_SUPPORTED` | Element can't do this | Use different command |
-| `STALE_REF` | Ref from old snapshot | Re-run snapshot |
+| `STALE_REF` | Ref from old snapshot | Use the `snapshot_id` returned with this ref, or re-run `snapshot` / `snapshot --skeleton` to get fresh refs |
+| `AMBIGUOUS_TARGET` | Multiple elements matched the old ref identity | Re-run snapshot and choose a more specific ref |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired | Run `snapshot` again and use the returned ID |
 | `POLICY_DENIED` | A physical/headed path was blocked | Use an explicit mouse/focus/keyboard command if physical interaction is intended |
 | `WINDOW_NOT_FOUND` | No matching window | Check app name, use list-windows |
 | `PLATFORM_NOT_SUPPORTED` | Adapter method not implemented on this platform | Use a supported platform adapter |
-| `TIMEOUT` | Wait condition not met | Increase --timeout |
+| `TIMEOUT` | Wait condition not met | Increase `--timeout` for a predicate wait; for a chain deadline (`error.details.kind == "chain_deadline"`), increase `AGENT_DESKTOP_CHAIN_TIMEOUT_MS` — `--timeout` has no effect on chain deadlines |
 | `INVALID_ARGS` | Bad arguments | Check command syntax |
 | `NOTIFICATION_NOT_FOUND` | Notification index no longer exists | Re-run list-notifications |
+| `INTERNAL` | Unexpected platform/OS failure (e.g. event synthesis failed) | Read `message`/`suggestion` for cleanup state, then retry once; persistent failures indicate an environment problem |
+
+`TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
 ## Command Quick Reference (54 commands)
 
@@ -137,7 +149,7 @@ agent-desktop list-surfaces --app "App"                     # Available surfaces
 ### Interaction
 ```
 agent-desktop click @e5 --snapshot <snapshot_id> # AX-first click, no cursor move by default
-agent-desktop double-click @e3                  # AXOpen; physical double-click uses mouse-click --count 2
+agent-desktop double-click @e3                  # AXOpen; physical double-click uses --headed mouse-click --count 2
 agent-desktop triple-click @e2                  # Physical triple-click uses mouse-click --count 3
 agent-desktop right-click @e5                   # Right-click; menu returned when verified
 agent-desktop type @e2 --snapshot <snapshot_id> "hello"  # Headless AX text insertion when supported
@@ -160,20 +172,20 @@ agent-desktop press cmd+c                       # Key combo
 agent-desktop press return --app "App"          # Targeted key press
 agent-desktop key-down shift                    # Hold key
 agent-desktop key-up shift                      # Release key
-agent-desktop hover @e5                         # Explicit cursor movement
-agent-desktop hover --xy 500,300                # Cursor to coordinates
-agent-desktop drag --from @e1 --to @e5          # Drag between elements
-agent-desktop mouse-click --xy 500,300          # Click at coordinates
-agent-desktop mouse-move --xy 100,200           # Move cursor
-agent-desktop mouse-down --xy 100,200           # Press mouse button
-agent-desktop mouse-up --xy 300,400             # Release mouse button
+agent-desktop --headed hover @e5                # Explicit cursor movement
+agent-desktop --headed hover --xy 500,300       # Cursor to coordinates
+agent-desktop --headed drag --from @e1 --to @e5 # Drag between elements
+agent-desktop --headed mouse-click --xy 500,300 # Click at coordinates
+agent-desktop --headed mouse-move --xy 100,200  # Move cursor
+agent-desktop --headed mouse-down --xy 100,200  # Press mouse button
+agent-desktop --headed mouse-up --xy 300,400    # Release mouse button
 ```
 
 ### App & Window
 ```
 agent-desktop launch "System Settings"          # Launch and wait
 agent-desktop close-app "TextEdit"              # Quit gracefully
-agent-desktop close-app "TextEdit" --force      # Force kill
+agent-desktop close-app "TextEdit" --force      # Force quit; SIGKILL if SIGTERM does not exit
 agent-desktop list-windows --app "Finder"       # List windows
 agent-desktop list-apps                         # List running GUI apps
 agent-desktop focus-window --app "Finder"       # Bring to front
@@ -206,6 +218,8 @@ agent-desktop clipboard-clear                   # Clear clipboard
 ```
 agent-desktop wait 1000                         # Pause 1 second
 agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 # Wait for element
+agent-desktop wait --element @e5 --predicate actionable --timeout 5000 # Wait until actionable
+agent-desktop wait --element @e5 --predicate value --value "Done" --timeout 5000 # Wait for value
 agent-desktop wait --window "Title"             # Wait for window
 agent-desktop wait --text "Done" --app "App"    # Wait for text
 agent-desktop wait --menu --app "App"           # Wait for menu surface
@@ -229,11 +243,13 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 1. **Skeleton first, drill second.** Start with `--skeleton -i --compact` for dense apps. Drill into regions with `--root @ref`. Full snapshot only for simple apps.
 2. **Use `-i --compact` flags.** Filters to interactive elements and collapses empty wrappers, minimizing tokens.
 3. **Refs are snapshot-scoped.** Keep `snapshot_id` for deterministic multi-step use; re-drill the affected region after any UI-changing action. Scoped invalidation keeps other refs intact.
-4. **Prefer refs over coordinates.** `click @e5` > `mouse-click --xy 500,300`.
+4. **Prefer refs over coordinates.** `click @e5` > `agent-desktop --headed mouse-click --xy 500,300`.
 5. **Use `wait` for async UI.** After launch/dialog triggers, wait for expected state.
 6. **Check permissions first.** Run `permissions` on first use; screenshots also need Screen Recording.
-7. **Handle errors.** Parse `error.code` and follow `error.suggestion`.
+7. **Handle errors.** Branch on `error.code` only — `error.message` and `error.suggestion` text is informational and may change between versions.
 8. **Use `find` for targeted searches.** Faster than any snapshot when you know role/name.
 9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused.
 10. **Batch for performance.** Multiple commands in one invocation.
 11. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use explicit `focus`, `press`, `hover`, `drag`, or `mouse-*` commands only when physical/headed interaction is intended.
+12. **Use sessions for parallel work.** Add `--session <id>` when multiple agents or batches can run at once.
+13. **Trace hard failures.** Add `--trace /tmp/agent-desktop.jsonl` when diagnosing stale, ambiguous, or actionability failures.

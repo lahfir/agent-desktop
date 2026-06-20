@@ -15,9 +15,12 @@ cargo clippy --all-targets -- -D warnings      # Lint (must pass, zero warnings)
 cargo fmt --all -- --check                     # Format check
 cargo fmt --all                                # Auto-format
 cargo tree -p agent-desktop-core               # Verify no platform crate leaks (CI enforces)
+bash tests/e2e/run.sh                          # E2E: real binary vs fixture app, verify by observation (needs --release + AX permission)
 ```
 
 Run the binary: `./target/release/agent-desktop snapshot --app Finder -i`
+
+The E2E harness drives the release binary against a real SwiftUI/AppKit fixture and asserts every effect by independent observation (never the command's own `ok:true`), covering every ref action in **both** headless and `--headed` mode. See `tests/e2e/README.md`.
 
 ## Pre-commit Hook
 
@@ -45,12 +48,14 @@ Cross-platform Rust CLI + MCP server enabling AI agents to observe and control d
   - `docs:` — documentation only
   - `style:` — formatting, no code change
   - `refactor:` — code change that neither fixes a bug nor adds a feature
+  - `perf:` — performance improvement with no behavior change
   - `chore:` — maintenance tasks, dependencies
   - `ci:` — CI/CD changes
   - `test:` — adding or fixing tests
 - Format: `type: concise imperative description` (lowercase type, no capital after colon)
 - Focus on "why" not "what"
 - Examples: `feat: add scroll-to command`, `fix: prevent stale ref on window resize`, `ci: add binary size check`
+- **Pre-1.0 versioning policy** (release-please `bump-minor-pre-major` + `bump-patch-for-minor-pre-major`): while the version is 0.x, a `BREAKING CHANGE` cuts a **minor** (0.2 → 0.3) and a `feat:` cuts a **patch**. Do not expect a major release before 1.0.
 
 ## Core Principle
 
@@ -63,6 +68,7 @@ agent-desktop is NOT an AI agent. It is a tool that AI agents invoke. It outputs
 ```
 agent-desktop/
 ├── Cargo.toml              # workspace: members, shared deps
+├── CONCEPTS.md             # shared domain vocabulary for refs, snapshots, sessions, actionability, and related concepts
 ├── rust-toolchain.toml     # pinned Rust version
 ├── clippy.toml             # project-wide lint config
 ├── crates/
@@ -77,12 +83,12 @@ agent-desktop/
 │   └── ffi/                # agent-desktop-ffi (cdylib + committed C ABI header)
 ├── src/                    # agent-desktop binary (entry point)
 │   ├── main.rs             # entry point, permission check, JSON envelope
-│   ├── cli.rs              # clap derive enum (Commands)
-│   ├── cli_args.rs         # all command argument structs
-│   ├── batch.rs            # batch JSON → typed Commands
-│   ├── command_policy.rs   # command permission/ref/side-effect policy
-│   ├── dispatch.rs         # command dispatcher + parse helpers
-│   └── dispatch_notifications.rs
+│   ├── batch/              # batch JSON → typed Commands
+│   ├── cli/                # clap derive enum, help text, CLI contract tests
+│   ├── cli_args/           # command argument structs by domain
+│   ├── command_policy/     # permission/ref/side-effect policy
+│   ├── dispatch/           # command dispatcher, parse helpers, notifications
+│   └── tests/              # binary-level conformance tests
 ├── docs/
 │   └── solutions/          # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type); relevant when implementing or debugging in documented areas
 └── tests/
@@ -150,7 +156,7 @@ pub fn dispatch(
 }
 ```
 
-Batch is not a second dispatcher. `src/batch.rs` deserializes JSON entries into the same typed `Commands` enum, runs the same `CommandPolicy` preflight, and calls the same `dispatch()` path as CLI.
+Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries into the same typed `Commands` enum, runs the same `CommandPolicy` preflight, and calls the same `dispatch()` path as CLI.
 
 ### Additive Phase Model
 
@@ -184,8 +190,9 @@ Phases 2–4 add adapters, transports, and production readiness work. Nothing in
 
 ```
 PERM_DENIED, ELEMENT_NOT_FOUND, APP_NOT_FOUND, ACTION_FAILED,
-ACTION_NOT_SUPPORTED, STALE_REF, WINDOW_NOT_FOUND,
-PLATFORM_NOT_SUPPORTED, TIMEOUT, INVALID_ARGS, INTERNAL
+ACTION_NOT_SUPPORTED, STALE_REF, AMBIGUOUS_TARGET, WINDOW_NOT_FOUND,
+PLATFORM_NOT_SUPPORTED, TIMEOUT, INVALID_ARGS, NOTIFICATION_NOT_FOUND,
+SNAPSHOT_NOT_FOUND, POLICY_DENIED, INTERNAL
 ```
 
 ### Exit Codes
@@ -258,7 +265,7 @@ crates/{macos,windows,linux}/src/
 Adding a new command requires exactly these steps:
 1. Create `crates/core/src/commands/{name}.rs` with an `execute()` function
 2. Register it in `crates/core/src/commands/mod.rs`
-3. Add the CLI subcommand variant to `src/cli.rs` (clap derive enum)
+3. Add the CLI subcommand variant to `src/cli/mod.rs` and arguments under `src/cli_args/`
 4. Add a match arm in `dispatch()` in the binary crate
 5. If new `Action` variant needed, add to `crates/core/src/action.rs`
 6. If new adapter method needed, add to `PlatformAdapter` trait with a default returning `Err(AdapterError::not_supported())`
@@ -271,7 +278,7 @@ Every command produces a response envelope:
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -287,7 +294,7 @@ Error responses:
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": false,
   "command": "click",
   "error": {
@@ -297,6 +304,8 @@ Error responses:
   }
 }
 ```
+
+The `error` object may also carry an optional `details` object (e.g. the actionability report on an actionability failure, candidate summaries on `AMBIGUOUS_TARGET`, or the last observed state on a `wait` `TIMEOUT`).
 
 ### Serialization Rules
 
@@ -308,8 +317,9 @@ Error responses:
 ## Ref System
 
 - Refs allocated in depth-first document order: `@e1`, `@e2`, etc.
-- Only interactive roles receive refs: `button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`
-- Static text, groups, containers do NOT get refs (they remain in tree for context)
+- An element receives a ref when it is **addressable for an action**: its role is interactive (`button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `switch`, `colorwell`, `menubutton`, `incrementor`, `dockitem`), **or** it advertises an available action regardless of role. Container roles such as `scrollarea` (Scroll) and `disclosure` (Expand/Collapse/Click) are not interactive by role but are genuinely actionable, so they are ref-able — `scroll` / `expand` / `collapse` need a ref to target them
+- A bare `SetFocus` affordance does not qualify on its own (focusability is not a primary action), so inert focusable containers stay ref-less
+- Static text and non-actionable groups/containers do NOT get refs (they remain in tree for context)
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
 - Snapshot refs are stored by snapshot ID under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer for commands that omit `--snapshot`
 - `~/.agent-desktop/last_refmap.json` is written only as a latest-snapshot inspection artifact; command code must use `RefStore`
@@ -320,120 +330,32 @@ Error responses:
 
 ## PlatformAdapter Trait
 
-Platform-facing methods default to `not_supported()` unless implemented by an adapter:
+Core defines `PlatformAdapter`; platform crates implement it. Methods default to
+`not_supported()`, so an adapter only implements what it supports. Read the
+current signatures in `crates/core/src/adapter.rs` — notably strict resolution
+(`resolve_element_strict*` → STALE_REF on 0, AMBIGUOUS_TARGET on 2+), live reads
+for the actionability preflight (`get_live_*`), and `is_protected_process`
+(keeps platform-specific process names out of core).
 
-```rust
-pub trait PlatformAdapter {
-    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError>;
-    fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError>;
-    fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
-    fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
-    fn execute_action(&self, handle: &NativeHandle, request: ActionRequest) -> Result<ActionResult, AdapterError>;
-    fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
-    fn permission_report(&self) -> PermissionReport;
-    fn request_permissions(&self) -> PermissionReport;
-    fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError>;
-    fn launch_app(&self, id: &str, wait: bool) -> Result<WindowInfo, AdapterError>;
-    fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError>;
-    fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError>;
-    fn get_clipboard(&self) -> Result<String, AdapterError>;
-    fn set_clipboard(&self, text: &str) -> Result<(), AdapterError>;
-}
-```
+## macOS Adapter Gotchas
 
-## Key Types
+- **Ancestor-path set, not a global visited set** — macOS reuses
+  `AXUIElementRef` pointers across sibling branches, so a global visited set
+  would prune real subtrees.
+- **`AXElement` memory safety** — inner field is `pub(crate)` (prevents
+  double-free via raw pointer extraction); `Clone` must `CFRetain`, `Drop` must
+  `CFRelease`.
+- **Batch attribute reads** — use `AXUIElementCopyMultipleAttributeValues`
+  (3-5x faster than per-attribute fetches).
 
-- `AccessibilityNode` — platform-agnostic tree node: `ref`, `role`, `name`, `value`, `description`, `states`, `available_actions`, `bounds`, `children`
-- `Action` — Click, DoubleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Scroll(Direction, Amount), PressKey(KeyCombo)
-- `ActionRequest` — `{ action, policy }`, where the default `InteractionPolicy` forbids focus stealing and cursor movement
-- `NativeHandle` — opaque platform pointer with `PhantomData<*const ()>` to prevent auto-Send/Sync. Inner field is `pub(crate)`.
-- `RefEntry` — `{ pid, role, name, bounds_hash, available_actions }`
-- `WindowInfo` — `{ id, title, app_name, pid, bounds }`
-- `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, or `{ "state": "unknown" }`
-- `ErrorCode` — machine-readable enum with `#[serde(rename_all = "SCREAMING_SNAKE_CASE")]`
-- `AdapterError` — struct with `code`, `message`, `suggestion`, `platform_detail`
-- `AppError` — enum with `#[from]` impls for `AdapterError`, `std::io::Error`, `serde_json::Error`
+## Testing
 
-## macOS Adapter (Phase 1)
-
-### Tree Traversal
-- Entry: `AXUIElementCreateApplication(pid)` for app root
-- Children: `kAXChildrenAttribute` recursively with **ancestor-path set** (not global visited set — macOS reuses AXUIElementRef pointers across sibling branches)
-- **Use `AXUIElementCopyMultipleAttributeValues`** for batch attribute fetch (3-5x faster)
-- Role mapping: AXRole strings → unified role enum in `tree/roles.rs`
-- Max depth default: 10. Configurable via `--max-depth`
-
-### Action Execution
-- Click: `AXUIElementPerformAction(kAXPressAction)`
-- SetValue: `AXUIElementSetAttributeValue(kAXValueAttribute, value)`
-- SetFocus: `AXUIElementSetAttributeValue(kAXFocusedAttribute, true)`
-- Keyboard/Mouse: `CGEventCreateKeyboardEvent` / `CGEventCreateMouseEvent`
-- Clipboard: `NSPasteboard.generalPasteboard` via Cocoa FFI
-- Screenshot: `ScreenshotBackend` boundary with secure `screencapture` temp files
-
-### Permission Detection
-- Call `AXIsProcessTrusted()` on startup
-- If false, return `PERM_DENIED` with guidance: "Open System Settings > Privacy > Accessibility and add your terminal"
-- Optionally call `AXIsProcessTrustedWithOptions(prompt: true)` to trigger system dialog
-
-### AXElement Safety
-- Inner field: `pub(crate)` not `pub` (prevents double-free via raw pointer extraction)
-- `Clone` impl must call `CFRetain`
-- `Drop` impl must call `CFRelease`
-
-## Testing Strategy
-
-### Unit Tests (core)
-- `AccessibilityNode` ser/de roundtrips
-- Ref allocator only assigns interactive roles
-- `SnapshotEngine` filtering
-- Error serialization
-- MockAdapter: in-memory `PlatformAdapter` returning hardcoded trees
-
-### Golden Fixtures (`tests/fixtures/`)
-- Real snapshots from Finder, TextEdit, etc. checked into repo
-- Regression-test serialization format changes
-
-### Integration Tests (macOS CI)
-- Snapshot Finder, TextEdit, System Settings — non-empty trees with refs
-- Click button in test app — verify action succeeded
-- Type text into TextEdit via ref — verify content changed
-- Clipboard get/set roundtrip
-- Permission denied scenario — correct error code and guidance
-- Large tree (Xcode) snapshot in under 2 seconds
-
-## Dependencies (Phase 1)
-
-| Crate | Version | Purpose |
-|-------|---------|---------|
-| clap | 4.x | CLI parsing with derive macros |
-| serde + serde_json | 1.x | JSON serialization |
-| thiserror | 2.x | Error derive macros |
-| tracing | 0.1+ | Structured logging |
-| base64 | 0.22+ | Screenshot encoding |
-| accessibility-sys | 0.1+ | macOS AXUIElement FFI |
-| core-foundation | 0.10+ | macOS CF types |
-| core-graphics | 0.24+ | macOS CG types |
-
-### Deferred Dependencies
-- `tokio` — Phase 2/3 (all Phase 1 ops are synchronous)
-- `rmcp` (0.15.0) — Phase 3 (MCP server)
-- `schemars` — Phase 3 (JSON Schema generation)
-- `uiautomation` (0.24+) — Phase 2 (Windows)
-- `atspi` (0.28+) + `zbus` (5.x) — Phase 2 (Linux)
-
-## Build Configuration
-
-```toml
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"
-```
-
-Target binary size: <15MB per platform.
+- Unit tests use an in-memory `MockAdapter`; golden fixtures in `tests/fixtures/`
+  regression-test serialization.
+- macOS CI integration tests drive real apps (Finder, TextEdit, System Settings).
+- `tests/e2e/run.sh` drives the release binary against the SwiftUI fixture and
+  verifies every effect by independent observation in both headless and
+  `--headed` mode (see `tests/e2e/README.md`).
 
 ## CI Requirements
 
@@ -443,23 +365,13 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Implemented Commands (54)
+## Commands
 
-> **Platform note:** All 54 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
-
-| Category | Commands |
-|----------|----------|
-| App/Window (10) | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` |
-| Observation (6) | `snapshot`, `screenshot`, `find`, `get`, `is`, `list-surfaces` |
-| Interaction (14) | `click`, `double-click`, `triple-click`, `right-click`, `type`, `set-value`, `clear`, `focus`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse` |
-| Scroll (2) | `scroll`, `scroll-to` |
-| Keyboard (3) | `press`, `key-down`, `key-up` |
-| Mouse (6) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
-| Notifications (4) *(macOS)* | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` |
-| Clipboard (3) | `clipboard-get`, `clipboard-set`, `clipboard-clear` |
-| Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) |
-| System (4) | `status`, `permissions`, `version`, `skills` |
-| Batch (1) | `batch` |
+54 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
+Mouse, Notifications (macOS), Clipboard, Wait, System, and Batch. The full
+surface and per-command reference live in `skills/agent-desktop/`. All 54 are
+implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the same
+surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
 

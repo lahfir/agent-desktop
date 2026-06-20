@@ -115,4 +115,4 @@ mod imp {
 mod imp {}
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::*;
+pub(crate) use imp::{activate_web_element, is_in_webarea};

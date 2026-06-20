@@ -20,7 +20,10 @@ Launches an application by name or bundle ID and waits until its window is visib
 agent-desktop close-app "TextEdit"
 agent-desktop close-app "TextEdit" --force
 ```
-Quits an application gracefully. Use `--force` to kill the process.
+Requests an application quit. A graceful quit is asynchronous — the app may show an unsaved-changes dialog or refuse — so the response reports only what was guaranteed, never a termination it cannot confirm without blocking:
+
+- Graceful: `{ "app": "TextEdit", "method": "graceful", "requested": true }`. The quit was sent. To confirm it actually closed, observe with `list-apps` or `wait --window`; if a save dialog appears, `snapshot` it and click the choice (`find --role button --name Delete`).
+- `--force`: `{ "app": "TextEdit", "method": "force", "requested": true, "closed": true }`. Sends SIGTERM to matching app processes, escalates survivors to SIGKILL, and returns success only after termination is verified.
 
 ### list-apps
 ```bash
@@ -138,7 +141,7 @@ index-only behavior for callers that reconcile themselves.
 agent-desktop wait --notification --app "App" --timeout 10000
 agent-desktop wait --notification --text "build passed" --timeout 15000
 ```
-Blocks until a new notification appears (detects index-diff from previous state). Supports `--app` and `--text` filters.
+Blocks until a new notification appears (detects index-diff from a baseline captured at wait start). Supports `--app` and `--text` filters. Transient Notification Center errors (timeouts, element-not-found) are retried within the `--timeout` budget for both the baseline capture and polling; permanent errors (for example `PERM_DENIED`) fail immediately. Timeout errors include a `last_error` detail with the most recent transient failure.
 
 ## Clipboard
 
@@ -169,8 +172,14 @@ Pauses for N milliseconds. Use between actions that need time to settle.
 ### wait (element)
 ```bash
 agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 --app "App"
+agent-desktop wait --element @e5 --predicate actionable --timeout 5000
+agent-desktop wait --element @e5 --predicate actionable --action type --timeout 5000
+agent-desktop wait --element @e5 --predicate value --value "Done" --timeout 5000
 ```
 Blocks until the element ref appears in the accessibility tree. Useful after triggering UI changes.
+When `--snapshot` is omitted, the command polls the caller's latest session refmap and refreshes it on the built-in debounce. When `--snapshot` is passed, it resolves that pinned refmap directly. Element resolution is capped by the remaining `--timeout`, and timeout errors include the last observed predicate/actionability state.
+
+`--predicate actionable` checks readiness for a specific action via `--action` (`click` default, `type`, `set-value`, `clear`). Use `--action type` before a wait-then-type flow: the editability check only runs for the editing actions, so the default click check can report ready on a field that cannot accept text.
 
 ### wait (window)
 ```bash
@@ -182,7 +191,7 @@ Blocks until a window with the given title appears.
 ```bash
 agent-desktop wait --text "Loading complete" --app "Safari" --timeout 5000
 ```
-Blocks until the specified text appears anywhere in the app's accessibility tree.
+Blocks until the specified text appears anywhere in the app's accessibility tree. The success body includes `count` only when `--count` is passed; without it, matching stops at the first hit and no count is reported.
 
 ### wait (menu)
 ```bash
@@ -201,6 +210,10 @@ Blocks until the menu surface is dismissed.
 | (positional) | | Milliseconds to pause |
 | `--element` | | Ref to wait for |
 | `--snapshot` | latest | Snapshot ID for `--element` waits |
+| `--predicate` | exists | Element predicate: `exists`, `enabled`, `visible`, `actionable`, `value` |
+| `--value` | | Expected text for `--predicate value` |
+| `--action` | click | Action checked by `--predicate actionable`: `click`, `type`, `set-value`, `clear` |
+| `--count` | | Expected match count for `--text` waits |
 | `--window` | | Window title to wait for |
 | `--text` | | Text to wait for; with `--notification`, filters notification title/body |
 | `--menu` | false | Wait for menu surface to open |
@@ -215,10 +228,13 @@ Blocks until the menu surface is dismissed.
 ```bash
 agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}},{"command":"wait","args":{"ms":500}},{"command":"click","args":{"ref_id":"@e2","snapshot":"<snapshot_id>"}}]'
 agent-desktop batch '[...]' --stop-on-error
+agent-desktop --session run-a batch '[{"command":"status","session":"run-b","args":{}}]'
 ```
 Execute multiple commands in sequence from a JSON array. Each entry has `command` (string) and `args` (object). Use `args`, not `params`. For ref-consuming commands, pass the output `snapshot_id` as the `snapshot` field.
 
 Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
+
+Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level `--session`. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs. Top-level `--trace` is inherited by every entry — including entries with a `session` override — so one JSONL file captures the whole batch.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -229,7 +245,8 @@ Batch uses the same typed `Commands` enum, command policy preflight, permission 
 [
   { "command": "click", "args": { "ref_id": "@e1", "snapshot": "<snapshot_id>" } },
   { "command": "wait", "args": { "ms": 500 } },
-  { "command": "type", "args": { "ref_id": "@e2", "snapshot": "<snapshot_id>", "text": "hello" } }
+  { "command": "type", "args": { "ref_id": "@e2", "snapshot": "<snapshot_id>", "text": "hello" } },
+  { "command": "status", "session": "other-agent", "args": {} }
 ]
 ```
 

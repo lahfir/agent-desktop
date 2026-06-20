@@ -1,6 +1,8 @@
 use crate::{
     action::{MouseButton, MouseEvent, MouseEventKind, Point},
     adapter::PlatformAdapter,
+    commands::point_resolve::require_cursor_policy,
+    context::CommandContext,
     error::AppError,
 };
 use serde_json::{Value, json};
@@ -11,7 +13,12 @@ pub struct MouseDownArgs {
     pub button: MouseButton,
 }
 
-pub fn execute(args: MouseDownArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub fn execute(
+    args: MouseDownArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    require_cursor_policy(context, "mouse-down")?;
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Down,
         point: Point {

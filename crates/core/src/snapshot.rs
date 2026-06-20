@@ -1,5 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions, WindowFilter},
+    context::CommandContext,
     error::AppError,
     node::{AccessibilityNode, WindowInfo},
     ref_alloc::{self, RefAllocConfig},
@@ -75,7 +76,7 @@ pub fn build(
         })?
     };
 
-    let raw_tree = adapter.get_tree(&window, opts)?;
+    let raw_tree = adapter.get_tree(&window, &opts.with_ref_identity_bounds())?;
 
     let mut refmap = RefMap::new();
     let config = RefAllocConfig {
@@ -102,16 +103,37 @@ pub fn build(
     })
 }
 
+#[cfg(test)]
 pub fn run(
     adapter: &dyn PlatformAdapter,
     opts: &TreeOptions,
     app_name: Option<&str>,
     window_id: Option<&str>,
 ) -> Result<SnapshotResult, AppError> {
+    run_with_context(
+        adapter,
+        opts,
+        app_name,
+        window_id,
+        &CommandContext::default(),
+    )
+}
+
+pub fn run_with_context(
+    adapter: &dyn PlatformAdapter,
+    opts: &TreeOptions,
+    app_name: Option<&str>,
+    window_id: Option<&str>,
+    context: &CommandContext,
+) -> Result<SnapshotResult, AppError> {
     let mut result = build(adapter, opts, app_name, window_id)?;
-    let store = RefStore::new()?;
+    let store = RefStore::for_session(context.session_id())?;
     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
     result.snapshot_id = Some(snapshot_id);
+    context.trace_lazy(
+        "snapshot.saved",
+        || serde_json::json!({ "snapshot_id": result.snapshot_id, "ref_count": result.refmap.len() }),
+    )?;
     Ok(result)
 }
 
@@ -120,6 +142,22 @@ pub fn append_surface_refs(
     pid: i32,
     source_app: Option<&str>,
     surface: SnapshotSurface,
+) -> Result<Option<AccessibilityNode>, AppError> {
+    append_surface_refs_with_context(
+        adapter,
+        pid,
+        source_app,
+        surface,
+        &CommandContext::default(),
+    )
+}
+
+pub fn append_surface_refs_with_context(
+    adapter: &dyn PlatformAdapter,
+    pid: i32,
+    source_app: Option<&str>,
+    surface: SnapshotSurface,
+    context: &CommandContext,
 ) -> Result<Option<AccessibilityNode>, AppError> {
     let filter = WindowFilter {
         focused_only: false,
@@ -134,8 +172,8 @@ pub fn append_surface_refs(
         interactive_only: true,
         ..Default::default()
     };
-    let raw_tree = adapter.get_tree(&window, &opts)?;
-    let store = RefStore::new()?;
+    let raw_tree = adapter.get_tree(&window, &opts.with_ref_identity_bounds())?;
+    let store = RefStore::for_session(context.session_id())?;
     let mut refmap = store.load_latest()?;
     let config = RefAllocConfig {
         include_bounds: false,

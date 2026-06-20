@@ -3,20 +3,27 @@
 
 pub use agent_desktop_ffi::error::AdResult;
 pub use agent_desktop_ffi::{
-    AdAction, AdActionResult, AdAdapter, AdAppList, AdDirection, AdDragParams, AdFindQuery,
-    AdKeyCombo, AdNativeHandle, AdPoint, AdPolicyKind, AdRect, AdRefEntry, AdScrollParams,
-    AdWindowInfo, AdWindowList,
+    AdAction, AdActionResult, AdActionStep, AdAdapter, AdAppList, AdDirection, AdDragParams,
+    AdElementState, AdFindQuery, AdKeyCombo, AdNativeHandle, AdPoint, AdPolicyKind, AdRect,
+    AdRefEntry, AdScrollParams, AdWindowInfo, AdWindowList,
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 
 unsafe extern "C" {
+    pub fn ad_ref_entry_size() -> usize;
+    pub fn ad_action_size() -> usize;
+    pub fn ad_action_step_size() -> usize;
+    pub fn ad_action_result_size() -> usize;
+    pub fn ad_element_state_size() -> usize;
+
     pub fn ad_adapter_create() -> *mut AdAdapter;
     pub fn ad_adapter_destroy(adapter: *mut AdAdapter);
     pub fn ad_check_permissions(adapter: *const AdAdapter) -> AdResult;
 
     pub fn ad_last_error_code() -> AdResult;
     pub fn ad_last_error_message() -> *const c_char;
+    pub fn ad_last_error_details() -> *const c_char;
 
     pub fn ad_list_apps(adapter: *const AdAdapter, out: *mut *mut AdAppList) -> AdResult;
     pub fn ad_app_list_count(list: *const AdAppList) -> u32;
@@ -52,6 +59,14 @@ unsafe extern "C" {
         policy: i32,
         out: *mut AdActionResult,
     ) -> AdResult;
+    pub fn ad_execute_ref_action_with_policy(
+        adapter: *const AdAdapter,
+        entry: *const AdRefEntry,
+        action: *const AdAction,
+        policy: i32,
+        out: *mut AdActionResult,
+    ) -> AdResult;
+    pub fn ad_free_action_result(result: *mut AdActionResult);
 
     pub fn ad_find(
         adapter: *const AdAdapter,
@@ -78,6 +93,37 @@ pub fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
     }
 }
 
+pub fn default_ref_entry() -> AdRefEntry {
+    AdRefEntry {
+        pid: 0,
+        role: std::ptr::null(),
+        name: std::ptr::null(),
+        value: std::ptr::null(),
+        description: std::ptr::null(),
+        states: std::ptr::null(),
+        state_count: 0,
+        available_actions: std::ptr::null(),
+        available_action_count: 0,
+        bounds: AdRect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        },
+        has_bounds: false,
+        bounds_hash: 0,
+        has_bounds_hash: false,
+        source_app: std::ptr::null(),
+        source_window_id: std::ptr::null(),
+        source_window_title: std::ptr::null(),
+        source_surface: 0,
+        root_ref: std::ptr::null(),
+        path_is_absolute: false,
+        path: std::ptr::null(),
+        path_count: 0,
+    }
+}
+
 pub fn default_action() -> AdAction {
     AdAction {
         kind: 0,
@@ -95,6 +141,7 @@ pub fn default_action() -> AdAction {
             from: AdPoint { x: 0.0, y: 0.0 },
             to: AdPoint { x: 0.0, y: 0.0 },
             duration_ms: 0,
+            drop_delay_ms: 0,
         },
     }
 }

@@ -15,9 +15,10 @@ pub(crate) fn mouse_button_from_c(b: AdMouseButton) -> CoreMouseButton {
     }
 }
 
-/// Dispatches a mouse event (move / down / up / click) at the given
-/// screen point. Click count is only consulted when `event.kind` is
-/// `CLICK` (e.g., `click_count == 2` for a double-click).
+/// Dispatches an explicit physical mouse event (move / down / up / click)
+/// at the given screen point. Click count is only consulted when `event.kind`
+/// is `CLICK` (e.g., `click_count == 2` for a double-click). Callers that
+/// need headless policy enforcement should use ref actions with policy.
 ///
 /// # Safety
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.

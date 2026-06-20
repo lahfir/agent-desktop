@@ -45,6 +45,22 @@ run() {
     fi
 }
 
+run "inline comment ban" bash -c '
+    mapfile -t files < <(git diff --cached --name-only --diff-filter=ACMR -- "*.rs")
+    if ((${#files[@]} == 0)); then
+        exit 0
+    fi
+    if grep -En "^\s*//[^/!]" "${files[@]}" 2>/dev/null; then
+        echo "" >&2
+        echo "pre-commit: inline // comments are forbidden; use /// or //! docstrings only." >&2
+        exit 1
+    fi
+    if grep -En "[^:\"'\''\`]\s+//[^/!]" "${files[@]}" 2>/dev/null; then
+        echo "" >&2
+        echo "pre-commit: end-of-line // comments are forbidden; use /// or //! docstrings only." >&2
+        exit 1
+    fi
+'
 run "cargo fmt --all -- --check" cargo fmt --all -- --check
 run "cargo clippy --all-targets -- -D warnings" cargo clippy --all-targets -- -D warnings
 run "cargo test --lib --workspace" cargo test --lib --workspace

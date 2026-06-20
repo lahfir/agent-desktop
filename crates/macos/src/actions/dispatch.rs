@@ -1,9 +1,10 @@
 use agent_desktop_core::{
-    action::{
-        Action, ActionRequest, ActionResult, InteractionPolicy, MouseButton, MouseEvent,
-        MouseEventKind, Point,
-    },
+    action::{Action, MouseButton, MouseEvent, MouseEventKind, Point},
+    action_request::ActionRequest,
+    action_result::ActionResult,
+    element_state::ElementState,
     error::{AdapterError, ErrorCode},
+    interaction_policy::InteractionPolicy,
 };
 
 #[cfg(target_os = "macos")]
@@ -23,12 +24,16 @@ mod imp {
         policy: InteractionPolicy,
     ) -> Result<(), AdapterError> {
         if !policy.allow_cursor_move || !policy.allow_focus_steal {
-            return Err(AdapterError::policy_denied(
+            return Err(AdapterError::policy_denied_for_policy(
                 "Physical click fallback is disabled by the current interaction policy",
+                policy,
             ));
         }
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
             let _ = crate::system::app_ops::ensure_app_focused(pid);
+        }
+        if let Some(window) = crate::tree::copy_element_attr(el, "AXWindow") {
+            crate::system::window_ops::raise_window(&window);
         }
         let bounds = crate::tree::read_bounds(el).ok_or_else(|| {
             AdapterError::new(ErrorCode::ActionFailed, "Element has no readable bounds")
@@ -63,7 +68,8 @@ mod imp {
         request: &ActionRequest,
     ) -> Result<ActionResult, AdapterError> {
         let action = &request.action;
-        let label = action_label(action);
+        let label = action.name();
+        let mut steps = Vec::new();
         tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
@@ -72,12 +78,17 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::CLICK_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::CLICK_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::DoubleClick => {
-                let caps = discovery::discover(el);
-                chain_defs::double_click(el, &caps, request.policy)?;
+                chain_defs::double_click(el, request.policy)?;
             }
 
             Action::RightClick => {
@@ -86,13 +97,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(
+                steps.extend(execute_chain(
                     el,
                     &caps,
                     &chain_defs::RIGHT_CLICK_CHAIN,
                     &ctx,
                     request.policy,
-                )?;
+                )?);
             }
 
             Action::Toggle => {
@@ -102,16 +113,16 @@ mod imp {
             Action::SetValue(val) => {
                 let caps = discovery::discover(el);
                 let ctx = ChainContext {
-                    dynamic_value: Some(val),
+                    dynamic_value: Some(val.as_str()),
                     deadline: None,
                 };
-                execute_chain(
+                steps.extend(execute_chain(
                     el,
                     &caps,
                     &chain_defs::SET_VALUE_CHAIN,
                     &ctx,
                     request.policy,
-                )?;
+                )?);
             }
 
             Action::SetFocus => {
@@ -120,11 +131,17 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::FOCUS_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::FOCUS_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::TypeText(text) => {
-                crate::actions::type_text::execute_type(el, text, request.policy)?;
+                crate::actions::type_text::execute_type(el, text.as_str(), request.policy)?;
             }
 
             Action::PressKey(combo) => {
@@ -137,7 +154,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::EXPAND_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::EXPAND_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::Collapse => {
@@ -146,11 +169,17 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::COLLAPSE_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::COLLAPSE_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::Select(value) => {
-                crate::actions::extras::select_value(el, value)?;
+                crate::actions::extras::select_value(el, value.as_str())?;
             }
 
             Action::Scroll(direction, amount) => {
@@ -166,8 +195,7 @@ mod imp {
             }
 
             Action::TripleClick => {
-                let caps = discovery::discover(el);
-                chain_defs::triple_click(el, &caps, request.policy)?;
+                chain_defs::triple_click(el, request.policy)?;
             }
 
             Action::ScrollTo => {
@@ -176,13 +204,13 @@ mod imp {
                     dynamic_value: None,
                     deadline: None,
                 };
-                execute_chain(
+                steps.extend(execute_chain(
                     el,
                     &caps,
                     &chain_defs::SCROLL_TO_CHAIN,
                     &ctx,
                     request.policy,
-                )?;
+                )?);
             }
 
             Action::Clear => {
@@ -191,7 +219,13 @@ mod imp {
                     dynamic_value: Some(""),
                     deadline: None,
                 };
-                execute_chain(el, &caps, &chain_defs::CLEAR_CHAIN, &ctx, request.policy)?;
+                steps.extend(execute_chain(
+                    el,
+                    &caps,
+                    &chain_defs::CLEAR_CHAIN,
+                    &ctx,
+                    request.policy,
+                )?);
             }
 
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
@@ -204,17 +238,30 @@ mod imp {
                 )
                 .with_suggestion("Use the top-level command (e.g. 'hover', 'drag', 'key-down') instead of targeting an element."));
             }
-
-            _ => {
-                return Err(AdapterError::not_supported(&label));
-            }
         }
 
-        let mut result = ActionResult::new(label);
+        let mut result = ActionResult::new(label).with_steps(steps);
         if let Some(state) = crate::actions::post_state::read_post_state(el, action) {
+            verify_post_state(action, &state)?;
             result = result.with_state(state);
         }
         Ok(result)
+    }
+
+    fn verify_post_state(action: &Action, state: &ElementState) -> Result<(), AdapterError> {
+        if matches!(action, Action::Clear)
+            && state
+                .value
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+        {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Clear reported success but element value is still non-empty",
+            )
+            .with_suggestion("Retry 'clear', or use 'press cmd+a' then 'press delete'."));
+        }
+        Ok(())
     }
 
     pub(crate) fn ax_press_or_fail(el: &AXElement, context: &str) -> Result<(), AdapterError> {
@@ -226,6 +273,40 @@ mod imp {
             .with_suggestion("Element may not be pressable. Try 'click' instead."));
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use agent_desktop_core::element_state::ElementState;
+
+        #[test]
+        fn clear_post_state_fails_when_value_remains() {
+            let err = verify_post_state(
+                &Action::Clear,
+                &ElementState {
+                    role: "textfield".into(),
+                    states: vec![],
+                    value: Some("still here".into()),
+                },
+            )
+            .unwrap_err();
+
+            assert_eq!(err.code, ErrorCode::ActionFailed);
+        }
+
+        #[test]
+        fn clear_post_state_accepts_empty_value() {
+            verify_post_state(
+                &Action::Clear,
+                &ElementState {
+                    role: "textfield".into(),
+                    states: vec![],
+                    value: Some(String::new()),
+                },
+            )
+            .unwrap();
+        }
     }
 }
 
@@ -246,31 +327,3 @@ pub(crate) use imp::perform_action;
 
 #[cfg(target_os = "macos")]
 pub(crate) use imp::{ax_press_or_fail, click_via_bounds};
-
-fn action_label(action: &Action) -> String {
-    match action {
-        Action::Click => "click",
-        Action::DoubleClick => "double_click",
-        Action::RightClick => "right_click",
-        Action::TripleClick => "triple_click",
-        Action::SetValue(_) => "set_value",
-        Action::SetFocus => "set_focus",
-        Action::Expand => "expand",
-        Action::Collapse => "collapse",
-        Action::Select(_) => "select",
-        Action::Toggle => "toggle",
-        Action::Check => "check",
-        Action::Uncheck => "uncheck",
-        Action::Scroll(_, _) => "scroll",
-        Action::ScrollTo => "scroll_to",
-        Action::PressKey(_) => "press_key",
-        Action::KeyDown(_) => "key_down",
-        Action::KeyUp(_) => "key_up",
-        Action::TypeText(_) => "type_text",
-        Action::Clear => "clear",
-        Action::Hover => "hover",
-        Action::Drag(_) => "drag",
-        _ => "unknown",
-    }
-    .to_string()
-}

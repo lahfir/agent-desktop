@@ -1,4 +1,9 @@
-use agent_desktop_core::{adapter::WindowFilter, error::AdapterError, node::WindowInfo};
+use agent_desktop_core::{
+    adapter::WindowFilter,
+    error::{AdapterError, ErrorCode},
+    node::WindowInfo,
+};
+use std::time::Duration;
 
 #[cfg(target_os = "macos")]
 pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
@@ -11,6 +16,10 @@ pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
     }
 }
 
+/// Ensures the app is frontmost: a no-op when it already is, otherwise a
+/// best-effort raise confirmed by polling. `Ok` therefore means "frontmost
+/// ensured", not "a raise happened" — callers surfacing `focused:true` get
+/// exactly that ensured semantics.
 #[cfg(target_os = "macos")]
 pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
     tracing::debug!("system: ensure_app_focused pid={pid}");
@@ -18,6 +27,9 @@ pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
     let app_el = crate::tree::element_for_pid(pid);
+    if crate::tree::copy_bool_attr(&app_el, "AXFrontmost") == Some(true) {
+        return Ok(());
+    }
     let frontmost_attr = CFString::new("AXFrontmost");
     let err = unsafe {
         AXUIElementSetAttributeValue(
@@ -31,8 +43,31 @@ pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
             "Failed to focus app pid={pid}"
         )));
     }
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    wait_until_frontmost(&app_el);
     Ok(())
+}
+
+/// Polls `AXFrontmost` until the app actually reports frontmost instead of a
+/// fixed settle sleep, so an already-frontmost app costs one read and a slow
+/// activation gets the full window. Best-effort: timing out just means the
+/// caller proceeds as before the poll existed.
+#[cfg(target_os = "macos")]
+fn wait_until_frontmost(app_el: &crate::tree::AXElement) {
+    use std::time::{Duration, Instant};
+
+    const POLL_INTERVAL: Duration = Duration::from_millis(5);
+    const FRONTMOST_DEADLINE: Duration = Duration::from_millis(50);
+
+    let deadline = Instant::now() + FRONTMOST_DEADLINE;
+    loop {
+        if crate::tree::copy_bool_attr(app_el, "AXFrontmost") == Some(true) {
+            return;
+        }
+        if Instant::now() >= deadline {
+            return;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -42,45 +77,9 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
         win.app,
         win.title
     );
-    use accessibility_sys::{
-        AXUIElementCreateApplication, AXUIElementPerformAction, AXUIElementSetAttributeValue,
-        kAXErrorSuccess,
-    };
-    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
-
-    let app_el = crate::tree::AXElement(unsafe { AXUIElementCreateApplication(win.pid) });
-    if app_el.0.is_null() {
-        return Err(AdapterError::internal("Failed to create AX app element"));
-    }
-
-    let frontmost_attr = CFString::new("AXFrontmost");
-    let err = unsafe {
-        AXUIElementSetAttributeValue(
-            app_el.0,
-            frontmost_attr.as_concrete_TypeRef(),
-            CFBoolean::true_value().as_CFTypeRef(),
-        )
-    };
-    if err != kAXErrorSuccess {
-        return Err(AdapterError::internal(format!(
-            "Failed to set AXFrontmost (err={err})"
-        )));
-    }
-
+    ensure_app_focused(win.pid)?;
     let main_win = crate::tree::window_element_for(win.pid, &win.title);
-    let raise_action = CFString::new("AXRaise");
-    let raise_err =
-        unsafe { AXUIElementPerformAction(main_win.0, raise_action.as_concrete_TypeRef()) };
-    if raise_err != kAXErrorSuccess {
-        let main_attr = CFString::new("AXMain");
-        unsafe {
-            AXUIElementSetAttributeValue(
-                main_win.0,
-                main_attr.as_concrete_TypeRef(),
-                CFBoolean::true_value().as_CFTypeRef(),
-            )
-        };
-    }
+    crate::system::window_ops::raise_window(&main_win);
     Ok(())
 }
 
@@ -159,22 +158,62 @@ pub fn launch_app_impl(_id: &str, _timeout_ms: u64) -> Result<WindowInfo, Adapte
     Err(AdapterError::not_supported("launch_app"))
 }
 
+/// Processes whose termination would break the macOS session: the window
+/// server, login session, launchd, the Dock, and Finder. Matched as an
+/// exact lowercase name or an exact dot-separated bundle-id component, so
+/// display names (`Dock`) and bundle ids (`com.apple.dock`) both resolve
+/// while lookalikes (`Docker`, `FinderSync`) stay closable — a substring
+/// match would permanently block them. Windows and Linux adapters define
+/// their own equivalents (`csrss.exe`/`winlogon.exe`, `gnome-shell`/`Xorg`).
+const PROTECTED_PROCESSES: &[&str] = &["loginwindow", "windowserver", "dock", "launchd", "finder"];
+
+pub fn is_protected_process(identifier: &str) -> bool {
+    let lower = identifier.to_lowercase();
+    PROTECTED_PROCESSES
+        .iter()
+        .any(|p| lower == *p || lower.split('.').any(|component| component == *p))
+}
+
+fn ensure_not_protected(id: &str) -> Result<(), AdapterError> {
+    if is_protected_process(id) {
+        return Err(AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("'{id}' is a protected system process and cannot be closed"),
+        )
+        .with_suggestion(
+            "Target a regular application; session-critical processes (loginwindow, WindowServer, Dock, Finder, launchd) are never closed.",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "app_ops_tests.rs"]
 mod tests;
 
+/// Closes an app after the protected-process guard. The guard runs here —
+/// inside the adapter — so every consumer (CLI, FFI, future MCP) refuses
+/// session-critical processes identically; the CLI command's own preflight
+/// is an earlier check against the same predicate, not the enforcement
+/// point. The error mirrors the CLI contract exactly (code and message).
 #[cfg(target_os = "macos")]
 pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
+    ensure_not_protected(id)?;
     tracing::debug!("system: close app={id:?} force={force}");
     use std::process::Command;
-    use std::time::Duration;
 
     const QUIT_TIMEOUT: Duration = Duration::from_secs(3);
 
     if force {
-        let mut command = Command::new("/usr/bin/pkill");
-        command.arg("-x").arg(id);
-        crate::system::process::run_with_timeout(&mut command, "pkill", QUIT_TIMEOUT)?;
+        let pids = crate::system::app_list::pids_for_app_name(id);
+        if pids.is_empty() {
+            return Err(AdapterError::new(
+                ErrorCode::AppNotFound,
+                format!("App '{id}' was not running or could not be matched for force close"),
+            )
+            .with_suggestion("Use 'list-apps' to verify the running app name before retrying."));
+        }
+        crate::system::force_close::terminate_app(id, &pids, QUIT_TIMEOUT)?;
     } else {
         let pid = crate::system::key_dispatch::find_pid_by_name(id)?;
         let app_ax = crate::tree::element_for_pid(pid);
@@ -198,7 +237,18 @@ end tell"#
             );
             let mut command = Command::new("/usr/bin/osascript");
             command.arg("-e").arg(script);
-            crate::system::process::run_with_timeout(&mut command, "osascript", QUIT_TIMEOUT)?;
+            let output =
+                crate::system::process::run_with_timeout(&mut command, "osascript", QUIT_TIMEOUT)?;
+            if !output.status.success() {
+                return Err(AdapterError::new(
+                    ErrorCode::ActionFailed,
+                    format!("Failed to request graceful quit for app '{id}'"),
+                )
+                .with_platform_detail(String::from_utf8_lossy(&output.stderr).trim().to_string())
+                .with_suggestion(
+                    "Use 'list-apps' to verify the app name, or retry with --force.",
+                ));
+            }
         }
     }
     Ok(())

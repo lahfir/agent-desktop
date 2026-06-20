@@ -17,7 +17,8 @@ use std::os::raw::c_char;
 /// The returned string must be freed with `ad_free_string`.
 ///
 /// # Safety
-/// `adapter` must be valid. `handle` must be a non-null `AdNativeHandle`.
+/// `adapter` must be valid. `handle` must be a non-null `AdNativeHandle`
+/// produced by the same live adapter and freed before that adapter is destroyed.
 /// `property` must be a non-null UTF-8 C string. `out` must be a valid
 /// writable `*mut *mut c_char`; it is null-initialized on entry.
 #[unsafe(no_mangle)]

@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    action::InteractionPolicy,
     error::{AdapterError, ErrorCode},
+    interaction_policy::InteractionPolicy,
 };
 
 use crate::{

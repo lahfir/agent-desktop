@@ -186,13 +186,13 @@ agent-desktop clipboard-get
 
 ```bash
 # Between elements (by ref)
-agent-desktop drag --from @e3 --to @e8
+agent-desktop --headed drag --from @e3 --to @e8
 
 # Between coordinates
-agent-desktop drag --from-xy 100,200 --to-xy 500,400
+agent-desktop --headed drag --from-xy 100,200 --to-xy 500,400
 
 # Mixed: element to coordinates
-agent-desktop drag --from @e3 --to-xy 500,400 --duration 500
+agent-desktop --headed drag --from @e3 --to-xy 500,400 --duration 500
 ```
 
 ## Pattern: Wait for Async UI

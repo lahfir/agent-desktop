@@ -1,22 +1,10 @@
 use crate::AdAdapter;
+use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::tree::flatten::flatten_tree;
-use crate::types::{AdNodeTree, AdSnapshotSurface, AdTreeOptions, AdWindowInfo};
-use agent_desktop_core::adapter::SnapshotSurface;
+use crate::types::{AdNodeTree, AdTreeOptions, AdWindowInfo};
 use std::ptr;
-
-fn core_surface(s: AdSnapshotSurface) -> SnapshotSurface {
-    match s {
-        AdSnapshotSurface::Window => SnapshotSurface::Window,
-        AdSnapshotSurface::Focused => SnapshotSurface::Focused,
-        AdSnapshotSurface::Menu => SnapshotSurface::Menu,
-        AdSnapshotSurface::Menubar => SnapshotSurface::Menubar,
-        AdSnapshotSurface::Sheet => SnapshotSurface::Sheet,
-        AdSnapshotSurface::Popover => SnapshotSurface::Popover,
-        AdSnapshotSurface::Alert => SnapshotSurface::Alert,
-    }
-}
 
 /// Snapshots `win`'s accessibility tree into the flat BFS layout
 /// described in the types module. The result is written into `*out`
@@ -87,13 +75,10 @@ pub unsafe extern "C" fn ad_get_tree(
                 return crate::error::last_error_code();
             }
         };
-        let surface = match AdSnapshotSurface::from_c(opts_ref.surface) {
-            Some(s) => core_surface(s),
-            None => {
-                set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    "invalid snapshot surface discriminant",
-                ));
+        let surface = match snapshot_surface_from_c(opts_ref.surface, "snapshot surface") {
+            Ok(surface) => surface,
+            Err(e) => {
+                set_last_error(&e);
                 return AdResult::ErrInvalidArgs;
             }
         };
@@ -108,13 +93,6 @@ pub unsafe extern "C" fn ad_get_tree(
 
         match adapter.inner.get_tree(&core_win, &core_opts) {
             Ok(tree) => {
-                // Adapters return a full raw tree; flags live on the core
-                // TreeOptions but the macOS adapter only consumes
-                // `max_depth` and `skeleton`. Apply shape transformations
-                // here so the FFI behavior matches what AdTreeOptions
-                // documents. ref_alloc::transform_tree is the ref-free
-                // variant of allocate_refs and matches its semantics for
-                // compact/interactive_only/include_bounds.
                 let shaped = agent_desktop_core::ref_alloc::transform_tree(
                     tree,
                     core_opts.include_bounds,

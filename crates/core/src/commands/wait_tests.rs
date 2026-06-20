@@ -1,11 +1,9 @@
 use super::*;
 use crate::{
-    adapter::PlatformAdapter,
+    adapter::{PlatformAdapter, WindowFilter},
     error::{AdapterError, ErrorCode},
+    node::WindowInfo,
     notification::{NotificationFilter, NotificationInfo},
-    refs::{RefEntry, RefMap},
-    refs_store::RefStore,
-    refs_test_support::HomeGuard,
 };
 
 struct NoopAdapter;
@@ -26,56 +24,97 @@ impl PlatformAdapter for NotificationErrorAdapter {
     }
 }
 
-fn snapshot_with_one_ref() -> String {
-    let mut refmap = RefMap::new();
-    refmap.allocate(RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        states: Vec::new(),
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["Click".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
-    });
-    RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
+struct FlakyNotificationAdapter {
+    responses: std::sync::Mutex<Vec<Result<Vec<NotificationInfo>, AdapterError>>>,
 }
 
-#[test]
-fn snapshot_pinned_missing_ref_is_invalid_args() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_one_ref();
+impl FlakyNotificationAdapter {
+    fn with_responses(in_order: Vec<Result<Vec<NotificationInfo>, AdapterError>>) -> Self {
+        let mut responses = in_order;
+        responses.reverse();
+        Self {
+            responses: std::sync::Mutex::new(responses),
+        }
+    }
+}
 
-    let err = wait_for_element("@e2".into(), Some(snapshot_id), 1, &NoopAdapter).unwrap_err();
+impl PlatformAdapter for FlakyNotificationAdapter {
+    fn list_notifications(
+        &self,
+        _filter: &NotificationFilter,
+    ) -> Result<Vec<NotificationInfo>, AdapterError> {
+        self.responses
+            .lock()
+            .unwrap()
+            .pop()
+            .unwrap_or_else(|| Err(AdapterError::timeout("notification center unavailable")))
+    }
+}
 
-    assert_eq!(err.code(), "INVALID_ARGS");
-    assert!(err.suggestion().is_some());
+fn notification(index: usize, title: &str) -> NotificationInfo {
+    NotificationInfo {
+        index,
+        app_name: "Mail".into(),
+        title: title.into(),
+        body: None,
+        actions: vec![],
+    }
+}
+
+fn notification_wait_args(timeout_ms: u64) -> WaitArgs {
+    WaitArgs {
+        mode: WaitModeArgs {
+            notification: true,
+            ..wait_args().mode
+        },
+        timeout_ms,
+        ..wait_args()
+    }
+}
+
+struct WindowErrorAdapter;
+
+impl PlatformAdapter for WindowErrorAdapter {
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Err(AdapterError::permission_denied())
+    }
+}
+
+fn wait_args() -> WaitArgs {
+    WaitArgs {
+        mode: WaitModeArgs {
+            ms: None,
+            element: None,
+            window: None,
+            text: None,
+            menu: false,
+            menu_closed: false,
+            notification: false,
+        },
+        predicate: WaitPredicateArgs {
+            snapshot_id: None,
+            predicate: None,
+            value: None,
+            action: None,
+            count: None,
+        },
+        timeout_ms: 1,
+        app: None,
+    }
 }
 
 #[test]
 fn notification_wait_propagates_adapter_error() {
     let err = execute(
         WaitArgs {
-            ms: None,
-            element: None,
-            snapshot_id: None,
-            window: None,
-            text: None,
-            timeout_ms: 1,
-            menu: false,
-            menu_closed: false,
-            notification: true,
-            app: None,
+            mode: WaitModeArgs {
+                notification: true,
+                ..wait_args().mode
+            },
+            ..wait_args()
         },
         &NotificationErrorAdapter,
+        &CommandContext::default(),
     )
     .unwrap_err();
 
@@ -83,21 +122,74 @@ fn notification_wait_propagates_adapter_error() {
 }
 
 #[test]
+fn notification_wait_retries_transient_baseline_errors() {
+    let adapter = FlakyNotificationAdapter::with_responses(vec![
+        Err(AdapterError::timeout("notification center starting")),
+        Ok(vec![notification(0, "old")]),
+        Ok(vec![notification(0, "old"), notification(1, "fresh")]),
+    ]);
+
+    let value = execute(
+        notification_wait_args(5_000),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(value["matched"], true);
+    assert_eq!(value["notification"]["title"], "fresh");
+}
+
+#[test]
+fn notification_wait_fingerprint_ignores_reindexed_existing_notification() {
+    let baseline = notification_counts(&[notification(0, "old")]);
+    let current = vec![notification(4, "old")];
+
+    assert!(first_new_notification(&current, &baseline).is_none());
+}
+
+#[test]
+fn notification_wait_fingerprint_detects_duplicate_new_notification() {
+    let baseline = notification_counts(&[notification(0, "same")]);
+    let current = vec![notification(4, "same"), notification(5, "same")];
+
+    let found = first_new_notification(&current, &baseline).unwrap();
+
+    assert_eq!(found.index, 5);
+}
+
+#[test]
+fn notification_wait_times_out_with_last_error_after_transient_failures() {
+    let adapter = FlakyNotificationAdapter::with_responses(vec![]);
+
+    let err = execute(
+        notification_wait_args(600),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+
+    let AppError::Adapter(adapter_err) = err else {
+        panic!("expected adapter error");
+    };
+    assert_eq!(adapter_err.code, ErrorCode::Timeout);
+    let details = adapter_err.details.expect("timeout should carry details");
+    assert_eq!(details["last_error"]["code"], "TIMEOUT");
+}
+
+#[test]
 fn rejects_multiple_wait_modes() {
     let err = execute(
         WaitArgs {
-            ms: Some(1),
-            element: Some("@e1".into()),
-            snapshot_id: None,
-            window: None,
-            text: None,
-            timeout_ms: 1,
-            menu: false,
-            menu_closed: false,
-            notification: false,
-            app: None,
+            mode: WaitModeArgs {
+                ms: Some(1),
+                element: Some("@e1".into()),
+                ..wait_args().mode
+            },
+            ..wait_args()
         },
         &NoopAdapter,
+        &CommandContext::default(),
     )
     .unwrap_err();
 
@@ -106,98 +198,185 @@ fn rejects_multiple_wait_modes() {
 }
 
 #[test]
+fn window_wait_propagates_permanent_adapter_error() {
+    let err = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                window: Some("Document".into()),
+                ..wait_args().mode
+            },
+            ..wait_args()
+        },
+        &WindowErrorAdapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "PERM_DENIED");
+}
+
+#[test]
+fn text_wait_propagates_permanent_snapshot_error() {
+    let err = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                text: Some("hello".into()),
+                ..wait_args().mode
+            },
+            ..wait_args()
+        },
+        &WindowErrorAdapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "PERM_DENIED");
+}
+
+#[test]
+fn app_retryability_uses_adapter_error_codes() {
+    assert!(is_retryable_wait_app_error(&AppError::Adapter(
+        AdapterError::timeout("busy")
+    )));
+    assert!(!is_retryable_wait_app_error(&AppError::Adapter(
+        AdapterError::permission_denied()
+    )));
+    assert!(!is_retryable_wait_app_error(&AppError::Internal(
+        "internal".into()
+    )));
+}
+
+#[test]
 fn notification_wait_allows_text_filter() {
     let result = validate_wait_mode(&WaitArgs {
-        ms: None,
-        element: None,
-        snapshot_id: None,
-        window: None,
-        text: Some("done".into()),
-        timeout_ms: 1,
-        menu: false,
-        menu_closed: false,
-        notification: true,
-        app: None,
+        mode: WaitModeArgs {
+            text: Some("done".into()),
+            notification: true,
+            ..wait_args().mode
+        },
+        ..wait_args()
     });
 
     assert!(result.is_ok());
 }
 
 #[test]
-fn latest_ref_cache_picks_up_newer_snapshot_after_refresh() {
-    let _guard = HomeGuard::new();
-    let _ = snapshot_with_one_ref();
-    let store = RefStore::new().unwrap();
-    let first_id = store.latest_snapshot_id().unwrap();
+fn predicate_requires_element_mode() {
+    let err = validate_wait_mode(&WaitArgs {
+        predicate: WaitPredicateArgs {
+            predicate: Some("enabled".into()),
+            ..wait_args().predicate
+        },
+        ..wait_args()
+    })
+    .unwrap_err();
 
-    let mut cache = LatestRefCache::new(&store).unwrap();
-    assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
 
-    let mut second = RefMap::new();
-    second.allocate(RefEntry {
-        pid: 99,
-        role: "button".into(),
-        name: Some("Second".into()),
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["Click".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
-    });
-    let second_id = store.save_new_snapshot(&second).unwrap();
-    assert_ne!(first_id, second_id);
+struct TextlessTreeAdapter;
 
-    cache.last_refresh = std::time::Instant::now() - std::time::Duration::from_secs(2);
-    cache.refresh_if_due();
+impl PlatformAdapter for TextlessTreeAdapter {
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Ok(vec![WindowInfo {
+            id: "w-1".into(),
+            title: "Doc".into(),
+            app: "TestApp".into(),
+            pid: 1,
+            bounds: None,
+            is_focused: true,
+        }])
+    }
 
-    assert_eq!(cache.snapshot_id.as_deref(), Some(second_id.as_str()));
-    assert!(cache.entry("@e1").is_some());
+    fn get_tree(
+        &self,
+        _win: &WindowInfo,
+        _opts: &crate::adapter::TreeOptions,
+    ) -> Result<crate::node::AccessibilityNode, AdapterError> {
+        Ok(crate::node::AccessibilityNode {
+            ref_id: None,
+            role: "window".into(),
+            name: Some("Doc".into()),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            available_actions: vec![],
+            bounds: None,
+            children_count: None,
+            children: vec![],
+        })
+    }
 }
 
 #[test]
-fn latest_ref_cache_debounces_consecutive_refreshes() {
-    let _guard = HomeGuard::new();
-    let _ = snapshot_with_one_ref();
-    let store = RefStore::new().unwrap();
-    let first_id = store.latest_snapshot_id().unwrap();
+fn text_wait_with_count_zero_detects_absence() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
 
-    let mut cache = LatestRefCache::new(&store).unwrap();
-    let pinned_snapshot_id = cache.snapshot_id.clone();
-    let pinned_refresh = cache.last_refresh;
+    let value = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                text: Some("Gone".into()),
+                ..wait_args().mode
+            },
+            predicate: WaitPredicateArgs {
+                count: Some(0),
+                ..wait_args().predicate
+            },
+            timeout_ms: 1_000,
+            app: Some("TestApp".into()),
+        },
+        &TextlessTreeAdapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
 
-    let mut other = RefMap::new();
-    other.allocate(RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: None,
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["Click".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
-    });
-    let _ = store.save_new_snapshot(&other).unwrap();
+    assert_eq!(value["found"], true);
+    assert_eq!(value["count"], 0);
+}
 
-    cache.last_refresh = std::time::Instant::now();
-    cache.refresh_if_due();
+struct MenuWaitAdapter {
+    open_seen: std::sync::Mutex<Option<bool>>,
+}
 
-    assert_eq!(cache.snapshot_id, pinned_snapshot_id);
-    assert_eq!(cache.last_refresh, pinned_refresh.max(cache.last_refresh));
-    let _ = first_id;
+impl PlatformAdapter for MenuWaitAdapter {
+    fn list_apps(&self) -> Result<Vec<crate::node::AppInfo>, AdapterError> {
+        Ok(vec![crate::node::AppInfo {
+            name: "MenuApp".into(),
+            pid: 42,
+            bundle_id: None,
+        }])
+    }
+
+    fn wait_for_menu(&self, _pid: i32, open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
+        *self.open_seen.lock().unwrap() = Some(open);
+        Ok(())
+    }
+}
+
+#[test]
+fn menu_closed_wait_requests_closed_state_and_reports_found() {
+    let adapter = MenuWaitAdapter {
+        open_seen: std::sync::Mutex::new(None),
+    };
+    let value = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                menu_closed: true,
+                ..wait_args().mode
+            },
+            app: Some("MenuApp".into()),
+            ..wait_args()
+        },
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(value["found"], true);
+    assert_eq!(
+        *adapter.open_seen.lock().unwrap(),
+        Some(false),
+        "--menu-closed must wait for the menu to be closed (open=false)"
+    );
 }

@@ -1,16 +1,42 @@
 use crate::{
-    action::{Action, ActionRequest, ActionResult, Direction, InteractionPolicy},
+    action::{Action, Direction},
+    action_request::ActionRequest,
+    action_result::ActionResult,
     adapter::{NativeHandle, PlatformAdapter},
     commands::{
         check, clear, click, collapse, double_click, expand, focus, helpers::RefArgs, right_click,
         scroll, scroll_to, select, set_value, toggle, triple_click, type_text, uncheck,
     },
+    context::CommandContext,
     error::AdapterError,
+    interaction_policy::InteractionPolicy,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
+
+/// Every command module stem whose execute function calls `context.request(`.
+/// Adding a new ref-action command requires adding its stem here; the
+/// `all_context_request_callers_are_policy_tested` guard enforces this.
+const POLICY_TESTED_COMMANDS: &[&str] = &[
+    "check",
+    "clear",
+    "click",
+    "collapse",
+    "double_click",
+    "expand",
+    "focus",
+    "right_click",
+    "scroll",
+    "scroll_to",
+    "select",
+    "set_value",
+    "toggle",
+    "triple_click",
+    "type_text",
+    "uncheck",
+];
 
 struct RecordingAdapter {
     requests: Mutex<Vec<ActionRequest>>,
@@ -29,7 +55,7 @@ impl RecordingAdapter {
 }
 
 impl PlatformAdapter for RecordingAdapter {
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
@@ -54,7 +80,23 @@ fn snapshot_id() -> String {
         states: vec![],
         bounds: None,
         bounds_hash: None,
-        available_actions: vec!["Click".into()],
+        available_actions: vec![
+            "Check".into(),
+            "Clear".into(),
+            "Click".into(),
+            "Collapse".into(),
+            "DoubleClick".into(),
+            "Expand".into(),
+            "RightClick".into(),
+            "ScrollTo".into(),
+            "Select".into(),
+            "SetFocus".into(),
+            "SetValue".into(),
+            "Toggle".into(),
+            "TripleClick".into(),
+            "TypeText".into(),
+            "Uncheck".into(),
+        ],
         source_app: None,
         source_window_id: None,
         source_window_title: None,
@@ -82,23 +124,24 @@ fn default_ref_commands_are_headless() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_id();
     let adapter = RecordingAdapter::new();
+    let context = CommandContext::default();
 
-    click::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    double_click::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    triple_click::execute(ref_args(&snapshot_id), &adapter).unwrap();
+    click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    double_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    triple_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
     let before_right_click = adapter.requests.lock().unwrap().len();
-    let _ = right_click::execute(ref_args(&snapshot_id), &adapter);
+    let _ = right_click::execute(ref_args(&snapshot_id), &adapter, &context);
     assert_eq!(
         adapter.requests.lock().unwrap().len(),
         before_right_click + 1
     );
-    clear::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    toggle::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    check::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    uncheck::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    expand::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    collapse::execute(ref_args(&snapshot_id), &adapter).unwrap();
-    scroll_to::execute(ref_args(&snapshot_id), &adapter).unwrap();
+    clear::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    toggle::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    check::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    uncheck::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    expand::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    collapse::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    scroll_to::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
     set_value::execute(
         set_value::SetValueArgs {
             ref_id: "@e1".into(),
@@ -106,6 +149,7 @@ fn default_ref_commands_are_headless() {
             value: "value".into(),
         },
         &adapter,
+        &context,
     )
     .unwrap();
     select::execute(
@@ -115,6 +159,7 @@ fn default_ref_commands_are_headless() {
             value: "choice".into(),
         },
         &adapter,
+        &context,
     )
     .unwrap();
     let before_type = adapter.requests.lock().unwrap().len();
@@ -125,6 +170,7 @@ fn default_ref_commands_are_headless() {
             text: "text".into(),
         },
         &adapter,
+        &context,
     )
     .unwrap();
     let type_request = adapter.requests.lock().unwrap()[before_type].clone();
@@ -137,6 +183,7 @@ fn default_ref_commands_are_headless() {
             amount: 1,
         },
         &adapter,
+        &context,
     )
     .unwrap();
 
@@ -154,9 +201,118 @@ fn focus_command_is_explicit_headless_policy() {
     let snapshot_id = snapshot_id();
     let adapter = RecordingAdapter::new();
 
-    focus::execute(ref_args(&snapshot_id), &adapter).unwrap();
+    focus::execute(ref_args(&snapshot_id), &adapter, &CommandContext::default()).unwrap();
 
     let request = adapter.last_request();
     assert!(matches!(request.action, Action::SetFocus));
     assert_eq!(request.policy, InteractionPolicy::headless());
+}
+
+#[test]
+fn headed_context_upgrades_every_ref_command_to_headed() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_id();
+    let adapter = RecordingAdapter::new();
+    let context = CommandContext::default().with_headed(true);
+
+    click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    double_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    triple_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    let _ = right_click::execute(ref_args(&snapshot_id), &adapter, &context);
+    clear::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    toggle::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    check::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    uncheck::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    expand::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    collapse::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    scroll_to::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    focus::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    set_value::execute(
+        set_value::SetValueArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id.clone()),
+            value: "value".into(),
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+    select::execute(
+        select::SelectArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id.clone()),
+            value: "choice".into(),
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+    type_text::execute(
+        type_text::TypeArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id.clone()),
+            text: "text".into(),
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+    scroll::execute(
+        scroll::ScrollArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id),
+            direction: Direction::Down,
+            amount: 1,
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+
+    for request in adapter.requests.lock().unwrap().iter() {
+        assert_eq!(
+            request.policy,
+            InteractionPolicy::headed(),
+            "{:?} must be headed under --headed",
+            request.action
+        );
+    }
+}
+
+#[test]
+fn all_context_request_callers_are_policy_tested() {
+    let commands_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+    let covered: std::collections::BTreeSet<&str> =
+        POLICY_TESTED_COMMANDS.iter().copied().collect();
+
+    let mut uncovered: Vec<String> = std::fs::read_dir(&commands_dir)
+        .expect("commands directory must be readable")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "rs") {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(ToOwned::to_owned)
+            } else {
+                None
+            }
+        })
+        .filter(|stem| !stem.ends_with("_tests"))
+        .filter(|stem| {
+            if covered.contains(stem.as_str()) {
+                return false;
+            }
+            let path = commands_dir.join(format!("{stem}.rs"));
+            let source = std::fs::read_to_string(&path).unwrap_or_default();
+            source.contains("context.request(")
+        })
+        .collect();
+
+    uncovered.sort();
+    assert!(
+        uncovered.is_empty(),
+        "new ref-action command(s) call context.request( but are not in POLICY_TESTED_COMMANDS: {uncovered:?}\n\
+         Add each stem to POLICY_TESTED_COMMANDS and write a matching policy assertion."
+    );
 }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::action::ActionRequest;
+use crate::action_request::ActionRequest;
 use crate::adapter::{NativeHandle, PlatformAdapter};
 use crate::error::AdapterError;
 use crate::node::AccessibilityNode;
@@ -58,7 +58,7 @@ impl StubAdapter {
 }
 
 impl PlatformAdapter for StubAdapter {
-    fn resolve_element(
+    fn resolve_element_strict(
         &self,
         _entry: &crate::refs::RefEntry,
     ) -> Result<NativeHandle, AdapterError> {
@@ -86,7 +86,7 @@ impl PlatformAdapter for StubAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
-    ) -> Result<crate::action::ActionResult, AdapterError> {
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
         Err(AdapterError::not_supported("execute_action"))
     }
 }
@@ -98,11 +98,25 @@ fn save_latest(refmap: RefMap) -> String {
         .expect("snapshot refmap should save")
 }
 
+fn save_session(session_id: &str, refmap: RefMap) -> String {
+    RefStore::for_session(Some(session_id))
+        .unwrap()
+        .save_new_snapshot(&refmap)
+        .expect("session snapshot refmap should save")
+}
+
 fn load_latest() -> RefMap {
     RefStore::new()
         .unwrap()
         .load_latest()
         .expect("latest snapshot should load")
+}
+
+fn load_session_snapshot(session_id: &str, snapshot_id: &str) -> RefMap {
+    RefStore::for_session(Some(session_id))
+        .unwrap()
+        .load(Some(snapshot_id))
+        .expect("session snapshot should load")
 }
 
 fn seed_skeleton_refmap() -> RefMap {
@@ -174,6 +188,24 @@ fn test_run_from_ref_returns_subtree_and_persists_refs() {
     assert_eq!(drill_entry.path.as_slice(), [0, 0]);
     assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
     assert_eq!(adapter.release_calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn test_run_from_ref_explicit_session_snapshot_without_session_context() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = save_session("agent-a", seed_skeleton_refmap());
+
+    let adapter = StubAdapter::new(named("button", "Save"));
+    let result = run_from_ref(&adapter, &drill_opts(), "@e1", Some(&snapshot_id))
+        .expect("explicit snapshot should drill without repeating --session");
+
+    assert_eq!(result.snapshot_id.as_deref(), Some(snapshot_id.as_str()));
+    let on_disk = load_session_snapshot("agent-a", &snapshot_id);
+    assert!(on_disk.get("@e1").is_some(), "skeleton anchor preserved");
+    let drill_ref = result.tree.ref_id.as_deref().expect("drill ref");
+    let drill_entry = on_disk.get(drill_ref).expect("drill ref persisted");
+    assert_eq!(drill_entry.name.as_deref(), Some("Save"));
+    assert!(RefStore::new().unwrap().latest_snapshot_id().is_none());
 }
 
 #[test]

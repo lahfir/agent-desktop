@@ -1,5 +1,6 @@
 use crate::AdAdapter;
-use crate::convert::string::{c_to_string, try_c_to_string};
+use crate::convert::string::optional_adapter_string;
+use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdNativeHandle, AdRefEntry};
@@ -34,7 +35,7 @@ pub unsafe extern "C" fn ad_resolve_element(
         if let Err(rc) = crate::main_thread::require_main_thread() {
             return rc;
         }
-        match adapter.inner.resolve_element(&core_entry) {
+        match adapter.inner.resolve_element_strict(&core_entry) {
             Ok(handle) => {
                 let handle = ManuallyDrop::new(handle);
                 (*out).ptr = handle.as_raw();
@@ -48,40 +49,73 @@ pub unsafe extern "C" fn ad_resolve_element(
     })
 }
 
-unsafe fn core_ref_entry_from_ffi(
+pub(crate) unsafe fn core_ref_entry_from_ffi(
     entry: &AdRefEntry,
 ) -> Result<CoreRefEntry, agent_desktop_core::error::AdapterError> {
-    let role = unsafe { c_to_string(entry.role) }.ok_or_else(|| {
+    let role = unsafe { optional_string(entry.role, "role") }?.ok_or_else(|| {
         agent_desktop_core::error::AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
-            "role is null or invalid UTF-8",
+            "role is null",
         )
     })?;
     let name = unsafe { optional_string(entry.name, "name") }?;
+    let value = unsafe { optional_string(entry.value, "value") }?;
     let description = unsafe { optional_string(entry.description, "description") }?;
+    let states = unsafe {
+        string_array(
+            entry.states,
+            entry.state_count,
+            "states",
+            "AD_MAX_REF_STATES",
+            crate::types::ref_entry::AD_MAX_REF_STATES,
+        )
+    }?;
+    let available_actions = unsafe {
+        string_array(
+            entry.available_actions,
+            entry.available_action_count,
+            "available_actions",
+            "AD_MAX_REF_ACTIONS",
+            crate::types::ref_entry::AD_MAX_REF_ACTIONS,
+        )
+    }?;
+    let bounds = if entry.has_bounds {
+        Some(agent_desktop_core::node::Rect {
+            x: entry.bounds.x,
+            y: entry.bounds.y,
+            width: entry.bounds.width,
+            height: entry.bounds.height,
+        })
+    } else {
+        None
+    };
     let bounds_hash = if entry.has_bounds_hash {
         Some(entry.bounds_hash)
     } else {
         None
     };
+    let source_surface = snapshot_surface_from_c(entry.source_surface, "source_surface")?;
+    let path = unsafe { ref_path(entry.path, entry.path_count)? };
 
     Ok(CoreRefEntry {
         pid: entry.pid,
         role,
         name,
-        value: None,
+        value,
         description,
-        states: vec![],
-        bounds: None,
+        states,
+        bounds,
         bounds_hash,
-        available_actions: vec![],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        available_actions,
+        source_app: unsafe { optional_string(entry.source_app, "source_app") }?,
+        source_window_id: unsafe { optional_string(entry.source_window_id, "source_window_id") }?,
+        source_window_title: unsafe {
+            optional_string(entry.source_window_title, "source_window_title")
+        }?,
+        source_surface,
+        root_ref: unsafe { optional_string(entry.root_ref, "root_ref") }?,
+        path_is_absolute: entry.path_is_absolute,
+        path,
     })
 }
 
@@ -89,12 +123,79 @@ unsafe fn optional_string(
     ptr: *const std::os::raw::c_char,
     field: &str,
 ) -> Result<Option<String>, agent_desktop_core::error::AdapterError> {
-    unsafe { try_c_to_string(ptr) }.map_err(|()| {
-        agent_desktop_core::error::AdapterError::new(
+    optional_adapter_string(ptr, field)
+}
+
+fn check_array_len(
+    len: usize,
+    is_null: bool,
+    field: &str,
+    constant: &str,
+    max: usize,
+) -> Result<(), agent_desktop_core::error::AdapterError> {
+    if len > max {
+        return Err(agent_desktop_core::error::AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
-            format!("{field} is not valid UTF-8"),
-        )
-    })
+            format!("{field} count {len} exceeds {constant} ({max})"),
+        ));
+    }
+    if is_null {
+        return Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("{field} count is nonzero but pointer is null"),
+        ));
+    }
+    Ok(())
+}
+
+unsafe fn string_array(
+    ptr: *const *const std::os::raw::c_char,
+    len: usize,
+    field: &str,
+    constant: &str,
+    max: usize,
+) -> Result<Vec<String>, agent_desktop_core::error::AdapterError> {
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    check_array_len(len, ptr.is_null(), field, constant, max)?;
+    let items = unsafe { std::slice::from_raw_parts(ptr, len) };
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let element = format!("{field}[{index}]");
+            unsafe { optional_string(*item, &element) }?.ok_or_else(|| {
+                agent_desktop_core::error::AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                    format!("{element} is null"),
+                )
+            })
+        })
+        .collect()
+}
+
+unsafe fn ref_path(
+    ptr: *const u32,
+    len: usize,
+) -> Result<smallvec::SmallVec<[usize; 8]>, agent_desktop_core::error::AdapterError> {
+    if len == 0 {
+        return Ok(smallvec::SmallVec::new());
+    }
+    check_array_len(
+        len,
+        ptr.is_null(),
+        "path",
+        "AD_MAX_REF_PATH_DEPTH",
+        crate::types::ref_entry::AD_MAX_REF_PATH_DEPTH,
+    )?;
+    let mut path = smallvec::SmallVec::new();
+    path.extend(
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+            .iter()
+            .map(|item| *item as usize),
+    );
+    Ok(path)
 }
 
 #[cfg(test)]

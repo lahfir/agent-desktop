@@ -1,6 +1,7 @@
 ---
 title: Guard OS-reordered resources with an identity fingerprint, not a raw index
 date: 2026-04-16
+last_updated: 2026-06-10
 category: best-practices
 module: crates/core, crates/macos, crates/ffi
 problem_type: best_practice
@@ -111,8 +112,10 @@ real behavioral difference.
 **Tri-state UTF-8 decoding at the FFI boundary.** The identity strings
 come in as `*const c_char`. Null means "no fingerprint"; invalid UTF-8
 must NOT be silently coerced to "no fingerprint" (that would defeat
-the guard). Use `try_c_to_string` which returns
-`Ok(None)` / `Ok(Some(_))` / `Err(())` and map `Err` to
+the guard). Use `try_c_to_string` (or the `decode_optional_filter!`
+macro that wraps it) which returns
+`Ok(None)` / `Ok(Some(_))` / `Err(CStrDecodeError)` — the error also
+covers strings exceeding the byte cap — and map `Err` to
 `InvalidArgs`.
 
 ## When NOT to use this

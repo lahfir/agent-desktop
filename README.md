@@ -71,7 +71,7 @@ cargo build --release
 cp target/release/agent-desktop /usr/local/bin/
 ```
 
-Requires Rust 1.78+ and macOS 13.0+.
+Requires Rust 1.85+ and macOS 13.0+.
 
 ### Permissions
 
@@ -156,6 +156,27 @@ agent-desktop snapshot -i               # re-observe after UI changes
 Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
 ```
 
+### Shared sessions for multi-agent workflows
+
+Use the same `--session <id>` when multiple agents coordinate on one desktop task. A session owns a latest-snapshot pointer, not a security boundary. Each snapshot gets its own `snapshot_id`; pass `--snapshot <id>` when an agent must act on a specific observation. Explicit snapshot IDs can be used without repeating `--session`; keep `--session` when you omit `--snapshot` and want that session's latest snapshot.
+
+```mermaid
+flowchart LR
+    S["--session release-fix"] --> A["snapshot -> s1"]
+    S --> B["snapshot -> s2"]
+    A --> C["Agent A: click @e4 --snapshot s1"]
+    B --> D["Agent B: wait --element @e9 --predicate actionable"]
+    S --> E["latest_snapshot_id points at newest snapshot"]
+    C --> F["Explicit snapshot id works outside session too"]
+```
+
+```bash
+agent-desktop --session release-fix snapshot --app Xcode -i --compact
+agent-desktop --session release-fix wait --element @e9 --predicate actionable --timeout 5000
+agent-desktop --session release-fix click @e9
+agent-desktop click @e9 --snapshot s2
+```
+
 ## Commands
 
 ### Observation
@@ -170,11 +191,13 @@ agent-desktop is @e7 --snapshot s8f3k2p9 --property checked # check boolean stat
 agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers, alerts
 ```
 
+`get` and `is` resolve the ref once, prefer live platform reads when available, and fall back only when that live read is unsupported by the adapter.
+
 ### Interaction
 
 ```bash
 agent-desktop click @e3                  # semantic AX-first click
-agent-desktop double-click @e3           # AXOpen; physical double-click uses mouse-click --count 2
+agent-desktop double-click @e3           # AXOpen; physical double-click uses --headed mouse-click --count 2
 agent-desktop triple-click @e3           # POLICY_DENIED if physical input is disabled
 agent-desktop right-click @e3            # open verified context menu
 agent-desktop type @e5 "hello world"     # insert text into element
@@ -191,6 +214,8 @@ agent-desktop scroll @e1 --direction down --amount 3  # scroll (AX-first)
 agent-desktop scroll-to @e20             # scroll element into view
 ```
 
+> **(macOS, Phase 1)** Pure cursor gestures have no accessibility equivalent, so `triple-click`, `hover`, and `drag` are always physical; `double-click` is headless via `AXOpen` and only needs `--headed` for gesture-only targets. Windows (UIA) and Linux (AT-SPI) adapters may expose different capabilities. See `skills/agent-desktop/references/commands-interaction.md`.
+
 ### Keyboard
 
 ```bash
@@ -204,13 +229,13 @@ agent-desktop key-up shift               # release key
 ### Mouse
 
 ```bash
-agent-desktop hover @e3                  # move cursor to element
-agent-desktop hover --xy 500,300         # move cursor to coordinates
-agent-desktop drag @e3 --to @e8          # drag between elements
-agent-desktop drag --xy 100,200 --to-xy 400,200  # drag between coordinates
-agent-desktop mouse-click --xy 500,300   # click at coordinates
-agent-desktop mouse-down --xy 500,300    # press at coordinates
-agent-desktop mouse-up --xy 500,300      # release at coordinates
+agent-desktop --headed hover @e3                  # move cursor to element
+agent-desktop --headed hover --xy 500,300         # move cursor to coordinates
+agent-desktop --headed drag --from @e3 --to @e8   # drag between elements
+agent-desktop --headed drag --from-xy 100,200 --to-xy 400,200  # drag between coordinates
+agent-desktop --headed mouse-click --xy 500,300   # click at coordinates
+agent-desktop --headed mouse-down --xy 500,300    # press at coordinates
+agent-desktop --headed mouse-up --xy 500,300      # release at coordinates
 ```
 
 ### App & Window Management
@@ -219,7 +244,7 @@ agent-desktop mouse-up --xy 500,300      # release at coordinates
 agent-desktop launch Safari              # launch app by name
 agent-desktop launch com.apple.Safari    # launch by bundle ID
 agent-desktop close-app Safari           # quit app
-agent-desktop close-app Safari --force   # force quit (SIGKILL)
+agent-desktop close-app Safari --force   # force quit (SIGTERM, then SIGKILL if needed)
 agent-desktop list-apps                  # list running GUI apps
 agent-desktop list-windows               # list visible windows
 agent-desktop list-windows --app Finder  # windows for specific app
@@ -256,8 +281,12 @@ agent-desktop clipboard-clear            # clear clipboard
 ```bash
 agent-desktop wait 500                                       # sleep 500ms
 agent-desktop wait --element @e3 --timeout 5000              # wait for element
+agent-desktop wait --element @e3 --predicate actionable      # wait until safe to act
+agent-desktop wait --element @e5 --predicate value --value ready
 agent-desktop wait --window "Save" --timeout 10000           # wait for window
 agent-desktop wait --text "Loading complete" --app Safari    # wait for text
+agent-desktop wait --text "Done" --count 1 --app Xcode       # wait for exact match count
+agent-desktop wait --notification --text "Build Succeeded"   # wait for new matching notification
 agent-desktop wait --menu --timeout 3000                     # wait for menu
 ```
 
@@ -269,6 +298,11 @@ agent-desktop batch '[
   {"command": "type", "args": {"ref_id": "@e5", "snapshot": "<snapshot_id>", "text": "hello"}},
   {"command": "press", "args": {"combo": "return"}}
 ]' --stop-on-error
+
+agent-desktop --session run-a batch '[
+  {"command": "snapshot", "args": {"app": "Finder", "interactive_only": true}},
+  {"command": "status", "session": "run-b", "args": {}}
+]'
 ```
 
 ### System
@@ -335,6 +369,7 @@ Errors include machine-readable codes and recovery hints:
 | `ELEMENT_NOT_FOUND` | No element matched the ref or query |
 | `APP_NOT_FOUND` | Application not running or no windows |
 | `STALE_REF` | Ref is from a previous snapshot |
+| `AMBIGUOUS_TARGET` | Ref recovery matched multiple plausible targets |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired |
 | `POLICY_DENIED` | Physical/headed path blocked by policy |
 | `ACTION_FAILED` | The OS rejected the action |
@@ -348,16 +383,25 @@ Errors include machine-readable codes and recovery hints:
 
 ## Ref System
 
-`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the latest snapshot pointer, but passing the ID is more deterministic in multi-step flows.
+`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the active session's latest snapshot pointer, but passing the ID is more deterministic in multi-step flows and does not require also passing `--session`.
 
 Interactive roles that receive refs: `button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `incrementor`, `menubutton`, `switch`, `colorwell`, `dockitem`.
 
 Static elements (labels, groups, containers) appear in the tree for context but have no ref.
 
+Reliability contract:
+
+- `--session <id>` scopes the latest snapshot pointer to one caller or agent team; explicit `--snapshot <id>` resolves the saved snapshot directly.
+- Ref actions re-identify targets at action time: a moved unique target can proceed, while missing or changed identity returns `STALE_REF`.
+- Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
+- Actions run an actionability preflight before dispatch: visibility, stability, enabled state, supported action, policy, and editability.
+- `wait --element @e3 --predicate actionable` polls until the target can be acted on.
+- `--trace <path>` appends JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action trace writes, while post-action success traces are best-effort after the desktop mutation has already happened.
+
 Stale ref recovery:
 
 ```
-snapshot → act → STALE_REF? → snapshot again → retry
+snapshot → act → STALE_REF or AMBIGUOUS_TARGET? → wait/snapshot again → retry with the new ref
 ```
 
 ## Platform Support
@@ -441,7 +485,7 @@ cargo build --release
 
 ### What is the ref system?
 
-`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`.
+`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the active session's latest snapshot pointer, but explicit snapshot IDs are the deterministic path and do not require also passing `--session`.
 
 Interactive roles that receive refs:
 

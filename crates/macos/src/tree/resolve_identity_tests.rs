@@ -87,3 +87,35 @@ fn value_identity_cannot_be_rescued_by_matching_name_when_value_mismatches() {
     assert!(identity_matches(&entry, Some("On"), None, None));
     assert!(!identity_matches(&entry, Some("On"), Some("Off"), None));
 }
+
+#[test]
+fn mutable_value_role_does_not_go_stale_when_value_changes() {
+    let mut entry = entry();
+    entry.role = "textfield".into();
+    entry.value = Some("seed".into());
+
+    assert!(!has_meaningful_identity(&entry));
+    assert!(identity_matches(&entry, None, Some("changed"), None));
+}
+
+#[test]
+fn named_mutable_value_role_still_uses_name_identity() {
+    let mut entry = entry();
+    entry.role = "textfield".into();
+    entry.name = Some("Search".into());
+    entry.value = Some("old query".into());
+
+    assert!(has_meaningful_identity(&entry));
+    assert!(identity_matches(
+        &entry,
+        Some("Search"),
+        Some("new query"),
+        None
+    ));
+    assert!(!identity_matches(
+        &entry,
+        Some("Replace"),
+        Some("new query"),
+        None
+    ));
+}

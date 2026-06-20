@@ -1,8 +1,7 @@
 use crate::{
-    action::{Action, ActionRequest},
-    adapter::PlatformAdapter,
-    commands::helpers::resolve_ref,
-    error::AppError,
+    action::Action, adapter::PlatformAdapter,
+    commands::helpers::execute_ref_action_result_with_context, context::CommandContext,
+    error::AppError, interaction_policy::InteractionPolicy,
 };
 use serde_json::Value;
 
@@ -14,17 +13,27 @@ pub struct TypeArgs {
     pub text: String,
 }
 
-pub fn execute(args: TypeArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub fn execute(
+    args: TypeArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     if args.text.len() > MAX_TEXT_LEN {
         return Err(AppError::invalid_input(format!(
             "Text exceeds maximum length of {MAX_TEXT_LEN} characters"
         )));
     }
 
-    let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
-    let result = adapter.execute_action(
-        handle.handle(),
-        ActionRequest::focus_fallback(Action::TypeText(args.text)),
+    let request = context.request(
+        Action::TypeText(args.text),
+        InteractionPolicy::focus_fallback(),
+    );
+    let (_entry, result) = execute_ref_action_result_with_context(
+        &args.ref_id,
+        args.snapshot_id.as_deref(),
+        adapter,
+        request,
+        context,
     )?;
     Ok(serde_json::to_value(result)?)
 }

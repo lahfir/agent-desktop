@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
     Click,
@@ -26,92 +25,39 @@ pub enum Action {
     Drag(DragParams),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionRequest {
-    pub action: Action,
-    pub policy: InteractionPolicy,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InteractionPolicy {
-    pub allow_focus_steal: bool,
-    pub allow_cursor_move: bool,
-}
-
-impl ActionRequest {
-    pub fn headless(action: Action) -> Self {
-        Self {
-            action,
-            policy: InteractionPolicy::headless(),
+impl Action {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Click => "click",
+            Self::DoubleClick => "double-click",
+            Self::RightClick => "right-click",
+            Self::TripleClick => "triple-click",
+            Self::SetValue(_) => "set-value",
+            Self::SetFocus => "focus",
+            Self::Expand => "expand",
+            Self::Collapse => "collapse",
+            Self::Select(_) => "select",
+            Self::Toggle => "toggle",
+            Self::Check => "check",
+            Self::Uncheck => "uncheck",
+            Self::Scroll(_, _) => "scroll",
+            Self::ScrollTo => "scroll-to",
+            Self::PressKey(_) => "press",
+            Self::KeyDown(_) => "key-down",
+            Self::KeyUp(_) => "key-up",
+            Self::TypeText(_) => "type",
+            Self::Clear => "clear",
+            Self::Hover => "hover",
+            Self::Drag(_) => "drag",
         }
     }
 
-    pub fn focus_fallback(action: Action) -> Self {
-        Self {
-            action,
-            policy: InteractionPolicy::focus_fallback(),
-        }
+    pub fn requires_cursor_policy(&self) -> bool {
+        matches!(self, Self::Hover | Self::Drag(_))
     }
 
-    pub fn physical(action: Action) -> Self {
-        Self {
-            action,
-            policy: InteractionPolicy::physical(),
-        }
-    }
-}
-
-impl InteractionPolicy {
-    pub fn headless() -> Self {
-        Self {
-            allow_focus_steal: false,
-            allow_cursor_move: false,
-        }
-    }
-
-    pub fn focus_fallback() -> Self {
-        Self {
-            allow_focus_steal: true,
-            allow_cursor_move: false,
-        }
-    }
-
-    pub fn physical() -> Self {
-        Self {
-            allow_focus_steal: true,
-            allow_cursor_move: true,
-        }
-    }
-}
-
-impl Default for InteractionPolicy {
-    fn default() -> Self {
-        Self::headless()
-    }
-}
-
-#[cfg(test)]
-mod policy_tests {
-    use super::*;
-
-    #[test]
-    fn default_policy_is_headless() {
-        let policy = InteractionPolicy::default();
-        assert!(!policy.allow_focus_steal);
-        assert!(!policy.allow_cursor_move);
-    }
-
-    #[test]
-    fn headless_request_blocks_physical_side_effects() {
-        let request = ActionRequest::headless(Action::Click);
-        assert_eq!(request.policy, InteractionPolicy::headless());
-    }
-
-    #[test]
-    fn focus_fallback_policy_never_moves_cursor() {
-        let request = ActionRequest::focus_fallback(Action::Scroll(Direction::Down, 1));
-        assert!(request.policy.allow_focus_steal);
-        assert!(!request.policy.allow_cursor_move);
+    pub fn may_use_focus_fallback(&self) -> bool {
+        matches!(self, Self::TypeText(_) | Self::PressKey(_))
     }
 }
 
@@ -142,6 +88,12 @@ pub struct DragParams {
     pub to: Point,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Time to hold the dragged item over the destination before releasing.
+    /// macOS drop targets often need the drag to dwell over them before they
+    /// register as the drop destination; too short and the gesture lands as a
+    /// drag with no drop. `None` uses the adapter default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_delay_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,40 +134,27 @@ pub enum Modifier {
     Shift,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionResult {
-    pub action: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ref_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub post_state: Option<ElementState>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ElementState {
-    pub role: String,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub states: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-}
+    #[test]
+    fn action_names_do_not_include_payloads() {
+        let cases = [
+            (Action::SetValue("private".into()), "set-value"),
+            (Action::Select("private".into()), "select"),
+            (Action::TypeText("private".into()), "type"),
+            (
+                Action::PressKey(KeyCombo {
+                    key: "A".into(),
+                    modifiers: vec![Modifier::Cmd],
+                }),
+                "press",
+            ),
+        ];
 
-impl ActionResult {
-    pub fn new(action: impl Into<String>) -> Self {
-        Self {
-            action: action.into(),
-            ref_id: None,
-            post_state: None,
+        for (action, expected) in cases {
+            assert_eq!(action.name(), expected);
         }
-    }
-
-    pub fn with_ref(mut self, ref_id: impl Into<String>) -> Self {
-        self.ref_id = Some(ref_id.into());
-        self
-    }
-
-    pub fn with_state(mut self, state: ElementState) -> Self {
-        self.post_state = Some(state);
-        self
     }
 }

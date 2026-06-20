@@ -1,9 +1,6 @@
 use crate::convert::string::c_to_string;
 use crate::types::{AdAction, AdActionKind, AdDirection, AdKeyCombo, AdModifier};
-use agent_desktop_core::action::{
-    Action, Direction, DragParams as CoreDragParams, KeyCombo as CoreKeyCombo, Modifier,
-    Point as CorePoint,
-};
+use agent_desktop_core::action::{Action, Direction, KeyCombo as CoreKeyCombo, Modifier};
 
 fn direction_from_c(d: AdDirection) -> Direction {
     match d {
@@ -95,24 +92,7 @@ pub(crate) unsafe fn action_from_c(action: &AdAction) -> Result<Action, &'static
                 let combo = key_combo_from_c(&action.key)?;
                 Ok(Action::KeyUp(combo))
             }
-            AdActionKind::Drag => {
-                let params = CoreDragParams {
-                    from: CorePoint {
-                        x: action.drag.from.x,
-                        y: action.drag.from.y,
-                    },
-                    to: CorePoint {
-                        x: action.drag.to.x,
-                        y: action.drag.to.y,
-                    },
-                    duration_ms: if action.drag.duration_ms == 0 {
-                        None
-                    } else {
-                        Some(action.drag.duration_ms)
-                    },
-                };
-                Ok(Action::Drag(params))
-            }
+            AdActionKind::Drag => Ok(Action::Drag(action.drag.to_core())),
         }
     }
 }
@@ -144,6 +124,7 @@ mod tests {
             from: AdPoint { x: 0.0, y: 0.0 },
             to: AdPoint { x: 0.0, y: 0.0 },
             duration_ms: 0,
+            drop_delay_ms: 0,
         }
     }
 

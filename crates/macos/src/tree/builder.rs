@@ -1,13 +1,14 @@
+use agent_desktop_core::capability;
 use agent_desktop_core::node::AccessibilityNode;
 use rustc_hash::FxHashSet;
 
 use super::AXElement;
 use super::action_list::platform_available_actions;
+use super::attributes::{copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_string_attr};
 use super::build_context::TreeBuildContext;
 use super::capabilities::same_element;
 use super::element::{
-    ABSOLUTE_MAX_DEPTH, child_attributes, copy_ax_array, copy_ax_array_prefix, copy_bool_attr,
-    copy_string_attr, count_children, element_for_pid, fetch_node_attrs,
+    ABSOLUTE_MAX_DEPTH, child_attributes, count_children, element_for_pid, fetch_node_attrs,
 };
 
 #[cfg(target_os = "macos")]
@@ -21,7 +22,14 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
     let app = element_for_pid(pid);
 
     if let Some(windows) = copy_ax_array(&app, kAXWindowsAttribute) {
+        let mut first_candidate = None;
+        let mut child_candidate = None;
+        let mut partial_candidate = None;
         for win in &windows {
+            if !is_window_candidate(win) {
+                continue;
+            }
+            first_candidate.get_or_insert_with(|| win.clone());
             let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
@@ -29,23 +37,18 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
             {
                 return win.clone();
             }
-        }
-        for win in &windows {
-            let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
                 .is_some_and(|title| window_titles_are_partial_match(title, win_title))
             {
-                return win.clone();
+                partial_candidate.get_or_insert_with(|| win.clone());
+            }
+            if child_candidate.is_none() && count_children(win, None) > 0 {
+                child_candidate = Some(win.clone());
             }
         }
-        for win in &windows {
-            if count_children(win, None) > 0 {
-                return win.clone();
-            }
-        }
-        if let Some(first) = windows.into_iter().next() {
-            return first;
+        if let Some(candidate) = partial_candidate.or(child_candidate).or(first_candidate) {
+            return candidate;
         }
     }
 
@@ -62,6 +65,11 @@ fn window_titles_are_partial_match(candidate_title: &str, requested_title: &str)
     !candidate_title.is_empty()
         && !requested_title.is_empty()
         && (candidate_title.contains(requested_title) || requested_title.contains(candidate_title))
+}
+
+#[cfg(target_os = "macos")]
+fn is_window_candidate(el: &AXElement) -> bool {
+    copy_string_attr(el, kAXRoleAttribute).as_deref() == Some("AXWindow")
 }
 
 #[cfg(target_os = "macos")]
@@ -89,14 +97,14 @@ pub fn build_subtree(
         let value = redact_secure_value(attrs.role.as_deref(), attrs.value);
         let name = attrs.title.or(attrs.description);
         let child_count = count_children(el, attrs.role.as_deref());
-        let bounds = context.read_bounds(el);
+        let bounds = context.bounds_for(attrs.bounds);
         let mut states = Vec::new();
         if is_secure_text {
             states.push("secure".into());
         }
         return Some(AccessibilityNode {
             ref_id: None,
-            available_actions: platform_available_actions(el, &role),
+            available_actions: platform_available_actions(el, &role, attrs.has_scrollbars),
             name,
             value,
             description: None,
@@ -125,9 +133,9 @@ pub fn build_subtree(
     let value = redact_secure_value(attrs.role.as_deref(), attrs.value);
     let is_promoted_item = promoted_label.is_some();
     let available_actions = if is_promoted_item {
-        vec!["Click".into(), "RightClick".into()]
+        vec![capability::CLICK.into(), capability::RIGHT_CLICK.into()]
     } else {
-        platform_available_actions(el, &role)
+        platform_available_actions(el, &role, attrs.has_scrollbars)
     };
 
     let name = promoted_label.or_else(|| attrs.title.clone().or_else(|| attrs.description.clone()));
@@ -151,20 +159,25 @@ pub fn build_subtree(
     {
         states.push("focused".into());
     }
-    if !attrs.enabled {
+    if !attrs.states.enabled {
         states.push("disabled".into());
     }
     if is_secure_text {
         states.push("secure".into());
     }
-    if element_is_expanded(el) {
+    if attrs
+        .states
+        .expanded
+        .or(attrs.states.disclosing)
+        .unwrap_or_else(|| element_is_expanded(el))
+    {
         states.push("expanded".into());
     }
     if super::roles::is_toggleable_role(&role) && value_is_checked(value.as_deref()) {
         states.push("checked".into());
     }
 
-    let bounds = context.read_bounds(el);
+    let bounds = context.bounds_for(attrs.bounds);
 
     let is_web_wrapper = matches!(
         attrs.role.as_deref(),

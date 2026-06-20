@@ -35,6 +35,7 @@ pub mod mouse_up;
 pub mod move_window;
 pub mod notification_action;
 pub mod permissions;
+pub(crate) mod point_resolve;
 pub mod press;
 pub mod resize_window;
 pub mod restore;
@@ -53,6 +54,12 @@ pub mod type_text;
 pub mod uncheck;
 pub mod version;
 pub mod wait;
+pub(crate) mod wait_element;
+pub(crate) mod wait_latest_ref_cache;
+pub(crate) mod wait_mode;
+pub(crate) mod wait_predicate;
+pub(crate) mod wait_text_match;
+pub(crate) mod wait_timeout;
 
 #[cfg(test)]
 mod ref_policy_tests;

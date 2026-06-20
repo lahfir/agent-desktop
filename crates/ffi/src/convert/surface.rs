@@ -1,6 +1,10 @@
 use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
-use crate::types::AdSurfaceInfo;
-use agent_desktop_core::node::SurfaceInfo;
+use crate::types::{AdSnapshotSurface, AdSurfaceInfo};
+use agent_desktop_core::{
+    adapter::SnapshotSurface,
+    error::{AdapterError, ErrorCode},
+    node::SurfaceInfo,
+};
 use std::os::raw::c_char;
 use std::ptr;
 
@@ -10,6 +14,32 @@ pub(crate) fn surface_info_to_c(s: &SurfaceInfo) -> AdSurfaceInfo {
         title: opt_string_to_c(s.title.as_deref()),
         item_count: s.item_count.map(|c| c as i64).unwrap_or(-1),
     }
+}
+
+pub(crate) fn snapshot_surface_to_core(surface: AdSnapshotSurface) -> SnapshotSurface {
+    match surface {
+        AdSnapshotSurface::Window => SnapshotSurface::Window,
+        AdSnapshotSurface::Focused => SnapshotSurface::Focused,
+        AdSnapshotSurface::Menu => SnapshotSurface::Menu,
+        AdSnapshotSurface::Menubar => SnapshotSurface::Menubar,
+        AdSnapshotSurface::Sheet => SnapshotSurface::Sheet,
+        AdSnapshotSurface::Popover => SnapshotSurface::Popover,
+        AdSnapshotSurface::Alert => SnapshotSurface::Alert,
+    }
+}
+
+pub(crate) fn snapshot_surface_from_c(
+    raw: i32,
+    field: &str,
+) -> Result<SnapshotSurface, AdapterError> {
+    AdSnapshotSurface::from_c(raw)
+        .map(snapshot_surface_to_core)
+        .ok_or_else(|| {
+            AdapterError::new(
+                ErrorCode::InvalidArgs,
+                format!("invalid {field} discriminant"),
+            )
+        })
 }
 
 pub(crate) unsafe fn free_surface_info_fields(s: &mut AdSurfaceInfo) {
@@ -39,5 +69,17 @@ mod tests {
         assert_eq!(c.item_count, 3);
         let mut c = c;
         unsafe { free_surface_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn snapshot_surface_from_c_uses_shared_enum_validation() {
+        assert_eq!(
+            snapshot_surface_from_c(5, "source_surface").unwrap(),
+            SnapshotSurface::Popover
+        );
+
+        let err = snapshot_surface_from_c(99, "source_surface").unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidArgs);
+        assert_eq!(err.message, "invalid source_surface discriminant");
     }
 }

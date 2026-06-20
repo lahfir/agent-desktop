@@ -2,24 +2,21 @@ use crate::{
     PermissionReport,
     adapter::PlatformAdapter,
     commands::permissions::{self, PermissionsArgs},
+    context::CommandContext,
     error::AppError,
     refs_store::RefStore,
 };
 use serde_json::{Value, json};
 
-pub fn execute(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let report = adapter.permission_report();
-    execute_with_report(adapter, &report)
-}
-
-pub fn execute_with_report(
+pub fn execute_with_report_with_context(
     adapter: &dyn PlatformAdapter,
     report: &PermissionReport,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
     let permissions =
         permissions::execute_with_report(PermissionsArgs { request: false }, adapter, report)?;
 
-    let store = RefStore::new().ok();
+    let store = RefStore::for_session(context.session_id()).ok();
     let ref_count = store
         .as_ref()
         .and_then(|s| s.load_latest().ok())

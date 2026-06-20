@@ -1,6 +1,6 @@
-use crate::convert::string::c_to_string;
+use crate::convert::string::{optional_adapter_string, required_adapter_string};
 use crate::types::AdWindowInfo;
-use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::error::AdapterError;
 
 /// Converts an `AdWindowInfo` from C into the core `WindowInfo`.
 ///
@@ -14,16 +14,9 @@ use agent_desktop_core::error::{AdapterError, ErrorCode};
 pub(crate) fn ad_window_to_core(
     w: &AdWindowInfo,
 ) -> Result<agent_desktop_core::node::WindowInfo, AdapterError> {
-    let id = unsafe { c_to_string(w.id) }.ok_or_else(|| {
-        AdapterError::new(ErrorCode::InvalidArgs, "window id is null or invalid UTF-8")
-    })?;
-    let title = unsafe { c_to_string(w.title) }.ok_or_else(|| {
-        AdapterError::new(
-            ErrorCode::InvalidArgs,
-            "window title is null or invalid UTF-8",
-        )
-    })?;
-    let app = unsafe { c_to_string(w.app_name) }.unwrap_or_default();
+    let id = required_adapter_string(w.id, "window id")?;
+    let title = required_adapter_string(w.title, "window title")?;
+    let app = optional_adapter_string(w.app_name, "window app_name")?.unwrap_or_default();
     Ok(agent_desktop_core::node::WindowInfo {
         id,
         title,
@@ -41,4 +34,61 @@ pub(crate) fn ad_window_to_core(
         },
         is_focused: w.is_focused,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::convert::string::MAX_C_STRING_BYTES;
+    use crate::types::AdRect;
+    use agent_desktop_core::error::ErrorCode;
+    use std::ffi::CString;
+
+    #[test]
+    fn window_app_name_rejects_oversized_string() {
+        let id = CString::new("w-1").unwrap();
+        let title = CString::new("Main").unwrap();
+        let mut app = vec![b'a'; MAX_C_STRING_BYTES + 1];
+        app.push(0);
+        let win = window(id.as_ptr(), title.as_ptr(), app.as_ptr().cast());
+
+        let err = ad_window_to_core(&win).unwrap_err();
+
+        assert_eq!(err.code, ErrorCode::InvalidArgs);
+        assert!(err.message.contains("window app_name exceeds"));
+    }
+
+    #[test]
+    fn window_app_name_rejects_invalid_utf8() {
+        let id = CString::new("w-1").unwrap();
+        let title = CString::new("Main").unwrap();
+        let app = [0xff_u8, 0x00];
+        let win = window(id.as_ptr(), title.as_ptr(), app.as_ptr().cast());
+
+        let err = ad_window_to_core(&win).unwrap_err();
+
+        assert_eq!(err.code, ErrorCode::InvalidArgs);
+        assert!(err.message.contains("window app_name is not valid UTF-8"));
+    }
+
+    fn window(
+        id: *const std::os::raw::c_char,
+        title: *const std::os::raw::c_char,
+        app_name: *const std::os::raw::c_char,
+    ) -> AdWindowInfo {
+        AdWindowInfo {
+            id,
+            title,
+            app_name,
+            pid: 7,
+            bounds: AdRect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            has_bounds: false,
+            is_focused: false,
+        }
+    }
 }

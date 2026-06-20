@@ -16,7 +16,8 @@ use crate::types::{
 macro_rules! try_from_c_enum {
     ($ty:ty { $($variant:ident = $val:expr),+ $(,)? }) => {
         impl $ty {
-            #[allow(dead_code)] // not every enum is read from C today; keep the validator uniformly
+            /// Converts a raw C discriminant; not every enum is read from C today.
+            #[allow(dead_code)]
             pub(crate) fn from_c(raw: i32) -> Option<Self> {
                 match raw {
                     $($val => Some(<$ty>::$variant),)+
@@ -39,7 +40,7 @@ try_from_c_enum! {
 
 try_from_c_enum! {
     AdPolicyKind {
-        Headless = 0, FocusFallback = 1, Physical = 2,
+        Headless = 0, FocusFallback = 1, Headed = 2,
     }
 }
 

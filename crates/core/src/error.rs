@@ -1,5 +1,8 @@
 use serde::Serialize;
+use serde_json::Value;
 use thiserror::Error;
+
+use crate::interaction_policy::InteractionPolicy;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -10,6 +13,7 @@ pub enum ErrorCode {
     ActionFailed,
     ActionNotSupported,
     StaleRef,
+    AmbiguousTarget,
     WindowNotFound,
     PlatformNotSupported,
     Timeout,
@@ -29,6 +33,7 @@ impl ErrorCode {
             ErrorCode::ActionFailed => "ACTION_FAILED",
             ErrorCode::ActionNotSupported => "ACTION_NOT_SUPPORTED",
             ErrorCode::StaleRef => "STALE_REF",
+            ErrorCode::AmbiguousTarget => "AMBIGUOUS_TARGET",
             ErrorCode::WindowNotFound => "WINDOW_NOT_FOUND",
             ErrorCode::PlatformNotSupported => "PLATFORM_NOT_SUPPORTED",
             ErrorCode::Timeout => "TIMEOUT",
@@ -50,6 +55,7 @@ pub struct AdapterError {
     pub source: Option<Box<SourceError>>,
     pub suggestion: Option<String>,
     pub platform_detail: Option<String>,
+    pub details: Option<Value>,
 }
 
 #[derive(Debug, Error, Clone)]
@@ -64,6 +70,7 @@ impl AdapterError {
             source: None,
             suggestion: None,
             platform_detail: None,
+            details: None,
         }
     }
 
@@ -77,14 +84,24 @@ impl AdapterError {
         self
     }
 
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
+        self
+    }
+
     pub fn stale_ref(ref_id: &str) -> Self {
         Self::new(
             ErrorCode::StaleRef,
             format!("{ref_id} not found in current RefMap"),
         )
         .with_suggestion(
-            "Run 'snapshot' (or 'snapshot --skeleton') to refresh, then retry with updated ref",
+            "Use the snapshot_id returned with this ref, or run 'snapshot' / 'snapshot --skeleton' again for fresh refs",
         )
+    }
+
+    pub fn ambiguous_target(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::AmbiguousTarget, message)
+            .with_suggestion("Run 'snapshot' to refresh, then retry with a more specific ref")
     }
 
     pub fn not_supported(method: &str) -> Self {
@@ -135,13 +152,28 @@ impl AdapterError {
             ErrorCode::SnapshotNotFound,
             format!("Snapshot '{snapshot_id}' not found"),
         )
-        .with_suggestion("Run 'snapshot' again and retry with the returned snapshot_id")
+        .with_suggestion("Run 'snapshot' again and retry with the returned snapshot_id; if you omitted --snapshot, use the same --session as the snapshot")
     }
 
     pub fn policy_denied(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::PolicyDenied, message).with_suggestion(
             "Use an explicit mouse/focus command if physical interaction is intended",
         )
+    }
+
+    pub fn policy_denied_for_policy(message: impl Into<String>, policy: InteractionPolicy) -> Self {
+        Self::new(ErrorCode::PolicyDenied, message)
+            .with_suggestion(policy_denied_suggestion(policy))
+    }
+}
+
+fn policy_denied_suggestion(policy: InteractionPolicy) -> &'static str {
+    if policy.allow_focus_steal && !policy.allow_cursor_move {
+        "Retry with --headed to permit cursor movement, or use an explicit mouse command if physical input is intended"
+    } else if !policy.allow_focus_steal && !policy.allow_cursor_move {
+        "Headless mode allows only accessibility-backed actions; retry with --headed only if physical cursor/focus interaction is intended, otherwise refresh the snapshot or target an element with the needed semantic action"
+    } else {
+        "Use an explicit mouse/focus command if physical interaction is intended"
     }
 }
 
@@ -225,5 +257,25 @@ mod tests {
             suggestion.contains("skeleton"),
             "stale-ref suggestion should mention skeleton refresh, got: {suggestion}"
         );
+    }
+
+    #[test]
+    fn ambiguous_target_error_has_machine_readable_code() {
+        let err = AdapterError::ambiguous_target("2 candidates matched");
+
+        assert_eq!(err.code, ErrorCode::AmbiguousTarget);
+        assert_eq!(err.code.as_str(), "AMBIGUOUS_TARGET");
+        assert!(err.suggestion.is_some());
+    }
+
+    #[test]
+    fn policy_denied_suggestion_is_mode_aware() {
+        let headless =
+            AdapterError::policy_denied_for_policy("blocked", InteractionPolicy::headless());
+        assert!(headless.suggestion.unwrap().contains("--headed"));
+
+        let focus_fallback =
+            AdapterError::policy_denied_for_policy("blocked", InteractionPolicy::focus_fallback());
+        assert!(focus_fallback.suggestion.unwrap().contains("--headed"));
     }
 }

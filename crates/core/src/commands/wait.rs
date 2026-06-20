@@ -1,198 +1,107 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::helpers::resolve_app_pid,
+    commands::{
+        helpers::resolve_app_pid,
+        wait_element::{ElementWaitInput, wait_for_element},
+        wait_mode::WaitMode,
+        wait_text_match, wait_timeout,
+    },
+    context::CommandContext,
     error::{AppError, ErrorCode},
-    node::AccessibilityNode,
-    notification::NotificationFilter,
-    refs::{RefMap, validate_ref_id},
+    notification::{NotificationFilter, NotificationInfo},
     refs_store::RefStore,
     search_text, snapshot,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+use crate::commands::wait_mode::validate_wait_mode;
+
+#[derive(Clone)]
 pub struct WaitArgs {
-    pub ms: Option<u64>,
-    pub element: Option<String>,
-    pub snapshot_id: Option<String>,
-    pub window: Option<String>,
-    pub text: Option<String>,
+    pub mode: WaitModeArgs,
+    pub predicate: WaitPredicateArgs,
     pub timeout_ms: u64,
-    pub menu: bool,
-    pub menu_closed: bool,
-    pub notification: bool,
     pub app: Option<String>,
 }
 
-pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    validate_wait_mode(&args)?;
-
-    if let Some(ms) = args.ms {
-        std::thread::sleep(Duration::from_millis(ms));
-        return Ok(json!({ "waited_ms": ms }));
-    }
-
-    if args.menu || args.menu_closed {
-        let pid = resolve_app_pid(args.app.as_deref(), adapter)?;
-        let start = Instant::now();
-        adapter
-            .wait_for_menu(pid, args.menu, args.timeout_ms)
-            .map_err(AppError::Adapter)?;
-        let elapsed = start.elapsed().as_millis();
-        return Ok(json!({ "found": true, "elapsed_ms": elapsed }));
-    }
-
-    if args.notification {
-        return wait_for_notification(&args, adapter);
-    }
-
-    if let Some(ref_id) = args.element {
-        validate_ref_id(&ref_id)?;
-        return wait_for_element(ref_id, args.snapshot_id, args.timeout_ms, adapter);
-    }
-
-    if let Some(title) = args.window {
-        return wait_for_window(title, args.timeout_ms, adapter);
-    }
-
-    if let Some(text) = args.text {
-        return wait_for_text(text, args.app, args.timeout_ms, adapter);
-    }
-
-    Err(AppError::invalid_input(
-        "Provide a duration (ms), --menu, --notification, --element <ref>, --window <title>, or --text <text>",
-    ))
+#[derive(Clone)]
+pub struct WaitModeArgs {
+    pub ms: Option<u64>,
+    pub element: Option<String>,
+    pub window: Option<String>,
+    pub text: Option<String>,
+    pub menu: bool,
+    pub menu_closed: bool,
+    pub notification: bool,
 }
 
-fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
-    let selected = [
-        args.ms.is_some(),
-        args.element.is_some(),
-        args.window.is_some(),
-        args.text.is_some() && !args.notification,
-        args.menu,
-        args.menu_closed,
-        args.notification,
-    ]
-    .into_iter()
-    .filter(|selected| *selected)
-    .count();
-    if selected <= 1 {
-        return Ok(());
-    }
-    Err(AppError::invalid_input_with_suggestion(
-        "wait accepts exactly one mode",
-        "Use one of: ms, --element, --window, --text, --menu, --menu-closed, or --notification.",
-    ))
+#[derive(Clone)]
+pub struct WaitPredicateArgs {
+    pub snapshot_id: Option<String>,
+    pub predicate: Option<String>,
+    pub value: Option<String>,
+    pub action: Option<String>,
+    pub count: Option<usize>,
 }
 
-fn wait_for_element(
-    ref_id: String,
-    snapshot_id: Option<String>,
+pub fn execute(
+    args: WaitArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let timeout_ms = args.timeout_ms;
+    match WaitMode::from_args(args)? {
+        WaitMode::Sleep(ms) => {
+            std::thread::sleep(Duration::from_millis(ms));
+            Ok(json!({ "waited_ms": ms }))
+        }
+        WaitMode::Menu { app, open } => wait_for_menu(app, open, timeout_ms, adapter),
+        WaitMode::Notification { app, text } => {
+            wait_for_notification(app, text, timeout_ms, adapter)
+        }
+        WaitMode::Element {
+            ref_id,
+            snapshot_id,
+            predicate,
+        } => wait_for_element(
+            ElementWaitInput {
+                ref_id,
+                snapshot_id,
+                predicate,
+                timeout_ms,
+            },
+            adapter,
+            context,
+        ),
+        WaitMode::Window(title) => wait_for_window(title, timeout_ms, adapter),
+        WaitMode::Text { text, count, app } => wait_for_text(
+            TextWaitInput {
+                text,
+                expected_count: count,
+                app,
+                timeout_ms,
+            },
+            adapter,
+            context,
+        ),
+    }
+}
+
+fn wait_for_menu(
+    app: Option<String>,
+    open: bool,
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
+    let pid = resolve_app_pid(app.as_deref(), adapter)?;
     let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
-    let store = RefStore::new()?;
-    let fixed_refmap = match snapshot_id.as_deref() {
-        Some(id) => Some(store.load_snapshot(id)?),
-        None => None,
-    };
-    let mut latest_cache = if fixed_refmap.is_none() {
-        Some(LatestRefCache::new(&store)?)
-    } else {
-        None
-    };
-
-    if fixed_refmap
-        .as_ref()
-        .is_some_and(|refmap| refmap.get(&ref_id).is_none())
-    {
-        return Err(AppError::invalid_input_with_suggestion(
-            format!("Ref {ref_id} is not present in the requested snapshot"),
-            "Use a ref returned by that snapshot_id, or omit --snapshot to wait against the latest refmap.",
-        ));
-    }
-
-    loop {
-        let entry = fixed_refmap
-            .as_ref()
-            .and_then(|r| r.get(&ref_id).cloned())
-            .or_else(|| latest_cache.as_ref().and_then(|c| c.entry(&ref_id)));
-        if let Some(entry) = entry {
-            match adapter.resolve_element(&entry) {
-                Ok(handle) => {
-                    let _ = adapter.release_handle(&handle);
-                    let elapsed = start.elapsed().as_millis();
-                    return Ok(json!({ "found": true, "ref": ref_id, "elapsed_ms": elapsed }));
-                }
-                Err(err) if fixed_refmap.is_none() && err.code == ErrorCode::StaleRef => {
-                    if let Some(cache) = latest_cache.as_mut() {
-                        cache.refresh_if_due();
-                    }
-                }
-                Err(_) => {}
-            }
-        } else if let Some(cache) = latest_cache.as_mut() {
-            cache.refresh_if_due();
-        }
-
-        let remaining = timeout.saturating_sub(start.elapsed());
-        if remaining.is_zero() {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("Element {ref_id} not found within {timeout_ms}ms"),
-            )));
-        }
-        std::thread::sleep(remaining.min(Duration::from_millis(100)));
-    }
-}
-
-struct LatestRefCache<'a> {
-    store: &'a RefStore,
-    snapshot_id: Option<String>,
-    refmap: RefMap,
-    last_refresh: Instant,
-}
-
-impl<'a> LatestRefCache<'a> {
-    fn new(store: &'a RefStore) -> Result<Self, AppError> {
-        let snapshot_id = store.latest_snapshot_id();
-        let refmap = if let Some(id) = snapshot_id.as_deref() {
-            store.load_snapshot(id)?
-        } else {
-            store.load_latest()?
-        };
-        Ok(Self {
-            store,
-            snapshot_id,
-            refmap,
-            last_refresh: Instant::now() - Duration::from_millis(500),
-        })
-    }
-
-    fn entry(&self, ref_id: &str) -> Option<crate::refs::RefEntry> {
-        self.refmap.get(ref_id).cloned()
-    }
-
-    fn refresh_if_due(&mut self) {
-        if self.last_refresh.elapsed() < Duration::from_millis(500) {
-            return;
-        }
-        self.last_refresh = Instant::now();
-        if let Some(snapshot_id) = self.store.latest_snapshot_id() {
-            if self.snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
-                return;
-            }
-            if let Ok(refmap) = self.store.load_snapshot(&snapshot_id) {
-                self.snapshot_id = Some(snapshot_id);
-                self.refmap = refmap;
-            }
-        } else if let Ok(refmap) = self.store.load_latest() {
-            self.refmap = refmap;
-            self.snapshot_id = self.store.latest_snapshot_id();
-        }
-    }
+    adapter
+        .wait_for_menu(pid, open, timeout_ms)
+        .map_err(AppError::Adapter)?;
+    let elapsed = start.elapsed().as_millis();
+    Ok(json!({ "found": true, "elapsed_ms": elapsed }))
 }
 
 fn wait_for_window(
@@ -206,58 +115,97 @@ fn wait_for_window(
         focused_only: false,
         app: None,
     };
+    let mut last_error = None;
 
     loop {
-        if let Ok(windows) = adapter.list_windows(&filter) {
-            if let Some(win) = windows.into_iter().find(|w| w.title.contains(&title)) {
-                let elapsed = start.elapsed().as_millis();
-                return Ok(json!({ "found": true, "window": win, "elapsed_ms": elapsed }));
+        match adapter.list_windows(&filter) {
+            Ok(windows) => {
+                if let Some(win) = windows.into_iter().find(|w| w.title.contains(&title)) {
+                    let elapsed = start.elapsed().as_millis();
+                    return Ok(json!({ "found": true, "window": win, "elapsed_ms": elapsed }));
+                }
             }
+            Err(err) if is_retryable_wait_poll_error(&err.code) => {
+                last_error = Some(json!({
+                    "code": err.code.as_str(),
+                    "message": err.message
+                }));
+            }
+            Err(err) => return Err(AppError::Adapter(err)),
         }
 
-        if start.elapsed() >= timeout {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("Window with title '{title}' not found within {timeout_ms}ms"),
-            )));
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            return wait_timeout::window(&title, timeout_ms, last_error);
         }
 
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(remaining.min(Duration::from_millis(100)));
     }
 }
 
-fn wait_for_text(
+struct TextWaitInput {
     text: String,
+    expected_count: Option<usize>,
     app: Option<String>,
     timeout_ms: u64,
+}
+
+fn wait_for_text(
+    input: TextWaitInput,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
+    let TextWaitInput {
+        text,
+        expected_count,
+        app,
+        timeout_ms,
+    } = input;
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
     let opts = crate::adapter::TreeOptions::default();
     let normalized_text = search_text::normalize(&text);
     let mut interval = Duration::from_millis(200);
+    let mut last_error = None;
 
     loop {
-        if let Ok(result) = snapshot::build(adapter, &opts, app.as_deref(), None) {
-            if let Some(found) = find_text_in_tree(&result.tree, &normalized_text) {
-                let snapshot_id = RefStore::new()?.save_new_snapshot(&result.refmap)?;
-                let elapsed = start.elapsed().as_millis();
-                return Ok(json!({
-                    "found": true,
-                    "text": text,
-                    "ref": found.ref_id,
-                    "role": found.role,
-                    "snapshot_id": snapshot_id,
-                    "elapsed_ms": elapsed
+        match snapshot::build(adapter, &opts, app.as_deref(), None) {
+            Ok(result) => {
+                let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
+                let matched = expected_count
+                    .map(|expected| matches.len() == expected)
+                    .unwrap_or_else(|| !matches.is_empty());
+                if matched {
+                    let snapshot_id = RefStore::for_session(context.session_id())?
+                        .save_new_snapshot(&result.refmap)?;
+                    let elapsed = start.elapsed().as_millis();
+                    let found = matches.first();
+                    let mut body = json!({
+                        "found": true,
+                        "text": text,
+                        "ref": found.and_then(|found| found.ref_id.clone()),
+                        "role": found.map(|found| found.role.clone()),
+                        "snapshot_id": snapshot_id,
+                        "elapsed_ms": elapsed
+                    });
+                    if expected_count.is_some() {
+                        body["count"] = json!(matches.len());
+                    }
+                    return Ok(body);
+                }
+            }
+            Err(err) if is_retryable_wait_app_error(&err) => {
+                last_error = Some(json!({
+                    "code": err.code(),
+                    "message": err.to_string()
                 }));
             }
+            Err(err) => return Err(err),
         }
 
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("Text '{text}' not found within {timeout_ms}ms"),
-            )));
+            return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
         }
 
         std::thread::sleep(remaining.min(interval));
@@ -265,71 +213,128 @@ fn wait_for_text(
     }
 }
 
-struct TextMatch {
-    ref_id: Option<String>,
-    role: String,
+fn is_retryable_wait_poll_error(code: &ErrorCode) -> bool {
+    matches!(code, ErrorCode::Timeout | ErrorCode::ElementNotFound)
+}
+
+fn is_retryable_wait_app_error(err: &AppError) -> bool {
+    matches!(err, AppError::Adapter(err) if is_retryable_wait_poll_error(&err.code))
 }
 
 fn wait_for_notification(
-    args: &WaitArgs,
+    app: Option<String>,
+    text: Option<String>,
+    timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
     let filter = NotificationFilter {
-        app: args.app.clone(),
-        text: args.text.clone(),
+        app: app.clone(),
+        text: text.clone(),
         ..Default::default()
     };
-    let baseline = adapter
-        .list_notifications(&filter)
-        .map_err(AppError::Adapter)?;
-    let baseline_indices: std::collections::HashSet<usize> =
-        baseline.iter().map(|n| n.index).collect();
-    let interval = Duration::from_millis(500);
-    let deadline = Instant::now() + Duration::from_millis(args.timeout_ms);
     let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    let mut baseline: Option<std::collections::HashMap<NotificationFingerprint, usize>> = None;
+    let mut last_error = None;
 
     loop {
-        if Instant::now() > deadline {
-            return Err(AppError::Adapter(crate::error::AdapterError::timeout(
-                format!("No new notification within {}ms", args.timeout_ms),
-            )));
+        match adapter.list_notifications(&filter) {
+            Ok(current) => match &baseline {
+                None => {
+                    baseline = Some(notification_counts(&current));
+                }
+                Some(baseline) => {
+                    if let Some(notif) = first_new_notification(&current, baseline) {
+                        let elapsed = start.elapsed().as_millis();
+                        return Ok(json!({
+                            "condition": "notification",
+                            "matched": true,
+                            "notification": notif,
+                            "elapsed_ms": elapsed,
+                        }));
+                    }
+                }
+            },
+            Err(err) if is_retryable_wait_poll_error(&err.code) => {
+                last_error = Some(json!({
+                    "code": err.code.as_str(),
+                    "message": err.message
+                }));
+            }
+            Err(err) => return Err(AppError::Adapter(err)),
         }
-        let current = adapter
-            .list_notifications(&filter)
-            .map_err(AppError::Adapter)?;
-        let Some(notif) = current
-            .iter()
-            .find(|n| !baseline_indices.contains(&n.index))
-        else {
-            std::thread::sleep(interval);
-            continue;
-        };
-        let elapsed = start.elapsed().as_millis();
-        return Ok(json!({
-            "condition": "notification",
-            "matched": true,
-            "notification": notif,
-            "elapsed_ms": elapsed,
-        }));
+
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(500)));
     }
 }
 
-fn find_text_in_tree(node: &AccessibilityNode, text_lower: &str) -> Option<TextMatch> {
-    if search_text::node_contains(node, text_lower) {
-        return Some(TextMatch {
-            ref_id: node.ref_id.clone(),
-            role: node.role.clone(),
-        });
-    }
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct NotificationFingerprint {
+    app_name: String,
+    title: String,
+    body: Option<String>,
+    actions: Vec<String>,
+}
 
-    for child in &node.children {
-        if let Some(found) = find_text_in_tree(child, text_lower) {
-            return Some(found);
+impl From<&NotificationInfo> for NotificationFingerprint {
+    fn from(info: &NotificationInfo) -> Self {
+        Self {
+            app_name: info.app_name.clone(),
+            title: info.title.clone(),
+            body: info.body.clone(),
+            actions: info.actions.clone(),
+        }
+    }
+}
+
+fn notification_counts(
+    notifications: &[NotificationInfo],
+) -> std::collections::HashMap<NotificationFingerprint, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for notification in notifications {
+        *counts
+            .entry(NotificationFingerprint::from(notification))
+            .or_insert(0) += 1;
+    }
+    counts
+}
+
+fn first_new_notification<'a>(
+    current: &'a [NotificationInfo],
+    baseline: &std::collections::HashMap<NotificationFingerprint, usize>,
+) -> Option<&'a NotificationInfo> {
+    let mut seen = std::collections::HashMap::new();
+    for notification in current {
+        let fingerprint = NotificationFingerprint::from(notification);
+        let current_count = seen.entry(fingerprint.clone()).or_insert(0);
+        *current_count += 1;
+        if *current_count > baseline.get(&fingerprint).copied().unwrap_or(0) {
+            return Some(notification);
         }
     }
     None
 }
 
 #[cfg(test)]
+#[path = "wait_test_support.rs"]
+mod test_support;
+
+#[cfg(test)]
 #[path = "wait_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "wait_element_tests.rs"]
+mod element_tests;
+
+#[cfg(test)]
+#[path = "wait_predicate_tests.rs"]
+mod predicate_tests;
+
+#[cfg(test)]
+#[path = "wait_resolution_tests.rs"]
+mod resolution_tests;

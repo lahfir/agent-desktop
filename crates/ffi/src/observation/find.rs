@@ -19,6 +19,11 @@ use std::mem::ManuallyDrop;
 /// - `name_substring` against `AccessibilityNode.name`
 /// - `value_substring` against `AccessibilityNode.value`
 ///
+/// The internal tree fetch always sets `include_bounds: true` so
+/// `resolve_element_strict` can disambiguate duplicate-label siblings via
+/// `bounds_hash`; without bounds on the matched node the resolver falls
+/// back to role+name alone and may pick the wrong element.
+///
 /// # Safety
 /// `adapter`, `win`, and `query` must be valid pointers. `out_handle`
 /// must be a valid writable `*mut AdNativeHandle`. On
@@ -52,10 +57,6 @@ pub unsafe extern "C" fn ad_find(
         let name_filter = decode_optional_filter!(q.name_substring, "query.name_substring");
         let value_filter = decode_optional_filter!(q.value_substring, "query.value_substring");
 
-        // include_bounds must be true: the resolver disambiguates
-        // duplicate-label siblings using bounds_hash, and without the
-        // bounds field populated on the matched node we would fall
-        // back to role+name alone and drift to the wrong element.
         let tree = match adapter.inner.get_tree(
             &core_win,
             &TreeOptions {
@@ -109,7 +110,7 @@ pub unsafe extern "C" fn ad_find(
             path_is_absolute: false,
             path: smallvec::SmallVec::new(),
         };
-        match adapter.inner.resolve_element(&ref_entry) {
+        match adapter.inner.resolve_element_strict(&ref_entry) {
             Ok(handle) => {
                 let handle = ManuallyDrop::new(handle);
                 (*out_handle).ptr = handle.as_raw();

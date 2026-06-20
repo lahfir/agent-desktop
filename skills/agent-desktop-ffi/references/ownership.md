@@ -20,6 +20,8 @@ free function. Always call it; the allocator the FFI uses is Rust's
 | `ad_resolve_element(adapter, entry, &handle)`           | `ad_free_handle(adapter, &handle)` — `*mut AdNativeHandle`; the call zeroes `handle.ptr` on success so a follow-up call is a no-op |
 | `ad_find(adapter, win, query, &handle)`                 | same as `ad_resolve_element`            |
 | `ad_execute_action(adapter, handle, action, &out)`      | `ad_free_action_result(&out)`           |
+| `ad_execute_action_with_policy(adapter, handle, action, policy, &out)` | `ad_free_action_result(&out)`           |
+| `ad_execute_ref_action_with_policy(adapter, entry, action, policy, &out)` | `ad_free_action_result(&out)`           |
 | `ad_notification_action(adapter, idx, expected_app, expected_title, name, &out)` | `ad_free_action_result(&out)` — pass the `app_name`/`title` you observed in `ad_list_notifications` (either may be null) so NC reorder between list and press is caught with `ERR_NOTIFICATION_NOT_FOUND` instead of pressing a different notification |
 | `ad_screenshot(adapter, target, &buf)`                  | `ad_image_buffer_free(buf)` (buf is opaque; read via `ad_image_buffer_{data,size,width,height,format}`) |
 | `ad_get_clipboard(adapter, &text)`                      | `ad_free_string(text)`                  |
@@ -38,10 +40,18 @@ free function. Always call it; the allocator the FFI uses is Rust's
 - **`ad_free_handle` is safe to double-call** — it zeroes
   `handle.ptr` after the platform release, so a follow-up call sees
   `NULL` and returns `AD_RESULT_OK` without re-entering `CFRelease`.
+- **Adapters must outlive their handles.** Free every handle with the
+  same adapter that produced it before calling `ad_adapter_destroy`.
+  Destroying the adapter first and later freeing its handles is
+  undefined behavior for FFI hosts.
 - Pointers inside a struct (`.id`, `.title`, `.app_name`, each
   `AdNotificationInfo.body`, etc.) are freed by the struct's owning
   free function (list_free / release_fields) — do not
   `ad_free_string()` them individually.
+- `AdActionResult` owns `action`, `ref_id`, `post_state`, `post_state.states`,
+  `steps`, and each `steps[i].label` / `steps[i].outcome`; free all of them
+  only through `ad_free_action_result(&out)`. Treat the returned counts as
+  read-only metadata; release the unmodified result struct.
 - Ownership does **not** transfer back to Rust after you free. Keep a
   local `NULL` to prevent accidental reuse.
 

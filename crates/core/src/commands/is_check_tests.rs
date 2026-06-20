@@ -10,7 +10,7 @@ struct LiveStateAdapter {
 }
 
 impl PlatformAdapter for LiveStateAdapter {
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
@@ -65,6 +65,7 @@ fn checked_uses_live_canonical_state() {
             property: IsProperty::Checked,
         },
         &adapter,
+        &CommandContext::default(),
     )
     .unwrap();
 
@@ -87,6 +88,7 @@ fn checked_does_not_infer_platform_values_in_core() {
             property: IsProperty::Checked,
         },
         &adapter,
+        &CommandContext::default(),
     )
     .unwrap();
 
@@ -109,6 +111,7 @@ fn checked_falls_back_to_snapshot_state_when_live_state_is_missing() {
             property: IsProperty::Checked,
         },
         &adapter,
+        &CommandContext::default(),
     )
     .unwrap();
 
@@ -141,6 +144,7 @@ fn basic_state_properties_use_live_state() {
                 property,
             },
             &adapter,
+            &CommandContext::default(),
         )
         .unwrap();
 
@@ -182,6 +186,7 @@ fn action_availability_makes_toggle_and_expand_applicable() {
                 property,
             },
             &adapter,
+            &CommandContext::default(),
         )
         .unwrap();
 

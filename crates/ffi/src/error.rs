@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char};
 
 const fn error_code_variant_count() -> usize {
-    let mut count = 0;
     let variants = [
         ErrorCode::PermDenied,
         ErrorCode::ElementNotFound,
@@ -11,6 +10,7 @@ const fn error_code_variant_count() -> usize {
         ErrorCode::ActionFailed,
         ErrorCode::ActionNotSupported,
         ErrorCode::StaleRef,
+        ErrorCode::AmbiguousTarget,
         ErrorCode::WindowNotFound,
         ErrorCode::PlatformNotSupported,
         ErrorCode::Timeout,
@@ -20,12 +20,7 @@ const fn error_code_variant_count() -> usize {
         ErrorCode::PolicyDenied,
         ErrorCode::Internal,
     ];
-    let mut i = 0;
-    while i < variants.len() {
-        count += 1;
-        i += 1;
-    }
-    count
+    variants.len()
 }
 
 const fn ad_result_error_variant_count() -> usize {
@@ -36,6 +31,7 @@ const fn ad_result_error_variant_count() -> usize {
         AdResult::ErrActionFailed,
         AdResult::ErrActionNotSupported,
         AdResult::ErrStaleRef,
+        AdResult::ErrAmbiguousTarget,
         AdResult::ErrWindowNotFound,
         AdResult::ErrPlatformNotSupported,
         AdResult::ErrTimeout,
@@ -45,13 +41,7 @@ const fn ad_result_error_variant_count() -> usize {
         AdResult::ErrSnapshotNotFound,
         AdResult::ErrPolicyDenied,
     ];
-    let mut count = 0;
-    let mut i = 0;
-    while i < variants.len() {
-        count += 1;
-        i += 1;
-    }
-    count
+    variants.len()
 }
 
 const _: () = assert!(
@@ -77,6 +67,7 @@ pub enum AdResult {
     ErrInternal = -12,
     ErrSnapshotNotFound = -13,
     ErrPolicyDenied = -14,
+    ErrAmbiguousTarget = -15,
 }
 
 const _: () = assert!(AdResult::ErrPermDenied as i32 == -1);
@@ -93,6 +84,7 @@ const _: () = assert!(AdResult::ErrNotificationNotFound as i32 == -11);
 const _: () = assert!(AdResult::ErrInternal as i32 == -12);
 const _: () = assert!(AdResult::ErrSnapshotNotFound as i32 == -13);
 const _: () = assert!(AdResult::ErrPolicyDenied as i32 == -14);
+const _: () = assert!(AdResult::ErrAmbiguousTarget as i32 == -15);
 
 enum MessageSource {
     Owned(CString),
@@ -121,6 +113,7 @@ struct StoredError {
     message: MessageSource,
     suggestion: Option<CString>,
     platform_detail: Option<CString>,
+    details: Option<CString>,
 }
 
 static NUL_BYTE_FALLBACK: &CStr = c"(message contained null byte)";
@@ -137,6 +130,7 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
         ErrorCode::ActionFailed => AdResult::ErrActionFailed,
         ErrorCode::ActionNotSupported => AdResult::ErrActionNotSupported,
         ErrorCode::StaleRef => AdResult::ErrStaleRef,
+        ErrorCode::AmbiguousTarget => AdResult::ErrAmbiguousTarget,
         ErrorCode::WindowNotFound => AdResult::ErrWindowNotFound,
         ErrorCode::PlatformNotSupported => AdResult::ErrPlatformNotSupported,
         ErrorCode::Timeout => AdResult::ErrTimeout,
@@ -159,12 +153,18 @@ pub(crate) fn set_last_error(err: &AdapterError) {
         .platform_detail
         .as_deref()
         .and_then(|s| CString::new(s).ok());
+    let details = err
+        .details
+        .as_ref()
+        .and_then(|details| serde_json::to_string(details).ok())
+        .and_then(|details| CString::new(details).ok());
     LAST_ERROR.with(|cell| {
         *cell.borrow_mut() = Some(StoredError {
             code,
             message,
             suggestion,
             platform_detail,
+            details,
         });
     });
 }
@@ -185,6 +185,7 @@ pub(crate) fn set_last_error_static(code: AdResult, message: &'static CStr) {
             message: MessageSource::Static(message),
             suggestion: None,
             platform_detail: None,
+            details: None,
         });
     });
 }
@@ -262,6 +263,21 @@ pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
             cell.borrow()
                 .as_ref()
                 .and_then(|e| e.platform_detail.as_ref().map(|s| s.as_ptr()))
+                .unwrap_or(std::ptr::null())
+        })
+    })
+}
+
+/// Returns a borrowed JSON string carrying structured details for the last
+/// error, or null if the adapter didn't supply any. Same lifetime rules as
+/// `ad_last_error_message`.
+#[unsafe(no_mangle)]
+pub extern "C" fn ad_last_error_details() -> *const c_char {
+    crate::ffi_try::trap_panic_const_ptr(|| {
+        LAST_ERROR.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .and_then(|e| e.details.as_ref().map(|s| s.as_ptr()))
                 .unwrap_or(std::ptr::null())
         })
     })

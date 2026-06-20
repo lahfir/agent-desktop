@@ -109,6 +109,56 @@ mod imp {
     }
 }
 
+#[cfg(target_os = "macos")]
+mod raise {
+    use accessibility_sys::{
+        AXUIElementPerformAction, AXUIElementSetAttributeValue, kAXErrorSuccess,
+    };
+    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
+
+    /// Raises a window element to the top of its app's window stack and
+    /// confirms with a brief `AXMain` poll. CGEvents land on the topmost
+    /// window at the click point, so a frontmost app is not enough when the
+    /// target element lives in a background window. Best-effort: a window
+    /// that refuses both `AXRaise` and a settable `AXMain` is left as-is.
+    pub(crate) fn raise_window(window: &crate::tree::AXElement) {
+        let raise = CFString::new("AXRaise");
+        let raise_err = unsafe { AXUIElementPerformAction(window.0, raise.as_concrete_TypeRef()) };
+        if raise_err != kAXErrorSuccess {
+            let main_attr = CFString::new("AXMain");
+            unsafe {
+                AXUIElementSetAttributeValue(
+                    window.0,
+                    main_attr.as_concrete_TypeRef(),
+                    CFBoolean::true_value().as_CFTypeRef(),
+                )
+            };
+        }
+        wait_until_main(window);
+    }
+
+    fn wait_until_main(window: &crate::tree::AXElement) {
+        use std::time::{Duration, Instant};
+
+        const POLL_INTERVAL: Duration = Duration::from_millis(5);
+        const MAIN_DEADLINE: Duration = Duration::from_millis(50);
+
+        let deadline = Instant::now() + MAIN_DEADLINE;
+        loop {
+            if crate::tree::copy_bool_attr(window, "AXMain") == Some(true) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                return;
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) use raise::raise_window;
+
 #[cfg(not(target_os = "macos"))]
 mod imp {
     use super::*;

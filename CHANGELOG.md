@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Notes
+
+* **ffi:** `AdRefEntry` carries additional reliability metadata in this branch; C ABI consumers must rebuild against the updated `agent_desktop.h` header.
+
 ## [0.2.3](https://github.com/lahfir/agent-desktop/compare/v0.2.2...v0.2.3) (2026-06-06)
 
 

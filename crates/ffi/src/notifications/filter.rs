@@ -23,10 +23,9 @@ pub(crate) unsafe fn filter_from_c(
     }
     let f: &AdNotificationFilter = unsafe { &*filter };
     let app = unsafe { try_c_to_string(f.app) }
-        .map_err(|()| AdapterError::new(ErrorCode::InvalidArgs, "filter.app is not valid UTF-8"))?;
-    let text = unsafe { try_c_to_string(f.text) }.map_err(|()| {
-        AdapterError::new(ErrorCode::InvalidArgs, "filter.text is not valid UTF-8")
-    })?;
+        .map_err(|err| AdapterError::new(ErrorCode::InvalidArgs, err.describe("filter.app")))?;
+    let text = unsafe { try_c_to_string(f.text) }
+        .map_err(|err| AdapterError::new(ErrorCode::InvalidArgs, err.describe("filter.text")))?;
     Ok(NotificationFilter {
         app,
         text,

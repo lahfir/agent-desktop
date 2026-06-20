@@ -1,5 +1,5 @@
-use agent_desktop_core::action::InteractionPolicy;
 use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::{action_step::ActionStep, interaction_policy::InteractionPolicy};
 
 use crate::actions::discovery::ElementCaps;
 use crate::tree::AXElement;
@@ -11,7 +11,7 @@ pub(crate) use super::chain_step::ChainStep;
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use crate::actions::ax_helpers;
+    use crate::actions::{ax_helpers, chain_verify};
     use std::time::{Duration, Instant};
 
     const DEFAULT_CHAIN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -23,11 +23,16 @@ mod imp {
         def: &ChainDef,
         ctx: &ChainContext,
         policy: InteractionPolicy,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         let deadline = ctx
             .deadline
             .unwrap_or_else(|| Instant::now() + chain_timeout());
+        let ctx = ChainContext {
+            dynamic_value: ctx.dynamic_value,
+            deadline: Some(deadline),
+        };
         let total = def.steps.len();
+        let mut steps = Vec::new();
 
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
             ax_helpers::set_messaging_timeout(&crate::tree::element_for_pid(pid), 1.0);
@@ -37,6 +42,7 @@ mod imp {
         if def.pre_scroll {
             tracing::debug!("chain: pre-scroll AXScrollToVisible");
             ax_helpers::ensure_visible(el);
+            steps.push(ActionStep::attempted("AXScrollToVisible"));
         }
 
         for (i, step) in def.steps.iter().enumerate() {
@@ -47,10 +53,12 @@ mod imp {
                     .iter()
                     .find(|s| matches!(s, ChainStep::CGClick { .. }))
                 {
-                    if physical_click_permitted(policy) && execute_step(el, caps, cg, ctx, policy)?
+                    let label = step_label(cg);
+                    if physical_click_permitted(policy) && execute_step(el, caps, cg, &ctx, policy)?
                     {
                         tracing::debug!("chain: CGClick fallback succeeded");
-                        return Ok(());
+                        steps.push(ActionStep::succeeded(label));
+                        return Ok(steps);
                     }
                 }
                 return Err(
@@ -60,16 +68,19 @@ mod imp {
                 );
             }
             if matches!(step, ChainStep::CGClick { .. }) && !physical_click_permitted(policy) {
-                return Err(AdapterError::policy_denied(
+                return Err(AdapterError::policy_denied_for_policy(
                     "Physical click fallback is disabled by the current interaction policy",
+                    policy,
                 ));
             }
             let label = step_label(step);
-            if execute_step(el, caps, step, ctx, policy)? {
+            if execute_step(el, caps, step, &ctx, policy)? {
                 tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
-                return Ok(());
+                steps.push(ActionStep::succeeded(label));
+                return Ok(steps);
             }
             tracing::debug!("chain: [{}/{}] {} -> skip", i + 1, total, label);
+            steps.push(ActionStep::skipped(label));
         }
 
         tracing::debug!("chain: all {total} steps exhausted");
@@ -85,10 +96,12 @@ mod imp {
             ChainStep::SetBool { attr, .. } => attr,
             ChainStep::SetDynamic { attr } => attr,
             ChainStep::FocusThenSetDynamic { attr } => attr,
+            ChainStep::IncrementToDynamic => "IncrementToDynamic",
             ChainStep::FocusThenClearByKeyboard => "FocusThenClearByKeyboard",
             ChainStep::ChildActions { .. } => "ChildActions",
             ChainStep::AncestorActions { .. } => "AncestorActions",
             ChainStep::Custom { label, .. } => label,
+            ChainStep::CustomWithDeadline { label, .. } => label,
             ChainStep::CGClick { .. } => "CGClick",
         }
     }
@@ -136,6 +149,11 @@ mod imp {
                 set_dynamic_verified(el, attr, value)
             }
 
+            ChainStep::IncrementToDynamic => match ctx.dynamic_value {
+                Some(value) => increment_to_value(el, value, ctx.deadline),
+                None => Ok(false),
+            },
+
             ChainStep::FocusThenClearByKeyboard => {
                 if !policy.allow_focus_steal {
                     return Ok(false);
@@ -181,7 +199,9 @@ mod imp {
                 *limit,
             )),
 
-            ChainStep::Custom { label: _, func } => func(el, caps),
+            ChainStep::Custom { label: _, func } => func(el),
+
+            ChainStep::CustomWithDeadline { label: _, func } => func(el, ctx.deadline),
 
             ChainStep::CGClick { button, count } => {
                 Ok(
@@ -207,8 +227,12 @@ mod imp {
     }
 
     fn set_dynamic_verified(el: &AXElement, attr: &str, value: &str) -> Result<bool, AdapterError> {
-        ax_helpers::set_ax_string_or_err(el, attr, value)?;
-        Ok(dynamic_write_had_effect(
+        if attr == "AXValue" {
+            ax_helpers::set_ax_value_coerced(el, value)?;
+        } else {
+            ax_helpers::set_ax_string_or_err(el, attr, value)?;
+        }
+        Ok(chain_verify::dynamic_write_had_effect(
             attr,
             ax_helpers::element_role(el).as_deref(),
             value,
@@ -216,69 +240,93 @@ mod imp {
         ))
     }
 
+    /// Drives AXIncrement/AXDecrement until the control reaches `target`.
+    /// Steppers and some sliders expose no settable AXValue but step through
+    /// these actions. Stops on reaching the target or on no observable
+    /// progress (the action stopped moving the value). Deadline expiry is a
+    /// hard error: the control may sit at a half-applied value, and silently
+    /// reporting "step failed" would mask that mutation as ACTION_FAILED with
+    /// recovery guidance pointing the wrong way.
+    fn increment_to_value(
+        el: &AXElement,
+        target: &str,
+        deadline: Option<Instant>,
+    ) -> Result<bool, AdapterError> {
+        const MAX_INCREMENT_STEPS: usize = 1024;
+
+        let target = match finite_target(target) {
+            Some(target) => target,
+            None => return Ok(false),
+        };
+        let read = || crate::tree::copy_value_typed(el).and_then(|v| v.parse::<f64>().ok());
+        let mut current = match read() {
+            Some(c) => c,
+            None => return Ok(false),
+        };
+        let actions = ax_helpers::list_ax_actions(el);
+        if !actions.iter().any(|action| action == "AXIncrement")
+            && !actions.iter().any(|action| action == "AXDecrement")
+        {
+            return Ok(false);
+        }
+        let start = current;
+        for _ in 0..MAX_INCREMENT_STEPS {
+            if (current - target).abs() < 0.5 {
+                return Ok(true);
+            }
+            if deadline.is_some_and(|dl| Instant::now() > dl) {
+                return Err(chain_verify::increment_deadline_error(
+                    start, current, target,
+                ));
+            }
+            let action = if current < target {
+                "AXIncrement"
+            } else {
+                "AXDecrement"
+            };
+            if !ax_helpers::try_ax_action(el, action) {
+                break;
+            }
+            match read() {
+                Some(next) if (next - current).abs() >= f64::EPSILON => current = next,
+                _ => break,
+            }
+        }
+        if (current - target).abs() < 0.5 {
+            return Ok(true);
+        }
+        if (current - start).abs() >= f64::EPSILON {
+            return Err(chain_verify::increment_step_limit_error(
+                start, current, target,
+            ));
+        }
+        Ok(false)
+    }
+
+    fn finite_target(target: &str) -> Option<f64> {
+        target.parse::<f64>().ok().filter(|value| value.is_finite())
+    }
+
     fn set_bool_verified(el: &AXElement, attr: &str, value: bool) -> Result<bool, AdapterError> {
         Ok(ax_helpers::set_ax_bool_or_err(el, attr, value)?
-            && bool_write_had_effect(attr, value, crate::tree::copy_bool_attr(el, attr)))
-    }
-
-    fn bool_write_had_effect(attr: &str, expected: bool, observed: Option<bool>) -> bool {
-        !matches!(
-            attr,
-            "AXExpanded" | "AXDisclosing" | "AXSelected" | "AXFocused"
-        ) || observed == Some(expected)
-    }
-
-    fn dynamic_write_had_effect(
-        attr: &str,
-        role: Option<&str>,
-        expected: &str,
-        observed: Option<&str>,
-    ) -> bool {
-        attr != "AXValue" || role == Some("AXSecureTextField") || observed == Some(expected)
+            && chain_verify::bool_write_had_effect(
+                attr,
+                value,
+                crate::tree::copy_bool_attr(el, attr),
+            ))
     }
 
     #[cfg(test)]
     mod tests {
-        use super::{bool_write_had_effect, dynamic_write_had_effect};
+        use super::finite_target;
 
         #[test]
-        fn ax_value_write_requires_readback_match() {
-            assert!(!dynamic_write_had_effect(
-                "AXValue",
-                Some("AXTextField"),
-                "",
-                Some("unchanged")
-            ));
-            assert!(dynamic_write_had_effect(
-                "AXValue",
-                Some("AXTextField"),
-                "",
-                Some("")
-            ));
-        }
-
-        #[test]
-        fn non_value_and_secure_writes_trust_ax_success() {
-            assert!(dynamic_write_had_effect(
-                "AXSelected",
-                Some("AXCheckBox"),
-                "true",
-                None
-            ));
-            assert!(dynamic_write_had_effect(
-                "AXValue",
-                Some("AXSecureTextField"),
-                "secret",
-                None
-            ));
-        }
-
-        #[test]
-        fn bool_state_writes_require_readback_match_for_stateful_attrs() {
-            assert!(bool_write_had_effect("AXExpanded", true, Some(true)));
-            assert!(!bool_write_had_effect("AXExpanded", true, Some(false)));
-            assert!(!bool_write_had_effect("AXExpanded", false, None));
-            assert!(bool_write_had_effect("AXFoo", true, None));
+        fn finite_target_rejects_non_finite_numbers() {
+            assert_eq!(finite_target("42.5"), Some(42.5));
+            assert_eq!(finite_target("NaN"), None);
+            assert_eq!(finite_target("inf"), None);
+            assert_eq!(finite_target("-inf"), None);
+            assert_eq!(finite_target("not-a-number"), None);
         }
     }
 }
@@ -293,7 +341,7 @@ mod imp {
         def: &ChainDef,
         _ctx: &ChainContext,
         _policy: InteractionPolicy,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         Err(AdapterError::new(
             ErrorCode::ActionFailed,
             "Chain execution not supported on this platform",

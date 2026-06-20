@@ -13,3 +13,8 @@ pub fn list_apps_impl() -> Result<Vec<AppInfo>, AdapterError> {
 pub(crate) fn pid_for_app_name(app_name: &str) -> Option<i32> {
     crate::system::app_inventory::pid_for_app_name(app_name)
 }
+
+#[cfg(target_os = "macos")]
+pub(crate) fn pids_for_app_name(app_name: &str) -> Vec<i32> {
+    crate::system::app_inventory::pids_for_app_name(app_name)
+}

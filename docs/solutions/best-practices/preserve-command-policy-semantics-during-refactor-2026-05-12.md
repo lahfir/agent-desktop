@@ -1,6 +1,7 @@
 ---
 title: Preserve command policy semantics during shared ref-action refactors
 date: 2026-05-12
+last_updated: 2026-06-10
 category: best-practices
 module: crates/core, crates/macos
 problem_type: best_practice
@@ -53,8 +54,14 @@ Each command owns its policy:
 - Use `ActionRequest::focus_fallback` only for APIs that have explicitly opted
   into focus-changing behavior, such as CLI `type` after AXValue failure or FFI
   callers selecting `AD_POLICY_KIND_FOCUS_FALLBACK`.
-- Use `ActionRequest::physical` only for explicit physical interaction commands
-  or FFI callers selecting `AD_POLICY_KIND_PHYSICAL`.
+- Use `ActionRequest::headed` (formerly `physical`) only for explicit physical
+  interaction commands or FFI callers selecting `AD_POLICY_KIND_HEADED`. Ref
+  commands no longer select it directly — the global `--headed` flag upgrades
+  any command's base policy to headed via `CommandContext::request`. Note the
+  headed physical path's side effects go beyond app-level focus stealing: the
+  physical click fallback also raises the target element's own window (AXRaise,
+  AXMain fallback) before posting events, gated on the same
+  `allow_cursor_move && allow_focus_steal` policy as the rest of that path.
 
 Do not infer policy from the fact that a command consumes a ref. `click`,
 `check`, `expand`, `collapse`, `scroll-to`, `clear`, and `type` all consume refs,
@@ -84,3 +91,8 @@ part of correctness:
 For AX value writes, treat "set returned success" as incomplete evidence on
 web-backed controls. Read back the value when the field is not secure; a
 mismatch must be a failed step so the next command-specific fallback can run.
+
+## Related
+
+- `best-practices/exhaustiveness-guards-over-catch-alls-in-policy-mirrors.md` — the same risk class (per-case policy flattened by a structural abstraction) from the string-keyed dispatch-mirror angle: named arms plus machine-derived guard tests where the compiler cannot enforce exhaustiveness.
+- `best-practices/macos-gesture-headless-capability-2026-06-10.md` — the per-gesture policy table whose explicitness this guidance preserves.

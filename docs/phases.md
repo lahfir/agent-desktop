@@ -10,6 +10,7 @@ Most recent shipments against this roadmap:
 
 | Version | Date       | What shipped |
 |---------|------------|--------------|
+| Unreleased | 2026-06 | Reliability hardening on the Phase 1 contracts: session-scoped latest snapshot pointers, explicit snapshot IDs usable across sessions, actionability checks, JSONL `--trace`, stale-ref diagnostics, and refstore symlink hardening |
 | v0.1.14 | 2026-05 | Phase 1 unified core: typed batch/CLI path, `CommandPolicy`, `PermissionReport`, snapshot-scoped `RefStore`, headless `ActionRequest`, macOS screenshot backend boundary |
 | v0.1.13 | 2026-04-17 | FFI cdylib on 5 platforms (aarch64/x86_64 macOS + Linux, x86_64 Windows MSVC), Sigstore build-provenance attestations, FFI review fixes (#26 — 50 commits) |
 | v0.1.12 | 2026-03–04 | Progressive skeleton traversal + ref-rooted drill-down (#20) |
@@ -19,6 +20,7 @@ Most recent shipments against this roadmap:
 | v0.1.7  | 2025-12    | Electron / web app accessibility-tree compatibility |
 
 - Phase 1 completion: incremental across v0.1.0 – v0.1.14 (macOS MVP, 54 commands, unified core engine).
+- Current unreleased hardening extends Phase 1 contracts; it does not change the planned Windows/Linux adapter sequence.
 - Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms).
 - Phase 2: planned. Public scope is summarized in the Phase 2 section below.
 - Phase 3+: planned. See each phase section below for the additive platform work and trait defaults that later phases backfill.
@@ -36,7 +38,7 @@ Most recent shipments against this roadmap:
 | 4 | MCP Server Mode | Planned | All |
 | 5 | Production Readiness | Planned | All |
 
-Future platform phases are additive against the Phase 1 contracts: typed command args, `CommandPolicy`, `PermissionReport`, snapshot-scoped refs, `ActionRequest`, and the `PlatformAdapter` boundary. Core can still gain explicitly planned additive trait methods, but Windows/Linux should not fork command semantics or duplicate transport dispatch.
+Future platform phases are additive against the Phase 1 contracts: typed command args, `CommandPolicy`, `PermissionReport`, snapshot-scoped refs, session-scoped latest snapshot pointers, `ActionRequest`, JSONL reliability tracing, and the `PlatformAdapter` boundary. Core can still gain explicitly planned additive trait methods, but Windows/Linux should not fork command semantics or duplicate transport dispatch.
 
 ---
 
@@ -44,15 +46,17 @@ Future platform phases are additive against the Phase 1 contracts: typed command
 
 Every command in agent-desktop has one shared semantic path. CLI and batch both parse into the same typed `Commands` enum, run the same `CommandPolicy` preflight, and enter the same `dispatch()` match. Platform crates implement primitives through `PlatformAdapter`; they do not own command semantics.
 
+Current shipped code uses explicit match arms, not a runtime command registry. Later sections that discuss descriptor/codegen work are planned future transport-generation work; they do not describe the current CLI/batch dispatch path.
+
 ### Current Layering
 
 | Layer | Scope | Invariant |
 |-------|-------|-----------|
 | `crates/core/src/commands/<name>.rs` | Platform-agnostic command behavior and args passed to `&dyn PlatformAdapter` | One command implementation |
-| `src/cli.rs` / `src/cli_args*.rs` | Clap command enum and transport args | CLI shape only, no platform behavior |
-| `src/command_policy.rs` | Permissions, ref usage, side-effect classification | One policy source of truth for CLI, batch, and tests |
-| `src/batch.rs` | JSON batch parser and executor | Deserializes into `Commands`; no separate command interpretation |
-| `src/dispatch.rs` | Direct command match | Shared CLI/batch execution path |
+| `src/cli/` / `src/cli_args/` | Clap command enum and transport args | CLI shape only, no platform behavior |
+| `src/command_policy/` | Permissions, ref usage, side-effect classification | One policy source of truth for CLI, batch, and tests |
+| `src/batch/` | JSON batch parser and executor | Deserializes into `Commands`; no separate command interpretation |
+| `src/dispatch/` | Direct command match plus parse helpers | Shared CLI/batch execution path |
 | `crates/{macos,windows,linux}/` | Adapter method implementations | Same trait signatures across platforms |
 | `crates/ffi/` | C ABI wrappers around adapter/core types | ABI marshaling only |
 
@@ -60,12 +64,12 @@ Every command in agent-desktop has one shared semantic path. CLI and batch both 
 
 1. Add `crates/core/src/commands/{name}.rs`.
 2. Register it in `crates/core/src/commands/mod.rs`.
-3. Add the CLI args/variant in `src/cli_args*.rs` and `src/cli.rs`.
-4. Add a single arm in `src/dispatch.rs`.
+3. Add the CLI args/variant in `src/cli_args/` and `src/cli/mod.rs`.
+4. Add a single arm in `src/dispatch/mod.rs`.
 5. Add a `CommandPolicy` arm.
 6. If needed, add one `PlatformAdapter` method with a `not_supported()` default, then implement it per adapter.
 
-Batch receives the command automatically once `src/batch.rs::parse_command` maps the JSON command name to that same CLI enum variant. There is no separate batch-only behavior.
+Batch receives the command automatically once `src/batch/mod.rs` maps the JSON command name to that same CLI enum variant. There is no separate batch-only behavior.
 
 ### Headless Contract
 
@@ -73,7 +77,7 @@ Ref actions use `ActionRequest { action, policy }`. The default `InteractionPoli
 
 - Semantic AX steps run first.
 - Physical fallbacks are explicit and policy-gated.
-- Non-mouse ref commands must not silently focus apps or move the cursor.
+- Raw cursor commands (`hover`, `drag`, `mouse-*`) require `--headed`; other commands must not silently focus apps or move the cursor.
 - Expected OS denials return specific error codes such as `PERM_DENIED`, `SNAPSHOT_NOT_FOUND`, or `POLICY_DENIED`, not generic `INTERNAL`.
 
 Windows and Linux should implement the same signatures rather than copying macOS-specific fallback decisions.
@@ -94,9 +98,9 @@ Phase 1 is the load-bearing phase. It establishes the shared command path, trait
 | P1-O2 | Platform adapter trait | Trait compiles with mock adapter; macOS adapter satisfies all trait methods |
 | P1-O3 | Ref-based interaction | `click @e3` successfully invokes AXPress on the resolved element |
 | P1-O4 | Context efficiency | Typical Finder snapshot < 500 tokens (measured via tiktoken) |
-| P1-O5 | Typed JSON contract | Output envelope carries `version: "1.0"`. **Partial**: dedicated `schemas/` JSON-Schema files were never delivered — deferred to Phase 5 quality gates. |
+| P1-O5 | Typed JSON contract | Output envelope carries `version: "2.0"`. **Partial**: dedicated standalone JSON-Schema files were never delivered — deferred to later quality gates. |
 | P1-O6 | Permission detection | Permission report covers Accessibility, Screen Recording, and Automation with recovery suggestions |
-| P1-O7 | Command extensibility | Adding a new command is ~4 registration points: `commands/{name}.rs` + `commands/mod.rs` + `src/cli.rs` variant + `src/dispatch.rs` match arm |
+| P1-O7 | Command extensibility | Adding a new command follows the current shared path: `commands/{name}.rs` + `commands/mod.rs` + `src/cli_args/` + `src/cli/mod.rs` + `src/dispatch/mod.rs` + `src/command_policy/mod.rs` |
 | P1-O8 | 54 working commands | All commands pass integration tests |
 | P1-O9 | CI pipeline | GitHub Actions macOS runner executes full test suite on every PR |
 | P1-O10 | Progressive skeleton traversal | Skeleton + drill-down workflow achieves 78%+ token savings on Electron apps |
@@ -115,13 +119,17 @@ agent-desktop/
 │   │       ├── lib.rs          # public re-exports only
 │   │       ├── node.rs         # AccessibilityNode, Rect, WindowInfo
 │   │       ├── adapter.rs      # PlatformAdapter trait
-│   │       ├── action.rs       # Action enum, ActionRequest, ActionResult
+│   │       ├── action.rs       # Action enum
+│   │       ├── action_request.rs / action_result.rs / action_step*.rs
+│   │       ├── actionability/  # Live actionability checks and reports
 │   │       ├── refs.rs         # RefMap and RefEntry
-│   │       ├── refs_store.rs   # Snapshot-scoped ref persistence
+│   │       ├── refs_store.rs   # Snapshot/session-scoped ref persistence
+│   │       ├── refs_lock.rs    # RefStore write lock
 │   │       ├── ref_alloc.rs    # INTERACTIVE_ROLES, allocate_refs, is_collapsible, transform_tree
 │   │       ├── snapshot_ref.rs # Ref-rooted drill-down (run_from_ref)
 │   │       ├── snapshot.rs     # SnapshotEngine (filter, allocate, serialize)
-│   │       ├── error.rs        # ErrorCode enum (12 variants), AdapterError, AppError
+│   │       ├── trace.rs        # JSONL reliability trace support
+│   │       ├── error.rs        # ErrorCode enum, AdapterError, AppError
 │   │       ├── notification.rs # NotificationInfo, NotificationFilter, NotificationIdentity
 │   │       └── commands/       # one file per command (direct match, no Command trait)
 │   ├── macos/              # agent-desktop-macos (Phase 1, shipped)
@@ -130,14 +138,12 @@ agent-desktop/
 │   └── ffi/                # agent-desktop-ffi (cdylib, shipped v0.1.13; see Phase 1.5)
 ├── src/                    # agent-desktop binary (entry point)
 │   ├── main.rs
-│   ├── cli.rs
-│   ├── cli_args.rs
-│   ├── cli_args_actions.rs
-│   ├── cli_args_system.rs
-│   ├── command_policy.rs
-│   ├── batch.rs
-│   ├── dispatch.rs
-│   └── dispatch_parse.rs
+│   ├── batch/               # JSON batch -> typed Commands
+│   ├── cli/                 # Clap enum, help text, contract tests
+│   ├── cli_args/            # Command argument structs by domain
+│   ├── command_policy/      # Permission/ref/side-effect policy
+│   ├── dispatch/            # Command dispatcher and parse helpers
+│   └── tests/               # Binary-level conformance tests
 └── tests/
     ├── fixtures/
     └── integration/
@@ -145,31 +151,36 @@ agent-desktop/
 
 ### PlatformAdapter Trait
 
-The single most important abstraction. Every platform-specific operation goes through this trait. Core never imports platform crates. The trait currently exposes ~27 methods with default implementations returning `not_supported()` — see `crates/core/src/adapter.rs` for the canonical definition. Key method shapes:
+The single most important abstraction. Every platform-specific operation goes through this trait. Core never imports platform crates. The canonical definition is `crates/core/src/adapter.rs`; this roadmap lists representative method groups only, because the trait grows additively as reliability and platform parity work lands.
 
 ```rust
 pub trait PlatformAdapter: Send + Sync {
     // Core observation
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError>;
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError>;
+    fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError>;
     fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
     fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
     fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError>;
 
     // Interaction
     fn execute_action(&self, handle: &NativeHandle, request: ActionRequest) -> Result<ActionResult, AdapterError>;
-    fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
+    fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
+    fn resolve_element_strict_with_timeout(&self, entry: &RefEntry, timeout: Duration) -> Result<NativeHandle, AdapterError>;
     fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError>;
     fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError>;
     fn drag(&self, params: DragParams) -> Result<(), AdapterError>;
-    fn press_key_for_app(&self, pid: i32, combo: KeyCombo) -> Result<(), AdapterError>;
+    fn key_event(&self, combo: &KeyCombo, down: bool) -> Result<(), AdapterError>;
+    fn press_key_for_app(&self, app_name: &str, combo: &KeyCombo) -> Result<ActionResult, AdapterError>;
 
     // Lifecycle + windowing
     fn permission_report(&self) -> PermissionReport;
     fn request_permissions(&self) -> PermissionReport;
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError>;
+    fn focus_app(&self, pid: i32) -> Result<(), AdapterError>;
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError>;
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError>;
+    fn is_protected_process(&self, identifier: &str) -> bool;
     fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError>;
 
     // Capture + clipboard
@@ -184,21 +195,24 @@ pub trait PlatformAdapter: Send + Sync {
     fn dismiss_all_notifications(&self, app_filter: Option<&str>) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError>;
     fn notification_action(&self, index: usize, identity: Option<&NotificationIdentity>, action_name: &str) -> Result<ActionResult, AdapterError>;
 
-    // Property probes
+    // Live evidence and wait probes
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError>;
+    fn get_live_state(&self, handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError>;
+    fn get_live_actions(&self, handle: &NativeHandle) -> Result<Option<Vec<String>>, AdapterError>;
+    fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError>;
     fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError>;
-    fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<bool, AdapterError>;
+    fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError>;
 }
 ```
 
 ### Key Supporting Types
 
-- `Action` — `#[non_exhaustive]` enum. Current variants: Click, DoubleClick, TripleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Check, Uncheck, Scroll(Direction, Amount), ScrollTo, PressKey(KeyCombo), KeyDown(KeyCombo), KeyUp(KeyCombo), TypeText(String), Clear, Hover, Drag(DragParams)
+- `Action` — closed core enum whose platform dispatch arms must stay exhaustive. Current variants: Click, DoubleClick, TripleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Check, Uncheck, Scroll(Direction, Amount), ScrollTo, PressKey(KeyCombo), KeyDown(KeyCombo), KeyUp(KeyCombo), TypeText(String), Clear, Hover, Drag(DragParams)
 - `ActionRequest` — `{ action, policy }`; default policy forbids focus stealing and cursor movement
 - `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`
 - `MouseEvent`, `DragParams`, `KeyCombo` — dedicated types (not unified under an `InputEvent` enum)
 - `WindowOp` — Resize{w,h}, Move{x,y}, Minimize, Maximize, Restore, Close
-- `ScreenshotTarget` — FullScreen, Window(WindowInfo), Element(NativeHandle)
+- `ScreenshotTarget` — Screen(usize), Window(pid), FullScreen
 - `NotificationInfo` — index, app_name, title, body, actions: Vec<String>
 - `NotificationIdentity` — expected_app, expected_title (used for NC-reorder-safe `notification_action`)
 - `SurfaceInfo` — kind, label, bounds (for `list-surfaces` command)
@@ -214,22 +228,27 @@ crates/macos/src/
 ├── adapter.rs          # MacOSAdapter: PlatformAdapter impl
 ├── tree/
 │   ├── mod.rs          # re-exports
-│   ├── element.rs      # AXElement struct + attribute readers
+│   ├── ax_element.rs   # AXElement ownership wrapper
+│   ├── attributes.rs   # Batched AX attribute reads
 │   ├── capabilities.rs # AX-supported actions and settable attributes
 │   ├── builder.rs      # build_subtree, tree traversal
-│   ├── roles.rs        # AXRole string → unified role enum mapping
-│   ├── resolve.rs      # Element re-identification for ref resolution
+│   ├── node_attrs.rs   # Node metadata extraction
+│   ├── roles.rs        # AXRole string -> unified role enum mapping
+│   ├── resolve*.rs     # Element re-identification for ref resolution
 │   └── surfaces.rs     # Surface detection (menu, sheet, alert, popover)
 ├── actions/
 │   ├── mod.rs          # re-exports
 │   ├── dispatch.rs     # perform_action match arms
-│   ├── chain.rs        # policy-aware AX-first activation chain
+│   ├── chain*.rs       # policy-aware AX-first activation chain
+│   ├── discovery.rs    # Live capability discovery
 │   ├── extras.rs       # select_value helpers
+│   ├── post_state.rs   # Post-action state reads
 │   ├── scroll.rs       # scroll semantics and explicit physical policy paths
-│   └── type_text.rs    # headless AX text insertion and physical typing
+│   └── type_text.rs    # focus-fallback text insertion and physical typing
 ├── input/
 │   ├── mod.rs          # re-exports
 │   ├── keyboard.rs     # CGEventCreateKeyboardEvent, key synthesis, text typing
+│   ├── keyboard_map.rs # Key name mapping
 │   ├── mouse.rs        # CGEventCreateMouseEvent, mouse events
 │   └── clipboard.rs    # NSPasteboard.generalPasteboard read/write
 ├── notifications/
@@ -239,7 +258,9 @@ crates/macos/src/
 │   └── actions.rs      # Click notification action buttons (identity-verified)
 └── system/
     ├── mod.rs          # re-exports
-    ├── app_ops.rs      # launch, close, focus via NSWorkspace / AppleScript
+    ├── app_ops.rs      # launch, close, focus via NSWorkspace
+    ├── app_list.rs     # Running app inventory
+    ├── window_list.rs  # Window inventory
     ├── window_ops.rs   # window resize, move, minimize, maximize, restore
     ├── key_dispatch.rs # app-targeted key press
     ├── permissions.rs  # PermissionReport probe/request
@@ -260,7 +281,7 @@ crates/macos/src/
 - Ref actions take `ActionRequest`, not bare `Action`
 - Default policy forbids focus stealing and cursor movement
 - Click/right-click/scroll chains run semantic AX steps first and return structured errors instead of silently using physical/headed paths
-- Type in headless mode mutates settable AX text values; physical keyboard typing is policy-gated
+- Type uses the focus-fallback policy floor; SetValue/Clear are the pure headless AX value-mutation paths
 - SetValue/Clear: `AXUIElementSetAttributeValue(kAXValueAttribute, value)`
 - SetFocus/Press/Hover/Drag/Mouse: explicit focus/cursor/physical commands
 - Keyboard/Mouse: `CGEventCreateKeyboardEvent` / `CGEventCreateMouseEvent` via CoreGraphics
@@ -284,9 +305,8 @@ crates/macos/src/
 
 **System tray / Menu bar extras:**
 - Menu bar extras (status items) live under the `SystemUIServer` process AX tree
-- List items: traverse `AXMenuBarItem` children of the system menu bar
-- Click: `AXPress` on the target menu bar extra element
-- Expand menus: after clicking a tray item, traverse the resulting `AXMenu` as a surface
+- Current support is through surface discovery/snapshotting (`menubar` / `menu`) where the AX tree exposes those items
+- Dedicated `list-tray-items`, `click-tray-item`, and `open-tray-menu` commands are not shipped
 - Control Center items: accessible via the `ControlCenter` process (bundleId: `com.apple.controlcenter`)
 
 **AXElement safety:**
@@ -304,7 +324,7 @@ Platform-agnostic, lives in `agent-desktop-core`:
 4. Serialize: Omit null fields. Omit empty arrays. Omit bounds in compact mode
 5. Estimate tokens: Optionally warn if exceeding threshold
 
-Snapshot refs persist through `RefStore` under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer for commands that omit `--snapshot`. `~/.agent-desktop/last_refmap.json` remains only as a latest-snapshot inspection artifact. Action commands resolve through `RefStore` and use `ResolvedElement` RAII so native handles are released after ref-consuming commands. Return `STALE_REF` on live re-identification mismatch and `SNAPSHOT_NOT_FOUND` when the requested snapshot does not exist.
+Snapshot refs persist through `RefStore`. The default namespace stores snapshots under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`; `--session <id>` stores the same shape under `~/.agent-desktop/sessions/{id}/snapshots/{snapshot_id}/refmap.json`. Each namespace owns one `latest_snapshot_id` pointer for commands that omit `--snapshot`. Explicit `--snapshot <id>` is a direct snapshot handle and can be used without repeating `--session`; if the same snapshot ID appears in multiple sessions, callers pass the matching session to disambiguate. `~/.agent-desktop/last_refmap.json` remains only as a latest-snapshot inspection artifact. Action commands resolve through `RefStore` and use `ResolvedElement` RAII so native handles are released after ref-consuming commands. Return `STALE_REF` on live re-identification mismatch and `SNAPSHOT_NOT_FOUND` when the requested snapshot does not exist.
 
 **Progressive Skeleton Traversal:**
 - `--skeleton` flag clamps depth to `min(max_depth, 3)`, annotates truncated containers with `children_count` for agent discovery
@@ -365,7 +385,7 @@ The `wait` command has been extended with notification and menu support:
 
 ### JSON Output Contract
 
-All commands produce a response envelope. Schema files versioned in `schemas/`.
+All commands produce a response envelope with `version: "2.0"`. Standalone schema files are still deferred; the current contract is enforced by Rust serde types, CLI conformance tests, and documented examples.
 
 Success:
 ```json
@@ -410,13 +430,14 @@ The `ErrorCode` enum in `crates/core/src/error.rs` exposes these machine-readabl
 | `ACTION_FAILED` | Execution | AXPress returned error on disabled button | Element may be disabled. Check states before acting |
 | `ACTION_NOT_SUPPORTED` | Execution | Expand on a button | This element does not support the requested action |
 | `STALE_REF` | Ref | Element could not be re-identified from the requested snapshot | Run 'snapshot' (or `snapshot --skeleton`) to refresh |
+| `AMBIGUOUS_TARGET` | Ref | Ref identity maps to more than one live candidate | Run 'snapshot' to refresh, then retry with a more specific ref |
 | `WINDOW_NOT_FOUND` | Window | --window w-999 does not exist | Run 'list-windows' to see available windows |
 | `PLATFORM_NOT_SUPPORTED` | Platform | Windows/Linux adapter not yet shipped | This platform ships in Phase 2/3 |
 | `TIMEOUT` | Wait / Traversal | wait --element exceeded timeout | Increase --timeout or check app state |
 | `INVALID_ARGS` | Input | Bad CLI argument or unknown ref format | Fix the argument per CLI help |
 | `NOTIFICATION_NOT_FOUND` | Notification | Notification ID not found / NC reordered | Run 'list-notifications' to see current notifications |
 | `SNAPSHOT_NOT_FOUND` | Ref | Requested snapshot ID is missing | Run 'snapshot' again and use the returned snapshot_id |
-| `POLICY_DENIED` | Action policy | Physical fallback blocked by headless policy | Use an explicit focus/cursor/mouse command if physical interaction is intended |
+| `POLICY_DENIED` | Action policy | Physical input blocked by headless policy | Retry with `--headed` for explicit cursor movement, or use a semantic AX action when available |
 | `INTERNAL` | Internal | Unexpected error or caught panic | Re-run with verbose logging |
 
 Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/parse error.
@@ -430,7 +451,7 @@ Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/par
 - Ref allocator only assigns interactive roles
 - SnapshotEngine filtering
 - Error serialization
-- JSON schema validation
+- JSON contract / output conformance coverage
 - MockAdapter: in-memory PlatformAdapter returning hardcoded trees
 
 **Unit tests (macos):**
@@ -449,8 +470,7 @@ Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/par
 - Large tree (Xcode) snapshot in under 2 seconds
 - List notifications — returns non-empty list when Notification Center has entries
 - Dismiss notification — verify notification removed from Notification Center AX tree
-- List tray items — returns known menu bar extras (Wi-Fi, Bluetooth, Clock)
-- Click tray item — verify menu bar extra menu opens
+- Menu/menu-bar surface snapshot and wait behavior where the host exposes AX menu surfaces
 
 **Golden fixtures (`tests/fixtures/`):**
 - Real snapshots from Finder, TextEdit, etc. checked into repo
@@ -473,16 +493,18 @@ Current `.github/workflows/ci.yml` on every PR:
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| `clap` | 4.x | CLI parsing with derive macros |
+| `clap` | 4.6 | CLI parsing with derive macros |
 | `serde` + `serde_json` | 1.x | JSON serialization |
-| `thiserror` | 2.x | Error derive macros |
+| `thiserror` | 2.0 | Error derive macros |
 | `tracing` | 0.1+ | Structured logging |
 | `tracing-subscriber` | 0.3 | env-filter log formatter |
 | `rustc-hash` | 2.1 | Faster hashing for ref maps and visited sets |
+| `smallvec` | 1.13 | Small fixed-size vectors in hot paths |
 | `base64` | 0.22+ | Screenshot encoding |
-| `accessibility-sys` | 0.1+ | macOS AXUIElement FFI |
-| `core-foundation` | 0.10+ | macOS CF types |
-| `core-graphics` | 0.24+ | macOS CG types |
+| `accessibility-sys` | 0.2.0 | macOS AXUIElement FFI |
+| `core-foundation` | 0.10.1 | macOS CF types |
+| `core-foundation-sys` | 0.8.7 | macOS CF FFI |
+| `core-graphics` | 0.25.0 | macOS CG types |
 
 ### Documentation Delivered
 
@@ -599,7 +621,7 @@ These items are tracked under P2-O16 below: registry migration via `build.rs` fi
 
 ### Core invariants (research-driven — from Phase 2 plan §Headless-First Invariant)
 
-1. **Headless-first inside the active desktop session.** Every command — existing and Phase 2 — must run without an agent-desktop GUI, foreground activation, focus steal, or physical cursor movement (except for explicit mouse commands). Windows, macOS, and Linux still require the target app to exist in the current user's interactive desktop/display session for accessibility and capture APIs. Session 0, Server Core, secure desktops, locked desktops, and other-user sessions return `PLATFORM_NOT_SUPPORTED`, `PERM_DENIED`, or `WINDOW_NOT_FOUND` with `platform_detail`, not silent best effort. The invariant is enforced by integration tests: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for non-mouse commands.
+1. **Headless-first inside the active desktop session.** Every command — existing and Phase 2 — must run without an agent-desktop GUI, foreground activation, focus steal, or physical cursor movement unless `--headed` explicitly opts into cursor input. Windows, macOS, and Linux still require the target app to exist in the current user's interactive desktop/display session for accessibility and capture APIs. Session 0, Server Core, secure desktops, locked desktops, and other-user sessions return `PLATFORM_NOT_SUPPORTED`, `PERM_DENIED`, or `WINDOW_NOT_FOUND` with `platform_detail`, not silent best effort. The invariant is enforced by integration tests: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for headless commands.
 2. **Skeleton traversal is platform-agnostic.** The novel progressive skeleton pattern (depth-3 clamp + `children_count` annotation + drill-down via `--root @ref` + scoped invalidation via `RefMap::remove_by_root_ref`) lives entirely in `crates/core/src/snapshot_ref.rs`. Windows adapter contributes ~50 LOC glue: `ControlViewWalker` (NOT `RawViewWalker` or `ContentViewWalker`) + `FindAll(TreeScope_Children, TrueCondition)` for `children_count` + fresh `UICacheRequest` per drill-down.
 3. **Asymmetric event threading.** `watch_element` uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery).
 4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Phase 2 uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The repository's "one command per file" rule becomes the codegen contract.
@@ -626,7 +648,7 @@ These items are tracked under P2-O16 below: registry migration via `build.rs` fi
 
 Phase 2 brings agent-desktop to Windows. It is also the phase that closes the cross-platform feature-parity gaps surfaced after the v0.1.13 FFI ship — shipping Windows meaningfully requires new core abstractions (stable identifiers, event subscriptions, text-range primitives, shell surfaces, and Windows-specific tray/taskbar affordances) that Windows UIA exposes natively and the macOS adapter currently does not surface. Every new trait method added here is implemented on both platforms in the same PR pair when there is a real cross-platform analogue. True Windows shell concepts return `PLATFORM_NOT_SUPPORTED` on other adapters through the same core command path, never through side-channel code. Linux (Phase 3) mirrors the portable parts against AT-SPI2.
 
-Core engine, CLI parser, JSON contract invariants, and command-registration pattern are preserved. What Phase 2 legitimately changes: `AccessibilityNode` field set, `Action` enum variants, `ErrorCode` variants, `PlatformAdapter` trait size. Every change is additive (`#[non_exhaustive]` already guards the enums) and every macOS backfill lands atomically with the Windows implementation so the two platforms never drift.
+Core engine, CLI parser, JSON contract invariants, and command-registration pattern are preserved. What Phase 2 legitimately changes: `AccessibilityNode` field set, `Action` enum variants, `ErrorCode` variants, `PlatformAdapter` trait size. Every new `Action` variant must update core actionability, capability maps, platform dispatch, CLI/FFI conversion, and contract tests in the same change; exhaustive compiler checks are the guard against adapter drift. Every macOS backfill lands atomically with the Windows implementation so the two platforms never drift.
 
 Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, every new command added in Phase 2 (`watch`, `text select-range`, `text get-selection`, `text insert-at-caret`, etc.) lives in **exactly one file** under `crates/core/src/commands/` and is wired through the shared typed command path. If Phase 2 adds codegen, it uses deterministic `build.rs` filesystem enumeration, not linker registries. The per-platform work is the three `PlatformAdapter` method implementations (one each in `crates/macos/`, `crates/windows/`, `crates/linux/`) — nothing repeats across transports.
 
@@ -639,7 +661,7 @@ Core + Windows parity (original scope):
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P2-O1 | Windows adapter | `snapshot` on Windows returns valid tree for Explorer, Notepad, Settings |
-| P2-O2 | All existing commands cross-platform | Identical JSON schema output on macOS and Windows for every command |
+| P2-O2 | All existing commands cross-platform | Identical JSON contract output on macOS and Windows for every command |
 | P2-O3 | Windows input synthesis | `click`, `type`, `press`, all mouse commands working via UIA + SendInput |
 | P2-O4 | Windows screenshot | `screenshot` produces PNG via `Windows.Graphics.Capture` API |
 | P2-O5 | Windows clipboard | `clipboard-get` / `clipboard-set` / `clipboard-clear` working via Win32 Clipboard API |
@@ -651,7 +673,7 @@ Cross-platform core extensions (new, landed alongside Windows):
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P2-O8 | `AccessibilityNode` stable-selector fields | Nodes may carry `identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` (all `Option<String>` / `Vec<String>` with `skip_serializing_if`). Populated where the platform/app exposes stable selectors: Windows UIA `AutomationId` / `LocalizedControlType` / `HelpText`; macOS `kAXIdentifierAttribute` / `kAXSubroleAttribute` / `kAXRoleDescriptionAttribute` / `kAXPlaceholderValueAttribute` / `kAXDOMIdentifierAttribute` / `kAXDOMClassListAttribute`. Resolver prefers stable selectors when present and falls back to the existing fingerprint; tests require known controls with explicit IDs to preserve them across re-drills, not every real-app node |
-| P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Phase 2 plan §Headless-First Invariant and Unit 12), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch_element` is an adapter method, **not** an `Action` variant (plan §KD8 + origin brainstorm §D8). Each has a macOS AX API mapping (all AX calls on main thread per plan §KD9), a Windows UIA pattern mapping, and a new CLI subcommand. The `#[non_exhaustive]` attribute keeps this SemVer-safe; C-ABI consumers use `default:` / wildcard fallthrough plus the exported `AD_RESULT_UNKNOWN = -99` sentinel (plan §KD17) |
+| P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Phase 2 plan §Headless-First Invariant and Unit 12), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch_element` is an adapter method, **not** an `Action` variant (plan §KD8 + origin brainstorm §D8). Each has a macOS AX API mapping (all AX calls on main thread per plan §KD9), a Windows UIA pattern mapping, a new CLI subcommand, FFI conversion coverage where applicable, and exhaustive platform-dispatch tests in the same change. |
 | P2-O10 | `ErrorCode` expansion | Add `PermissionRevoked` (distinct from `PermDenied` — TCC yanked mid-session), `ResourceExhausted` (refmap >1 MB, tree node-count cap), `AxMessagingTimeout` (AX-specific timeout separate from orchestration `Timeout`), `AutomationPermissionDenied` (macOS `osascript` grant). Tri-state permission probe at startup distinguishes "never granted" from "revoked" |
 | P2-O11 | Event-subscription primitive (push, not poll) | New trait method `watch_element(handle, events: &[EventKind], timeout_ms: u64) -> Result<Vec<ElementEvent>>`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource` (no more polling in `system/wait.rs`). Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. New `wait --event value-changed --ref @e5 --timeout 3000` CLI flag. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals |
 | P2-O12 | Text range primitives | Read caret, read selection, select a range by offsets, read text at range, insert at caret. macOS: `kAXSelectedTextRangeAttribute` (settable), `AXStringForRangeParameterizedAttribute`, `AXBoundsForRangeParameterizedAttribute`, `AXRangeForLineParameterizedAttribute`, `AXValueCreate(kAXValueCFRangeType, …)`. Windows: `TextPattern.GetSelection`, `TextPattern.DocumentRange`, `TextRange.Select`, `TextRange.Move`, `TextRange.GetText`, `TextRange.GetBoundingRectangles`. Commands: `text get-selection`, `text select-range <ref> <start> <len>`, `text insert-at-caret <ref> <string>`, `text at-offset <ref> <start> <len>` |
@@ -1014,7 +1036,7 @@ Linux parity (original scope):
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P3-O1 | Linux adapter | `snapshot` on Ubuntu GNOME returns valid tree for Files, Terminal, Settings |
-| P3-O2 | All commands cross-platform | Identical JSON schema output on all 3 platforms for every command |
+| P3-O2 | All commands cross-platform | Identical JSON contract output on all 3 platforms for every command |
 | P3-O3 | Linux input synthesis | `click`, `type`, `press`, all mouse commands via AT-SPI actions + xdotool/ydotool |
 | P3-O4 | Linux screenshot | `screenshot` produces PNG via PipeWire ScreenCast portal (Wayland) / XGetImage (X11) |
 | P3-O5 | Linux clipboard | `clipboard-get` / `clipboard-set` / `clipboard-clear` via `wl-clipboard` (Wayland) / `xclip` (X11) |
@@ -1312,7 +1334,7 @@ By Phase 4 the CLI already covers the shared command surface on three platforms,
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P4-O1 | MCP server mode via `--mcp` | Responds to MCP `initialize` handshake, reports capabilities, per-host hello-world passes |
-| P4-O2 | All commands as MCP tools | `tools/list` returns 53+ tools with JSON Schemas generated from the CLI arg structs via `schemars`; tool names prefixed `desktop_` |
+| P4-O2 | All commands as MCP tools | `tools/list` returns 54+ tools with JSON Schemas generated from the CLI arg structs via `schemars`; tool names prefixed `desktop_` |
 | P4-O3 | Claude Desktop + Cursor + VS Code + Gemini CLI + MS Agent Framework validated | Each host invokes tools to control a desktop app end-to-end on all three platforms; repo ships `mcp.json` / `claude_desktop_config.json` / `.cursor/mcp.json` examples per host |
 | P4-O4 | Tool annotations | `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` on every tool; Claude Desktop surfaces destructive tools with a confirmation prompt |
 | P4-O5 | Ref-based MCP tool shape (Playwright-MCP idiom) | Tools take `{ref: "e5"}` not raw `element_handle`, matching Playwright MCP so agents can swap between the two without relearning selectors. Tree snapshots return as MCP resources with refs inline |
@@ -1470,7 +1492,7 @@ Each host gets a ~30-line config + a 60-second "hello agent" demo (launch Calcul
 - **Stdio (primary):** MCP host spawns `agent-desktop --mcp` as a child process. JSON-RPC over stdin/stdout. Required; validated against all hosts in the Framework Integration table.
 - **Streamable HTTP (P4-O12, required for MS Agent Framework):** Single HTTP endpoint at `POST /mcp` with chunked response streaming; replaces the pre-March-2025 SSE transport. Used when the host declares `transport: http` in its MCP config. Binds to `127.0.0.1` by default; `--mcp-bind <addr:port>` CLI flag overrides.
 - **SSE (legacy):** Retained for hosts that haven't migrated to Streamable HTTP. Gated on `--mcp-transport sse`.
-- **Session:** On `initialize`, detect platform, probe permissions (AX + Screen Recording + Automation tri-state), report tool capabilities given current permissions. Each MCP session has its own in-memory RefMap keyed by `session_id` — never reads or writes the on-disk CLI refmap at `~/.agent-desktop/last_refmap.json`. Sessions are isolated so the same host can run multiple agent-desktop-mcp instances concurrently without cross-contamination.
+- **Session:** On `initialize`, detect platform, probe permissions (AX + Screen Recording + Automation tri-state), report tool capabilities given current permissions. The current CLI already supports `--session <id>` as an on-disk latest-snapshot namespace. MCP adds per-host in-memory session state keyed by `session_id`; it must not use the legacy `~/.agent-desktop/last_refmap.json` artifact and should bridge to the same explicit snapshot semantics as the CLI.
 
 ### Initialize Handler
 
@@ -1485,16 +1507,16 @@ On receiving MCP `initialize`:
 | Crate | Version | Purpose | License |
 |-------|---------|---------|---------|
 | `rmcp` | 0.15.0+ | Official MCP Rust SDK — `#[tool]` macro, JSON-RPC handling, transport | MIT/Apache-2.0 |
-| `schemars` | 0.8+ | JSON Schema generation for tool parameter definitions | MIT/Apache-2.0 |
+| `schemars` | 1.2+ | JSON Schema generation for tool parameter definitions | MIT/Apache-2.0 |
 | `tokio` | 1.x | Async runtime (required by rmcp for MCP server event loop) | MIT |
 
 Note: If `tokio` was already introduced in Phase 3 (Linux), it is already available. Otherwise, it is introduced here.
 
 ### Binary Crate Changes
 
-- `src/main.rs` — Add `--mcp` flag detection, route to MCP server mode
+- `src/main.rs` / `src/cli/` — Add `--mcp` flag detection, route to MCP server mode
 - `Cargo.toml` — Add `agent-desktop-mcp` dependency (non-platform-gated, available on all platforms)
-- No changes to `dispatch.rs`, `cli.rs`, or any command files — MCP tools call the same `execute()` functions
+- No changes to `src/dispatch/` or command files — MCP tools call the same `execute()` functions
 
 ### Testing
 
@@ -1594,20 +1616,20 @@ Skill maintenance rules:
 
 **Status: Planned**
 
-Phase 5 transforms agent-desktop from functional to enterprise-grade. Persistent daemon process, session isolation for concurrent agents, the safety trio required for enterprise and regulated deployments (dry-run + confirm + audit log), an OCR/vision fallback for custom-rendered UIs where the accessibility tree is empty, session tracing with OpenTelemetry-compatible event streams, and first-class distribution via native package managers.
+Phase 5 transforms agent-desktop from functional to enterprise-grade. Persistent daemon process, in-memory session multiplexing for concurrent agents, the safety trio required for enterprise and regulated deployments (dry-run + confirm + audit log), an OCR/vision fallback for custom-rendered UIs where the accessibility tree is empty, OpenTelemetry-compatible trace export on top of the current JSONL reliability trace, and first-class distribution via native package managers.
 
 ### Objectives
 
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P5-O1 | Persistent daemon | Warm snapshot completes in <50ms (vs 200ms+ cold start) |
-| P5-O2 | Session isolation | Two agents hold independent RefMaps without interference |
+| P5-O2 | Daemon session multiplexing | Two agents hold independent in-memory RefMaps without interference; CLI `--session` remains the on-disk latest-snapshot namespace for non-daemon use |
 | P5-O3 | Enterprise quality gates | All gates in quality gates table pass |
 | P5-O4 | Package manager distribution | Available via brew (macOS), winget/scoop (Windows), snap/apt (Linux) with Sigstore attestation verification on install |
 | P5-O5 | Safety trio: `--dry-run` / `--confirm` / append-only audit log | Every destructive command supports `--dry-run` (resolves ref, computes the action, emits the would-be JSON response, does not execute), `--confirm` (stderr prompt with configurable timeout), and `~/.agent-desktop/audit.jsonl` append-only log with trace_id, actor, tool, args, decision (allowed / dry-run / denied / confirmed), exit code, timestamp. Covers EU AI Act Article 14 and OWASP Agentic Top-10 (2026) requirements |
 | P5-O6 | Policy allowlist / denylist | `~/.agent-desktop/policy.yaml` defines per-tool rules — e.g. "never call `desktop_close_app` for `com.apple.finder`", "require confirm for any action on bundle ID `com.apple.mail`". Loaded at daemon start, reload-on-SIGHUP. Policy decisions land in the audit log |
 | P5-O7 | OCR / vision fallback (`find --visual`) | When the AX tree is empty or the target isn't exposed (Canvas apps, Flutter-desktop, games, remote desktop, Figma plugins), `find --visual "label"` falls back to a per-window screenshot + OCR to locate text. macOS: `Vision` framework `VNRecognizeTextRequest`. Windows: `Windows.Media.Ocr.OcrEngine`. Linux: Tesseract via `tesseract` crate. Returns a synthetic ref that routes to coordinate events; clearly marked `source: "visual"` in output to signal reduced reliability |
-| P5-O8 | Session trace + OpenTelemetry-compatible event stream | `--trace-id <uuid>` on every CLI invocation; generated if not provided. Each command appends structured events (command start, adapter call, action dispatched, exit) to `~/.agent-desktop/traces/{trace_id}.jsonl`. Events are OpenTelemetry-compliant (`span_id`, `trace_id`, `parent_span_id`, `span_name`, `attributes`). New `agent-desktop trace view <uuid>` pretty-prints; `trace export <uuid>` emits OTLP JSON |
+| P5-O8 | OpenTelemetry trace export | Current `--trace <path>` writes redacted JSONL reliability diagnostics. Phase 5 adds trace IDs, span structure, `agent-desktop trace view <uuid>`, and OTLP/HAR export without changing the existing stdout JSON contract |
 | P5-O9 | Screencast / screenshot-per-action receipt | `--record-trace <path.mp4>` on long-running MCP sessions or CLI batches. Uses Phase 2 P2-O13 modern screenshot APIs at 2 Hz by default. Parity with Playwright 1.59 `page.screencast`. Mutually exclusive with `--dry-run` (nothing to record) |
 | P5-O10 | Sigstore attestation verification at install time | `brew install` formula and `winget` manifest run `cosign verify-blob` / `gh attestation verify` against the downloaded tarball before installing. Prevents supply-chain tampering. apt/snap use distro-native signatures; the formula publishes both Sigstore bundle and the checksum |
 
@@ -1626,10 +1648,10 @@ The daemon is a long-running process that maintains state between CLI/MCP invoca
 - Any new connection resets the idle timer
 
 **Session multiplexing:**
-- Each CLI invocation or MCP session gets a unique session ID
-- Each session has its own RefMap (held in memory by daemon, not on disk)
-- Sessions are isolated: agent A's refs never collide with agent B's refs
-- Session destroyed on disconnect or explicit `session kill`
+- The current CLI `--session <id>` persists snapshots on disk and scopes only the latest-snapshot pointer.
+- The daemon upgrades that model to warm, in-memory per-session RefMaps while preserving explicit snapshot IDs as deterministic handles.
+- Sessions are isolated: agent A's latest pointer never collides with agent B's latest pointer.
+- Session destroyed on disconnect or explicit `session kill`.
 
 **Health check:**
 - `agent-desktop status` returns: daemon PID, uptime, active session count, platform, permission status
@@ -1648,7 +1670,7 @@ The daemon is a long-running process that maintains state between CLI/MCP invoca
 | `find --visual "<label>"` | OCR-based visual fallback when the AX tree has no match for `label` (P5-O7) |
 | Every command gains `--dry-run` | Resolve ref, compute action, emit the would-be response, **do not execute** (P5-O5) |
 | Every destructive command gains `--confirm [--confirm-timeout <ms>]` | Prompt on stderr before executing; defaults off for CLI, on for MCP `destructive` capability |
-| Every command gains `--trace-id <uuid>` | Correlate events; auto-generated when not provided (P5-O8) |
+| Every command gains `--trace-id <uuid>` | Correlate the existing `--trace` JSONL events and future daemon/MCP spans; auto-generated when not provided (P5-O8) |
 | Every command gains `--record-trace <path.mp4>` | Screencast while the command runs (P5-O9) |
 
 ### CLI-to-Daemon Migration
@@ -1723,16 +1745,16 @@ Matchers: `tool` (glob), `bundle` (exact or glob), `pid`, `trace_mcp_host` (`cli
 
 `STALE_REF` semantics stay the same — a visual ref invalidates on the next snapshot. Visual refs never cache in the refmap persisted to disk.
 
-### Session Trace + OpenTelemetry (P5-O8)
+### Trace Export + OpenTelemetry (P5-O8)
 
-Every command generates trace events written to `~/.agent-desktop/traces/{trace_id}.jsonl`:
+Today, callers opt into a redacted reliability trace with `--trace <path>` and may add `--trace-strict` to fail on setup or pre-action trace write errors. Phase 5 layers trace IDs and span/export tooling on top of that existing JSONL event stream:
 
 ```json
 {"ts":"…","trace_id":"9f3c…","span_id":"…","parent_span_id":"…","name":"cli.snapshot","kind":"internal","attributes":{"app":"Finder","skeleton":true,"ref_count":14,"duration_ms":87}}
 {"ts":"…","trace_id":"9f3c…","span_id":"…","parent_span_id":"<snapshot span>","name":"adapter.macos.get_tree","duration_ms":72,"attributes":{"surface":"window"}}
 ```
 
-Spans are OpenTelemetry-compliant so `agent-desktop trace export <uuid> --otlp` emits a valid OTLP JSON payload ingestable by Grafana Tempo / Jaeger / Honeycomb / Datadog. `--har` exports a HAR-like envelope for quick manual inspection. Screencasts from `--record-trace` attach as trace links.
+Phase 5 spans are OpenTelemetry-compliant so `agent-desktop trace export <uuid> --otlp` emits a valid OTLP JSON payload ingestable by Grafana Tempo / Jaeger / Honeycomb / Datadog. `--har` exports a HAR-like envelope for quick manual inspection. Screencasts from `--record-trace` attach as trace links.
 
 ### Enterprise Quality Gates
 
@@ -1742,7 +1764,7 @@ Spans are OpenTelemetry-compliant so `agent-desktop trace export <uuid> --otlp` 
 | Safety | Every destructive command supports `--dry-run`; every MCP destructive tool requires the `destructive` capability + audit log; the audit log is hash-chained and tamper-detectable; policy engine evaluated on every invocation. |
 | Performance | Cold start <200ms. Warm snapshot <50ms via daemon. Tree traversal timeout 5s default, configurable. `watch --event` latency <500ms (push, not poll) per P2-O11. |
 | Reliability | Zero panics in non-test code. Graceful daemon recovery on crash. Stale socket cleanup on startup. FFI panic boundary in release-ffi profile (already shipping). |
-| Observability | Every command writes a trace file. Daemon exports `/metrics` Prometheus endpoint when `--metrics` flag is on. OpenTelemetry OTLP export via `trace export --otlp`. |
+| Observability | Current commands can opt into redacted JSONL via `--trace`. Phase 5 adds daemon metrics, trace IDs, and OpenTelemetry OTLP export via `trace export --otlp`. |
 | Compatibility | Tested against target app matrix: Finder, TextEdit, Xcode, VS Code, Chrome, Slack (macOS); Explorer, Notepad, Settings, VS Code, Edge (Windows); Nautilus, Terminal, Firefox, VS Code (Linux). |
 | Distribution | Single binary per platform. No runtime dependencies for the CLI. FFI cdylib tarballs signed via Sigstore (already shipping as of Phase 1.5). Formula / manifest verify Sigstore attestation before installing (P5-O10). |
 | Documentation | README, CLI reference, MCP reference, per-platform setup guides, troubleshooting, audit-log format reference, policy-file reference, OpenTelemetry trace schema. |
@@ -1820,8 +1842,8 @@ Each package manager distribution includes:
 - Visual refs never persist to disk refmap
 - On Linux without Tesseract installed, `find --visual` returns `PlatformNotSupported` with the install command
 
-**Session trace tests (P5-O8):**
-- Every CLI invocation writes at least one span to `~/.agent-desktop/traces/{trace_id}.jsonl`
+**Trace export tests (P5-O8):**
+- Commands run with `--trace <path>` write at least one redacted JSONL reliability event
 - `trace export <uuid> --otlp` produces a valid OpenTelemetry JSON payload that passes `otel-cli validate`
 - A multi-command batch under a single `--trace-id` produces a single-rooted span tree (batch command is the parent)
 - MCP sessions propagate the `trace_id` from the host's `initialize` params if provided; otherwise generate

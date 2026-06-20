@@ -80,10 +80,10 @@ The default activation-chain deadline is 10 seconds. Set `AGENT_DESKTOP_CHAIN_TI
 Ref commands use `ActionRequest { action, policy }`. The default policy forbids focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. macOS actions split semantic AX steps from explicit physical/headed paths:
 
 - `click`, `right-click`, `scroll`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, and `scroll-to` try AX-first semantics and fail clearly when the headless path is unavailable.
-- `type` mutates a settable AX text value in headless mode. It does not call `ensure_app_focused` or use the pasteboard in the default CLI path.
+- `type` uses focus fallback in the CLI/ref-action path. It may focus the target field, never moves the cursor, and can use the pasteboard for non-ASCII insertion. Use `set-value` for pure headless value mutation when supported.
 - `focus`, `press`, `hover`, `drag`, and `mouse-*` are explicit physical/focus/cursor commands.
-- FFI callers can opt into focus-only or physical policy explicitly; CLI ref commands do not do that implicitly.
-- Explicit focus/physical policy can use the clipboard briefly for non-ASCII text insertion. Keep the default headless path or use `set-value` for sensitive text when possible.
+- FFI ref-action callers should use focus fallback for `type` to match CLI behavior; direct-handle `ad_execute_action` is lower-level and defaults to headless.
+- Explicit focus/physical policy can use the clipboard briefly for non-ASCII text insertion. Use `set-value` for sensitive text when possible.
 - If a command would need a forbidden physical path, it returns a structured error with a recovery hint.
 
 ### Surfaces
@@ -198,7 +198,7 @@ The UI changed between your snapshot and action, or the element could not be re-
 "code": "POLICY_DENIED"
 ```
 
-The semantic AX path could not complete and a physical/headed path was blocked by policy. Use an explicit physical command only when that is intended, for example `focus`, `press`, `hover`, `drag`, or `mouse-click`.
+The semantic AX path could not complete and a physical/headed path was blocked by policy. Use `--headed` only when physical interaction is intended, for example `agent-desktop --headed hover @ref`, `agent-desktop --headed drag ...`, or `agent-desktop --headed mouse-click --xy x,y`.
 
 ### ACTION_FAILED
 
@@ -213,7 +213,7 @@ The accessibility action was rejected. This can happen when:
 
 **Try:**
 1. Check `is @ref --property enabled` first
-2. If physical interaction is intended, get bounds with `get @ref --property bounds`, then use `mouse-click --xy x,y`
+2. If physical interaction is intended, get bounds with `get @ref --property bounds`, then use `agent-desktop --headed mouse-click --xy x,y`
 3. Use keyboard explicitly: `focus @ref` then `press return`
 
 ### APP_NOT_FOUND
@@ -241,7 +241,7 @@ After `right-click @ref`, inspect `menu` first. If it is absent and `menu_probe.
 1. The element may not support context menus
 2. If the target is a combo box or menu button, use `select @ref "Option"` instead
 3. Run `list-surfaces --app "App"` to confirm whether a menu surface exists
-4. If physical interaction is intended, try `mouse-click --xy x,y --button right` with coordinates from `get @ref --property bounds`
+4. If physical interaction is intended, try `agent-desktop --headed mouse-click --xy x,y --button right` with coordinates from `get @ref --property bounds`
 
 ## macOS-Specific Behavior
 

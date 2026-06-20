@@ -59,19 +59,46 @@ Four reference topics, loaded as needed:
 
 - **Handle release.** Every `ad_resolve_element` result must be
   released with `ad_free_handle(adapter, handle)` on the same adapter
-  that produced it. On macOS this balances the internal `CFRetain`;
-  on Windows/Linux the call is a no-op but safe to issue.
+  that produced it before that adapter is destroyed. On macOS this
+  balances the internal `CFRetain`; on Windows/Linux the call is a no-op
+  but safe to issue.
 
-- **Action policy.** `ad_execute_action` uses the headless policy by
-  default, matching CLI ref commands: no focus stealing and no cursor
-  movement. Use `ad_execute_action_with_policy(...,
-  AD_POLICY_KIND_FOCUS_FALLBACK, ...)` only when focus-changing behavior is
-  intended, and `AD_POLICY_KIND_PHYSICAL` only for explicit physical/headed
-  input semantics.
+- **Action policy.** `ad_execute_action` uses headless policy by default.
+  `ad_execute_ref_action_with_policy` should also use headless for semantic
+  ref actions that must fail closed, except `AD_ACTION_KIND_TYPE_TEXT`: use
+  `AD_POLICY_KIND_FOCUS_FALLBACK` for CLI `type` parity because typing needs
+  focus but not cursor movement. Use `AD_POLICY_KIND_HEADED` only for explicit
+  headed input semantics.
 
-- **Text input privacy.** On macOS, explicit focus/physical policy can use the
-  clipboard briefly for non-ASCII text insertion. Keep the default headless
-  policy or set values directly for sensitive text when the target supports it.
+- **Ref-action preflight.** `ad_execute_ref_action_with_policy` resolves the
+  ref strictly and runs the live actionability preflight (visible, stable,
+  enabled, supported action, policy, editable) before dispatching — a disabled
+  or unsupported target fails before any platform call. On
+  `AD_RESULT_ERR_ACTION_FAILED`, the structured check report is available as
+  JSON via `ad_last_error_details()`. Details may carry element names, values,
+  and window titles from the user's screen — treat them as sensitive
+  diagnostics and keep them out of shared log surfaces.
+
+- **Action result steps.** `AdActionResult.steps` mirrors the CLI `steps`
+  array for activation-chain actions. Each entry has `label` and `outcome`
+  strings and is owned by the result; release it with
+  `ad_free_action_result(&out)`.
+
+- **Tracing.** CLI `--trace` is not inherited by the C ABI; FFI hosts should
+  record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs
+  in their own logs.
+
+- **No wait surface.** The CLI's `wait` command (element predicates including
+  `--predicate actionable --action ...`, window/text/menu/notification waits)
+  is not exposed over the C ABI. FFI hosts own their own polling loops; the
+  actionability preflight inside `ad_execute_ref_action_with_policy` is the
+  equivalent per-call readiness check.
+
+- **Text input privacy.** On macOS, focus-fallback or headed text insertion may
+  briefly use the clipboard for non-ASCII text. For sensitive text, prefer
+  `AD_ACTION_KIND_SET_VALUE` with `AD_POLICY_KIND_HEADLESS` when the target
+  supports settable values. Do not use headless `AD_ACTION_KIND_TYPE_TEXT` as
+  CLI-parity ref input; actionability rejects it before dispatch.
 
 - **Enum discriminants.** Every `#[repr(i32)]` enum field is validated
   at the C boundary — invalid discriminants return

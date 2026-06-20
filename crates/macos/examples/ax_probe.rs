@@ -36,14 +36,12 @@ fn probe_app(pid: i32) {
 
     let app = unsafe { AXUIElementCreateApplication(pid) };
 
-    // ── 1. What attributes does the app element expose? ──────────────────────
     println!("\n[1] App element attribute names:");
     let attr_names = get_attribute_names(app);
     for n in &attr_names {
         println!("    {n}");
     }
 
-    // ── 2. Get windows the right way ─────────────────────────────────────────
     println!("\n[2] Windows via kAXWindowsAttribute:");
     let windows = get_ax_children(app, kAXWindowsAttribute);
     println!("    count = {}", windows.len());
@@ -57,7 +55,6 @@ fn probe_app(pid: i32) {
             role, title, pos, size
         );
 
-        // Children of this window
         let children = get_ax_children(*win, kAXChildrenAttribute);
         println!("         children = {}", children.len());
         for (ci, child) in children.iter().enumerate().take(8) {
@@ -74,14 +71,12 @@ fn probe_app(pid: i32) {
             );
             println!("                 pos={:?} size={:?}", cpos, csz);
 
-            // ── 3. Test kAXPressAction on each child ────────────────────────
             let ax_err = ax_press(*child);
             println!(
                 "                 kAXPressAction → err={} (0=ok, -25200=fail, -25205=not_supported)",
                 ax_err
             );
 
-            // ── 4. Test CGEvent click at element center ─────────────────────
             if let (Some(p), Some(s)) = (cpos, csz) {
                 let cx = p.0 + s.0 / 2.0;
                 let cy = p.1 + s.1 / 2.0;
@@ -105,14 +100,12 @@ fn probe_app(pid: i32) {
         release_ax(*win);
         if i >= 1 {
             break;
-        } // only first 2 windows
+        }
     }
 
-    // ── 5. Multi-attribute fetch speed comparison ─────────────────────────────
     println!("\n[5] AXUIElementCopyMultipleAttributeValues vs individual calls:");
     speed_test(app, pid);
 
-    // ── 6. Scroll event test ─────────────────────────────────────────────────
     println!("\n[6] CGEvent scroll at (400, 400):");
     let ok = cg_scroll(400.0, 400.0, 0, -3);
     println!("    result = {}", if ok { "OK" } else { "FAIL" });
@@ -120,8 +113,6 @@ fn probe_app(pid: i32) {
     unsafe { core_foundation::base::CFRelease(app as CFTypeRef) };
     println!("\n=== Done ===");
 }
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
 fn get_attribute_names(el: accessibility_sys::AXUIElementRef) -> Vec<String> {
@@ -164,7 +155,6 @@ fn get_ax_children(
             if ptr.is_null() {
                 return None;
             }
-            // Retain so the element lives past CFArray dealloc
             unsafe { CFRetain(ptr as CFTypeRef) };
             Some(ptr)
         })
@@ -320,7 +310,6 @@ fn speed_test(app: accessibility_sys::AXUIElementRef, _pid: i32) {
     };
     use std::time::Instant;
 
-    // Get a real window element to test on
     let windows = get_ax_children(app, kAXWindowsAttribute);
     let el = if let Some(&w) = windows.first() {
         w
@@ -340,7 +329,6 @@ fn speed_test(app: accessibility_sys::AXUIElementRef, _pid: i32) {
     let cf_refs: Vec<_> = cf_attrs.iter().map(|s| s.as_concrete_TypeRef()).collect();
     let names_arr = CFArray::from_copyable(&cf_refs);
 
-    // Multi-attr
     let t = Instant::now();
     for _ in 0..100 {
         let mut res: CFTypeRef = std::ptr::null_mut();
@@ -358,7 +346,6 @@ fn speed_test(app: accessibility_sys::AXUIElementRef, _pid: i32) {
     }
     let multi = t.elapsed();
 
-    // Individual attrs
     let t2 = Instant::now();
     for _ in 0..100 {
         for attr in &attrs {

@@ -4,19 +4,6 @@ use crate::refs::{RefEntry, RefMap};
 
 pub(crate) use crate::roles::INTERACTIVE_ROLES;
 
-pub(crate) fn actions_for_role(role: &str) -> Vec<String> {
-    match role {
-        "button" | "link" | "menuitem" | "tab" | "radiobutton" => vec!["Click".into()],
-        "textfield" | "incrementor" => vec!["Click".into(), "SetValue".into(), "SetFocus".into()],
-        "checkbox" => vec!["Click".into(), "Toggle".into()],
-        "combobox" => vec!["Click".into(), "Select".into()],
-        "treeitem" => vec!["Click".into(), "Expand".into(), "Collapse".into()],
-        "slider" => vec!["SetValue".into()],
-        "cell" => vec!["Click".into()],
-        _ => vec!["Click".into()],
-    }
-}
-
 pub(crate) fn ref_entry_from_node(
     node: &AccessibilityNode,
     pid: i32,
@@ -36,7 +23,7 @@ pub(crate) fn ref_entry_from_node(
         bounds: node.bounds,
         bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
         available_actions: if node.available_actions.is_empty() {
-            actions_for_role(&node.role)
+            crate::capability::defaults_for_role(&node.role)
         } else {
             node.available_actions.clone()
         },
@@ -48,6 +35,24 @@ pub(crate) fn ref_entry_from_node(
         path_is_absolute: false,
         path: smallvec::SmallVec::from_slice(path),
     }
+}
+
+/// An element receives a ref when it is addressable for an action: either its
+/// role is interactive, or it advertises an available action regardless of
+/// role. Container roles like `scrollarea` (Scroll) and `disclosure`
+/// (Expand/Collapse) are not "interactive" by role but are genuinely
+/// actionable, and `scroll` / `expand` / `collapse` need a ref to target
+/// them — so action-bearing elements must be ref-able. A bare `SetFocus`
+/// affordance does not qualify on its own: focusability is not a primary
+/// action and would ref-allocate large numbers of inert containers.
+pub(crate) fn is_ref_able(node: &AccessibilityNode) -> bool {
+    INTERACTIVE_ROLES.contains(&node.role.as_str()) || advertises_primary_action(node)
+}
+
+fn advertises_primary_action(node: &AccessibilityNode) -> bool {
+    node.available_actions
+        .iter()
+        .any(|action| action != crate::capability::SET_FOCUS)
 }
 
 pub(crate) fn is_collapsible(node: &AccessibilityNode) -> bool {
@@ -131,9 +136,9 @@ fn allocate_refs_at_path(
     config: &RefAllocConfig,
     path: &mut Vec<usize>,
 ) -> AccessibilityNode {
-    let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
+    let is_ref_able = is_ref_able(&node);
 
-    if is_interactive {
+    if is_ref_able {
         let mut entry = ref_entry_from_node(
             &node,
             config.pid,
@@ -151,10 +156,8 @@ fn allocate_refs_at_path(
 
     let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
         || node.description.as_deref().is_some_and(|d| !d.is_empty());
-    let is_skeleton_anchor = !is_interactive
-        && node.children_count.is_some()
-        && has_label
-        && config.root_ref_id.is_none();
+    let is_skeleton_anchor =
+        !is_ref_able && node.children_count.is_some() && has_label && config.root_ref_id.is_none();
 
     if is_skeleton_anchor {
         let mut entry = ref_entry_from_node(
@@ -206,7 +209,6 @@ fn allocate_refs_at_path(
 fn strip_ref_bounds_when_hidden(entry: &mut RefEntry, include_bounds: bool) {
     if !include_bounds {
         entry.bounds = None;
-        entry.bounds_hash = None;
     }
 }
 

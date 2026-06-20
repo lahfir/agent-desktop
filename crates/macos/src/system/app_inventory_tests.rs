@@ -68,6 +68,18 @@ fn find_app_in_apps_rejects_contains_match() {
 }
 
 #[test]
+fn matching_pids_returns_all_exact_name_instances() {
+    let apps = vec![
+        app("Terminal", 3),
+        app("Terminal Helper", 4),
+        app("terminal", 2),
+        app("Terminal", 3),
+    ];
+
+    assert_eq!(matching_pids(&apps, "Terminal"), vec![2, 3]);
+}
+
+#[test]
 fn find_app_with_process_fallback_uses_process_entries_after_primary_miss() {
     let primary = vec![app("Finder", 10)];
 

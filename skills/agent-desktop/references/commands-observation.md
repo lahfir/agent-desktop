@@ -118,7 +118,7 @@ agent-desktop find --app "App" --role button --limit 20
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
-| `--role` | Accessibility role: button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell |
+| `--role` | Role to match against the live tree (button, textfield, checkbox, scrollarea, window, ...). Case-insensitive; `textarea`/`textbox`/`searchfield` fold to `textfield`. When a role filter matches nothing, the response carries `roles_present` — the roles actually in the searched tree — so you can tell "none on screen" from a wrong role name and retry |
 | `--name` | Accessible name or label |
 | `--value` | Current value |
 | `--text` | Fuzzy match across name, value, title, and description |
@@ -136,6 +136,17 @@ agent-desktop find --app "App" --role button --limit 20
       { "ref_id": "@e5", "role": "button", "name": "OK", "states": ["enabled"] }
     ],
     "count": 1
+  }
+}
+```
+
+**Output (no match — `roles_present` hint):** when a `--role` filter matches nothing, `roles_present` lists the roles actually in the searched tree so you can tell a wrong role name from "none on screen"; this applies to all non-count selection modes — an empty match list, or a `--first`/`--last`/`--nth` miss — whenever a role filter was active, making it a role-vocabulary hint for retries.
+```json
+{
+  "data": {
+    "matches": [],
+    "count": 0,
+    "roles_present": ["button", "cell", "checkbox", "scrollarea", "statictext"]
   }
 }
 ```

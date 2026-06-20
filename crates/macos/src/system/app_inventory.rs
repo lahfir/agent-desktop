@@ -43,6 +43,10 @@ pub(crate) fn pid_for_app_name(app_name: &str) -> Option<i32> {
     app_for_name(app_name).map(|app| app.pid)
 }
 
+pub(crate) fn pids_for_app_name(app_name: &str) -> Vec<i32> {
+    matching_pids(&list_apps(), app_name)
+}
+
 pub(crate) fn app_for_name(app_name: &str) -> Option<AppInfo> {
     app_for_name_from_sources(
         app_name,
@@ -116,6 +120,17 @@ fn find_app_in_apps(apps: &[AppInfo], app_name: &str) -> Option<AppInfo> {
     apps.iter()
         .find(|app| app.name.eq_ignore_ascii_case(app_name))
         .cloned()
+}
+
+fn matching_pids(apps: &[AppInfo], app_name: &str) -> Vec<i32> {
+    let mut pids = apps
+        .iter()
+        .filter(|app| app.name.eq_ignore_ascii_case(app_name))
+        .map(|app| app.pid)
+        .collect::<Vec<_>>();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
 }
 
 #[cfg(test)]

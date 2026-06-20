@@ -1,25 +1,17 @@
 mod batch;
 mod cli;
 mod cli_args;
-mod cli_args_actions;
-mod cli_args_notifications;
-mod cli_args_skills;
-mod cli_args_system;
-#[cfg(test)]
-mod command_contract_tests;
 mod command_policy;
 mod dispatch;
-mod dispatch_notifications;
-mod dispatch_parse;
 
 use agent_desktop_core::{
     adapter::PlatformAdapter,
-    error::AppError,
+    context::CommandContext,
     output::{ENVELOPE_VERSION, ErrorPayload, Response},
 };
 use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
-use cli_args_skills::SkillsAction;
+use cli_args::skills::SkillsAction;
 use std::io::{BufWriter, Write};
 
 fn main() {
@@ -43,6 +35,13 @@ fn main() {
     };
 
     init_tracing(cli.verbose);
+    let context = match CommandContext::new(cli.session, cli.trace, cli.trace_strict) {
+        Ok(context) => context.with_headed(cli.headed),
+        Err(err) => {
+            finish("unknown", Err(err));
+            return;
+        }
+    };
 
     let cmd = match cli.command {
         Some(c) => c,
@@ -75,11 +74,11 @@ fn main() {
             };
             finish(cmd_name, result);
         }
-        cmd => run_with_adapter(cmd, cmd_name),
+        cmd => run_with_adapter(cmd, cmd_name, &context),
     }
 }
 
-fn run_with_adapter(cmd: Commands, cmd_name: &str) {
+fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) {
     let adapter = build_adapter();
     let report = adapter.permission_report();
     if let Err(err) = command_policy::preflight(&cmd, &report) {
@@ -87,7 +86,7 @@ fn run_with_adapter(cmd: Commands, cmd_name: &str) {
         return;
     }
 
-    let result = dispatch::dispatch(cmd, &adapter, &report);
+    let result = dispatch::dispatch(cmd, &adapter, &report, context);
     finish(cmd_name, result);
 }
 
@@ -98,14 +97,10 @@ fn finish(cmd_name: &str, result: Result<serde_json::Value, agent_desktop_core::
             std::process::exit(0);
         }
         Err(e) => {
-            let mut payload = ErrorPayload::new(e.code(), e.to_string());
-            if let Some(s) = e.suggestion() {
-                payload = payload.with_suggestion(s);
-            }
-            if let AppError::Adapter(adapter_error) = &e {
-                payload.platform_detail = adapter_error.platform_detail.clone();
-            }
-            emit_response(&Response::err(cmd_name, payload));
+            emit_response(&Response::err(
+                cmd_name,
+                agent_desktop_core::ErrorPayload::from_app_error(&e),
+            ));
             std::process::exit(1);
         }
     }

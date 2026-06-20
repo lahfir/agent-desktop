@@ -115,6 +115,37 @@ fn ref_entry_preserves_meaningful_identity_text() {
     assert_eq!(entry.description.as_deref(), Some("Commits changes"));
 }
 
+/// scrollarea/disclosure are not interactive roles, but they advertise real
+/// actions and `scroll` / `expand` need a ref to target them.
+#[test]
+fn actionable_container_roles_receive_refs() {
+    let mut scroll = node("scrollarea", Some("Log"));
+    scroll.available_actions = vec!["Scroll".into()];
+    assert!(is_ref_able(&scroll));
+
+    let mut disclosure = node("disclosure", Some("Details"));
+    disclosure.available_actions = vec!["Click".into()];
+    assert!(is_ref_able(&disclosure));
+}
+
+/// A bare SetFocus affordance is not a primary action; ref-allocating every
+/// focusable container would bloat the refmap.
+#[test]
+fn focus_only_container_does_not_receive_a_ref() {
+    let mut group = node("group", Some("Panel"));
+    group.available_actions = vec!["SetFocus".into()];
+    assert!(!is_ref_able(&group));
+
+    let inert = node("statictext", Some("Label"));
+    assert!(!is_ref_able(&inert));
+}
+
+#[test]
+fn interactive_role_is_ref_able_even_without_actions() {
+    let button = node("button", Some("OK"));
+    assert!(is_ref_able(&button));
+}
+
 #[test]
 fn allocate_refs_records_structural_paths() {
     let mut root = node("window", Some("w"));
@@ -148,7 +179,7 @@ fn allocate_refs_records_structural_paths() {
 }
 
 #[test]
-fn allocate_refs_hides_bounds_from_refmap_when_snapshot_hides_bounds() {
+fn allocate_refs_keeps_bounds_hash_when_snapshot_hides_bounds() {
     let mut root = node("window", Some("w"));
     root.children = vec![node("button", Some("Open"))];
     let mut refmap = RefMap::new();
@@ -171,10 +202,20 @@ fn allocate_refs_hides_bounds_from_refmap_when_snapshot_hides_bounds() {
 
     assert!(out.children[0].bounds.is_none());
     assert!(entry.bounds.is_none());
-    assert!(entry.bounds_hash.is_none());
+    assert_eq!(entry.bounds_hash, Some(entry_hash()));
     assert_eq!(entry.path.as_slice(), [0]);
     assert_eq!(entry.source_window_id.as_deref(), Some("w-42"));
     assert_eq!(entry.source_window_title.as_deref(), Some("Documents"));
+}
+
+fn entry_hash() -> u64 {
+    Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 10.0,
+        height: 10.0,
+    }
+    .bounds_hash()
 }
 
 #[test]

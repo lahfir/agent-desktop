@@ -1,10 +1,13 @@
 use agent_desktop_core::{
     PermissionReport,
-    action::{ActionRequest, ActionResult, DragParams, ElementState, MouseEvent, WindowOp},
+    action::{DragParams, MouseEvent, WindowOp},
+    action_request::ActionRequest,
+    action_result::ActionResult,
     adapter::{
-        ImageBuffer, NativeHandle, PlatformAdapter, ScreenshotTarget, SnapshotSurface, TreeOptions,
-        WindowFilter,
+        ImageBuffer, LiveElement, NativeHandle, PlatformAdapter, ScreenshotTarget, SnapshotSurface,
+        TreeOptions, WindowFilter,
     },
+    element_state::ElementState,
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
@@ -81,8 +84,16 @@ impl PlatformAdapter for MacOSAdapter {
         execute_action_impl(handle, request)
     }
 
-    fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         crate::tree::resolve::resolve_element_impl(entry)
+    }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        timeout: std::time::Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        crate::tree::resolve::resolve_element_with_timeout(entry, timeout)
     }
 
     fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
@@ -108,12 +119,20 @@ impl PlatformAdapter for MacOSAdapter {
         crate::system::app_ops::focus_window_impl(win)
     }
 
+    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
+        crate::system::app_ops::ensure_app_focused(pid)
+    }
+
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
         crate::system::app_ops::launch_app_impl(id, timeout_ms)
     }
 
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {
         crate::system::app_ops::close_app_impl(id, force)
+    }
+
+    fn is_protected_process(&self, identifier: &str) -> bool {
+        crate::system::app_ops::is_protected_process(identifier)
     }
 
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
@@ -136,7 +155,7 @@ impl PlatformAdapter for MacOSAdapter {
         &self,
         app_name: &str,
         combo: &agent_desktop_core::action::KeyCombo,
-    ) -> Result<agent_desktop_core::action::ActionResult, AdapterError> {
+    ) -> Result<ActionResult, AdapterError> {
         crate::system::key_dispatch::press_for_app_impl(app_name, combo)
     }
 
@@ -160,12 +179,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            Ok(crate::tree::copy_value_typed(&el))
+            Ok(with_borrowed_ax_element(
+                handle,
+                crate::tree::copy_value_typed,
+            ))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_value"))
@@ -174,26 +191,43 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_state(&self, handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            Ok(Some(crate::actions::post_state::read_element_state(&el)))
+            Ok(Some(with_borrowed_ax_element(
+                handle,
+                crate::actions::post_state::read_element_state,
+            )))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_state"))
     }
 
+    fn get_live_actions(&self, handle: &NativeHandle) -> Result<Option<Vec<String>>, AdapterError> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(Some(with_borrowed_ax_element(
+                handle,
+                crate::actions::post_state::read_live_actions,
+            )))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Err(AdapterError::not_supported("get_live_actions"))
+    }
+
+    fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(with_borrowed_ax_element(
+                handle,
+                crate::actions::post_state::read_live_element,
+            ))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Err(AdapterError::not_supported("get_live_element"))
+    }
+
     fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            use crate::tree::AXElement;
-            use std::mem::ManuallyDrop;
-            let el = ManuallyDrop::new(AXElement(
-                handle.as_raw() as accessibility_sys::AXUIElementRef
-            ));
-            Ok(crate::tree::read_bounds(&el))
+            Ok(with_borrowed_ax_element(handle, crate::tree::read_bounds))
         }
         #[cfg(not(target_os = "macos"))]
         {
@@ -262,29 +296,25 @@ impl PlatformAdapter for MacOSAdapter {
         handle: &NativeHandle,
         opts: &TreeOptions,
     ) -> Result<AccessibilityNode, AdapterError> {
-        use crate::tree::AXElement;
-        use std::mem::ManuallyDrop;
-
-        let el = ManuallyDrop::new(AXElement(
-            handle.as_raw() as accessibility_sys::AXUIElementRef
-        ));
-        let mut ancestors = FxHashSet::default();
-        let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
-        crate::tree::build_subtree(
-            &el,
-            0,
-            0,
-            opts.max_depth,
-            &mut ancestors,
-            opts.skeleton,
-            &context,
-        )
-        .ok_or_else(|| {
-            AdapterError::new(
-                agent_desktop_core::error::ErrorCode::ElementNotFound,
-                "Element no longer exists in accessibility tree",
+        with_borrowed_ax_element(handle, |el| {
+            let mut ancestors = FxHashSet::default();
+            let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
+            crate::tree::build_subtree(
+                el,
+                0,
+                0,
+                opts.max_depth,
+                &mut ancestors,
+                opts.skeleton,
+                &context,
             )
-            .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+            .ok_or_else(|| {
+                AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::ElementNotFound,
+                    "Element no longer exists in accessibility tree",
+                )
+                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+            })
         })
     }
 }
@@ -293,11 +323,18 @@ fn execute_action_impl(
     handle: &NativeHandle,
     request: ActionRequest,
 ) -> Result<ActionResult, AdapterError> {
-    use crate::tree::AXElement;
+    with_borrowed_ax_element(handle, |el| crate::actions::perform_action(el, &request))
+}
+
+#[cfg(target_os = "macos")]
+fn with_borrowed_ax_element<T>(
+    handle: &NativeHandle,
+    f: impl FnOnce(&crate::tree::AXElement) -> T,
+) -> T {
     use std::mem::ManuallyDrop;
 
-    let el = ManuallyDrop::new(AXElement(
+    let el = ManuallyDrop::new(crate::tree::AXElement(
         handle.as_raw() as accessibility_sys::AXUIElementRef
     ));
-    crate::actions::perform_action(&el, &request)
+    f(&el)
 }

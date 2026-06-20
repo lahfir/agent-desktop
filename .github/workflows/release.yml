@@ -152,7 +152,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary
@@ -236,7 +236,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-
 
       - name: Build FFI cdylib (release-ffi profile)

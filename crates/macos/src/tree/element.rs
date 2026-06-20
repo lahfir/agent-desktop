@@ -15,14 +15,24 @@ mod imp {
     use super::*;
     use crate::{
         cf_type::created_cf_array,
-        tree::{NodeAttrs, ax_element::AXElement, ax_value, node_attrs::parse_enabled},
+        tree::{
+            NodeAttrs,
+            attributes::{
+                copy_ax_array, copy_bool_attr, copy_first_element_attr, copy_string_attr,
+                copy_value_typed,
+            },
+            ax_element::AXElement,
+            ax_value,
+            element_bounds::{read_bounds, rect_from_parts},
+            node_attrs::{NodeAttrStates, parse_bool_attr, parse_enabled},
+        },
     };
     use accessibility_sys::{
-        AXUIElementCopyAttributeValue, AXUIElementCopyAttributeValues,
         AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication,
-        AXUIElementGetAttributeValueCount, AXUIElementSetMessagingTimeout, kAXDescriptionAttribute,
-        kAXEnabledAttribute, kAXErrorSuccess, kAXRoleAttribute, kAXTitleAttribute,
-        kAXValueAttribute,
+        AXUIElementGetAttributeValueCount, AXUIElementSetMessagingTimeout, AXValueGetValue,
+        kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXPositionAttribute,
+        kAXRoleAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXValueAttribute,
+        kAXValueTypeCGPoint, kAXValueTypeCGSize,
     };
     use core_foundation::{
         array::CFArray,
@@ -31,6 +41,9 @@ mod imp {
         number::CFNumber,
         string::CFString,
     };
+    use core_graphics::geometry::{CGPoint, CGSize};
+
+    const SCROLLBAR_ATTRS: [&str; 2] = ["AXVerticalScrollBar", "AXHorizontalScrollBar"];
 
     pub fn element_for_pid(pid: i32) -> AXElement {
         let el = AXElement(unsafe { AXUIElementCreateApplication(pid) });
@@ -47,6 +60,13 @@ mod imp {
             kAXDescriptionAttribute,
             kAXValueAttribute,
             kAXEnabledAttribute,
+            "AXFocused",
+            "AXExpanded",
+            "AXDisclosing",
+            kAXPositionAttribute,
+            kAXSizeAttribute,
+            SCROLLBAR_ATTRS[0],
+            SCROLLBAR_ATTRS[1],
         ];
         let cf_names: Vec<CFString> = attr_names.iter().map(|a| CFString::new(a)).collect();
         let cf_refs: Vec<_> = cf_names.iter().map(|s| s.as_concrete_TypeRef()).collect();
@@ -69,44 +89,89 @@ mod imp {
         let Some(arr) = created_cf_array(result_ref) else {
             return fetch_node_attrs_slow(el);
         };
-        let items: Vec<Option<String>> = arr
-            .into_iter()
-            .enumerate()
-            .map(|(idx, item)| {
-                if let Some(s) = item.downcast::<CFString>() {
-                    return Some(s.to_string());
-                }
-                match idx {
-                    3 => {
-                        if let Some(b) = item.downcast::<CFBoolean>() {
-                            return Some(bool::from(b).to_string());
-                        }
-                        if let Some(n) = item.downcast::<CFNumber>() {
-                            if let Some(i) = n.to_i64() {
-                                return Some(i.to_string());
-                            }
-                            if let Some(f) = n.to_f64() {
-                                return Some(format!("{:.2}", f));
-                            }
-                        }
-                        None
-                    }
-                    4 => item
-                        .downcast::<CFBoolean>()
-                        .map(|b| bool::from(b).to_string()),
-                    _ => None,
-                }
-            })
-            .collect();
 
-        let get = |i: usize| items.get(i).and_then(|v| v.clone());
+        let mut texts: [Option<String>; 8] = Default::default();
+        let mut position: Option<CGPoint> = None;
+        let mut size: Option<CGSize> = None;
+        let mut has_scrollbars = false;
+        for (idx, item) in arr.into_iter().enumerate() {
+            match idx {
+                0..=7 => texts[idx] = decode_text_attr(idx, &item),
+                8 => position = decode_ax_point(&item),
+                9 => size = decode_ax_size(&item),
+                10 | 11 => {
+                    has_scrollbars =
+                        has_scrollbars || ax_value::retained_ax_element(&item).is_some();
+                }
+                _ => {}
+            }
+        }
+
+        let get = |i: usize| texts.get(i).and_then(|v| v.clone());
         NodeAttrs {
             role: get(0),
             title: get(1),
             description: get(2),
             value: get(3),
-            enabled: parse_enabled(get(4)),
+            states: NodeAttrStates {
+                enabled: parse_enabled(get(4)),
+                focused: parse_bool_attr(get(5)),
+                expanded: parse_bool_attr(get(6)),
+                disclosing: parse_bool_attr(get(7)),
+            },
+            bounds: position.zip(size).and_then(|(p, s)| rect_from_parts(p, s)),
+            has_scrollbars,
         }
+    }
+
+    fn decode_text_attr(idx: usize, item: &CFType) -> Option<String> {
+        if let Some(s) = item.downcast::<CFString>() {
+            return Some(s.to_string());
+        }
+        match idx {
+            3 => {
+                if let Some(b) = item.downcast::<CFBoolean>() {
+                    return Some(bool::from(b).to_string());
+                }
+                if let Some(n) = item.downcast::<CFNumber>() {
+                    if let Some(i) = n.to_i64() {
+                        return Some(i.to_string());
+                    }
+                    if let Some(f) = n.to_f64() {
+                        return Some(format!("{:.2}", f));
+                    }
+                }
+                None
+            }
+            4..=7 => item
+                .downcast::<CFBoolean>()
+                .map(|b| bool::from(b).to_string()),
+            _ => None,
+        }
+    }
+
+    fn decode_ax_point(item: &CFType) -> Option<CGPoint> {
+        let mut point = CGPoint::new(0.0, 0.0);
+        let decoded = unsafe {
+            AXValueGetValue(
+                item.as_CFTypeRef() as _,
+                kAXValueTypeCGPoint,
+                &mut point as *mut _ as *mut std::ffi::c_void,
+            )
+        };
+        decoded.then_some(point)
+    }
+
+    fn decode_ax_size(item: &CFType) -> Option<CGSize> {
+        let mut size = CGSize::new(0.0, 0.0);
+        let decoded = unsafe {
+            AXValueGetValue(
+                item.as_CFTypeRef() as _,
+                kAXValueTypeCGSize,
+                &mut size as *mut _ as *mut std::ffi::c_void,
+            )
+        };
+        decoded.then_some(size)
     }
 
     fn fetch_node_attrs_slow(el: &AXElement) -> NodeAttrs {
@@ -120,7 +185,14 @@ mod imp {
             title,
             description: desc,
             value: val,
-            enabled,
+            states: NodeAttrStates {
+                enabled,
+                focused: copy_bool_attr(el, "AXFocused"),
+                expanded: copy_bool_attr(el, "AXExpanded"),
+                disclosing: copy_bool_attr(el, "AXDisclosing"),
+            },
+            bounds: read_bounds(el),
+            has_scrollbars: copy_first_element_attr(el, &SCROLLBAR_ATTRS).is_some(),
         }
     }
 
@@ -145,123 +217,6 @@ mod imp {
         })
     }
 
-    pub fn copy_string_attr(el: &AXElement, attr: &str) -> Option<String> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        let cf_type = unsafe { CFType::wrap_under_create_rule(value) };
-        cf_type.downcast::<CFString>().map(|s| s.to_string())
-    }
-
-    pub fn copy_value_typed(el: &AXElement) -> Option<String> {
-        let cf_attr = CFString::new(kAXValueAttribute);
-        let mut val_ref: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut val_ref)
-        };
-        if err != kAXErrorSuccess || val_ref.is_null() {
-            return None;
-        }
-        let cf = unsafe { CFType::wrap_under_create_rule(val_ref) };
-        if let Some(s) = cf.downcast::<CFString>() {
-            return Some(s.to_string());
-        }
-        if let Some(b) = cf.downcast::<CFBoolean>() {
-            return Some(bool::from(b).to_string());
-        }
-        if let Some(n) = cf.downcast::<CFNumber>() {
-            if let Some(i) = n.to_i64() {
-                return Some(i.to_string());
-            }
-            if let Some(f) = n.to_f64() {
-                return Some(format!("{:.2}", f));
-            }
-        }
-        None
-    }
-
-    pub fn copy_bool_attr(el: &AXElement, attr: &str) -> Option<bool> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        let cf_type = unsafe { CFType::wrap_under_create_rule(value) };
-        cf_type.downcast::<CFBoolean>().map(|b| b.into())
-    }
-
-    pub fn copy_i64_attr(el: &AXElement, attr: &str) -> Option<i64> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        let cf_type = unsafe { CFType::wrap_under_create_rule(value) };
-        cf_type.downcast::<CFNumber>().and_then(|n| n.to_i64())
-    }
-
-    pub fn copy_ax_array(el: &AXElement, attr: &str) -> Option<Vec<AXElement>> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        let arr = created_cf_array(value)?;
-        Some(ax_array_items(arr))
-    }
-
-    pub fn copy_ax_array_prefix(
-        el: &AXElement,
-        attr: &str,
-        max_values: usize,
-    ) -> Option<Vec<AXElement>> {
-        if max_values == 0 {
-            return Some(Vec::new());
-        }
-        let cf_attr = CFString::new(attr);
-        let mut value: core_foundation_sys::array::CFArrayRef = std::ptr::null();
-        let err = unsafe {
-            AXUIElementCopyAttributeValues(
-                el.0,
-                cf_attr.as_concrete_TypeRef(),
-                0,
-                max_values as core_foundation_sys::base::CFIndex,
-                &mut value,
-            )
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        let arr = created_cf_array(value as CFTypeRef)?;
-        Some(ax_array_items(arr))
-    }
-
-    pub fn copy_element_attr(el: &AXElement, attr: &str) -> Option<AXElement> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        ax_value::created_ax_element(value)
-    }
-
     pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
         unsafe {
             for attr_name in child_attributes(ax_role) {
@@ -282,12 +237,6 @@ mod imp {
             0
         }
     }
-
-    fn ax_array_items(arr: CFArray<CFType>) -> Vec<AXElement> {
-        arr.into_iter()
-            .filter_map(|item| ax_value::retained_ax_element(&item))
-            .collect()
-    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -298,34 +247,6 @@ mod imp {
         AXElement(std::ptr::null())
     }
 
-    pub fn copy_ax_array(_el: &AXElement, _attr: &str) -> Option<Vec<AXElement>> {
-        None
-    }
-
-    pub fn copy_ax_array_prefix(
-        _el: &AXElement,
-        _attr: &str,
-        _max_values: usize,
-    ) -> Option<Vec<AXElement>> {
-        None
-    }
-
-    pub fn copy_string_attr(_el: &AXElement, _attr: &str) -> Option<String> {
-        None
-    }
-
-    pub fn copy_bool_attr(_el: &AXElement, _attr: &str) -> Option<bool> {
-        None
-    }
-
-    pub fn copy_i64_attr(_el: &AXElement, _attr: &str) -> Option<i64> {
-        None
-    }
-
-    pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
-        None
-    }
-
     pub fn count_children(_element: &AXElement, _ax_role: Option<&str>) -> u32 {
         0
     }
@@ -334,20 +255,9 @@ mod imp {
         None
     }
 
-    pub fn copy_value_typed(_el: &AXElement) -> Option<String> {
-        None
-    }
-
     pub fn fetch_node_attrs(_el: &AXElement) -> NodeAttrs {
-        NodeAttrs {
-            enabled: true,
-            ..NodeAttrs::default()
-        }
+        NodeAttrs::default()
     }
 }
 
-pub use imp::{
-    copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_element_attr, copy_i64_attr,
-    copy_string_attr, copy_value_typed, count_children, element_for_pid, fetch_node_attrs,
-    resolve_element_name,
-};
+pub use imp::{count_children, element_for_pid, fetch_node_attrs, resolve_element_name};

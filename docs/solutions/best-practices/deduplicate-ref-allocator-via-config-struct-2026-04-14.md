@@ -1,6 +1,7 @@
 ---
 title: Deduplicate ref allocator via RefAllocConfig instead of a _with_X copy
 date: 2026-04-14
+last_updated: 2026-06-10
 category: best-practices
 module: crates/core
 problem_type: best_practice
@@ -256,6 +257,10 @@ let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
 `DrillDownConfig` is deleted. `allocate_refs_with_root` is deleted. A future change to `INTERACTIVE_ROLES`, the skeleton-anchor condition, the `is_collapsible` rule, or the `interactive_only` pruning touches exactly one place.
 
 **Net diff** (`d06a6c2 refactor: unify allocate_refs across snapshot and drill-down paths`): +139 / −190 across `ref_alloc.rs`, `snapshot.rs`, `snapshot_ref.rs`. 51 net LOC removed. `grep allocate_refs_with_root` returns zero matches. The follow-up `7c7837a chore: drop with_root from drill test names after allocator unification` renamed the leftover `test_allocate_refs_with_root_*` helpers to `test_drill_alloc_*` so the name is gone from the codebase entirely.
+
+### Current shape (as of 2026-06-10)
+
+The code blocks above are the historical record of that refactor; the unified design has since absorbed further growth in exactly the way the pattern promised — all in one place. `RefAllocConfig` now carries ten fields (the originals plus `source_window_id`, `source_window_title`, `source_surface`, and `path_prefix` for element-identity evidence), ref eligibility generalized from `INTERACTIVE_ROLES.contains(...)` to `is_ref_able(node)` (interactive role **or** a non-`SetFocus` advertised action), the skeleton-anchor condition additionally requires `root_ref_id.is_none()`, and `allocate_refs` delegates to a private `allocate_refs_at_path` that threads tree-position tracking. Each of those changes touched the single shared body — none re-introduced a second copy. See `crates/core/src/ref_alloc.rs` for the current implementation.
 
 ## Related
 

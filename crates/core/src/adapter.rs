@@ -1,9 +1,10 @@
 use crate::{
     PermissionReport, PermissionState,
-    action::{
-        ActionRequest, ActionResult, DragParams, ElementState, KeyCombo, MouseEvent, WindowOp,
-    },
-    error::AdapterError,
+    action::{DragParams, KeyCombo, MouseEvent, WindowOp},
+    action_request::ActionRequest,
+    action_result::ActionResult,
+    element_state::ElementState,
+    error::{AdapterError, ErrorCode},
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
     refs::RefEntry,
@@ -34,6 +35,7 @@ impl SnapshotSurface {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct TreeOptions {
     pub max_depth: u8,
     pub include_bounds: bool,
@@ -54,6 +56,37 @@ impl Default for TreeOptions {
             skeleton: false,
         }
     }
+}
+
+impl TreeOptions {
+    pub(crate) fn with_ref_identity_bounds(mut self) -> Self {
+        self.include_bounds = true;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LiveElement {
+    pub state: Option<ElementState>,
+    pub bounds: Option<Rect>,
+    pub available_actions: Option<Vec<String>>,
+}
+
+pub(crate) fn optional_live_read<T>(
+    result: Result<Option<T>, AdapterError>,
+) -> Result<Option<T>, AdapterError> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(err) if is_live_read_unsupported(&err) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+fn is_live_read_unsupported(err: &AdapterError) -> bool {
+    matches!(
+        err.code,
+        ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
+    )
 }
 
 pub enum ScreenshotTarget {
@@ -143,8 +176,24 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("execute_action"))
     }
 
-    fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::not_supported("resolve_element"))
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Err(AdapterError::not_supported("resolve_element_strict"))
+    }
+
+    /// Resolves an element under a caller deadline. Defaults to delegating
+    /// to [`PlatformAdapter::resolve_element_strict`], ignoring the timeout,
+    /// so adapters that implement only the un-timed variant still support
+    /// `wait --element`. Override to honor the remaining budget.
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        timeout: std::time::Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        tracing::trace!(
+            ?timeout,
+            "resolve_element_strict_with_timeout: default impl does not enforce the deadline; override to honor it"
+        );
+        self.resolve_element_strict(entry)
     }
 
     /// Releases a platform-specific element handle returned from
@@ -179,12 +228,28 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("focus_window"))
     }
 
+    /// Brings the application owning `pid` to the foreground. Best-effort guard
+    /// invoked before physical (cursor/keyboard) input that targets a known
+    /// element, so synthetic events land on the intended window rather than
+    /// whatever happens to be frontmost.
+    fn focus_app(&self, _pid: i32) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("focus_app"))
+    }
+
     fn launch_app(&self, _id: &str, _timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
         Err(AdapterError::not_supported("launch_app"))
     }
 
     fn close_app(&self, _id: &str, _force: bool) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("close_app"))
+    }
+
+    /// Reports whether closing `identifier` would terminate a process the OS
+    /// depends on (window server, login session, shell). The set is
+    /// inherently platform-specific, so each adapter owns its own list;
+    /// core only asks. The default denies nothing.
+    fn is_protected_process(&self, _identifier: &str) -> bool {
+        false
     }
 
     fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
@@ -211,11 +276,30 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("get_live_state"))
     }
 
+    fn get_live_actions(
+        &self,
+        _handle: &NativeHandle,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        Err(AdapterError::not_supported("get_live_actions"))
+    }
+
+    fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
+        let live = LiveElement {
+            state: optional_live_read(self.get_live_state(handle))?,
+            bounds: optional_live_read(self.get_element_bounds(handle))?,
+            available_actions: optional_live_read(self.get_live_actions(handle))?,
+        };
+        if live.state.is_none() && live.bounds.is_none() && live.available_actions.is_none() {
+            return Err(AdapterError::not_supported("get_live_element"));
+        }
+        Ok(live)
+    }
+
     fn press_key_for_app(
         &self,
         _app_name: &str,
         _combo: &crate::action::KeyCombo,
-    ) -> Result<crate::action::ActionResult, AdapterError> {
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
         Err(AdapterError::not_supported("press_key_for_app"))
     }
 

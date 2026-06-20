@@ -24,7 +24,8 @@ use agent_desktop_core::adapter::NativeHandle;
 ///
 /// # Safety
 ///
-/// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+/// `adapter` must be a non-null pointer returned by `ad_adapter_create`
+/// and must be the same live adapter that produced `handle`.
 /// `handle` must be null or a `*mut AdNativeHandle` previously
 /// populated by `ad_resolve_element`. On return `(*handle).ptr` is
 /// `NULL` so a double-call is a no-op instead of a double-free.
@@ -48,9 +49,6 @@ pub unsafe extern "C" fn ad_free_handle(
         if raw.is_null() {
             return AdResult::Ok;
         }
-        // Zero the caller-visible pointer *before* the platform release
-        // so a concurrent or accidental double-call through the same
-        // struct cannot re-enter CFRelease on the same underlying ref.
         (*handle).ptr = std::ptr::null();
         let adapter = &*adapter;
         let native = NativeHandle::from_ptr(raw);

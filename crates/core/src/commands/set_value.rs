@@ -1,8 +1,7 @@
 use crate::{
-    action::{Action, ActionRequest},
-    adapter::PlatformAdapter,
-    commands::helpers::resolve_ref,
-    error::AppError,
+    action::Action, adapter::PlatformAdapter,
+    commands::helpers::execute_ref_action_result_with_context, context::CommandContext,
+    error::AppError, interaction_policy::InteractionPolicy,
 };
 use serde_json::Value;
 
@@ -12,11 +11,18 @@ pub struct SetValueArgs {
     pub value: String,
 }
 
-pub fn execute(args: SetValueArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
-    let result = adapter.execute_action(
-        handle.handle(),
-        ActionRequest::headless(Action::SetValue(args.value)),
+pub fn execute(
+    args: SetValueArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let request = context.request(Action::SetValue(args.value), InteractionPolicy::headless());
+    let (_entry, result) = execute_ref_action_result_with_context(
+        &args.ref_id,
+        args.snapshot_id.as_deref(),
+        adapter,
+        request,
+        context,
     )?;
     Ok(serde_json::to_value(result)?)
 }

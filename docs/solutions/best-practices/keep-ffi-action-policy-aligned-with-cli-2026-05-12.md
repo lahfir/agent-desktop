@@ -1,6 +1,7 @@
 ---
 title: Keep FFI action policy aligned with CLI action policy
 date: 2026-05-12
+last_updated: 2026-06-10
 category: best-practices
 module: crates/ffi
 problem_type: best_practice
@@ -22,10 +23,10 @@ tags:
 ## Context
 
 The CLI action path moved to `ActionRequest { action, policy }`, but the FFI
-`ad_execute_action` wrapper initially constructed `ActionRequest::physical` for
-every action. That meant C, Swift, Python, Go, and Node consumers received
-focus-stealing and cursor-moving behavior for actions that the CLI treats as
-headless by default.
+`ad_execute_action` wrapper initially constructed the cursor/focus policy (then
+named `physical`, since renamed `ActionRequest::headed`) for every action. That
+meant C, Swift, Python, Go, and Node consumers received focus-stealing and
+cursor-moving behavior for actions that the CLI treats as headless by default.
 
 ## Guidance
 
@@ -42,3 +43,13 @@ Any change to `ActionRequest`, `InteractionPolicy`, or command preflight must
 include a pass over `crates/ffi/src/actions/`. If the CLI and FFI can perform the
 same action, they must document the same default and expose any divergence as an
 explicit parameter.
+
+Behavioral parity is only half the FFI review: any structural change to a public
+`repr(C)` type — adding, removing, or reordering fields, or growing a struct that
+is embedded by value inside another — must also update the three-layer size pin
+(Rust const assert, header `_Static_assert`, layout integration test). Size drift
+in an embedded struct silently propagates to every outer struct that embeds it.
+
+## Related
+
+- `best-practices/ffi-repr-c-struct-size-pinning.md` — the structural-parity companion: the full three-layer pinning protocol and the AdAction silent-growth incident that motivated it.
