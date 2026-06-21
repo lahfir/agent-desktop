@@ -14,7 +14,7 @@ fn entry() -> RefEntry {
         source_app: None,
         source_window_id: None,
         source_window_title: None,
-        source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
+        source_surface: SnapshotSurface::Window,
         root_ref: None,
         path_is_absolute: false,
         path: smallvec::SmallVec::new(),
@@ -99,6 +99,42 @@ fn mutable_value_role_does_not_go_stale_when_value_changes() {
 }
 
 #[test]
+fn unnamed_mutable_value_role_does_not_go_stale_when_content_becomes_name() {
+    let mut entry = entry();
+    entry.role = "textfield".into();
+
+    assert!(!has_meaningful_identity(&entry));
+    assert!(identity_matches(
+        &entry,
+        Some("typed document text"),
+        Some("typed document text"),
+        None
+    ));
+}
+
+#[test]
+fn mutable_value_text_promoted_to_name_is_not_stable_identity() {
+    let mut entry = entry();
+    entry.role = "textfield".into();
+    entry.name = Some("00:01".into());
+    entry.value = Some("00:01".into());
+
+    assert!(!has_meaningful_identity(&entry));
+    assert!(identity_matches(&entry, Some("00:06"), Some("00:06"), None));
+}
+
+#[test]
+fn formatted_numeric_mutable_value_promoted_to_name_is_not_stable_identity() {
+    let mut entry = entry();
+    entry.role = "slider".into();
+    entry.name = Some("50".into());
+    entry.value = Some("50.0".into());
+
+    assert!(!has_meaningful_identity(&entry));
+    assert!(identity_matches(&entry, Some("51"), Some("51.0"), None));
+}
+
+#[test]
 fn named_mutable_value_role_still_uses_name_identity() {
     let mut entry = entry();
     entry.role = "textfield".into();
@@ -118,4 +154,36 @@ fn named_mutable_value_role_still_uses_name_identity() {
         Some("new query"),
         None
     ));
+}
+
+#[test]
+fn mutable_role_label_different_from_value_remains_stable_identity() {
+    let mut entry = entry();
+    entry.role = "combobox".into();
+    entry.name = Some("Font".into());
+    entry.value = Some("Helvetica".into());
+
+    assert!(has_meaningful_identity(&entry));
+    assert!(identity_matches(&entry, Some("Font"), Some("Arial"), None));
+    assert!(!identity_matches(&entry, Some("Size"), Some("Arial"), None));
+}
+
+#[test]
+fn bounded_window_fallback_requires_window_source_window_id_and_bounds() {
+    let mut entry = entry();
+    entry.source_window_id = Some("platform-window-1".into());
+    entry.bounds_hash = Some(42);
+
+    assert!(bounded_window_fallback_allowed(&entry));
+    entry.source_window_title = Some("Stale Title".into());
+    assert!(!bounded_window_fallback_allowed(&entry));
+    entry.source_window_title = None;
+    entry.bounds_hash = None;
+    assert!(!bounded_window_fallback_allowed(&entry));
+    entry.bounds_hash = Some(42);
+    entry.source_window_id = None;
+    assert!(!bounded_window_fallback_allowed(&entry));
+    entry.source_window_id = Some("platform-window-1".into());
+    entry.source_surface = SnapshotSurface::Menu;
+    assert!(!bounded_window_fallback_allowed(&entry));
 }

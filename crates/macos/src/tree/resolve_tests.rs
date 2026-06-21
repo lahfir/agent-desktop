@@ -1,10 +1,8 @@
 use super::*;
 use crate::tree::AXElement;
 use crate::tree::resolve_classify::classify_candidates;
-use crate::tree::resolve_roots::{
-    single_window_fallback_allowed, sole_source_window_fallback_allowed, source_window_number,
-    unique_fallible_matching_index,
-};
+use crate::tree::resolve_identity::bounded_window_fallback_allowed;
+use crate::tree::resolve_roots::{fallback_replacement_window_roots, source_window_number};
 use crate::tree::resolve_search::should_stop_collecting;
 use agent_desktop_core::adapter::SnapshotSurface;
 
@@ -250,14 +248,20 @@ fn non_window_identity_candidate_without_bounds_fails_closed() {
 }
 
 #[test]
-fn single_window_fallback_requires_bounds_hash_not_title() {
-    assert!(single_window_fallback_allowed(&entry(
+fn bounded_window_fallback_requires_untitled_window_ref_with_bounds_hash() {
+    assert!(bounded_window_fallback_allowed(&entry(
         Some(42),
         Some("w-10"),
         None,
         None
     )));
-    assert!(!single_window_fallback_allowed(&entry(
+    assert!(!bounded_window_fallback_allowed(&entry(
+        Some(42),
+        Some("w-10"),
+        Some("Stale Title"),
+        None
+    )));
+    assert!(!bounded_window_fallback_allowed(&entry(
         None,
         Some("w-10"),
         Some("Documents"),
@@ -265,50 +269,7 @@ fn single_window_fallback_requires_bounds_hash_not_title() {
     )));
     let mut menu_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
     menu_entry.source_surface = SnapshotSurface::Menu;
-    assert!(!single_window_fallback_allowed(&menu_entry));
-}
-
-#[test]
-fn sole_window_fallback_requires_missing_title() {
-    assert!(sole_source_window_fallback_allowed(&entry(
-        Some(42),
-        Some("w-10"),
-        None,
-        None
-    )));
-    assert!(!sole_source_window_fallback_allowed(&entry(
-        Some(42),
-        Some("w-10"),
-        Some("Documents"),
-        None
-    )));
-}
-
-#[test]
-fn unique_fallible_matching_index_fails_closed_on_scan_error() {
-    let values = [1, 2, 3];
-
-    assert_eq!(
-        unique_fallible_matching_index(&values, |value| Ok::<bool, ()>(*value == 2)),
-        Some(1)
-    );
-    assert_eq!(
-        unique_fallible_matching_index(&values, |value| Ok::<bool, ()>(*value > 1)),
-        None
-    );
-    assert_eq!(
-        unique_fallible_matching_index(&values, |value| Ok::<bool, ()>(*value == 4)),
-        None
-    );
-    assert_eq!(
-        unique_fallible_matching_index(&values, |value| {
-            if *value == 3 {
-                return Err(());
-            }
-            Ok(*value == 2)
-        }),
-        None
-    );
+    assert!(!bounded_window_fallback_allowed(&menu_entry));
 }
 
 #[test]
@@ -318,6 +279,29 @@ fn bounds_hash_keeps_collecting_to_disambiguate_identity_matches() {
         &entry(Some(42), None, None, None)
     ));
     assert!(should_stop_collecting(2, &entry(None, None, None, None)));
+}
+
+#[test]
+fn bounded_window_fallback_propagates_expired_deadline() {
+    let err = match fallback_replacement_window_roots(
+        &[AXElement(std::ptr::null_mut())],
+        std::time::Instant::now() - std::time::Duration::from_millis(1),
+    ) {
+        Ok(_) => panic!("expected timeout"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code, ErrorCode::Timeout);
+}
+
+#[test]
+fn bounded_window_fallback_must_not_stop_after_first_match() {
+    let mut bounded_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
+    bounded_entry.role = "textfield".into();
+    bounded_entry.name = Some("00:01".into());
+    bounded_entry.value = Some("00:01".into());
+
+    assert!(!should_stop_collecting(2, &bounded_entry));
 }
 
 fn description_entry() -> RefEntry {

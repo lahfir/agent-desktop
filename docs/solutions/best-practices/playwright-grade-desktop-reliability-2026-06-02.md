@@ -59,6 +59,15 @@ the persisted ref identity still needs bounds evidence. The safe pattern is:
 Do not let presentation options erase identity evidence. Compact output is a
 serialization concern, not a weaker ref contract.
 
+### Treat Mutable Values As Volatile Identity
+
+Strict ref resolution should separate stable labels from mutable control values.
+Text field content, selected combobox values, slider values, and incrementor
+values can change between snapshot and action without changing the target
+element. Core should own that role-conditional identity policy, and platform
+adapters should only supply native candidates, live attributes, and primitive
+actions.
+
 ### Centralize Strict Ref Actions
 
 Ref actions must pass through the same ladder:

@@ -368,7 +368,7 @@ Errors include machine-readable codes and recovery hints:
 | `PERM_DENIED` | Accessibility permission not granted |
 | `ELEMENT_NOT_FOUND` | No element matched the ref or query |
 | `APP_NOT_FOUND` | Application not running or no windows |
-| `STALE_REF` | Ref is from a previous snapshot |
+| `STALE_REF` | Ref could not be re-identified in the live UI |
 | `AMBIGUOUS_TARGET` | Ref recovery matched multiple plausible targets |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired |
 | `POLICY_DENIED` | Physical/headed path blocked by policy |
@@ -392,7 +392,8 @@ Static elements (labels, groups, containers) appear in the tree for context but 
 Reliability contract:
 
 - `--session <id>` scopes the latest snapshot pointer to one caller or agent team; explicit `--snapshot <id>` resolves the saved snapshot directly.
-- Ref actions re-identify targets at action time: a moved unique target can proceed, while missing or changed identity returns `STALE_REF`.
+- Ref actions re-identify targets at action time: a moved unique target can proceed, while missing or changed stable identity returns `STALE_REF`.
+- Mutable value text is not treated as stable identity, so text fields and timers can keep resolving when the saved window, path, role, and bounds evidence still identify the same element.
 - Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - Actions run an actionability preflight before dispatch: visibility, stability, enabled state, supported action, policy, and editability.
 - `wait --element @e3 --predicate actionable` polls until the target can be acted on.
