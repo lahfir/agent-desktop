@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [0.3.1](https://github.com/lahfir/agent-desktop/compare/v0.3.0...v0.3.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* harden macos stale ref resolution ([#62](https://github.com/lahfir/agent-desktop/issues/62)) ([9f144c2](https://github.com/lahfir/agent-desktop/commit/9f144c2cafe3ba0ade479c1b87ecac6cd88adcef))
+
 ## [0.3.0](https://github.com/lahfir/agent-desktop/compare/v0.2.3...v0.3.0) (2026-06-20)
 
 ### ⚠ BREAKING CHANGES
