@@ -248,14 +248,14 @@ fn non_window_identity_candidate_without_bounds_fails_closed() {
 }
 
 #[test]
-fn bounded_window_fallback_requires_bounds_hash_not_stable_title() {
+fn bounded_window_fallback_requires_untitled_window_ref_with_bounds_hash() {
     assert!(bounded_window_fallback_allowed(&entry(
         Some(42),
         Some("w-10"),
         None,
         None
     )));
-    assert!(bounded_window_fallback_allowed(&entry(
+    assert!(!bounded_window_fallback_allowed(&entry(
         Some(42),
         Some("w-10"),
         Some("Stale Title"),

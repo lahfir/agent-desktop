@@ -50,9 +50,12 @@ pub fn identity_matches(
 
 /// Allows a platform adapter to search replacement windows only when the saved
 /// ref has enough non-text evidence for the shared classifier to fail closed.
+/// A saved source-window title disables this fallback unless a platform first
+/// finds that title uniquely; otherwise the old titled window is considered gone.
 pub fn bounded_window_fallback_allowed(entry: &RefEntry) -> bool {
     matches!(entry.source_surface, SnapshotSurface::Window)
         && entry.source_window_id.is_some()
+        && entry.source_window_title.is_none()
         && entry.bounds_hash.is_some()
 }
 

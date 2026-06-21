@@ -176,7 +176,8 @@ fn bounded_window_fallback_requires_window_source_window_id_and_bounds() {
 
     assert!(bounded_window_fallback_allowed(&entry));
     entry.source_window_title = Some("Stale Title".into());
-    assert!(bounded_window_fallback_allowed(&entry));
+    assert!(!bounded_window_fallback_allowed(&entry));
+    entry.source_window_title = None;
     entry.bounds_hash = None;
     assert!(!bounded_window_fallback_allowed(&entry));
     entry.bounds_hash = Some(42);
