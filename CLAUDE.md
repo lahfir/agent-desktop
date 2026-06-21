@@ -323,7 +323,7 @@ The `error` object may also carry an optional `details` object (e.g. the actiona
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
 - Snapshot refs are stored by snapshot ID under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer for commands that omit `--snapshot`
 - `~/.agent-desktop/last_refmap.json` is written only as a latest-snapshot inspection artifact; command code must use `RefStore`
-- Action commands use optimistic re-identification: `(pid, role, name, bounds_hash)`. Return `STALE_REF` on mismatch.
+- Action commands use strict re-identification from platform-neutral `RefEntry` evidence: pid, role, path/source surface, role-conditional stable text identity, and bounds hash. Mutable control values are volatile and must not be treated as stable text identity. Return `STALE_REF` on mismatch and `AMBIGUOUS_TARGET` when multiple plausible live candidates remain.
 - Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets
 - Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
 - RefMap size check: write-side guard prevents >1MB refmap files

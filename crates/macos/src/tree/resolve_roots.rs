@@ -45,7 +45,7 @@ pub(super) fn candidate_roots(
     let mut roots = Vec::new();
     let mut dedupe = ElementDedupe;
     let windows = copy_ax_array(&root, "AXWindows").unwrap_or_default();
-    if let Some(window) = exact_source_window_from_windows(&windows, entry, deadline) {
+    if let Some(window) = exact_source_window_from_windows(&windows, entry, deadline)? {
         dedupe.push(&mut roots, window);
     }
     prepare_for_read(&root, deadline)?;
@@ -87,14 +87,21 @@ fn source_window_scoped_roots(
             scope_verified: false,
         });
     };
-    if let Some(window) = window_by_number(&windows, source_window_number(entry), deadline) {
+    if let Some(window) = window_by_number(&windows, source_window_number(entry), deadline)? {
         return Ok(CandidateRoots {
             roots: vec![window],
             scope_verified: true,
         });
     }
+    if let Some(window) = window_by_title(&windows, entry.source_window_title.as_deref(), deadline)?
+    {
+        return Ok(CandidateRoots {
+            roots: vec![window],
+            scope_verified: false,
+        });
+    }
     if bounded_window_fallback_allowed(entry) {
-        let roots = fallback_source_window_roots(&windows, deadline);
+        let roots = fallback_source_window_roots(&windows, deadline)?;
         if !roots.is_empty() {
             return Ok(CandidateRoots {
                 roots,
@@ -137,11 +144,7 @@ fn exact_source_window_number_root(
     let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
         return Ok(None);
     };
-    Ok(window_by_number(
-        &windows,
-        source_window_number(entry),
-        deadline,
-    ))
+    window_by_number(&windows, source_window_number(entry), deadline)
 }
 
 #[cfg(target_os = "macos")]
@@ -152,7 +155,7 @@ fn exact_source_window_root(
     let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
         return Ok(None);
     };
-    Ok(exact_source_window_from_windows(&windows, entry, deadline))
+    exact_source_window_from_windows(&windows, entry, deadline)
 }
 
 #[cfg(target_os = "macos")]
@@ -160,9 +163,9 @@ fn exact_source_window_from_windows(
     windows: &[AXElement],
     entry: &RefEntry,
     deadline: Instant,
-) -> Option<AXElement> {
-    if let Some(window) = window_by_number(windows, source_window_number(entry), deadline) {
-        return Some(window);
+) -> Result<Option<AXElement>, AdapterError> {
+    if let Some(window) = window_by_number(windows, source_window_number(entry), deadline)? {
+        return Ok(Some(window));
     }
     window_by_title(windows, entry.source_window_title.as_deref(), deadline)
 }
@@ -179,15 +182,17 @@ fn window_by_number(
     windows: &[AXElement],
     source_window_number: Option<i64>,
     deadline: Instant,
-) -> Option<AXElement> {
-    let source_window_number = source_window_number?;
-    windows
-        .iter()
-        .find(|win| {
-            prepare_for_read(win, deadline).is_ok()
-                && copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number)
-        })
-        .cloned()
+) -> Result<Option<AXElement>, AdapterError> {
+    let Some(source_window_number) = source_window_number else {
+        return Ok(None);
+    };
+    for win in windows {
+        prepare_for_read(win, deadline)?;
+        if copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number) {
+            return Ok(Some(win.clone()));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(target_os = "macos")]
@@ -195,28 +200,35 @@ fn window_by_title(
     windows: &[AXElement],
     source_window_title: Option<&str>,
     deadline: Instant,
-) -> Option<AXElement> {
-    let source_window_title = source_window_title?;
-    let index = unique_fallible_matching_index(windows, |win| {
+) -> Result<Option<AXElement>, AdapterError> {
+    let Some(source_window_title) = source_window_title else {
+        return Ok(None);
+    };
+    let mut found = None;
+    for win in windows {
         prepare_for_read(win, deadline)?;
-        Ok::<bool, AdapterError>(
-            copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title),
-        )
-    })?;
-    windows.get(index).cloned()
+        if copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title) {
+            if found.is_some() {
+                return Ok(None);
+            }
+            found = Some(win.clone());
+        }
+    }
+    Ok(found)
 }
 
 #[cfg(target_os = "macos")]
-fn fallback_source_window_roots(windows: &[AXElement], deadline: Instant) -> Vec<AXElement> {
+pub(super) fn fallback_source_window_roots(
+    windows: &[AXElement],
+    deadline: Instant,
+) -> Result<Vec<AXElement>, AdapterError> {
     let mut roots = Vec::new();
     let mut dedupe = ElementDedupe;
     for win in windows {
-        if prepare_for_read(win, deadline).is_err() {
-            return Vec::new();
-        }
+        prepare_for_read(win, deadline)?;
         dedupe.push(&mut roots, win.clone());
     }
-    roots
+    Ok(roots)
 }
 
 #[cfg(target_os = "macos")]
@@ -237,21 +249,4 @@ pub(super) fn source_window_number(entry: &RefEntry) -> Option<i64> {
 fn prepare_for_read(element: &AXElement, deadline: Instant) -> Result<(), AdapterError> {
     set_messaging_timeout(element, remaining_before_deadline(deadline)?);
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-pub(super) fn unique_fallible_matching_index<T, E>(
-    items: &[T],
-    mut matches: impl FnMut(&T) -> Result<bool, E>,
-) -> Option<usize> {
-    let mut first = None;
-    for (index, item) in items.iter().enumerate() {
-        match matches(item) {
-            Ok(true) if first.is_none() => first = Some(index),
-            Ok(true) => return None,
-            Ok(false) => {}
-            Err(_) => return None,
-        }
-    }
-    first
 }

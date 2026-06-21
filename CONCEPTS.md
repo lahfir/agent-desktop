@@ -29,6 +29,11 @@ Refs are deterministic inside one snapshot but are not stable across UI changes.
 ### RefMap
 The persisted mapping from refs to the identity evidence needed to re-identify elements later.
 
+### Stable Text Identity
+The role-conditional text evidence used during strict ref resolution.
+
+Names and descriptions can identify a ref when they are stable labels. Mutable control values, including text field content and value text promoted into an accessibility name, are volatile and do not identify the element by themselves. Core owns this policy so macOS, Windows, Linux, CLI, and FFI consumers share the same semantics.
+
 ### Stale Ref
 A ref whose stored identity no longer matches a live element strongly enough to act safely.
 

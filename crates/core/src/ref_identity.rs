@@ -1,5 +1,6 @@
 use crate::{adapter::SnapshotSurface, refs::RefEntry, roles::is_mutable_value_role};
 
+/// Returns true when a saved ref has stable text identity beyond role/path/bounds.
 pub fn has_meaningful_identity(entry: &RefEntry) -> bool {
     stable_name(
         entry.role.as_str(),
@@ -11,6 +12,8 @@ pub fn has_meaningful_identity(entry: &RefEntry) -> bool {
         || meaningful_text(entry.description.as_deref()).is_some()
 }
 
+/// Compares saved ref identity against live text without treating mutable
+/// control values as stable identity.
 pub fn identity_matches(
     entry: &RefEntry,
     actual_name: Option<&str>,
@@ -45,6 +48,8 @@ pub fn identity_matches(
     actual_name.is_none() && actual_value.is_none() && actual_description.is_none()
 }
 
+/// Allows a platform adapter to search replacement windows only when the saved
+/// ref has enough non-text evidence for the shared classifier to fail closed.
 pub fn bounded_window_fallback_allowed(entry: &RefEntry) -> bool {
     matches!(entry.source_surface, SnapshotSurface::Window)
         && entry.source_window_id.is_some()
@@ -68,7 +73,7 @@ fn meaningful_text(value: Option<&str>) -> Option<&str> {
 
 fn stable_name<'a>(role: &str, name: Option<&'a str>, value: Option<&str>) -> Option<&'a str> {
     let name = meaningful_text(name)?;
-    if is_mutable_value_role(role) && meaningful_text(value) == Some(name) {
+    if is_mutable_value_role(role) && value_matches_name(meaningful_text(value), name) {
         None
     } else {
         Some(name)
@@ -79,6 +84,19 @@ fn stable_value<'a>(role: &str, value: Option<&'a str>) -> Option<&'a str> {
     (!is_mutable_value_role(role))
         .then(|| meaningful_text(value))
         .flatten()
+}
+
+fn value_matches_name(value: Option<&str>, name: &str) -> bool {
+    value == Some(name)
+        || numeric_text(value)
+            .zip(numeric_text(Some(name)))
+            .is_some_and(|(value, name)| value == name)
+}
+
+fn numeric_text(value: Option<&str>) -> Option<f64> {
+    value
+        .and_then(|text| text.parse::<f64>().ok())
+        .filter(|number| number.is_finite())
 }
 
 #[cfg(test)]
