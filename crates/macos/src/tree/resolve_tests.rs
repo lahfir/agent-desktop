@@ -1,10 +1,10 @@
 use super::*;
 use crate::tree::AXElement;
 use crate::tree::resolve_classify::classify_candidates;
-use crate::tree::resolve_roots::{fallback_source_window_roots, source_window_number};
+use crate::tree::resolve_identity::bounded_window_fallback_allowed;
+use crate::tree::resolve_roots::{fallback_replacement_window_roots, source_window_number};
 use crate::tree::resolve_search::should_stop_collecting;
 use agent_desktop_core::adapter::SnapshotSurface;
-use agent_desktop_core::ref_identity::bounded_window_fallback_allowed;
 
 fn entry(
     bounds_hash: Option<u64>,
@@ -283,7 +283,7 @@ fn bounds_hash_keeps_collecting_to_disambiguate_identity_matches() {
 
 #[test]
 fn bounded_window_fallback_propagates_expired_deadline() {
-    let err = match fallback_source_window_roots(
+    let err = match fallback_replacement_window_roots(
         &[AXElement(std::ptr::null_mut())],
         std::time::Instant::now() - std::time::Duration::from_millis(1),
     ) {

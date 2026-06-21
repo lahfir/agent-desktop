@@ -1,4 +1,3 @@
-use agent_desktop_core::ref_identity::bounded_window_fallback_allowed;
 use agent_desktop_core::{adapter::SnapshotSurface, error::AdapterError, refs::RefEntry};
 use std::time::Instant;
 
@@ -9,6 +8,7 @@ use super::attributes::{
 use super::element::element_for_pid;
 use super::element_dedupe::ElementDedupe;
 use super::resolve_deadline::{ensure_before_deadline, remaining_before_deadline};
+use super::resolve_identity::bounded_window_fallback_allowed;
 
 #[cfg(target_os = "macos")]
 pub(super) struct CandidateRoots {
@@ -101,7 +101,7 @@ fn source_window_scoped_roots(
         });
     }
     if bounded_window_fallback_allowed(entry) {
-        let roots = fallback_source_window_roots(&windows, deadline)?;
+        let roots = fallback_replacement_window_roots(&windows, deadline)?;
         if !roots.is_empty() {
             return Ok(CandidateRoots {
                 roots,
@@ -218,7 +218,7 @@ fn window_by_title(
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn fallback_source_window_roots(
+pub(super) fn fallback_replacement_window_roots(
     windows: &[AXElement],
     deadline: Instant,
 ) -> Result<Vec<AXElement>, AdapterError> {
