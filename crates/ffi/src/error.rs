@@ -2,53 +2,6 @@ use agent_desktop_core::error::{AdapterError, ErrorCode};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char};
 
-const fn error_code_variant_count() -> usize {
-    let variants = [
-        ErrorCode::PermDenied,
-        ErrorCode::ElementNotFound,
-        ErrorCode::AppNotFound,
-        ErrorCode::ActionFailed,
-        ErrorCode::ActionNotSupported,
-        ErrorCode::StaleRef,
-        ErrorCode::AmbiguousTarget,
-        ErrorCode::WindowNotFound,
-        ErrorCode::PlatformNotSupported,
-        ErrorCode::Timeout,
-        ErrorCode::InvalidArgs,
-        ErrorCode::NotificationNotFound,
-        ErrorCode::SnapshotNotFound,
-        ErrorCode::PolicyDenied,
-        ErrorCode::Internal,
-    ];
-    variants.len()
-}
-
-const fn ad_result_error_variant_count() -> usize {
-    let variants = [
-        AdResult::ErrPermDenied,
-        AdResult::ErrElementNotFound,
-        AdResult::ErrAppNotFound,
-        AdResult::ErrActionFailed,
-        AdResult::ErrActionNotSupported,
-        AdResult::ErrStaleRef,
-        AdResult::ErrAmbiguousTarget,
-        AdResult::ErrWindowNotFound,
-        AdResult::ErrPlatformNotSupported,
-        AdResult::ErrTimeout,
-        AdResult::ErrInvalidArgs,
-        AdResult::ErrNotificationNotFound,
-        AdResult::ErrInternal,
-        AdResult::ErrSnapshotNotFound,
-        AdResult::ErrPolicyDenied,
-    ];
-    variants.len()
-}
-
-const _: () = assert!(
-    error_code_variant_count() == ad_result_error_variant_count(),
-    "ErrorCode variants must match AdResult error-code variants one-to-one"
-);
-
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdResult {

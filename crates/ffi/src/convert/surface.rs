@@ -16,24 +16,20 @@ pub(crate) fn surface_info_to_c(s: &SurfaceInfo) -> AdSurfaceInfo {
     }
 }
 
-pub(crate) fn snapshot_surface_to_core(surface: AdSnapshotSurface) -> SnapshotSurface {
-    match surface {
-        AdSnapshotSurface::Window => SnapshotSurface::Window,
-        AdSnapshotSurface::Focused => SnapshotSurface::Focused,
-        AdSnapshotSurface::Menu => SnapshotSurface::Menu,
-        AdSnapshotSurface::Menubar => SnapshotSurface::Menubar,
-        AdSnapshotSurface::Sheet => SnapshotSurface::Sheet,
-        AdSnapshotSurface::Popover => SnapshotSurface::Popover,
-        AdSnapshotSurface::Alert => SnapshotSurface::Alert,
-    }
-}
-
 pub(crate) fn snapshot_surface_from_c(
     raw: i32,
     field: &str,
 ) -> Result<SnapshotSurface, AdapterError> {
     AdSnapshotSurface::from_c(raw)
-        .map(snapshot_surface_to_core)
+        .map(|surface| match surface {
+            AdSnapshotSurface::Window => SnapshotSurface::Window,
+            AdSnapshotSurface::Focused => SnapshotSurface::Focused,
+            AdSnapshotSurface::Menu => SnapshotSurface::Menu,
+            AdSnapshotSurface::Menubar => SnapshotSurface::Menubar,
+            AdSnapshotSurface::Sheet => SnapshotSurface::Sheet,
+            AdSnapshotSurface::Popover => SnapshotSurface::Popover,
+            AdSnapshotSurface::Alert => SnapshotSurface::Alert,
+        })
         .ok_or_else(|| {
             AdapterError::new(
                 ErrorCode::InvalidArgs,
