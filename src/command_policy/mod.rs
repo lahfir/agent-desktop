@@ -17,7 +17,7 @@ pub(crate) enum PermissionNeed {
 pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
     use PermissionNeed::{Accessibility, AccessibilityAndScreenRecording, None, ScreenRecording};
     match cmd {
-        Commands::Version(_) | Commands::Skills(_) => None,
+        Commands::Version | Commands::Skills(_) => None,
         Commands::Status | Commands::Permissions(_) => None,
         Commands::ListWindows(_) | Commands::ListApps(_) => None,
         Commands::ClipboardGet | Commands::ClipboardSet(_) | Commands::ClipboardClear => None,
@@ -190,7 +190,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::ClipboardClear
         | Commands::Status
         | Commands::Permissions(_)
-        | Commands::Version(_)
+        | Commands::Version
         | Commands::Batch(_)
         | Commands::Skills(_) => {}
     }

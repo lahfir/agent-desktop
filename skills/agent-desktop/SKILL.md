@@ -232,7 +232,7 @@ agent-desktop wait --notification --app "App"   # Wait for new notification
 agent-desktop status                            # Health check
 agent-desktop permissions                       # Check permission
 agent-desktop permissions --request             # Trigger permission dialog
-agent-desktop version --json                    # Version info
+agent-desktop version                           # Version info (always JSON envelope)
 agent-desktop batch '[...]' --stop-on-error     # Batch uses the same typed command path as CLI
 agent-desktop skills                            # List bundled skill docs
 agent-desktop skills get desktop --full         # Load this skill + all references

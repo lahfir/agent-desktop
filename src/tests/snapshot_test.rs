@@ -57,7 +57,7 @@ mod tests {
             return;
         }
         let output = Command::new(&bin)
-            .args(["version", "--json"])
+            .args(["version"])
             .output()
             .expect("failed to run agent-desktop");
 

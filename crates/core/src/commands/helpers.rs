@@ -157,7 +157,7 @@ pub(crate) fn window_op_command(
     response_key: &'static str,
 ) -> Result<Value, AppError> {
     let pid = resolve_app_pid(args.app.as_deref(), adapter)?;
-    let win = match find_window_for_pid(pid, adapter) {
+    let win = match window_lookup::find_window_for_pid(pid, adapter) {
         Ok(win) => win,
         Err(_) if matches!(op, WindowOp::Restore) => WindowInfo {
             id: String::new(),
@@ -173,19 +173,12 @@ pub(crate) fn window_op_command(
     Ok(json!({ response_key: true }))
 }
 
-pub(crate) fn find_window_for_pid(
-    pid: i32,
-    adapter: &dyn PlatformAdapter,
-) -> Result<WindowInfo, AppError> {
-    window_lookup::find_window_for_pid(pid, adapter)
-}
-
 pub(crate) fn resolve_window_for_app(
     app: Option<&str>,
     adapter: &dyn PlatformAdapter,
 ) -> Result<WindowInfo, AppError> {
     let pid = resolve_app_pid(app, adapter)?;
-    find_window_for_pid(pid, adapter)
+    window_lookup::find_window_for_pid(pid, adapter)
 }
 
 #[cfg(test)]

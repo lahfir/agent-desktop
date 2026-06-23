@@ -341,7 +341,7 @@ pub(crate) fn dispatch(
             permission_report,
         ),
 
-        Commands::Version(a) => version::execute(version::VersionArgs { json: a.json }),
+        Commands::Version => version::execute(),
 
         Commands::Skills(a) => match a.action.unwrap_or(SkillsAction::List) {
             SkillsAction::List => skills::list(),

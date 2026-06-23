@@ -100,7 +100,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "wait" => decode(command, item.args).map(Commands::Wait),
         "status" => no_args(command, item.args).map(|()| Commands::Status),
         "permissions" => decode(command, item.args).map(Commands::Permissions),
-        "version" => decode(command, item.args).map(Commands::Version),
+        "version" => no_args(command, item.args).map(|()| Commands::Version),
         "skills" => parse_skills(item.args).map(Commands::Skills),
         "batch" => Err(AppError::invalid_input_with_suggestion(
             "Batch commands cannot be nested",

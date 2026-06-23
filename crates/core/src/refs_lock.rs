@@ -170,10 +170,7 @@ fn lock_token() -> String {
 
 #[cfg(unix)]
 fn process_is_alive(pid: u32) -> Option<bool> {
-    unsafe extern "C" {
-        fn kill(pid: i32, sig: i32) -> i32;
-    }
-    let result = unsafe { kill(pid as i32, 0) };
+    let result = unsafe { libc::kill(pid as i32, 0) };
     if result == 0 {
         return Some(true);
     }

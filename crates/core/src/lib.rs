@@ -51,7 +51,7 @@ pub use error::{AdapterError, AppError, ErrorCode};
 pub use interaction_policy::InteractionPolicy;
 pub use node::{AccessibilityNode, AppInfo, Rect, WindowInfo};
 pub use notification::{NotificationFilter, NotificationInfo};
-pub use output::{AppContext, ErrorPayload, Response, WindowContext};
+pub use output::{ErrorPayload, Response};
 pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use refs::{RefEntry, RefMap};

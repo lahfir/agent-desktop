@@ -185,14 +185,6 @@ pub(crate) struct PermissionsArgs {
     pub request: bool,
 }
 
-#[derive(Parser, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct VersionArgs {
-    #[arg(long, help = "Output version as JSON object")]
-    #[serde(default)]
-    pub json: bool,
-}
-
 #[derive(Parser, Debug)]
 pub(crate) struct BatchArgs {
     #[arg(value_name = "JSON", help = "JSON array of {command, args} objects")]
