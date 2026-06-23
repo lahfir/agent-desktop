@@ -3,6 +3,7 @@ name    = "agent-desktop-linux"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 agent-desktop-core.workspace = true
