@@ -75,7 +75,7 @@ WAIT
 SYSTEM
   status                     Adapter health, platform, and permission state
   permissions                Check nested permission states: {state,...}
-  version                    Version string (--json for machine-readable)
+  version                    Show version, target architecture, and OS
   skills                     Bundled skill docs for AI agents (list, get, path)
 
 BATCH

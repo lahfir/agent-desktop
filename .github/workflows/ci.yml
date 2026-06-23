@@ -126,7 +126,7 @@ jobs:
           trap 'rm -f "npm/bin/${NAME}"' EXIT
           cp target/ci/agent-desktop "npm/bin/${NAME}"
           chmod +x "npm/bin/${NAME}"
-          node npm/bin/agent-desktop.js version --json > /tmp/agent-desktop-version.json
+          node npm/bin/agent-desktop.js version > /tmp/agent-desktop-version.json
           node -e "
             const out = require('fs').readFileSync('/tmp/agent-desktop-version.json', 'utf8');
             const json = JSON.parse(out);
