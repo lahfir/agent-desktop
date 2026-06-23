@@ -18,7 +18,7 @@ pub(crate) fn list_apps() -> Vec<AppInfo> {
         }
     };
     let text = String::from_utf8_lossy(&output.stdout);
-    let mut seen_pids = std::collections::HashSet::new();
+    let mut seen_pids = rustc_hash::FxHashSet::default();
     let mut apps = Vec::new();
 
     for line in text.lines() {

@@ -100,10 +100,9 @@ fn candidate_summaries(matches: &[AXElement]) -> Vec<serde_json::Value> {
         .enumerate()
         .map(|(index, element)| {
             let ax_role = copy_string_attr(element, accessibility_sys::kAXRoleAttribute);
-            let role = crate::tree::roles::normalized_role_for_element(element, ax_role.as_deref());
-            let name = crate::tree::roles::normalized_role_and_label(element, ax_role.as_deref())
-                .1
-                .or_else(|| resolve_element_name(element));
+            let (role, label) =
+                crate::tree::roles::normalized_role_and_label(element, ax_role.as_deref());
+            let name = label.or_else(|| resolve_element_name(element));
             let description = copy_string_attr(element, accessibility_sys::kAXDescriptionAttribute);
             let bounds = crate::tree::read_bounds(element);
             serde_json::json!({

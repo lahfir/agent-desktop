@@ -86,11 +86,7 @@ fn permission_state(granted: bool, suggestion: &'static str) -> PermissionState 
 }
 
 fn accessibility_report_state() -> PermissionState {
-    if imp::is_trusted() {
-        return PermissionState::Granted;
-    }
-
-    permission_state(false, ACCESSIBILITY_SUGGESTION)
+    permission_state(imp::is_trusted(), ACCESSIBILITY_SUGGESTION)
 }
 
 fn screen_recording_report_state() -> PermissionState {

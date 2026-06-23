@@ -94,7 +94,7 @@ fn merge_apps(apps: &mut Vec<AppInfo>, incoming: Vec<AppInfo>) {
     let mut seen_pids = apps
         .iter()
         .map(|app| app.pid)
-        .collect::<std::collections::HashSet<_>>();
+        .collect::<rustc_hash::FxHashSet<_>>();
 
     for app in incoming {
         if seen_pids.insert(app.pid) {

@@ -11,7 +11,7 @@ pub(crate) fn visible_apps() -> Vec<AppInfo> {
 }
 
 fn apps_from_window_records(records: &[cg_window::WindowRecord]) -> Vec<AppInfo> {
-    let mut seen_pids = std::collections::HashSet::new();
+    let mut seen_pids = rustc_hash::FxHashSet::default();
     let mut apps = Vec::new();
 
     for record in records {
@@ -94,14 +94,7 @@ fn visible_windows_from_records(
         .cloned()
         .collect();
 
-    windows_from_records(candidates, filter.focused_only)
-}
-
-fn windows_from_records(
-    records: Vec<cg_window::WindowRecord>,
-    focused_only: bool,
-) -> Vec<WindowInfo> {
-    windows_from_records_with_focus(records, focused_only, focused_window_identity)
+    windows_from_records_with_focus(candidates, filter.focused_only, focused_window_identity)
 }
 
 fn windows_from_records_with_focus(
