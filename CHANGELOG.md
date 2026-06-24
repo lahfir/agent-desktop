@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## [0.4.0](https://github.com/lahfir/agent-desktop/compare/v0.3.1...v0.4.0) (2026-06-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* the version command no longer accepts --json; it always emits the standard JSON envelope.
+
+### Refactoring
+
+* over-engineering audit cleanup ([#64](https://github.com/lahfir/agent-desktop/issues/64)) ([dbb2be6](https://github.com/lahfir/agent-desktop/commit/dbb2be639ecc1f979031818259f587f951086b3c))
+
 ## [0.3.1](https://github.com/lahfir/agent-desktop/compare/v0.3.0...v0.3.1) (2026-06-21)
 
 
