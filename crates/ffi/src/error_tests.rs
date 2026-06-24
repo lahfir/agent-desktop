@@ -46,6 +46,61 @@ fn result_discriminants_preserve_existing_abi_values() {
     assert_eq!(AdResult::ErrAmbiguousTarget as i32, -15);
 }
 
+/// Reverse of `error_code_to_result`, kept solely to guard the bijection. The
+/// forward map is exhaustive over `ErrorCode`; this exhaustive match over
+/// `AdResult` is its mirror, so a new `AdResult` error variant cannot be added
+/// without declaring its `ErrorCode` origin here — closing the reverse-drift
+/// direction (a new `AdResult` with no `ErrorCode`) the removed cardinality
+/// counters approximated.
+fn error_code_origin(result: AdResult) -> Option<ErrorCode> {
+    Some(match result {
+        AdResult::Ok => return None,
+        AdResult::ErrPermDenied => ErrorCode::PermDenied,
+        AdResult::ErrElementNotFound => ErrorCode::ElementNotFound,
+        AdResult::ErrAppNotFound => ErrorCode::AppNotFound,
+        AdResult::ErrActionFailed => ErrorCode::ActionFailed,
+        AdResult::ErrActionNotSupported => ErrorCode::ActionNotSupported,
+        AdResult::ErrStaleRef => ErrorCode::StaleRef,
+        AdResult::ErrWindowNotFound => ErrorCode::WindowNotFound,
+        AdResult::ErrPlatformNotSupported => ErrorCode::PlatformNotSupported,
+        AdResult::ErrTimeout => ErrorCode::Timeout,
+        AdResult::ErrInvalidArgs => ErrorCode::InvalidArgs,
+        AdResult::ErrNotificationNotFound => ErrorCode::NotificationNotFound,
+        AdResult::ErrInternal => ErrorCode::Internal,
+        AdResult::ErrSnapshotNotFound => ErrorCode::SnapshotNotFound,
+        AdResult::ErrPolicyDenied => ErrorCode::PolicyDenied,
+        AdResult::ErrAmbiguousTarget => ErrorCode::AmbiguousTarget,
+    })
+}
+
+#[test]
+fn error_code_and_ad_result_error_variants_stay_in_bijection() {
+    for result in [
+        AdResult::ErrPermDenied,
+        AdResult::ErrElementNotFound,
+        AdResult::ErrAppNotFound,
+        AdResult::ErrActionFailed,
+        AdResult::ErrActionNotSupported,
+        AdResult::ErrStaleRef,
+        AdResult::ErrWindowNotFound,
+        AdResult::ErrPlatformNotSupported,
+        AdResult::ErrTimeout,
+        AdResult::ErrInvalidArgs,
+        AdResult::ErrNotificationNotFound,
+        AdResult::ErrInternal,
+        AdResult::ErrSnapshotNotFound,
+        AdResult::ErrPolicyDenied,
+        AdResult::ErrAmbiguousTarget,
+    ] {
+        let code = error_code_origin(result).expect("error variant must have an ErrorCode origin");
+        assert_eq!(
+            error_code_to_result(&code),
+            result,
+            "forward/reverse mapping disagree for {result:?}"
+        );
+    }
+}
+
 #[test]
 fn test_set_and_get_error() {
     let err = AdapterError::new(ErrorCode::ElementNotFound, "element @e5 gone")

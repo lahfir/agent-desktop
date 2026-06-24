@@ -75,6 +75,12 @@ thread_local! {
     static LAST_ERROR: RefCell<Option<StoredError>> = const { RefCell::new(None) };
 }
 
+/// Maps a core `ErrorCode` to its stable C-ABI `AdResult`. `ErrorCode` and the
+/// error variants of `AdResult` are a bijection: each maps to exactly one of the
+/// other. This match is exhaustive over `ErrorCode`, so a new `ErrorCode` cannot
+/// be added without a result here (forward-drift guard); the reverse direction is
+/// guarded by `error_code_and_ad_result_error_variants_stay_in_bijection` in the
+/// tests. When adding an error, update both this match and the `AdResult` enum.
 fn error_code_to_result(code: &ErrorCode) -> AdResult {
     match code {
         ErrorCode::PermDenied => AdResult::ErrPermDenied,
