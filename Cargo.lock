@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "agent-desktop"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "agent-desktop-core",
  "agent-desktop-linux",
@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "agent-desktop-core"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "base64",
  "libc",
@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "agent-desktop-ffi"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "agent-desktop-core",
  "agent-desktop-linux",
@@ -56,7 +56,7 @@ dependencies = [
 
 [[package]]
 name = "agent-desktop-linux"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "agent-desktop-core",
  "thiserror",
@@ -64,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "agent-desktop-macos"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "accessibility-sys",
  "agent-desktop-core",
@@ -82,7 +82,7 @@ dependencies = [
 
 [[package]]
 name = "agent-desktop-windows"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "agent-desktop-core",
  "thiserror",
