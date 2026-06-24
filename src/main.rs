@@ -54,10 +54,8 @@ fn main() {
     let cmd_name = cmd.name();
 
     match cmd {
-        Commands::Version(a) => {
-            let result = agent_desktop_core::commands::version::execute(
-                agent_desktop_core::commands::version::VersionArgs { json: a.json },
-            );
+        Commands::Version => {
+            let result = agent_desktop_core::commands::version::execute();
             finish(cmd_name, result);
         }
         Commands::Skills(a) => {

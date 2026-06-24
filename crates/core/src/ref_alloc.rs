@@ -150,7 +150,9 @@ fn allocate_refs_at_path(
         );
         entry.source_surface = config.source_surface;
         entry.path_is_absolute = config.root_ref_id.is_some();
-        strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
+        if !config.include_bounds {
+            entry.bounds = None;
+        }
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -171,7 +173,9 @@ fn allocate_refs_at_path(
         );
         entry.source_surface = config.source_surface;
         entry.available_actions = vec![];
-        strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
+        if !config.include_bounds {
+            entry.bounds = None;
+        }
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -204,12 +208,6 @@ fn allocate_refs_at_path(
         .collect();
 
     node
-}
-
-fn strip_ref_bounds_when_hidden(entry: &mut RefEntry, include_bounds: bool) {
-    if !include_bounds {
-        entry.bounds = None;
-    }
 }
 
 fn meaningful_string(value: Option<String>) -> Option<String> {

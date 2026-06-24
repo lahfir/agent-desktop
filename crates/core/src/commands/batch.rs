@@ -2,11 +2,6 @@ use crate::error::AppError;
 use serde::Deserialize;
 use serde_json::Value;
 
-pub struct BatchArgs {
-    pub commands_json: String,
-    pub stop_on_error: bool,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct BatchCommand {
     pub command: String,

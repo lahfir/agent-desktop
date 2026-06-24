@@ -15,7 +15,7 @@ use crate::cli_args::{
     system::{
         AppRefArgs, BatchArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
         ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
-        VersionArgs, WaitArgs,
+        WaitArgs,
     },
 };
 
@@ -179,8 +179,8 @@ pub(crate) enum Commands {
         about = "Check nested permission states: accessibility/screen_recording/automation each return {state,...}"
     )]
     Permissions(PermissionsArgs),
-    #[command(about = "Show version (--json for machine-readable output)")]
-    Version(VersionArgs),
+    #[command(about = "Show version, target architecture, and OS")]
+    Version,
     #[command(about = "Execute multiple commands from a JSON array (--stop-on-error)")]
     Batch(BatchArgs),
     #[command(about = "Bundled skill docs for AI agents (list, get, path)")]
@@ -241,7 +241,7 @@ impl Commands {
             Self::Wait(_) => "wait",
             Self::Status => "status",
             Self::Permissions(_) => "permissions",
-            Self::Version(_) => "version",
+            Self::Version => "version",
             Self::Batch(_) => "batch",
             Self::Skills(_) => "skills",
         }

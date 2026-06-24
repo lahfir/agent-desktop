@@ -2,15 +2,6 @@ use crate::convert::string::c_to_string;
 use crate::types::{AdAction, AdActionKind, AdDirection, AdKeyCombo, AdModifier};
 use agent_desktop_core::action::{Action, Direction, KeyCombo as CoreKeyCombo, Modifier};
 
-fn direction_from_c(d: AdDirection) -> Direction {
-    match d {
-        AdDirection::Up => Direction::Up,
-        AdDirection::Down => Direction::Down,
-        AdDirection::Left => Direction::Left,
-        AdDirection::Right => Direction::Right,
-    }
-}
-
 /// Four modifier keys exist (`AdModifier::{Cmd, Ctrl, Alt, Shift}`),
 /// so a combo can name at most four. Anything larger must be bogus
 /// input — bail out instead of trusting it into `from_raw_parts`.
@@ -75,9 +66,14 @@ pub(crate) unsafe fn action_from_c(action: &AdAction) -> Result<Action, &'static
                 Ok(Action::TypeText(text))
             }
             AdActionKind::Scroll => {
-                let raw_dir = AdDirection::from_c(action.scroll.direction)
-                    .ok_or("invalid scroll direction discriminant")?;
-                let dir = direction_from_c(raw_dir);
+                let dir = match AdDirection::from_c(action.scroll.direction)
+                    .ok_or("invalid scroll direction discriminant")?
+                {
+                    AdDirection::Up => Direction::Up,
+                    AdDirection::Down => Direction::Down,
+                    AdDirection::Left => Direction::Left,
+                    AdDirection::Right => Direction::Right,
+                };
                 Ok(Action::Scroll(dir, action.scroll.amount))
             }
             AdActionKind::PressKey => {

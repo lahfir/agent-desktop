@@ -12,24 +12,9 @@ pub struct Response {
     pub ok: bool,
     pub command: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub app: Option<AppContext>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ErrorPayload>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct AppContext {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub window: Option<WindowContext>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct WindowContext {
-    pub id: String,
-    pub title: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,7 +37,6 @@ impl Response {
             version: ENVELOPE_VERSION,
             ok: true,
             command: command.into(),
-            app: None,
             data: Some(data),
             error: None,
         }
@@ -63,15 +47,9 @@ impl Response {
             version: ENVELOPE_VERSION,
             ok: false,
             command: command.into(),
-            app: None,
             data: None,
             error: Some(payload),
         }
-    }
-
-    pub fn with_app(mut self, ctx: AppContext) -> Self {
-        self.app = Some(ctx);
-        self
     }
 }
 

@@ -1,6 +1,6 @@
 use agent_desktop_core::error::AdapterError;
 use std::io::Read;
-use std::process::{Command, ExitStatus, Output, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -42,7 +42,11 @@ pub(crate) fn run_with_timeout(
 
     let stdout = join_drain(stdout_handle);
     let stderr = join_drain(stderr_handle);
-    Ok(make_output(status, stdout, stderr))
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 fn spawn_drain<R>(mut reader: R) -> thread::JoinHandle<Vec<u8>>
@@ -58,14 +62,6 @@ where
 
 fn join_drain(handle: Option<thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {
     handle.and_then(|h| h.join().ok()).unwrap_or_default()
-}
-
-fn make_output(status: ExitStatus, stdout: Vec<u8>, stderr: Vec<u8>) -> Output {
-    Output {
-        status,
-        stdout,
-        stderr,
-    }
 }
 
 #[cfg(all(test, unix))]

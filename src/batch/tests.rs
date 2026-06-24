@@ -75,11 +75,19 @@ fn rejects_unknown_wait_batch_args_after_flattening() {
 }
 
 #[test]
+fn rejects_version_args_after_json_flag_removal() {
+    let err = parse_command(item("version", serde_json::json!({ "json": true })))
+        .expect_err("version no longer accepts args");
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
 fn stop_on_error_halts_after_first_failure() {
     let args = BatchArgs {
         commands_json: serde_json::json!([
             {"command": "missing", "args": {}},
-            {"command": "version", "args": {"json": true}}
+            {"command": "version", "args": {}}
         ])
         .to_string(),
         stop_on_error: true,

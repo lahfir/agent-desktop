@@ -26,7 +26,7 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
         let mut child_candidate = None;
         let mut partial_candidate = None;
         for win in &windows {
-            if !is_window_candidate(win) {
+            if copy_string_attr(win, kAXRoleAttribute).as_deref() != Some("AXWindow") {
                 continue;
             }
             first_candidate.get_or_insert_with(|| win.clone());
@@ -65,11 +65,6 @@ fn window_titles_are_partial_match(candidate_title: &str, requested_title: &str)
     !candidate_title.is_empty()
         && !requested_title.is_empty()
         && (candidate_title.contains(requested_title) || requested_title.contains(candidate_title))
-}
-
-#[cfg(target_os = "macos")]
-fn is_window_candidate(el: &AXElement) -> bool {
-    copy_string_attr(el, kAXRoleAttribute).as_deref() == Some("AXWindow")
 }
 
 #[cfg(target_os = "macos")]

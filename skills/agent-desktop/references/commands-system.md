@@ -294,9 +294,8 @@ Checks the cached per-process permission report: `accessibility`, `screen_record
 ### version
 ```bash
 agent-desktop version
-agent-desktop version --json
 ```
-Returns version string. Use `--json` for `{ "version": "0.1.3", "platform": "macos", "arch": "aarch64" }`.
+Returns `{ "version": "0.3.1", "target": "aarch64", "os": "macos" }`. Always emitted as a JSON envelope (`ok: true`, `data: { version, target, os }`).
 
 ## Skills (bundled docs)
 

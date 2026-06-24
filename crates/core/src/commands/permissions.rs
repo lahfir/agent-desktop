@@ -15,13 +15,9 @@ pub fn execute_with_report(
     } else {
         report.clone()
     };
-    Ok(render(report))
-}
-
-fn render(report: PermissionReport) -> Value {
-    json!({
+    Ok(json!({
         "accessibility": report.accessibility,
         "screen_recording": report.screen_recording,
         "automation": report.automation
-    })
+    }))
 }

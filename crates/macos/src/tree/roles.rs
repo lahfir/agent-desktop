@@ -52,10 +52,6 @@ pub fn ax_role_to_str(ax_role: &str) -> &'static str {
     }
 }
 
-pub fn normalized_role_for_element(el: &crate::tree::AXElement, ax_role: Option<&str>) -> String {
-    normalized_role_and_label(el, ax_role).0
-}
-
 pub fn normalized_role_and_label(
     el: &crate::tree::AXElement,
     ax_role: Option<&str>,

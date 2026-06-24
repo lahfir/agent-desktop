@@ -9,8 +9,8 @@
 //! returns `AD_RESULT_ERR_INVALID_ARGS`.
 
 use crate::types::{
-    AdActionKind, AdDirection, AdImageFormat, AdModifier, AdMouseButton, AdMouseEventKind,
-    AdPolicyKind, AdScreenshotKind, AdSnapshotSurface, AdWindowOpKind,
+    AdActionKind, AdDirection, AdModifier, AdMouseButton, AdMouseEventKind, AdPolicyKind,
+    AdScreenshotKind, AdSnapshotSurface, AdWindowOpKind,
 };
 
 macro_rules! try_from_c_enum {
@@ -77,12 +77,6 @@ try_from_c_enum! {
 try_from_c_enum! {
     AdScreenshotKind {
         Screen = 0, Window = 1, FullScreen = 2,
-    }
-}
-
-try_from_c_enum! {
-    AdImageFormat {
-        Png = 0, Jpg = 1,
     }
 }
 
@@ -166,13 +160,6 @@ mod tests {
     }
 
     #[test]
-    fn test_image_format_valid_range() {
-        assert!(AdImageFormat::from_c(0).is_some());
-        assert!(AdImageFormat::from_c(1).is_some());
-        assert!(AdImageFormat::from_c(2).is_none());
-    }
-
-    #[test]
     fn typed_enum_cast_round_trips_through_raw_i32() {
         let raw = AdActionKind::Scroll as i32;
         assert_eq!(raw, 12);
@@ -191,7 +178,6 @@ mod tests {
             let _ = AdMouseEventKind::from_c(raw);
             let _ = AdWindowOpKind::from_c(raw);
             let _ = AdScreenshotKind::from_c(raw);
-            let _ = AdImageFormat::from_c(raw);
         }
     }
 }

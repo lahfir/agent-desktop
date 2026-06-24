@@ -89,7 +89,7 @@ fn apps_from_running_array(
         let name_sel = sel_registerName(c"localizedName".as_ptr());
         let bundle_sel = sel_registerName(c"bundleIdentifier".as_ptr());
 
-        let mut seen_pids = std::collections::HashSet::new();
+        let mut seen_pids = rustc_hash::FxHashSet::default();
         let mut apps = Vec::new();
         for idx in 0..count {
             let app = send_object(running, object_sel, idx);

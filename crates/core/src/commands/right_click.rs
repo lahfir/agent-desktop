@@ -1,7 +1,7 @@
 use crate::{
     action::Action,
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
-    commands::helpers::{RefArgs, execute_ref_action_result_with_context, find_window_for_pid},
+    commands::helpers::{RefArgs, execute_ref_action_result_with_context},
     context::CommandContext,
     error::AppError,
     interaction_policy::InteractionPolicy,
@@ -61,7 +61,7 @@ fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) -> Option<Str
     if entry.source_app.is_some() {
         return entry.source_app.clone();
     }
-    find_window_for_pid(entry.pid, adapter)
+    crate::window_lookup::find_window_for_pid(entry.pid, adapter)
         .ok()
         .map(|window| window.app)
 }
