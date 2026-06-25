@@ -6,6 +6,20 @@
 #include <stddef.h>
 
 /**
+ * The major ABI version of this build of `libagent_desktop_ffi`.
+ *
+ * Version-bump rule: increment this constant (and update the header via
+ * `scripts/update-ffi-header.sh`) whenever a breaking change is made to the
+ * C ABI — a removed or incompatibly-changed `ad_*` symbol, or a layout
+ * change to any `repr(C)` struct. Additive changes (new `ad_*` symbols, new
+ * error codes) do **not** require a bump. Consumers must call `ad_init` with
+ * the major they compiled against before making any adapter calls; a mismatch
+ * returns `AD_RESULT_ERR_INVALID_ARGS` so they can refuse gracefully rather
+ * than corrupt memory.
+ */
+#define AD_ABI_VERSION_MAJOR 1
+
+/**
  * Maximum byte length (excluding the NUL terminator) accepted for any
  * foreign C string. Bounds both the terminator scan and the resulting
  * allocation, so a missing NUL or a hostile caller cannot walk arbitrary
@@ -534,6 +548,26 @@ typedef struct AdWindowOp {
   double x;
   double y;
 } AdWindowOp;
+
+/**
+ * Returns the packed ABI major version of this dylib build.
+ *
+ * A consumer should compare this to `AD_ABI_VERSION_MAJOR` from the header it
+ * compiled against. If they differ, call nothing further — the ABI is
+ * incompatible.
+ */
+uint32_t ad_abi_version(void);
+
+/**
+ * Validates that the consumer's expected ABI major matches this dylib.
+ *
+ * Call once after `dlopen` / `LoadLibrary`, before any adapter call.
+ * Returns `AD_RESULT_OK` when `expected_major == AD_ABI_VERSION_MAJOR`.
+ * Returns `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error when the
+ * version does not match, so the consumer can refuse to proceed rather than
+ * crash with an incompatible ABI.
+ */
+AdResult ad_init(uint32_t expected_major);
 
 /**
  * # Safety

@@ -2,10 +2,62 @@ mod common;
 
 use common::{
     AdAppList, AdFindQuery, AdNativeHandle, AdResult, AdWindowInfo, AdWindowList, CStr,
-    ad_adapter_create, ad_adapter_destroy, ad_app_list_count, ad_app_list_free, ad_app_list_get,
-    ad_check_permissions, ad_find, ad_free_handle, ad_last_error_code, ad_last_error_message,
-    ad_list_apps, ad_list_windows, ad_window_list_count, ad_window_list_free, with_adapter,
+    ad_abi_version, ad_adapter_create, ad_adapter_destroy, ad_app_list_count, ad_app_list_free,
+    ad_app_list_get, ad_check_permissions, ad_find, ad_free_handle, ad_init, ad_last_error_code,
+    ad_last_error_message, ad_list_apps, ad_list_windows, ad_window_list_count,
+    ad_window_list_free, with_adapter,
 };
+
+#[test]
+fn abi_version_matches_rust_constant() {
+    unsafe {
+        assert_eq!(
+            ad_abi_version(),
+            agent_desktop_ffi::AD_ABI_VERSION_MAJOR,
+            "ad_abi_version() must equal AD_ABI_VERSION_MAJOR"
+        );
+    }
+}
+
+#[test]
+fn ad_init_succeeds_with_current_major() {
+    unsafe {
+        assert_eq!(
+            ad_init(agent_desktop_ffi::AD_ABI_VERSION_MAJOR),
+            AdResult::Ok
+        );
+    }
+}
+
+#[test]
+fn ad_init_rejects_future_major_and_sets_last_error() {
+    unsafe {
+        let rc = ad_init(agent_desktop_ffi::AD_ABI_VERSION_MAJOR + 1);
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
+        let msg = ad_last_error_message();
+        assert!(
+            !msg.is_null(),
+            "last-error message must be non-null after mismatch"
+        );
+        let _ = CStr::from_ptr(msg).to_string_lossy();
+        assert_eq!(ad_last_error_code(), AdResult::ErrInvalidArgs);
+    }
+}
+
+#[test]
+fn ad_init_rejects_zero_major_and_sets_last_error() {
+    unsafe {
+        let rc = ad_init(0);
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
+        let msg = ad_last_error_message();
+        assert!(
+            !msg.is_null(),
+            "last-error message must be non-null after zero-major mismatch"
+        );
+        let _ = CStr::from_ptr(msg).to_string_lossy();
+        assert_eq!(ad_last_error_code(), AdResult::ErrInvalidArgs);
+    }
+}
 
 #[test]
 fn null_adapter_rejected_without_ub() {
