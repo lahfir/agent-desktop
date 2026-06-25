@@ -81,3 +81,4 @@ docs/*
 todos/
 .cursor/
 .context/
+rust_out
