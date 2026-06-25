@@ -906,6 +906,40 @@ AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *par
 AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEvent *event);
 
 /**
+ * Registers a callback to receive `tracing` events, or unregisters the
+ * current callback when `cb` is `NULL`.
+ *
+ * The subscriber layer is installed exactly once (the first time a non-null
+ * callback is set). Subsequent calls only swap the stored pointer, never
+ * re-install the layer.
+ *
+ * The callback receives:
+ * - `level` — 1 (ERROR) … 5 (TRACE)
+ * - `msg` — a NUL-terminated JSON string; valid only for the call's duration
+ *
+ * Sensitive field values (password, token, text, …) are replaced with
+ * `{"redacted":true}` before the message is formatted.
+ *
+ * Invocations are best-effort. A panicking callback is caught and silently
+ * discarded; no command fails because of a trace delivery error.
+ *
+ * # Safety
+ *
+ * `cb` must be null or a valid function pointer with the declared signature.
+ * The pointer is stored atomically; the subscriber may call it from threads
+ * other than the registering thread.
+ *
+ * A callback unregistered via `NULL` may still be invoked from another thread
+ * for a brief window after this call returns. The callback (and any data it
+ * captures) must remain valid for the process lifetime, or the caller must
+ * quiesce all tracing sources before unregistering.
+ *
+ * If a global tracing subscriber was already installed in the process before
+ * the first non-null registration, events may not be delivered.
+ */
+AdResult ad_set_log_callback(void (*cb)(int32_t level, const char *msg));
+
+/**
  * Triggers the named action on the notification at `index`. Typical
  * action names are those reported in `AdNotificationInfo.actions`
  * (e.g. `"Reply"`, `"Open"`).

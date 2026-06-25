@@ -15,6 +15,9 @@ unsafe extern "C" {
     pub fn ad_init(expected_major: u32) -> AdResult;
     pub fn ad_version(out: *mut *mut c_char) -> AdResult;
     pub fn ad_free_string(s: *mut c_char);
+    pub fn ad_set_log_callback(
+        cb: Option<unsafe extern "C" fn(level: i32, msg: *const c_char)>,
+    ) -> AdResult;
 
     pub fn ad_ref_entry_size() -> usize;
     pub fn ad_action_size() -> usize;

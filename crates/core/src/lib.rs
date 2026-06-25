@@ -30,7 +30,7 @@ pub mod roles;
 pub(crate) mod search_text;
 pub mod snapshot;
 pub mod snapshot_ref;
-pub(crate) mod trace;
+pub mod trace;
 mod window_lookup;
 
 pub use action::{
