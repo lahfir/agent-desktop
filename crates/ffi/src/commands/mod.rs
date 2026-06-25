@@ -1,7 +1,7 @@
 pub mod snapshot;
-pub mod wait;
 pub(crate) mod status;
 pub(crate) mod version;
+pub mod wait;
 
 use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
 

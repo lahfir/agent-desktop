@@ -5,8 +5,8 @@ use common::{
     ad_abi_version, ad_adapter_create, ad_adapter_create_with_session, ad_adapter_destroy,
     ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_find,
     ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
-    ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_status, ad_version, ad_wait,
-    ad_window_list_count, ad_window_list_free, with_adapter,
+    ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_status, ad_version,
+    ad_wait, ad_window_list_count, ad_window_list_free, with_adapter,
 };
 use std::os::raw::c_char;
 use std::sync::Mutex;
@@ -796,6 +796,11 @@ fn ad_wait_null_args_rejected() {
             rc
         );
         assert!(out.is_null(), "out must stay null on null-args rejection");
+        assert_eq!(
+            ad_last_error_code(),
+            rc,
+            "last-error code must match returned AdResult (errno invariant)"
+        );
     });
 }
 
@@ -825,6 +830,11 @@ fn ad_wait_null_out_rejected() {
             matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
             "null out must be rejected, got {:?}",
             rc
+        );
+        assert_eq!(
+            ad_last_error_code(),
+            rc,
+            "last-error code must match returned AdResult (errno invariant)"
         );
     });
 }
@@ -867,6 +877,11 @@ fn ad_wait_ms_mode_returns_ok_or_off_thread_error() {
                 assert!(out.is_null(), "ErrInternal must leave out null");
                 let msg = ad_last_error_message();
                 assert!(!msg.is_null(), "error message must be set on failure");
+                assert_eq!(
+                    ad_last_error_code(),
+                    AdResult::ErrInternal,
+                    "last-error code must match returned AdResult (errno invariant)"
+                );
             }
             other => panic!("unexpected result from ms-mode ad_wait: {:?}", other),
         }
