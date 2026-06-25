@@ -12,7 +12,7 @@ fn decode_app_id(id: *const c_char) -> Result<String, AdapterError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::convert::string::{MAX_C_STRING_BYTES, string_to_c};
+    use crate::convert::string::{AD_MAX_STRING_BYTES, string_to_c};
 
     #[test]
     fn app_id_rejects_null() {
@@ -31,7 +31,7 @@ mod tests {
 
     #[test]
     fn app_id_rejects_overlong_input() {
-        let bytes = vec![b'a'; MAX_C_STRING_BYTES + 1];
+        let bytes = vec![b'a'; AD_MAX_STRING_BYTES + 1];
         let err = decode_app_id(bytes.as_ptr().cast()).unwrap_err();
 
         assert!(

@@ -39,7 +39,7 @@ pub(crate) fn ad_window_to_core(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::convert::string::MAX_C_STRING_BYTES;
+    use crate::convert::string::AD_MAX_STRING_BYTES;
     use crate::types::AdRect;
     use agent_desktop_core::error::ErrorCode;
     use std::ffi::CString;
@@ -48,7 +48,7 @@ mod tests {
     fn window_app_name_rejects_oversized_string() {
         let id = CString::new("w-1").unwrap();
         let title = CString::new("Main").unwrap();
-        let mut app = vec![b'a'; MAX_C_STRING_BYTES + 1];
+        let mut app = vec![b'a'; AD_MAX_STRING_BYTES + 1];
         app.push(0);
         let win = window(id.as_ptr(), title.as_ptr(), app.as_ptr().cast());
 

@@ -196,7 +196,7 @@ fn ffi_ref_entry_rejects_oversized_path_count() {
 #[test]
 fn ffi_ref_entry_rejects_unterminated_name_within_byte_cap() {
     let role = CString::new("button").unwrap();
-    let unterminated = vec![b'a'; crate::convert::string::MAX_C_STRING_BYTES + 1];
+    let unterminated = vec![b'a'; crate::convert::string::AD_MAX_STRING_BYTES + 1];
     let mut entry = test_ref_entry();
     entry.role = role.as_ptr();
     entry.name = unterminated.as_ptr().cast();

@@ -52,7 +52,7 @@ pub(crate) unsafe fn free_c_string(ptr: *mut c_char) {
 /// payload-bearing calls (clipboard-set, type) keep CLI parity rather than
 /// being cut off at a ref-field-sized cap. Mirrored in the header as
 /// `AD_MAX_STRING_BYTES`.
-pub const MAX_C_STRING_BYTES: usize = 1024 * 1024;
+pub const AD_MAX_STRING_BYTES: usize = 1024 * 1024;
 
 pub(crate) enum CStrDecodeError {
     NotUtf8,
@@ -64,14 +64,14 @@ impl CStrDecodeError {
         match self {
             Self::NotUtf8 => format!("{field} is not valid UTF-8"),
             Self::TooLong => {
-                format!("{field} exceeds AD_MAX_STRING_BYTES ({MAX_C_STRING_BYTES} bytes)")
+                format!("{field} exceeds AD_MAX_STRING_BYTES ({AD_MAX_STRING_BYTES} bytes)")
             }
         }
     }
 }
 
 unsafe fn bounded_c_bytes<'a>(ptr: *const c_char) -> Result<&'a [u8], CStrDecodeError> {
-    for len in 0..=MAX_C_STRING_BYTES {
+    for len in 0..=AD_MAX_STRING_BYTES {
         if unsafe { *ptr.add(len) } == 0 {
             return Ok(unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), len) });
         }
@@ -90,7 +90,7 @@ pub(crate) unsafe fn c_to_string(ptr: *const c_char) -> Option<String> {
 /// - `Ok(None)` — pointer is null. Caller should treat as "filter
 ///   absent".
 /// - `Ok(Some(s))` — pointer is non-null, NUL-terminated within
-///   `MAX_C_STRING_BYTES`, and decodes as valid UTF-8.
+///   `AD_MAX_STRING_BYTES`, and decodes as valid UTF-8.
 /// - `Err(e)` — pointer is non-null but the bytes are not UTF-8 or no
 ///   terminator was found within the byte cap. Caller should surface
 ///   `AD_RESULT_ERR_INVALID_ARGS` (via `e.describe(field)`) instead of
@@ -98,7 +98,7 @@ pub(crate) unsafe fn c_to_string(ptr: *const c_char) -> Option<String> {
 ///
 /// # Safety
 /// `ptr` must be null or point to readable memory that is NUL-terminated
-/// within `MAX_C_STRING_BYTES + 1` bytes.
+/// within `AD_MAX_STRING_BYTES + 1` bytes.
 pub(crate) unsafe fn try_c_to_string(
     ptr: *const c_char,
 ) -> Result<Option<String>, CStrDecodeError> {
@@ -225,19 +225,19 @@ mod tests {
 
     #[test]
     fn try_c_to_string_caps_unterminated_input() {
-        let unterminated = vec![b'a'; MAX_C_STRING_BYTES + 1];
+        let unterminated = vec![b'a'; AD_MAX_STRING_BYTES + 1];
         let result = unsafe { try_c_to_string(unterminated.as_ptr() as *const c_char) };
         assert!(matches!(result, Err(CStrDecodeError::TooLong)));
     }
 
     #[test]
     fn try_c_to_string_accepts_exact_cap_length() {
-        let mut max_len = vec![b'a'; MAX_C_STRING_BYTES];
+        let mut max_len = vec![b'a'; AD_MAX_STRING_BYTES];
         max_len.push(0);
         let result = unsafe { try_c_to_string(max_len.as_ptr() as *const c_char) };
         assert_eq!(
             result.ok().flatten().map(|s| s.len()),
-            Some(MAX_C_STRING_BYTES)
+            Some(AD_MAX_STRING_BYTES)
         );
     }
 
