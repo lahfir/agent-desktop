@@ -13,8 +13,18 @@ set -euo pipefail
 ROOT=$(git rev-parse --show-toplevel)
 cd "$ROOT"
 
+REQUIRED_CBINDGEN="0.29.4"
+
 if ! command -v cbindgen >/dev/null 2>&1; then
   echo "ERROR: cbindgen is not installed. Install and audit it explicitly before regenerating the FFI header." >&2
+  echo "  cargo install cbindgen --version ${REQUIRED_CBINDGEN} --locked" >&2
+  exit 1
+fi
+
+ACTUAL_CBINDGEN=$(cbindgen --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+if [ "${ACTUAL_CBINDGEN}" != "${REQUIRED_CBINDGEN}" ]; then
+  echo "ERROR: cbindgen ${REQUIRED_CBINDGEN} required, found ${ACTUAL_CBINDGEN}." >&2
+  echo "  cargo install cbindgen --version ${REQUIRED_CBINDGEN} --locked" >&2
   exit 1
 fi
 
