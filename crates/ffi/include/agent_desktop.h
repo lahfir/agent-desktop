@@ -822,6 +822,25 @@ AdResult ad_snapshot(const struct AdAdapter *adapter,
                      char **out);
 
 /**
+ * Returns the adapter's current health and permission state as a JSON
+ * envelope matching the `agent-desktop status` CLI output.
+ *
+ * `ad_status` does not query the accessibility tree; it reads the
+ * permission report and ref-store metadata only, so it is safe to call
+ * from any thread (unlike tree-traversal commands that require the
+ * macOS main thread). On success `*out` is a NUL-terminated,
+ * heap-allocated JSON string freed with `ad_free_string`. On error
+ * `*out` is left null and the last-error slot is populated.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`
+ * that has not been destroyed. `out` must be a non-null writable
+ * `*mut *mut c_char`.
+ */
+AdResult ad_status(const struct AdAdapter *adapter, char **out);
+
+/**
  * Returns the `agent-desktop` version envelope as an owned JSON C string.
  *
  * The returned string has the same `{version, ok, command, data}` shape
