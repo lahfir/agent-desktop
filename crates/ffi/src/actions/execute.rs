@@ -6,6 +6,10 @@ use crate::ffi_try::trap_panic;
 use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind, AdRefEntry};
 use agent_desktop_core::{action::Action, action_request::ActionRequest, adapter::NativeHandle};
 
+/// Low-level native-handle action. This does not perform strict ref
+/// re-identification or actionability preflight; callers that want CLI parity
+/// should use `ad_execute_ref_action_with_policy`.
+///
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -25,6 +29,10 @@ pub unsafe extern "C" fn ad_execute_action(
     }
 }
 
+/// Low-level native-handle action with explicit interaction policy. This does
+/// not perform strict ref re-identification or actionability preflight; callers
+/// that want CLI parity should use `ad_execute_ref_action_with_policy`.
+///
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -81,6 +89,10 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
     })
 }
 
+/// Strict ref action path matching CLI semantics: resolve the full ref
+/// identity, run actionability preflight, then dispatch using the requested
+/// policy.
+///
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
