@@ -777,6 +777,43 @@ const struct AdAppInfo *ad_app_list_get(const struct AdAppList *list, uint32_t i
 void ad_app_list_free(struct AdAppList *list);
 
 /**
+ * Takes a full CLI-format snapshot of the target application window,
+ * allocates `@e` refs for all interactive elements, persists the refmap
+ * to disk, and writes the JSON envelope into `*out`.
+ *
+ * The JSON shape matches `agent-desktop snapshot`:
+ * `{"version":"2.0","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
+ *
+ * The caller must free `*out` with `ad_free_string`.
+ *
+ * `app` is tri-state:
+ * - null — snapshot the currently focused window (same as running the command with no `--app`).
+ * - valid UTF-8 string — snapshot the named application's focused window.
+ * - non-null but invalid UTF-8 or exceeding `AD_MAX_STRING_BYTES` — returns `ErrInvalidArgs`.
+ *
+ * `surface` is an `AdSnapshotSurface` discriminant (0 = Window, 1 = Focused, …).
+ * An out-of-range value returns `ErrInvalidArgs`.
+ *
+ * Skeleton mode and `--root` drill-down are not exposed here; they are a
+ * fast-follow to this entrypoint.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer from `ad_adapter_create` or
+ * `ad_adapter_create_with_session`. `out` must be a non-null writable
+ * `*mut *mut c_char`. `app` must be null or a NUL-terminated string within
+ * `AD_MAX_STRING_BYTES + 1` bytes. All pointers must remain valid for the
+ * duration of the call. `adapter` must be used from the main thread on macOS.
+ */
+AdResult ad_snapshot(const struct AdAdapter *adapter,
+                     const char *app,
+                     int32_t surface,
+                     uint8_t max_depth,
+                     bool interactive_only,
+                     bool compact,
+                     char **out);
+
+/**
  * Returns the `agent-desktop` version envelope as an owned JSON C string.
  *
  * The returned string has the same `{version, ok, command, data}` shape
