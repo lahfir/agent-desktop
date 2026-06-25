@@ -3,7 +3,7 @@ mod common;
 use common::{
     AdAppList, AdFindQuery, AdNativeHandle, AdResult, AdWaitArgs, AdWindowInfo, AdWindowList, CStr,
     ad_abi_version, ad_adapter_create, ad_adapter_create_with_session, ad_adapter_destroy,
-    ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_find,
+    ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_execute_by_ref, ad_find,
     ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
     ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_status, ad_version,
     ad_wait, ad_window_list_count, ad_window_list_free, with_adapter,
@@ -884,6 +884,127 @@ fn ad_wait_ms_mode_returns_ok_or_off_thread_error() {
                 );
             }
             other => panic!("unexpected result from ms-mode ad_wait: {:?}", other),
+        }
+    });
+}
+
+#[test]
+fn execute_by_ref_null_out_returns_invalid_args() {
+    with_adapter(|adapter| unsafe {
+        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let action = common::default_action();
+        let rc = ad_execute_by_ref(adapter, ref_id.as_ptr(), &action, 0, std::ptr::null_mut());
+        assert_eq!(
+            rc,
+            AdResult::ErrInvalidArgs,
+            "null out is rejected by the outer guard before any thread or adapter check"
+        );
+    });
+}
+
+#[test]
+fn execute_by_ref_null_adapter_rejected() {
+    unsafe {
+        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let action = common::default_action();
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_execute_by_ref(std::ptr::null(), ref_id.as_ptr(), &action, 0, &mut out);
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "null adapter must fail — got {rc:?} (ErrInternal on macOS off-main-thread is expected)"
+        );
+        assert!(out.is_null(), "out must stay null on failure");
+    }
+}
+
+#[test]
+fn execute_by_ref_null_ref_id_returns_invalid_args() {
+    with_adapter(|adapter| unsafe {
+        let action = common::default_action();
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_execute_by_ref(adapter, std::ptr::null(), &action, 0, &mut out);
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "null ref_id must fail — got {rc:?}"
+        );
+        assert!(out.is_null(), "out must stay null on null ref_id");
+    });
+}
+
+#[test]
+fn execute_by_ref_invalid_utf8_ref_id_returns_invalid_args() {
+    with_adapter(|adapter| unsafe {
+        let bad: [u8; 3] = [0xC3, 0xFF, 0x00];
+        let action = common::default_action();
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_execute_by_ref(
+            adapter,
+            bad.as_ptr() as *const std::os::raw::c_char,
+            &action,
+            0,
+            &mut out,
+        );
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "invalid UTF-8 ref_id must fail — got {rc:?}"
+        );
+        assert!(out.is_null(), "out must stay null on invalid UTF-8 ref_id");
+    });
+}
+
+#[test]
+fn execute_by_ref_null_action_rejected() {
+    with_adapter(|adapter| unsafe {
+        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_execute_by_ref(adapter, ref_id.as_ptr(), std::ptr::null(), 0, &mut out);
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "null action must fail — got {rc:?}"
+        );
+        assert!(out.is_null(), "out must stay null on null action");
+    });
+}
+
+#[test]
+fn execute_by_ref_invalid_ref_format_returns_invalid_args() {
+    with_adapter(|adapter| unsafe {
+        let bad_ref = std::ffi::CString::new("@e0").unwrap();
+        let action = common::default_action();
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_execute_by_ref(adapter, bad_ref.as_ptr(), &action, 0, &mut out);
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "bad ref format must fail — got {rc:?}"
+        );
+        assert!(out.is_null(), "out must stay null on bad ref format");
+    });
+}
+
+#[test]
+fn execute_by_ref_stale_ref_returns_error_when_no_refmap_exists() {
+    with_adapter(|adapter| unsafe {
+        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let action = common::default_action();
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_execute_by_ref(adapter, ref_id.as_ptr(), &action, 0, &mut out);
+        let rc_i32 = rc as i32;
+        assert!(
+            rc_i32 <= 0,
+            "must return a valid AdResult (<=0), got {rc_i32}"
+        );
+        if !out.is_null() {
+            let s = CStr::from_ptr(out).to_string_lossy();
+            assert!(
+                s.contains("\"version\""),
+                "envelope must carry 'version', got: {s}"
+            );
+            assert!(s.contains("\"ok\""), "envelope must carry 'ok', got: {s}");
+            assert!(
+                s.contains("\"command\""),
+                "envelope must carry 'command', got: {s}"
+            );
+            ad_free_string(out);
         }
     });
 }

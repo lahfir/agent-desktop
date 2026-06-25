@@ -109,6 +109,15 @@ unsafe extern "C" {
         out: *mut *mut c_char,
     ) -> AdResult;
     pub fn ad_status(adapter: *const AdAdapter, out: *mut *mut c_char) -> AdResult;
+
+    pub fn ad_execute_by_ref(
+        adapter: *const AdAdapter,
+        ref_id: *const c_char,
+        action: *const AdAction,
+        policy: i32,
+        out: *mut *mut c_char,
+    ) -> AdResult;
+
 }
 
 pub fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {

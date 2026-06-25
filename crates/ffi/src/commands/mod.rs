@@ -1,3 +1,4 @@
+pub mod execute_by_ref;
 pub mod snapshot;
 pub(crate) mod status;
 pub(crate) mod version;

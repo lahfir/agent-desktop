@@ -857,6 +857,43 @@ const struct AdAppInfo *ad_app_list_get(const struct AdAppList *list, uint32_t i
 void ad_app_list_free(struct AdAppList *list);
 
 /**
+ * Drives a ref action (`@e5`, action) through the full strict-resolution
+ * ladder: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
+ * `resolve_element_strict` (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
+ * actionability preflight → dispatch → handle release.
+ *
+ * Policy follows CLI parity (KTD6): `TypeText` actions default to
+ * `focus_fallback`; every other action defaults to `headless`. An explicit
+ * `policy` discriminant may *elevate* to headed but must not downgrade an
+ * action below its CLI base.
+ *
+ * `ref_id` tri-state: null → `ErrInvalidArgs`; non-null invalid UTF-8 →
+ * `ErrInvalidArgs`; valid UTF-8 but bad `@e{N}` format → `ErrInvalidArgs`.
+ *
+ * `policy` is an `AdPolicyKind` discriminant (0=Headless, 1=FocusFallback,
+ * 2=Headed). An out-of-range value returns `ErrInvalidArgs`. `Headless (0)`
+ * accepts the action's own CLI base (so `TypeText` still uses
+ * `focus_fallback`). `Headed (2)` opts in to cursor-based fallbacks.
+ *
+ * On success `*out` is set to a NUL-terminated JSON envelope (command
+ * `"execute_by_ref"`); free with `ad_free_string`. On error `*out` is
+ * zeroed and the last-error slot is populated.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer from `ad_adapter_create[_with_session]`.
+ * `ref_id` must be null or NUL-terminated within `AD_MAX_STRING_BYTES + 1`
+ * bytes. `action` must be a non-null pointer to a valid `AdAction`.
+ * `out` must be a non-null writable pointer. All pointers must remain valid
+ * for the duration of the call. Must be called from the main thread on macOS.
+ */
+AdResult ad_execute_by_ref(const struct AdAdapter *adapter,
+                           const char *ref_id,
+                           const struct AdAction *action,
+                           int32_t policy,
+                           char **out);
+
+/**
  * Takes a full CLI-format snapshot of the target application window,
  * allocates `@e` refs for all interactive elements, persists the refmap
  * to disk, and writes the JSON envelope into `*out`.
@@ -902,29 +939,6 @@ AdResult ad_snapshot(const struct AdAdapter *adapter,
                      char **out);
 
 /**
- * Runs `wait` with the given args, blocking the calling thread until the
- * condition is met or `timeout_ms` elapses.
- *
- * On success `*out` is set to a freshly allocated JSON string containing the
- * CLI-format wait envelope (`{version, ok, command, data}`). The caller must
- * release the string with `ad_free_string(*out)`.
- *
- * On failure `*out` is zeroed, the last-error slot is set, and a negative
- * `AdResult` code is returned.
- *
- * # Safety
- *
- * `adapter` must be a non-null pointer returned by `ad_adapter_create` that
- * has not been destroyed. `args` must be non-null and point to a valid
- * zero-initialized `AdWaitArgs`. `out` must be non-null and point to a
- * writable `*mut c_char`.
- *
- * All `*const c_char` fields inside `AdWaitArgs` must be null or point to
- * readable, NUL-terminated memory within `AD_MAX_STRING_BYTES + 1` bytes.
- */
-AdResult ad_wait(const struct AdAdapter *adapter, const struct AdWaitArgs *args, char **out);
-
-/**
  * Returns the adapter's current health and permission state as a JSON
  * envelope matching the `agent-desktop status` CLI output.
  *
@@ -956,6 +970,29 @@ AdResult ad_status(const struct AdAdapter *adapter, char **out);
  * `out` must be a non-null writable `*mut *mut c_char`.
  */
 AdResult ad_version(char **out);
+
+/**
+ * Runs `wait` with the given args, blocking the calling thread until the
+ * condition is met or `timeout_ms` elapses.
+ *
+ * On success `*out` is set to a freshly allocated JSON string containing the
+ * CLI-format wait envelope (`{version, ok, command, data}`). The caller must
+ * release the string with `ad_free_string(*out)`.
+ *
+ * On failure `*out` is zeroed, the last-error slot is set, and a negative
+ * `AdResult` code is returned.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create` that
+ * has not been destroyed. `args` must be non-null and point to a valid
+ * zero-initialized `AdWaitArgs`. `out` must be non-null and point to a
+ * writable `*mut c_char`.
+ *
+ * All `*const c_char` fields inside `AdWaitArgs` must be null or point to
+ * readable, NUL-terminated memory within `AD_MAX_STRING_BYTES + 1` bytes.
+ */
+AdResult ad_wait(const struct AdAdapter *adapter, const struct AdWaitArgs *args, char **out);
 
 /**
  * Last-error lifetime — errno-style.
