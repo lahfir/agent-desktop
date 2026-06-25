@@ -759,6 +759,20 @@ const struct AdAppInfo *ad_app_list_get(const struct AdAppList *list, uint32_t i
 void ad_app_list_free(struct AdAppList *list);
 
 /**
+ * Returns the `agent-desktop` version envelope as an owned JSON C string.
+ *
+ * The returned string has the same `{version, ok, command, data}` shape
+ * as `agent-desktop version` on the CLI. Free it with `ad_free_string`.
+ *
+ * On success `*out` points to the envelope JSON.
+ * On error `*out` is null and the last-error slot is populated.
+ *
+ * # Safety
+ * `out` must be a non-null writable `*mut *mut c_char`.
+ */
+AdResult ad_version(char **out);
+
+/**
  * Last-error lifetime — errno-style.
  *
  * The pointer returned by `ad_last_error_message`,
