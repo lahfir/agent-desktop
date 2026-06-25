@@ -12,10 +12,10 @@
  * `scripts/update-ffi-header.sh`) whenever a breaking change is made to the
  * C ABI — a removed or incompatibly-changed `ad_*` symbol, or a layout
  * change to any `repr(C)` struct. Additive changes (new `ad_*` symbols, new
- * error codes) do **not** require a bump. Consumers must call `ad_init` with
- * the major they compiled against before making any adapter calls; a mismatch
- * returns `AD_RESULT_ERR_INVALID_ARGS` so they can refuse gracefully rather
- * than corrupt memory.
+ * error codes) do **not** require a bump. It is recommended to call `ad_init`
+ * with the major compiled against the header to verify ABI compatibility; a
+ * mismatch means the header and dylib are incompatible and the consumer should
+ * refuse to proceed rather than risk undefined behaviour.
  */
 #define AD_ABI_VERSION_MAJOR 1
 
@@ -643,13 +643,16 @@ typedef struct AdWindowOp {
 uint32_t ad_abi_version(void);
 
 /**
- * Validates that the consumer's expected ABI major matches this dylib.
+ * Checks that the consumer's expected ABI major matches this dylib.
  *
- * Call once after `dlopen` / `LoadLibrary`, before any adapter call.
- * Returns `AD_RESULT_OK` when `expected_major == AD_ABI_VERSION_MAJOR`.
- * Returns `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error when the
- * version does not match, so the consumer can refuse to proceed rather than
- * crash with an incompatible ABI.
+ * It is recommended to call this once after `dlopen` / `LoadLibrary` to verify
+ * the header and dylib agree on the major ABI version; a mismatch means they
+ * are incompatible. No global state is initialised by this call — skipping it
+ * does not prevent adapter functions from operating, but undetected ABI
+ * mismatches may cause memory corruption. Returns `AD_RESULT_OK` when
+ * `expected_major == AD_ABI_VERSION_MAJOR`. Returns
+ * `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error when the version
+ * does not match.
  */
 AdResult ad_init(uint32_t expected_major);
 
@@ -965,8 +968,14 @@ AdResult ad_snapshot(const struct AdAdapter *adapter,
  * permission report and ref-store metadata only, so it is safe to call
  * from any thread (unlike tree-traversal commands that require the
  * macOS main thread). On success `*out` is a NUL-terminated,
- * heap-allocated JSON string freed with `ad_free_string`. On error
- * `*out` is left null and the last-error slot is populated.
+ * heap-allocated JSON string freed with `ad_free_string`.
+ *
+ * On a command-level failure `*out` is set to a heap-allocated JSON string
+ * with `"ok":false` and an `"error"` payload. The caller must still release
+ * it with `ad_free_string(*out)`. The last-error slot is also set.
+ *
+ * On an argument or infrastructure failure (null adapter, null out, context
+ * error) `*out` is zeroed and only the last-error slot is populated.
  *
  * # Safety
  *
@@ -998,8 +1007,14 @@ AdResult ad_version(char **out);
  * CLI-format wait envelope (`{version, ok, command, data}`). The caller must
  * release the string with `ad_free_string(*out)`.
  *
- * On failure `*out` is zeroed, the last-error slot is set, and a negative
- * `AdResult` code is returned.
+ * On a command-level failure (e.g. `TIMEOUT`, `ELEMENT_NOT_FOUND`) `*out` is
+ * set to a freshly allocated JSON string with `"ok":false` and an `"error"`
+ * payload. The caller must still release it with `ad_free_string(*out)`. The
+ * last-error slot is also set.
+ *
+ * On an argument or infrastructure failure (null adapter, null args, null out,
+ * off-main-thread, invalid UTF-8 field) `*out` is zeroed, the last-error slot
+ * is set, and a negative `AdResult` code is returned. No allocation is made.
  *
  * # Safety
  *
@@ -1134,11 +1149,21 @@ AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEve
  * Registers a callback to receive `tracing` events, or unregisters the
  * current callback when `cb` is `NULL`.
  *
- * The subscriber layer is installed exactly once (the first time a non-null
- * callback is set). Subsequent calls only swap the stored pointer, never
- * re-install the layer.
+ * # Install semantics
  *
- * The callback receives:
+ * The subscriber layer is installed exactly once — on the first call with a
+ * non-null `cb`. If a foreign global subscriber already owns the process at
+ * that point, the install fails and this function returns
+ * `AD_RESULT_ERR_INTERNAL` with a diagnostic last-error. No callback pointer
+ * is stored in that case; events will never be delivered until the consumer
+ * remedies the conflict. Subsequent calls with a non-null `cb` after a
+ * **successful** install only swap the stored pointer and always return
+ * `AD_RESULT_OK`.
+ *
+ * `NULL` always returns `AD_RESULT_OK` — unregistering cannot fail.
+ *
+ * # Callback contract
+ *
  * - `level` — 1 (ERROR) … 5 (TRACE)
  * - `msg` — a NUL-terminated JSON string; valid only for the call's duration
  *
@@ -1160,9 +1185,6 @@ AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEve
  * for a brief window after this call returns. The callback (and any data it
  * captures) must remain valid for the process lifetime, or the caller must
  * quiesce all tracing sources before unregistering.
- *
- * If a global tracing subscriber was already installed in the process before
- * the first non-null registration, events may not be delivered.
  */
 AdResult ad_set_log_callback(void (*cb)(int32_t level, const char *msg));
 
@@ -1493,27 +1515,32 @@ void ad_free_tree(struct AdNodeTree *tree);
  *
  * # Raw-tree contract
  *
- * This is a **raw adapter tree**, not the snapshot the CLI `snapshot`
- * subcommand returns. Differences the caller must know about:
+ * This is a **raw adapter tree** — ref-less, no refmap persistence, and
+ * no JSON envelope. Differences the caller must know about:
  *
- * - `ref_id` is always null on every `AdNode`. The FFI surface does
- *   not run `ref_alloc::allocate_refs`; refs are a CLI/JSON pipeline
- *   concern, so agent-facing code that needs them should drive them
- *   externally (resolve via `ad_find` + `ad_free_handle`, or call the
- *   CLI if refs are required).
- * - `include_bounds`, `interactive_only`, and `compact` are honored
- *   after the adapter returns the raw tree, using
- *   `ref_alloc::transform_tree`. Because refs are not allocated here,
- *   the `interactive_only` cut is role-based rather than ref-based;
- *   otherwise the semantics match the CLI snapshot path.
+ * - `ref_id` is always null on every `AdNode`. `ref_alloc::allocate_refs`
+ *   is not run; `@e` ref assignment is a snapshot-pipeline concern.
+ * - `include_bounds`, `interactive_only`, and `compact` are honoured via
+ *   `ref_alloc::transform_tree` after the adapter returns. Because refs are
+ *   not allocated, the `interactive_only` cut is role-based rather than
+ *   ref-based; otherwise the semantics match the snapshot path.
  * - No skeleton/drill-down pipeline is wired through — `skeleton` is
  *   always false on the underlying `TreeOptions`.
  *
- * If parity with the CLI snapshot is important to your consumer,
- * either use `ad_find` + `ad_get` / `ad_is` for point lookups (which
- * bypass tree shape entirely) or invoke the CLI binary for the
- * snapshot call. A future revision may layer a "normalized snapshot"
- * FFI function on top of this raw path.
+ * # When to use this function vs `ad_snapshot`
+ *
+ * **Observe–act agents** that need `@e` refs and refmap persistence should
+ * call `ad_snapshot` instead. `ad_snapshot` runs the full snapshot pipeline
+ * (ref allocation, refmap write to disk, JSON envelope with
+ * `{"version":"2.0","ok":true,...}`) and is the correct starting point for
+ * any workflow that drives subsequent `ad_click`, `ad_type_text`, or other
+ * ref-based actions.
+ *
+ * Use `ad_get_tree` when you need the raw flat BFS layout without refs —
+ * for example, to drive your own traversal logic or to populate a UI
+ * inspector that does not use the ref-based action API. For point lookups
+ * that bypass tree shape entirely, `ad_find` + `ad_get` / `ad_is` are
+ * another alternative.
  *
  * On error `*out` is zeroed so `ad_free_tree` on it is a safe no-op.
  *
@@ -1629,7 +1656,10 @@ AdResult ad_window_op(const struct AdAdapter *adapter,
 /* C11 ABI layout guards — auto-generated; do not hand-edit.
  * Each sizeof check references the AD_*_SIZE macro defined above so the
  * size literal lives in exactly one place (the Rust source). Alignment
- * and offset values are structurally fixed on all 64-bit targets.        */
+ * and offset values are structurally fixed on all 64-bit targets.
+ * The one-shot guard makes double-include safe regardless of C standard. */
+#ifndef AGENT_DESKTOP_ABI_ASSERTS
+#define AGENT_DESKTOP_ABI_ASSERTS
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(AdDragParams) == AD_DRAG_PARAMS_SIZE, "AdDragParams ABI size changed");
 _Static_assert(_Alignof(AdDragParams) == 8, "AdDragParams ABI alignment changed");
@@ -1653,3 +1683,4 @@ _Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
 _Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI size drift");
 _Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
 #endif /* __STDC_VERSION__ >= 201112L */
+#endif /* AGENT_DESKTOP_ABI_ASSERTS */
