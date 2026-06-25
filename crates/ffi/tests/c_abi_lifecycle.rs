@@ -5,9 +5,12 @@ use common::{
     ad_abi_version, ad_adapter_create, ad_adapter_create_with_session, ad_adapter_destroy,
     ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_find,
     ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
-    ad_list_apps, ad_list_windows, ad_version, ad_window_list_count, ad_window_list_free,
+    ad_list_apps, ad_list_windows, ad_set_log_callback, ad_version, ad_window_list_count,
+    ad_window_list_free,
     with_adapter,
 };
+use std::os::raw::c_char;
+use std::sync::Mutex;
 
 #[test]
 fn abi_version_matches_rust_constant() {
@@ -385,5 +388,190 @@ fn empty_session_returns_null_and_sets_invalid_args() {
         );
         let msg = ad_last_error_message();
         assert!(!msg.is_null(), "error message must be set on empty session");
+    }
+}
+
+/// Captured delivery from the test callback.
+struct Delivery {
+    level: i32,
+    message: String,
+}
+
+static RECORDER: Mutex<Vec<Delivery>> = Mutex::new(Vec::new());
+static LOG_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Consumer-side recorder callback.  Must NOT emit tracing events (recursion).
+unsafe extern "C" fn recorder_cb(level: i32, msg: *const c_char) {
+    if msg.is_null() {
+        return;
+    }
+    let message = unsafe { CStr::from_ptr(msg) }
+        .to_string_lossy()
+        .into_owned();
+    if let Ok(mut guard) = RECORDER.lock() {
+        guard.push(Delivery { level, message });
+    }
+}
+
+fn clear_recorder() {
+    if let Ok(mut g) = RECORDER.lock() {
+        g.clear();
+    }
+}
+
+fn drain_recorder() -> Vec<Delivery> {
+    RECORDER
+        .lock()
+        .map(|mut g| g.drain(..).collect())
+        .unwrap_or_default()
+}
+
+/// Register callback → emit a tracing event → callback receives level + non-null message.
+#[test]
+fn log_callback_register_delivers_event() {
+    let _guard = LOG_TEST_LOCK.lock().unwrap();
+    clear_recorder();
+
+    unsafe {
+        let rc = ad_set_log_callback(Some(recorder_cb));
+        assert_eq!(rc, AdResult::Ok, "register must succeed");
+    }
+
+    tracing::error!(
+        test_marker = "deliver_event",
+        "log_callback_register_delivers_event"
+    );
+
+    let deliveries = drain_recorder();
+    assert!(
+        !deliveries.is_empty(),
+        "at least one delivery expected after tracing::error!"
+    );
+    let d = deliveries
+        .iter()
+        .find(|d| d.message.contains("deliver_event"))
+        .unwrap_or(&deliveries[0]);
+    assert_eq!(d.level, 1, "ERROR maps to level 1");
+    assert!(!d.message.is_empty(), "message must be non-empty");
+
+    unsafe {
+        let _ = ad_set_log_callback(None);
+    }
+}
+
+/// A tracing event emitted from a spawned thread does not panic across the boundary.
+#[test]
+fn log_callback_spawned_thread_does_not_panic() {
+    let _guard = LOG_TEST_LOCK.lock().unwrap();
+    clear_recorder();
+
+    unsafe {
+        let rc = ad_set_log_callback(Some(recorder_cb));
+        assert_eq!(rc, AdResult::Ok);
+    }
+
+    let handle = std::thread::spawn(|| {
+        tracing::warn!(
+            source = "spawned_thread",
+            "log_callback_spawned_thread_does_not_panic"
+        );
+    });
+    handle.join().expect("spawned thread must not panic");
+
+    let deliveries = drain_recorder();
+    assert!(
+        !deliveries.is_empty(),
+        "spawned-thread event must reach the callback"
+    );
+
+    unsafe {
+        let _ = ad_set_log_callback(None);
+    }
+}
+
+/// NULL unregisters the callback; subsequent events are not delivered.
+#[test]
+fn log_callback_null_unregisters() {
+    let _guard = LOG_TEST_LOCK.lock().unwrap();
+    clear_recorder();
+
+    unsafe {
+        let _ = ad_set_log_callback(Some(recorder_cb));
+        let rc = ad_set_log_callback(None);
+        assert_eq!(rc, AdResult::Ok, "NULL unregister must succeed");
+    }
+
+    tracing::error!(test_marker = "after_null", "log_callback_null_unregisters");
+
+    let deliveries = drain_recorder();
+    assert!(
+        deliveries.is_empty(),
+        "no deliveries expected after NULL unregister, got {}",
+        deliveries.len()
+    );
+}
+
+/// A sensitive field (keyed by a SENSITIVE_KEYS name) is REDACTED in the
+/// delivered message; non-sensitive fields are preserved.
+#[test]
+fn log_callback_redacts_sensitive_fields() {
+    let _guard = LOG_TEST_LOCK.lock().unwrap();
+    clear_recorder();
+
+    unsafe {
+        let rc = ad_set_log_callback(Some(recorder_cb));
+        assert_eq!(rc, AdResult::Ok);
+    }
+
+    tracing::error!(
+        password = "super_secret_password",
+        token = "bearer_xyz",
+        operation = "login_attempt",
+        "log_callback_redacts_sensitive_fields"
+    );
+
+    let deliveries = drain_recorder();
+    assert!(!deliveries.is_empty(), "expected at least one delivery");
+
+    let combined: String = deliveries
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    assert!(
+        !combined.contains("super_secret_password"),
+        "raw password must not appear in callback message; got: {combined}"
+    );
+    assert!(
+        !combined.contains("bearer_xyz"),
+        "raw token must not appear in callback message; got: {combined}"
+    );
+    assert!(
+        combined.contains("redacted"),
+        "redaction marker must appear; got: {combined}"
+    );
+    assert!(
+        combined.contains("login_attempt"),
+        "non-sensitive field value must be preserved; got: {combined}"
+    );
+
+    unsafe {
+        let _ = ad_set_log_callback(None);
+    }
+}
+
+/// Re-registering a callback (and NULL then re-register) swaps the pointer
+/// without returning an error.
+#[test]
+fn log_callback_re_register_is_ok() {
+    let _guard = LOG_TEST_LOCK.lock().unwrap();
+    clear_recorder();
+
+    unsafe {
+        assert_eq!(ad_set_log_callback(Some(recorder_cb)), AdResult::Ok);
+        assert_eq!(ad_set_log_callback(None), AdResult::Ok);
+        assert_eq!(ad_set_log_callback(Some(recorder_cb)), AdResult::Ok);
+        assert_eq!(ad_set_log_callback(None), AdResult::Ok);
     }
 }

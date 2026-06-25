@@ -124,7 +124,11 @@ fn reject_loose_trace_permissions(_file: &std::fs::File) -> Result<(), AppError>
     Ok(())
 }
 
-fn sanitize_trace_value(value: Value) -> Value {
+/// Recursively redacts fields whose keys match `SENSITIVE_KEYS`. Non-sensitive
+/// fields and non-object values are left unchanged. Array elements are
+/// recursively scanned. Used by both the file-trace writer and the FFI log
+/// callback layer so that sensitive values never reach a consumer.
+pub fn sanitize_trace_value(value: Value) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.into_iter()
