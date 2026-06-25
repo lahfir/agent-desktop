@@ -14,6 +14,7 @@
 //!
 //! Operations exempt from the guard (safe from any thread):
 //!
+//! - `ad_abi_version` / `ad_init` (no adapter, no AX/Cocoa state)
 //! - `ad_adapter_create` / `ad_adapter_destroy`
 //! - `ad_last_error_*` readers
 //! - `ad_check_permissions` (process-wide query, no AX/Cocoa state)
@@ -41,7 +42,7 @@
 //! any number of subsequent successful calls on the same thread; only
 //! the next *failing* call rotates it. Matches POSIX `errno` semantics.
 
-pub mod abi_version;
+pub(crate) mod abi_version;
 pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod apps;
