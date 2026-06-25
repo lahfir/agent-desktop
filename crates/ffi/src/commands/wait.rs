@@ -1,5 +1,5 @@
 use crate::adapter::AdAdapter;
-use crate::convert::string::{decode_optional_filter, string_to_c, try_c_to_string};
+use crate::convert::string::{decode_optional_filter, string_to_c};
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::main_thread::require_main_thread;
@@ -57,83 +57,13 @@ pub unsafe extern "C" fn ad_wait(
 
         let ms = if args.has_ms { Some(args.ms) } else { None };
 
-        let element = match unsafe { try_c_to_string(args.element) } {
-            Ok(v) => v,
-            Err(e) => {
-                error::set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    e.describe("element"),
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-
-        let window = match unsafe { try_c_to_string(args.window) } {
-            Ok(v) => v,
-            Err(e) => {
-                error::set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    e.describe("window"),
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-
-        let text = match unsafe { try_c_to_string(args.text) } {
-            Ok(v) => v,
-            Err(e) => {
-                error::set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    e.describe("text"),
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-
-        let snapshot_id = match unsafe { try_c_to_string(args.snapshot_id) } {
-            Ok(v) => v,
-            Err(e) => {
-                error::set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    e.describe("snapshot_id"),
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-
-        let predicate = match unsafe { try_c_to_string(args.predicate) } {
-            Ok(v) => v,
-            Err(e) => {
-                error::set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    e.describe("predicate"),
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-
-        let value = match unsafe { try_c_to_string(args.value) } {
-            Ok(v) => v,
-            Err(e) => {
-                error::set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    e.describe("value"),
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-
-        let action_field = match unsafe { try_c_to_string(args.action) } {
-            Ok(v) => v,
-            Err(e) => {
-                error::set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    e.describe("action"),
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-
+        let element = unsafe { decode_optional_filter!(args.element, "element") };
+        let window = unsafe { decode_optional_filter!(args.window, "window") };
+        let text = unsafe { decode_optional_filter!(args.text, "text") };
+        let snapshot_id = unsafe { decode_optional_filter!(args.snapshot_id, "snapshot_id") };
+        let predicate = unsafe { decode_optional_filter!(args.predicate, "predicate") };
+        let value = unsafe { decode_optional_filter!(args.value, "value") };
+        let action_field = unsafe { decode_optional_filter!(args.action, "action") };
         let app = unsafe { decode_optional_filter!(args.app, "app") };
 
         let wait_args = WaitArgs {
