@@ -3,9 +3,9 @@ mod common;
 use common::{
     AdAppList, AdFindQuery, AdNativeHandle, AdResult, AdWindowInfo, AdWindowList, CStr,
     ad_abi_version, ad_adapter_create, ad_adapter_destroy, ad_app_list_count, ad_app_list_free,
-    ad_app_list_get, ad_check_permissions, ad_find, ad_free_handle, ad_init, ad_last_error_code,
-    ad_last_error_message, ad_list_apps, ad_list_windows, ad_window_list_count,
-    ad_window_list_free, with_adapter,
+    ad_app_list_get, ad_check_permissions, ad_find, ad_free_handle, ad_free_string, ad_init,
+    ad_last_error_code, ad_last_error_message, ad_list_apps, ad_list_windows, ad_version,
+    ad_window_list_count, ad_window_list_free, with_adapter,
 };
 
 #[test]
@@ -198,6 +198,85 @@ fn free_handle_zeroes_ptr_so_double_free_is_noop() {
         let rc = ad_free_handle(adapter, &mut handle);
         assert_eq!(rc, AdResult::Ok);
     });
+}
+
+#[test]
+fn ad_version_returns_ok_with_valid_json_envelope() {
+    unsafe {
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_version(&mut out);
+        assert_eq!(rc, AdResult::Ok, "ad_version must return OK");
+        assert!(!out.is_null(), "out must be non-null on success");
+
+        let json_str = CStr::from_ptr(out).to_string_lossy();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("output must be valid JSON");
+
+        assert_eq!(
+            parsed["ok"].as_bool(),
+            Some(true),
+            "envelope ok must be true"
+        );
+        assert_eq!(
+            parsed["command"].as_str(),
+            Some("version"),
+            "envelope command must be 'version'"
+        );
+        assert!(
+            parsed["data"]["version"].is_string(),
+            "data.version must be a string"
+        );
+        assert!(
+            parsed["data"]["target"].is_string(),
+            "data.target must be a string"
+        );
+        assert!(parsed["data"]["os"].is_string(), "data.os must be a string");
+
+        let envelope_version = parsed["version"]
+            .as_str()
+            .expect("version field must exist");
+        assert_eq!(
+            envelope_version,
+            agent_desktop_core::output::ENVELOPE_VERSION,
+            "envelope version must match ENVELOPE_VERSION constant"
+        );
+
+        ad_free_string(out);
+    }
+}
+
+#[test]
+fn ad_version_null_out_returns_invalid_args() {
+    unsafe {
+        let rc = ad_version(std::ptr::null_mut());
+        assert_eq!(
+            rc,
+            AdResult::ErrInvalidArgs,
+            "null out must return ErrInvalidArgs"
+        );
+    }
+}
+
+#[test]
+fn ad_version_success_preserves_prior_last_error() {
+    unsafe {
+        let rc_fail = ad_version(std::ptr::null_mut());
+        assert_eq!(rc_fail, AdResult::ErrInvalidArgs);
+        let err_before = ad_last_error_code();
+        assert_eq!(err_before, AdResult::ErrInvalidArgs);
+
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc_ok = ad_version(&mut out);
+        assert_eq!(rc_ok, AdResult::Ok);
+
+        assert_eq!(
+            ad_last_error_code(),
+            AdResult::ErrInvalidArgs,
+            "success must not clear the prior last-error"
+        );
+
+        ad_free_string(out);
+    }
 }
 
 #[test]

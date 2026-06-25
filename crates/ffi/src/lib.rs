@@ -46,6 +46,7 @@ pub(crate) mod abi_version;
 pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod apps;
+pub(crate) mod commands;
 pub(crate) mod convert;
 pub(crate) mod enum_validation;
 pub mod error;

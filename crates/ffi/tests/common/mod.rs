@@ -13,6 +13,8 @@ pub use std::os::raw::c_char;
 unsafe extern "C" {
     pub fn ad_abi_version() -> u32;
     pub fn ad_init(expected_major: u32) -> AdResult;
+    pub fn ad_version(out: *mut *mut c_char) -> AdResult;
+    pub fn ad_free_string(s: *mut c_char);
 
     pub fn ad_ref_entry_size() -> usize;
     pub fn ad_action_size() -> usize;
