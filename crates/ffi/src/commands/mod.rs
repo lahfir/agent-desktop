@@ -1,4 +1,5 @@
 pub mod snapshot;
+pub(crate) mod status;
 pub(crate) mod version;
 
 use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};

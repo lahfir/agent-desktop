@@ -5,7 +5,7 @@ use common::{
     ad_abi_version, ad_adapter_create, ad_adapter_create_with_session, ad_adapter_destroy,
     ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_find,
     ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
-    ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_version,
+    ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_status, ad_version,
     ad_window_list_count, ad_window_list_free, with_adapter,
 };
 use std::os::raw::c_char;
@@ -701,5 +701,86 @@ fn snapshot_out_contains_envelope_fields_on_any_response() {
                 "null out is only valid on failure, got rc={rc_i32}"
             );
         }
+    });
+}
+
+#[test]
+fn status_null_adapter_returns_invalid_args() {
+    unsafe {
+        let mut out: *mut std::os::raw::c_char = 0xDEAD_BEEF as *mut std::os::raw::c_char;
+        let rc = ad_status(std::ptr::null(), &mut out);
+        assert_eq!(
+            rc,
+            AdResult::ErrInvalidArgs,
+            "null adapter must return ErrInvalidArgs"
+        );
+        assert!(
+            out.is_null(),
+            "dirty out-param must be zeroed before early return on null adapter"
+        );
+    }
+}
+
+#[test]
+fn status_null_out_returns_invalid_args() {
+    with_adapter(|adapter| unsafe {
+        let rc = ad_status(adapter, std::ptr::null_mut());
+        assert_eq!(
+            rc,
+            AdResult::ErrInvalidArgs,
+            "null out must return ErrInvalidArgs"
+        );
+    });
+}
+
+#[test]
+fn status_returns_ok_envelope_with_required_fields() {
+    with_adapter(|adapter| unsafe {
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_status(adapter, &mut out);
+        assert_eq!(rc, AdResult::Ok, "ad_status must return Ok");
+        assert!(!out.is_null(), "out must be non-null on success");
+
+        let json_str = CStr::from_ptr(out)
+            .to_str()
+            .expect("status output must be valid UTF-8");
+        let val: serde_json::Value =
+            serde_json::from_str(json_str).expect("status output must be valid JSON");
+
+        assert_eq!(
+            val["version"].as_str(),
+            Some(agent_desktop_core::output::ENVELOPE_VERSION),
+            "envelope version must match ENVELOPE_VERSION constant"
+        );
+        assert_eq!(val["ok"].as_bool(), Some(true), "ok must be true");
+        assert_eq!(
+            val["command"].as_str(),
+            Some("status"),
+            "command must be \"status\""
+        );
+
+        let data = &val["data"];
+        assert!(
+            data["platform"].is_string(),
+            "data.platform must be present"
+        );
+        assert!(data["version"].is_string(), "data.version must be present");
+        assert!(
+            data["permissions"].is_object(),
+            "data.permissions must be present"
+        );
+
+        ad_free_string(out);
+    });
+}
+
+#[test]
+fn status_free_string_cleans_up() {
+    with_adapter(|adapter| unsafe {
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_status(adapter, &mut out);
+        assert_eq!(rc, AdResult::Ok);
+        assert!(!out.is_null());
+        ad_free_string(out);
     });
 }

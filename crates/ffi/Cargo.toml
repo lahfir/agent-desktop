@@ -25,5 +25,9 @@ agent-desktop-windows = { path = "../windows" }
 [target.'cfg(target_os = "linux")'.dependencies]
 agent-desktop-linux = { path = "../linux" }
 
+[dev-dependencies]
+serde_json.workspace = true
+agent-desktop-core.workspace = true
+
 [lints]
 workspace = true
