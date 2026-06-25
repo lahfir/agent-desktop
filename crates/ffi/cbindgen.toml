@@ -15,7 +15,10 @@ trailer = """
 /* C11 ABI layout guards — auto-generated; do not hand-edit.
  * Each sizeof check references the AD_*_SIZE macro defined above so the
  * size literal lives in exactly one place (the Rust source). Alignment
- * and offset values are structurally fixed on all 64-bit targets.        */
+ * and offset values are structurally fixed on all 64-bit targets.
+ * The one-shot guard makes double-include safe regardless of C standard. */
+#ifndef AGENT_DESKTOP_ABI_ASSERTS
+#define AGENT_DESKTOP_ABI_ASSERTS
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(AdDragParams) == AD_DRAG_PARAMS_SIZE, "AdDragParams ABI size changed");
 _Static_assert(_Alignof(AdDragParams) == 8, "AdDragParams ABI alignment changed");
@@ -39,6 +42,7 @@ _Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
 _Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI size drift");
 _Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
 #endif /* __STDC_VERSION__ >= 201112L */
+#endif /* AGENT_DESKTOP_ABI_ASSERTS */
 """
 
 [const]
