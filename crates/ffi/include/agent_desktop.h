@@ -794,8 +794,17 @@ struct AdAdapter *ad_adapter_create_with_session(const char *session);
 /**
  * # Safety
  *
- * `adapter` must be a pointer returned by `ad_adapter_create`, or null.
- * After this call the pointer is invalid and must not be used.
+ * `adapter` must be a pointer returned by `ad_adapter_create` or
+ * `ad_adapter_create_with_session`, or null. After this call the pointer
+ * is invalid and must not be used.
+ *
+ * The adapter must not be destroyed while any other call on it is still in
+ * flight on another thread. Destroying the handle concurrently with an
+ * in-flight call (e.g. `ad_wait` blocking on the main thread while this
+ * function is called from a worker thread) is undefined behaviour — the
+ * `Box` is freed while the blocked call still dereferences it. The caller
+ * owns this synchronisation: ensure all calls on the handle have returned
+ * before calling `ad_adapter_destroy`.
  */
 void ad_adapter_destroy(struct AdAdapter *adapter);
 
@@ -876,18 +885,25 @@ const struct AdAppInfo *ad_app_list_get(const struct AdAppList *list, uint32_t i
 void ad_app_list_free(struct AdAppList *list);
 
 /**
- * Drives a ref action (`@e5`, action) through the full strict-resolution
- * ladder: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
- * `resolve_element_strict` (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
+ * Drives a ref action (`@e5`, action) through the canonical ref-action
+ * pipeline: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
+ * strict element resolution (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
  * actionability preflight → dispatch → handle release.
  *
- * Policy follows CLI parity (KTD6): `TypeText` actions default to
+ * Policy follows CLI parity: `TypeText` and `PressKey` default to
  * `focus_fallback`; every other action defaults to `headless`. An explicit
  * `policy` discriminant may *elevate* to headed but must not downgrade an
- * action below its CLI base.
+ * action below its CLI base. Base and elevation are computed by
+ * `agent_desktop_core::commands::execute_by_ref::execute` via
+ * `Action::base_interaction_policy` + `InteractionPolicy::join`, so CLI and
+ * FFI share a single source of policy truth.
  *
  * `ref_id` tri-state: null → `ErrInvalidArgs`; non-null invalid UTF-8 →
  * `ErrInvalidArgs`; valid UTF-8 but bad `@e{N}` format → `ErrInvalidArgs`.
+ *
+ * `snapshot_id` tri-state: null → use the latest snapshot for the session
+ * (CLI `--snapshot` omitted); valid UTF-8 → pin to that snapshot id; non-null
+ * invalid UTF-8 → `ErrInvalidArgs`.
  *
  * `policy` is an `AdPolicyKind` discriminant (0=Headless, 1=FocusFallback,
  * 2=Headed). An out-of-range value returns `ErrInvalidArgs`. `Headless (0)`
@@ -901,16 +917,26 @@ void ad_app_list_free(struct AdAppList *list);
  * holds the error JSON envelope and must still be freed with
  * `ad_free_string`. The last-error slot is populated on all failures.
  *
+ * **Dispatch-before-serialize ordering**: the action is dispatched (and any
+ * side effects committed) before the result JSON is serialized. In the
+ * near-impossible event that serialization of an already-valid
+ * `ActionResult` fails, `*out` is null and `ErrInternal` is returned while
+ * the side effect has already occurred. No pre-validation machinery is
+ * needed because serialization of a valid envelope effectively never fails.
+ *
  * # Safety
  *
  * `adapter` must be a non-null pointer from `ad_adapter_create[_with_session]`.
  * `ref_id` must be null or NUL-terminated within `AD_MAX_STRING_BYTES + 1`
- * bytes. `action` must be a non-null pointer to a valid `AdAction`.
- * `out` must be a non-null writable pointer. All pointers must remain valid
- * for the duration of the call. Must be called from the main thread on macOS.
+ * bytes. `snapshot_id` must be null or NUL-terminated within
+ * `AD_MAX_STRING_BYTES + 1` bytes. `action` must be a non-null pointer to a
+ * valid `AdAction`. `out` must be a non-null writable pointer. All pointers
+ * must remain valid for the duration of the call. Must be called from the
+ * main thread on macOS.
  */
 AdResult ad_execute_by_ref(const struct AdAdapter *adapter,
                            const char *ref_id,
+                           const char *snapshot_id,
                            const struct AdAction *action,
                            int32_t policy,
                            char **out);
@@ -941,8 +967,11 @@ AdResult ad_execute_by_ref(const struct AdAdapter *adapter,
  * `surface` is an `AdSnapshotSurface` discriminant (0 = Window, 1 = Focused, …).
  * An out-of-range value returns `ErrInvalidArgs`.
  *
- * Skeleton mode and `--root` drill-down are not exposed here; they are a
- * fast-follow to this entrypoint.
+ * This entrypoint always targets the active focused window of the requested
+ * application; explicit window targeting (`window_id`) is not yet exposed
+ * over the ABI. Progressive traversal (skeleton mode and `--root` drill-down)
+ * is likewise not exposed here. Both are planned fast-follows to this
+ * entrypoint — agents needing them should use the CLI in the meantime.
  *
  * # Safety
  *
@@ -1025,6 +1054,12 @@ AdResult ad_version(char **out);
  *
  * All `*const c_char` fields inside `AdWaitArgs` must be null or point to
  * readable, NUL-terminated memory within `AD_MAX_STRING_BYTES + 1` bytes.
+ *
+ * `ad_wait` blocks the calling thread for up to `timeout_ms` milliseconds
+ * while it holds a live reference into the adapter's allocation. The adapter
+ * must outlive the call: do not call `ad_adapter_destroy` on this handle from
+ * another thread while `ad_wait` is running — that is a use-after-free. Ensure
+ * the wait has returned before destroying the adapter.
  */
 AdResult ad_wait(const struct AdAdapter *adapter, const struct AdWaitArgs *args, char **out);
 
