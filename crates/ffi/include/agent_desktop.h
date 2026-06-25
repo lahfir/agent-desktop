@@ -675,6 +675,24 @@ void ad_free_action_result(struct AdActionResult *result);
 struct AdAdapter *ad_adapter_create(void);
 
 /**
+ * Builds a session-scoped platform adapter. `session` may be:
+ * - null: equivalent to `ad_adapter_create()` (no session).
+ * - a valid session id (1-64 ASCII alphanumeric / `-` / `_` chars): associates
+ *   the adapter with that session for refmap persistence.
+ * - empty, too long, containing invalid characters, or invalid UTF-8: sets
+ *   `ErrInvalidArgs` in the last-error slot and returns null; no adapter is
+ *   allocated.
+ *
+ * The returned pointer must be released with `ad_adapter_destroy`.
+ *
+ * # Safety
+ *
+ * `session` must be null or point to readable memory that is NUL-terminated
+ * within `AD_MAX_STRING_BYTES + 1` bytes.
+ */
+struct AdAdapter *ad_adapter_create_with_session(const char *session);
+
+/**
  * # Safety
  *
  * `adapter` must be a pointer returned by `ad_adapter_create`, or null.
