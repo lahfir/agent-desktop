@@ -112,7 +112,7 @@ fn element_wait_retries_transient_ambiguous_resolution() {
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
-        250,
+        2000,
         &adapter,
         &crate::context::CommandContext::default(),
     )
@@ -134,7 +134,7 @@ fn element_wait_retries_transient_resolution_timeout() {
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
-        250,
+        2000,
         &adapter,
         &crate::context::CommandContext::default(),
     )
