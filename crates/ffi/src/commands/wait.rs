@@ -1,4 +1,5 @@
 use crate::adapter::AdAdapter;
+use crate::commands::app_error_to_adapter;
 use crate::convert::string::{decode_optional_filter, string_to_c};
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
@@ -6,16 +7,9 @@ use crate::main_thread::require_main_thread;
 use crate::pointer_guard::guard_non_null;
 use crate::types::wait_args::AdWaitArgs;
 use agent_desktop_core::commands::wait::{WaitArgs, WaitModeArgs, WaitPredicateArgs};
-use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
+use agent_desktop_core::error::{AdapterError, ErrorCode};
 use agent_desktop_core::output::Response;
 use std::ffi::c_char;
-
-fn app_error_to_adapter_error(err: AppError) -> AdapterError {
-    match err {
-        AppError::Adapter(e) => e,
-        other => AdapterError::new(ErrorCode::Internal, other.to_string()),
-    }
-}
 
 /// Runs `wait` with the given args, blocking the calling thread until the
 /// condition is met or `timeout_ms` elapses.
@@ -94,7 +88,7 @@ pub unsafe extern "C" fn ad_wait(
         let ctx = match adapter_ref.command_context() {
             Ok(c) => c,
             Err(app_err) => {
-                let adapter_err = app_error_to_adapter_error(app_err);
+                let adapter_err = app_error_to_adapter(app_err);
                 error::set_last_error(&adapter_err);
                 return error::last_error_code();
             }
@@ -131,7 +125,7 @@ pub unsafe extern "C" fn ad_wait(
                 }
             }
             Err(app_err) => {
-                let adapter_err = app_error_to_adapter_error(app_err);
+                let adapter_err = app_error_to_adapter(app_err);
                 error::set_last_error(&adapter_err);
                 error::last_error_code()
             }
