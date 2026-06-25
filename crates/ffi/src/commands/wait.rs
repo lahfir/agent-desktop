@@ -96,7 +96,7 @@ pub unsafe extern "C" fn ad_wait(
             Err(app_err) => {
                 let adapter_err = app_error_to_adapter_error(app_err);
                 error::set_last_error(&adapter_err);
-                return AdResult::ErrInternal;
+                return error::last_error_code();
             }
         };
 
