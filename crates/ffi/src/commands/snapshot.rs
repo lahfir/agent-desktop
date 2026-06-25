@@ -1,4 +1,5 @@
 use crate::AdAdapter;
+use crate::commands::app_error_to_adapter;
 use crate::convert::string::{decode_optional_filter, string_to_c};
 use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{AdResult, set_last_error};
@@ -6,19 +7,10 @@ use crate::ffi_try::trap_panic;
 use crate::main_thread::require_main_thread;
 use crate::pointer_guard::guard_non_null;
 use agent_desktop_core::commands::snapshot::SnapshotArgs;
-use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
+use agent_desktop_core::error::{AdapterError, ErrorCode};
 use agent_desktop_core::output::{ErrorPayload, Response};
 use std::ffi::c_char;
 use std::ptr;
-
-fn app_error_to_adapter(err: AppError) -> AdapterError {
-    match err {
-        AppError::Adapter(e) => e,
-        AppError::Io(e) => AdapterError::new(ErrorCode::Internal, e.to_string()),
-        AppError::Json(e) => AdapterError::new(ErrorCode::Internal, e.to_string()),
-        AppError::Internal(msg) => AdapterError::new(ErrorCode::Internal, msg),
-    }
-}
 
 /// Takes a full CLI-format snapshot of the target application window,
 /// allocates `@e` refs for all interactive elements, persists the refmap
@@ -27,7 +19,15 @@ fn app_error_to_adapter(err: AppError) -> AdapterError {
 /// The JSON shape matches `agent-desktop snapshot`:
 /// `{"version":"2.0","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
 ///
-/// The caller must free `*out` with `ad_free_string`.
+/// **`*out` ownership and error behaviour:**
+/// - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.
+///   Caller must free it with `ad_free_string`.
+/// - On a command-level error (e.g. app not found, snapshot failure): `*out` is a
+///   heap-allocated JSON string with `"ok":false` and an `"error"` payload. Caller
+///   must still free it with `ad_free_string`. The last-error slot is also set.
+/// - On an argument or infrastructure error (null adapter, off-main-thread, invalid
+///   UTF-8, bad surface discriminant, context failure): `*out` is set to null and no
+///   allocation is made. Only the last-error slot is set.
 ///
 /// `app` is tri-state:
 /// - null — snapshot the currently focused window (same as running the command with no `--app`).
