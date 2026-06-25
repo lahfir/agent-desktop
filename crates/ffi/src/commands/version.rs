@@ -16,11 +16,9 @@ use std::os::raw::c_char;
 /// `out` must be a non-null writable `*mut *mut c_char`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_version(out: *mut *mut c_char) -> AdResult {
-    crate::pointer_guard::guard_non_null!(out, c"out is null");
-    trap_panic(|| {
-        unsafe {
-            *out = std::ptr::null_mut();
-        }
+    trap_panic(|| unsafe {
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        *out = std::ptr::null_mut();
         match agent_desktop_core::commands::version::execute() {
             Ok(data) => {
                 let envelope = Response::ok("version", data);
@@ -42,9 +40,7 @@ pub unsafe extern "C" fn ad_version(out: *mut *mut c_char) -> AdResult {
                     ));
                     return AdResult::ErrInternal;
                 }
-                unsafe {
-                    *out = c;
-                }
+                *out = c;
                 AdResult::Ok
             }
             Err(e) => {
