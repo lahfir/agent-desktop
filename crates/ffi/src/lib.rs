@@ -17,7 +17,7 @@
 //! - `ad_abi_version` / `ad_init` (no adapter, no AX/Cocoa state)
 //! - `ad_adapter_create` / `ad_adapter_destroy`
 //! - `ad_last_error_*` readers
-//! - `ad_check_permissions` (process-wide query, no AX/Cocoa state)
+//! - `ad_check_permissions`, `ad_status` (permission + ref-store reads, no AX tree traversal)
 //! - All `ad_*_list_{count,get,free}` accessors and
 //!   `ad_image_buffer_*` accessors
 //! - `ad_release_window_fields`, `ad_free_handle`, `ad_free_tree`,
