@@ -6,8 +6,7 @@ use common::{
     ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_find,
     ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
     ad_list_apps, ad_list_windows, ad_set_log_callback, ad_version, ad_window_list_count,
-    ad_window_list_free,
-    with_adapter,
+    ad_window_list_free, with_adapter,
 };
 use std::os::raw::c_char;
 use std::sync::Mutex;
@@ -500,6 +499,7 @@ fn log_callback_null_unregisters() {
         let rc = ad_set_log_callback(None);
         assert_eq!(rc, AdResult::Ok, "NULL unregister must succeed");
     }
+    clear_recorder();
 
     tracing::error!(test_marker = "after_null", "log_callback_null_unregisters");
 

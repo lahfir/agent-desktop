@@ -30,7 +30,7 @@ pub mod roles;
 pub(crate) mod search_text;
 pub mod snapshot;
 pub mod snapshot_ref;
-pub mod trace;
+pub(crate) mod trace;
 mod window_lookup;
 
 pub use action::{
@@ -56,3 +56,4 @@ pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use refs::{RefEntry, RefMap};
 pub use refs_store::RefStore;
+pub use trace::sanitize_trace_value;

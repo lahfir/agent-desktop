@@ -3,10 +3,13 @@
 //! # Thread-safety
 //!
 //! `tracing` events fire from arbitrary threads. The callback pointer is
-//! stored in a global `AtomicPtr` (lock-free, reentrancy-safe). A
-//! `tracing_subscriber` layer is installed exactly once (via [`Once`]) when
-//! the first non-null callback is registered; subsequent registrations only
-//! swap the pointer.
+//! stored in a global `AtomicPtr` (lock-free). A `tracing_subscriber` layer
+//! is installed exactly once (via [`Once`]) when the first non-null callback
+//! is registered; subsequent registrations only swap the pointer.
+//!
+//! Re-entrancy is prevented by a per-thread flag: if a consumer callback
+//! itself emits a `tracing` event, the recursive `on_event` invocation is
+//! silently discarded rather than overflowing the stack.
 //!
 //! # Level mapping
 //!
@@ -29,13 +32,14 @@
 //! replaced with `{"redacted":true}` before the message is formatted, using
 //! the same logic as the file-trace writer.
 
+use std::cell::Cell;
 use std::ffi::{CString, c_char};
 use std::os::raw::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Once;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use agent_desktop_core::trace::sanitize_trace_value;
+use agent_desktop_core::sanitize_trace_value;
 use serde_json::{Map, Value};
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
@@ -51,6 +55,20 @@ static CALLBACK_SLOT: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 /// Installs the global subscriber exactly once.
 static INSTALL_ONCE: Once = Once::new();
+
+thread_local! {
+    static IN_CALLBACK: Cell<bool> = const { Cell::new(false) };
+}
+
+/// RAII guard that resets [`IN_CALLBACK`] on drop, so a panicking callback
+/// does not permanently poison the flag on its thread.
+struct CallbackGuard;
+
+impl Drop for CallbackGuard {
+    fn drop(&mut self) {
+        IN_CALLBACK.with(|g| g.set(false));
+    }
+}
 
 /// The concrete type of the consumer callback.
 type LogCb = unsafe extern "C" fn(level: i32, msg: *const c_char);
@@ -111,6 +129,10 @@ impl<S: Subscriber> Layer<S> for CallbackLayer {
             return;
         }
 
+        if IN_CALLBACK.with(Cell::get) {
+            return;
+        }
+
         let _ = catch_unwind(AssertUnwindSafe(|| {
             let level_i32 = level_to_i32(event.metadata().level());
 
@@ -124,7 +146,9 @@ impl<S: Subscriber> Layer<S> for CallbackLayer {
                 return;
             };
 
+            IN_CALLBACK.with(|g| g.set(true));
             let cb: LogCb = unsafe { std::mem::transmute(ptr) };
+            let _reset = CallbackGuard;
             unsafe { cb(level_i32, c_msg.as_ptr()) };
         }));
     }
@@ -152,7 +176,9 @@ fn install_layer_once() {
 /// `{"redacted":true}` before the message is formatted.
 ///
 /// Invocations are best-effort. A panicking callback is caught and silently
-/// discarded; no command fails because of a trace delivery error.
+/// discarded; no command fails because of a trace delivery error. A callback
+/// that emits `tracing` events is safe: the recursive `on_event` is dropped
+/// by a per-thread guard before it reaches the callback again.
 ///
 /// # Safety
 ///
