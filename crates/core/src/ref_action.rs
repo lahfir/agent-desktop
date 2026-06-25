@@ -68,25 +68,40 @@ fn check_actionability_with_trace(
     Ok(())
 }
 
-pub fn execute_entry(
+/// Executes a pre-resolved ref-action entry using the provided `context` for
+/// session identity and trace emission. Prefer this over `execute_entry` when
+/// a real `CommandContext` is available (e.g. from `AdAdapter::command_context`
+/// in the FFI layer), so that trace events carry the correct session id.
+pub fn execute_entry_with_context(
     adapter: &dyn PlatformAdapter,
     entry: &RefEntry,
     request: ActionRequest,
+    context: &CommandContext,
 ) -> Result<ActionResult, AdapterError> {
     let handle = adapter.resolve_element_strict(entry)?;
     let handle = ResolvedElement::new(adapter, handle);
-    let context = CommandContext::default();
     let result = execute_resolved(
         ResolvedRefAction {
             adapter,
             entry,
             handle: handle.handle(),
             ref_id: "<ffi>",
-            context: &context,
+            context,
         },
         request,
     );
     result.map_err(into_adapter_error)
+}
+
+/// Executes a pre-resolved ref-action entry with a default (no-session,
+/// no-trace) `CommandContext`. Existing callers outside the FFI layer that do
+/// not have a live session context continue to use this entry point unchanged.
+pub fn execute_entry(
+    adapter: &dyn PlatformAdapter,
+    entry: &RefEntry,
+    request: ActionRequest,
+) -> Result<ActionResult, AdapterError> {
+    execute_entry_with_context(adapter, entry, request, &CommandContext::default())
 }
 
 fn into_adapter_error(err: AppError) -> AdapterError {

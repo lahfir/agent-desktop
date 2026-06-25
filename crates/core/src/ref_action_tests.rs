@@ -95,3 +95,61 @@ fn failed_action_still_releases_resolved_handle() {
     assert_eq!(err.code, crate::error::ErrorCode::Internal);
     assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn execute_entry_with_context_succeeds_and_matches_execute_entry() {
+    let context = CommandContext::default();
+    let result = execute_entry_with_context(
+        &ReleaseFailingAdapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &context,
+    )
+    .unwrap();
+
+    assert_eq!(result.action, "click");
+}
+
+#[test]
+fn execute_entry_delegates_to_entry_with_context() {
+    let adapter = ErrorReleasingAdapter {
+        releases: AtomicU32::new(0),
+    };
+
+    let err =
+        execute_entry(&adapter, &entry(), ActionRequest::headless(Action::Click)).unwrap_err();
+
+    assert_eq!(err.code, crate::error::ErrorCode::Internal);
+    assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn execute_entry_with_context_emits_trace_events() {
+    let trace_path = std::env::temp_dir().join(format!(
+        "agent-desktop-ref-action-trace-{}.jsonl",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let context =
+        CommandContext::new(Some("test-session".into()), Some(trace_path.clone()), false).unwrap();
+
+    let _ = execute_entry_with_context(
+        &ReleaseFailingAdapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &context,
+    );
+
+    let body = std::fs::read_to_string(&trace_path).unwrap();
+    assert!(
+        body.contains("actionability.check.start"),
+        "expected actionability trace event"
+    );
+    assert!(
+        body.contains("action.dispatch.start"),
+        "expected dispatch trace event"
+    );
+    let _ = std::fs::remove_file(trace_path);
+}

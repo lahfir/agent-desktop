@@ -6,9 +6,11 @@ use crate::ffi_try::trap_panic;
 use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind, AdRefEntry};
 use agent_desktop_core::{action::Action, action_request::ActionRequest, adapter::NativeHandle};
 
-/// Low-level native-handle action. This does not perform strict ref
-/// re-identification or actionability preflight; callers that want CLI parity
-/// should use `ad_execute_ref_action_with_policy`.
+/// Low-level native-handle action. Dispatches directly to the platform adapter
+/// without strict ref re-identification or actionability preflight. This is a
+/// raw escape hatch for callers that already hold a live native handle. Callers
+/// wanting CLI-semantics parity (RefStore load → strict resolution → preflight
+/// → dispatch) should use `ad_execute_by_ref` instead.
 ///
 /// # Safety
 ///
@@ -29,9 +31,13 @@ pub unsafe extern "C" fn ad_execute_action(
     }
 }
 
-/// Low-level native-handle action with explicit interaction policy. This does
-/// not perform strict ref re-identification or actionability preflight; callers
-/// that want CLI parity should use `ad_execute_ref_action_with_policy`.
+/// Low-level native-handle action with explicit interaction policy. Dispatches
+/// directly to the platform adapter without strict ref re-identification or
+/// actionability preflight. The `policy` discriminant is applied verbatim — no
+/// base-policy elevation is performed. This is a raw escape hatch for callers
+/// that already hold a live native handle. Callers wanting CLI-semantics parity
+/// (RefStore load → strict resolution → preflight → dispatch with base-policy
+/// join) should use `ad_execute_by_ref` instead.
 ///
 /// # Safety
 ///
@@ -89,9 +95,20 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
     })
 }
 
-/// Strict ref action path matching CLI semantics: resolve the full ref
-/// identity, run actionability preflight, then dispatch using the requested
-/// policy.
+/// Low-level struct-based ref-action path: takes a pre-resolved `AdRefEntry`,
+/// runs strict element re-identification and actionability preflight, then
+/// dispatches using the caller-supplied `policy` verbatim (no base-policy
+/// elevation). The adapter's session context (from `ad_adapter_create_with_session`)
+/// is threaded through so that trace events carry the correct session id.
+///
+/// This is the low-level escape hatch for callers that have already resolved
+/// a `RefEntry` outside the `RefStore` pipeline (e.g. serialized from an
+/// external snapshot). The `policy` discriminant is applied as-is — there is
+/// no `Action::base_interaction_policy` join here.
+///
+/// Callers wanting full CLI-semantics parity (RefStore load → `RefMap` lookup
+/// → strict resolution → preflight → dispatch with base-policy join) should
+/// use `ad_execute_by_ref` instead.
 ///
 /// # Safety
 ///
@@ -116,7 +133,7 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(entry, c"entry is null");
         crate::pointer_guard::guard_non_null!(action, c"action is null");
-        let adapter = &*adapter;
+        let adapter_ref = &*adapter;
         let entry_ref = &*entry;
         let core_entry = match crate::actions::resolve::core_ref_entry_from_ffi(entry_ref) {
             Ok(entry) => entry,
@@ -134,10 +151,22 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
             Err(result) => return result,
         };
         let request = action_request(policy, core_action);
-        match agent_desktop_core::ref_action::execute_entry(
-            adapter.inner.as_ref(),
+        let context = match adapter_ref.command_context() {
+            Ok(ctx) => ctx,
+            Err(err) => {
+                let ae = match err {
+                    agent_desktop_core::error::AppError::Adapter(e) => e,
+                    other => agent_desktop_core::error::AdapterError::internal(other.to_string()),
+                };
+                error::set_last_error(&ae);
+                return error::last_error_code();
+            }
+        };
+        match agent_desktop_core::ref_action::execute_entry_with_context(
+            adapter_ref.inner.as_ref(),
             &core_entry,
             request,
+            &context,
         ) {
             Ok(result) => {
                 *out = action_result_to_c(&result);
