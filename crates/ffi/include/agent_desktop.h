@@ -784,7 +784,15 @@ void ad_app_list_free(struct AdAppList *list);
  * The JSON shape matches `agent-desktop snapshot`:
  * `{"version":"2.0","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
  *
- * The caller must free `*out` with `ad_free_string`.
+ * **`*out` ownership and error behaviour:**
+ * - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.
+ *   Caller must free it with `ad_free_string`.
+ * - On a command-level error (e.g. app not found, snapshot failure): `*out` is a
+ *   heap-allocated JSON string with `"ok":false` and an `"error"` payload. Caller
+ *   must still free it with `ad_free_string`. The last-error slot is also set.
+ * - On an argument or infrastructure error (null adapter, off-main-thread, invalid
+ *   UTF-8, bad surface discriminant, context failure): `*out` is set to null and no
+ *   allocation is made. Only the last-error slot is set.
  *
  * `app` is tri-state:
  * - null — snapshot the currently focused window (same as running the command with no `--app`).
