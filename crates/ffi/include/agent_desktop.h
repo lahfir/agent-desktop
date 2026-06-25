@@ -876,8 +876,11 @@ void ad_app_list_free(struct AdAppList *list);
  * `focus_fallback`). `Headed (2)` opts in to cursor-based fallbacks.
  *
  * On success `*out` is set to a NUL-terminated JSON envelope (command
- * `"execute_by_ref"`); free with `ad_free_string`. On error `*out` is
- * zeroed and the last-error slot is populated.
+ * `"execute_by_ref"`); free with `ad_free_string`. On guard or decode
+ * failure (invalid args before the command runs) `*out` remains null.
+ * On a command-level error (STALE_REF, AMBIGUOUS_TARGET, etc.) `*out`
+ * holds the error JSON envelope and must still be freed with
+ * `ad_free_string`. The last-error slot is populated on all failures.
  *
  * # Safety
  *

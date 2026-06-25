@@ -1,6 +1,7 @@
 use crate::AdAdapter;
 use crate::actions::conversion::action_from_c;
-use crate::convert::string::{CStrDecodeError, string_to_c, try_c_to_string};
+use crate::commands::app_error_to_adapter;
+use crate::convert::string::{required_adapter_string, string_to_c};
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::main_thread::require_main_thread;
@@ -33,8 +34,11 @@ use std::ptr;
 /// `focus_fallback`). `Headed (2)` opts in to cursor-based fallbacks.
 ///
 /// On success `*out` is set to a NUL-terminated JSON envelope (command
-/// `"execute_by_ref"`); free with `ad_free_string`. On error `*out` is
-/// zeroed and the last-error slot is populated.
+/// `"execute_by_ref"`); free with `ad_free_string`. On guard or decode
+/// failure (invalid args before the command runs) `*out` remains null.
+/// On a command-level error (STALE_REF, AMBIGUOUS_TARGET, etc.) `*out`
+/// holds the error JSON envelope and must still be freed with
+/// `ad_free_string`. The last-error slot is populated on all failures.
 ///
 /// # Safety
 ///
@@ -60,27 +64,10 @@ pub unsafe extern "C" fn ad_execute_by_ref(
         guard_non_null!(adapter, c"adapter is null");
         guard_non_null!(action, c"action is null");
 
-        let ref_str = match unsafe { try_c_to_string(ref_id) } {
-            Ok(None) => {
-                set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    "ref_id is null — must be a valid @e{N} ref string",
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-            Ok(Some(s)) => s,
-            Err(CStrDecodeError::NotUtf8) => {
-                set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    "ref_id is not valid UTF-8",
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
-            Err(CStrDecodeError::TooLong) => {
-                set_last_error(&AdapterError::new(
-                    ErrorCode::InvalidArgs,
-                    "ref_id exceeds AD_MAX_STRING_BYTES",
-                ));
+        let ref_str = match required_adapter_string(ref_id, "ref_id") {
+            Ok(s) => s,
+            Err(e) => {
+                set_last_error(&e);
                 return AdResult::ErrInvalidArgs;
             }
         };
@@ -88,7 +75,7 @@ pub unsafe extern "C" fn ad_execute_by_ref(
         if let Err(app_err) = validate_ref_id(&ref_str) {
             let ae = app_error_to_adapter(app_err);
             set_last_error(&ae);
-            return AdResult::ErrInvalidArgs;
+            return crate::error::last_error_code();
         }
 
         let caller_policy = match AdPolicyKind::from_c(policy) {
@@ -225,15 +212,6 @@ fn effective_action_policy(
         caller
     } else {
         base
-    }
-}
-
-fn app_error_to_adapter(err: AppError) -> AdapterError {
-    match err {
-        AppError::Adapter(e) => e,
-        AppError::Io(e) => AdapterError::new(ErrorCode::Internal, e.to_string()),
-        AppError::Json(e) => AdapterError::new(ErrorCode::Internal, e.to_string()),
-        AppError::Internal(msg) => AdapterError::new(ErrorCode::Internal, msg),
     }
 }
 

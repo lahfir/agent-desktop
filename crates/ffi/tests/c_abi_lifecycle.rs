@@ -3,8 +3,8 @@ mod common;
 use common::{
     AdAppList, AdFindQuery, AdNativeHandle, AdResult, AdWaitArgs, AdWindowInfo, AdWindowList, CStr,
     ad_abi_version, ad_adapter_create, ad_adapter_create_with_session, ad_adapter_destroy,
-    ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_execute_by_ref, ad_find,
-    ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
+    ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_execute_by_ref,
+    ad_find, ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
     ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_status, ad_version,
     ad_wait, ad_window_list_count, ad_window_list_free, with_adapter,
 };
@@ -982,7 +982,7 @@ fn execute_by_ref_invalid_ref_format_returns_invalid_args() {
 }
 
 #[test]
-fn execute_by_ref_stale_ref_returns_error_when_no_refmap_exists() {
+fn execute_by_ref_returns_error_envelope_when_no_refmap_exists() {
     with_adapter(|adapter| unsafe {
         let ref_id = std::ffi::CString::new("@e1").unwrap();
         let action = common::default_action();
