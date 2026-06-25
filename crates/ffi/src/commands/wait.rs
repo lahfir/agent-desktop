@@ -35,6 +35,12 @@ use std::ffi::c_char;
 ///
 /// All `*const c_char` fields inside `AdWaitArgs` must be null or point to
 /// readable, NUL-terminated memory within `AD_MAX_STRING_BYTES + 1` bytes.
+///
+/// `ad_wait` blocks the calling thread for up to `timeout_ms` milliseconds
+/// while it holds a live reference into the adapter's allocation. The adapter
+/// must outlive the call: do not call `ad_adapter_destroy` on this handle from
+/// another thread while `ad_wait` is running — that is a use-after-free. Ensure
+/// the wait has returned before destroying the adapter.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_wait(
     adapter: *const AdAdapter,

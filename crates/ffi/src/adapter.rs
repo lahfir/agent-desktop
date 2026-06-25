@@ -96,8 +96,17 @@ pub unsafe extern "C" fn ad_adapter_create_with_session(session: *const c_char) 
 
 /// # Safety
 ///
-/// `adapter` must be a pointer returned by `ad_adapter_create`, or null.
-/// After this call the pointer is invalid and must not be used.
+/// `adapter` must be a pointer returned by `ad_adapter_create` or
+/// `ad_adapter_create_with_session`, or null. After this call the pointer
+/// is invalid and must not be used.
+///
+/// The adapter must not be destroyed while any other call on it is still in
+/// flight on another thread. Destroying the handle concurrently with an
+/// in-flight call (e.g. `ad_wait` blocking on the main thread while this
+/// function is called from a worker thread) is undefined behaviour — the
+/// `Box` is freed while the blocked call still dereferences it. The caller
+/// owns this synchronisation: ensure all calls on the handle have returned
+/// before calling `ad_adapter_destroy`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_adapter_destroy(adapter: *mut AdAdapter) {
     trap_panic_void(|| {

@@ -36,8 +36,11 @@ use std::ptr;
 /// `surface` is an `AdSnapshotSurface` discriminant (0 = Window, 1 = Focused, …).
 /// An out-of-range value returns `ErrInvalidArgs`.
 ///
-/// Skeleton mode and `--root` drill-down are not exposed here; they are a
-/// fast-follow to this entrypoint.
+/// This entrypoint always targets the active focused window of the requested
+/// application; explicit window targeting (`window_id`) is not yet exposed
+/// over the ABI. Progressive traversal (skeleton mode and `--root` drill-down)
+/// is likewise not exposed here. Both are planned fast-follows to this
+/// entrypoint — agents needing them should use the CLI in the meantime.
 ///
 /// # Safety
 ///
