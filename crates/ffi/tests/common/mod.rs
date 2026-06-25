@@ -23,6 +23,7 @@ unsafe extern "C" {
     pub fn ad_element_state_size() -> usize;
 
     pub fn ad_adapter_create() -> *mut AdAdapter;
+    pub fn ad_adapter_create_with_session(session: *const c_char) -> *mut AdAdapter;
     pub fn ad_adapter_destroy(adapter: *mut AdAdapter);
     pub fn ad_check_permissions(adapter: *const AdAdapter) -> AdResult;
 

@@ -1,9 +1,14 @@
+use crate::convert::string::optional_adapter_string;
 use crate::error::{self, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_ptr, trap_panic_void};
+use agent_desktop_core::context::{CommandContext, validate_session_id};
+use agent_desktop_core::error::{AdapterError, AppError};
 use agent_desktop_core::{PermissionState, adapter::PlatformAdapter};
+use std::ffi::c_char;
 
 pub struct AdAdapter {
     pub(crate) inner: Box<dyn PlatformAdapter>,
+    pub(crate) session_id: Option<String>,
 }
 
 fn build_adapter() -> Box<dyn PlatformAdapter> {
@@ -38,6 +43,52 @@ pub extern "C" fn ad_adapter_create() -> *mut AdAdapter {
     trap_panic_ptr(|| {
         let adapter = AdAdapter {
             inner: build_adapter(),
+            session_id: None,
+        };
+        Box::into_raw(Box::new(adapter))
+    })
+}
+
+/// Builds a session-scoped platform adapter. `session` may be:
+/// - null: equivalent to `ad_adapter_create()` (no session).
+/// - a valid session id (1-64 ASCII alphanumeric / `-` / `_` chars): associates
+///   the adapter with that session for refmap persistence.
+/// - empty, too long, containing invalid characters, or invalid UTF-8: sets
+///   `ErrInvalidArgs` in the last-error slot and returns null; no adapter is
+///   allocated.
+///
+/// The returned pointer must be released with `ad_adapter_destroy`.
+///
+/// # Safety
+///
+/// `session` must be null or point to readable memory that is NUL-terminated
+/// within `AD_MAX_STRING_BYTES + 1` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_adapter_create_with_session(session: *const c_char) -> *mut AdAdapter {
+    trap_panic_ptr(|| {
+        let session_id = match optional_adapter_string(session, "session") {
+            Ok(opt) => opt,
+            Err(err) => {
+                error::set_last_error(&err);
+                return std::ptr::null_mut();
+            }
+        };
+        if let Some(id) = session_id.as_deref() {
+            if let Err(app_err) = validate_session_id(id) {
+                let adapter_err = match app_err {
+                    AppError::Adapter(e) => e,
+                    _ => AdapterError::new(
+                        agent_desktop_core::error::ErrorCode::InvalidArgs,
+                        "invalid session id",
+                    ),
+                };
+                error::set_last_error(&adapter_err);
+                return std::ptr::null_mut();
+            }
+        }
+        let adapter = AdAdapter {
+            inner: build_adapter(),
+            session_id,
         };
         Box::into_raw(Box::new(adapter))
     })
@@ -81,6 +132,15 @@ pub unsafe extern "C" fn ad_check_permissions(adapter: *const AdAdapter) -> AdRe
             PermissionState::Unknown => unknown_permission_result(adapter.inner.as_ref()),
         }
     })
+}
+
+impl AdAdapter {
+    /// Builds a `CommandContext` from this adapter's session. Callers that
+    /// need a context for context-taking commands (snapshot, status, wait)
+    /// call this at the FFI entry boundary.
+    pub fn command_context(&self) -> Result<CommandContext, AppError> {
+        CommandContext::new(self.session_id.clone(), None, false)
+    }
 }
 
 fn unknown_permission_result(adapter: &dyn PlatformAdapter) -> AdResult {
@@ -135,6 +195,7 @@ mod tests {
     fn check_permissions_maps_default_unknown_accessibility_to_platform_unsupported() {
         let adapter = AdAdapter {
             inner: Box::new(UnknownPermissionAdapter),
+            session_id: None,
         };
 
         let result = unsafe { ad_check_permissions(&adapter) };
@@ -162,6 +223,7 @@ mod tests {
     fn check_permissions_preserves_ambiguous_unknown_accessibility_as_internal() {
         let adapter = AdAdapter {
             inner: Box::new(AmbiguousPermissionAdapter),
+            session_id: None,
         };
 
         let result = unsafe { ad_check_permissions(&adapter) };
