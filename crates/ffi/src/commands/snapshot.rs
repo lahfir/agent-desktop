@@ -1,14 +1,13 @@
 use crate::AdAdapter;
 use crate::commands::app_error_to_adapter;
-use crate::convert::string::{decode_optional_filter, string_to_c};
+use crate::commands::envelope_out::write_command_envelope;
+use crate::convert::string::decode_optional_filter;
 use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::main_thread::require_main_thread;
 use crate::pointer_guard::guard_non_null;
 use agent_desktop_core::commands::snapshot::SnapshotArgs;
-use agent_desktop_core::error::{AdapterError, ErrorCode};
-use agent_desktop_core::output::{ErrorPayload, Response};
 use std::ffi::c_char;
 use std::ptr;
 
@@ -98,45 +97,12 @@ pub unsafe extern "C" fn ad_snapshot(
             snapshot_id: None,
         };
 
-        let (envelope, had_error) = match agent_desktop_core::commands::snapshot::execute(
+        let result = agent_desktop_core::commands::snapshot::execute(
             args,
             adapter_ref.inner.as_ref(),
             &context,
-        ) {
-            Ok(data) => (Response::ok("snapshot", data), false),
-            Err(app_err) => {
-                let payload = ErrorPayload::from_app_error(&app_err);
-                let ae = app_error_to_adapter(app_err);
-                set_last_error(&ae);
-                (Response::err("snapshot", payload), true)
-            }
-        };
+        );
 
-        let json = match serde_json::to_string(&envelope) {
-            Ok(s) => s,
-            Err(e) => {
-                let ae = AdapterError::new(
-                    ErrorCode::Internal,
-                    format!("failed to serialize snapshot envelope: {e}"),
-                );
-                set_last_error(&ae);
-                return AdResult::ErrInternal;
-            }
-        };
-
-        let c_ptr = string_to_c(&json);
-        if c_ptr.is_null() {
-            let ae = AdapterError::new(ErrorCode::Internal, "snapshot JSON contains interior NUL");
-            set_last_error(&ae);
-            return AdResult::ErrInternal;
-        }
-
-        unsafe { *out = c_ptr };
-
-        if had_error {
-            crate::error::last_error_code()
-        } else {
-            AdResult::Ok
-        }
+        unsafe { write_command_envelope("snapshot", result, out) }
     })
 }

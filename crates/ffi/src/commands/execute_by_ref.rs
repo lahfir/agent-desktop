@@ -1,7 +1,8 @@
 use crate::AdAdapter;
 use crate::actions::conversion::action_from_c;
 use crate::commands::app_error_to_adapter;
-use crate::convert::string::{required_adapter_string, string_to_c};
+use crate::commands::envelope_out::write_command_envelope;
+use crate::convert::string::required_adapter_string;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::main_thread::require_main_thread;
@@ -9,7 +10,6 @@ use crate::pointer_guard::guard_non_null;
 use crate::types::{AdAction, AdPolicyKind};
 use agent_desktop_core::action_request::ActionRequest;
 use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
-use agent_desktop_core::output::{ErrorPayload, Response};
 use agent_desktop_core::refs::validate_ref_id;
 use agent_desktop_core::refs_store::RefStore;
 use std::ffi::c_char;
@@ -117,45 +117,7 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             core_action,
         );
 
-        let (envelope, had_error) = match result {
-            Ok(data) => (Response::ok("execute_by_ref", data), false),
-            Err(app_err) => {
-                let payload = ErrorPayload::from_app_error(&app_err);
-                let ae = app_error_to_adapter(app_err);
-                set_last_error(&ae);
-                (Response::err("execute_by_ref", payload), true)
-            }
-        };
-
-        let json = match serde_json::to_string(&envelope) {
-            Ok(s) => s,
-            Err(e) => {
-                let ae = AdapterError::new(
-                    ErrorCode::Internal,
-                    format!("failed to serialize execute_by_ref envelope: {e}"),
-                );
-                set_last_error(&ae);
-                return AdResult::ErrInternal;
-            }
-        };
-
-        let c_ptr = string_to_c(&json);
-        if c_ptr.is_null() {
-            let ae = AdapterError::new(
-                ErrorCode::Internal,
-                "execute_by_ref JSON contains interior NUL",
-            );
-            set_last_error(&ae);
-            return AdResult::ErrInternal;
-        }
-
-        unsafe { *out = c_ptr };
-
-        if had_error {
-            crate::error::last_error_code()
-        } else {
-            AdResult::Ok
-        }
+        unsafe { write_command_envelope("execute_by_ref", result, out) }
     })
 }
 

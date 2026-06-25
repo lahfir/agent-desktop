@@ -1,20 +1,11 @@
-use crate::convert::string::string_to_c;
+use crate::commands::app_error_to_adapter;
+use crate::commands::envelope_out::write_command_envelope;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::pointer_guard::guard_non_null;
 use agent_desktop_core::commands::status::execute_with_report_with_context;
-use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
-use agent_desktop_core::output::Response;
+use agent_desktop_core::error::AppError;
 use std::ffi::c_char;
-
-fn record_app_error(app_err: AppError, fallback: &str) -> AdResult {
-    let adapter_err = match app_err {
-        AppError::Adapter(e) => e,
-        _ => AdapterError::new(ErrorCode::Internal, fallback),
-    };
-    error::set_last_error(&adapter_err);
-    error::last_error_code()
-}
 
 /// Returns the adapter's current health and permission state as a JSON
 /// envelope matching the `agent-desktop status` CLI output.
@@ -23,8 +14,14 @@ fn record_app_error(app_err: AppError, fallback: &str) -> AdResult {
 /// permission report and ref-store metadata only, so it is safe to call
 /// from any thread (unlike tree-traversal commands that require the
 /// macOS main thread). On success `*out` is a NUL-terminated,
-/// heap-allocated JSON string freed with `ad_free_string`. On error
-/// `*out` is left null and the last-error slot is populated.
+/// heap-allocated JSON string freed with `ad_free_string`.
+///
+/// On a command-level failure `*out` is set to a heap-allocated JSON string
+/// with `"ok":false` and an `"error"` payload. The caller must still release
+/// it with `ad_free_string(*out)`. The last-error slot is also set.
+///
+/// On an argument or infrastructure failure (null adapter, null out, context
+/// error) `*out` is zeroed and only the last-error slot is populated.
 ///
 /// # Safety
 ///
@@ -45,37 +42,18 @@ pub unsafe extern "C" fn ad_status(
 
         let ctx = match adapter.command_context() {
             Ok(c) => c,
-            Err(app_err) => return record_app_error(app_err, "failed to build command context"),
+            Err(app_err) => {
+                let ae = app_error_to_adapter(app_err);
+                error::set_last_error(&ae);
+                return error::last_error_code();
+            }
         };
 
         let report = adapter.inner.permission_report();
 
-        let response = match execute_with_report_with_context(&*adapter.inner, &report, &ctx) {
-            Ok(data) => Response::ok("status", data),
-            Err(app_err) => return record_app_error(app_err, "status command failed"),
-        };
+        let result: Result<serde_json::Value, AppError> =
+            execute_with_report_with_context(&*adapter.inner, &report, &ctx);
 
-        let json = match serde_json::to_string(&response) {
-            Ok(s) => s,
-            Err(_) => {
-                error::set_last_error_static(
-                    AdResult::ErrInternal,
-                    c"failed to serialize status response",
-                );
-                return AdResult::ErrInternal;
-            }
-        };
-
-        let ptr = string_to_c(&json);
-        if ptr.is_null() {
-            error::set_last_error_static(
-                AdResult::ErrInternal,
-                c"status response contained interior NUL",
-            );
-            return AdResult::ErrInternal;
-        }
-
-        unsafe { *out = ptr };
-        AdResult::Ok
+        unsafe { write_command_envelope("status", result, out) }
     })
 }

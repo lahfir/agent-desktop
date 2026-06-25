@@ -1,14 +1,13 @@
 use crate::adapter::AdAdapter;
 use crate::commands::app_error_to_adapter;
-use crate::convert::string::{decode_optional_filter, string_to_c};
+use crate::commands::envelope_out::write_command_envelope;
+use crate::convert::string::decode_optional_filter;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::main_thread::require_main_thread;
 use crate::pointer_guard::guard_non_null;
 use crate::types::wait_args::AdWaitArgs;
 use agent_desktop_core::commands::wait::{WaitArgs, WaitModeArgs, WaitPredicateArgs};
-use agent_desktop_core::error::{AdapterError, ErrorCode};
-use agent_desktop_core::output::Response;
 use std::ffi::c_char;
 
 /// Runs `wait` with the given args, blocking the calling thread until the
@@ -18,8 +17,14 @@ use std::ffi::c_char;
 /// CLI-format wait envelope (`{version, ok, command, data}`). The caller must
 /// release the string with `ad_free_string(*out)`.
 ///
-/// On failure `*out` is zeroed, the last-error slot is set, and a negative
-/// `AdResult` code is returned.
+/// On a command-level failure (e.g. `TIMEOUT`, `ELEMENT_NOT_FOUND`) `*out` is
+/// set to a freshly allocated JSON string with `"ok":false` and an `"error"`
+/// payload. The caller must still release it with `ad_free_string(*out)`. The
+/// last-error slot is also set.
+///
+/// On an argument or infrastructure failure (null adapter, null args, null out,
+/// off-main-thread, invalid UTF-8 field) `*out` is zeroed, the last-error slot
+/// is set, and a negative `AdResult` code is returned. No allocation is made.
 ///
 /// # Safety
 ///
@@ -94,41 +99,12 @@ pub unsafe extern "C" fn ad_wait(
             }
         };
 
-        match agent_desktop_core::commands::wait::execute(
+        let result = agent_desktop_core::commands::wait::execute(
             wait_args,
             adapter_ref.inner.as_ref(),
             &ctx,
-        ) {
-            Ok(data) => {
-                let response = Response::ok("wait", data);
-                match serde_json::to_string(&response) {
-                    Ok(json) => {
-                        let ptr = string_to_c(&json);
-                        if ptr.is_null() {
-                            error::set_last_error(&AdapterError::new(
-                                ErrorCode::Internal,
-                                "failed to allocate output string",
-                            ));
-                            AdResult::ErrInternal
-                        } else {
-                            unsafe { *out = ptr };
-                            AdResult::Ok
-                        }
-                    }
-                    Err(_) => {
-                        error::set_last_error(&AdapterError::new(
-                            ErrorCode::Internal,
-                            "failed to serialize wait response",
-                        ));
-                        AdResult::ErrInternal
-                    }
-                }
-            }
-            Err(app_err) => {
-                let adapter_err = app_error_to_adapter(app_err);
-                error::set_last_error(&adapter_err);
-                error::last_error_code()
-            }
-        }
+        );
+
+        unsafe { write_command_envelope("wait", result, out) }
     })
 }

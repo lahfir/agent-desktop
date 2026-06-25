@@ -1008,3 +1008,77 @@ fn execute_by_ref_returns_error_envelope_when_no_refmap_exists() {
         }
     });
 }
+
+/// Verifies the unified error-envelope contract (Finding #3) for `ad_wait`:
+/// a command-level failure with `timeout_ms=0` and an element filter that
+/// cannot be satisfied must write `"ok":false` into `*out`, not leave it null.
+/// Guard/infrastructure rejections (null args, null out, null adapter) are
+/// separate paths that deliberately keep `*out` null.
+#[test]
+fn ad_wait_command_error_writes_error_envelope_into_out() {
+    with_adapter(|adapter| unsafe {
+        let elem = std::ffi::CString::new("__nonexistent_element__").unwrap();
+        let args = AdWaitArgs {
+            ms: 0,
+            has_ms: false,
+            element: elem.as_ptr(),
+            window: std::ptr::null(),
+            text: std::ptr::null(),
+            menu: false,
+            menu_closed: false,
+            notification: false,
+            snapshot_id: std::ptr::null(),
+            predicate: std::ptr::null(),
+            value: std::ptr::null(),
+            action: std::ptr::null(),
+            count: 0,
+            has_count: false,
+            timeout_ms: 0,
+            app: std::ptr::null(),
+        };
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_wait(adapter, &args, &mut out);
+
+        match rc {
+            AdResult::Ok => {
+                assert!(!out.is_null(), "Ok result must set out");
+                ad_free_string(out);
+            }
+            AdResult::ErrInternal => {
+                assert!(
+                    out.is_null(),
+                    "ErrInternal from off-main-thread guard must leave out null"
+                );
+            }
+            _ => {
+                assert!(
+                    !out.is_null(),
+                    "command-level error must write error envelope into *out, got rc={rc:?}"
+                );
+                let s = CStr::from_ptr(out).to_string_lossy();
+                let val: serde_json::Value =
+                    serde_json::from_str(&s).expect("error envelope must be valid JSON");
+                assert_eq!(
+                    val["ok"].as_bool(),
+                    Some(false),
+                    "error envelope ok must be false, got: {s}"
+                );
+                assert_eq!(
+                    val["command"].as_str(),
+                    Some("wait"),
+                    "command field must be 'wait', got: {s}"
+                );
+                assert!(
+                    val["error"].is_object(),
+                    "error envelope must carry an error object, got: {s}"
+                );
+                assert_eq!(
+                    ad_last_error_code(),
+                    rc,
+                    "last-error code must match returned AdResult (errno invariant)"
+                );
+                ad_free_string(out);
+            }
+        }
+    });
+}
