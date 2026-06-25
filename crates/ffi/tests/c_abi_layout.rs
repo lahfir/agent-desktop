@@ -1,6 +1,8 @@
 mod common;
 
-use common::{AdAction, AdActionResult, AdActionStep, AdElementState, AdPoint, AdRect, AdRefEntry};
+use common::{
+    AdAction, AdActionResult, AdActionStep, AdElementState, AdPoint, AdRect, AdRefEntry, AdWaitArgs,
+};
 use std::mem::{MaybeUninit, align_of, offset_of, size_of};
 
 #[test]
@@ -152,4 +154,36 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
     };
     assert_eq!(copied.pid, 0);
     assert_eq!(copied.path_count, 0);
+}
+
+#[test]
+fn wait_args_layout_is_guarded_for_c_consumers() {
+    assert_eq!(agent_desktop_ffi::types::wait_args::AD_WAIT_ARGS_SIZE, 112);
+    assert_eq!(
+        unsafe { common::ad_wait_args_size() },
+        agent_desktop_ffi::types::wait_args::AD_WAIT_ARGS_SIZE
+    );
+    assert_eq!(size_of::<AdWaitArgs>(), 112);
+    assert_eq!(align_of::<AdWaitArgs>(), align_of::<usize>());
+
+    let offsets = [
+        offset_of!(AdWaitArgs, ms),
+        offset_of!(AdWaitArgs, has_ms),
+        offset_of!(AdWaitArgs, element),
+        offset_of!(AdWaitArgs, window),
+        offset_of!(AdWaitArgs, text),
+        offset_of!(AdWaitArgs, menu),
+        offset_of!(AdWaitArgs, snapshot_id),
+        offset_of!(AdWaitArgs, count),
+        offset_of!(AdWaitArgs, timeout_ms),
+        offset_of!(AdWaitArgs, app),
+    ];
+    assert!(offsets.windows(2).all(|pair| pair[0] < pair[1]));
+
+    let zeroed = unsafe { MaybeUninit::<AdWaitArgs>::zeroed().assume_init() };
+    assert_eq!(zeroed.ms, 0);
+    assert!(!zeroed.has_ms);
+    assert!(zeroed.element.is_null());
+    assert!(!zeroed.menu);
+    assert_eq!(zeroed.timeout_ms, 0);
 }

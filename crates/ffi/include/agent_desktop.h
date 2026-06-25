@@ -54,6 +54,14 @@
 
 #define AD_MAX_REF_PATH_DEPTH 128
 
+/**
+ * Pinned size of `AdWaitArgs` on 64-bit targets. The compile-time
+ * assert below and the `ad_wait_args_size()` runtime getter form the
+ * 3-layer pin: Rust const assert, C `_Static_assert` in the header,
+ * and the test in `c_abi_layout.rs`.
+ */
+#define AD_WAIT_ARGS_SIZE 112
+
 enum AdResult
 #if __STDC_VERSION__ >= 202311L
   : int32_t
@@ -439,6 +447,78 @@ typedef struct AdAppInfo {
 } AdAppInfo;
 
 /**
+ * Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs`.
+ *
+ * Fields map as follows:
+ * - `Option<u64>` → `u64` value + `bool has_*` sentinel (ms, count).
+ * - `Option<String>` → nullable `*const c_char` (null = absent).
+ * - `bool` → `bool`.
+ *
+ * Callers must zero-initialize before use and verify layout via
+ * `AD_WAIT_ARGS_SIZE` / `ad_wait_args_size()`.
+ */
+typedef struct AdWaitArgs {
+  /**
+   * Milliseconds to sleep (WaitMode::ms).
+   */
+  uint64_t ms;
+  bool has_ms;
+  /**
+   * Element ref id to wait for (WaitMode::element).
+   */
+  const char *element;
+  /**
+   * Window title to wait for (WaitMode::window).
+   */
+  const char *window;
+  /**
+   * Text to wait for (WaitMode::text / WaitMode::notification text).
+   */
+  const char *text;
+  /**
+   * Wait for menu to open (true) or close (false via menu_closed).
+   */
+  bool menu;
+  /**
+   * Wait for menu to close.
+   */
+  bool menu_closed;
+  /**
+   * Wait for a notification.
+   */
+  bool notification;
+  /**
+   * Snapshot id for element predicate (WaitPredicateArgs::snapshot_id).
+   */
+  const char *snapshot_id;
+  /**
+   * Predicate kind string (WaitPredicateArgs::predicate).
+   */
+  const char *predicate;
+  /**
+   * Expected value for value-predicate (WaitPredicateArgs::value).
+   */
+  const char *value;
+  /**
+   * Action name for actionability-predicate (WaitPredicateArgs::action).
+   */
+  const char *action;
+  /**
+   * Expected match count for text waits (WaitPredicateArgs::count).
+   */
+  size_t count;
+  bool has_count;
+  /**
+   * Timeout in milliseconds.
+   */
+  uint64_t timeout_ms;
+  /**
+   * App name filter (null = any). Maps to WaitArgs::app.
+   */
+  const char *app;
+} AdWaitArgs;
+
+/**
  * Mouse event dispatched by `ad_mouse_event`.
  *
  * `kind` and `button` are stored as `int32_t` for the same reason
@@ -820,6 +900,29 @@ AdResult ad_snapshot(const struct AdAdapter *adapter,
                      bool interactive_only,
                      bool compact,
                      char **out);
+
+/**
+ * Runs `wait` with the given args, blocking the calling thread until the
+ * condition is met or `timeout_ms` elapses.
+ *
+ * On success `*out` is set to a freshly allocated JSON string containing the
+ * CLI-format wait envelope (`{version, ok, command, data}`). The caller must
+ * release the string with `ad_free_string(*out)`.
+ *
+ * On failure `*out` is zeroed, the last-error slot is set, and a negative
+ * `AdResult` code is returned.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create` that
+ * has not been destroyed. `args` must be non-null and point to a valid
+ * zero-initialized `AdWaitArgs`. `out` must be non-null and point to a
+ * writable `*mut c_char`.
+ *
+ * All `*const c_char` fields inside `AdWaitArgs` must be null or point to
+ * readable, NUL-terminated memory within `AD_MAX_STRING_BYTES + 1` bytes.
+ */
+AdResult ad_wait(const struct AdAdapter *adapter, const struct AdWaitArgs *args, char **out);
 
 /**
  * Returns the adapter's current health and permission state as a JSON
@@ -1378,6 +1481,13 @@ size_t ad_element_state_size(void);
 size_t ad_ref_entry_size(void);
 
 /**
+ * Returns the size of `AdWaitArgs` as compiled. Ctypes and other
+ * foreign bindings must call this and compare against their own
+ * `sizeof` before passing args to `ad_wait`.
+ */
+size_t ad_wait_args_size(void);
+
+/**
  * Brings `win` to the foreground on the current space. Returns
  * `AD_RESULT_ERR_WINDOW_NOT_FOUND` when the referenced window no longer
  * exists (the caller should re-list and retry).
@@ -1482,4 +1592,6 @@ _Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offs
 _Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
 _Static_assert(sizeof(AdRefEntry) == AD_REF_ENTRY_SIZE, "AdRefEntry ABI size changed");
 _Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
+_Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI size drift");
+_Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
 #endif /* __STDC_VERSION__ >= 201112L */

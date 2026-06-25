@@ -5,7 +5,7 @@ pub use agent_desktop_ffi::error::AdResult;
 pub use agent_desktop_ffi::{
     AdAction, AdActionResult, AdActionStep, AdAdapter, AdAppList, AdDirection, AdDragParams,
     AdElementState, AdFindQuery, AdKeyCombo, AdNativeHandle, AdPoint, AdPolicyKind, AdRect,
-    AdRefEntry, AdScrollParams, AdWindowInfo, AdWindowList,
+    AdRefEntry, AdScrollParams, AdWaitArgs, AdWindowInfo, AdWindowList,
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
@@ -24,6 +24,13 @@ unsafe extern "C" {
     pub fn ad_action_step_size() -> usize;
     pub fn ad_action_result_size() -> usize;
     pub fn ad_element_state_size() -> usize;
+    pub fn ad_wait_args_size() -> usize;
+
+    pub fn ad_wait(
+        adapter: *const AdAdapter,
+        args: *const AdWaitArgs,
+        out: *mut *mut c_char,
+    ) -> AdResult;
 
     pub fn ad_adapter_create() -> *mut AdAdapter;
     pub fn ad_adapter_create_with_session(session: *const c_char) -> *mut AdAdapter;

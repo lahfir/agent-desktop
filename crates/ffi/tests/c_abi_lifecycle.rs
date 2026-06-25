@@ -1,11 +1,11 @@
 mod common;
 
 use common::{
-    AdAppList, AdFindQuery, AdNativeHandle, AdResult, AdWindowInfo, AdWindowList, CStr,
+    AdAppList, AdFindQuery, AdNativeHandle, AdResult, AdWaitArgs, AdWindowInfo, AdWindowList, CStr,
     ad_abi_version, ad_adapter_create, ad_adapter_create_with_session, ad_adapter_destroy,
     ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions, ad_find,
     ad_free_handle, ad_free_string, ad_init, ad_last_error_code, ad_last_error_message,
-    ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_status, ad_version,
+    ad_list_apps, ad_list_windows, ad_set_log_callback, ad_snapshot, ad_status, ad_version, ad_wait,
     ad_window_list_count, ad_window_list_free, with_adapter,
 };
 use std::os::raw::c_char;
@@ -782,5 +782,93 @@ fn status_free_string_cleans_up() {
         assert_eq!(rc, AdResult::Ok);
         assert!(!out.is_null());
         ad_free_string(out);
+    });
+}
+
+#[test]
+fn ad_wait_null_args_rejected() {
+    with_adapter(|adapter| unsafe {
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_wait(adapter, std::ptr::null(), &mut out);
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "null args must be rejected, got {:?}",
+            rc
+        );
+        assert!(out.is_null(), "out must stay null on null-args rejection");
+    });
+}
+
+#[test]
+fn ad_wait_null_out_rejected() {
+    with_adapter(|adapter| unsafe {
+        let args = AdWaitArgs {
+            ms: 1,
+            has_ms: true,
+            element: std::ptr::null(),
+            window: std::ptr::null(),
+            text: std::ptr::null(),
+            menu: false,
+            menu_closed: false,
+            notification: false,
+            snapshot_id: std::ptr::null(),
+            predicate: std::ptr::null(),
+            value: std::ptr::null(),
+            action: std::ptr::null(),
+            count: 0,
+            has_count: false,
+            timeout_ms: 500,
+            app: std::ptr::null(),
+        };
+        let rc = ad_wait(adapter, &args, std::ptr::null_mut());
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "null out must be rejected, got {:?}",
+            rc
+        );
+    });
+}
+
+#[test]
+fn ad_wait_ms_mode_returns_ok_or_off_thread_error() {
+    with_adapter(|adapter| unsafe {
+        let args = AdWaitArgs {
+            ms: 50,
+            has_ms: true,
+            element: std::ptr::null(),
+            window: std::ptr::null(),
+            text: std::ptr::null(),
+            menu: false,
+            menu_closed: false,
+            notification: false,
+            snapshot_id: std::ptr::null(),
+            predicate: std::ptr::null(),
+            value: std::ptr::null(),
+            action: std::ptr::null(),
+            count: 0,
+            has_count: false,
+            timeout_ms: 500,
+            app: std::ptr::null(),
+        };
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_wait(adapter, &args, &mut out);
+
+        match rc {
+            AdResult::Ok => {
+                assert!(!out.is_null(), "Ok result must set out");
+                let json_cstr = CStr::from_ptr(out);
+                let json: serde_json::Value =
+                    serde_json::from_str(json_cstr.to_str().unwrap()).unwrap();
+                assert_eq!(json["ok"], serde_json::Value::Bool(true));
+                assert_eq!(json["command"], "wait");
+                ad_free_string(out);
+            }
+            AdResult::ErrInternal => {
+                assert!(out.is_null(), "ErrInternal must leave out null");
+                let msg = ad_last_error_message();
+                assert!(!msg.is_null(), "error message must be set on failure");
+            }
+            other => panic!("unexpected result from ms-mode ad_wait: {:?}", other),
+        }
     });
 }
