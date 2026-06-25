@@ -113,6 +113,7 @@ unsafe extern "C" {
     pub fn ad_execute_by_ref(
         adapter: *const AdAdapter,
         ref_id: *const c_char,
+        snapshot_id: *const c_char,
         action: *const AdAction,
         policy: i32,
         out: *mut *mut c_char,

@@ -2,31 +2,37 @@ use crate::AdAdapter;
 use crate::actions::conversion::action_from_c;
 use crate::commands::app_error_to_adapter;
 use crate::commands::envelope_out::write_command_envelope;
-use crate::convert::string::required_adapter_string;
+use crate::convert::string::{optional_adapter_string, required_adapter_string};
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::main_thread::require_main_thread;
 use crate::pointer_guard::guard_non_null;
 use crate::types::{AdAction, AdPolicyKind};
-use agent_desktop_core::action_request::ActionRequest;
-use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
+use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::interaction_policy::InteractionPolicy;
 use agent_desktop_core::refs::validate_ref_id;
-use agent_desktop_core::refs_store::RefStore;
 use std::ffi::c_char;
 use std::ptr;
 
-/// Drives a ref action (`@e5`, action) through the full strict-resolution
-/// ladder: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
-/// `resolve_element_strict` (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
+/// Drives a ref action (`@e5`, action) through the canonical ref-action
+/// pipeline: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
+/// strict element resolution (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
 /// actionability preflight → dispatch → handle release.
 ///
-/// Policy follows CLI parity (KTD6): `TypeText` actions default to
+/// Policy follows CLI parity: `TypeText` and `PressKey` default to
 /// `focus_fallback`; every other action defaults to `headless`. An explicit
 /// `policy` discriminant may *elevate* to headed but must not downgrade an
-/// action below its CLI base.
+/// action below its CLI base. Base and elevation are computed by
+/// `agent_desktop_core::commands::execute_by_ref::execute` via
+/// `Action::base_interaction_policy` + `InteractionPolicy::join`, so CLI and
+/// FFI share a single source of policy truth.
 ///
 /// `ref_id` tri-state: null → `ErrInvalidArgs`; non-null invalid UTF-8 →
 /// `ErrInvalidArgs`; valid UTF-8 but bad `@e{N}` format → `ErrInvalidArgs`.
+///
+/// `snapshot_id` tri-state: null → use the latest snapshot for the session
+/// (CLI `--snapshot` omitted); valid UTF-8 → pin to that snapshot id; non-null
+/// invalid UTF-8 → `ErrInvalidArgs`.
 ///
 /// `policy` is an `AdPolicyKind` discriminant (0=Headless, 1=FocusFallback,
 /// 2=Headed). An out-of-range value returns `ErrInvalidArgs`. `Headless (0)`
@@ -40,17 +46,27 @@ use std::ptr;
 /// holds the error JSON envelope and must still be freed with
 /// `ad_free_string`. The last-error slot is populated on all failures.
 ///
+/// **Dispatch-before-serialize ordering**: the action is dispatched (and any
+/// side effects committed) before the result JSON is serialized. In the
+/// near-impossible event that serialization of an already-valid
+/// `ActionResult` fails, `*out` is null and `ErrInternal` is returned while
+/// the side effect has already occurred. No pre-validation machinery is
+/// needed because serialization of a valid envelope effectively never fails.
+///
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer from `ad_adapter_create[_with_session]`.
 /// `ref_id` must be null or NUL-terminated within `AD_MAX_STRING_BYTES + 1`
-/// bytes. `action` must be a non-null pointer to a valid `AdAction`.
-/// `out` must be a non-null writable pointer. All pointers must remain valid
-/// for the duration of the call. Must be called from the main thread on macOS.
+/// bytes. `snapshot_id` must be null or NUL-terminated within
+/// `AD_MAX_STRING_BYTES + 1` bytes. `action` must be a non-null pointer to a
+/// valid `AdAction`. `out` must be a non-null writable pointer. All pointers
+/// must remain valid for the duration of the call. Must be called from the
+/// main thread on macOS.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_execute_by_ref(
     adapter: *const AdAdapter,
     ref_id: *const c_char,
+    snapshot_id: *const c_char,
     action: *const AdAction,
     policy: i32,
     out: *mut *mut c_char,
@@ -78,6 +94,14 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             return crate::error::last_error_code();
         }
 
+        let snapshot_str = match optional_adapter_string(snapshot_id, "snapshot_id") {
+            Ok(opt) => opt,
+            Err(e) => {
+                set_last_error(&e);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+
         let caller_policy = match AdPolicyKind::from_c(policy) {
             Some(p) => p,
             None => {
@@ -97,7 +121,7 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             }
         };
 
-        let effective_policy = effective_action_policy(&core_action, caller_policy);
+        let caller_ip = policy_kind_to_interaction_policy(caller_policy);
 
         let adapter_ref = unsafe { &*adapter };
         let context = match adapter_ref.command_context() {
@@ -109,71 +133,24 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             }
         };
 
-        let result = run_ref_action(
-            adapter_ref,
+        let result = agent_desktop_core::commands::execute_by_ref::execute(
             &ref_str,
-            context.session_id(),
-            effective_policy,
+            snapshot_str.as_deref(),
             core_action,
+            caller_ip,
+            adapter_ref.inner.as_ref(),
+            &context,
         );
 
         unsafe { write_command_envelope("execute_by_ref", result, out) }
     })
 }
 
-/// Loads the `RefEntry` for `ref_id` from the session's `RefStore`, then
-/// dispatches the action through `ref_action::execute_entry`.
-///
-/// Resolution ladder: `RefStore::for_session` → `store.load` →
-/// `refmap.get` → `STALE_REF` on miss → `execute_entry` (strict resolve →
-/// `STALE_REF`/`AMBIGUOUS_TARGET` → actionability → dispatch).
-fn run_ref_action(
-    adapter: &AdAdapter,
-    ref_id: &str,
-    session_id: Option<&str>,
-    policy: AdPolicyKind,
-    action: agent_desktop_core::action::Action,
-) -> Result<serde_json::Value, AppError> {
-    let store = RefStore::for_session(session_id)?;
-    let refmap = store.load(None)?;
-    let entry = match refmap.get(ref_id) {
-        Some(e) => e.clone(),
-        None => return Err(AppError::stale_ref(ref_id)),
-    };
-    let request = match policy {
-        AdPolicyKind::Headless => ActionRequest::headless(action),
-        AdPolicyKind::FocusFallback => ActionRequest::focus_fallback(action),
-        AdPolicyKind::Headed => ActionRequest::headed(action),
-    };
-    let result =
-        agent_desktop_core::ref_action::execute_entry(adapter.inner.as_ref(), &entry, request)?;
-    Ok(serde_json::to_value(result)?)
-}
-
-/// Derive the effective interaction policy for this action (KTD6).
-///
-/// CLI base policies:
-/// - `TypeText` → `focus_fallback` (typing requires focus to land in the
-///   right field; headless would fail on unfocused elements).
-/// - Everything else → `headless` (pure AX action, no cursor movement).
-///
-/// The caller-supplied `policy` may *elevate* — passing `Headed` escalates
-/// to cursor + OS-input fallbacks — but never downgrades below the action's
-/// own base. `Headless (0)` accepts the action's base (so `TypeText` keeps
-/// `focus_fallback` rather than being degraded).
-fn effective_action_policy(
-    action: &agent_desktop_core::action::Action,
-    caller: AdPolicyKind,
-) -> AdPolicyKind {
-    use agent_desktop_core::action::Action;
-    let base = match action {
-        Action::TypeText(_) => AdPolicyKind::FocusFallback,
-        _ => AdPolicyKind::Headless,
-    };
-    if caller as i32 > base as i32 {
-        caller
-    } else {
-        base
+fn policy_kind_to_interaction_policy(kind: AdPolicyKind) -> InteractionPolicy {
+    match kind {
+        AdPolicyKind::Headless => InteractionPolicy::headless(),
+        AdPolicyKind::FocusFallback => InteractionPolicy::focus_fallback(),
+        AdPolicyKind::Headed => InteractionPolicy::headed(),
     }
 }
 
@@ -183,39 +160,69 @@ mod tests {
     use agent_desktop_core::action::Action;
 
     #[test]
-    fn type_text_base_is_focus_fallback() {
-        let result =
-            effective_action_policy(&Action::TypeText("hello".into()), AdPolicyKind::Headless);
-        assert_eq!(result, AdPolicyKind::FocusFallback);
+    fn policy_kind_headless_maps_to_headless() {
+        assert_eq!(
+            policy_kind_to_interaction_policy(AdPolicyKind::Headless),
+            InteractionPolicy::headless()
+        );
     }
 
     #[test]
-    fn click_base_is_headless() {
-        let result = effective_action_policy(&Action::Click, AdPolicyKind::Headless);
-        assert_eq!(result, AdPolicyKind::Headless);
+    fn policy_kind_focus_fallback_maps_to_focus_fallback() {
+        assert_eq!(
+            policy_kind_to_interaction_policy(AdPolicyKind::FocusFallback),
+            InteractionPolicy::focus_fallback()
+        );
     }
 
     #[test]
-    fn headed_caller_elevates_above_click_base() {
-        let result = effective_action_policy(&Action::Click, AdPolicyKind::Headed);
-        assert_eq!(result, AdPolicyKind::Headed);
+    fn policy_kind_headed_maps_to_headed() {
+        assert_eq!(
+            policy_kind_to_interaction_policy(AdPolicyKind::Headed),
+            InteractionPolicy::headed()
+        );
     }
 
     #[test]
-    fn headed_caller_also_elevates_type_text() {
-        let result = effective_action_policy(&Action::TypeText("x".into()), AdPolicyKind::Headed);
-        assert_eq!(result, AdPolicyKind::Headed);
+    fn type_text_base_plus_headless_caller_gives_focus_fallback() {
+        let base = Action::TypeText("hi".into()).base_interaction_policy();
+        let effective = base.join(InteractionPolicy::headless());
+        assert_eq!(effective, InteractionPolicy::focus_fallback());
     }
 
     #[test]
-    fn headless_caller_cannot_downgrade_type_text() {
-        let result = effective_action_policy(&Action::TypeText("x".into()), AdPolicyKind::Headless);
-        assert_eq!(result, AdPolicyKind::FocusFallback);
+    fn click_base_plus_headless_caller_stays_headless() {
+        let base = Action::Click.base_interaction_policy();
+        let effective = base.join(InteractionPolicy::headless());
+        assert_eq!(effective, InteractionPolicy::headless());
     }
 
     #[test]
-    fn focus_fallback_caller_elevates_click() {
-        let result = effective_action_policy(&Action::Click, AdPolicyKind::FocusFallback);
-        assert_eq!(result, AdPolicyKind::FocusFallback);
+    fn click_base_plus_headed_caller_becomes_headed() {
+        let base = Action::Click.base_interaction_policy();
+        let effective = base.join(InteractionPolicy::headed());
+        assert_eq!(effective, InteractionPolicy::headed());
+    }
+
+    #[test]
+    fn type_text_base_plus_headed_caller_becomes_headed() {
+        let base = Action::TypeText("x".into()).base_interaction_policy();
+        let effective = base.join(InteractionPolicy::headed());
+        assert_eq!(effective, InteractionPolicy::headed());
+    }
+
+    #[test]
+    fn headless_caller_cannot_downgrade_type_text_base() {
+        let base = Action::TypeText("x".into()).base_interaction_policy();
+        assert_eq!(base, InteractionPolicy::focus_fallback());
+        let effective = base.join(InteractionPolicy::headless());
+        assert_eq!(effective, InteractionPolicy::focus_fallback());
+    }
+
+    #[test]
+    fn click_base_plus_focus_fallback_caller_gives_focus_fallback() {
+        let base = Action::Click.base_interaction_policy();
+        let effective = base.join(InteractionPolicy::focus_fallback());
+        assert_eq!(effective, InteractionPolicy::focus_fallback());
     }
 }

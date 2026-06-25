@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const NON_COMMAND_MODULES: &[&str] = &[
+    "execute_by_ref",
     "helpers",
     "helpers_test_support",
     "mod",
