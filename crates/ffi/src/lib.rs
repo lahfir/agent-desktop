@@ -41,6 +41,7 @@
 //! any number of subsequent successful calls on the same thread; only
 //! the next *failing* call rotates it. Matches POSIX `errno` semantics.
 
+pub mod abi_version;
 pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod apps;
@@ -59,6 +60,7 @@ pub(crate) mod tree;
 pub mod types;
 pub(crate) mod windows;
 
+pub use abi_version::AD_ABI_VERSION_MAJOR;
 pub use adapter::AdAdapter;
 pub use error::AdResult;
 pub use types::action::AdAction;
