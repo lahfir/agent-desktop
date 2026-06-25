@@ -4,7 +4,6 @@ use crate::{
     commands::helpers::{RefArgs, execute_ref_action_with_context},
     context::CommandContext,
     error::AppError,
-    interaction_policy::InteractionPolicy,
 };
 use serde_json::Value;
 
@@ -19,7 +18,7 @@ pub fn execute(
     execute_ref_action_with_context(
         args,
         adapter,
-        context.request(Action::DoubleClick, InteractionPolicy::headless()),
+        context.request_base(Action::DoubleClick),
         context,
     )
 }

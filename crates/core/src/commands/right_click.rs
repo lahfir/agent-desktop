@@ -4,7 +4,6 @@ use crate::{
     commands::helpers::{RefArgs, execute_ref_action_result_with_context},
     context::CommandContext,
     error::AppError,
-    interaction_policy::InteractionPolicy,
     refs::RefEntry,
     snapshot,
 };
@@ -15,7 +14,7 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let request = context.request(Action::RightClick, InteractionPolicy::headless());
+    let request = context.request_base(Action::RightClick);
     let (entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),

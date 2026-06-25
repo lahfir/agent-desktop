@@ -49,6 +49,15 @@ impl CommandContext {
         }
     }
 
+    /// Builds the action request using the action's canonical CLI base policy
+    /// from `Action::base_interaction_policy()`, ensuring a single source of
+    /// truth for the per-action minimum. `--headed` upgrades the base to
+    /// `headed` exactly as `request()` does.
+    pub fn request_base(&self, action: Action) -> ActionRequest {
+        let base = action.base_interaction_policy();
+        self.request(action, base)
+    }
+
     /// Policy for raw physical-input commands (hover, drag, mouse-*). They
     /// have no semantic action chain, so headless denies both focus stealing
     /// and cursor movement unless `--headed` opts in.

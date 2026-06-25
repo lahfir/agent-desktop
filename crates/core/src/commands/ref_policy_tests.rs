@@ -16,7 +16,7 @@ use crate::{
 };
 use std::sync::Mutex;
 
-/// Every command module stem whose execute function calls `context.request(`.
+/// Every command module stem whose execute function calls `context.request_base(`.
 /// Adding a new ref-action command requires adding its stem here; the
 /// `all_context_request_callers_are_policy_tested` guard enforces this.
 const POLICY_TESTED_COMMANDS: &[&str] = &[
@@ -305,7 +305,7 @@ fn all_context_request_callers_are_policy_tested() {
             }
             let path = commands_dir.join(format!("{stem}.rs"));
             let source = std::fs::read_to_string(&path).unwrap_or_default();
-            source.contains("context.request(")
+            source.contains("context.request_base(")
         })
         .collect();
 

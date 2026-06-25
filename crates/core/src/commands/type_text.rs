@@ -1,7 +1,7 @@
 use crate::{
     action::Action, adapter::PlatformAdapter,
     commands::helpers::execute_ref_action_result_with_context, context::CommandContext,
-    error::AppError, interaction_policy::InteractionPolicy,
+    error::AppError,
 };
 use serde_json::Value;
 
@@ -24,10 +24,7 @@ pub fn execute(
         )));
     }
 
-    let request = context.request(
-        Action::TypeText(args.text),
-        InteractionPolicy::focus_fallback(),
-    );
+    let request = context.request_base(Action::TypeText(args.text));
     let (_entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),

@@ -1,7 +1,7 @@
 use crate::{
     action::Action, adapter::PlatformAdapter,
     commands::helpers::execute_ref_action_result_with_context, context::CommandContext,
-    error::AppError, interaction_policy::InteractionPolicy,
+    error::AppError,
 };
 use serde_json::Value;
 
@@ -16,7 +16,7 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let request = context.request(Action::SetValue(args.value), InteractionPolicy::headless());
+    let request = context.request_base(Action::SetValue(args.value));
     let (_entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),
