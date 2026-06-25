@@ -8,10 +8,10 @@ use std::ffi::CStr;
 /// `scripts/update-ffi-header.sh`) whenever a breaking change is made to the
 /// C ABI — a removed or incompatibly-changed `ad_*` symbol, or a layout
 /// change to any `repr(C)` struct. Additive changes (new `ad_*` symbols, new
-/// error codes) do **not** require a bump. Consumers must call `ad_init` with
-/// the major they compiled against before making any adapter calls; a mismatch
-/// returns `AD_RESULT_ERR_INVALID_ARGS` so they can refuse gracefully rather
-/// than corrupt memory.
+/// error codes) do **not** require a bump. It is recommended to call `ad_init`
+/// with the major compiled against the header to verify ABI compatibility; a
+/// mismatch means the header and dylib are incompatible and the consumer should
+/// refuse to proceed rather than risk undefined behaviour.
 pub const AD_ABI_VERSION_MAJOR: u32 = 1;
 
 static MISMATCH_MESSAGE: &CStr =
@@ -27,13 +27,16 @@ pub extern "C" fn ad_abi_version() -> u32 {
     AD_ABI_VERSION_MAJOR
 }
 
-/// Validates that the consumer's expected ABI major matches this dylib.
+/// Checks that the consumer's expected ABI major matches this dylib.
 ///
-/// Call once after `dlopen` / `LoadLibrary`, before any adapter call.
-/// Returns `AD_RESULT_OK` when `expected_major == AD_ABI_VERSION_MAJOR`.
-/// Returns `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error when the
-/// version does not match, so the consumer can refuse to proceed rather than
-/// crash with an incompatible ABI.
+/// It is recommended to call this once after `dlopen` / `LoadLibrary` to verify
+/// the header and dylib agree on the major ABI version; a mismatch means they
+/// are incompatible. No global state is initialised by this call — skipping it
+/// does not prevent adapter functions from operating, but undetected ABI
+/// mismatches may cause memory corruption. Returns `AD_RESULT_OK` when
+/// `expected_major == AD_ABI_VERSION_MAJOR`. Returns
+/// `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error when the version
+/// does not match.
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_init(expected_major: u32) -> AdResult {
     trap_panic(|| {

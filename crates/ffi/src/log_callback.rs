@@ -4,8 +4,11 @@
 //!
 //! `tracing` events fire from arbitrary threads. The callback pointer is
 //! stored in a global `AtomicPtr` (lock-free). A `tracing_subscriber` layer
-//! is installed exactly once (via [`Once`]) when the first non-null callback
-//! is registered; subsequent registrations only swap the pointer.
+//! is installed exactly once (via [`OnceLock`]) when the first non-null callback
+//! is registered; subsequent registrations only swap the pointer. If a foreign
+//! global subscriber already owns the process at the time of the first
+//! registration, the install fails and `AD_RESULT_ERR_INTERNAL` is returned —
+//! the callback is never stored and events will not be delivered.
 //!
 //! Re-entrancy is prevented by a per-thread flag: if a consumer callback
 //! itself emits a `tracing` event, the recursive `on_event` invocation is
@@ -36,7 +39,7 @@ use std::cell::Cell;
 use std::ffi::{CString, c_char};
 use std::os::raw::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Once;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 use agent_desktop_core::sanitize_trace_value;
@@ -53,8 +56,12 @@ use crate::error::AdResult;
 /// Stored as `*mut c_void` to avoid `fn` pointer restrictions on `AtomicPtr`.
 static CALLBACK_SLOT: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
-/// Installs the global subscriber exactly once.
-static INSTALL_ONCE: Once = Once::new();
+/// Memoises the outcome of the one-time subscriber install attempt.
+///
+/// `true`  — our `CallbackLayer` subscriber is installed and callback delivery works.
+/// `false` — `try_init` failed because a foreign global subscriber already owns the
+///           process; our layer was never installed.
+static INSTALL_RESULT: OnceLock<bool> = OnceLock::new();
 
 thread_local! {
     static IN_CALLBACK: Cell<bool> = const { Cell::new(false) };
@@ -154,21 +161,47 @@ impl<S: Subscriber> Layer<S> for CallbackLayer {
     }
 }
 
-fn install_layer_once() {
-    INSTALL_ONCE.call_once(|| {
-        let registry = tracing_subscriber::registry().with(CallbackLayer);
-        let _ = registry.try_init();
-    });
+fn install_layer_once() -> bool {
+    *INSTALL_RESULT.get_or_init(|| {
+        tracing_subscriber::registry()
+            .with(CallbackLayer)
+            .try_init()
+            .is_ok()
+    })
+}
+
+/// Maps an install outcome to the `AdResult` that `ad_set_log_callback` should
+/// return when registering a non-null callback.
+///
+/// Extracted as a named function so the routing logic can be unit-tested
+/// independently of global subscriber state.
+#[cfg(test)]
+fn result_for_install(succeeded: bool) -> AdResult {
+    if succeeded {
+        AdResult::Ok
+    } else {
+        AdResult::ErrInternal
+    }
 }
 
 /// Registers a callback to receive `tracing` events, or unregisters the
 /// current callback when `cb` is `NULL`.
 ///
-/// The subscriber layer is installed exactly once (the first time a non-null
-/// callback is set). Subsequent calls only swap the stored pointer, never
-/// re-install the layer.
+/// # Install semantics
 ///
-/// The callback receives:
+/// The subscriber layer is installed exactly once — on the first call with a
+/// non-null `cb`. If a foreign global subscriber already owns the process at
+/// that point, the install fails and this function returns
+/// `AD_RESULT_ERR_INTERNAL` with a diagnostic last-error. No callback pointer
+/// is stored in that case; events will never be delivered until the consumer
+/// remedies the conflict. Subsequent calls with a non-null `cb` after a
+/// **successful** install only swap the stored pointer and always return
+/// `AD_RESULT_OK`.
+///
+/// `NULL` always returns `AD_RESULT_OK` — unregistering cannot fail.
+///
+/// # Callback contract
+///
 /// - `level` — 1 (ERROR) … 5 (TRACE)
 /// - `msg` — a NUL-terminated JSON string; valid only for the call's duration
 ///
@@ -190,9 +223,6 @@ fn install_layer_once() {
 /// for a brief window after this call returns. The callback (and any data it
 /// captures) must remain valid for the process lifetime, or the caller must
 /// quiesce all tracing sources before unregistering.
-///
-/// If a global tracing subscriber was already installed in the process before
-/// the first non-null registration, events may not be delivered.
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_set_log_callback(
     cb: Option<unsafe extern "C" fn(level: i32, msg: *const c_char)>,
@@ -200,7 +230,15 @@ pub extern "C" fn ad_set_log_callback(
     crate::ffi_try::trap_panic(|| {
         match cb {
             Some(f) => {
-                install_layer_once();
+                if !install_layer_once() {
+                    crate::error::set_last_error_static(
+                        AdResult::ErrInternal,
+                        c"ad_set_log_callback: a foreign tracing subscriber already owns this \
+                          process; our CallbackLayer was not installed and events will not be \
+                          delivered",
+                    );
+                    return AdResult::ErrInternal;
+                }
                 let raw = f as *mut c_void;
                 CALLBACK_SLOT.store(raw, Ordering::Release);
             }
@@ -210,4 +248,29 @@ pub extern "C" fn ad_set_log_callback(
         }
         AdResult::Ok
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn result_for_install_success_returns_ok() {
+        assert_eq!(result_for_install(true), AdResult::Ok);
+    }
+
+    #[test]
+    fn result_for_install_failure_returns_err_internal() {
+        assert_eq!(result_for_install(false), AdResult::ErrInternal);
+    }
+
+    #[test]
+    fn null_unregister_always_ok_independent_of_install_state() {
+        let result = ad_set_log_callback(None);
+        assert_eq!(
+            result,
+            AdResult::Ok,
+            "NULL unregister must return Ok regardless of install state"
+        );
+    }
 }
