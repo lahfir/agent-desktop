@@ -5,6 +5,37 @@ sys_includes = ["stdint.h", "stdbool.h", "stddef.h"]
 style = "both"
 usize_is_size_t = true
 
+# Agent workflow orientation for C/C++ binding authors.
+# Placed after sys-includes and before declarations (inside the include guard).
+after_includes = """
+/*
+ * Agent workflow — quick orientation for C/C++ binding authors:
+ *
+ *  1. (Optional) Call ad_init(AD_ABI_VERSION_MAJOR) to verify at runtime that
+ *     the header you compiled against matches the loaded dylib.  A version
+ *     mismatch returns ErrInvalidArgs; abort rather than proceed.
+ *
+ *  2. Create an adapter:
+ *       AdAdapter *a = ad_adapter_create();            // no session
+ *       AdAdapter *a = ad_adapter_create_with_session(session_id); // with session
+ *
+ *  3. Observe via ad_snapshot().  The returned JSON envelope contains the
+ *     accessibility tree with @e-prefixed ref IDs (e.g. "@e5") that address
+ *     individual interactive elements.  A refmap is written under
+ *     ~/.agent-desktop/ and is keyed to the session.
+ *
+ *  4. Act via ad_execute_by_ref(a, "@e5", snapshot_id, &action, policy, &out).
+ *     Pass snapshot_id=NULL to target the latest snapshot; ref_id must be
+ *     non-null (null returns ErrInvalidArgs immediately).
+ *
+ *  5. Ownership: every non-null *out string must be freed with ad_free_string().
+ *     Destroy the adapter when done with ad_adapter_destroy(a).
+ *
+ * macOS: all ad_* calls that interact with the AX API must be made from the
+ * main thread.  ad_snapshot and ad_execute_by_ref enforce this with a guard.
+ */
+"""
+
 # ABI layout guards — regenerated automatically by scripts/update-ffi-header.sh.
 # Each sizeof guard references an AD_*_SIZE macro (emitted from the corresponding
 # Rust pub const via [const] allow_static_const = false), so the size literal

@@ -2,19 +2,28 @@
 ///
 /// # Test structure
 ///
-/// - `stale_ref_returns_ok_false_error_envelope` — guaranteed to run in CI.
+/// - `stale_ref_returns_ok_false_error_envelope` — always runs in CI.
 ///   Sets a temp HOME (empty refmap), calls `ad_execute_by_ref`, and asserts
-///   that the returned envelope has `ok:false` with an `error.code` field.
-///   Because `ad_execute_by_ref` has a main-thread guard on macOS (the libtest
-///   harness runs bodies off the main thread), `ErrInternal` with a null `*out`
-///   is also a valid outcome and is tolerated.
+///   that the returned envelope has `ok:false` with both `error.code` (string)
+///   and `error.message` (string), and that `command` equals `"execute_by_ref"`.
+///   On macOS the main-thread guard fires before the command path is reached
+///   (libtest runs bodies off the main thread), returning `ErrInternal` with a
+///   null `*out` — that path is tolerated.
 ///
 /// - `snapshot_execute_by_ref_live_roundtrip` — marked `#[ignore]`.
-///   Requires a real running app, AX accessibility permission, and execution on
-///   the main thread (e.g. via the E2E harness or by running with
-///   `cargo test -p agent-desktop-ffi --tests c_abi_roundtrip
-///    snapshot_execute_by_ref_live_roundtrip -- --ignored`
-///   from a process that IS the main thread, i.e. not the default libtest runner).
+///   The full observe→act loop (real `ad_snapshot` → `@e` ref →
+///   `ad_execute_by_ref` against a live app) cannot run under the default
+///   libtest harness on macOS: libtest schedules test bodies on worker threads,
+///   and the AX/main-thread guard blocks every AX call made off the main
+///   thread.  CI proof of the full loop is tracked as the deferred
+///   external-consumer smoke harness (Python ctypes) — plan unit U9 / Phase B.
+///   To run the roundtrip manually:
+///   ```text
+///   cargo test -p agent-desktop-ffi --tests c_abi_roundtrip \
+///       snapshot_execute_by_ref_live_roundtrip -- --ignored
+///   ```
+///   Run from a process that owns the main thread (e.g. the E2E harness).
+///   AX accessibility permission must be granted and a target app must be open.
 mod common;
 
 use common::{AdResult, CStr, ad_execute_by_ref, ad_free_string, ad_snapshot, default_action};
@@ -66,8 +75,12 @@ impl Drop for TestHome {
 /// (libtest runs off the main thread), returning `ErrInternal` with `out`
 /// remaining null — that is tolerated. When the command path does execute
 /// (non-macOS or future main-thread execution), the envelope must have
-/// `ok:false` and an `error` object, proving the unified error-envelope
-/// contract holds at the ABI boundary.
+/// `ok:false` and carry both `error.code` (string) and `error.message`
+/// (string) — the latter guaranteed by the CLAUDE.md error contract — proving
+/// the unified error-envelope contract holds at the ABI boundary.  The exact
+/// `error.code` value is not pinned: an empty refmap with an `@e1` ref may
+/// surface either `SNAPSHOT_NOT_FOUND` or `STALE_REF` depending on the load
+/// path; pinning either would make this test flaky.
 #[test]
 fn stale_ref_returns_ok_false_error_envelope() {
     let _home = TestHome::new();
@@ -118,6 +131,10 @@ fn stale_ref_returns_ok_false_error_envelope() {
             "error.code must be a string; got: {s}"
         );
         assert!(
+            val["error"]["message"].is_string(),
+            "error.message must be a string; got: {s}"
+        );
+        assert!(
             val["version"].is_string(),
             "envelope version must be present; got: {s}"
         );
@@ -133,19 +150,28 @@ fn stale_ref_returns_ok_false_error_envelope() {
 
 /// Live snapshot→ref→execute_by_ref roundtrip at the C boundary.
 ///
-/// This test MUST be ignored by default: it requires a real running
-/// application with an accessible UI tree, macOS Accessibility permission
-/// granted for the test process, and execution on the main thread (not the
-/// libtest off-main-thread runner).
+/// This test is `#[ignore]` by design and must remain so in headless CI.
 ///
-/// To run manually once AX permission is granted and a target app is running:
-/// ```
+/// **Why ignored**: libtest schedules test bodies on worker threads.  On macOS
+/// every AX API call (including `ad_snapshot` and `ad_execute_by_ref`) must
+/// originate on the main thread; the AX guard returns `ErrInternal` immediately
+/// when called off it.  There is no libtest API to pin a test to the main
+/// thread, so the full observe→act loop cannot be verified inside a libtest
+/// integration test on macOS.
+///
+/// **Deferred CI proof**: the full-loop proof — real `ad_snapshot` producing
+/// `@e` refs consumed by `ad_execute_by_ref` against a live app at the C
+/// boundary — is tracked as plan unit U9 / Phase B: an external-consumer smoke
+/// harness (Python ctypes) that runs in the E2E environment where the process
+/// itself owns the main thread.
+///
+/// **Manual execution** (requires AX permission + a running target app):
+/// ```text
 /// cargo test -p agent-desktop-ffi --tests c_abi_roundtrip \
 ///     snapshot_execute_by_ref_live_roundtrip -- --ignored
 /// ```
-/// Even then, the test body must somehow reach the main thread (e.g. via
-/// the E2E harness or a custom test runner that schedules tests on the main
-/// runloop thread).
+/// Run from a process that owns the main thread (e.g. the E2E harness).  Do
+/// NOT un-ignore this test — it will fail in any headless CI that uses libtest.
 #[test]
 #[ignore = "requires AX permission, a live app, and main-thread execution — run via E2E harness"]
 fn snapshot_execute_by_ref_live_roundtrip() {

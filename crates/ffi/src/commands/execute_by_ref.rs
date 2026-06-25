@@ -57,8 +57,11 @@ use std::ptr;
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer from `ad_adapter_create[_with_session]`.
-/// `ref_id` must be null or NUL-terminated within `AD_MAX_STRING_BYTES + 1`
-/// bytes. `snapshot_id` must be null or NUL-terminated within
+/// `ref_id` must be a non-null pointer to a NUL-terminated C string within
+/// `AD_MAX_STRING_BYTES + 1` bytes; null is **not** optional — it is defined
+/// behaviour (no UB) but is rejected immediately with `ErrInvalidArgs`.
+/// `snapshot_id` may be null (meaning: use the latest snapshot for this
+/// session) or a non-null NUL-terminated C string within
 /// `AD_MAX_STRING_BYTES + 1` bytes. `action` must be a non-null pointer to a
 /// valid `AdAction`. `out` must be a non-null writable pointer. All pointers
 /// must remain valid for the duration of the call. Must be called from the
