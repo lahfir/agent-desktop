@@ -921,7 +921,9 @@ AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEve
  * `{"redacted":true}` before the message is formatted.
  *
  * Invocations are best-effort. A panicking callback is caught and silently
- * discarded; no command fails because of a trace delivery error.
+ * discarded; no command fails because of a trace delivery error. A callback
+ * that emits `tracing` events is safe: the recursive `on_event` is dropped
+ * by a per-thread guard before it reaches the callback again.
  *
  * # Safety
  *
