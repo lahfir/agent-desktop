@@ -91,6 +91,18 @@ unsafe extern "C" {
         entry: *const AdRefEntry,
         out: *mut AdNativeHandle,
     ) -> AdResult;
+
+    pub fn ad_snapshot(
+        adapter: *const AdAdapter,
+        app: *const c_char,
+        surface: i32,
+        max_depth: u8,
+        interactive_only: bool,
+        compact: bool,
+        out: *mut *mut c_char,
+    ) -> AdResult;
+
+    pub fn ad_free_string(s: *mut c_char);
 }
 
 pub fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
