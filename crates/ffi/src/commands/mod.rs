@@ -1,4 +1,5 @@
 pub mod snapshot;
+pub mod wait;
 pub(crate) mod status;
 pub(crate) mod version;
 

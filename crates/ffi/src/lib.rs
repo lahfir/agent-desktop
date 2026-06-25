@@ -100,6 +100,7 @@ pub use types::snapshot_surface::AdSnapshotSurface;
 pub use types::surface_info::AdSurfaceInfo;
 pub use types::surface_list::AdSurfaceList;
 pub use types::tree_options::AdTreeOptions;
+pub use types::wait_args::AdWaitArgs;
 pub use types::window_info::AdWindowInfo;
 pub use types::window_list::AdWindowList;
 pub use types::window_op::AdWindowOp;

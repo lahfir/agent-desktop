@@ -36,6 +36,8 @@ _Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offs
 _Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
 _Static_assert(sizeof(AdRefEntry) == AD_REF_ENTRY_SIZE, "AdRefEntry ABI size changed");
 _Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
+_Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI size drift");
+_Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
 #endif /* __STDC_VERSION__ >= 201112L */
 """
 
