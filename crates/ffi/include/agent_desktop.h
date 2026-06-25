@@ -890,11 +890,12 @@ void ad_app_list_free(struct AdAppList *list);
  * strict element resolution (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
  * actionability preflight → dispatch → handle release.
  *
- * Policy follows CLI parity: `TypeText` and `PressKey` default to
- * `focus_fallback`; every other action defaults to `headless`. An explicit
- * `policy` discriminant may *elevate* to headed but must not downgrade an
- * action below its CLI base. Base and elevation are computed by
- * `agent_desktop_core::commands::execute_by_ref::execute` via
+ * Policy: `TypeText` defaults to `focus_fallback` (matching the CLI `type`
+ * command); `PressKey` shares that `focus_fallback` base (a ref-targeted key
+ * press may need the target focused); every other action defaults to
+ * `headless`. An explicit `policy` discriminant may *elevate* to headed but
+ * must not downgrade an action below its base. Base and elevation are computed
+ * by `agent_desktop_core::commands::execute_by_ref::execute` via
  * `Action::base_interaction_policy` + `InteractionPolicy::join`, so CLI and
  * FFI share a single source of policy truth.
  *

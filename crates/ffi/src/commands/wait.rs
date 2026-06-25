@@ -47,9 +47,9 @@ pub unsafe extern "C" fn ad_wait(
     args: *const AdWaitArgs,
     out: *mut *mut c_char,
 ) -> AdResult {
-    guard_non_null!(args, c"args is null");
     guard_non_null!(out, c"out is null");
     unsafe { *out = std::ptr::null_mut() };
+    guard_non_null!(args, c"args is null");
 
     trap_panic(|| {
         if let Err(rc) = require_main_thread() {

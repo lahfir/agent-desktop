@@ -21,10 +21,11 @@ use serde_json::Value;
 /// permissive as what the CLI would use for the same action, while allowing
 /// FFI callers to opt in to higher-permission policies such as `headed`.
 ///
-/// Note on PressKey: its CLI base is `focus_fallback` (it may need focus to
-/// land keystrokes in the right field). This differs from the previous FFI
-/// behaviour where PressKey used `headless` as its base. The change is
-/// intentional — it aligns the FFI with the full CLI base-policy table.
+/// Note on PressKey: its base policy is `focus_fallback` because a ref-targeted
+/// key press may need the target element focused for keystrokes to land in the
+/// right field. This is derived from `Action::base_interaction_policy` (shared
+/// with `TypeText`) and differs from the previous FFI behaviour, which used
+/// `headless` as the PressKey base.
 pub fn execute(
     ref_id: &str,
     snapshot_id: Option<&str>,
