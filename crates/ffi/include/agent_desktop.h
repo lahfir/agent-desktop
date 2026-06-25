@@ -4,6 +4,33 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+/*
+ * Agent workflow — quick orientation for C/C++ binding authors:
+ *
+ *  1. (Optional) Call ad_init(AD_ABI_VERSION_MAJOR) to verify at runtime that
+ *     the header you compiled against matches the loaded dylib.  A version
+ *     mismatch returns ErrInvalidArgs; abort rather than proceed.
+ *
+ *  2. Create an adapter:
+ *       AdAdapter *a = ad_adapter_create();            // no session
+ *       AdAdapter *a = ad_adapter_create_with_session(session_id); // with session
+ *
+ *  3. Observe via ad_snapshot().  The returned JSON envelope contains the
+ *     accessibility tree with @e-prefixed ref IDs (e.g. "@e5") that address
+ *     individual interactive elements.  A refmap is written under
+ *     ~/.agent-desktop/ and is keyed to the session.
+ *
+ *  4. Act via ad_execute_by_ref(a, "@e5", snapshot_id, &action, policy, &out).
+ *     Pass snapshot_id=NULL to target the latest snapshot; ref_id must be
+ *     non-null (null returns ErrInvalidArgs immediately).
+ *
+ *  5. Ownership: every non-null *out string must be freed with ad_free_string().
+ *     Destroy the adapter when done with ad_adapter_destroy(a).
+ *
+ * macOS: all ad_* calls that interact with the AX API must be made from the
+ * main thread.  ad_snapshot and ad_execute_by_ref enforce this with a guard.
+ */
+
 
 /**
  * The major ABI version of this build of `libagent_desktop_ffi`.
@@ -657,9 +684,11 @@ uint32_t ad_abi_version(void);
 AdResult ad_init(uint32_t expected_major);
 
 /**
- * Low-level native-handle action. This does not perform strict ref
- * re-identification or actionability preflight; callers that want CLI parity
- * should use `ad_execute_ref_action_with_policy`.
+ * Low-level native-handle action. Dispatches directly to the platform adapter
+ * without strict ref re-identification or actionability preflight. This is a
+ * raw escape hatch for callers that already hold a live native handle. Callers
+ * wanting CLI-semantics parity (RefStore load → strict resolution → preflight
+ * → dispatch) should use `ad_execute_by_ref` instead.
  *
  * # Safety
  *
@@ -675,9 +704,13 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
                            struct AdActionResult *out);
 
 /**
- * Low-level native-handle action with explicit interaction policy. This does
- * not perform strict ref re-identification or actionability preflight; callers
- * that want CLI parity should use `ad_execute_ref_action_with_policy`.
+ * Low-level native-handle action with explicit interaction policy. Dispatches
+ * directly to the platform adapter without strict ref re-identification or
+ * actionability preflight. The `policy` discriminant is applied verbatim — no
+ * base-policy elevation is performed. This is a raw escape hatch for callers
+ * that already hold a live native handle. Callers wanting CLI-semantics parity
+ * (RefStore load → strict resolution → preflight → dispatch with base-policy
+ * join) should use `ad_execute_by_ref` instead.
  *
  * # Safety
  *
@@ -694,9 +727,20 @@ AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
                                        struct AdActionResult *out);
 
 /**
- * Strict ref action path matching CLI semantics: resolve the full ref
- * identity, run actionability preflight, then dispatch using the requested
- * policy.
+ * Low-level struct-based ref-action path: takes a pre-resolved `AdRefEntry`,
+ * runs strict element re-identification and actionability preflight, then
+ * dispatches using the caller-supplied `policy` verbatim (no base-policy
+ * elevation). The adapter's session context (from `ad_adapter_create_with_session`)
+ * is threaded through so that trace events carry the correct session id.
+ *
+ * This is the low-level escape hatch for callers that have already resolved
+ * a `RefEntry` outside the `RefStore` pipeline (e.g. serialized from an
+ * external snapshot). The `policy` discriminant is applied as-is — there is
+ * no `Action::base_interaction_policy` join here.
+ *
+ * Callers wanting full CLI-semantics parity (RefStore load → `RefMap` lookup
+ * → strict resolution → preflight → dispatch with base-policy join) should
+ * use `ad_execute_by_ref` instead.
  *
  * # Safety
  *
@@ -928,8 +972,11 @@ void ad_app_list_free(struct AdAppList *list);
  * # Safety
  *
  * `adapter` must be a non-null pointer from `ad_adapter_create[_with_session]`.
- * `ref_id` must be null or NUL-terminated within `AD_MAX_STRING_BYTES + 1`
- * bytes. `snapshot_id` must be null or NUL-terminated within
+ * `ref_id` must be a non-null pointer to a NUL-terminated C string within
+ * `AD_MAX_STRING_BYTES + 1` bytes; null is **not** optional — it is defined
+ * behaviour (no UB) but is rejected immediately with `ErrInvalidArgs`.
+ * `snapshot_id` may be null (meaning: use the latest snapshot for this
+ * session) or a non-null NUL-terminated C string within
  * `AD_MAX_STRING_BYTES + 1` bytes. `action` must be a non-null pointer to a
  * valid `AdAction`. `out` must be a non-null writable pointer. All pointers
  * must remain valid for the duration of the call. Must be called from the
