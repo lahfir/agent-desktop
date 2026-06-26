@@ -60,7 +60,7 @@ pub unsafe extern "C" fn ad_wait(
         let args = unsafe { &*args };
         let adapter_ref = unsafe { &*adapter };
 
-        let ms = if args.has_ms { Some(args.ms) } else { None };
+        let ms = args.has_ms.then_some(args.ms);
 
         let element = unsafe { decode_optional_filter!(args.element, "element") };
         let window = unsafe { decode_optional_filter!(args.window, "window") };
@@ -86,11 +86,7 @@ pub unsafe extern "C" fn ad_wait(
                 predicate,
                 value,
                 action: action_field,
-                count: if args.has_count {
-                    Some(args.count)
-                } else {
-                    None
-                },
+                count: args.has_count.then_some(args.count),
             },
             timeout_ms: args.timeout_ms,
             app,
