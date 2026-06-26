@@ -335,7 +335,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Regenerate FFI command wrappers via build.rs
-        run: cargo build --locked -p agent-desktop-ffi
+        run: cargo build --locked -p agent-desktop-ffi --features stub-adapter
 
       - name: Assert no drift in commands/generated.rs
         run: |

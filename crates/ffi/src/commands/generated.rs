@@ -1,5 +1,5 @@
 //! @generated — produced by crates/ffi/build.rs codegen.
-//! Edit the templates in build.rs, not this file.
+//! Edit the templates under crates/ffi/codegen_templates/, not this file.
 //! Commands in alphabetical order: execute_by_ref, snapshot, status, version, wait.
 
 use crate::AdAdapter;
@@ -291,7 +291,7 @@ pub unsafe extern "C" fn ad_status(
     out: *mut *mut c_char,
 ) -> AdResult {
     guard_non_null!(out, c"out is null");
-    unsafe { *out = std::ptr::null_mut() };
+    unsafe { *out = ptr::null_mut() };
     guard_non_null!(adapter, c"adapter is null");
 
     trap_panic(|| {
@@ -329,7 +329,7 @@ pub unsafe extern "C" fn ad_status(
 pub unsafe extern "C" fn ad_version(out: *mut *mut c_char) -> AdResult {
     trap_panic(|| unsafe {
         guard_non_null!(out, c"out is null");
-        *out = std::ptr::null_mut();
+        *out = ptr::null_mut();
         let result = agent_desktop_core::commands::version::execute();
         write_command_envelope("version", result, out)
     })
@@ -373,7 +373,7 @@ pub unsafe extern "C" fn ad_wait(
     out: *mut *mut c_char,
 ) -> AdResult {
     guard_non_null!(out, c"out is null");
-    unsafe { *out = std::ptr::null_mut() };
+    unsafe { *out = ptr::null_mut() };
     guard_non_null!(args, c"args is null");
 
     trap_panic(|| {

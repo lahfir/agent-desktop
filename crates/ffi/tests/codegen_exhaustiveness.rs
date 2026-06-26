@@ -2,7 +2,7 @@
 ///
 /// Independently verifies that:
 /// 1. Every expected Family-B command has a generated `ad_<name>` wrapper in
-///    `src/generated/ffi_commands.rs` (the committed output).
+///    `src/commands/generated.rs` (the committed output).
 /// 2. Each command's interaction-policy pin is preserved across refactors.
 ///
 /// Adding a new Family-B command requires updating EXPECTED_COMMANDS here
@@ -14,7 +14,7 @@ use agent_desktop_core::action::Action;
 use agent_desktop_core::interaction_policy::InteractionPolicy;
 
 /// Known Family-B commands — the exhaustive set of command-backed JSON
-/// wrappers that must appear in `src/generated/ffi_commands.rs`.
+/// wrappers that must appear in `src/commands/generated.rs`.
 const EXPECTED_COMMANDS: &[&str] = &["execute_by_ref", "snapshot", "status", "version", "wait"];
 
 #[test]
@@ -25,7 +25,7 @@ fn generated_file_contains_all_expected_wrappers() {
         let fn_sig = format!("pub unsafe extern \"C\" fn ad_{name}(");
         assert!(
             src.contains(&fn_sig),
-            "generated ffi_commands.rs is missing `ad_{name}` — \
+            "generated src/commands/generated.rs is missing `ad_{name}` — \
              check templates in build.rs and run cargo build to regenerate"
         );
     }
@@ -110,4 +110,18 @@ fn policy_headed_caller_elevates_click_to_headed() {
         InteractionPolicy::headed(),
         "headed caller must elevate Click to headed"
     );
+}
+
+#[test]
+fn click_base_plus_focus_fallback_caller_gives_focus_fallback() {
+    let base = Action::Click.base_interaction_policy();
+    let effective = base.join(InteractionPolicy::focus_fallback());
+    assert_eq!(effective, InteractionPolicy::focus_fallback());
+}
+
+#[test]
+fn type_text_base_plus_headed_caller_becomes_headed() {
+    let base = Action::TypeText("x".into()).base_interaction_policy();
+    let effective = base.join(InteractionPolicy::headed());
+    assert_eq!(effective, InteractionPolicy::headed());
 }
