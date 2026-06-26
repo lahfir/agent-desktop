@@ -46,6 +46,14 @@ export AD_HEADER_PATH=crates/ffi/include/agent_desktop.h
 python3 tests/ffi-python/smoke.py
 ```
 
+## Stub enforcement (`AD_EXPECT_STUB=1`)
+
+Set `AD_EXPECT_STUB=1` when running the harness against a stub-adapter build.
+With this variable set, the harness fails if `ad_snapshot()` returns `ok:true`,
+which would indicate the dylib was **not** built with `--features stub-adapter`.
+CI always sets this variable so a real-adapter dylib cannot accidentally pass the
+stub-only gate.
+
 ## Dependencies
 
 `smoke.py` uses only the Python standard library (`ctypes`, `json`, `re`,
