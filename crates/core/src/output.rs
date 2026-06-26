@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::error::AppError;
+use crate::error::{AppError, ErrorCode};
 
 pub const ENVELOPE_VERSION: &str = "2.0";
 
@@ -53,6 +53,16 @@ impl Response {
     }
 }
 
+fn retry_token_for_code(code: &ErrorCode) -> Option<String> {
+    match code {
+        ErrorCode::StaleRef | ErrorCode::SnapshotNotFound => {
+            Some("snapshot;execute_by_ref".to_owned())
+        }
+        ErrorCode::PolicyDenied => Some("escalate_policy".to_owned()),
+        _ => None,
+    }
+}
+
 impl ErrorPayload {
     pub fn from_app_error(err: &AppError) -> Self {
         let mut payload = Self::new(err.code(), err.to_string());
@@ -62,6 +72,7 @@ impl ErrorPayload {
         if let AppError::Adapter(adapter_error) = err {
             payload.platform_detail = adapter_error.platform_detail.clone();
             payload.details = adapter_error.details.clone();
+            payload.retry_command = retry_token_for_code(&adapter_error.code);
         }
         payload
     }
@@ -113,5 +124,61 @@ mod tests {
             Some("native press action failed")
         );
         assert_eq!(payload.details, Some(json!({ "check": "visible" })));
+        assert_eq!(
+            payload.retry_command, None,
+            "ACTION_FAILED must not carry a retry token"
+        );
+    }
+
+    #[test]
+    fn stale_ref_payload_carries_snapshot_retry_token() {
+        let err = AppError::stale_ref("@e5");
+        let payload = ErrorPayload::from_app_error(&err);
+        assert_eq!(payload.code, "STALE_REF");
+        assert_eq!(
+            payload.retry_command.as_deref(),
+            Some("snapshot;execute_by_ref"),
+            "STALE_REF must carry the canonical retry token"
+        );
+    }
+
+    #[test]
+    fn snapshot_not_found_payload_carries_snapshot_retry_token() {
+        let err = AppError::Adapter(AdapterError::snapshot_not_found("snap-abc"));
+        let payload = ErrorPayload::from_app_error(&err);
+        assert_eq!(payload.code, "SNAPSHOT_NOT_FOUND");
+        assert_eq!(
+            payload.retry_command.as_deref(),
+            Some("snapshot;execute_by_ref"),
+            "SNAPSHOT_NOT_FOUND must carry the canonical retry token"
+        );
+    }
+
+    #[test]
+    fn policy_denied_payload_carries_escalate_policy_token() {
+        let err = AppError::Adapter(AdapterError::policy_denied("blocked by policy"));
+        let payload = ErrorPayload::from_app_error(&err);
+        assert_eq!(payload.code, "POLICY_DENIED");
+        assert_eq!(
+            payload.retry_command.as_deref(),
+            Some("escalate_policy"),
+            "POLICY_DENIED must carry the escalate_policy token, not a snapshot token"
+        );
+    }
+
+    #[test]
+    fn retry_command_absent_for_non_retryable_errors() {
+        for err in [
+            AppError::Adapter(AdapterError::new(ErrorCode::InvalidArgs, "bad input")),
+            AppError::Adapter(AdapterError::not_supported("method_x")),
+            AppError::Adapter(AdapterError::new(ErrorCode::ActionFailed, "failed")),
+        ] {
+            let payload = ErrorPayload::from_app_error(&err);
+            assert!(
+                payload.retry_command.is_none(),
+                "non-retryable error {} must not carry a retry token",
+                payload.code
+            );
+        }
     }
 }

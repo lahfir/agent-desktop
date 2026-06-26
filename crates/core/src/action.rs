@@ -59,6 +59,19 @@ impl Action {
     pub fn may_use_focus_fallback(&self) -> bool {
         matches!(self, Self::TypeText(_) | Self::PressKey(_))
     }
+
+    /// Returns the minimum `InteractionPolicy` the CLI uses for this action.
+    /// `TypeText` and `PressKey` require focus to land in the right field, so
+    /// their base is `focus_fallback`. Everything else is pure-AX and uses
+    /// `headless`. FFI callers join this base with their caller-supplied policy
+    /// so they can only elevate, never downgrade below CLI parity.
+    pub fn base_interaction_policy(&self) -> crate::interaction_policy::InteractionPolicy {
+        if self.may_use_focus_fallback() {
+            crate::interaction_policy::InteractionPolicy::focus_fallback()
+        } else {
+            crate::interaction_policy::InteractionPolicy::headless()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

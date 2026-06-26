@@ -19,27 +19,32 @@ use std::ptr;
 ///
 /// # Raw-tree contract
 ///
-/// This is a **raw adapter tree**, not the snapshot the CLI `snapshot`
-/// subcommand returns. Differences the caller must know about:
+/// This is a **raw adapter tree** — ref-less, no refmap persistence, and
+/// no JSON envelope. Differences the caller must know about:
 ///
-/// - `ref_id` is always null on every `AdNode`. The FFI surface does
-///   not run `ref_alloc::allocate_refs`; refs are a CLI/JSON pipeline
-///   concern, so agent-facing code that needs them should drive them
-///   externally (resolve via `ad_find` + `ad_free_handle`, or call the
-///   CLI if refs are required).
-/// - `include_bounds`, `interactive_only`, and `compact` are honored
-///   after the adapter returns the raw tree, using
-///   `ref_alloc::transform_tree`. Because refs are not allocated here,
-///   the `interactive_only` cut is role-based rather than ref-based;
-///   otherwise the semantics match the CLI snapshot path.
+/// - `ref_id` is always null on every `AdNode`. `ref_alloc::allocate_refs`
+///   is not run; `@e` ref assignment is a snapshot-pipeline concern.
+/// - `include_bounds`, `interactive_only`, and `compact` are honoured via
+///   `ref_alloc::transform_tree` after the adapter returns. Because refs are
+///   not allocated, the `interactive_only` cut is role-based rather than
+///   ref-based; otherwise the semantics match the snapshot path.
 /// - No skeleton/drill-down pipeline is wired through — `skeleton` is
 ///   always false on the underlying `TreeOptions`.
 ///
-/// If parity with the CLI snapshot is important to your consumer,
-/// either use `ad_find` + `ad_get` / `ad_is` for point lookups (which
-/// bypass tree shape entirely) or invoke the CLI binary for the
-/// snapshot call. A future revision may layer a "normalized snapshot"
-/// FFI function on top of this raw path.
+/// # When to use this function vs `ad_snapshot`
+///
+/// **Observe–act agents** that need `@e` refs and refmap persistence should
+/// call `ad_snapshot` instead. `ad_snapshot` runs the full snapshot pipeline
+/// (ref allocation, refmap write to disk, JSON envelope with
+/// `{"version":"2.0","ok":true,...}`) and is the correct starting point for
+/// any workflow that drives subsequent ref-based actions via
+/// `ad_execute_by_ref` (with an `AdAction`).
+///
+/// Use `ad_get_tree` when you need the raw flat BFS layout without refs —
+/// for example, to drive your own traversal logic or to populate a UI
+/// inspector that does not use the ref-based action API. For point lookups
+/// that bypass tree shape entirely, `ad_find` + `ad_get` / `ad_is` are
+/// another alternative.
 ///
 /// On error `*out` is zeroed so `ad_free_tree` on it is a safe no-op.
 ///

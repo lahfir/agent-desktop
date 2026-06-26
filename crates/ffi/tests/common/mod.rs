@@ -5,19 +5,35 @@ pub use agent_desktop_ffi::error::AdResult;
 pub use agent_desktop_ffi::{
     AdAction, AdActionResult, AdActionStep, AdAdapter, AdAppList, AdDirection, AdDragParams,
     AdElementState, AdFindQuery, AdKeyCombo, AdNativeHandle, AdPoint, AdPolicyKind, AdRect,
-    AdRefEntry, AdScrollParams, AdWindowInfo, AdWindowList,
+    AdRefEntry, AdScrollParams, AdWaitArgs, AdWindowInfo, AdWindowList,
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 
 unsafe extern "C" {
+    pub fn ad_abi_version() -> u32;
+    pub fn ad_init(expected_major: u32) -> AdResult;
+    pub fn ad_version(out: *mut *mut c_char) -> AdResult;
+    pub fn ad_free_string(s: *mut c_char);
+    pub fn ad_set_log_callback(
+        cb: Option<unsafe extern "C" fn(level: i32, msg: *const c_char)>,
+    ) -> AdResult;
+
     pub fn ad_ref_entry_size() -> usize;
     pub fn ad_action_size() -> usize;
     pub fn ad_action_step_size() -> usize;
     pub fn ad_action_result_size() -> usize;
     pub fn ad_element_state_size() -> usize;
+    pub fn ad_wait_args_size() -> usize;
+
+    pub fn ad_wait(
+        adapter: *const AdAdapter,
+        args: *const AdWaitArgs,
+        out: *mut *mut c_char,
+    ) -> AdResult;
 
     pub fn ad_adapter_create() -> *mut AdAdapter;
+    pub fn ad_adapter_create_with_session(session: *const c_char) -> *mut AdAdapter;
     pub fn ad_adapter_destroy(adapter: *mut AdAdapter);
     pub fn ad_check_permissions(adapter: *const AdAdapter) -> AdResult;
 
@@ -82,6 +98,27 @@ unsafe extern "C" {
         entry: *const AdRefEntry,
         out: *mut AdNativeHandle,
     ) -> AdResult;
+
+    pub fn ad_snapshot(
+        adapter: *const AdAdapter,
+        app: *const c_char,
+        surface: i32,
+        max_depth: u8,
+        interactive_only: bool,
+        compact: bool,
+        out: *mut *mut c_char,
+    ) -> AdResult;
+    pub fn ad_status(adapter: *const AdAdapter, out: *mut *mut c_char) -> AdResult;
+
+    pub fn ad_execute_by_ref(
+        adapter: *const AdAdapter,
+        ref_id: *const c_char,
+        snapshot_id: *const c_char,
+        action: *const AdAction,
+        policy: i32,
+        out: *mut *mut c_char,
+    ) -> AdResult;
+
 }
 
 pub fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {

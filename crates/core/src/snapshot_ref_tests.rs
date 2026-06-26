@@ -240,8 +240,8 @@ fn test_run_from_ref_stale_root_returns_stale_ref() {
             assert_eq!(adapter_err.code, crate::error::ErrorCode::StaleRef);
             let suggestion = adapter_err.suggestion.as_deref().unwrap_or("");
             assert!(
-                suggestion.contains("skeleton"),
-                "stale-ref suggestion should mention skeleton, got: {suggestion}"
+                suggestion.contains("snapshot"),
+                "stale-ref suggestion should mention running a snapshot, got: {suggestion}"
             );
         }
         other => panic!("expected Adapter(StaleRef), got {other:?}"),

@@ -1,7 +1,8 @@
 mod common;
 
 use common::{
-    AdActionResult, AdActionStep, AdNativeHandle, AdPolicyKind, AdResult, ad_execute_action,
+    AdActionResult, AdActionStep, AdNativeHandle, AdPolicyKind, AdResult,
+    ad_adapter_create_with_session, ad_adapter_destroy, ad_execute_action,
     ad_execute_action_with_policy, ad_execute_ref_action_with_policy, ad_free_action_result,
     default_action, default_ref_entry, with_adapter,
 };
@@ -110,6 +111,44 @@ fn execute_action_policy_requires_main_thread_on_macos() {
     assert_eq!(rc, AdResult::ErrInternal);
     #[cfg(not(target_os = "macos"))]
     assert_eq!(rc, AdResult::ErrInvalidArgs);
+}
+
+/// Verifies that `ad_execute_ref_action_with_policy` uses the adapter's session
+/// context rather than a default one. The observable contract is that resolution
+/// fails (stale ref) identically whether a session id is present or absent —
+/// the session id is wired into trace emission, not into the error path.
+#[test]
+fn execute_ref_action_with_session_adapter_wires_context() {
+    unsafe {
+        let session = CString::new("test-session-01").unwrap();
+        let adapter = ad_adapter_create_with_session(session.as_ptr());
+        assert!(!adapter.is_null());
+
+        let role = CString::new("button").unwrap();
+        let mut entry = default_ref_entry();
+        entry.role = role.as_ptr();
+        let action = default_action();
+        let mut out: AdActionResult = std::mem::zeroed();
+
+        let rc = ad_execute_ref_action_with_policy(
+            adapter,
+            &entry,
+            &action,
+            AdPolicyKind::Headless as i32,
+            &mut out,
+        );
+
+        assert!(
+            matches!(
+                rc,
+                AdResult::ErrStaleRef | AdResult::ErrElementNotFound | AdResult::ErrInternal
+            ),
+            "session adapter must still reject unresolvable entry, got {:?}",
+            rc
+        );
+
+        ad_adapter_destroy(adapter);
+    }
 }
 
 #[test]

@@ -1,0 +1,112 @@
+use crate::adapter::AdAdapter;
+use crate::commands::app_error_to_adapter;
+use crate::commands::envelope_out::write_command_envelope;
+use crate::convert::string::decode_optional_filter;
+use crate::error::{self, AdResult};
+use crate::ffi_try::trap_panic;
+use crate::main_thread::require_main_thread;
+use crate::pointer_guard::guard_non_null;
+use crate::types::wait_args::AdWaitArgs;
+use agent_desktop_core::commands::wait::{WaitArgs, WaitModeArgs, WaitPredicateArgs};
+use std::ffi::c_char;
+
+/// Runs `wait` with the given args, blocking the calling thread until the
+/// condition is met or `timeout_ms` elapses.
+///
+/// On success `*out` is set to a freshly allocated JSON string containing the
+/// CLI-format wait envelope (`{version, ok, command, data}`). The caller must
+/// release the string with `ad_free_string(*out)`.
+///
+/// On a command-level failure (e.g. `TIMEOUT`, `ELEMENT_NOT_FOUND`) `*out` is
+/// set to a freshly allocated JSON string with `"ok":false` and an `"error"`
+/// payload. The caller must still release it with `ad_free_string(*out)`. The
+/// last-error slot is also set.
+///
+/// On an argument or infrastructure failure (null adapter, null args, null out,
+/// off-main-thread, invalid UTF-8 field) `*out` is zeroed, the last-error slot
+/// is set, and a negative `AdResult` code is returned. No allocation is made.
+///
+/// # Safety
+///
+/// `adapter` must be a non-null pointer returned by `ad_adapter_create` that
+/// has not been destroyed. `args` must be non-null and point to a valid
+/// zero-initialized `AdWaitArgs`. `out` must be non-null and point to a
+/// writable `*mut c_char`.
+///
+/// All `*const c_char` fields inside `AdWaitArgs` must be null or point to
+/// readable, NUL-terminated memory within `AD_MAX_STRING_BYTES + 1` bytes.
+///
+/// `ad_wait` blocks the calling thread for up to `timeout_ms` milliseconds
+/// while it holds a live reference into the adapter's allocation. The adapter
+/// must outlive the call: do not call `ad_adapter_destroy` on this handle from
+/// another thread while `ad_wait` is running — that is a use-after-free. Ensure
+/// the wait has returned before destroying the adapter.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_wait(
+    adapter: *const AdAdapter,
+    args: *const AdWaitArgs,
+    out: *mut *mut c_char,
+) -> AdResult {
+    guard_non_null!(out, c"out is null");
+    unsafe { *out = std::ptr::null_mut() };
+    guard_non_null!(args, c"args is null");
+
+    trap_panic(|| {
+        if let Err(rc) = require_main_thread() {
+            return rc;
+        }
+        guard_non_null!(adapter, c"adapter is null");
+
+        let args = unsafe { &*args };
+        let adapter_ref = unsafe { &*adapter };
+
+        let ms = args.has_ms.then_some(args.ms);
+
+        let element = unsafe { decode_optional_filter!(args.element, "element") };
+        let window = unsafe { decode_optional_filter!(args.window, "window") };
+        let text = unsafe { decode_optional_filter!(args.text, "text") };
+        let snapshot_id = unsafe { decode_optional_filter!(args.snapshot_id, "snapshot_id") };
+        let predicate = unsafe { decode_optional_filter!(args.predicate, "predicate") };
+        let value = unsafe { decode_optional_filter!(args.value, "value") };
+        let action_field = unsafe { decode_optional_filter!(args.action, "action") };
+        let app = unsafe { decode_optional_filter!(args.app, "app") };
+
+        let wait_args = WaitArgs {
+            mode: WaitModeArgs {
+                ms,
+                element,
+                window,
+                text,
+                menu: args.menu,
+                menu_closed: args.menu_closed,
+                notification: args.notification,
+            },
+            predicate: WaitPredicateArgs {
+                snapshot_id,
+                predicate,
+                value,
+                action: action_field,
+                count: args.has_count.then_some(args.count),
+            },
+            timeout_ms: args.timeout_ms,
+            app,
+        };
+
+        let ctx = match adapter_ref.command_context() {
+            Ok(c) => c,
+            Err(app_err) => {
+                let adapter_err = app_error_to_adapter(app_err);
+                error::set_last_error(&adapter_err);
+                return error::last_error_code();
+            }
+        };
+
+        let result = agent_desktop_core::commands::wait::execute(
+            wait_args,
+            adapter_ref.inner.as_ref(),
+            &ctx,
+        );
+
+        unsafe { write_command_envelope("wait", result, out) }
+    })
+}

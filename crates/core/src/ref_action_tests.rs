@@ -95,3 +95,94 @@ fn failed_action_still_releases_resolved_handle() {
     assert_eq!(err.code, crate::error::ErrorCode::Internal);
     assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn execute_entry_with_context_succeeds_and_matches_execute_entry() {
+    let context = CommandContext::default();
+    let result = execute_entry_with_context(
+        &ReleaseFailingAdapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &context,
+    )
+    .unwrap();
+
+    assert_eq!(result.action, "click");
+}
+
+#[test]
+fn execute_entry_with_context_emits_trace_events() {
+    let trace_path = std::env::temp_dir().join(format!(
+        "agent-desktop-ref-action-trace-{}.jsonl",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let context =
+        CommandContext::new(Some("test-session".into()), Some(trace_path.clone()), false).unwrap();
+
+    let _ = execute_entry_with_context(
+        &ReleaseFailingAdapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &context,
+    );
+
+    let body = std::fs::read_to_string(&trace_path).unwrap();
+    assert!(
+        body.contains("actionability.check.start"),
+        "expected actionability trace event"
+    );
+    assert!(
+        body.contains("action.dispatch.start"),
+        "expected dispatch trace event"
+    );
+    for line in body.lines() {
+        let record: serde_json::Value = serde_json::from_str(line).unwrap();
+        assert_eq!(
+            record["session_id"], "test-session",
+            "session_id must appear in every trace record when set"
+        );
+    }
+    let _ = std::fs::remove_file(trace_path);
+}
+
+#[test]
+fn trace_records_omit_session_id_when_context_has_none() {
+    let trace_path = std::env::temp_dir().join(format!(
+        "agent-desktop-ref-action-no-session-trace-{}.jsonl",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let context = CommandContext::new(None, Some(trace_path.clone()), false).unwrap();
+
+    let _ = execute_entry_with_context(
+        &ReleaseFailingAdapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &context,
+    );
+
+    let body = std::fs::read_to_string(&trace_path).unwrap();
+    for line in body.lines() {
+        let record: serde_json::Value = serde_json::from_str(line).unwrap();
+        assert!(
+            record.get("session_id").is_none(),
+            "session_id must be absent when context has no session"
+        );
+    }
+    let _ = std::fs::remove_file(trace_path);
+}
+
+#[test]
+fn ref_label_from_entry_uses_role_and_path_indices() {
+    let no_path = entry();
+    assert_eq!(ref_label_from_entry(&no_path), "<button>");
+
+    let mut with_path = entry();
+    with_path.path = smallvec::smallvec![2, 0, 3];
+    assert_eq!(ref_label_from_entry(&with_path), "<button/2/0/3>");
+}

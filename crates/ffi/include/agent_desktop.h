@@ -4,10 +4,107 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+/*
+ * Agent workflow — quick orientation for C/C++ binding authors:
+ *
+ *  1. (Optional) Call ad_init(AD_ABI_VERSION_MAJOR) to verify at runtime that
+ *     the header you compiled against matches the loaded dylib.  A version
+ *     mismatch returns ErrInvalidArgs; abort rather than proceed.
+ *
+ *  2. Create an adapter:
+ *       AdAdapter *a = ad_adapter_create();            // no session
+ *       AdAdapter *a = ad_adapter_create_with_session(session_id); // with session
+ *
+ *  3. Observe via ad_snapshot().  The returned JSON envelope contains the
+ *     accessibility tree with @e-prefixed ref IDs (e.g. "@e5") that address
+ *     individual interactive elements.  A refmap is written under
+ *     ~/.agent-desktop/ and is keyed to the session.  The envelope carries
+ *     data.snapshot_id — pass it back as the snapshot_id argument to
+ *     ad_execute_by_ref to pin the action to that exact snapshot; pass NULL
+ *     to target the latest snapshot for the session.
+ *
+ *  4. Act via ad_execute_by_ref(a, "@e5", snapshot_id, &action, policy, &out).
+ *     Build an AdAction by zero-initialising it and setting its kind field to
+ *     an AD_ACTION_KIND_* constant plus any kind-specific fields (e.g. .text
+ *     for AD_ACTION_KIND_TYPE_TEXT).  policy=0 (Headless) keeps each action's
+ *     built-in base behaviour; pass 2 (Headed) to additionally allow
+ *     cursor/focus fallbacks.  ref_id must be non-null (null returns
+ *     ErrInvalidArgs immediately).
+ *
+ *  5. Ownership: every non-null *out string must be freed with ad_free_string().
+ *     Destroy the adapter when done with ad_adapter_destroy(a).
+ *
+ * macOS: all ad_* calls that interact with the AX API must be made from the
+ * main thread.  ad_snapshot and ad_execute_by_ref enforce this with a guard.
+ */
 
-/* New result codes may be appended in future releases.
- * Always handle values outside this list. */
-enum AdResult {
+
+/**
+ * The major ABI version of this build of `libagent_desktop_ffi`.
+ *
+ * Version-bump rule: increment this constant (and update the header via
+ * `scripts/update-ffi-header.sh`) whenever a breaking change is made to the
+ * C ABI — a removed or incompatibly-changed `ad_*` symbol, or a layout
+ * change to any `repr(C)` struct. Additive changes (new `ad_*` symbols, new
+ * error codes) do **not** require a bump. It is recommended to call `ad_init`
+ * with the major compiled against the header to verify ABI compatibility; a
+ * mismatch means the header and dylib are incompatible and the consumer should
+ * refuse to proceed rather than risk undefined behaviour.
+ */
+#define AD_ABI_VERSION_MAJOR 1
+
+/**
+ * Maximum byte length (excluding the NUL terminator) accepted for any
+ * foreign C string. Bounds both the terminator scan and the resulting
+ * allocation, so a missing NUL or a hostile caller cannot walk arbitrary
+ * memory into a `String`. Sized to roughly match the CLI's argv ceiling so
+ * payload-bearing calls (clipboard-set, type) keep CLI parity rather than
+ * being cut off at a ref-field-sized cap. Mirrored in the header as
+ * `AD_MAX_STRING_BYTES`.
+ */
+#define AD_MAX_STRING_BYTES (1024 * 1024)
+
+#define AD_ACTION_SIZE 96
+
+#define AD_ACTION_RESULT_SIZE 40
+
+#define AD_ACTION_STEP_SIZE 16
+
+#define AD_DRAG_PARAMS_SIZE 48
+
+#define AD_ELEMENT_STATE_SIZE 32
+
+#define AD_REF_ENTRY_SIZE 192
+
+/**
+ * Per-field input caps enforced when converting an `AdRefEntry` at the C
+ * boundary, sized from what real accessibility trees produce (a handful of
+ * states/actions, double-digit path depth) with generous headroom. Mirrored
+ * in the header so callers can validate before calling.
+ */
+#define AD_MAX_REF_STATES 64
+
+#define AD_MAX_REF_ACTIONS 32
+
+#define AD_MAX_REF_PATH_DEPTH 128
+
+/**
+ * Pinned size of `AdWaitArgs` on 64-bit targets. The compile-time
+ * assert below and the `ad_wait_args_size()` runtime getter form the
+ * 3-layer pin: Rust const assert, C `_Static_assert` in the header,
+ * and the test in `c_abi_layout.rs`.
+ */
+#define AD_WAIT_ARGS_SIZE 112
+
+/**
+ * New result codes may be appended in future releases. Always handle values
+ * outside this list.
+ */
+enum AdResult
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_RESULT_OK = 0,
   AD_RESULT_ERR_PERM_DENIED = -1,
   AD_RESULT_ERR_ELEMENT_NOT_FOUND = -2,
@@ -25,15 +122,31 @@ enum AdResult {
   AD_RESULT_ERR_POLICY_DENIED = -14,
   AD_RESULT_ERR_AMBIGUOUS_TARGET = -15,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdResult AdResult;
+#else
 typedef int32_t AdResult;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdImageFormat {
+enum AdImageFormat
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_IMAGE_FORMAT_PNG = 0,
   AD_IMAGE_FORMAT_JPG = 1,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdImageFormat AdImageFormat;
+#else
 typedef int32_t AdImageFormat;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdActionKind {
+enum AdActionKind
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_ACTION_KIND_CLICK = 0,
   AD_ACTION_KIND_DOUBLE_CLICK = 1,
   AD_ACTION_KIND_RIGHT_CLICK = 2,
@@ -56,54 +169,110 @@ enum AdActionKind {
   AD_ACTION_KIND_HOVER = 19,
   AD_ACTION_KIND_DRAG = 20,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdActionKind AdActionKind;
+#else
 typedef int32_t AdActionKind;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdDirection {
+enum AdDirection
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_DIRECTION_UP = 0,
   AD_DIRECTION_DOWN = 1,
   AD_DIRECTION_LEFT = 2,
   AD_DIRECTION_RIGHT = 3,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdDirection AdDirection;
+#else
 typedef int32_t AdDirection;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdModifier {
+enum AdModifier
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_MODIFIER_CMD = 0,
   AD_MODIFIER_CTRL = 1,
   AD_MODIFIER_ALT = 2,
   AD_MODIFIER_SHIFT = 3,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdModifier AdModifier;
+#else
 typedef int32_t AdModifier;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdMouseButton {
+enum AdMouseButton
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_MOUSE_BUTTON_LEFT = 0,
   AD_MOUSE_BUTTON_RIGHT = 1,
   AD_MOUSE_BUTTON_MIDDLE = 2,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdMouseButton AdMouseButton;
+#else
 typedef int32_t AdMouseButton;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdMouseEventKind {
+enum AdMouseEventKind
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_MOUSE_EVENT_KIND_MOVE = 0,
   AD_MOUSE_EVENT_KIND_DOWN = 1,
   AD_MOUSE_EVENT_KIND_UP = 2,
   AD_MOUSE_EVENT_KIND_CLICK = 3,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdMouseEventKind AdMouseEventKind;
+#else
 typedef int32_t AdMouseEventKind;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdPolicyKind {
+enum AdPolicyKind
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_POLICY_KIND_HEADLESS = 0,
   AD_POLICY_KIND_FOCUS_FALLBACK = 1,
   AD_POLICY_KIND_HEADED = 2,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdPolicyKind AdPolicyKind;
+#else
 typedef int32_t AdPolicyKind;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdScreenshotKind {
+enum AdScreenshotKind
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_SCREENSHOT_KIND_SCREEN = 0,
   AD_SCREENSHOT_KIND_WINDOW = 1,
   AD_SCREENSHOT_KIND_FULL_SCREEN = 2,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdScreenshotKind AdScreenshotKind;
+#else
 typedef int32_t AdScreenshotKind;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdSnapshotSurface {
+enum AdSnapshotSurface
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_SNAPSHOT_SURFACE_WINDOW = 0,
   AD_SNAPSHOT_SURFACE_FOCUSED = 1,
   AD_SNAPSHOT_SURFACE_MENU = 2,
@@ -112,16 +281,28 @@ enum AdSnapshotSurface {
   AD_SNAPSHOT_SURFACE_POPOVER = 5,
   AD_SNAPSHOT_SURFACE_ALERT = 6,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdSnapshotSurface AdSnapshotSurface;
+#else
 typedef int32_t AdSnapshotSurface;
+#endif // __STDC_VERSION__ >= 202311L
 
-enum AdWindowOpKind {
+enum AdWindowOpKind
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   AD_WINDOW_OP_KIND_RESIZE = 0,
   AD_WINDOW_OP_KIND_MOVE = 1,
   AD_WINDOW_OP_KIND_MINIMIZE = 2,
   AD_WINDOW_OP_KIND_MAXIMIZE = 3,
   AD_WINDOW_OP_KIND_RESTORE = 4,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdWindowOpKind AdWindowOpKind;
+#else
 typedef int32_t AdWindowOpKind;
+#endif // __STDC_VERSION__ >= 202311L
 
 typedef struct AdAdapter AdAdapter;
 
@@ -140,6 +321,9 @@ typedef struct AdAppList AdAppList;
  */
 typedef struct AdImageBuffer AdImageBuffer;
 
+/**
+ * Opaque notification list returned by `ad_list_notifications`.
+ */
 typedef struct AdNotificationList AdNotificationList;
 
 /**
@@ -196,37 +380,19 @@ typedef struct AdPoint {
   double y;
 } AdPoint;
 
-/*
- * Caller-allocated drag parameters. Zero-initialize the whole struct before
- * setting fields: `duration_ms`/`drop_delay_ms` treat 0 as the adapter-default
- * sentinel, so stack garbage in an unset field would become a real delay.
- * Validate layout with `AD_DRAG_PARAMS_SIZE` / `ad_drag_params_size()`.
- *
- * Layout history (adjudicated pre-1.0 breaks; revalidate sizes on upgrade,
- * do not re-report): 0.x grew this struct 40 -> 48 bytes by adding
- * `drop_delay_ms` (which also grew the embedding `AdAction` — see
- * `AD_ACTION_SIZE`), `AdRefEntry` grew to 192 bytes (`AD_REF_ENTRY_SIZE`),
- * `AdActionStep` was added as a public 16-byte struct (`AD_ACTION_STEP_SIZE`),
- * `AdActionResult` grew to 40 bytes (`AD_ACTION_RESULT_SIZE`) to expose action
- * steps, and `AD_POLICY_KIND_PHYSICAL` was renamed to `AD_POLICY_KIND_HEADED`
- * with a stable discriminant and intentionally no compatibility alias.
+/**
+ * Caller-allocated drag parameters. Callers must zero-initialize the whole
+ * struct before setting fields so unset numeric fields read as the `0`
+ * adapter-default sentinel rather than stack garbage. Verify layout against
+ * `AD_DRAG_PARAMS_SIZE` / `ad_drag_params_size()` when binding from a language
+ * whose struct layout may diverge.
  */
 typedef struct AdDragParams {
   struct AdPoint from;
   struct AdPoint to;
   uint64_t duration_ms;
-  /* Milliseconds to hold over the destination before releasing, so the drop
-   * target activates (macOS). Zero uses the adapter default (500ms). */
   uint64_t drop_delay_ms;
 } AdDragParams;
-
-#define AD_DRAG_PARAMS_SIZE (sizeof(AdDragParams))
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdDragParams) == 48, "AdDragParams ABI size changed");
-_Static_assert(_Alignof(AdDragParams) == 8, "AdDragParams ABI alignment changed");
-#endif
-
-uintptr_t ad_drag_params_size(void);
 
 /**
  * Action dispatched by `ad_execute_action`.
@@ -238,10 +404,10 @@ uintptr_t ad_drag_params_size(void);
  * discriminants of `AdActionKind`.
  *
  * `AdDragParams` is embedded by value, so any growth there grows this
- * struct too. Zero-initialize the whole struct before setting fields and
- * validate layout with `AD_ACTION_SIZE` / `ad_action_size()` — an
- * under-allocated action makes the library read past your buffer, and
- * stack garbage in the embedded `drag` fields becomes a live delay.
+ * struct too. Callers must zero-initialize the whole struct and verify
+ * layout against `AD_ACTION_SIZE` / `ad_action_size()` when binding from
+ * a language whose struct layout may diverge — an under-allocated action
+ * makes the library read past the caller's buffer.
  */
 typedef struct AdAction {
   int32_t kind;
@@ -251,14 +417,6 @@ typedef struct AdAction {
   struct AdDragParams drag;
 } AdAction;
 
-#define AD_ACTION_SIZE (sizeof(AdAction))
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdAction) == 96, "AdAction ABI size changed");
-_Static_assert(_Alignof(AdAction) == 8, "AdAction ABI alignment changed");
-#endif
-
-uintptr_t ad_action_size(void);
-
 typedef struct AdElementState {
   const char *role;
   char **states;
@@ -266,37 +424,11 @@ typedef struct AdElementState {
   const char *value;
 } AdElementState;
 
-#define AD_ELEMENT_STATE_SIZE (sizeof(AdElementState))
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdElementState) == 32, "AdElementState ABI size changed");
-_Static_assert(_Alignof(AdElementState) == 8, "AdElementState ABI alignment changed");
-#endif
-
-uintptr_t ad_element_state_size(void);
-
 typedef struct AdActionStep {
   const char *label;
   const char *outcome;
 } AdActionStep;
 
-#define AD_ACTION_STEP_SIZE (sizeof(AdActionStep))
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdActionStep) == 16, "AdActionStep ABI size changed");
-_Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
-_Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
-_Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
-#endif
-
-uintptr_t ad_action_step_size(void);
-
-/*
- * Result for action calls. `post_state->states` contains `state_count` strings
- * when present. `steps` contains `step_count` activation-chain entries
- * (`label`, `outcome`) when the adapter recorded how the action was attempted.
- * Non-empty owned arrays are additionally null-sentinel terminated by Rust; C
- * callers should use the counts for reads and release the unmodified result via
- * `ad_free_action_result`.
- */
 typedef struct AdActionResult {
   const char *action;
   const char *ref_id;
@@ -304,19 +436,6 @@ typedef struct AdActionResult {
   struct AdActionStep *steps;
   uint32_t step_count;
 } AdActionResult;
-
-#define AD_ACTION_RESULT_SIZE (sizeof(AdActionResult))
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdActionResult) == 40, "AdActionResult ABI size changed");
-_Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
-_Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");
-_Static_assert(offsetof(AdActionResult, ref_id) == 8, "AdActionResult.ref_id offset changed");
-_Static_assert(offsetof(AdActionResult, post_state) == 16, "AdActionResult.post_state offset changed");
-_Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
-_Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
-#endif
-
-uintptr_t ad_action_result_size(void);
 
 typedef struct AdRect {
   double x;
@@ -332,9 +451,9 @@ typedef struct AdRefEntry {
   const char *value;
   const char *description;
   const char *const *states;
-  uintptr_t state_count;
+  size_t state_count;
   const char *const *available_actions;
-  uintptr_t available_action_count;
+  size_t available_action_count;
   struct AdRect bounds;
   bool has_bounds;
   uint64_t bounds_hash;
@@ -346,33 +465,8 @@ typedef struct AdRefEntry {
   const char *root_ref;
   bool path_is_absolute;
   const uint32_t *path;
-  uintptr_t path_count;
+  size_t path_count;
 } AdRefEntry;
-
-#define AD_REF_ENTRY_SIZE (sizeof(AdRefEntry))
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdRefEntry) == 192, "AdRefEntry ABI size changed");
-_Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
-#endif
-
-/*
- * Per-field input caps enforced when an `AdRefEntry` crosses the boundary
- * (`ad_resolve_element`, `ad_execute_ref_action_with_policy`). Counts above
- * a cap are rejected with `AD_RESULT_ERR_INVALID_ARGS`.
- */
-#define AD_MAX_REF_STATES 64
-#define AD_MAX_REF_ACTIONS 32
-#define AD_MAX_REF_PATH_DEPTH 128
-
-/*
- * Maximum byte length (excluding the NUL terminator) accepted for any C
- * string field on any call. Longer or unterminated strings are rejected
- * with `AD_RESULT_ERR_INVALID_ARGS`. Sized to roughly match the CLI's argv
- * ceiling so payload-bearing calls (clipboard, type) keep CLI parity.
- */
-#define AD_MAX_STRING_BYTES 1048576
-
-uintptr_t ad_ref_entry_size(void);
 
 typedef struct AdWindowInfo {
   const char *id;
@@ -389,6 +483,78 @@ typedef struct AdAppInfo {
   int32_t pid;
   const char *bundle_id;
 } AdAppInfo;
+
+/**
+ * Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs`.
+ *
+ * Fields map as follows:
+ * - `Option<u64>` → `u64` value + `bool has_*` sentinel (ms, count).
+ * - `Option<String>` → nullable `*const c_char` (null = absent).
+ * - `bool` → `bool`.
+ *
+ * Callers must zero-initialize before use and verify layout via
+ * `AD_WAIT_ARGS_SIZE` / `ad_wait_args_size()`.
+ */
+typedef struct AdWaitArgs {
+  /**
+   * Milliseconds to sleep (WaitMode::ms).
+   */
+  uint64_t ms;
+  bool has_ms;
+  /**
+   * Element ref id to wait for (WaitMode::element).
+   */
+  const char *element;
+  /**
+   * Window title to wait for (WaitMode::window).
+   */
+  const char *window;
+  /**
+   * Text to wait for (WaitMode::text / WaitMode::notification text).
+   */
+  const char *text;
+  /**
+   * Wait for menu to open (true) or close (false via menu_closed).
+   */
+  bool menu;
+  /**
+   * Wait for menu to close.
+   */
+  bool menu_closed;
+  /**
+   * Wait for a notification.
+   */
+  bool notification;
+  /**
+   * Snapshot id for element predicate (WaitPredicateArgs::snapshot_id).
+   */
+  const char *snapshot_id;
+  /**
+   * Predicate kind string (WaitPredicateArgs::predicate).
+   */
+  const char *predicate;
+  /**
+   * Expected value for value-predicate (WaitPredicateArgs::value).
+   */
+  const char *value;
+  /**
+   * Action name for actionability-predicate (WaitPredicateArgs::action).
+   */
+  const char *action;
+  /**
+   * Expected match count for text waits (WaitPredicateArgs::count).
+   */
+  size_t count;
+  bool has_count;
+  /**
+   * Timeout in milliseconds.
+   */
+  uint64_t timeout_ms;
+  /**
+   * App name filter (null = any). Maps to WaitArgs::app.
+   */
+  const char *app;
+} AdWaitArgs;
 
 /**
  * Mouse event dispatched by `ad_mouse_event`.
@@ -502,9 +668,34 @@ typedef struct AdWindowOp {
 } AdWindowOp;
 
 /**
- * Low-level native-handle action. This does not perform strict ref
- * re-identification or actionability preflight; callers that want CLI parity
- * should use `ad_execute_ref_action_with_policy`.
+ * Returns the packed ABI major version of this dylib build.
+ *
+ * A consumer should compare this to `AD_ABI_VERSION_MAJOR` from the header it
+ * compiled against. If they differ, call nothing further — the ABI is
+ * incompatible.
+ */
+uint32_t ad_abi_version(void);
+
+/**
+ * Checks that the consumer's expected ABI major matches this dylib.
+ *
+ * It is recommended to call this once after `dlopen` / `LoadLibrary` to verify
+ * the header and dylib agree on the major ABI version; a mismatch means they
+ * are incompatible. No global state is initialised by this call — skipping it
+ * does not prevent adapter functions from operating, but undetected ABI
+ * mismatches may cause memory corruption. Returns `AD_RESULT_OK` when
+ * `expected_major == AD_ABI_VERSION_MAJOR`. Returns
+ * `AD_RESULT_ERR_INVALID_ARGS` with a diagnostic last-error when the version
+ * does not match.
+ */
+AdResult ad_init(uint32_t expected_major);
+
+/**
+ * Low-level native-handle action. Dispatches directly to the platform adapter
+ * without strict ref re-identification or actionability preflight. This is a
+ * raw escape hatch for callers that already hold a live native handle. Callers
+ * wanting CLI-semantics parity (RefStore load → strict resolution → preflight
+ * → dispatch) should use `ad_execute_by_ref` instead.
  *
  * # Safety
  *
@@ -520,9 +711,13 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
                            struct AdActionResult *out);
 
 /**
- * Low-level native-handle action with explicit interaction policy. This does
- * not perform strict ref re-identification or actionability preflight; callers
- * that want CLI parity should use `ad_execute_ref_action_with_policy`.
+ * Low-level native-handle action with explicit interaction policy. Dispatches
+ * directly to the platform adapter without strict ref re-identification or
+ * actionability preflight. The `policy` discriminant is applied verbatim — no
+ * base-policy elevation is performed. This is a raw escape hatch for callers
+ * that already hold a live native handle. Callers wanting CLI-semantics parity
+ * (RefStore load → strict resolution → preflight → dispatch with base-policy
+ * join) should use `ad_execute_by_ref` instead.
  *
  * # Safety
  *
@@ -539,8 +734,20 @@ AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
                                        struct AdActionResult *out);
 
 /**
- * Strict ref action path matching CLI semantics: resolve the full ref identity,
- * run actionability preflight, then dispatch using the requested policy.
+ * Low-level struct-based ref-action path: takes a pre-resolved `AdRefEntry`,
+ * runs strict element re-identification and actionability preflight, then
+ * dispatches using the caller-supplied `policy` verbatim (no base-policy
+ * elevation). The adapter's session context (from `ad_adapter_create_with_session`)
+ * is threaded through so that trace events carry the correct session id.
+ *
+ * This is the low-level escape hatch for callers that have already resolved
+ * a `RefEntry` outside the `RefStore` pipeline (e.g. serialized from an
+ * external snapshot). The `policy` discriminant is applied as-is — there is
+ * no `Action::base_interaction_policy` join here.
+ *
+ * Callers wanting full CLI-semantics parity (RefStore load → `RefMap` lookup
+ * → strict resolution → preflight → dispatch with base-policy join) should
+ * use `ad_execute_by_ref` instead.
  *
  * # Safety
  *
@@ -572,8 +779,7 @@ AdResult ad_execute_ref_action_with_policy(const struct AdAdapter *adapter,
  * `ad_resolve_element` writes `ptr`. Copying the struct after that
  * point and calling `ad_free_handle` on either copy is undefined —
  * there is no way for the library to detect forged non-null pointers.
- * Callers that legitimately need a "copy" should re-resolve. The adapter that
- * produced the handle must stay alive until the handle is freed.
+ * Callers that legitimately need a "copy" should re-resolve.
  *
  * # Safety
  *
@@ -619,10 +825,37 @@ void ad_free_action_result(struct AdActionResult *result);
 struct AdAdapter *ad_adapter_create(void);
 
 /**
+ * Builds a session-scoped platform adapter. `session` may be:
+ * - null: equivalent to `ad_adapter_create()` (no session).
+ * - a valid session id (1-64 ASCII alphanumeric / `-` / `_` chars): associates
+ *   the adapter with that session for refmap persistence.
+ * - empty, too long, containing invalid characters, or invalid UTF-8: sets
+ *   `ErrInvalidArgs` in the last-error slot and returns null; no adapter is
+ *   allocated.
+ *
+ * The returned pointer must be released with `ad_adapter_destroy`.
+ *
  * # Safety
  *
- * `adapter` must be a pointer returned by `ad_adapter_create`, or null.
- * After this call the pointer is invalid and must not be used.
+ * `session` must be null or point to readable memory that is NUL-terminated
+ * within `AD_MAX_STRING_BYTES + 1` bytes.
+ */
+struct AdAdapter *ad_adapter_create_with_session(const char *session);
+
+/**
+ * # Safety
+ *
+ * `adapter` must be a pointer returned by `ad_adapter_create` or
+ * `ad_adapter_create_with_session`, or null. After this call the pointer
+ * is invalid and must not be used.
+ *
+ * The adapter must not be destroyed while any other call on it is still in
+ * flight on another thread. Destroying the handle concurrently with an
+ * in-flight call (e.g. `ad_wait` blocking on the main thread while this
+ * function is called from a worker thread) is undefined behaviour — the
+ * `Box` is freed while the blocked call still dereferences it. The caller
+ * owns this synchronisation: ensure all calls on the handle have returned
+ * before calling `ad_adapter_destroy`.
  */
 void ad_adapter_destroy(struct AdAdapter *adapter);
 
@@ -637,8 +870,12 @@ AdResult ad_check_permissions(const struct AdAdapter *adapter);
 /**
  * Closes the application identified by `id` (bundle id on macOS,
  * executable path on other platforms). `force = true` skips the
- * graceful-shutdown path, sends SIGTERM, escalates survivors to SIGKILL,
- * and returns success only after termination is verified.
+ * graceful-shutdown path, terminates matching app processes, and escalates
+ * survivors when the platform supports it. Session-critical
+ * processes (loginwindow, WindowServer, Dock, Finder, launchd) are
+ * refused with `AD_RESULT_ERR_INVALID_ARGS` — the protected-process
+ * guard is enforced inside the adapter, so FFI and CLI behave
+ * identically.
  *
  * # Safety
  * `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
@@ -699,6 +936,194 @@ const struct AdAppInfo *ad_app_list_get(const struct AdAppList *list, uint32_t i
 void ad_app_list_free(struct AdAppList *list);
 
 /**
+ * Drives a ref action (`@e5`, action) through the canonical ref-action
+ * pipeline: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
+ * strict element resolution (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
+ * actionability preflight → dispatch → handle release.
+ *
+ * Policy: `TypeText` defaults to `focus_fallback` (matching the CLI `type`
+ * command); `PressKey` shares that `focus_fallback` base (a ref-targeted key
+ * press may need the target focused); every other action defaults to
+ * `headless`. An explicit `policy` discriminant may *elevate* to headed but
+ * must not downgrade an action below its base. Base and elevation are computed
+ * by `agent_desktop_core::commands::execute_by_ref::execute` via
+ * `Action::base_interaction_policy` + `InteractionPolicy::join`, so CLI and
+ * FFI share a single source of policy truth.
+ *
+ * `ref_id` tri-state: null → `ErrInvalidArgs`; non-null invalid UTF-8 →
+ * `ErrInvalidArgs`; valid UTF-8 but bad `@e{N}` format → `ErrInvalidArgs`.
+ *
+ * `snapshot_id` tri-state: null → use the latest snapshot for the session
+ * (CLI `--snapshot` omitted); valid UTF-8 → pin to that snapshot id; non-null
+ * invalid UTF-8 → `ErrInvalidArgs`.
+ *
+ * `policy` is an `AdPolicyKind` discriminant (0=Headless, 1=FocusFallback,
+ * 2=Headed). An out-of-range value returns `ErrInvalidArgs`. `Headless (0)`
+ * accepts the action's own CLI base (so `TypeText` still uses
+ * `focus_fallback`). `Headed (2)` opts in to cursor-based fallbacks.
+ *
+ * On success `*out` is set to a NUL-terminated JSON envelope (command
+ * `"execute_by_ref"`); free with `ad_free_string`. On guard or decode
+ * failure (invalid args before the command runs) `*out` remains null.
+ * On a command-level error (STALE_REF, AMBIGUOUS_TARGET, etc.) `*out`
+ * holds the error JSON envelope and must still be freed with
+ * `ad_free_string`. The last-error slot is populated on all failures.
+ *
+ * **Dispatch-before-serialize ordering**: the action is dispatched (and any
+ * side effects committed) before the result JSON is serialized. In the
+ * near-impossible event that serialization of an already-valid
+ * `ActionResult` fails, `*out` is null and `ErrInternal` is returned while
+ * the side effect has already occurred. No pre-validation machinery is
+ * needed because serialization of a valid envelope effectively never fails.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer from `ad_adapter_create[_with_session]`.
+ * `ref_id` must be a non-null pointer to a NUL-terminated C string within
+ * `AD_MAX_STRING_BYTES + 1` bytes; null is **not** optional — it is defined
+ * behaviour (no UB) but is rejected immediately with `ErrInvalidArgs`.
+ * `snapshot_id` may be null (meaning: use the latest snapshot for this
+ * session) or a non-null NUL-terminated C string within
+ * `AD_MAX_STRING_BYTES + 1` bytes. `action` must be a non-null pointer to a
+ * valid `AdAction`. `out` must be a non-null writable pointer. All pointers
+ * must remain valid for the duration of the call. Must be called from the
+ * main thread on macOS.
+ */
+AdResult ad_execute_by_ref(const struct AdAdapter *adapter,
+                           const char *ref_id,
+                           const char *snapshot_id,
+                           const struct AdAction *action,
+                           int32_t policy,
+                           char **out);
+
+/**
+ * Takes a full CLI-format snapshot of the target application window,
+ * allocates `@e` refs for all interactive elements, persists the refmap
+ * to disk, and writes the JSON envelope into `*out`.
+ *
+ * The JSON shape matches `agent-desktop snapshot`:
+ * `{"version":"2.0","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
+ *
+ * **`*out` ownership and error behaviour:**
+ * - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.
+ *   Caller must free it with `ad_free_string`.
+ * - On a command-level error (e.g. app not found, snapshot failure): `*out` is a
+ *   heap-allocated JSON string with `"ok":false` and an `"error"` payload. Caller
+ *   must still free it with `ad_free_string`. The last-error slot is also set.
+ * - On an argument or infrastructure error (null adapter, off-main-thread, invalid
+ *   UTF-8, bad surface discriminant, context failure): `*out` is set to null and no
+ *   allocation is made. Only the last-error slot is set.
+ *
+ * `app` is tri-state:
+ * - null — snapshot the currently focused window (same as running the command with no `--app`).
+ * - valid UTF-8 string — snapshot the named application's focused window.
+ * - non-null but invalid UTF-8 or exceeding `AD_MAX_STRING_BYTES` — returns `ErrInvalidArgs`.
+ *
+ * `surface` is an `AdSnapshotSurface` discriminant (0 = Window, 1 = Focused, …).
+ * An out-of-range value returns `ErrInvalidArgs`.
+ *
+ * This entrypoint always targets the active focused window of the requested
+ * application; explicit window targeting (`window_id`) is not yet exposed
+ * over the ABI. Progressive traversal (skeleton mode and `--root` drill-down)
+ * is likewise not exposed here. Both are planned fast-follows to this
+ * entrypoint — agents needing them should use the CLI in the meantime.
+ *
+ * **Dispatch-before-serialize ordering**: the snapshot and refmap persistence
+ * occur before the result JSON is serialised. In the near-impossible event
+ * that serialisation of an already-valid result fails, `*out` is set to null
+ * and `ErrInternal` is returned while the refmap is already written.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer from `ad_adapter_create` or
+ * `ad_adapter_create_with_session`. `out` must be a non-null writable
+ * `*mut *mut c_char`. `app` must be null or a NUL-terminated string within
+ * `AD_MAX_STRING_BYTES + 1` bytes. All pointers must remain valid for the
+ * duration of the call. `adapter` must be used from the main thread on macOS.
+ */
+AdResult ad_snapshot(const struct AdAdapter *adapter,
+                     const char *app,
+                     int32_t surface,
+                     uint8_t max_depth,
+                     bool interactive_only,
+                     bool compact,
+                     char **out);
+
+/**
+ * Returns the adapter's current health and permission state as a JSON
+ * envelope matching the `agent-desktop status` CLI output.
+ *
+ * `ad_status` does not query the accessibility tree; it reads the
+ * permission report and ref-store metadata only, so it is safe to call
+ * from any thread (unlike tree-traversal commands that require the
+ * macOS main thread). On success `*out` is a NUL-terminated,
+ * heap-allocated JSON string freed with `ad_free_string`.
+ *
+ * On a command-level failure `*out` is set to a heap-allocated JSON string
+ * with `"ok":false` and an `"error"` payload. The caller must still release
+ * it with `ad_free_string(*out)`. The last-error slot is also set.
+ *
+ * On an argument or infrastructure failure (null adapter, null out, context
+ * error) `*out` is zeroed and only the last-error slot is populated.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`
+ * that has not been destroyed. `out` must be a non-null writable
+ * `*mut *mut c_char`.
+ */
+AdResult ad_status(const struct AdAdapter *adapter, char **out);
+
+/**
+ * Returns the `agent-desktop` version envelope as an owned JSON C string.
+ *
+ * The returned string has the same `{version, ok, command, data}` shape
+ * as `agent-desktop version` on the CLI. Free it with `ad_free_string`.
+ *
+ * On success `*out` points to the envelope JSON.
+ * On error `*out` is null and the last-error slot is populated.
+ *
+ * # Safety
+ * `out` must be a non-null writable `*mut *mut c_char`.
+ */
+AdResult ad_version(char **out);
+
+/**
+ * Runs `wait` with the given args, blocking the calling thread until the
+ * condition is met or `timeout_ms` elapses.
+ *
+ * On success `*out` is set to a freshly allocated JSON string containing the
+ * CLI-format wait envelope (`{version, ok, command, data}`). The caller must
+ * release the string with `ad_free_string(*out)`.
+ *
+ * On a command-level failure (e.g. `TIMEOUT`, `ELEMENT_NOT_FOUND`) `*out` is
+ * set to a freshly allocated JSON string with `"ok":false` and an `"error"`
+ * payload. The caller must still release it with `ad_free_string(*out)`. The
+ * last-error slot is also set.
+ *
+ * On an argument or infrastructure failure (null adapter, null args, null out,
+ * off-main-thread, invalid UTF-8 field) `*out` is zeroed, the last-error slot
+ * is set, and a negative `AdResult` code is returned. No allocation is made.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create` that
+ * has not been destroyed. `args` must be non-null and point to a valid
+ * zero-initialized `AdWaitArgs`. `out` must be non-null and point to a
+ * writable `*mut c_char`.
+ *
+ * All `*const c_char` fields inside `AdWaitArgs` must be null or point to
+ * readable, NUL-terminated memory within `AD_MAX_STRING_BYTES + 1` bytes.
+ *
+ * `ad_wait` blocks the calling thread for up to `timeout_ms` milliseconds
+ * while it holds a live reference into the adapter's allocation. The adapter
+ * must outlive the call: do not call `ad_adapter_destroy` on this handle from
+ * another thread while `ad_wait` is running — that is a use-after-free. Ensure
+ * the wait has returned before destroying the adapter.
+ */
+AdResult ad_wait(const struct AdAdapter *adapter, const struct AdWaitArgs *args, char **out);
+
+/**
  * Last-error lifetime — errno-style.
  *
  * The pointer returned by `ad_last_error_message`,
@@ -743,11 +1168,11 @@ const char *ad_last_error_suggestion(void);
 const char *ad_last_error_platform_detail(void);
 
 /**
- * Returns a borrowed JSON string with structured details for the last
- * error, or null if the adapter didn't supply one. Same lifetime rules
- * as `ad_last_error_message`. Details may contain element names, values,
- * and window titles from the user's screen; treat as sensitive
- * diagnostics and avoid routing to shared log surfaces.
+ * Returns a borrowed JSON string carrying structured details for the last
+ * error, or null if the adapter didn't supply any. Same lifetime rules as
+ * `ad_last_error_message`. Details may contain element names, values, and
+ * window titles from the user's screen; treat as sensitive diagnostics and
+ * avoid routing to shared log surfaces.
  */
 const char *ad_last_error_details(void);
 
@@ -794,9 +1219,7 @@ void ad_free_string(char *s);
 /**
  * Synthesizes an explicit physical mouse drag from `params.from` to
  * `params.to`. When `params.duration_ms` is zero the drag is instantaneous;
- * a non-zero value asks the platform adapter to interpolate.
- * `params.drop_delay_ms` holds the item over the destination before releasing
- * so the drop target activates; zero uses the adapter default. Callers that
+ * a non-zero value asks the platform adapter to interpolate. Callers that
  * need headless policy enforcement should use ref actions with policy.
  *
  * # Safety
@@ -808,14 +1231,57 @@ AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *par
 /**
  * Dispatches an explicit physical mouse event (move / down / up / click)
  * at the given screen point. Click count is only consulted when `event.kind`
- * is `CLICK` (e.g., `click_count == 2` for a double-click). Callers that need
- * headless policy enforcement should use ref actions with policy.
+ * is `CLICK` (e.g., `click_count == 2` for a double-click). Callers that
+ * need headless policy enforcement should use ref actions with policy.
  *
  * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
  * `event` must be a non-null pointer to a valid `AdMouseEvent`.
  */
 AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEvent *event);
+
+/**
+ * Registers a callback to receive `tracing` events, or unregisters the
+ * current callback when `cb` is `NULL`.
+ *
+ * # Install semantics
+ *
+ * The subscriber layer is installed exactly once — on the first call with a
+ * non-null `cb`. If a foreign global subscriber already owns the process at
+ * that point, the install fails and this function returns
+ * `AD_RESULT_ERR_INTERNAL` with a diagnostic last-error. No callback pointer
+ * is stored in that case; events will never be delivered until the consumer
+ * remedies the conflict. Subsequent calls with a non-null `cb` after a
+ * **successful** install only swap the stored pointer and always return
+ * `AD_RESULT_OK`.
+ *
+ * `NULL` always returns `AD_RESULT_OK` — unregistering cannot fail.
+ *
+ * # Callback contract
+ *
+ * - `level` — 1 (ERROR) … 5 (TRACE)
+ * - `msg` — a NUL-terminated JSON string; valid only for the call's duration
+ *
+ * Sensitive field values (password, token, text, …) are replaced with
+ * `{"redacted":true}` before the message is formatted.
+ *
+ * Invocations are best-effort. A panicking callback is caught and silently
+ * discarded; no command fails because of a trace delivery error. A callback
+ * that emits `tracing` events is safe: the recursive `on_event` is dropped
+ * by a per-thread guard before it reaches the callback again.
+ *
+ * # Safety
+ *
+ * `cb` must be null or a valid function pointer with the declared signature.
+ * The pointer is stored atomically; the subscriber may call it from threads
+ * other than the registering thread.
+ *
+ * A callback unregistered via `NULL` may still be invoked from another thread
+ * for a brief window after this call returns. The callback (and any data it
+ * captures) must remain valid for the process lifetime, or the caller must
+ * quiesce all tracing sources before unregistering.
+ */
+AdResult ad_set_log_callback(void (*cb)(int32_t level, const char *msg));
 
 /**
  * Triggers the named action on the notification at `index`. Typical
@@ -951,6 +1417,11 @@ void ad_notification_list_free(struct AdNotificationList *list);
  * - `role` against `AccessibilityNode.role`
  * - `name_substring` against `AccessibilityNode.name`
  * - `value_substring` against `AccessibilityNode.value`
+ *
+ * The internal tree fetch always sets `include_bounds: true` so
+ * `resolve_element_strict` can disambiguate duplicate-label siblings via
+ * `bounds_hash`; without bounds on the matched node the resolver falls
+ * back to role+name alone and may pick the wrong element.
  *
  * # Safety
  * `adapter`, `win`, and `query` must be valid pointers. `out_handle`
@@ -1139,27 +1610,32 @@ void ad_free_tree(struct AdNodeTree *tree);
  *
  * # Raw-tree contract
  *
- * This is a **raw adapter tree**, not the snapshot the CLI `snapshot`
- * subcommand returns. Differences the caller must know about:
+ * This is a **raw adapter tree** — ref-less, no refmap persistence, and
+ * no JSON envelope. Differences the caller must know about:
  *
- * - `ref_id` is always null on every `AdNode`. The FFI surface does
- *   not run `ref_alloc::allocate_refs`; refs are a CLI/JSON pipeline
- *   concern, so agent-facing code that needs them should drive them
- *   externally (resolve via `ad_find` + `ad_free_handle`, or call the
- *   CLI if refs are required).
- * - `include_bounds`, `interactive_only`, and `compact` are honored
- *   after the adapter returns the raw tree, using
- *   `ref_alloc::transform_tree`. Because refs are not allocated here,
- *   the `interactive_only` cut is role-based rather than ref-based;
- *   otherwise the semantics match the CLI snapshot path.
+ * - `ref_id` is always null on every `AdNode`. `ref_alloc::allocate_refs`
+ *   is not run; `@e` ref assignment is a snapshot-pipeline concern.
+ * - `include_bounds`, `interactive_only`, and `compact` are honoured via
+ *   `ref_alloc::transform_tree` after the adapter returns. Because refs are
+ *   not allocated, the `interactive_only` cut is role-based rather than
+ *   ref-based; otherwise the semantics match the snapshot path.
  * - No skeleton/drill-down pipeline is wired through — `skeleton` is
  *   always false on the underlying `TreeOptions`.
  *
- * If parity with the CLI snapshot is important to your consumer,
- * either use `ad_find` + `ad_get` / `ad_is` for point lookups (which
- * bypass tree shape entirely) or invoke the CLI binary for the
- * snapshot call. A future revision may layer a "normalized snapshot"
- * FFI function on top of this raw path.
+ * # When to use this function vs `ad_snapshot`
+ *
+ * **Observe–act agents** that need `@e` refs and refmap persistence should
+ * call `ad_snapshot` instead. `ad_snapshot` runs the full snapshot pipeline
+ * (ref allocation, refmap write to disk, JSON envelope with
+ * `{"version":"2.0","ok":true,...}`) and is the correct starting point for
+ * any workflow that drives subsequent ref-based actions via
+ * `ad_execute_by_ref` (with an `AdAction`).
+ *
+ * Use `ad_get_tree` when you need the raw flat BFS layout without refs —
+ * for example, to drive your own traversal logic or to populate a UI
+ * inspector that does not use the ref-based action API. For point lookups
+ * that bypass tree shape entirely, `ad_find` + `ad_get` / `ad_is` are
+ * another alternative.
  *
  * On error `*out` is zeroed so `ad_free_tree` on it is a safe no-op.
  *
@@ -1171,6 +1647,25 @@ AdResult ad_get_tree(const struct AdAdapter *adapter,
                      const struct AdWindowInfo *win,
                      const struct AdTreeOptions *opts,
                      struct AdNodeTree *out);
+
+size_t ad_action_size(void);
+
+size_t ad_action_result_size(void);
+
+size_t ad_action_step_size(void);
+
+size_t ad_drag_params_size(void);
+
+size_t ad_element_state_size(void);
+
+size_t ad_ref_entry_size(void);
+
+/**
+ * Returns the size of `AdWaitArgs` as compiled. Ctypes and other
+ * foreign bindings must call this and compare against their own
+ * `sizeof` before passing args to `ad_wait`.
+ */
+size_t ad_wait_args_size(void);
 
 /**
  * Brings `win` to the foreground on the current space. Returns
@@ -1252,3 +1747,35 @@ AdResult ad_window_op(const struct AdAdapter *adapter,
                       struct AdWindowOp op);
 
 #endif  /* AGENT_DESKTOP_H */
+
+/* C11 ABI layout guards — auto-generated; do not hand-edit.
+ * Each sizeof check references the AD_*_SIZE macro defined above so the
+ * size literal lives in exactly one place (the Rust source). Alignment
+ * and offset values are structurally fixed on all 64-bit targets.
+ * The one-shot guard makes double-include safe regardless of C standard. */
+#ifndef AGENT_DESKTOP_ABI_ASSERTS
+#define AGENT_DESKTOP_ABI_ASSERTS
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdDragParams) == AD_DRAG_PARAMS_SIZE, "AdDragParams ABI size changed");
+_Static_assert(_Alignof(AdDragParams) == 8, "AdDragParams ABI alignment changed");
+_Static_assert(sizeof(AdAction) == AD_ACTION_SIZE, "AdAction ABI size changed");
+_Static_assert(_Alignof(AdAction) == 8, "AdAction ABI alignment changed");
+_Static_assert(sizeof(AdElementState) == AD_ELEMENT_STATE_SIZE, "AdElementState ABI size changed");
+_Static_assert(_Alignof(AdElementState) == 8, "AdElementState ABI alignment changed");
+_Static_assert(sizeof(AdActionStep) == AD_ACTION_STEP_SIZE, "AdActionStep ABI size changed");
+_Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
+_Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
+_Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+_Static_assert(sizeof(AdActionResult) == AD_ACTION_RESULT_SIZE, "AdActionResult ABI size changed");
+_Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
+_Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");
+_Static_assert(offsetof(AdActionResult, ref_id) == 8, "AdActionResult.ref_id offset changed");
+_Static_assert(offsetof(AdActionResult, post_state) == 16, "AdActionResult.post_state offset changed");
+_Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
+_Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
+_Static_assert(sizeof(AdRefEntry) == AD_REF_ENTRY_SIZE, "AdRefEntry ABI size changed");
+_Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
+_Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI size drift");
+_Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
+#endif /* __STDC_VERSION__ >= 201112L */
+#endif /* AGENT_DESKTOP_ABI_ASSERTS */

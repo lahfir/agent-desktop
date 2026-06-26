@@ -2,6 +2,8 @@ use agent_desktop_core::error::{AdapterError, ErrorCode};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char};
 
+/// New result codes may be appended in future releases. Always handle values
+/// outside this list.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdResult {
@@ -229,7 +231,9 @@ pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
 
 /// Returns a borrowed JSON string carrying structured details for the last
 /// error, or null if the adapter didn't supply any. Same lifetime rules as
-/// `ad_last_error_message`.
+/// `ad_last_error_message`. Details may contain element names, values, and
+/// window titles from the user's screen; treat as sensitive diagnostics and
+/// avoid routing to shared log surfaces.
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_details() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {

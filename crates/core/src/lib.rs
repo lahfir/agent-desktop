@@ -56,3 +56,4 @@ pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use refs::{RefEntry, RefMap};
 pub use refs_store::RefStore;
+pub use trace::sanitize_trace_value;

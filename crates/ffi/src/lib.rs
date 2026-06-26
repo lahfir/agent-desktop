@@ -14,9 +14,10 @@
 //!
 //! Operations exempt from the guard (safe from any thread):
 //!
+//! - `ad_abi_version` / `ad_init` (no adapter, no AX/Cocoa state)
 //! - `ad_adapter_create` / `ad_adapter_destroy`
 //! - `ad_last_error_*` readers
-//! - `ad_check_permissions` (process-wide query, no AX/Cocoa state)
+//! - `ad_check_permissions`, `ad_status` (permission + ref-store reads, no AX tree traversal)
 //! - All `ad_*_list_{count,get,free}` accessors and
 //!   `ad_image_buffer_*` accessors
 //! - `ad_release_window_fields`, `ad_free_handle`, `ad_free_tree`,
@@ -41,14 +42,17 @@
 //! any number of subsequent successful calls on the same thread; only
 //! the next *failing* call rotates it. Matches POSIX `errno` semantics.
 
+pub(crate) mod abi_version;
 pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod apps;
+pub(crate) mod commands;
 pub(crate) mod convert;
 pub(crate) mod enum_validation;
 pub mod error;
 pub(crate) mod ffi_try;
 pub(crate) mod input;
+pub(crate) mod log_callback;
 pub(crate) mod main_thread;
 pub(crate) mod notifications;
 pub(crate) mod observation;
@@ -59,6 +63,7 @@ pub(crate) mod tree;
 pub mod types;
 pub(crate) mod windows;
 
+pub use abi_version::AD_ABI_VERSION_MAJOR;
 pub use adapter::AdAdapter;
 pub use error::AdResult;
 pub use types::action::AdAction;
@@ -95,6 +100,7 @@ pub use types::snapshot_surface::AdSnapshotSurface;
 pub use types::surface_info::AdSurfaceInfo;
 pub use types::surface_list::AdSurfaceList;
 pub use types::tree_options::AdTreeOptions;
+pub use types::wait_args::AdWaitArgs;
 pub use types::window_info::AdWindowInfo;
 pub use types::window_list::AdWindowList;
 pub use types::window_op::AdWindowOp;

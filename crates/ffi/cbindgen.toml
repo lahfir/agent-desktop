@@ -5,6 +5,87 @@ sys_includes = ["stdint.h", "stdbool.h", "stddef.h"]
 style = "both"
 usize_is_size_t = true
 
+# Agent workflow orientation for C/C++ binding authors.
+# Placed after sys-includes and before declarations (inside the include guard).
+after_includes = """
+/*
+ * Agent workflow — quick orientation for C/C++ binding authors:
+ *
+ *  1. (Optional) Call ad_init(AD_ABI_VERSION_MAJOR) to verify at runtime that
+ *     the header you compiled against matches the loaded dylib.  A version
+ *     mismatch returns ErrInvalidArgs; abort rather than proceed.
+ *
+ *  2. Create an adapter:
+ *       AdAdapter *a = ad_adapter_create();            // no session
+ *       AdAdapter *a = ad_adapter_create_with_session(session_id); // with session
+ *
+ *  3. Observe via ad_snapshot().  The returned JSON envelope contains the
+ *     accessibility tree with @e-prefixed ref IDs (e.g. "@e5") that address
+ *     individual interactive elements.  A refmap is written under
+ *     ~/.agent-desktop/ and is keyed to the session.  The envelope carries
+ *     data.snapshot_id — pass it back as the snapshot_id argument to
+ *     ad_execute_by_ref to pin the action to that exact snapshot; pass NULL
+ *     to target the latest snapshot for the session.
+ *
+ *  4. Act via ad_execute_by_ref(a, "@e5", snapshot_id, &action, policy, &out).
+ *     Build an AdAction by zero-initialising it and setting its kind field to
+ *     an AD_ACTION_KIND_* constant plus any kind-specific fields (e.g. .text
+ *     for AD_ACTION_KIND_TYPE_TEXT).  policy=0 (Headless) keeps each action's
+ *     built-in base behaviour; pass 2 (Headed) to additionally allow
+ *     cursor/focus fallbacks.  ref_id must be non-null (null returns
+ *     ErrInvalidArgs immediately).
+ *
+ *  5. Ownership: every non-null *out string must be freed with ad_free_string().
+ *     Destroy the adapter when done with ad_adapter_destroy(a).
+ *
+ * macOS: all ad_* calls that interact with the AX API must be made from the
+ * main thread.  ad_snapshot and ad_execute_by_ref enforce this with a guard.
+ */
+"""
+
+# ABI layout guards — regenerated automatically by scripts/update-ffi-header.sh.
+# Each sizeof guard references an AD_*_SIZE macro (emitted from the corresponding
+# Rust pub const via [const] allow_static_const = false), so the size literal
+# lives in exactly one place: the Rust source. Alignment and offset guards use
+# literal values because no Rust const tracks those — they are structurally fixed
+# on all 64-bit targets (8-byte pointer alignment; fields in declaration order).
+trailer = """
+/* C11 ABI layout guards — auto-generated; do not hand-edit.
+ * Each sizeof check references the AD_*_SIZE macro defined above so the
+ * size literal lives in exactly one place (the Rust source). Alignment
+ * and offset values are structurally fixed on all 64-bit targets.
+ * The one-shot guard makes double-include safe regardless of C standard. */
+#ifndef AGENT_DESKTOP_ABI_ASSERTS
+#define AGENT_DESKTOP_ABI_ASSERTS
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdDragParams) == AD_DRAG_PARAMS_SIZE, "AdDragParams ABI size changed");
+_Static_assert(_Alignof(AdDragParams) == 8, "AdDragParams ABI alignment changed");
+_Static_assert(sizeof(AdAction) == AD_ACTION_SIZE, "AdAction ABI size changed");
+_Static_assert(_Alignof(AdAction) == 8, "AdAction ABI alignment changed");
+_Static_assert(sizeof(AdElementState) == AD_ELEMENT_STATE_SIZE, "AdElementState ABI size changed");
+_Static_assert(_Alignof(AdElementState) == 8, "AdElementState ABI alignment changed");
+_Static_assert(sizeof(AdActionStep) == AD_ACTION_STEP_SIZE, "AdActionStep ABI size changed");
+_Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
+_Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
+_Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+_Static_assert(sizeof(AdActionResult) == AD_ACTION_RESULT_SIZE, "AdActionResult ABI size changed");
+_Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
+_Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");
+_Static_assert(offsetof(AdActionResult, ref_id) == 8, "AdActionResult.ref_id offset changed");
+_Static_assert(offsetof(AdActionResult, post_state) == 16, "AdActionResult.post_state offset changed");
+_Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
+_Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
+_Static_assert(sizeof(AdRefEntry) == AD_REF_ENTRY_SIZE, "AdRefEntry ABI size changed");
+_Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
+_Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI size drift");
+_Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
+#endif /* __STDC_VERSION__ >= 201112L */
+#endif /* AGENT_DESKTOP_ABI_ASSERTS */
+"""
+
+[const]
+allow_static_const = false
+
 [export]
 # Force-emit the enums whose discriminants are the valid values for
 # public `int32_t` fields (AdAction.kind, AdScrollParams.direction, etc.).

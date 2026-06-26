@@ -1,16 +1,16 @@
 mod common;
 
 use common::{
-    AdAppList, AdFindQuery, AdNativeHandle, AdResult, AdWindowInfo, AdWindowList, CStr,
-    ad_adapter_create, ad_adapter_destroy, ad_app_list_count, ad_app_list_free, ad_app_list_get,
-    ad_check_permissions, ad_find, ad_free_handle, ad_last_error_code, ad_last_error_message,
-    ad_list_apps, ad_list_windows, ad_window_list_count, ad_window_list_free, with_adapter,
+    AdFindQuery, AdNativeHandle, AdResult, AdWindowInfo, AdWindowList, CStr, ad_adapter_create,
+    ad_adapter_destroy, ad_app_list_count, ad_app_list_free, ad_app_list_get, ad_check_permissions,
+    ad_find, ad_free_handle, ad_last_error_code, ad_last_error_message, ad_list_apps,
+    ad_list_windows, ad_window_list_count, ad_window_list_free, with_adapter,
 };
 
 #[test]
 fn null_adapter_rejected_without_ub() {
     unsafe {
-        let mut list: *mut AdAppList = std::ptr::null_mut();
+        let mut list = std::ptr::null_mut();
         let rc = ad_list_apps(std::ptr::null(), &mut list);
         assert!(matches!(
             rc,
@@ -49,8 +49,8 @@ fn null_tolerance_on_list_accessors_and_free() {
 #[test]
 fn dirty_out_param_is_cleared_before_early_return_on_worker_thread() {
     with_adapter(|adapter| unsafe {
-        let fake_ptr = 0xDEAD_BEEF as *mut AdAppList;
-        let mut list: *mut AdAppList = fake_ptr;
+        let fake_ptr = 0xDEAD_BEEF as *mut common::AdAppList;
+        let mut list = fake_ptr;
         let rc = ad_list_apps(adapter, &mut list);
         if rc != AdResult::Ok {
             assert!(
@@ -65,7 +65,7 @@ fn dirty_out_param_is_cleared_before_early_return_on_worker_thread() {
 #[test]
 fn list_handle_lifecycle_roundtrip() {
     with_adapter(|adapter| unsafe {
-        let mut list: *mut AdAppList = std::ptr::null_mut();
+        let mut list = std::ptr::null_mut();
         let rc = ad_list_apps(adapter, &mut list);
         if rc == AdResult::Ok {
             assert!(!list.is_null());

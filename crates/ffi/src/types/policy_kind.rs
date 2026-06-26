@@ -6,6 +6,20 @@ pub enum AdPolicyKind {
     Headed = 2,
 }
 
+impl AdPolicyKind {
+    pub(crate) fn to_interaction_policy(
+        self,
+    ) -> agent_desktop_core::interaction_policy::InteractionPolicy {
+        match self {
+            Self::Headless => agent_desktop_core::interaction_policy::InteractionPolicy::headless(),
+            Self::FocusFallback => {
+                agent_desktop_core::interaction_policy::InteractionPolicy::focus_fallback()
+            }
+            Self::Headed => agent_desktop_core::interaction_policy::InteractionPolicy::headed(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
