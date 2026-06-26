@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [0.4.1](https://github.com/lahfir/agent-desktop/compare/v0.4.0...v0.4.1) (2026-06-26)
+
+
+### Features
+
+* complete FFI C-ABI surface (Phase A): load-time ABI handshake, session-scoped adapter, JSON-envelope command entrypoints (version, status, snapshot, wait, execute-by-ref), an optional tracing log callback, and a unified error-envelope contract ([#67](https://github.com/lahfir/agent-desktop/issues/67))
+
 ## [0.4.0](https://github.com/lahfir/agent-desktop/compare/v0.3.1...v0.4.0) (2026-06-24)
 
 
