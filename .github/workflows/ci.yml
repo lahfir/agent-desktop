@@ -178,6 +178,8 @@ jobs:
           python-version: '3.12'
 
       - name: Run FFI smoke harness
+        env:
+          AD_EXPECT_STUB: "1"
         run: >
           python3 tests/ffi-python/smoke.py
           "${{ steps.dylib.outputs.path }}"
@@ -227,13 +229,14 @@ jobs:
   # flip to panic="abort" silently defeats every catch_unwind in the cdylib and
   # turns any Rust panic into an abort that kills the host process.
   #
-  # This step asserts the Cargo.toml setting directly — it is simpler and more
-  # reliable than a build.rs env check, which is unreliable for a dual
-  # cdylib+rlib crate.
-  #
-  # Gate 2a also runs the stub-adapter passthrough tests under the release-ffi
-  # profile to confirm the dylib actually compiles with that profile and the
-  # panic=unwind setting is in force.
+  # This job proves the contract in two steps:
+  #   1. Assert the Cargo.toml profile setting directly (simpler and more
+  #      reliable than a build.rs env check for a dual cdylib+rlib crate).
+  #   2. Build and run crates/ffi/examples/panic_spike under the release-ffi
+  #      profile: an extern-C fn panics, catch_unwind catches it, and the
+  #      example prints "PANIC CAUGHT OK (code = -1)" and exits 0. If the
+  #      profile were flipped to panic="abort" the process would SIGABRT
+  #      instead, making this step a runtime proof — not just a string check.
   ffi-panic-guard:
     name: FFI Panic Guard
     runs-on: macos-latest
@@ -265,22 +268,31 @@ jobs:
           fi
           echo "OK: release-ffi profile retains panic=\"unwind\""
 
-  # Gate 3 — Stub-adapter passthrough tests: every adapter-touching ad_*
-  # entrypoint is exercised against the stub adapter and must return a
-  # structured error (PLATFORM_NOT_SUPPORTED envelope or the documented
-  # ErrPermDenied exception for ad_check_permissions). These tests are gated
-  # behind #[cfg(feature = "stub-adapter")] so the normal build is unaffected.
+      - name: Prove catch_unwind survives the release-ffi profile
+        run: cargo run --locked --profile release-ffi --example panic_spike -p agent-desktop-ffi
+
+  # Gate 3 — Stub-adapter passthrough tests: the Family-B command-backed
+  # entrypoints (ad_snapshot, ad_status, ad_wait, ad_execute_by_ref,
+  # ad_version) plus adapter lifecycle (ad_init / ad_destroy) and
+  # ad_check_permissions are exercised against the stub adapter. Each must
+  # return a structured PLATFORM_NOT_SUPPORTED envelope — or, for
+  # ad_check_permissions, the documented ErrPermDenied result. These tests are
+  # gated behind #[cfg(feature = "stub-adapter")] so the normal build is
+  # unaffected.
+  #
+  # Scope note: the ~35 Family-A entrypoints (ad_find, ad_execute_action,
+  # ad_list_windows, ad_screenshot, clipboard, notifications, etc.) are NOT
+  # covered by this passthrough job. Broader Family-A stub coverage is a
+  # documented follow-up.
   #
   # Per-target build coverage:
-  #   - PR CI: macOS build + stub passthrough tests (this job).
+  #   - PR CI: this job runs on Linux (no main-thread guard off macOS, so the
+  #     stub adapter is reached directly) to assert PLATFORM_NOT_SUPPORTED for
+  #     every covered entrypoint — directly proving the non-macOS parity
+  #     U10 targets.
   #   - Release: release.yml build-ffi matrix covers macOS×2 + Linux×2 +
-  #     Windows×1, building the cdylib on the real target runners. PR builds
-  #     do not duplicate the cross-compile matrix to avoid bloating CI on
-  #     every push; the parity contract (all ad_* return structured errors on
-  #     stub) is proven here once for the platform.
-  # Runs on Linux: there is no main-thread guard off macOS, so the stub-adapter
-  # passthrough tests reach the adapter and assert the real PLATFORM_NOT_SUPPORTED
-  # envelope for every entrypoint — directly proving the non-macOS parity U10 targets.
+  #     Windows×1 for the real cdylib. PR builds do not duplicate that
+  #     cross-compile matrix to avoid bloating CI on every push.
   ffi-passthrough:
     name: FFI Stub-Adapter Passthrough
     runs-on: ubuntu-latest

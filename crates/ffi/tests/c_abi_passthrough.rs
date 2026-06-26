@@ -1,12 +1,28 @@
-/// Stub-adapter passthrough tests — gate with `--features stub-adapter`.
+/// Stub-adapter passthrough tests for Family-B command-backed entrypoints.
+/// Gate with `--features stub-adapter`.
 ///
-/// Every adapter-touching `ad_*` entrypoint is called against the stub
-/// adapter. The stub's `PlatformAdapter` impl delegates all methods to the
-/// trait defaults, which uniformly return `AdapterError::not_supported(…)` →
+/// # Coverage
+///
+/// This file exercises:
+/// - **Family-B command-backed entrypoints**: `ad_snapshot`, `ad_status`,
+///   `ad_wait`, `ad_execute_by_ref`, `ad_version`
+/// - **Adapter lifecycle**: `ad_adapter_create`, `ad_adapter_destroy`
+/// - **Permissions**: `ad_check_permissions`
+///
+/// The ~35 Family-A entrypoints (`ad_find`, `ad_execute_action`,
+/// `ad_list_windows`, `ad_screenshot`, clipboard, notifications, etc.) are
+/// **not covered here**; broader Family-A passthrough is a documented
+/// follow-up.
+///
+/// # Why the stub returns `not_supported`
+///
+/// The stub's `PlatformAdapter` impl delegates all methods to the trait
+/// defaults, which uniformly return `AdapterError::not_supported(…)` →
 /// `ErrorCode::PlatformNotSupported`. The JSON envelope therefore carries
 /// `"ok":false` and `"error":{"code":"PLATFORM_NOT_SUPPORTED","suggestion":…}`.
 ///
-/// Exception — `ad_check_permissions`:
+/// # Exception — `ad_check_permissions`
+///
 /// The stub's `permission_report()` returns `PermissionState::Denied` (the
 /// trait default), not `Unknown`. The FFI maps `Denied` to `ErrPermDenied
 /// (-1)`, not `ErrPlatformNotSupported (-8)`. This is the documented signal
@@ -14,7 +30,8 @@
 /// both `ErrPermDenied` and `ErrPlatformNotSupported` as "adapter not
 /// operational here".
 ///
-/// Main-thread tolerance:
+/// # Main-thread tolerance
+///
 /// `ad_snapshot`, `ad_wait`, and `ad_execute_by_ref` each call
 /// `require_main_thread()` before touching the adapter. The libtest harness
 /// spawns each `#[test]` on a worker thread, so on macOS those guards fire

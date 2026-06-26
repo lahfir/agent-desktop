@@ -15,6 +15,7 @@ Exit codes:
 
 import ctypes
 import json
+import os
 import re
 import sys
 from ctypes import (
@@ -74,7 +75,6 @@ def parse_header_constants(header_path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def resolve_paths() -> tuple[str, str]:
-    import os
     dylib = os.environ.get("AD_DYLIB_PATH") or (sys.argv[1] if len(sys.argv) > 1 else "")
     header = os.environ.get("AD_HEADER_PATH") or (sys.argv[2] if len(sys.argv) > 2 else "")
     if not dylib:
@@ -203,6 +203,8 @@ def main() -> None:
     print("\nLeg 4 — adapter leg: create → snapshot → assert PLATFORM_NOT_SUPPORTED → destroy")
     # ------------------------------------------------------------------
 
+    expect_stub = os.environ.get("AD_EXPECT_STUB") == "1"
+
     adapter = ad_adapter_create()
     if not adapter:
         fail("ad_adapter_create() returned null")
@@ -232,8 +234,15 @@ def main() -> None:
             fail(f"ad_snapshot() output is not valid JSON: {exc}\nraw: {raw_snap!r}")
 
         if snap_env.get("ok") is True:
+            if expect_stub:
+                ad_adapter_destroy(adapter)
+                fail(
+                    "ad_snapshot() returned ok:true but AD_EXPECT_STUB=1 — "
+                    "the dylib appears to be built without --features stub-adapter; "
+                    "a stub build cannot successfully complete a real snapshot"
+                )
             # Real adapter succeeded (e.g. local run with AX grant + real adapter).
-            ok(f"ad_snapshot() -> ok:true (real adapter path)")
+            ok("ad_snapshot() -> ok:true (real adapter path)")
         else:
             # Expected stub-adapter path: ok:false + PLATFORM_NOT_SUPPORTED.
             err = snap_env.get("error", {})
