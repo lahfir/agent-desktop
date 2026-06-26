@@ -1,39 +1,3 @@
-//! Cargo's default install_name is the absolute build-machine path, which
-//! breaks linking consumers (Swift/SPM, clang) once the dylib is extracted
-//! from a release tarball. @rpath is the portable form.
-//!
-//! # panic=abort guard (Finding #14)
-//!
-//! `trap_panic` (the `catch_unwind` fence in `src/ffi.rs`) requires
-//! `panic = "unwind"` to function; building with `panic = "abort"` silently
-//! degrades hostile-input panics to process abort.  The `release-ffi` profile
-//! enforces `panic = "unwind"` and is the only profile used to ship the cdylib.
-//!
-//! A build-time check via `CARGO_CFG_PANIC` is not viable here: because this
-//! crate declares both `cdylib` and `rlib` crate-types, Cargo always reports
-//! `CARGO_CFG_PANIC = "unwind"` in the build script regardless of the active
-//! profile's `panic` setting.  The invariant is therefore documented rather
-//! than machine-enforced; CI gates the cdylib via `--profile release-ffi` only.
-//!
-//! # FFI command codegen
-//!
-//! Family-B wrappers (command-backed, JSON-returning) are generated from
-//! per-command templates held in `COMMAND_TEMPLATES`. The universe is derived
-//! from `pub`/`pub(crate) mod` declarations in `src/commands/mod.rs`,
-//! excluding `envelope_out` and `generated` (helpers, not commands).
-//!
-//! Adding a new Family-B command requires:
-//! 1. Declaring `pub mod <name>;` or `pub(crate) mod <name>;` in
-//!    `src/commands/mod.rs`.
-//! 2. Adding a `("<name>", TEMPLATE_<NAME>)` entry to `COMMAND_TEMPLATES`.
-//!
-//! The build fails at step 2 if step 1 is done without step 2, ensuring no
-//! command is silently missing a wrapper.
-
-use std::collections::BTreeMap;
-use std::path::PathBuf;
-
-const GENERATED_HEADER: &str = "\
 //! @generated — produced by crates/ffi/build.rs codegen.
 //! Edit the templates in build.rs, not this file.
 //! Commands in alphabetical order: execute_by_ref, snapshot, status, version, wait.
@@ -59,9 +23,7 @@ use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
 use agent_desktop_core::refs::validate_ref_id;
 use std::ffi::c_char;
 use std::ptr;
-";
 
-const TEMPLATE_EXECUTE_BY_REF: &str = r#"
 /// Drives a ref action (`@e5`, action) through the canonical ref-action
 /// pipeline: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
 /// strict element resolution (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
@@ -197,9 +159,7 @@ pub unsafe extern "C" fn ad_execute_by_ref(
         unsafe { write_command_envelope("execute_by_ref", result, out) }
     })
 }
-"#;
 
-const TEMPLATE_SNAPSHOT: &str = r#"
 /// Takes a full CLI-format snapshot of the target application window,
 /// allocates `@e` refs for all interactive elements, persists the refmap
 /// to disk, and writes the JSON envelope into `*out`.
@@ -303,9 +263,7 @@ pub unsafe extern "C" fn ad_snapshot(
         unsafe { write_command_envelope("snapshot", result, out) }
     })
 }
-"#;
 
-const TEMPLATE_STATUS: &str = r#"
 /// Returns the adapter's current health and permission state as a JSON
 /// envelope matching the `agent-desktop status` CLI output.
 ///
@@ -356,9 +314,7 @@ pub unsafe extern "C" fn ad_status(
         unsafe { write_command_envelope("status", result, out) }
     })
 }
-"#;
 
-const TEMPLATE_VERSION: &str = r#"
 /// Returns the `agent-desktop` version envelope as an owned JSON C string.
 ///
 /// The returned string has the same `{version, ok, command, data}` shape
@@ -378,9 +334,7 @@ pub unsafe extern "C" fn ad_version(out: *mut *mut c_char) -> AdResult {
         write_command_envelope("version", result, out)
     })
 }
-"#;
 
-const TEMPLATE_WAIT: &str = r#"
 /// Runs `wait` with the given args, blocking the calling thread until the
 /// condition is met or `timeout_ms` elapses.
 ///
@@ -480,81 +434,4 @@ pub unsafe extern "C" fn ad_wait(
 
         unsafe { write_command_envelope("wait", result, out) }
     })
-}
-"#;
-
-/// Helper modules excluded from the Family-B command universe.
-const EXCLUDED_MODS: &[&str] = &["envelope_out", "generated"];
-
-/// Map from command name to its wrapper template (alphabetical by convention).
-fn command_templates() -> BTreeMap<&'static str, &'static str> {
-    let mut m = BTreeMap::new();
-    m.insert("execute_by_ref", TEMPLATE_EXECUTE_BY_REF);
-    m.insert("snapshot", TEMPLATE_SNAPSHOT);
-    m.insert("status", TEMPLATE_STATUS);
-    m.insert("version", TEMPLATE_VERSION);
-    m.insert("wait", TEMPLATE_WAIT);
-    m
-}
-
-/// Parse `pub`/`pub(crate) mod <name>;` declarations from `commands/mod.rs`.
-/// Returns names in the order they appear in the file.
-fn parse_command_mods(src: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    for line in src.lines() {
-        let trimmed = line.trim();
-        let rest = if let Some(r) = trimmed.strip_prefix("pub(crate) mod ") {
-            r
-        } else if let Some(r) = trimmed.strip_prefix("pub mod ") {
-            r
-        } else {
-            continue;
-        };
-        let name = rest.trim_end_matches(';');
-        if !EXCLUDED_MODS.contains(&name) {
-            names.push(name.to_owned());
-        }
-    }
-    names
-}
-
-fn main() {
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-        println!("cargo:rustc-cdylib-link-arg=-Wl,-install_name,@rpath/libagent_desktop_ffi.dylib");
-    }
-
-    let manifest_dir =
-        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
-    let commands_mod = manifest_dir.join("src/commands/mod.rs");
-    let generated_path = manifest_dir.join("src/commands/generated.rs");
-
-    println!("cargo:rerun-if-changed={}", commands_mod.display());
-    println!("cargo:rerun-if-changed={}", generated_path.display());
-
-    let src = std::fs::read_to_string(&commands_mod)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", commands_mod.display()));
-
-    let found_commands = parse_command_mods(&src);
-    let templates = command_templates();
-
-    for name in &found_commands {
-        if !templates.contains_key(name.as_str()) {
-            panic!(
-                "Family-B command `{name}` declared in commands/mod.rs has no codegen template. \
-                 Add `(\"{name}\", TEMPLATE_{})` to `command_templates()` in build.rs.",
-                name.to_uppercase()
-            );
-        }
-    }
-
-    let mut output = String::from(GENERATED_HEADER);
-    for name in templates.keys() {
-        output.push_str(templates[name]);
-    }
-
-    let existing = std::fs::read_to_string(&generated_path).unwrap_or_default();
-    if existing != output {
-        std::fs::write(&generated_path, &output)
-            .unwrap_or_else(|e| panic!("failed to write {}: {e}", generated_path.display()));
-    }
 }
