@@ -86,11 +86,12 @@ impl CommandContext {
     }
 
     pub fn trace(&self, event: &str, fields: Value) -> Result<(), AppError> {
-        self.trace.emit(event, fields)
+        self.trace.emit(event, self.session_id.as_deref(), fields)
     }
 
     pub fn trace_lazy(&self, event: &str, fields: impl FnOnce() -> Value) -> Result<(), AppError> {
-        self.trace.emit_lazy(event, fields)
+        self.trace
+            .emit_lazy(event, self.session_id.as_deref(), fields)
     }
 
     pub fn session_id(&self) -> Option<&str> {
@@ -148,6 +149,41 @@ mod tests {
         assert_eq!(event["event"], "ref.resolve.ok");
         assert_eq!(event["ref"], "@e1");
         assert!(event["ts_ms"].as_u64().is_some());
+        assert!(
+            event.get("session_id").is_none(),
+            "session_id must be absent when not set"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn trace_injects_session_id_as_top_level_unredacted_field() {
+        let path = std::env::temp_dir().join(format!(
+            "agent-desktop-session-trace-{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let context =
+            CommandContext::new(Some("my-session".into()), Some(path.clone()), false).unwrap();
+
+        context
+            .trace("ref.resolve.ok", serde_json::json!({ "ref": "@e1" }))
+            .unwrap();
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        let event: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
+        assert_eq!(
+            event["session_id"], "my-session",
+            "session_id must be a top-level string"
+        );
+        assert_eq!(event["event"], "ref.resolve.ok");
+        assert!(event["ts_ms"].as_u64().is_some());
+        assert!(
+            !body.contains("redacted"),
+            "session_id must not be redacted"
+        );
         let _ = std::fs::remove_file(path);
     }
 

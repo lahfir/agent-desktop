@@ -34,18 +34,28 @@ impl TraceConfig {
         Ok(Self { strict, writer })
     }
 
-    pub fn emit(&self, event: &str, fields: Value) -> Result<(), AppError> {
-        self.emit_lazy(event, || fields)
+    pub fn emit(
+        &self,
+        event: &str,
+        session_id: Option<&str>,
+        fields: Value,
+    ) -> Result<(), AppError> {
+        self.emit_lazy(event, session_id, || fields)
     }
 
-    pub fn emit_lazy(&self, event: &str, fields: impl FnOnce() -> Value) -> Result<(), AppError> {
+    pub fn emit_lazy(
+        &self,
+        event: &str,
+        session_id: Option<&str>,
+        fields: impl FnOnce() -> Value,
+    ) -> Result<(), AppError> {
         let Some(writer) = self.writer.as_ref() else {
             return Ok(());
         };
         match writer
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))
-            .and_then(|mut file| write_event(&mut file, event, fields()))
+            .and_then(|mut file| write_event(&mut file, event, session_id, fields()))
         {
             Ok(()) => Ok(()),
             Err(err) if self.strict => Err(err),
@@ -71,7 +81,12 @@ fn open_trace_file(path: &Path) -> Result<std::fs::File, AppError> {
     Ok(file)
 }
 
-fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(), AppError> {
+fn write_event(
+    file: &mut std::fs::File,
+    event: &str,
+    session_id: Option<&str>,
+    fields: Value,
+) -> Result<(), AppError> {
     reject_oversized_trace(file)?;
     let mut body = Map::new();
     body.insert("event".to_string(), json!(event));
@@ -88,6 +103,9 @@ fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(
         for (key, value) in fields {
             body.insert(key, value);
         }
+    }
+    if let Some(sid) = session_id {
+        body.insert("session_id".to_string(), json!(sid));
     }
     serde_json::to_writer(&mut *file, &Value::Object(body))?;
     use std::io::Write;
@@ -296,7 +314,7 @@ mod tests {
         }
         let mut file = open_trace_file(&path).unwrap();
 
-        let err = write_event(&mut file, "event", json!({})).unwrap_err();
+        let err = write_event(&mut file, "event", None, json!({})).unwrap_err();
 
         assert_eq!(err.code(), "INVALID_ARGS");
         let _ = std::fs::remove_file(path);
