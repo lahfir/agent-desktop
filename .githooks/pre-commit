@@ -74,6 +74,12 @@ run "cargo test --lib --workspace" cargo test --lib --workspace
 # ── FFI-specific gates ────────────────────────────────────────────────────────
 # Mirrors CI jobs: ffi-codegen-drift, ffi-passthrough, ffi-header-drift.
 # Fast-skipped in full when no crates/ffi/** files are staged.
+#
+# Scope: only the fast structural gates run locally (codegen drift, stub
+# passthrough, optional header drift).  panic_spike (requires a release-ffi
+# example build) and the Python smoke harness (requires a full cdylib build
+# plus a Python runtime) are CI-only — jobs ffi-panic-guard and
+# ffi-python-smoke — to keep commits fast.
 if [ "$HAS_FFI_CHANGES" -eq 1 ]; then
     # Gate 1: Codegen drift — build triggers build.rs which regenerates
     # generated.rs in-source; diff detects a stale staged copy.
