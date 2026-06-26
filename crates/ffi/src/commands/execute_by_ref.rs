@@ -9,7 +9,6 @@ use crate::main_thread::require_main_thread;
 use crate::pointer_guard::guard_non_null;
 use crate::types::{AdAction, AdPolicyKind};
 use agent_desktop_core::error::{AdapterError, ErrorCode};
-use agent_desktop_core::interaction_policy::InteractionPolicy;
 use agent_desktop_core::refs::validate_ref_id;
 use std::ffi::c_char;
 use std::ptr;
@@ -125,7 +124,7 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             }
         };
 
-        let caller_ip = policy_kind_to_interaction_policy(caller_policy);
+        let caller_ip = caller_policy.to_interaction_policy();
 
         let adapter_ref = unsafe { &*adapter };
         let context = match adapter_ref.command_context() {
@@ -150,23 +149,16 @@ pub unsafe extern "C" fn ad_execute_by_ref(
     })
 }
 
-fn policy_kind_to_interaction_policy(kind: AdPolicyKind) -> InteractionPolicy {
-    match kind {
-        AdPolicyKind::Headless => InteractionPolicy::headless(),
-        AdPolicyKind::FocusFallback => InteractionPolicy::focus_fallback(),
-        AdPolicyKind::Headed => InteractionPolicy::headed(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use agent_desktop_core::action::Action;
+    use agent_desktop_core::interaction_policy::InteractionPolicy;
 
     #[test]
     fn policy_kind_headless_maps_to_headless() {
         assert_eq!(
-            policy_kind_to_interaction_policy(AdPolicyKind::Headless),
+            AdPolicyKind::Headless.to_interaction_policy(),
             InteractionPolicy::headless()
         );
     }
@@ -174,7 +166,7 @@ mod tests {
     #[test]
     fn policy_kind_focus_fallback_maps_to_focus_fallback() {
         assert_eq!(
-            policy_kind_to_interaction_policy(AdPolicyKind::FocusFallback),
+            AdPolicyKind::FocusFallback.to_interaction_policy(),
             InteractionPolicy::focus_fallback()
         );
     }
@@ -182,7 +174,7 @@ mod tests {
     #[test]
     fn policy_kind_headed_maps_to_headed() {
         assert_eq!(
-            policy_kind_to_interaction_policy(AdPolicyKind::Headed),
+            AdPolicyKind::Headed.to_interaction_policy(),
             InteractionPolicy::headed()
         );
     }

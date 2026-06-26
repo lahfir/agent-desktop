@@ -1,6 +1,7 @@
 use crate::AdAdapter;
 use crate::actions::conversion::action_from_c;
 use crate::actions::result::action_result_to_c;
+use crate::commands::app_error_to_adapter;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind, AdRefEntry};
@@ -154,11 +155,7 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
         let context = match adapter_ref.command_context() {
             Ok(ctx) => ctx,
             Err(err) => {
-                let ae = match err {
-                    agent_desktop_core::error::AppError::Adapter(e) => e,
-                    other => agent_desktop_core::error::AdapterError::internal(other.to_string()),
-                };
-                error::set_last_error(&ae);
+                error::set_last_error(&app_error_to_adapter(err));
                 return error::last_error_code();
             }
         };
@@ -201,10 +198,9 @@ fn decode_policy(policy: i32) -> Result<AdPolicyKind, AdResult> {
 }
 
 fn action_request(policy: AdPolicyKind, action: Action) -> ActionRequest {
-    match policy {
-        AdPolicyKind::Headless => ActionRequest::headless(action),
-        AdPolicyKind::FocusFallback => ActionRequest::focus_fallback(action),
-        AdPolicyKind::Headed => ActionRequest::headed(action),
+    ActionRequest {
+        action,
+        policy: policy.to_interaction_policy(),
     }
 }
 
