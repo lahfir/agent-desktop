@@ -18,11 +18,18 @@
  *  3. Observe via ad_snapshot().  The returned JSON envelope contains the
  *     accessibility tree with @e-prefixed ref IDs (e.g. "@e5") that address
  *     individual interactive elements.  A refmap is written under
- *     ~/.agent-desktop/ and is keyed to the session.
+ *     ~/.agent-desktop/ and is keyed to the session.  The envelope carries
+ *     data.snapshot_id — pass it back as the snapshot_id argument to
+ *     ad_execute_by_ref to pin the action to that exact snapshot; pass NULL
+ *     to target the latest snapshot for the session.
  *
  *  4. Act via ad_execute_by_ref(a, "@e5", snapshot_id, &action, policy, &out).
- *     Pass snapshot_id=NULL to target the latest snapshot; ref_id must be
- *     non-null (null returns ErrInvalidArgs immediately).
+ *     Build an AdAction by zero-initialising it and setting its kind field to
+ *     an AD_ACTION_KIND_* constant plus any kind-specific fields (e.g. .text
+ *     for AD_ACTION_KIND_TYPE_TEXT).  policy=0 (Headless) keeps each action's
+ *     built-in base behaviour; pass 2 (Headed) to additionally allow
+ *     cursor/focus fallbacks.  ref_id must be non-null (null returns
+ *     ErrInvalidArgs immediately).
  *
  *  5. Ownership: every non-null *out string must be freed with ad_free_string().
  *     Destroy the adapter when done with ad_adapter_destroy(a).
@@ -1021,6 +1028,11 @@ AdResult ad_execute_by_ref(const struct AdAdapter *adapter,
  * is likewise not exposed here. Both are planned fast-follows to this
  * entrypoint — agents needing them should use the CLI in the meantime.
  *
+ * **Dispatch-before-serialize ordering**: the snapshot and refmap persistence
+ * occur before the result JSON is serialised. In the near-impossible event
+ * that serialisation of an already-valid result fails, `*out` is set to null
+ * and `ErrInternal` is returned while the refmap is already written.
+ *
  * # Safety
  *
  * `adapter` must be a non-null pointer from `ad_adapter_create` or
@@ -1616,8 +1628,8 @@ void ad_free_tree(struct AdNodeTree *tree);
  * call `ad_snapshot` instead. `ad_snapshot` runs the full snapshot pipeline
  * (ref allocation, refmap write to disk, JSON envelope with
  * `{"version":"2.0","ok":true,...}`) and is the correct starting point for
- * any workflow that drives subsequent `ad_click`, `ad_type_text`, or other
- * ref-based actions.
+ * any workflow that drives subsequent ref-based actions via
+ * `ad_execute_by_ref` (with an `AdAction`).
  *
  * Use `ad_get_tree` when you need the raw flat BFS layout without refs —
  * for example, to drive your own traversal logic or to populate a UI

@@ -49,7 +49,9 @@ pub fn check_live(
             ErrorCode::StaleRef,
             "Resolved element no longer exposes live accessibility state",
         )
-        .with_suggestion("Run 'snapshot' again and retry with the refreshed ref"));
+        .with_suggestion(
+            "Re-run a snapshot to obtain fresh refs, then retry with the new ref (CLI: snapshot; FFI: ad_snapshot then ad_execute_by_ref with the returned snapshot_id)",
+        ));
     }
     if let Some(state) = live.state {
         observed.role = state.role;
