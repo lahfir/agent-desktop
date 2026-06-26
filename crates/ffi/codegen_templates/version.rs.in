@@ -1,8 +1,3 @@
-use crate::commands::envelope_out::write_command_envelope;
-use crate::error::AdResult;
-use crate::ffi_try::trap_panic;
-use crate::pointer_guard::guard_non_null;
-use std::os::raw::c_char;
 
 /// Returns the `agent-desktop` version envelope as an owned JSON C string.
 ///
@@ -18,7 +13,7 @@ use std::os::raw::c_char;
 pub unsafe extern "C" fn ad_version(out: *mut *mut c_char) -> AdResult {
     trap_panic(|| unsafe {
         guard_non_null!(out, c"out is null");
-        *out = std::ptr::null_mut();
+        *out = ptr::null_mut();
         let result = agent_desktop_core::commands::version::execute();
         write_command_envelope("version", result, out)
     })

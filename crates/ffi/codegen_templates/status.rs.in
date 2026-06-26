@@ -1,11 +1,3 @@
-use crate::commands::app_error_to_adapter;
-use crate::commands::envelope_out::write_command_envelope;
-use crate::error::{self, AdResult};
-use crate::ffi_try::trap_panic;
-use crate::pointer_guard::guard_non_null;
-use agent_desktop_core::commands::status::execute_with_report_with_context;
-use agent_desktop_core::error::AppError;
-use std::ffi::c_char;
 
 /// Returns the adapter's current health and permission state as a JSON
 /// envelope matching the `agent-desktop status` CLI output.
@@ -34,7 +26,7 @@ pub unsafe extern "C" fn ad_status(
     out: *mut *mut c_char,
 ) -> AdResult {
     guard_non_null!(out, c"out is null");
-    unsafe { *out = std::ptr::null_mut() };
+    unsafe { *out = ptr::null_mut() };
     guard_non_null!(adapter, c"adapter is null");
 
     trap_panic(|| {
