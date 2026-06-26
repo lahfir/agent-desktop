@@ -95,13 +95,15 @@ impl AdapterError {
             format!("{ref_id} not found in current RefMap"),
         )
         .with_suggestion(
-            "Use the snapshot_id returned with this ref, or run 'snapshot' / 'snapshot --skeleton' again for fresh refs",
+            "Re-run a snapshot to obtain fresh refs, then retry with the new ref \
+             (CLI: snapshot [--skeleton]; FFI: ad_snapshot then ad_execute_by_ref with the returned snapshot_id)",
         )
     }
 
     pub fn ambiguous_target(message: impl Into<String>) -> Self {
-        Self::new(ErrorCode::AmbiguousTarget, message)
-            .with_suggestion("Run 'snapshot' to refresh, then retry with a more specific ref")
+        Self::new(ErrorCode::AmbiguousTarget, message).with_suggestion(
+            "Re-run a snapshot to refresh refs, then retry with a more specific ref",
+        )
     }
 
     pub fn not_supported(method: &str) -> Self {
@@ -117,7 +119,7 @@ impl AdapterError {
             ErrorCode::ElementNotFound,
             format!("Element {ref_id} could not be resolved"),
         )
-        .with_suggestion("Run 'snapshot' to get fresh refs")
+        .with_suggestion("Re-run a snapshot to obtain fresh refs, then retry with the new ref")
     }
 
     pub fn timeout(msg: impl Into<String>) -> Self {
@@ -130,7 +132,11 @@ impl AdapterError {
             ErrorCode::NotificationNotFound,
             format!("Notification at index {index} not found"),
         )
-        .with_suggestion("Notification may have been dismissed or expired. Run 'list-notifications' to see current notifications")
+        .with_suggestion(
+            "Notification may have been dismissed or expired. \
+             Re-run a notification list to see current notifications \
+             (CLI: list-notifications; FFI: ad_list_notifications)",
+        )
     }
 
     pub fn internal(msg: impl Into<String>) -> Self {
@@ -152,7 +158,10 @@ impl AdapterError {
             ErrorCode::SnapshotNotFound,
             format!("Snapshot '{snapshot_id}' not found"),
         )
-        .with_suggestion("Run 'snapshot' again and retry with the returned snapshot_id; if you omitted --snapshot, use the same --session as the snapshot")
+        .with_suggestion(
+            "Re-run a snapshot and retry with the returned snapshot_id \
+             (CLI: snapshot, then pass --snapshot <id>; FFI: ad_snapshot then supply snapshot_id to ad_execute_by_ref)",
+        )
     }
 
     pub fn policy_denied(message: impl Into<String>) -> Self {
@@ -169,9 +178,13 @@ impl AdapterError {
 
 fn policy_denied_suggestion(policy: InteractionPolicy) -> &'static str {
     if policy.allow_focus_steal && !policy.allow_cursor_move {
-        "Retry with --headed to permit cursor movement, or use an explicit mouse command if physical input is intended"
+        "Enable cursor movement in the interaction policy to permit cursor-driven actions \
+         (CLI: --headed; FFI: set allow_cursor_move in the policy), \
+         or use an explicit mouse command if physical input is intended"
     } else if !policy.allow_focus_steal && !policy.allow_cursor_move {
-        "Headless mode allows only accessibility-backed actions; retry with --headed only if physical cursor/focus interaction is intended, otherwise refresh the snapshot or target an element with the needed semantic action"
+        "Headless mode allows only accessibility-backed actions; \
+         enable physical interaction in the policy (CLI: --headed) only if cursor/focus movement is intended, \
+         otherwise refresh the snapshot or target an element with the needed semantic action"
     } else {
         "Use an explicit mouse/focus command if physical interaction is intended"
     }
@@ -245,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_ref_suggestion_mentions_skeleton() {
+    fn stale_ref_suggestion_is_transport_neutral() {
         let err = AdapterError::stale_ref("@e7");
         assert_eq!(err.code, ErrorCode::StaleRef);
         assert!(err.message.contains("@e7"));
@@ -254,8 +267,12 @@ mod tests {
             .as_deref()
             .expect("stale_ref should carry a suggestion");
         assert!(
-            suggestion.contains("skeleton"),
-            "stale-ref suggestion should mention skeleton refresh, got: {suggestion}"
+            suggestion.contains("snapshot"),
+            "stale-ref suggestion should mention running a snapshot, got: {suggestion}"
+        );
+        assert!(
+            suggestion.contains("FFI"),
+            "stale-ref suggestion should include FFI transport guidance, got: {suggestion}"
         );
     }
 
