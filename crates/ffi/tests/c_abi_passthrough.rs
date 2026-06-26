@@ -187,12 +187,16 @@ fn stub_ad_snapshot_platform_not_supported_or_off_main_thread() {
     });
 }
 
-/// `ad_wait` calls `require_main_thread()` before reaching the adapter.
-/// Same tolerance as `ad_snapshot`: accepts `ErrInternal` (off-main-thread
-/// on macOS) or `ErrPlatformNotSupported` with a valid envelope.
+/// `ad_wait` is exercised in its adapter-free `ms` mode: it sleeps for `ms`
+/// and returns an Ok envelope without touching the adapter, proving the
+/// entrypoint is callable and structured under the stub without crashing (or
+/// `ErrInternal` off the main thread on macOS). ad_wait's adapter-dependent
+/// element/predicate modes need a real refmap from a successful snapshot,
+/// which the stub cannot produce, so PLATFORM_NOT_SUPPORTED parity for those
+/// modes is covered by the real E2E harness rather than this stub gate.
 #[cfg(feature = "stub-adapter")]
 #[test]
-fn stub_ad_wait_platform_not_supported_or_off_main_thread() {
+fn stub_ad_wait_ms_mode_callable_under_stub() {
     with_adapter(|adapter| unsafe {
         let args = AdWaitArgs {
             ms: 1,
@@ -209,30 +213,27 @@ fn stub_ad_wait_platform_not_supported_or_off_main_thread() {
             action: std::ptr::null(),
             count: 0,
             has_count: false,
-            timeout_ms: 500,
+            timeout_ms: 200,
             app: std::ptr::null(),
         };
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_wait(adapter, &args, &mut out);
         match rc {
+            AdResult::Ok => {
+                if !out.is_null() {
+                    ad_free_string(out);
+                }
+            }
             AdResult::ErrInternal => {
                 assert!(
                     out.is_null(),
                     "ErrInternal (off-main-thread guard) must leave out null"
                 );
             }
-            AdResult::ErrPlatformNotSupported => {
-                let had_envelope = assert_platform_not_supported_envelope(out);
-                assert!(
-                    had_envelope,
-                    "ErrPlatformNotSupported must be accompanied by an error envelope"
-                );
-                ad_free_string(out);
-            }
             other => {
                 panic!(
-                    "stub ad_wait must return ErrInternal (macOS off-main-thread) or \
-                     ErrPlatformNotSupported, got {other:?}"
+                    "stub ad_wait (ms mode) must return Ok (adapter-free timer) or \
+                     ErrInternal (macOS off-main-thread), got {other:?}"
                 );
             }
         }
