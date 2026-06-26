@@ -1,6 +1,9 @@
 mod common;
 
-use common::{AdResult, CStr, ad_execute_by_ref, ad_free_string, default_action, with_adapter};
+use common::{
+    AdResult, CStr, ad_execute_by_ref, ad_free_string, ad_last_error_code, default_action,
+    with_adapter,
+};
 
 #[test]
 fn execute_by_ref_null_out_returns_invalid_args() {
@@ -162,6 +165,36 @@ fn execute_by_ref_returns_error_envelope_when_no_refmap_exists() {
                 "envelope must carry 'command', got: {s}"
             );
             ad_free_string(out);
+        }
+    });
+}
+
+#[test]
+fn execute_by_ref_out_of_range_policy_returns_invalid_args() {
+    with_adapter(|adapter| unsafe {
+        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let action = default_action();
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        let rc = ad_execute_by_ref(
+            adapter,
+            ref_id.as_ptr(),
+            std::ptr::null(),
+            &action,
+            99,
+            &mut out,
+        );
+        assert!(
+            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
+            "out-of-range policy discriminant must fail — got {rc:?} \
+             (ErrInternal on macOS off-main-thread is expected)"
+        );
+        assert!(out.is_null(), "out must stay null on invalid policy");
+        if rc == AdResult::ErrInvalidArgs {
+            assert_eq!(
+                ad_last_error_code(),
+                AdResult::ErrInvalidArgs,
+                "last-error code must reflect the invalid-args rejection"
+            );
         }
     });
 }

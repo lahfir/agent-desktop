@@ -42,6 +42,11 @@ use std::ptr;
 /// is likewise not exposed here. Both are planned fast-follows to this
 /// entrypoint — agents needing them should use the CLI in the meantime.
 ///
+/// **Dispatch-before-serialize ordering**: the snapshot and refmap persistence
+/// occur before the result JSON is serialised. In the near-impossible event
+/// that serialisation of an already-valid result fails, `*out` is set to null
+/// and `ErrInternal` is returned while the refmap is already written.
+///
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer from `ad_adapter_create` or

@@ -22,11 +22,18 @@ after_includes = """
  *  3. Observe via ad_snapshot().  The returned JSON envelope contains the
  *     accessibility tree with @e-prefixed ref IDs (e.g. "@e5") that address
  *     individual interactive elements.  A refmap is written under
- *     ~/.agent-desktop/ and is keyed to the session.
+ *     ~/.agent-desktop/ and is keyed to the session.  The envelope carries
+ *     data.snapshot_id — pass it back as the snapshot_id argument to
+ *     ad_execute_by_ref to pin the action to that exact snapshot; pass NULL
+ *     to target the latest snapshot for the session.
  *
  *  4. Act via ad_execute_by_ref(a, "@e5", snapshot_id, &action, policy, &out).
- *     Pass snapshot_id=NULL to target the latest snapshot; ref_id must be
- *     non-null (null returns ErrInvalidArgs immediately).
+ *     Build an AdAction by zero-initialising it and setting its kind field to
+ *     an AD_ACTION_KIND_* constant plus any kind-specific fields (e.g. .text
+ *     for AD_ACTION_KIND_TYPE_TEXT).  policy=0 (Headless) keeps each action's
+ *     built-in base behaviour; pass 2 (Headed) to additionally allow
+ *     cursor/focus fallbacks.  ref_id must be non-null (null returns
+ *     ErrInvalidArgs immediately).
  *
  *  5. Ownership: every non-null *out string must be freed with ad_free_string().
  *     Destroy the adapter when done with ad_adapter_destroy(a).

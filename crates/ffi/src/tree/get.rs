@@ -37,8 +37,8 @@ use std::ptr;
 /// call `ad_snapshot` instead. `ad_snapshot` runs the full snapshot pipeline
 /// (ref allocation, refmap write to disk, JSON envelope with
 /// `{"version":"2.0","ok":true,...}`) and is the correct starting point for
-/// any workflow that drives subsequent `ad_click`, `ad_type_text`, or other
-/// ref-based actions.
+/// any workflow that drives subsequent ref-based actions via
+/// `ad_execute_by_ref` (with an `AdAction`).
 ///
 /// Use `ad_get_tree` when you need the raw flat BFS layout without refs —
 /// for example, to drive your own traversal logic or to populate a UI
