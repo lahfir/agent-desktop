@@ -182,3 +182,128 @@ jobs:
           python3 tests/ffi-python/smoke.py
           "${{ steps.dylib.outputs.path }}"
           crates/ffi/include/agent_desktop.h
+
+  # Gate 1 — Header-drift: the committed crates/ffi/include/agent_desktop.h must
+  # match what cbindgen 0.29.4 would generate from the current source. A stale
+  # header means a consumer compiled against it sees different symbols/layouts
+  # than the dylib ships. cbindgen --verify exits non-zero when there is a diff.
+  #
+  # The cbindgen version is pinned so a generator upgrade cannot produce a
+  # false-positive failure — only a real header change triggers this gate.
+  ffi-header-drift:
+    name: FFI Header Drift
+    runs-on: macos-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install pinned cbindgen 0.29.4
+        run: cargo install cbindgen --version 0.29.4 --locked
+
+      - name: Verify header matches source (cbindgen --verify)
+        run: >
+          cbindgen crates/ffi
+          --config crates/ffi/cbindgen.toml
+          --output crates/ffi/include/agent_desktop.h
+          --verify
+
+  # Gate 2 — Panic-trap guard: the release-ffi profile must keep panic="unwind"
+  # so the trap_panic boundary in the shipped dylib actually catches panics. A
+  # flip to panic="abort" silently defeats every catch_unwind in the cdylib and
+  # turns any Rust panic into an abort that kills the host process.
+  #
+  # This step asserts the Cargo.toml setting directly — it is simpler and more
+  # reliable than a build.rs env check, which is unreliable for a dual
+  # cdylib+rlib crate.
+  #
+  # Gate 2a also runs the stub-adapter passthrough tests under the release-ffi
+  # profile to confirm the dylib actually compiles with that profile and the
+  # panic=unwind setting is in force.
+  ffi-panic-guard:
+    name: FFI Panic Guard
+    runs-on: macos-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Assert release-ffi profile keeps panic=unwind
+        run: |
+          if ! grep -A5 '\[profile\.release-ffi\]' Cargo.toml | grep -q 'panic.*=.*"unwind"'; then
+            echo "FAIL: [profile.release-ffi] must set panic=\"unwind\" — a flip to"
+            echo "      panic=\"abort\" defeats every trap_panic boundary in the dylib."
+            exit 1
+          fi
+          echo "OK: release-ffi profile retains panic=\"unwind\""
+
+  # Gate 3 — Stub-adapter passthrough tests: every adapter-touching ad_*
+  # entrypoint is exercised against the stub adapter and must return a
+  # structured error (PLATFORM_NOT_SUPPORTED envelope or the documented
+  # ErrPermDenied exception for ad_check_permissions). These tests are gated
+  # behind #[cfg(feature = "stub-adapter")] so the normal build is unaffected.
+  #
+  # Per-target build coverage:
+  #   - PR CI: macOS build + stub passthrough tests (this job).
+  #   - Release: release.yml build-ffi matrix covers macOS×2 + Linux×2 +
+  #     Windows×1, building the cdylib on the real target runners. PR builds
+  #     do not duplicate the cross-compile matrix to avoid bloating CI on
+  #     every push; the parity contract (all ad_* return structured errors on
+  #     stub) is proven here once for the platform.
+  # Runs on Linux: there is no main-thread guard off macOS, so the stub-adapter
+  # passthrough tests reach the adapter and assert the real PLATFORM_NOT_SUPPORTED
+  # envelope for every entrypoint — directly proving the non-macOS parity U10 targets.
+  ffi-passthrough:
+    name: FFI Stub-Adapter Passthrough
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run stub-adapter passthrough tests
+        run: >
+          cargo test --locked -p agent-desktop-ffi
+          --features stub-adapter --tests
