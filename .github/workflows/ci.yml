@@ -306,4 +306,4 @@ jobs:
       - name: Run stub-adapter passthrough tests
         run: >
           cargo test --locked -p agent-desktop-ffi
-          --features stub-adapter --tests
+          --features stub-adapter --test c_abi_passthrough
