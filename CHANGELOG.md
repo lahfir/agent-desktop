@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [0.4.2](https://github.com/lahfir/agent-desktop/compare/v0.4.1...v0.4.2) (2026-06-27)
+
+
+### Features
+
+* **ffi:** Phase B and C — Python smoke harness, parity gates, build.rs codegen ([#77](https://github.com/lahfir/agent-desktop/issues/77)) ([9023f33](https://github.com/lahfir/agent-desktop/commit/9023f331b3981a41414ea0f92e2e5120a212e357))
+
 ## [0.4.1](https://github.com/lahfir/agent-desktop/compare/v0.4.0...v0.4.1) (2026-06-26)
 
 
