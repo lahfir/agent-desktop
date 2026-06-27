@@ -1,9 +1,5 @@
 pub(crate) mod envelope_out;
-pub mod execute_by_ref;
-pub mod snapshot;
-pub(crate) mod status;
-pub(crate) mod version;
-pub mod wait;
+pub(crate) mod generated;
 
 use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
 

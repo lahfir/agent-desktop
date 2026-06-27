@@ -1,15 +1,3 @@
-use crate::AdAdapter;
-use crate::commands::app_error_to_adapter;
-use crate::commands::envelope_out::write_command_envelope;
-use crate::convert::string::decode_optional_filter;
-use crate::convert::surface::snapshot_surface_from_c;
-use crate::error::{AdResult, set_last_error};
-use crate::ffi_try::trap_panic;
-use crate::main_thread::require_main_thread;
-use crate::pointer_guard::guard_non_null;
-use agent_desktop_core::commands::snapshot::SnapshotArgs;
-use std::ffi::c_char;
-use std::ptr;
 
 /// Takes a full CLI-format snapshot of the target application window,
 /// allocates `@e` refs for all interactive elements, persists the refmap

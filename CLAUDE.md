@@ -171,10 +171,10 @@ Phases 2–4 add adapters, transports, and production readiness work. Nothing in
 
 ### File Rules
 
-- **400 LOC hard limit per file.** If approaching 400, split by responsibility. No exceptions.
+- **400 LOC hard limit per file.** If approaching 400, split by responsibility. No exceptions. _Exception: files bearing an `@generated` marker that are produced by `build.rs` codegen and validated by a CI drift gate are exempt — the limit applies to the hand-written templates and the build script itself, not the generated output. Do not hand-edit these files; fix the generator instead._
 - **No inline comments.** Code must be self-documenting through naming. Only Rust doc-comments (`///`) on public items when the name alone is insufficient.
 - **One struct/enum per file** for domain types. `node.rs` defines `AccessibilityNode`. `action.rs` defines `Action`.
-- **One command per file.** Each CLI command lives in its own file under `commands/`. Filename matches the command name.
+- **One command per file.** Each CLI command lives in its own file under `commands/`. Filename matches the command name. _This rule scopes to hand-written command files; a single `@generated` wrapper file that consolidates multiple command entrypoints is not a violation._
 - **No God objects.** No struct with more than 7 fields. No function with more than 5 parameters. Use builder patterns or config structs.
 - **Explicit pub boundaries.** Only `lib.rs` re-exports public items. Internal modules use `pub(crate)`. No wildcard re-exports.
 

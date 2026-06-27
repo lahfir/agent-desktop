@@ -11,6 +11,25 @@ pub struct AdAdapter {
     pub(crate) session_id: Option<String>,
 }
 
+/// A no-op adapter used under the `stub-adapter` Cargo feature.
+///
+/// Every method delegates to the `PlatformAdapter` trait defaults, all of
+/// which return `not_supported()` errors. `permission_report()` returns
+/// `Denied` via the trait default, so `ad_check_permissions` yields
+/// `ErrPermDenied` on a stub build — the expected signal for a CI runner
+/// that has no OS accessibility permission.
+#[cfg(feature = "stub-adapter")]
+struct StubAdapter;
+
+#[cfg(feature = "stub-adapter")]
+impl PlatformAdapter for StubAdapter {}
+
+#[cfg(feature = "stub-adapter")]
+fn build_adapter() -> Box<dyn PlatformAdapter> {
+    Box::new(StubAdapter)
+}
+
+#[cfg(not(feature = "stub-adapter"))]
 fn build_adapter() -> Box<dyn PlatformAdapter> {
     #[cfg(target_os = "macos")]
     {

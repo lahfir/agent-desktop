@@ -239,6 +239,24 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-
 
+      # NEVER add --features stub-adapter to the release FFI build — it ships a no-op dylib
+      # where every adapter call returns PLATFORM_NOT_SUPPORTED. The guard step below enforces this.
+      - name: Guard — release dylib must not be a stub build
+        shell: bash
+        run: |
+          # Co-occurrence of the release profile token and the stub flag on the same
+          # line is the discriminator. Legitimate stub uses in this file (codegen regen,
+          # passthrough test) omit the release-ffi profile, so they do not trigger.
+          PROFILE_TOKEN="release-ffi"
+          STUB_TOKEN="stub-adapter"
+          if grep -nE "${PROFILE_TOKEN}.*${STUB_TOKEN}|${STUB_TOKEN}.*${PROFILE_TOKEN}" \
+              .github/workflows/release.yml; then
+            echo "FAIL: release-ffi build path must not enable"
+            echo "      the stub-adapter feature — that would ship a no-op dylib"
+            exit 1
+          fi
+          echo "OK: no stub flag on the shipping release-ffi build path"
+
       - name: Build FFI cdylib (release-ffi profile)
         run: cargo build --locked --profile release-ffi -p agent-desktop-ffi --target ${{ matrix.target }}
 
@@ -307,9 +325,91 @@ jobs:
             agent-desktop-ffi-v*.zip.sha256
           retention-days: 1
 
+  # Re-runs the three FFI integrity gates at release time so a hotfix or a PR
+  # that bypassed ci.yml cannot ship a dylib with a stale committed header or
+  # stale generated.rs. Gate 1 (header drift) must run on macos-latest because
+  # the committed header is macOS-generated and cbindgen may omit macOS-gated
+  # symbols on Linux. Gates 2 and 3 are consolidated here for a single job.
+  ffi-release-gates:
+    name: FFI Release Gates
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-ffi-gates-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-ffi-gates-cargo-
+
+      - name: Install pinned cbindgen 0.29.4
+        run: cargo install cbindgen --version 0.29.4 --locked
+
+      # Gate 1 — Header drift: committed crates/ffi/include/agent_desktop.h must
+      # match what cbindgen 0.29.4 generates from the current source. Exits
+      # non-zero when there is any diff.
+      - name: Header drift check (cbindgen --verify)
+        run: >
+          cbindgen crates/ffi
+          --config crates/ffi/cbindgen.toml
+          --output crates/ffi/include/agent_desktop.h
+          --verify
+
+      # Gate 2 — Codegen drift: build.rs must produce the exact same
+      # crates/ffi/src/commands/generated.rs that is committed.
+      - name: Regenerate FFI command wrappers via build.rs
+        run: cargo build --locked -p agent-desktop-ffi --features stub-adapter
+
+      - name: Codegen drift check (generated.rs)
+        run: |
+          if ! git diff --exit-code crates/ffi/src/commands/generated.rs; then
+            echo ""
+            echo "FAIL: crates/ffi/src/commands/generated.rs is out of sync with build.rs templates."
+            echo "      Run 'cargo build -p agent-desktop-ffi' locally and commit the updated file."
+            exit 1
+          fi
+          echo "OK: commands/generated.rs matches build.rs output"
+
+      # Gate 3 — Stub passthrough: command-backed entrypoints must return
+      # structured PLATFORM_NOT_SUPPORTED envelopes via the stub adapter.
+      - name: Stub passthrough test
+        run: >
+          cargo test --locked -p agent-desktop-ffi
+          --features stub-adapter --test c_abi_passthrough
+
+      # Gate 4 — Panic-boundary proof: mirrors ffi-panic-guard in ci.yml so a
+      # tag-only flip to panic=abort cannot slip past release gates. Two steps:
+      # (a) assert the Cargo.toml profile setting; (b) run the panic_spike example
+      # which exits 0 if catch_unwind caught the panic, SIGABRTs if panic=abort.
+      - name: Assert release-ffi profile keeps panic=unwind
+        run: |
+          if ! grep -A5 '\[profile\.release-ffi\]' Cargo.toml | grep -q 'panic.*=.*"unwind"'; then
+            echo "FAIL: [profile.release-ffi] must set panic=\"unwind\" — a flip to"
+            echo "      panic=\"abort\" defeats every trap_panic boundary in the dylib."
+            exit 1
+          fi
+          echo "OK: release-ffi profile retains panic=\"unwind\""
+
+      - name: Prove catch_unwind survives the release-ffi profile
+        run: cargo run --locked --profile release-ffi --example panic_spike -p agent-desktop-ffi
+
   publish-github:
     name: Publish to GitHub Release
-    needs: [release-please, build, build-ffi]
+    needs: [release-please, build, build-ffi, ffi-release-gates]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

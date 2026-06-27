@@ -93,35 +93,18 @@ Permission fields are explicit objects, for example:
 
 ## Language bindings (FFI)
 
-Every GitHub Release ships a prebuilt C-ABI cdylib alongside the CLI tarballs. Hosts that need in-process calls (Python agents, Swift apps, Go services, Node tools, Ruby scripts, C/C++ code) `dlopen` the dylib and call the functions declared in `agent_desktop.h` — no fork-exec per command.
-
-| Platform             | Artifact |
-|----------------------|----------|
-| macOS arm64          | `agent-desktop-ffi-v<ver>-aarch64-apple-darwin.tar.gz` |
-| macOS x86_64         | `agent-desktop-ffi-v<ver>-x86_64-apple-darwin.tar.gz` |
-| Linux x86_64 (glibc) | `agent-desktop-ffi-v<ver>-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux arm64  (glibc) | `agent-desktop-ffi-v<ver>-aarch64-unknown-linux-gnu.tar.gz` |
-| Windows x86_64 (MSVC)| `agent-desktop-ffi-v<ver>-x86_64-pc-windows-msvc.zip` |
-
-Each archive contains `lib/libagent_desktop_ffi.{dylib,so,dll}`, `include/agent_desktop.h`, `LICENSE`, and a short README. Verify the download with the release's `checksums.txt`:
-
-```bash
-shasum -a 256 -c checksums.txt
-gh attestation verify agent-desktop-ffi-v*.tar.gz --repo lahfir/agent-desktop   # Sigstore provenance
-```
-
-Minimal Python round-trip:
+Every GitHub Release ships a prebuilt C-ABI cdylib (`libagent_desktop_ffi`) for macOS, Linux, and Windows alongside the CLI tarballs. `dlopen` it and call the functions declared in `agent_desktop.h` for in-process calls instead of fork-exec per command.
 
 ```python
 import ctypes
 lib = ctypes.CDLL("./lib/libagent_desktop_ffi.dylib")
-lib.ad_adapter_create.restype = ctypes.c_void_p
+lib.ad_init(1)  # verify ABI major (AD_ABI_VERSION_MAJOR) before any call
 adapter = lib.ad_adapter_create()
-# ... call ad_list_apps / ad_get_tree / ad_execute_action, see docs below
+# observe -> act: ad_snapshot -> parse an @e ref -> ad_execute_by_ref ...
 lib.ad_adapter_destroy(adapter)
 ```
 
-Full consumer guide — error-handling contract, ownership rules, threading constraints, every entrypoint with Safety docs: [`skills/agent-desktop-ffi/`](skills/agent-desktop-ffi/).
+Full consumer guide — entrypoints, ownership, threading, error-handling, build/link, release archives, and verification: **[`skills/agent-desktop-ffi/`](skills/agent-desktop-ffi/)**.
 
 ## Core Workflow for AI
 

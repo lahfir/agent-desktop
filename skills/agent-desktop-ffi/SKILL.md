@@ -1,6 +1,6 @@
 ---
 name: agent-desktop-ffi
-version: 0.3.0
+version: 0.4.0
 tags: ffi, c-bindings, cdylib, python, swift, node, go, rust-ffi
 requirements:
   - agent-desktop-ffi
@@ -8,7 +8,10 @@ description: >
   C-ABI bindings over agent-desktop's PlatformAdapter. Consumers
   (Python ctypes, Swift, Node ffi-napi, Go cgo, C++, Ruby fiddle)
   link libagent_desktop_ffi.{dylib,so,dll} and call `ad_*` functions
-  directly instead of spawning the CLI binary per call.
+  directly instead of spawning the CLI binary per call. The canonical
+  observe-act workflow is: ad_init → ad_adapter_create[_with_session]
+  → ad_snapshot → parse @e refs → ad_execute_by_ref → ad_free_string
+  → ad_adapter_destroy.
 ---
 
 # agent-desktop-ffi
@@ -24,6 +27,11 @@ The output is `target/release-ffi/libagent_desktop_ffi.dylib`
 (`.so` on Linux, `.dll` on Windows) plus a committed C header at
 `crates/ffi/include/agent_desktop.h`.
 
+A Python ctypes smoke harness lives at `tests/ffi-python/smoke.py` and
+serves as a worked end-to-end example covering the ABI handshake, struct
+size validation, `ad_version`, and the snapshot pipeline leg. See
+`tests/ffi-python/README.md` for usage.
+
 Four reference topics, loaded as needed:
 
 - [ownership.md](references/ownership.md) — who allocates / who frees,
@@ -33,84 +41,141 @@ Four reference topics, loaded as needed:
 - [threading.md](references/threading.md) — macOS main-thread rule,
   AXIsProcessTrusted inheritance when Python/Node dlopens the cdylib,
   and the single-owner handle invariant.
-- [build-and-link.md](references/build-and-link.md) — minimum working
-  example for Python ctypes and a C program that links the dylib.
+- [build-and-link.md](references/build-and-link.md) — ABI handshake,
+  struct size validation, minimal C and Python examples, observe-act
+  workflow, and prebuilt archive locations.
 
-## ⚠ Core constraints before you integrate
+## Observe-act workflow (canonical path)
+
+```
+ad_init(AD_ABI_VERSION_MAJOR)                    // verify header ↔ dylib match
+adapter = ad_adapter_create_with_session("s1")   // or ad_adapter_create()
+rc = ad_snapshot(adapter, "Finder", 0, 10, false, false, &json_out)
+// parse json_out: locate @e refs in data.tree, note data.snapshot_id
+ad_free_string(json_out)
+// build action:
+AdAction act = {0}; act.kind = AD_ACTION_KIND_CLICK;
+rc = ad_execute_by_ref(adapter, "@e5", snapshot_id, &act, 0, &result_out)
+ad_free_string(result_out)
+ad_adapter_destroy(adapter)
+```
+
+`ad_snapshot` returns a `{version, ok, command, data}` JSON envelope
+identical to the CLI output. The `data.tree` field contains `@e`-prefixed
+ref IDs for interactive elements. Pass a ref ID and the `snapshot_id`
+to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
+(RefStore load → strict resolution → actionability preflight → dispatch).
+
+## Core constraints
+
+- **ABI handshake.** Call `ad_init(AD_ABI_VERSION_MAJOR)` once after loading the
+  dylib. A mismatch between the compiled-in constant and the loaded dylib returns
+  `AD_RESULT_ERR_INVALID_ARGS` — abort rather than proceed. You can also read the
+  raw dylib major via `ad_abi_version()` for diagnostic display. New `ad_*` symbols
+  and new error codes are additive (no bump required); removed or layout-changed
+  symbols increment the major.
+
+- **Session adapters.** `ad_adapter_create_with_session("session-id")` associates
+  the adapter with a named session for refmap persistence. Passing the same session
+  ID across adapter lifetimes lets `ad_execute_by_ref` with `snapshot_id=NULL`
+  target the latest snapshot from that session. Session IDs: 1–64 chars, ASCII
+  alphanumeric / `-` / `_`. Invalid IDs return null (check `ad_last_error_*`).
 
 - **Main thread only (macOS).** Call every adapter-touching entrypoint
-  (`ad_get_tree`, `ad_resolve_element`, `ad_execute_action`,
-  `ad_screenshot`, clipboard, launch/close, window ops, observation,
-  notifications, etc.) from the process's main thread. The FFI enforces
-  this at runtime in **every build profile** — a worker-thread call
-  returns `AD_RESULT_ERR_INTERNAL` with a diagnostic last-error. On
-  non-macOS platforms the check is a compile-time true; there is no
-  runtime cost.
+  (`ad_snapshot`, `ad_execute_by_ref`, `ad_wait`, `ad_get_tree`, `ad_find`,
+  `ad_get`, `ad_is`, `ad_resolve_element`, `ad_execute_action`,
+  `ad_execute_action_with_policy`, `ad_execute_ref_action_with_policy`,
+  `ad_screenshot`, clipboard get/set/clear, mouse, drag, launch, close, focus,
+  window-op, list-apps/windows/surfaces, notification list/dismiss/action)
+  from the process's main thread. macOS accessibility and Cocoa APIs require
+  this. The FFI enforces this at runtime in every build profile — a worker-thread
+  call returns `AD_RESULT_ERR_INTERNAL` with a diagnostic last-error. On
+  non-macOS platforms the check is a compile-time true; there is no runtime cost.
 
-- **Release profile.** `cargo build --release` produces
-  `panic = "abort"` — any Rust panic inside an `extern "C"` fn will
-  `SIGABRT` the host. Use `--profile release-ffi` to get the correct
-  `panic = "unwind"` profile. CI enforces this.
+- **Release profile.** `cargo build --release` produces `panic = "abort"` —
+  any Rust panic inside an `extern "C"` fn will `SIGABRT` the host. Use
+  `--profile release-ffi` to get the correct `panic = "unwind"` profile. CI
+  enforces this.
 
-- **Last-error lifetime.** Pointers returned by `ad_last_error_*`
-  remain valid across any number of subsequent *successful* FFI calls
-  on the same thread. Only the next failing call rotates them. Cache
-  the pointer once, read it as many times as you need.
+- **Last-error lifetime.** Pointers returned by `ad_last_error_*` remain valid
+  across any number of subsequent *successful* FFI calls on the same thread.
+  Only the next failing call rotates them. Cache the pointer once, read it as
+  many times as you need.
 
-- **Handle release.** Every `ad_resolve_element` result must be
-  released with `ad_free_handle(adapter, handle)` on the same adapter
-  that produced it before that adapter is destroyed. On macOS this
-  balances the internal `CFRetain`; on Windows/Linux the call is a no-op
-  but safe to issue.
+- **ad_last_error_details.** A fourth accessor, `ad_last_error_details()`,
+  returns a borrowed JSON string carrying structured details (e.g. the
+  actionability check report on `ACTION_FAILED`, candidate summaries on
+  `AMBIGUOUS_TARGET`). The details may contain element names, values, and window
+  titles from the user's screen — treat as sensitive diagnostics and avoid routing
+  to shared log surfaces.
 
-- **Action policy.** `ad_execute_action` uses headless policy by default.
-  `ad_execute_ref_action_with_policy` should also use headless for semantic
-  ref actions that must fail closed, except `AD_ACTION_KIND_TYPE_TEXT`: use
-  `AD_POLICY_KIND_FOCUS_FALLBACK` for CLI `type` parity because typing needs
-  focus but not cursor movement. Use `AD_POLICY_KIND_HEADED` only for explicit
-  headed input semantics.
+- **Handle release.** Every `ad_resolve_element` / `ad_find` result must be
+  released with `ad_free_handle(adapter, &handle)` on the same adapter that
+  produced it, before that adapter is destroyed. On macOS this balances the
+  internal `CFRetain`; on Windows/Linux the call is a no-op but safe to issue.
+  `ad_free_handle` zeroes `handle.ptr` so a follow-up call is a safe no-op.
 
-- **Ref-action preflight.** `ad_execute_ref_action_with_policy` resolves the
-  ref strictly and runs the live actionability preflight (visible, stable,
-  enabled, supported action, policy, editable) before dispatching — a disabled
-  or unsupported target fails before any platform call. On
-  `AD_RESULT_ERR_ACTION_FAILED`, the structured check report is available as
-  JSON via `ad_last_error_details()`. Details may carry element names, values,
-  and window titles from the user's screen — treat them as sensitive
-  diagnostics and keep them out of shared log surfaces.
+- **Primary ref-action path.** `ad_execute_by_ref` is the recommended entrypoint
+  for the observe-act loop: it loads the RefStore, looks up the ref in the refmap
+  (STALE_REF on miss), runs strict element re-identification (STALE_REF / AMBIGUOUS_TARGET),
+  runs the live actionability preflight, then dispatches. TypeText and PressKey
+  default to `focus_fallback` policy (matching CLI `type`/`press-key`); all other
+  actions default to `headless`. Pass `AD_POLICY_KIND_HEADED` (2) to opt in to
+  cursor-based fallbacks.
 
-- **Action result steps.** `AdActionResult.steps` mirrors the CLI `steps`
-  array for activation-chain actions. Each entry has `label` and `outcome`
-  strings and is owned by the result; release it with
-  `ad_free_action_result(&out)`.
+- **Low-level action paths.** `ad_execute_action` (headless, no preflight) and
+  `ad_execute_action_with_policy` are raw escape hatches for callers holding a live
+  `AdNativeHandle` from `ad_resolve_element` / `ad_find`. Use them when you need
+  to bypass the ref-action pipeline. `ad_execute_ref_action_with_policy` accepts a
+  pre-resolved `AdRefEntry` instead of a ref string — useful when you have
+  serialized an entry outside the RefStore pipeline.
 
-- **Tracing.** CLI `--trace` is not inherited by the C ABI; FFI hosts should
-  record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs
-  in their own logs.
+- **Ref-action preflight.** `ad_execute_by_ref` and `ad_execute_ref_action_with_policy`
+  both resolve the element strictly and run the live actionability preflight
+  (visible, stable, enabled, supported action, policy, editable) before dispatching
+  — a disabled or unsupported target fails before any platform call. On
+  `AD_RESULT_ERR_ACTION_FAILED`, the structured check report is available as JSON
+  via `ad_last_error_details()`.
 
-- **No wait surface.** The CLI's `wait` command (element predicates including
-  `--predicate actionable --action ...`, window/text/menu/notification waits)
-  is not exposed over the C ABI. FFI hosts own their own polling loops; the
-  actionability preflight inside `ad_execute_ref_action_with_policy` is the
-  equivalent per-call readiness check.
+- **Action result steps.** `AdActionResult.steps` mirrors the CLI `steps` array
+  for activation-chain actions. Each entry has `label` and `outcome` strings and
+  is owned by the result; release with `ad_free_action_result(&out)`.
+
+- **Tracing / log callback.** `ad_set_log_callback(cb)` installs a `tracing`
+  subscriber layer that delivers events as JSON to your callback. `cb` receives an
+  int32_t level (1=ERROR … 5=TRACE) and a `const char *msg` valid only for the
+  duration of the call. Pass `NULL` to unregister. The layer is installed on the
+  first non-null call; if a foreign global subscriber already owns the process at
+  that point, the install fails with `AD_RESULT_ERR_INTERNAL` and no events are
+  ever delivered. Sensitive field values (password, token, text, …) are replaced
+  with `{"redacted":true}` before formatting. A panicking callback is caught and
+  silently discarded. The callback may fire from threads other than the registering
+  thread, and may still fire briefly after a `NULL` unregister — keep the callback
+  and any data it captures valid for the process lifetime.
+
+- **Wait.** `ad_wait(adapter, args, &out)` runs the full CLI `wait` command
+  (element-appear, window-appear, text-appear, menu-open/close, notification,
+  element predicates). Zero-initialize `AdWaitArgs`, set the fields you need, and
+  validate the struct size against `AD_WAIT_ARGS_SIZE` / `ad_wait_args_size()` before
+  calling. The output is a `{version, ok, command, data}` JSON envelope freed with
+  `ad_free_string`. `ad_wait` blocks the calling thread up to `timeout_ms` ms —
+  ensure the adapter is not destroyed from another thread while it is running.
 
 - **Text input privacy.** On macOS, focus-fallback or headed text insertion may
   briefly use the clipboard for non-ASCII text. For sensitive text, prefer
   `AD_ACTION_KIND_SET_VALUE` with `AD_POLICY_KIND_HEADLESS` when the target
-  supports settable values. Do not use headless `AD_ACTION_KIND_TYPE_TEXT` as
-  CLI-parity ref input; actionability rejects it before dispatch.
+  supports settable values.
 
-- **Enum discriminants.** Every `#[repr(i32)]` enum field is validated
-  at the C boundary — invalid discriminants return
-  `AD_RESULT_ERR_INVALID_ARGS` instead of undefined behavior.
+- **Enum discriminants.** Every `#[repr(i32)]` enum field is validated at the C
+  boundary — invalid discriminants return `AD_RESULT_ERR_INVALID_ARGS` instead of
+  undefined behavior.
 
-- **ABI is unstable before 1.0.** The header lists the exact current
-  shapes. Anything added or reordered in a later patch is a breaking
-  change; pin the version of libagent_desktop_ffi you link against.
+- **ABI stability.** The major version in `AD_ABI_VERSION_MAJOR` increments on any
+  breaking change (removed symbol, incompatible layout). Additive changes (new
+  symbols, new error codes) do not bump it. Before 1.0, pin the exact version of
+  libagent_desktop_ffi you link against.
 
-- **`ad_get_tree` returns a raw adapter tree, not the CLI snapshot.**
-  Ref IDs are always null, no skeleton/drill-down pipeline is wired
-  through, and `interactive_only` / `compact` follow adapter
-  semantics which may diverge slightly from the CLI's post-processed
-  shape. Use `ad_find` + `ad_get` / `ad_is` for point lookups, or
-  invoke the CLI if you need CLI-parity JSON snapshots.
+- **`ad_get_tree` vs `ad_snapshot`.** `ad_get_tree` returns a raw flat BFS tree
+  without `@e` refs, no refmap persistence, and no JSON envelope — use it for
+  custom traversal or UI inspection. For observe-act agents that drive actions via
+  `ad_execute_by_ref`, always start with `ad_snapshot`.

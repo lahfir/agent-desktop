@@ -1,14 +1,3 @@
-use crate::adapter::AdAdapter;
-use crate::commands::app_error_to_adapter;
-use crate::commands::envelope_out::write_command_envelope;
-use crate::convert::string::decode_optional_filter;
-use crate::error::{self, AdResult};
-use crate::ffi_try::trap_panic;
-use crate::main_thread::require_main_thread;
-use crate::pointer_guard::guard_non_null;
-use crate::types::wait_args::AdWaitArgs;
-use agent_desktop_core::commands::wait::{WaitArgs, WaitModeArgs, WaitPredicateArgs};
-use std::ffi::c_char;
 
 /// Runs `wait` with the given args, blocking the calling thread until the
 /// condition is met or `timeout_ms` elapses.
@@ -48,7 +37,7 @@ pub unsafe extern "C" fn ad_wait(
     out: *mut *mut c_char,
 ) -> AdResult {
     guard_non_null!(out, c"out is null");
-    unsafe { *out = std::ptr::null_mut() };
+    unsafe { *out = ptr::null_mut() };
     guard_non_null!(args, c"args is null");
 
     trap_panic(|| {
