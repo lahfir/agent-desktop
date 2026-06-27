@@ -98,8 +98,9 @@ Every GitHub Release ships a prebuilt C-ABI cdylib (`libagent_desktop_ffi`) for 
 ```python
 import ctypes
 lib = ctypes.CDLL("./lib/libagent_desktop_ffi.dylib")
+lib.ad_init(1)  # verify ABI major (AD_ABI_VERSION_MAJOR) before any call
 adapter = lib.ad_adapter_create()
-# call ad_list_apps / ad_get_tree / ad_execute_action ...
+# observe -> act: ad_snapshot -> parse an @e ref -> ad_execute_by_ref ...
 lib.ad_adapter_destroy(adapter)
 ```
 
