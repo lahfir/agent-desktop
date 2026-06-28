@@ -172,3 +172,78 @@ pub(crate) fn key_name_to_code(key: &str) -> Result<u16, AdapterError> {
     };
     Ok(code)
 }
+
+#[cfg(test)]
+mod tests {
+    use agent_desktop_core::{action::Modifier, error::ErrorCode};
+
+    use super::{char_to_keycode, is_shifted_char, key_name_to_code, modifier_keycode};
+
+    #[test]
+    fn modifier_keycodes_match_macos_virtual_key_codes() {
+        assert_eq!(modifier_keycode(&Modifier::Cmd), 55);
+        assert_eq!(modifier_keycode(&Modifier::Shift), 56);
+        assert_eq!(modifier_keycode(&Modifier::Alt), 58);
+        assert_eq!(modifier_keycode(&Modifier::Ctrl), 59);
+    }
+
+    #[test]
+    fn shifted_chars_are_detected() {
+        assert!(is_shifted_char('!'));
+        assert!(is_shifted_char('@'));
+        assert!(is_shifted_char('~'));
+        assert!(is_shifted_char('_'));
+        assert!(!is_shifted_char('a'));
+        assert!(!is_shifted_char('1'));
+        assert!(!is_shifted_char('A'));
+        assert!(!is_shifted_char(' '));
+    }
+
+    #[test]
+    fn char_to_keycode_lowercases_before_lookup() {
+        assert_eq!(char_to_keycode('a'), Some(0));
+        assert_eq!(char_to_keycode('A'), Some(0));
+        assert_eq!(char_to_keycode('z'), Some(6));
+        assert_eq!(char_to_keycode(' '), Some(49));
+        assert_eq!(char_to_keycode('\t'), Some(48));
+    }
+
+    #[test]
+    fn char_to_keycode_returns_none_for_unmapped_chars() {
+        assert_eq!(char_to_keycode('€'), None);
+        assert_eq!(char_to_keycode('\n'), None);
+    }
+
+    #[test]
+    fn named_key_aliases_resolve_to_same_code() {
+        assert_eq!(key_name_to_code("return").unwrap(), 36);
+        assert_eq!(key_name_to_code("enter").unwrap(), 36);
+        assert_eq!(key_name_to_code("escape").unwrap(), 53);
+        assert_eq!(key_name_to_code("esc").unwrap(), 53);
+        assert_eq!(key_name_to_code("alt").unwrap(), 58);
+        assert_eq!(key_name_to_code("option").unwrap(), 58);
+        assert_eq!(key_name_to_code("cmd").unwrap(), 55);
+        assert_eq!(key_name_to_code("command").unwrap(), 55);
+        assert_eq!(key_name_to_code("ctrl").unwrap(), 59);
+        assert_eq!(key_name_to_code("control").unwrap(), 59);
+    }
+
+    #[test]
+    fn navigation_and_function_keys_map_to_expected_codes() {
+        assert_eq!(key_name_to_code("f1").unwrap(), 122);
+        assert_eq!(key_name_to_code("f12").unwrap(), 111);
+        assert_eq!(key_name_to_code("tab").unwrap(), 48);
+        assert_eq!(key_name_to_code("delete").unwrap(), 51);
+        assert_eq!(key_name_to_code("backspace").unwrap(), 51);
+        assert_eq!(key_name_to_code("left").unwrap(), 123);
+        assert_eq!(key_name_to_code("up").unwrap(), 126);
+    }
+
+    #[test]
+    fn unknown_key_name_returns_invalid_args_error_with_suggestion() {
+        let err = key_name_to_code("hyperkey").unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidArgs);
+        assert!(err.message.contains("hyperkey"));
+        assert!(err.suggestion.is_some());
+    }
+}

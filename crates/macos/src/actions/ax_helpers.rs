@@ -269,6 +269,50 @@ mod imp {
         }
         Ok(())
     }
+
+    #[cfg(test)]
+    mod tests {
+        use accessibility_sys::{
+            kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorInvalidUIElement, kAXErrorSuccess,
+        };
+        use agent_desktop_core::error::ErrorCode;
+
+        use super::ax_error_result;
+
+        #[test]
+        fn success_code_is_ok() {
+            ax_error_result("op", kAXErrorSuccess).unwrap();
+        }
+
+        #[test]
+        fn api_disabled_yields_perm_denied() {
+            let err = ax_error_result("press", kAXErrorAPIDisabled).unwrap_err();
+            assert_eq!(err.code, ErrorCode::PermDenied);
+            assert!(
+                err.platform_detail
+                    .as_deref()
+                    .unwrap()
+                    .contains("kAXErrorAPIDisabled")
+            );
+        }
+
+        #[test]
+        fn invalid_ui_element_yields_element_not_found() {
+            let err = ax_error_result("press", kAXErrorInvalidUIElement).unwrap_err();
+            assert_eq!(err.code, ErrorCode::ElementNotFound);
+            assert!(
+                err.platform_detail
+                    .as_deref()
+                    .unwrap()
+                    .contains("kAXErrorInvalidUIElement")
+            );
+        }
+
+        #[test]
+        fn unrecognised_ax_code_is_soft_ok() {
+            ax_error_result("op", kAXErrorCannotComplete).unwrap();
+        }
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

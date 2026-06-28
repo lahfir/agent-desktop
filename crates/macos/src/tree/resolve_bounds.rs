@@ -35,3 +35,51 @@ fn rects_overlap(candidate: &Rect, target: &Rect) -> bool {
         && candidate.y <= target_bottom
         && candidate_bottom >= target.y
 }
+
+#[cfg(test)]
+mod tests {
+    use agent_desktop_core::node::Rect;
+
+    use super::rects_overlap;
+
+    fn r(x: f64, y: f64, w: f64, h: f64) -> Rect {
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    #[test]
+    fn overlapping_rects_intersect() {
+        assert!(rects_overlap(
+            &r(0.0, 0.0, 10.0, 10.0),
+            &r(5.0, 5.0, 10.0, 10.0)
+        ));
+    }
+
+    #[test]
+    fn touching_edge_rects_are_considered_overlapping() {
+        assert!(rects_overlap(
+            &r(0.0, 0.0, 10.0, 10.0),
+            &r(10.0, 0.0, 10.0, 10.0)
+        ));
+    }
+
+    #[test]
+    fn non_overlapping_rects_do_not_intersect() {
+        assert!(!rects_overlap(
+            &r(0.0, 0.0, 5.0, 5.0),
+            &r(10.0, 10.0, 5.0, 5.0)
+        ));
+    }
+
+    #[test]
+    fn contained_rect_is_always_overlapping() {
+        assert!(rects_overlap(
+            &r(2.0, 2.0, 3.0, 3.0),
+            &r(0.0, 0.0, 10.0, 10.0)
+        ));
+    }
+}
