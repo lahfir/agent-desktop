@@ -7,22 +7,30 @@ fn blocks_spaced_uppercase_variant() {
 }
 
 #[test]
-fn all_blocked_combos_entries_are_rejected_with_invalid_args() {
+fn all_blocked_combos_entries_are_rejected_with_policy_denied() {
     for combo in BLOCKED_COMBOS {
         let err = check_blocked_combo(combo).unwrap_err();
         assert_eq!(
             err.code(),
-            "INVALID_ARGS",
-            "safety block of '{combo}' must surface as INVALID_ARGS, not POLICY_DENIED"
+            "POLICY_DENIED",
+            "safety block of '{combo}' must surface as POLICY_DENIED, not INVALID_ARGS"
         );
     }
 }
 
 #[test]
-fn order_sensitive_near_miss_is_allowed() {
+fn reordered_blocked_combo_is_still_blocked() {
     assert!(
-        check_blocked_combo("cmd+ctrl+q").is_ok(),
-        "cmd+ctrl+q must be allowed — the block list contains ctrl+cmd+q (different order)"
+        check_blocked_combo("cmd+ctrl+q").is_err(),
+        "cmd+ctrl+q must be blocked — modifier order must not affect the safety check"
+    );
+}
+
+#[test]
+fn aliased_blocked_combo_is_still_blocked() {
+    assert!(
+        check_blocked_combo("command+q").is_err(),
+        "command+q must be blocked — 'command' is an alias for 'cmd'"
     );
 }
 

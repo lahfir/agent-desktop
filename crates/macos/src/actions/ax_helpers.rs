@@ -254,6 +254,14 @@ mod imp {
             .map(|r| crate::tree::roles::ax_role_to_str(&r).to_string())
     }
 
+    /// Soft-error gate for AX API return codes.
+    ///
+    /// Only `kAXErrorAPIDisabled` is promoted to a hard error (permission denied).
+    /// All other codes — including `kAXErrorInvalidUIElement` — intentionally
+    /// return `Ok(())` so that action-chain steps fall through to the next
+    /// strategy or physical fallback instead of aborting the whole chain.
+    /// Genuine staleness is caught earlier at resolve time (`STALE_REF`);
+    /// re-escalating other codes here requires a chain-level stale detector first.
     fn ax_error_result(operation: &str, err: i32) -> Result<(), AdapterError> {
         if err == kAXErrorAPIDisabled {
             return Err(AdapterError::permission_denied()

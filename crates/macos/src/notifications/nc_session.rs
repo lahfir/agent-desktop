@@ -7,7 +7,10 @@ pub(crate) fn close_session<T>(
     let close_result = session.close();
     match (result, close_result) {
         (Ok(value), Ok(())) => Ok(value),
-        (Ok(_), Err(err)) => Err(err),
+        (Ok(value), Err(close_err)) => {
+            tracing::warn!(error = %close_err, "notification center close failed after a successful operation");
+            Ok(value)
+        }
         (Err(err), _) => Err(err),
     }
 }
@@ -108,6 +111,9 @@ fn applescript_string(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
     escaped.push('"');
     for ch in value.chars() {
+        if ch.is_control() {
+            continue;
+        }
         if matches!(ch, '\\' | '"') {
             escaped.push('\\');
         }
@@ -164,13 +170,11 @@ fn open_nc() -> Result<(), AdapterError> {
 
     let mut command = std::process::Command::new("/usr/bin/osascript");
     command.arg("-e").arg(script);
-    if let Err(e) = crate::system::process::run_with_timeout(
+    crate::system::process::run_with_timeout(
         &mut command,
         "osascript open-nc",
         std::time::Duration::from_secs(2),
-    ) {
-        tracing::warn!("open_nc osascript failed: {e}");
-    }
+    )?;
     std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(())
 }
@@ -204,6 +208,14 @@ mod tests {
             applescript_string(r#"Bad \ "Name""#),
             r#""Bad \\ \"Name\"""#
         );
+    }
+
+    #[test]
+    fn applescript_string_strips_control_chars() {
+        assert_eq!(applescript_string("a\nb"), r#""ab""#);
+        assert_eq!(applescript_string("a\tb"), r#""ab""#);
+        assert_eq!(applescript_string("a\\\nb"), r#""a\\b""#);
+        assert_eq!(applescript_string("a\"b\nc"), r#""a\"bc""#);
     }
 }
 

@@ -68,9 +68,7 @@ mod imp {
             )));
         }
         if err_up != kAXErrorSuccess {
-            if err_down == kAXErrorSuccess {
-                release_key_system_wide(key_code);
-            }
+            release_key_system_wide(key_code);
             return Err(AdapterError::internal(format!(
                 "AXUIElementPostKeyboardEvent key-up failed (err={err_up})"
             )));

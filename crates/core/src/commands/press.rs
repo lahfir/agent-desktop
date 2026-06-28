@@ -2,7 +2,7 @@ use crate::{
     action::{Action, KeyCombo, Modifier},
     action_request::ActionRequest,
     adapter::PlatformAdapter,
-    error::AppError,
+    error::{AdapterError, AppError},
 };
 use serde_json::Value;
 
@@ -19,13 +19,37 @@ pub struct PressArgs {
     pub app: Option<String>,
 }
 
+fn canonical_combo(c: &KeyCombo) -> String {
+    let mut mods: Vec<&str> = c
+        .modifiers
+        .iter()
+        .map(|m| match m {
+            Modifier::Cmd => "cmd",
+            Modifier::Ctrl => "ctrl",
+            Modifier::Alt => "alt",
+            Modifier::Shift => "shift",
+        })
+        .collect();
+    mods.sort_unstable();
+    mods.dedup();
+    mods.push(c.key.as_str());
+    mods.join("+")
+}
+
 pub fn check_blocked_combo(raw: &str) -> Result<(), AppError> {
     let normalized = raw.to_lowercase().replace(' ', "");
-    if BLOCKED_COMBOS.contains(&normalized.as_str()) {
-        return Err(AppError::invalid_input(format!(
-            "Key combo '{}' is blocked for safety",
-            raw
-        )));
+    let Ok(parsed) = parse_combo(&normalized) else {
+        return Ok(());
+    };
+    let canonical = canonical_combo(&parsed);
+    for blocked in BLOCKED_COMBOS {
+        if let Ok(blocked_parsed) = parse_combo(blocked) {
+            if canonical == canonical_combo(&blocked_parsed) {
+                return Err(AppError::Adapter(AdapterError::policy_denied(format!(
+                    "Key combo '{raw}' is blocked for safety"
+                ))));
+            }
+        }
     }
     Ok(())
 }
