@@ -84,9 +84,11 @@ fn text_len(value: Option<&str>) -> usize {
 #[cfg(target_os = "macos")]
 fn retained_handle(candidate: AXElement) -> Result<NativeHandle, AdapterError> {
     use core_foundation::base::{CFRetain, CFTypeRef};
-    #[cfg(test)]
     if candidate.0.is_null() {
+        #[cfg(test)]
         return Ok(NativeHandle::null());
+        #[cfg(not(test))]
+        return Err(AdapterError::element_not_found("element"));
     }
     unsafe { CFRetain(candidate.0 as CFTypeRef) };
     Ok(unsafe { NativeHandle::from_ptr(candidate.0 as *const _) })
