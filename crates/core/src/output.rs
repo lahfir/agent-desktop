@@ -181,4 +181,89 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn ok_response_json_shape_has_version_ok_command_data_and_no_error_field() {
+        let resp = Response::ok("snapshot", json!({"app": "Finder"}));
+        let map: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_value(serde_json::to_value(&resp).expect("serializable"))
+                .expect("map");
+
+        assert_eq!(map["version"].as_str(), Some("2.0"), "version must be 2.0");
+        assert_eq!(map["ok"].as_bool(), Some(true), "ok must be true");
+        assert_eq!(
+            map["command"].as_str(),
+            Some("snapshot"),
+            "command must match"
+        );
+        assert!(map.contains_key("data"), "ok response must have data field");
+        assert!(
+            !map.contains_key("error"),
+            "ok response must not serialize an error field (skip_serializing_if = is_none)"
+        );
+    }
+
+    #[test]
+    fn err_response_json_shape_has_version_ok_command_error_and_no_data_field() {
+        let payload =
+            ErrorPayload::new("STALE_REF", "ref @e1 is stale").with_suggestion("re-run snapshot");
+        let resp = Response::err("click", payload);
+        let map: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_value(serde_json::to_value(&resp).expect("serializable"))
+                .expect("map");
+
+        assert_eq!(map["version"].as_str(), Some("2.0"), "version must be 2.0");
+        assert_eq!(map["ok"].as_bool(), Some(false), "ok must be false");
+        assert_eq!(map["command"].as_str(), Some("click"), "command must match");
+        assert!(
+            !map.contains_key("data"),
+            "err response must not serialize a data field (skip_serializing_if = is_none)"
+        );
+        assert!(
+            map.contains_key("error"),
+            "err response must have error field"
+        );
+        assert_eq!(
+            map["error"]["code"].as_str(),
+            Some("STALE_REF"),
+            "error code must round-trip"
+        );
+        assert_eq!(
+            map["error"]["message"].as_str(),
+            Some("ref @e1 is stale"),
+            "error message must round-trip"
+        );
+        assert_eq!(
+            map["error"]["suggestion"].as_str(),
+            Some("re-run snapshot"),
+            "suggestion must be present when set"
+        );
+    }
+
+    #[test]
+    fn err_response_omits_optional_error_subfields_when_absent() {
+        let payload = ErrorPayload::new("INTERNAL", "something broke");
+        let resp = Response::err("snapshot", payload);
+        let map: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_value(serde_json::to_value(&resp).expect("serializable"))
+                .expect("map");
+
+        let error = map["error"].as_object().expect("error must be an object");
+        assert!(
+            !error.contains_key("suggestion"),
+            "absent suggestion must be omitted from JSON"
+        );
+        assert!(
+            !error.contains_key("retry_command"),
+            "absent retry_command must be omitted from JSON"
+        );
+        assert!(
+            !error.contains_key("platform_detail"),
+            "absent platform_detail must be omitted from JSON"
+        );
+        assert!(
+            !error.contains_key("details"),
+            "absent details must be omitted from JSON"
+        );
+    }
 }

@@ -177,4 +177,101 @@ mod tests {
         assert_eq!(back.x, 10.5);
         assert_eq!(back.width, 100.0);
     }
+
+    /// AppInfo.bundle_id is annotated skip_serializing_if = "Option::is_none".
+    /// When absent it must not appear in the JSON — agents must tolerate its
+    /// absence rather than fail on a missing key.
+    #[test]
+    fn app_info_bundle_id_none_omitted_from_json() {
+        let info = AppInfo {
+            name: "Finder".into(),
+            pid: 42,
+            bundle_id: None,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(
+            !json.contains("\"bundle_id\":"),
+            "bundle_id must be absent when None, json={json}"
+        );
+    }
+
+    /// When bundle_id is Some it must appear in the JSON with the correct value.
+    #[test]
+    fn app_info_bundle_id_some_present_in_json() {
+        let info = AppInfo {
+            name: "Safari".into(),
+            pid: 7,
+            bundle_id: Some("com.apple.Safari".into()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(
+            json.contains("\"bundle_id\":\"com.apple.Safari\""),
+            "bundle_id must be present when Some, json={json}"
+        );
+    }
+
+    /// AppInfo round-trips through serde with all fields intact.
+    /// Uses field-by-field comparison because AppInfo does not derive PartialEq.
+    #[test]
+    fn app_info_roundtrip_preserves_all_fields() {
+        let original = AppInfo {
+            name: "TextEdit".into(),
+            pid: 1234,
+            bundle_id: Some("com.apple.TextEdit".into()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let back: AppInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, original.name);
+        assert_eq!(back.pid, original.pid);
+        assert_eq!(back.bundle_id, original.bundle_id);
+    }
+
+    /// AccessibilityNode.bounds is annotated skip_serializing_if = "Option::is_none".
+    /// When the adapter or ref-alloc pipeline strips bounds, the key must not
+    /// appear in the JSON, keeping token counts low.
+    #[test]
+    fn accessibility_node_bounds_none_omitted_from_json() {
+        let node = AccessibilityNode {
+            ref_id: None,
+            role: "button".into(),
+            name: Some("OK".into()),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            available_actions: vec![],
+            bounds: None,
+            children_count: None,
+            children: vec![],
+        };
+        let json = serde_json::to_string(&node).unwrap();
+        assert!(
+            !json.contains("\"bounds\":"),
+            "bounds must be absent when None, json={json}"
+        );
+    }
+
+    /// AccessibilityNode.hint is annotated skip_serializing_if = "Option::is_none".
+    /// When not provided by the platform adapter, it must not appear in the JSON.
+    #[test]
+    fn accessibility_node_hint_none_omitted_from_json() {
+        let node = AccessibilityNode {
+            ref_id: None,
+            role: "textfield".into(),
+            name: None,
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            available_actions: vec![],
+            bounds: None,
+            children_count: None,
+            children: vec![],
+        };
+        let json = serde_json::to_string(&node).unwrap();
+        assert!(
+            !json.contains("\"hint\":"),
+            "hint must be absent when None, json={json}"
+        );
+    }
 }

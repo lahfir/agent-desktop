@@ -285,3 +285,7 @@ pub(crate) fn set_home_override(home: Option<PathBuf>) -> Option<PathBuf> {
 #[cfg(test)]
 #[path = "refs_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "refs_serde_tests.rs"]
+mod serde_tests;

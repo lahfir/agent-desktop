@@ -218,6 +218,89 @@ fn entry_hash() -> u64 {
     .bounds_hash()
 }
 
+/// Refs must be assigned in depth-first document order.
+/// Given: window → [button("A"), group → [button("B"), button("C")]],
+/// DFS visits A then B then C, so @e1=A, @e2=B, @e3=C.
+/// A regression that allocates in BFS order (A, then skipping group to find B
+/// last) would violate the contract the CLI documents and agents depend on.
+#[test]
+fn allocate_refs_assigns_refs_in_depth_first_order() {
+    let btn_a = node("button", Some("A"));
+    let btn_b = node("button", Some("B"));
+    let btn_c = node("button", Some("C"));
+    let mut group = node("group", None);
+    group.children = vec![btn_b, btn_c];
+    let mut root = node("window", Some("w"));
+    root.children = vec![btn_a, group];
+
+    let mut refmap = RefMap::new();
+    let config = RefAllocConfig {
+        include_bounds: false,
+        interactive_only: false,
+        compact: false,
+        pid: 1,
+        source_app: None,
+        source_window_id: None,
+        source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
+        root_ref_id: None,
+        path_prefix: &[],
+    };
+    let out = allocate_refs(root, &mut refmap, &config);
+
+    let a_ref = out.children[0].ref_id.as_deref().unwrap();
+    let b_ref = out.children[1].children[0].ref_id.as_deref().unwrap();
+    let c_ref = out.children[1].children[1].ref_id.as_deref().unwrap();
+
+    assert_eq!(a_ref, "@e1", "first DFS interactive node must be @e1");
+    assert_eq!(b_ref, "@e2", "second DFS interactive node must be @e2");
+    assert_eq!(c_ref, "@e3", "third DFS interactive node must be @e3");
+}
+
+/// A node whose available_actions list contains SetFocus alongside a real
+/// primary action must be ref-able, because advertises_primary_action
+/// filters to actions that are not SetFocus.
+#[test]
+fn node_with_primary_action_alongside_set_focus_is_ref_able() {
+    let mut panel = node("group", Some("Panel"));
+    panel.available_actions = vec!["SetFocus".into(), "Scroll".into()];
+    assert!(
+        is_ref_able(&panel),
+        "group with SetFocus+Scroll must be ref-able via the primary action path"
+    );
+}
+
+/// Each role in the hardcoded list must be ref-able by role alone (no actions
+/// needed). Using a literal list rather than iterating INTERACTIVE_ROLES means
+/// removing any of these from the constant will actually fail this test.
+#[test]
+fn representative_interactive_roles_are_ref_able_by_role_alone() {
+    for role in [
+        "button",
+        "textfield",
+        "checkbox",
+        "link",
+        "slider",
+        "combobox",
+        "treeitem",
+        "cell",
+        "radiobutton",
+        "tab",
+        "menuitem",
+        "switch",
+        "colorwell",
+        "menubutton",
+        "incrementor",
+        "dockitem",
+    ] {
+        let n = node(role, None);
+        assert!(
+            is_ref_able(&n),
+            "'{role}' must be ref-able by role alone with no available_actions"
+        );
+    }
+}
+
 #[test]
 fn allocate_refs_keeps_bounds_in_refmap_when_snapshot_includes_bounds() {
     let mut root = node("window", Some("w"));
