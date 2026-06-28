@@ -7,7 +7,8 @@ mod imp {
     use accessibility_sys::{
         AXUIElementCopyAttributeValue, AXUIElementIsAttributeSettable, AXUIElementPerformAction,
         AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout, kAXErrorAPIDisabled,
-        kAXErrorCannotComplete, kAXErrorSuccess, kAXFocusedAttribute, kAXValueAttribute,
+        kAXErrorCannotComplete, kAXErrorInvalidUIElement, kAXErrorSuccess, kAXFocusedAttribute,
+        kAXValueAttribute,
     };
     use core_foundation::{
         base::{CFType, CFTypeRef, TCFType},
@@ -164,7 +165,13 @@ mod imp {
     }
 
     pub(crate) fn set_messaging_timeout(el: &AXElement, seconds: f32) {
-        unsafe { AXUIElementSetMessagingTimeout(el.0, seconds) };
+        let err = unsafe { AXUIElementSetMessagingTimeout(el.0, seconds) };
+        if err != kAXErrorSuccess {
+            tracing::warn!(
+                err,
+                "AXUIElementSetMessagingTimeout failed; AX calls may use the default timeout"
+            );
+        }
     }
 
     pub(crate) fn ax_focus_or_err(el: &AXElement) -> Result<bool, AdapterError> {
@@ -252,6 +259,13 @@ mod imp {
         if err == kAXErrorAPIDisabled {
             return Err(AdapterError::permission_denied()
                 .with_platform_detail(format!("{operation} failed with kAXErrorAPIDisabled")));
+        }
+        if err == kAXErrorInvalidUIElement {
+            return Err(
+                AdapterError::element_not_found(operation).with_platform_detail(format!(
+                    "{operation} failed with kAXErrorInvalidUIElement (code={err})"
+                )),
+            );
         }
         Ok(())
     }
