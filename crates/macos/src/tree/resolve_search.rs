@@ -57,6 +57,7 @@ fn element_at_path(
     let mut seen = FxHashSet::default();
     for idx in path {
         ensure_before_deadline(deadline)?;
+        set_messaging_timeout(&current, remaining_before_deadline(deadline)?);
         let ax_role = copy_string_attr(&current, accessibility_sys::kAXRoleAttribute);
         let children = resolve_children(&current, ax_role.as_deref(), deadline, &mut seen)?;
         let Some(child) = children.get(*idx) else {

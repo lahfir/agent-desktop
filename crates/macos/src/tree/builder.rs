@@ -81,6 +81,9 @@ pub fn build_subtree(
         return None;
     }
     if raw_depth >= ABSOLUTE_MAX_DEPTH {
+        if ancestors.contains(&(el.0 as usize)) {
+            return None;
+        }
         let attrs = fetch_node_attrs(el);
         let role = attrs
             .role

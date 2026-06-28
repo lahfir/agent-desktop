@@ -218,24 +218,20 @@ mod imp {
     }
 
     pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
-        unsafe {
-            for attr_name in child_attributes(ax_role) {
-                let mut count: core_foundation_sys::base::CFIndex = 0;
-                let attr = CFString::from_static_string(attr_name);
-                let err = AXUIElementGetAttributeValueCount(
-                    element.0,
-                    attr.as_concrete_TypeRef(),
-                    &mut count,
-                );
-                if err != kAXErrorSuccess {
-                    continue;
-                }
-                if count > 0 {
-                    return count as u32;
-                }
+        for attr_name in child_attributes(ax_role) {
+            let mut count: core_foundation_sys::base::CFIndex = 0;
+            let attr = CFString::from_static_string(attr_name);
+            let err = unsafe {
+                AXUIElementGetAttributeValueCount(element.0, attr.as_concrete_TypeRef(), &mut count)
+            };
+            if err != kAXErrorSuccess {
+                continue;
             }
-            0
+            if count > 0 {
+                return count as u32;
+            }
         }
+        0
     }
 }
 
