@@ -19,15 +19,20 @@ pub struct PressArgs {
     pub app: Option<String>,
 }
 
-pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let normalized = args.combo.to_lowercase().replace(' ', "");
+pub fn check_blocked_combo(raw: &str) -> Result<(), AppError> {
+    let normalized = raw.to_lowercase().replace(' ', "");
     if BLOCKED_COMBOS.contains(&normalized.as_str()) {
         return Err(AppError::invalid_input(format!(
             "Key combo '{}' is blocked for safety",
-            args.combo
+            raw
         )));
     }
+    Ok(())
+}
 
+pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    check_blocked_combo(&args.combo)?;
+    let normalized = args.combo.to_lowercase().replace(' ', "");
     let combo = parse_combo(&normalized)?;
 
     if let Some(app_name) = &args.app {
@@ -66,4 +71,24 @@ pub fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
     }
 
     Ok(KeyCombo { key, modifiers })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_blocked_combo;
+
+    #[test]
+    fn blocks_known_combo() {
+        assert!(check_blocked_combo("cmd+q").is_err());
+    }
+
+    #[test]
+    fn blocks_spaced_uppercase_variant() {
+        assert!(check_blocked_combo("Cmd + Q").is_err());
+    }
+
+    #[test]
+    fn allows_benign_combo() {
+        assert!(check_blocked_combo("cmd+c").is_ok());
+    }
 }
