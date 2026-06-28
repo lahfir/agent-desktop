@@ -102,9 +102,7 @@ pub(crate) fn ax_scroll(
                 Direction::Right => 124,
                 Direction::Left => 123,
             };
-            if let Err(e) = crate::system::app_ops::ensure_app_focused(pid) {
-                tracing::warn!(error = %e, "failed to focus app before physical input");
-            }
+            crate::system::app_ops::focus_best_effort(pid);
             let cf_focused = CFString::new("AXFocused");
             let focus_err = unsafe {
                 AXUIElementSetAttributeValue(
@@ -123,9 +121,7 @@ pub(crate) fn ax_scroll(
 
     if policy.allow_focus_steal && policy.allow_cursor_move {
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
-            if let Err(e) = crate::system::app_ops::ensure_app_focused(pid) {
-                tracing::warn!(error = %e, "failed to focus app before physical input");
-            }
+            crate::system::app_ops::focus_best_effort(pid);
             if let Some(b) = crate::tree::read_bounds(target) {
                 let (dy, dx) = scroll_wheel_delta(direction, amount);
                 return crate::input::mouse::synthesize_scroll_at(

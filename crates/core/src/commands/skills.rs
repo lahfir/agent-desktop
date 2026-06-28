@@ -35,52 +35,64 @@ struct Skill {
     aliases: &'static [&'static str],
     summary: &'static str,
     main: &'static str,
-    refs: &'static [SkillRef],
+    refs: fn() -> &'static [SkillRef],
 }
 
-#[cfg(target_os = "macos")]
-const SKILL_DESKTOP_REFS: &[SkillRef] = &[
+/// Returns the four platform-agnostic desktop refs, plus the macOS ref on macOS targets.
+/// Built once via OnceLock so the base entries are never duplicated.
+fn skill_desktop_refs() -> &'static [SkillRef] {
+    use std::sync::OnceLock;
+    static REFS: OnceLock<Vec<SkillRef>> = OnceLock::new();
+    REFS.get_or_init(|| {
+        let mut v = vec![
+            SkillRef {
+                rel_path: "references/commands-observation.md",
+                body: SKILL_DESKTOP_REF_OBSERVATION,
+            },
+            SkillRef {
+                rel_path: "references/commands-interaction.md",
+                body: SKILL_DESKTOP_REF_INTERACTION,
+            },
+            SkillRef {
+                rel_path: "references/commands-system.md",
+                body: SKILL_DESKTOP_REF_SYSTEM,
+            },
+            SkillRef {
+                rel_path: "references/workflows.md",
+                body: SKILL_DESKTOP_REF_WORKFLOWS,
+            },
+        ];
+        #[cfg(target_os = "macos")]
+        v.push(SkillRef {
+            rel_path: "references/macos.md",
+            body: SKILL_DESKTOP_REF_MACOS,
+        });
+        v
+    })
+}
+
+const SKILL_FFI_REFS: &[SkillRef] = &[
     SkillRef {
-        rel_path: "references/commands-observation.md",
-        body: SKILL_DESKTOP_REF_OBSERVATION,
+        rel_path: "references/build-and-link.md",
+        body: SKILL_FFI_REF_BUILD,
     },
     SkillRef {
-        rel_path: "references/commands-interaction.md",
-        body: SKILL_DESKTOP_REF_INTERACTION,
+        rel_path: "references/error-handling.md",
+        body: SKILL_FFI_REF_ERRORS,
     },
     SkillRef {
-        rel_path: "references/commands-system.md",
-        body: SKILL_DESKTOP_REF_SYSTEM,
+        rel_path: "references/ownership.md",
+        body: SKILL_FFI_REF_OWNERSHIP,
     },
     SkillRef {
-        rel_path: "references/workflows.md",
-        body: SKILL_DESKTOP_REF_WORKFLOWS,
-    },
-    SkillRef {
-        rel_path: "references/macos.md",
-        body: SKILL_DESKTOP_REF_MACOS,
+        rel_path: "references/threading.md",
+        body: SKILL_FFI_REF_THREADING,
     },
 ];
 
-#[cfg(not(target_os = "macos"))]
-const SKILL_DESKTOP_REFS: &[SkillRef] = &[
-    SkillRef {
-        rel_path: "references/commands-observation.md",
-        body: SKILL_DESKTOP_REF_OBSERVATION,
-    },
-    SkillRef {
-        rel_path: "references/commands-interaction.md",
-        body: SKILL_DESKTOP_REF_INTERACTION,
-    },
-    SkillRef {
-        rel_path: "references/commands-system.md",
-        body: SKILL_DESKTOP_REF_SYSTEM,
-    },
-    SkillRef {
-        rel_path: "references/workflows.md",
-        body: SKILL_DESKTOP_REF_WORKFLOWS,
-    },
-];
+fn skill_ffi_refs() -> &'static [SkillRef] {
+    SKILL_FFI_REFS
+}
 
 const SKILLS: &[Skill] = &[
     Skill {
@@ -88,31 +100,14 @@ const SKILLS: &[Skill] = &[
         aliases: &["desktop", "agent-desktop"],
         summary: "Primary guide. Snapshot/ref loop, JSON envelope, 54 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
-        refs: SKILL_DESKTOP_REFS,
+        refs: skill_desktop_refs,
     },
     Skill {
         canonical: "agent-desktop-ffi",
         aliases: &["ffi", "agent-desktop-ffi"],
         summary: "Embedding agent-desktop in another process via the C ABI. Build/link, error propagation, handle ownership, threading rules.",
         main: SKILL_FFI_MAIN,
-        refs: &[
-            SkillRef {
-                rel_path: "references/build-and-link.md",
-                body: SKILL_FFI_REF_BUILD,
-            },
-            SkillRef {
-                rel_path: "references/error-handling.md",
-                body: SKILL_FFI_REF_ERRORS,
-            },
-            SkillRef {
-                rel_path: "references/ownership.md",
-                body: SKILL_FFI_REF_OWNERSHIP,
-            },
-            SkillRef {
-                rel_path: "references/threading.md",
-                body: SKILL_FFI_REF_THREADING,
-            },
-        ],
+        refs: skill_ffi_refs,
     },
 ];
 
@@ -130,7 +125,7 @@ pub fn list() -> Result<Value, AppError> {
                 "name": s.canonical,
                 "aliases": s.aliases,
                 "summary": s.summary,
-                "references": s.refs.iter().map(|r| r.rel_path).collect::<Vec<_>>(),
+                "references": (s.refs)().iter().map(|r| r.rel_path).collect::<Vec<_>>(),
             })
         })
         .collect();
@@ -141,12 +136,12 @@ pub fn get(args: GetArgs) -> Result<Value, AppError> {
     let skill = find_skill(&args.name)?;
 
     if let Some(rel) = args.reference {
-        let r = skill
-            .refs
+        let refs = (skill.refs)();
+        let r = refs
             .iter()
             .find(|r| matches_ref(r.rel_path, &rel))
             .ok_or_else(|| {
-                let available: Vec<&str> = skill.refs.iter().map(|r| r.rel_path).collect();
+                let available: Vec<&str> = refs.iter().map(|r| r.rel_path).collect();
                 AppError::invalid_input(format!(
                     "Unknown reference '{rel}' for skill '{}'. Available: {}",
                     skill.canonical,
@@ -211,11 +206,12 @@ fn matches_ref(rel_path: &str, query: &str) -> bool {
 }
 
 fn render_full(skill: &Skill) -> String {
+    let refs = (skill.refs)();
     let mut out = String::with_capacity(
-        skill.main.len() + skill.refs.iter().map(|r| r.body.len() + 64).sum::<usize>(),
+        skill.main.len() + refs.iter().map(|r| r.body.len() + 64).sum::<usize>(),
     );
     out.push_str(skill.main);
-    for r in skill.refs {
+    for r in refs {
         if !out.ends_with('\n') {
             out.push('\n');
         }

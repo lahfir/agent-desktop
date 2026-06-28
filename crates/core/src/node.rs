@@ -226,6 +226,19 @@ mod tests {
         assert_eq!(back.bundle_id, original.bundle_id);
     }
 
+    /// Agents may produce AppInfo JSON without a bundle_id key (e.g. non-macOS adapters
+    /// or older protocol versions). Deserialization must succeed and yield None.
+    /// This pins the JSON backward-compat contract: bundle_id is always optional on the wire.
+    #[test]
+    fn app_info_bundle_id_missing_key_deserializes_to_none() {
+        let json = r#"{"name":"Finder","pid":42}"#;
+        let info: AppInfo =
+            serde_json::from_str(json).expect("deserialize AppInfo without bundle_id key");
+        assert_eq!(info.bundle_id, None);
+        assert_eq!(info.name, "Finder");
+        assert_eq!(info.pid, 42);
+    }
+
     /// AccessibilityNode.bounds is annotated skip_serializing_if = "Option::is_none".
     /// When the adapter or ref-alloc pipeline strips bounds, the key must not
     /// appear in the JSON, keeping token counts low.

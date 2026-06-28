@@ -7,8 +7,7 @@ mod imp {
     use accessibility_sys::{
         AXUIElementCopyAttributeValue, AXUIElementIsAttributeSettable, AXUIElementPerformAction,
         AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout, kAXErrorAPIDisabled,
-        kAXErrorCannotComplete, kAXErrorInvalidUIElement, kAXErrorSuccess, kAXFocusedAttribute,
-        kAXValueAttribute,
+        kAXErrorCannotComplete, kAXErrorSuccess, kAXFocusedAttribute, kAXValueAttribute,
     };
     use core_foundation::{
         base::{CFType, CFTypeRef, TCFType},
@@ -260,13 +259,6 @@ mod imp {
             return Err(AdapterError::permission_denied()
                 .with_platform_detail(format!("{operation} failed with kAXErrorAPIDisabled")));
         }
-        if err == kAXErrorInvalidUIElement {
-            return Err(
-                AdapterError::element_not_found(operation).with_platform_detail(format!(
-                    "{operation} failed with kAXErrorInvalidUIElement (code={err})"
-                )),
-            );
-        }
         Ok(())
     }
 
@@ -297,15 +289,8 @@ mod imp {
         }
 
         #[test]
-        fn invalid_ui_element_yields_element_not_found() {
-            let err = ax_error_result("press", kAXErrorInvalidUIElement).unwrap_err();
-            assert_eq!(err.code, ErrorCode::ElementNotFound);
-            assert!(
-                err.platform_detail
-                    .as_deref()
-                    .unwrap()
-                    .contains("kAXErrorInvalidUIElement")
-            );
+        fn invalid_ui_element_is_soft_ok_so_chains_fall_through() {
+            ax_error_result("press", kAXErrorInvalidUIElement).unwrap();
         }
 
         #[test]
