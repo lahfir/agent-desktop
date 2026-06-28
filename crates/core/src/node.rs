@@ -84,6 +84,7 @@ pub struct WindowInfo {
 pub struct AppInfo {
     pub name: String,
     pub pid: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle_id: Option<String>,
 }
 
