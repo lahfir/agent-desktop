@@ -24,7 +24,14 @@ pub(crate) fn ax_scroll(
     let target = scroll_area.as_ref().unwrap_or(el);
 
     let scroll_visible = CFString::new("AXScrollToVisible");
-    unsafe { AXUIElementPerformAction(el.0, scroll_visible.as_concrete_TypeRef()) };
+    let scroll_visible_err =
+        unsafe { AXUIElementPerformAction(el.0, scroll_visible.as_concrete_TypeRef()) };
+    if scroll_visible_err != kAXErrorSuccess {
+        tracing::debug!(
+            ax_error = scroll_visible_err,
+            "AXScrollToVisible returned non-success; continuing to next scroll strategy"
+        );
+    }
 
     let (bar_attr, inc_action) = match direction {
         Direction::Down => ("AXVerticalScrollBar", "AXIncrement"),
@@ -95,7 +102,9 @@ pub(crate) fn ax_scroll(
                 Direction::Right => 124,
                 Direction::Left => 123,
             };
-            let _ = crate::system::app_ops::ensure_app_focused(pid);
+            if let Err(e) = crate::system::app_ops::ensure_app_focused(pid) {
+                tracing::warn!(error = %e, "failed to focus app before physical input");
+            }
             let cf_focused = CFString::new("AXFocused");
             let focus_err = unsafe {
                 AXUIElementSetAttributeValue(
@@ -114,7 +123,9 @@ pub(crate) fn ax_scroll(
 
     if policy.allow_focus_steal && policy.allow_cursor_move {
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
-            let _ = crate::system::app_ops::ensure_app_focused(pid);
+            if let Err(e) = crate::system::app_ops::ensure_app_focused(pid) {
+                tracing::warn!(error = %e, "failed to focus app before physical input");
+            }
             if let Some(b) = crate::tree::read_bounds(target) {
                 let (dy, dx) = scroll_wheel_delta(direction, amount);
                 return crate::input::mouse::synthesize_scroll_at(

@@ -126,13 +126,16 @@ mod raise {
         let raise_err = unsafe { AXUIElementPerformAction(window.0, raise.as_concrete_TypeRef()) };
         if raise_err != kAXErrorSuccess {
             let main_attr = CFString::new("AXMain");
-            unsafe {
+            let ax_err = unsafe {
                 AXUIElementSetAttributeValue(
                     window.0,
                     main_attr.as_concrete_TypeRef(),
                     CFBoolean::true_value().as_CFTypeRef(),
                 )
             };
+            if ax_err != kAXErrorSuccess {
+                tracing::debug!("raise_window: AXMain fallback returned err={ax_err}");
+            }
         }
         wait_until_main(window);
     }
