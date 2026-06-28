@@ -41,7 +41,9 @@ struct ClipboardRestore {
 #[cfg(target_os = "macos")]
 impl Drop for ClipboardRestore {
     fn drop(&mut self) {
-        let _ = self.previous.restore();
+        if let Err(e) = self.previous.restore() {
+            tracing::warn!(error = %e, "clipboard restore failed after type_text; prior clipboard may not be restored");
+        }
     }
 }
 
@@ -128,7 +130,14 @@ fn readable_value(el: &AXElement) -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn verify_paste_effect(before: Option<&str>, after: Option<&str>) -> Result<(), AdapterError> {
-    if before.is_none() || after.is_none() || before != after {
+    if before.is_none() {
+        return Ok(());
+    }
+    if after.is_none() {
+        tracing::warn!("paste could not be verified: post-paste field value is unreadable");
+        return Ok(());
+    }
+    if before != after {
         return Ok(());
     }
     Err(AdapterError::new(

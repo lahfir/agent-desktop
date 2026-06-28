@@ -36,6 +36,9 @@ mod imp {
                 let pb = pasteboard()?;
                 clear_pasteboard(pb);
                 if !self.items.is_null() && !write_objects(pb, self.items) {
+                    tracing::warn!(
+                        "clipboard restore failed after clearContents; original clipboard content is lost"
+                    );
                     return Err(AdapterError::internal("NSPasteboard writeObjects: failed"));
                 }
                 Ok(())
