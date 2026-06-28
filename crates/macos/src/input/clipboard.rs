@@ -26,7 +26,7 @@ mod imp {
             unsafe {
                 let pb = pasteboard()?;
                 Ok(Self {
-                    items: retain_pasteboard_items(pb),
+                    items: deep_copy_pasteboard_items(pb),
                 })
             }
         }
@@ -123,24 +123,109 @@ mod imp {
         }
     }
 
-    unsafe fn retain_pasteboard_items(pb: Id) -> Id {
+    unsafe fn deep_copy_pasteboard_items(pb: Id) -> Id {
         unsafe {
-            let items_sel = sel_registerName(c"pasteboardItems".as_ptr());
+            let alloc_sel = sel_registerName(c"alloc".as_ptr());
+            let init_sel = sel_registerName(c"init".as_ptr());
             let send: unsafe extern "C" fn(Id, Sel) -> Id =
                 std::mem::transmute(objc_msgSend as *const c_void);
-            retain_object(send(pb, items_sel))
-        }
-    }
 
-    unsafe fn retain_object(object: Id) -> Id {
-        if object.is_null() {
-            return object;
-        }
-        unsafe {
-            let sel = sel_registerName(c"retain".as_ptr());
-            let send: unsafe extern "C" fn(Id, Sel) -> Id =
+            let ma_cls = objc_getClass(c"NSMutableArray".as_ptr());
+            if ma_cls.is_null() {
+                return std::ptr::null_mut();
+            }
+            let ma_alloc = send(ma_cls as Id, alloc_sel);
+            if ma_alloc.is_null() {
+                return std::ptr::null_mut();
+            }
+            let mutable_array = send(ma_alloc, init_sel);
+            if mutable_array.is_null() {
+                return std::ptr::null_mut();
+            }
+
+            let items_sel = sel_registerName(c"pasteboardItems".as_ptr());
+            let pb_items = send(pb, items_sel);
+            if pb_items.is_null() {
+                release_object(mutable_array);
+                return std::ptr::null_mut();
+            }
+
+            let count_sel = sel_registerName(c"count".as_ptr());
+            let send_usize: unsafe extern "C" fn(Id, Sel) -> usize =
                 std::mem::transmute(objc_msgSend as *const c_void);
-            send(object, sel)
+            let item_count = send_usize(pb_items, count_sel);
+
+            let idx_sel = sel_registerName(c"objectAtIndex:".as_ptr());
+            let send_at_idx: unsafe extern "C" fn(Id, Sel, usize) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
+
+            let types_sel = sel_registerName(c"types".as_ptr());
+            let data_sel = sel_registerName(c"dataForType:".as_ptr());
+            let send_with_id: unsafe extern "C" fn(Id, Sel, Id) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
+
+            let set_data_sel = sel_registerName(c"setData:forType:".as_ptr());
+            let send_set_data: unsafe extern "C" fn(Id, Sel, Id, Id) -> bool =
+                std::mem::transmute(objc_msgSend as *const c_void);
+
+            let add_sel = sel_registerName(c"addObject:".as_ptr());
+            let send_add: unsafe extern "C" fn(Id, Sel, Id) =
+                std::mem::transmute(objc_msgSend as *const c_void);
+
+            let pbi_cls = objc_getClass(c"NSPasteboardItem".as_ptr());
+            if pbi_cls.is_null() {
+                release_object(mutable_array);
+                return std::ptr::null_mut();
+            }
+
+            let mut added = false;
+            for i in 0..item_count {
+                let orig_item = send_at_idx(pb_items, idx_sel, i);
+                if orig_item.is_null() {
+                    continue;
+                }
+
+                let types = send(orig_item, types_sel);
+                if types.is_null() {
+                    continue;
+                }
+
+                let type_count = send_usize(types, count_sel);
+                if type_count == 0 {
+                    continue;
+                }
+
+                let fresh_alloc = send(pbi_cls as Id, alloc_sel);
+                if fresh_alloc.is_null() {
+                    continue;
+                }
+                let fresh_item = send(fresh_alloc, init_sel);
+                if fresh_item.is_null() {
+                    continue;
+                }
+
+                for j in 0..type_count {
+                    let type_str = send_at_idx(types, idx_sel, j);
+                    if type_str.is_null() {
+                        continue;
+                    }
+                    let data = send_with_id(orig_item, data_sel, type_str);
+                    if data.is_null() {
+                        continue;
+                    }
+                    let _ = send_set_data(fresh_item, set_data_sel, data, type_str);
+                }
+
+                send_add(mutable_array, add_sel, fresh_item);
+                release_object(fresh_item);
+                added = true;
+            }
+
+            if !added {
+                release_object(mutable_array);
+                return std::ptr::null_mut();
+            }
+            mutable_array
         }
     }
 
