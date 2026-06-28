@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [0.4.3](https://github.com/lahfir/agent-desktop/compare/v0.4.2...v0.4.3) (2026-06-28)
+
+
+### Bug Fixes
+
+* **macos:** harden retained_handle null guard against release-only CFRetain(null) ([#80](https://github.com/lahfir/agent-desktop/issues/80)) ([a708fa0](https://github.com/lahfir/agent-desktop/commit/a708fa03326a03dbc82acc7e41bd3ec262a05248))
+
 ## [0.4.2](https://github.com/lahfir/agent-desktop/compare/v0.4.1...v0.4.2) (2026-06-27)
 
 
