@@ -7,6 +7,7 @@ pub mod clipboard_get;
 pub mod clipboard_set;
 pub mod close_app;
 pub mod collapse;
+pub(crate) mod combo;
 pub mod dismiss_all_notifications;
 pub mod dismiss_notification;
 pub mod double_click;

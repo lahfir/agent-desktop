@@ -1,6 +1,6 @@
 use crate::{
     adapter::PlatformAdapter,
-    commands::press::{check_blocked_combo, parse_combo_normalized},
+    commands::combo::{check_blocked_combo, parse_combo_normalized},
     error::AppError,
 };
 use serde_json::{Value, json};

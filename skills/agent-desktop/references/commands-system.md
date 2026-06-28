@@ -78,6 +78,8 @@ Restores a minimized or maximized window to its previous size.
 
 ## Notifications
 
+If Notification Center fails to close after a successful list or dismiss operation, the command still returns its completed result; the close failure is logged internally and is never surfaced as an error, so a cleanup hiccup never discards a completed action.
+
 ### list-notifications
 ```bash
 agent-desktop list-notifications
