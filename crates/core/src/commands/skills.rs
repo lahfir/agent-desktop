@@ -10,6 +10,8 @@ const SKILL_DESKTOP_REF_SYSTEM: &str =
     include_str!("../../../../skills/agent-desktop/references/commands-system.md");
 const SKILL_DESKTOP_REF_WORKFLOWS: &str =
     include_str!("../../../../skills/agent-desktop/references/workflows.md");
+
+#[cfg(target_os = "macos")]
 const SKILL_DESKTOP_REF_MACOS: &str =
     include_str!("../../../../skills/agent-desktop/references/macos.md");
 
@@ -36,34 +38,57 @@ struct Skill {
     refs: &'static [SkillRef],
 }
 
+#[cfg(target_os = "macos")]
+const SKILL_DESKTOP_REFS: &[SkillRef] = &[
+    SkillRef {
+        rel_path: "references/commands-observation.md",
+        body: SKILL_DESKTOP_REF_OBSERVATION,
+    },
+    SkillRef {
+        rel_path: "references/commands-interaction.md",
+        body: SKILL_DESKTOP_REF_INTERACTION,
+    },
+    SkillRef {
+        rel_path: "references/commands-system.md",
+        body: SKILL_DESKTOP_REF_SYSTEM,
+    },
+    SkillRef {
+        rel_path: "references/workflows.md",
+        body: SKILL_DESKTOP_REF_WORKFLOWS,
+    },
+    SkillRef {
+        rel_path: "references/macos.md",
+        body: SKILL_DESKTOP_REF_MACOS,
+    },
+];
+
+#[cfg(not(target_os = "macos"))]
+const SKILL_DESKTOP_REFS: &[SkillRef] = &[
+    SkillRef {
+        rel_path: "references/commands-observation.md",
+        body: SKILL_DESKTOP_REF_OBSERVATION,
+    },
+    SkillRef {
+        rel_path: "references/commands-interaction.md",
+        body: SKILL_DESKTOP_REF_INTERACTION,
+    },
+    SkillRef {
+        rel_path: "references/commands-system.md",
+        body: SKILL_DESKTOP_REF_SYSTEM,
+    },
+    SkillRef {
+        rel_path: "references/workflows.md",
+        body: SKILL_DESKTOP_REF_WORKFLOWS,
+    },
+];
+
 const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
         summary: "Primary guide. Snapshot/ref loop, JSON envelope, 54 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
-        refs: &[
-            SkillRef {
-                rel_path: "references/commands-observation.md",
-                body: SKILL_DESKTOP_REF_OBSERVATION,
-            },
-            SkillRef {
-                rel_path: "references/commands-interaction.md",
-                body: SKILL_DESKTOP_REF_INTERACTION,
-            },
-            SkillRef {
-                rel_path: "references/commands-system.md",
-                body: SKILL_DESKTOP_REF_SYSTEM,
-            },
-            SkillRef {
-                rel_path: "references/workflows.md",
-                body: SKILL_DESKTOP_REF_WORKFLOWS,
-            },
-            SkillRef {
-                rel_path: "references/macos.md",
-                body: SKILL_DESKTOP_REF_MACOS,
-            },
-        ],
+        refs: SKILL_DESKTOP_REFS,
     },
     Skill {
         canonical: "agent-desktop-ffi",
