@@ -180,4 +180,64 @@ mod tests {
             let _ = AdScreenshotKind::from_c(raw);
         }
     }
+
+    #[test]
+    fn action_kind_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdActionKind::from_c(0), Some(AdActionKind::Click));
+        assert_eq!(AdActionKind::from_c(20), Some(AdActionKind::Drag));
+    }
+
+    #[test]
+    fn direction_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdDirection::from_c(0), Some(AdDirection::Up));
+        assert_eq!(AdDirection::from_c(3), Some(AdDirection::Right));
+    }
+
+    #[test]
+    fn policy_kind_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdPolicyKind::from_c(0), Some(AdPolicyKind::Headless));
+        assert_eq!(AdPolicyKind::from_c(2), Some(AdPolicyKind::Headed));
+    }
+
+    #[test]
+    fn modifier_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdModifier::from_c(0), Some(AdModifier::Cmd));
+        assert_eq!(AdModifier::from_c(3), Some(AdModifier::Shift));
+    }
+
+    #[test]
+    fn mouse_button_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdMouseButton::from_c(0), Some(AdMouseButton::Left));
+        assert_eq!(AdMouseButton::from_c(2), Some(AdMouseButton::Middle));
+    }
+
+    #[test]
+    fn mouse_event_kind_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdMouseEventKind::from_c(0), Some(AdMouseEventKind::Move));
+        assert_eq!(AdMouseEventKind::from_c(3), Some(AdMouseEventKind::Click));
+    }
+
+    #[test]
+    fn window_op_kind_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdWindowOpKind::from_c(0), Some(AdWindowOpKind::Resize));
+        assert_eq!(AdWindowOpKind::from_c(4), Some(AdWindowOpKind::Restore));
+    }
+
+    #[test]
+    fn screenshot_kind_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(AdScreenshotKind::from_c(0), Some(AdScreenshotKind::Screen));
+        assert_eq!(
+            AdScreenshotKind::from_c(2),
+            Some(AdScreenshotKind::FullScreen)
+        );
+    }
+
+    #[test]
+    fn snapshot_surface_boundary_discriminants_map_to_exact_variants() {
+        assert_eq!(
+            AdSnapshotSurface::from_c(0),
+            Some(AdSnapshotSurface::Window)
+        );
+        assert_eq!(AdSnapshotSurface::from_c(6), Some(AdSnapshotSurface::Alert));
+    }
 }

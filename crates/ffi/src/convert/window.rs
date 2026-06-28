@@ -78,4 +78,28 @@ mod tests {
         let mut c = c;
         unsafe { free_window_info_fields(&mut c) };
     }
+
+    #[test]
+    fn window_info_to_c_bounds_none_sets_false_flag_and_zeroed_rect() {
+        let w = WindowInfo {
+            id: "w-7".into(),
+            title: "Untitled".into(),
+            app: "TextEdit".into(),
+            pid: 99,
+            bounds: None,
+            is_focused: false,
+        };
+        let c = window_info_to_c(&w);
+        assert!(
+            !c.has_bounds,
+            "has_bounds must be false when bounds is None"
+        );
+        assert!(!c.is_focused);
+        assert_eq!(c.bounds.x, 0.0);
+        assert_eq!(c.bounds.y, 0.0);
+        assert_eq!(c.bounds.width, 0.0);
+        assert_eq!(c.bounds.height, 0.0);
+        let mut c = c;
+        unsafe { free_window_info_fields(&mut c) };
+    }
 }

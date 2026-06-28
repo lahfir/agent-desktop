@@ -57,3 +57,78 @@ unsafe fn free_c_string_array(arr: *mut *mut c_char, count: u32) {
         )));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::convert::string::c_to_string;
+    use agent_desktop_core::notification::NotificationInfo;
+    use std::os::raw::c_char;
+
+    fn make_info(body: Option<&str>, actions: &[&str]) -> NotificationInfo {
+        NotificationInfo {
+            index: 3,
+            app_name: "Messages".into(),
+            title: "Hello".into(),
+            body: body.map(str::to_owned),
+            actions: actions.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn full_notification_maps_all_fields_to_c() {
+        let info = make_info(Some("world"), &["Reply", "Mark as Read"]);
+        let mut c = notification_info_to_c(&info);
+        assert_eq!(c.index, 3);
+        assert_eq!(
+            unsafe { c_to_string(c.app_name) }.as_deref(),
+            Some("Messages")
+        );
+        assert_eq!(unsafe { c_to_string(c.title) }.as_deref(), Some("Hello"));
+        assert_eq!(unsafe { c_to_string(c.body) }.as_deref(), Some("world"));
+        assert_eq!(c.action_count, 2);
+        assert!(!c.actions.is_null());
+        let actions = unsafe { std::slice::from_raw_parts(c.actions, c.action_count as usize) };
+        assert_eq!(
+            unsafe { c_to_string(actions[0] as *const c_char) }.as_deref(),
+            Some("Reply")
+        );
+        assert_eq!(
+            unsafe { c_to_string(actions[1] as *const c_char) }.as_deref(),
+            Some("Mark as Read")
+        );
+        unsafe { free_notification_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn body_none_maps_to_null_body_pointer() {
+        let info = make_info(None, &[]);
+        let mut c = notification_info_to_c(&info);
+        assert!(c.body.is_null(), "None body must yield null body pointer");
+        unsafe { free_notification_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn empty_actions_maps_to_null_pointer_and_zero_count() {
+        let info = make_info(None, &[]);
+        let mut c = notification_info_to_c(&info);
+        assert!(
+            c.actions.is_null(),
+            "empty actions slice must yield null actions pointer"
+        );
+        assert_eq!(c.action_count, 0);
+        unsafe { free_notification_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn free_notification_info_fields_nulls_all_pointer_fields() {
+        let info = make_info(Some("body text"), &["Open"]);
+        let mut c = notification_info_to_c(&info);
+        unsafe { free_notification_info_fields(&mut c) };
+        assert!(c.app_name.is_null());
+        assert!(c.title.is_null());
+        assert!(c.body.is_null());
+        assert!(c.actions.is_null());
+        assert_eq!(c.action_count, 0);
+    }
+}

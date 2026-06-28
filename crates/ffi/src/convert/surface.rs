@@ -78,4 +78,70 @@ mod tests {
         assert_eq!(err.code, ErrorCode::InvalidArgs);
         assert_eq!(err.message, "invalid source_surface discriminant");
     }
+
+    #[test]
+    fn item_count_none_maps_to_sentinel_minus_one() {
+        let s = SurfaceInfo {
+            kind: "menu".into(),
+            title: None,
+            item_count: None,
+        };
+        let c = surface_info_to_c(&s);
+        assert_eq!(c.item_count, -1);
+        let mut c = c;
+        unsafe { free_surface_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn item_count_some_zero_maps_to_zero_not_to_absent_sentinel() {
+        let s = SurfaceInfo {
+            kind: "popover".into(),
+            title: None,
+            item_count: Some(0),
+        };
+        let c = surface_info_to_c(&s);
+        assert_eq!(
+            c.item_count, 0,
+            "Some(0) must map to 0, not to the -1 absent sentinel"
+        );
+        let mut c = c;
+        unsafe { free_surface_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn title_some_maps_to_non_null_c_string_with_correct_value() {
+        let s = SurfaceInfo {
+            kind: "sheet".into(),
+            title: Some("Save Panel".into()),
+            item_count: None,
+        };
+        let c = surface_info_to_c(&s);
+        assert!(!c.title.is_null());
+        assert_eq!(
+            unsafe { c_to_string(c.title) }.as_deref(),
+            Some("Save Panel")
+        );
+        let mut c = c;
+        unsafe { free_surface_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn snapshot_surface_from_c_maps_all_seven_variants_exactly() {
+        let cases: [(i32, SnapshotSurface); 7] = [
+            (0, SnapshotSurface::Window),
+            (1, SnapshotSurface::Focused),
+            (2, SnapshotSurface::Menu),
+            (3, SnapshotSurface::Menubar),
+            (4, SnapshotSurface::Sheet),
+            (5, SnapshotSurface::Popover),
+            (6, SnapshotSurface::Alert),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(
+                snapshot_surface_from_c(raw, "kind").unwrap(),
+                expected,
+                "raw discriminant {raw} must map to {expected:?}"
+            );
+        }
+    }
 }
