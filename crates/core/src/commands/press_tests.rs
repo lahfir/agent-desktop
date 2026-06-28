@@ -103,3 +103,23 @@ fn parse_combo_key_is_preserved_verbatim_without_lowercasing() {
     );
     assert_eq!(combo.modifiers, vec![Modifier::Cmd]);
 }
+
+#[test]
+fn aliased_key_blocked_combo_is_still_blocked() {
+    assert!(
+        check_blocked_combo("cmd+shift+backspace").is_err(),
+        "cmd+shift+backspace must be blocked — same OS action as cmd+shift+delete"
+    );
+    assert!(
+        check_blocked_combo("cmd+alt+escape").is_err(),
+        "cmd+alt+escape must be blocked — same OS action as cmd+alt+esc"
+    );
+}
+
+#[test]
+fn reordered_aliased_blocked_combo_is_still_blocked() {
+    assert!(
+        check_blocked_combo("shift+cmd+backspace").is_err(),
+        "shift+cmd+backspace must be blocked — modifier order must not affect the safety check"
+    );
+}

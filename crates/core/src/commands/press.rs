@@ -10,8 +10,10 @@ const BLOCKED_COMBOS: &[&str] = &[
     "cmd+q",
     "cmd+shift+q",
     "cmd+alt+esc",
+    "cmd+alt+escape",
     "ctrl+cmd+q",
     "cmd+shift+delete",
+    "cmd+shift+backspace",
 ];
 
 pub struct PressArgs {
@@ -54,10 +56,14 @@ pub fn check_blocked_combo(raw: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+pub fn parse_combo_normalized(raw: &str) -> Result<KeyCombo, AppError> {
+    let normalized = raw.to_lowercase().replace(' ', "");
+    parse_combo(&normalized)
+}
+
 pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     check_blocked_combo(&args.combo)?;
-    let normalized = args.combo.to_lowercase().replace(' ', "");
-    let combo = parse_combo(&normalized)?;
+    let combo = parse_combo_normalized(&args.combo)?;
 
     if let Some(app_name) = &args.app {
         let result = adapter.press_key_for_app(app_name, &combo)?;

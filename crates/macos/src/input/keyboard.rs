@@ -106,6 +106,9 @@ mod imp {
                 Ok(())
             } else {
                 let key_result = post_checked(sys_wide, key_code, false, 0, 1);
+                if key_result.is_err() {
+                    release_key_system_wide(key_code);
+                }
                 let mut first_mod_err: Option<AdapterError> = None;
                 for m in combo.modifiers.iter().rev() {
                     if let Err(err) = post_checked(sys_wide, modifier_keycode(m), false, 0, 1) {
