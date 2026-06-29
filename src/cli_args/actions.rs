@@ -99,6 +99,12 @@ pub(crate) struct PressArgs {
     pub combo: String,
     #[arg(long, help = "Target application name (focuses app before pressing)")]
     pub app: Option<String>,
+    #[arg(
+        long,
+        help = "Send the combo even if the adapter flags it as a dangerous shortcut"
+    )]
+    #[serde(default)]
+    pub force: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -109,6 +115,12 @@ pub(crate) struct KeyComboArgs {
         help = "Key or modifier to hold/release: shift, cmd, ctrl ..."
     )]
     pub combo: String,
+    #[arg(
+        long,
+        help = "Send the combo even if the adapter flags it as a dangerous shortcut"
+    )]
+    #[serde(default)]
+    pub force: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]

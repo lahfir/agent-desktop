@@ -251,6 +251,17 @@ pub trait PlatformAdapter: Send + Sync {
         false
     }
 
+    /// Reports whether `combo` is a platform-dangerous keyboard shortcut that
+    /// should be refused unless the caller explicitly forces it (for example
+    /// macOS Cmd+Q quit, Ctrl+Cmd+Q lock, Cmd+Alt+Esc force-quit). Which
+    /// combos are dangerous — and how key names alias to physical keys — is
+    /// platform-specific, so each adapter owns its own list; core only asks
+    /// and lets the caller override via `--force`. The default blocks nothing,
+    /// leaving the decision entirely to the calling agent.
+    fn is_blocked_combo(&self, _combo: &KeyCombo) -> bool {
+        false
+    }
+
     fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         Err(AdapterError::not_supported("screenshot"))
     }

@@ -1,49 +1,23 @@
 use crate::{
     action::{KeyCombo, Modifier},
+    adapter::PlatformAdapter,
     error::{AdapterError, AppError},
 };
 
-pub(crate) const BLOCKED_COMBOS: &[&str] = &[
-    "cmd+q",
-    "cmd+shift+q",
-    "cmd+alt+esc",
-    "cmd+alt+escape",
-    "ctrl+cmd+q",
-    "cmd+shift+delete",
-    "cmd+shift+backspace",
-];
-
-fn canonical_combo(c: &KeyCombo) -> String {
-    let mut mods: Vec<&str> = c
-        .modifiers
-        .iter()
-        .map(|m| match m {
-            Modifier::Cmd => "cmd",
-            Modifier::Ctrl => "ctrl",
-            Modifier::Alt => "alt",
-            Modifier::Shift => "shift",
-        })
-        .collect();
-    mods.sort_unstable();
-    mods.dedup();
-    mods.push(c.key.as_str());
-    mods.join("+")
-}
-
-pub fn check_blocked_combo(raw: &str) -> Result<(), AppError> {
-    let normalized = raw.to_lowercase().replace(' ', "");
-    let Ok(parsed) = parse_combo(&normalized) else {
-        return Ok(());
-    };
-    let canonical = canonical_combo(&parsed);
-    for blocked in BLOCKED_COMBOS {
-        if let Ok(blocked_parsed) = parse_combo(blocked) {
-            if canonical == canonical_combo(&blocked_parsed) {
-                return Err(AppError::Adapter(AdapterError::policy_denied(format!(
-                    "Key combo '{raw}' is blocked for safety"
-                ))));
-            }
-        }
+/// Refuses `combo` when the platform adapter reports it as dangerous, unless
+/// the caller forced it. Whether a combo is dangerous is the adapter's
+/// decision (`is_blocked_combo`); core only enforces the verdict and honors
+/// the `--force` override, so the calling agent always retains control.
+pub fn ensure_combo_allowed(
+    combo: &KeyCombo,
+    raw: &str,
+    force: bool,
+    adapter: &dyn PlatformAdapter,
+) -> Result<(), AppError> {
+    if !force && adapter.is_blocked_combo(combo) {
+        return Err(AppError::Adapter(AdapterError::policy_denied(format!(
+            "Key combo '{raw}' is blocked for safety; pass --force to override"
+        ))));
     }
     Ok(())
 }

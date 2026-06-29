@@ -136,6 +136,10 @@ impl PlatformAdapter for MacOSAdapter {
         crate::system::app_ops::is_protected_process(identifier)
     }
 
+    fn is_blocked_combo(&self, combo: &agent_desktop_core::action::KeyCombo) -> bool {
+        crate::input::blocked_combo::is_blocked(combo)
+    }
+
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         match target {
             ScreenshotTarget::Window(pid) => crate::system::screenshot::capture_app(pid),

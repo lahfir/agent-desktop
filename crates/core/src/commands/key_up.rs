@@ -1,17 +1,18 @@
 use crate::{
     adapter::PlatformAdapter,
-    commands::combo::{check_blocked_combo, parse_combo_normalized},
+    commands::combo::{ensure_combo_allowed, parse_combo_normalized},
     error::AppError,
 };
 use serde_json::{Value, json};
 
 pub struct KeyUpArgs {
     pub combo: String,
+    pub force: bool,
 }
 
 pub fn execute(args: KeyUpArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    check_blocked_combo(&args.combo)?;
     let combo = parse_combo_normalized(&args.combo)?;
+    ensure_combo_allowed(&combo, &args.combo, args.force, adapter)?;
     adapter.key_event(&combo, false)?;
     Ok(json!({ "key_up": args.combo }))
 }
