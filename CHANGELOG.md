@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [0.4.4](https://github.com/lahfir/agent-desktop/compare/v0.4.3...v0.4.4) (2026-06-29)
+
+
+### Features
+
+* **macos,core:** harden adapter and core foundation with caller-controllable guardrails ([#82](https://github.com/lahfir/agent-desktop/issues/82)) ([94ce6c5](https://github.com/lahfir/agent-desktop/commit/94ce6c551fff4ffd2afc44ab6a9f655b4486da11))
+
 ## [0.4.3](https://github.com/lahfir/agent-desktop/compare/v0.4.2...v0.4.3) (2026-06-28)
 
 
