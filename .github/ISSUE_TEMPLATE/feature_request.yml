@@ -1,0 +1,66 @@
+name: Feature Request
+description: Propose a new command, flag, or behavior for agent-desktop
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement to agent-desktop.
+        agent-desktop is a **machine-facing tool** — features are evaluated by how they help AI agents observe and control desktop applications more effectively.
+        Please be as specific as possible about the use case.
+
+  - type: textarea
+    id: problem_use_case
+    attributes:
+      label: Problem / use case
+      description: |
+        Describe the agent workflow that is blocked or degraded today.
+        Frame it from the agent's perspective: "As an agent I want to…"
+      placeholder: |
+        As an agent I want to read the selected text in any app so that I can
+        operate on clipboard contents without issuing a separate `clipboard get` command.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed solution
+      description: |
+        Describe the new command, flag, or behavior you have in mind.
+        Include example CLI invocations and the JSON output you would expect.
+      placeholder: |
+        Add a `--selection` flag to `snapshot` that appends a `selected_text` field
+        to the response envelope when the focused element has a non-empty selection.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or alternative designs did you explore, and why do they fall short?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Target platform(s)
+      description: Which platform(s) should this feature cover?
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - All platforms
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: prior_search
+    attributes:
+      label: Prior search
+      options:
+        - label: I have searched existing issues and discussions and did not find a duplicate
+          required: true
