@@ -132,6 +132,7 @@ fn scoped_surface_root(
         SnapshotSurface::Sheet => crate::tree::sheet_for_pid(entry.pid),
         SnapshotSurface::Popover => crate::tree::popover_for_pid(entry.pid),
         SnapshotSurface::Alert => crate::tree::alert_for_pid(entry.pid),
+        _ => return Err(AdapterError::not_supported("snapshot surface")),
     };
     Ok(root)
 }

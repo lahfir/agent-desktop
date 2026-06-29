@@ -30,7 +30,7 @@ mod imp {
             ));
         }
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
-            let _ = crate::system::app_ops::ensure_app_focused(pid);
+            crate::system::app_ops::focus_best_effort(pid);
         }
         if let Some(window) = crate::tree::copy_element_attr(el, "AXWindow") {
             crate::system::window_ops::raise_window(&window);

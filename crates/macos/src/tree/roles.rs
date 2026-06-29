@@ -91,3 +91,45 @@ pub fn promoted_item_label(ax_role: Option<&str>, el: &crate::tree::AXElement) -
 }
 
 pub use agent_desktop_core::roles::is_toggleable_role;
+
+#[cfg(test)]
+mod tests {
+    use super::ax_role_to_str;
+
+    #[test]
+    fn interactive_ax_roles_map_to_exact_normalized_roles() {
+        assert_eq!(ax_role_to_str("AXButton"), "button");
+        assert_eq!(ax_role_to_str("AXLink"), "link");
+        assert_eq!(ax_role_to_str("AXCheckBox"), "checkbox");
+        assert_eq!(ax_role_to_str("AXMenuItem"), "menuitem");
+        assert_eq!(ax_role_to_str("AXMenuBarItem"), "menuitem");
+        assert_eq!(ax_role_to_str("AXScrollArea"), "scrollarea");
+        assert_eq!(ax_role_to_str("AXDisclosureTriangle"), "disclosure");
+        assert_eq!(ax_role_to_str("AXComboBox"), "combobox");
+        assert_eq!(ax_role_to_str("AXColorWell"), "colorwell");
+        assert_eq!(ax_role_to_str("AXDockItem"), "dockitem");
+    }
+
+    #[test]
+    fn aliased_ax_roles_collapse_to_one_normalized_role() {
+        assert_eq!(ax_role_to_str("AXTextField"), "textfield");
+        assert_eq!(ax_role_to_str("AXTextArea"), "textfield");
+        assert_eq!(ax_role_to_str("AXSearchField"), "textfield");
+        assert_eq!(ax_role_to_str("AXSecureTextField"), "textfield");
+
+        assert_eq!(ax_role_to_str("AXSwitch"), "switch");
+        assert_eq!(ax_role_to_str("AXToggle"), "switch");
+
+        assert_eq!(ax_role_to_str("AXOutlineRow"), "treeitem");
+        assert_eq!(ax_role_to_str("AXRow"), "treeitem");
+
+        assert_eq!(ax_role_to_str("AXScrollBar"), "scrollarea");
+    }
+
+    #[test]
+    fn unknown_ax_role_maps_to_unknown_fallback() {
+        assert_eq!(ax_role_to_str("AXCustomWidget"), "unknown");
+        assert_eq!(ax_role_to_str(""), "unknown");
+        assert_eq!(ax_role_to_str("button"), "unknown");
+    }
+}

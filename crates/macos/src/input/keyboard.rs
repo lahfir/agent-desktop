@@ -39,18 +39,18 @@ mod imp {
             ));
         }
 
-        if !combo.modifiers.is_empty() {
-            for m in &combo.modifiers {
-                let mod_code = modifier_keycode(m);
-                let err = unsafe { AXUIElementPostKeyboardEvent(sys_wide, 0, mod_code, true) };
-                if err != kAXErrorSuccess {
-                    release_modifiers(sys_wide, &combo.modifiers);
-                    unsafe { core_foundation::base::CFRelease(sys_wide as _) };
-                    return Err(AdapterError::internal(format!(
-                        "AXUIElementPostKeyboardEvent modifier-down failed (err={err})"
-                    )));
-                }
+        let mut pressed_mods = Vec::new();
+        for m in &combo.modifiers {
+            let mod_code = modifier_keycode(m);
+            let err = unsafe { AXUIElementPostKeyboardEvent(sys_wide, 0, mod_code, true) };
+            if err != kAXErrorSuccess {
+                release_modifiers(sys_wide, &pressed_mods);
+                unsafe { core_foundation::base::CFRelease(sys_wide as _) };
+                return Err(AdapterError::internal(format!(
+                    "AXUIElementPostKeyboardEvent modifier-down failed (err={err})"
+                )));
             }
+            pressed_mods.push(m.clone());
         }
 
         let err_down = post_event(sys_wide, key_code, true);
@@ -68,6 +68,7 @@ mod imp {
             )));
         }
         if err_up != kAXErrorSuccess {
+            release_key_system_wide(key_code);
             return Err(AdapterError::internal(format!(
                 "AXUIElementPostKeyboardEvent key-up failed (err={err_up})"
             )));
@@ -90,16 +91,33 @@ mod imp {
 
         let result = (|| {
             if down {
+                let mut pressed_mods = Vec::new();
                 for m in &combo.modifiers {
-                    post_checked(sys_wide, modifier_keycode(m), true, 0, 1)?;
+                    if let Err(err) = post_checked(sys_wide, modifier_keycode(m), true, 0, 1) {
+                        release_modifiers(sys_wide, &pressed_mods);
+                        return Err(err);
+                    }
+                    pressed_mods.push(m.clone());
                 }
-                post_checked(sys_wide, key_code, true, 0, 1)
+                if let Err(err) = post_checked(sys_wide, key_code, true, 0, 1) {
+                    release_modifiers(sys_wide, &pressed_mods);
+                    return Err(err);
+                }
+                Ok(())
             } else {
                 let key_result = post_checked(sys_wide, key_code, false, 0, 1);
-                for m in combo.modifiers.iter().rev() {
-                    post_checked(sys_wide, modifier_keycode(m), false, 0, 1)?;
+                if key_result.is_err() {
+                    release_key_system_wide(key_code);
                 }
-                key_result
+                let mut first_mod_err: Option<AdapterError> = None;
+                for m in combo.modifiers.iter().rev() {
+                    if let Err(err) = post_checked(sys_wide, modifier_keycode(m), false, 0, 1) {
+                        if first_mod_err.is_none() {
+                            first_mod_err = Some(err);
+                        }
+                    }
+                }
+                key_result.and(first_mod_err.map_or(Ok(()), Err))
             }
         })();
 
@@ -191,6 +209,9 @@ mod imp {
                 }
             }
         }
+        if key_result.is_err() {
+            release_key_system_wide(key_code);
+        }
         if key_result.is_err() || release_result.is_err() {
             release_modifiers_system_wide(&pressed);
         }
@@ -213,6 +234,15 @@ mod imp {
             return;
         }
         release_modifiers(sys_wide, modifiers);
+        unsafe { core_foundation::base::CFRelease(sys_wide as _) };
+    }
+
+    fn release_key_system_wide(key_code: u16) {
+        let sys_wide = unsafe { AXUIElementCreateSystemWide() };
+        if sys_wide.is_null() {
+            return;
+        }
+        unsafe { AXUIElementPostKeyboardEvent(sys_wide, 0, key_code, false) };
         unsafe { core_foundation::base::CFRelease(sys_wide as _) };
     }
 

@@ -47,6 +47,15 @@ pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
     Ok(())
 }
 
+/// Focuses the app identified by `pid` on a best-effort basis; if the focus
+/// attempt fails the warning is emitted and the caller proceeds unchanged.
+#[cfg(target_os = "macos")]
+pub(crate) fn focus_best_effort(pid: i32) {
+    if let Err(e) = ensure_app_focused(pid) {
+        tracing::warn!(error = %e, "failed to focus app before physical input");
+    }
+}
+
 /// Polls `AXFrontmost` until the app actually reports frontmost instead of a
 /// fixed settle sleep, so an already-frontmost app costs one read and a slow
 /// activation gets the full window. Best-effort: timing out just means the

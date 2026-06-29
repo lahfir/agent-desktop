@@ -84,6 +84,7 @@ pub struct WindowInfo {
 pub struct AppInfo {
     pub name: String,
     pub pid: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle_id: Option<String>,
 }
 
@@ -98,82 +99,5 @@ pub struct SurfaceInfo {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_rect_null_fields_deserialize() {
-        let json = r#"{"x": null, "y": null, "width": 0.0, "height": 0.0}"#;
-        let rect: Rect = serde_json::from_str(json).unwrap();
-        assert_eq!(rect.x, 0.0);
-        assert_eq!(rect.y, 0.0);
-    }
-
-    #[test]
-    fn test_rect_missing_fields_deserialize() {
-        let json = r#"{"width": 100.0, "height": 50.0}"#;
-        let rect: Rect = serde_json::from_str(json).unwrap();
-        assert_eq!(rect.x, 0.0);
-        assert_eq!(rect.y, 0.0);
-        assert_eq!(rect.width, 100.0);
-    }
-
-    #[test]
-    fn test_children_count_omitted_when_none() {
-        let node = AccessibilityNode {
-            ref_id: None,
-            role: "group".into(),
-            name: Some("Sidebar".into()),
-            value: None,
-            description: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
-            children_count: None,
-            children: vec![],
-        };
-        let json = serde_json::to_string(&node).unwrap();
-        assert!(!json.contains("children_count"));
-    }
-
-    #[test]
-    fn test_children_count_present_when_set() {
-        let node = AccessibilityNode {
-            ref_id: None,
-            role: "group".into(),
-            name: Some("Sidebar".into()),
-            value: None,
-            description: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
-            children_count: Some(47),
-            children: vec![],
-        };
-        let json = serde_json::to_string(&node).unwrap();
-        assert!(json.contains("\"children_count\":47"));
-    }
-
-    #[test]
-    fn test_children_count_backward_compat() {
-        let json = r#"{"role":"button","name":"OK"}"#;
-        let node: AccessibilityNode = serde_json::from_str(json).unwrap();
-        assert!(node.children_count.is_none());
-    }
-
-    #[test]
-    fn test_rect_normal_roundtrip() {
-        let rect = Rect {
-            x: 10.5,
-            y: 20.3,
-            width: 100.0,
-            height: 50.0,
-        };
-        let json = serde_json::to_string(&rect).unwrap();
-        let back: Rect = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.x, 10.5);
-        assert_eq!(back.width, 100.0);
-    }
-}
+#[path = "node_tests.rs"]
+mod tests;

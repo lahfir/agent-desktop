@@ -61,6 +61,7 @@ impl PlatformAdapter for MacOSAdapter {
                 .ok_or_else(|| AdapterError::element_not_found("No visible popover"))?,
             SnapshotSurface::Alert => crate::tree::surfaces::alert_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
+            _ => return Err(AdapterError::not_supported("snapshot surface")),
         };
         let mut visited = FxHashSet::default();
         let context = crate::tree::TreeBuildContext::for_pid(win.pid, opts.include_bounds);
@@ -133,6 +134,10 @@ impl PlatformAdapter for MacOSAdapter {
 
     fn is_protected_process(&self, identifier: &str) -> bool {
         crate::system::app_ops::is_protected_process(identifier)
+    }
+
+    fn is_blocked_combo(&self, combo: &agent_desktop_core::action::KeyCombo) -> bool {
+        crate::input::blocked_combo::is_blocked(combo)
     }
 
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {

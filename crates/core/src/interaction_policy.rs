@@ -47,54 +47,5 @@ impl Default for InteractionPolicy {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn join_headless_with_headless_stays_headless() {
-        assert_eq!(
-            InteractionPolicy::headless().join(InteractionPolicy::headless()),
-            InteractionPolicy::headless()
-        );
-    }
-
-    #[test]
-    fn join_headless_with_focus_fallback_gives_focus_fallback() {
-        assert_eq!(
-            InteractionPolicy::headless().join(InteractionPolicy::focus_fallback()),
-            InteractionPolicy::focus_fallback()
-        );
-    }
-
-    #[test]
-    fn join_focus_fallback_with_headless_gives_focus_fallback() {
-        assert_eq!(
-            InteractionPolicy::focus_fallback().join(InteractionPolicy::headless()),
-            InteractionPolicy::focus_fallback()
-        );
-    }
-
-    #[test]
-    fn join_headless_with_headed_gives_headed() {
-        assert_eq!(
-            InteractionPolicy::headless().join(InteractionPolicy::headed()),
-            InteractionPolicy::headed()
-        );
-    }
-
-    #[test]
-    fn join_focus_fallback_with_headed_gives_headed() {
-        assert_eq!(
-            InteractionPolicy::focus_fallback().join(InteractionPolicy::headed()),
-            InteractionPolicy::headed()
-        );
-    }
-
-    #[test]
-    fn join_headed_with_headless_gives_headed() {
-        assert_eq!(
-            InteractionPolicy::headed().join(InteractionPolicy::headless()),
-            InteractionPolicy::headed()
-        );
-    }
-}
+#[path = "interaction_policy_tests.rs"]
+mod tests;

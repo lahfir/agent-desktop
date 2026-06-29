@@ -4,7 +4,7 @@ use agent_desktop_core::{
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
 };
 
-use super::nc_session::NcSession;
+use super::nc_session::{NcSession, close_session};
 
 pub fn dismiss_notification(
     index: usize,
@@ -31,18 +31,6 @@ pub fn notification_action(
     let session = NcSession::open()?;
     let result = action_impl(index, identity, action_name);
     close_session(session, result)
-}
-
-fn close_session<T>(
-    session: NcSession,
-    result: Result<T, AdapterError>,
-) -> Result<T, AdapterError> {
-    let close_result = session.close();
-    match (result, close_result) {
-        (Ok(value), Ok(())) => Ok(value),
-        (Ok(_), Err(err)) => Err(err),
-        (Err(err), _) => Err(err),
-    }
 }
 
 #[cfg(target_os = "macos")]
@@ -94,6 +82,10 @@ fn dismiss_entry(element: &crate::tree::AXElement) -> Result<(), AdapterError> {
     let children = copy_ax_array(element, kAXChildrenAttribute).unwrap_or_default();
     if try_dismiss_button(&children) {
         return Ok(());
+    }
+
+    if !crate::system::permissions::report().accessibility_granted() {
+        return Err(AdapterError::permission_denied());
     }
 
     hover_over(element)?;

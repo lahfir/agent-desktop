@@ -175,17 +175,19 @@ agent-desktop press cmd+a --app "TextEdit"
 **Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12`
 **Modifiers:** `cmd`, `ctrl`, `alt`, `shift` — combine with `+`
 
+Dangerous shortcuts (e.g. `cmd+q`, `ctrl+cmd+q`, `cmd+alt+esc`, `cmd+shift+delete`) are refused with `POLICY_DENIED`. Normalization covers modifier order and key-name aliases (`escape`/`esc`, `backspace`/`delete`). The block is the **platform adapter's** decision, not core's — the calling agent stays in control: pass `--force` to send a flagged combo anyway (`agent-desktop press cmd+q --force`). `--force` is available on `press`, `key-down`, and `key-up`.
+
 ### key-down
 ```bash
 agent-desktop key-down shift
 ```
-Holds a key or modifier down. Must be paired with `key-up`.
+Holds a key or modifier down. Must be paired with `key-up`. The blocked-combo guard (same set as `press`) is enforced per invocation. **Known limitation:** because the tool is stateless per call, an agent could hold modifiers across separate `key-down` calls to assemble a blocked combo; that cross-invocation case is not guarded — a stateful guard arrives with the Phase-4 daemon.
 
 ### key-up
 ```bash
 agent-desktop key-up shift
 ```
-Releases a held key or modifier.
+Releases a held key or modifier. The blocked-combo guard (same set as `press`) applies per invocation.
 
 ## Mouse
 

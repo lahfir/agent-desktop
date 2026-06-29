@@ -24,6 +24,8 @@ pub(super) fn timeout_error() -> AdapterError {
 #[cfg(target_os = "macos")]
 pub(super) fn sleep_before_retry(deadline: Instant) {
     if let Ok(remaining) = remaining_before_deadline(deadline) {
-        std::thread::sleep(remaining.min(Duration::from_millis(75)));
+        if remaining > Duration::from_millis(100) {
+            std::thread::sleep(remaining.min(Duration::from_millis(75)));
+        }
     }
 }

@@ -156,15 +156,26 @@ pub(crate) fn dispatch(
             press::PressArgs {
                 combo: a.combo,
                 app: a.app,
+                force: a.force,
             },
             adapter,
         ),
 
-        Commands::KeyDown(a) => {
-            key_down::execute(key_down::KeyDownArgs { combo: a.combo }, adapter)
-        }
+        Commands::KeyDown(a) => key_down::execute(
+            key_down::KeyDownArgs {
+                combo: a.combo,
+                force: a.force,
+            },
+            adapter,
+        ),
 
-        Commands::KeyUp(a) => key_up::execute(key_up::KeyUpArgs { combo: a.combo }, adapter),
+        Commands::KeyUp(a) => key_up::execute(
+            key_up::KeyUpArgs {
+                combo: a.combo,
+                force: a.force,
+            },
+            adapter,
+        ),
 
         Commands::Hover(a) => hover::execute(
             hover::HoverArgs {

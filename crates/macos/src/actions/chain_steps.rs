@@ -93,7 +93,9 @@ mod imp {
         std::thread::sleep(std::time::Duration::from_millis(150));
         if !ax_helpers::try_ax_action_retried_or_err(&owner, "AXConfirm")? {
             if let Some(o) = &orig {
-                let _ = ax_helpers::set_ax_string_or_err(&owner, "AXValue", o);
+                if let Err(e) = ax_helpers::set_ax_string_or_err(&owner, "AXValue", o) {
+                    tracing::warn!(error = %e, "value_relay: rollback write failed; control may have corrupted value");
+                }
             }
             return Ok(false);
         }

@@ -164,7 +164,13 @@ mod imp {
     }
 
     pub(crate) fn set_messaging_timeout(el: &AXElement, seconds: f32) {
-        unsafe { AXUIElementSetMessagingTimeout(el.0, seconds) };
+        let err = unsafe { AXUIElementSetMessagingTimeout(el.0, seconds) };
+        if err != kAXErrorSuccess {
+            tracing::warn!(
+                err,
+                "AXUIElementSetMessagingTimeout failed; AX calls may use the default timeout"
+            );
+        }
     }
 
     pub(crate) fn ax_focus_or_err(el: &AXElement) -> Result<bool, AdapterError> {
@@ -248,12 +254,57 @@ mod imp {
             .map(|r| crate::tree::roles::ax_role_to_str(&r).to_string())
     }
 
+    /// Soft-error gate for AX API return codes.
+    ///
+    /// Only `kAXErrorAPIDisabled` is promoted to a hard error (permission denied).
+    /// All other codes — including `kAXErrorInvalidUIElement` — intentionally
+    /// return `Ok(())` so that action-chain steps fall through to the next
+    /// strategy or physical fallback instead of aborting the whole chain.
+    /// Genuine staleness is caught earlier at resolve time (`STALE_REF`);
+    /// re-escalating other codes here requires a chain-level stale detector first.
     fn ax_error_result(operation: &str, err: i32) -> Result<(), AdapterError> {
         if err == kAXErrorAPIDisabled {
             return Err(AdapterError::permission_denied()
                 .with_platform_detail(format!("{operation} failed with kAXErrorAPIDisabled")));
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use accessibility_sys::{
+            kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorInvalidUIElement, kAXErrorSuccess,
+        };
+        use agent_desktop_core::error::ErrorCode;
+
+        use super::ax_error_result;
+
+        #[test]
+        fn success_code_is_ok() {
+            ax_error_result("op", kAXErrorSuccess).unwrap();
+        }
+
+        #[test]
+        fn api_disabled_yields_perm_denied() {
+            let err = ax_error_result("press", kAXErrorAPIDisabled).unwrap_err();
+            assert_eq!(err.code, ErrorCode::PermDenied);
+            assert!(
+                err.platform_detail
+                    .as_deref()
+                    .unwrap()
+                    .contains("kAXErrorAPIDisabled")
+            );
+        }
+
+        #[test]
+        fn invalid_ui_element_is_soft_ok_so_chains_fall_through() {
+            ax_error_result("press", kAXErrorInvalidUIElement).unwrap();
+        }
+
+        #[test]
+        fn unrecognised_ax_code_is_soft_ok() {
+            ax_error_result("op", kAXErrorCannotComplete).unwrap();
+        }
     }
 }
 

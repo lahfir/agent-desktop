@@ -1,8 +1,24 @@
 use agent_desktop_core::error::AdapterError;
 
+pub(crate) fn close_session<T>(
+    session: NcSession,
+    result: Result<T, AdapterError>,
+) -> Result<T, AdapterError> {
+    let close_result = session.close();
+    match (result, close_result) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(value), Err(close_err)) => {
+            tracing::warn!(error = %close_err, "notification center close failed after a successful operation");
+            Ok(value)
+        }
+        (Err(err), _) => Err(err),
+    }
+}
+
 pub(crate) struct NcSession {
     was_already_open: bool,
     previous_app: Option<String>,
+    closed: bool,
 }
 
 impl NcSession {
@@ -16,10 +32,11 @@ impl NcSession {
         Ok(Self {
             was_already_open,
             previous_app,
+            closed: false,
         })
     }
 
-    pub(crate) fn close(self) -> Result<(), AdapterError> {
+    pub(crate) fn close(mut self) -> Result<(), AdapterError> {
         let close_result = if self.was_already_open {
             Ok(())
         } else {
@@ -28,13 +45,16 @@ impl NcSession {
         if let Some(ref app) = self.previous_app {
             reactivate_app(app);
         }
-        std::mem::forget(self);
+        self.closed = true;
         close_result
     }
 }
 
 impl Drop for NcSession {
     fn drop(&mut self) {
+        if self.closed {
+            return;
+        }
         if !self.was_already_open {
             if let Err(e) = close_nc() {
                 tracing::warn!("Failed to close NC in Drop: {e}");
@@ -77,11 +97,13 @@ fn reactivate_app(name: &str) {
     let script = format!("tell application {} to activate", applescript_string(name));
     let mut command = std::process::Command::new("/usr/bin/osascript");
     command.arg("-e").arg(script);
-    let _ = crate::system::process::run_with_timeout(
+    if let Err(e) = crate::system::process::run_with_timeout(
         &mut command,
         "reactivate-app osascript",
         std::time::Duration::from_secs(1),
-    );
+    ) {
+        tracing::warn!("reactivate_app osascript failed for app {:?}: {e}", name);
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -89,6 +111,9 @@ fn applescript_string(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
     escaped.push('"');
     for ch in value.chars() {
+        if ch.is_control() {
+            continue;
+        }
         if matches!(ch, '\\' | '"') {
             escaped.push('\\');
         }
@@ -145,11 +170,11 @@ fn open_nc() -> Result<(), AdapterError> {
 
     let mut command = std::process::Command::new("/usr/bin/osascript");
     command.arg("-e").arg(script);
-    let _ = crate::system::process::run_with_timeout(
+    crate::system::process::run_with_timeout(
         &mut command,
         "osascript open-nc",
         std::time::Duration::from_secs(2),
-    );
+    )?;
     std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(())
 }
@@ -183,6 +208,14 @@ mod tests {
             applescript_string(r#"Bad \ "Name""#),
             r#""Bad \\ \"Name\"""#
         );
+    }
+
+    #[test]
+    fn applescript_string_strips_control_chars() {
+        assert_eq!(applescript_string("a\nb"), r#""ab""#);
+        assert_eq!(applescript_string("a\tb"), r#""ab""#);
+        assert_eq!(applescript_string("a\\\nb"), r#""a\\b""#);
+        assert_eq!(applescript_string("a\"b\nc"), r#""a\"bc""#);
     }
 }
 

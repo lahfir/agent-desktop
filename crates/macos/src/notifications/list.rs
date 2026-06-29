@@ -3,15 +3,14 @@ use agent_desktop_core::{
     notification::{NotificationFilter, NotificationInfo},
 };
 
-use super::nc_session::NcSession;
+use super::nc_session::{NcSession, close_session};
 
 pub fn list_notifications(
     filter: &NotificationFilter,
 ) -> Result<Vec<NotificationInfo>, AdapterError> {
     let session = NcSession::open()?;
     let result = list_from_nc(filter);
-    session.close()?;
-    result
+    close_session(session, result)
 }
 
 #[cfg(target_os = "macos")]

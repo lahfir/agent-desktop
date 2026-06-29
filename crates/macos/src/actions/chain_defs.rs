@@ -190,6 +190,10 @@ mod imp {
         crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy)
     }
 
+    /// Triple-click has no AX semantic equivalent on macOS and is therefore
+    /// unconditionally physical: it always requires cursor-move + focus-steal
+    /// policy. Callers that gate on `allow_cursor_move` will receive a
+    /// `PolicyDenied` error from `click_via_bounds` rather than a silent no-op.
     pub(crate) fn triple_click(
         el: &AXElement,
         policy: InteractionPolicy,

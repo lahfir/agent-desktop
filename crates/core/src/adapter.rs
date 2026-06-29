@@ -16,6 +16,7 @@ pub struct WindowFilter {
     pub app: Option<String>,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SnapshotSurface {
@@ -196,12 +197,10 @@ pub trait PlatformAdapter: Send + Sync {
         self.resolve_element_strict(entry)
     }
 
-    /// Releases a platform-specific element handle returned from
-    /// `resolve_element`. Adapter methods that receive `&NativeHandle`
-    /// borrow it only; they must not consume or release it. macOS
-    /// implementations must `CFRelease` here to balance the `CFRetain`
-    /// that happened during resolve. Windows/Linux consumers can leave
-    /// this as the default no-op.
+    /// Releases a platform handle that an implementation took ownership of during resolve.
+    /// Adapter methods that receive `&NativeHandle` borrow it only; they must not consume
+    /// or release it. The default no-op is correct for adapters whose handles are owned
+    /// or freed elsewhere.
     fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
         Ok(())
     }
@@ -249,6 +248,17 @@ pub trait PlatformAdapter: Send + Sync {
     /// inherently platform-specific, so each adapter owns its own list;
     /// core only asks. The default denies nothing.
     fn is_protected_process(&self, _identifier: &str) -> bool {
+        false
+    }
+
+    /// Reports whether `combo` is a platform-dangerous keyboard shortcut that
+    /// should be refused unless the caller explicitly forces it (for example
+    /// macOS Cmd+Q quit, Ctrl+Cmd+Q lock, Cmd+Alt+Esc force-quit). Which
+    /// combos are dangerous — and how key names alias to physical keys — is
+    /// platform-specific, so each adapter owns its own list; core only asks
+    /// and lets the caller override via `--force`. The default blocks nothing,
+    /// leaving the decision entirely to the calling agent.
+    fn is_blocked_combo(&self, _combo: &KeyCombo) -> bool {
         false
     }
 

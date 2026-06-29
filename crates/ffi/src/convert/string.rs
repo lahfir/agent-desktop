@@ -253,4 +253,42 @@ mod tests {
                 .starts_with("name exceeds AD_MAX_STRING_BYTES")
         );
     }
+
+    #[test]
+    fn empty_c_string_decodes_as_some_empty_not_none() {
+        let c = string_to_c("");
+        assert!(!c.is_null());
+        let result = unsafe { try_c_to_string(c) };
+        assert!(
+            matches!(result, Ok(Some(ref s)) if s.is_empty()),
+            "empty C string must be Some(\"\"), not None (null) or Err"
+        );
+        unsafe { free_c_string(c) };
+    }
+
+    #[test]
+    fn c_to_string_empty_string_is_some_empty_not_none() {
+        let c = string_to_c("");
+        assert_eq!(
+            unsafe { c_to_string(c) }.as_deref(),
+            Some(""),
+            "c_to_string on \"\" must yield Some(\"\"), distinguishable from null→None"
+        );
+        unsafe { free_c_string(c) };
+    }
+
+    #[test]
+    fn required_adapter_string_null_ptr_returns_err_naming_the_field() {
+        let err = required_adapter_string(ptr::null(), "app_name").unwrap_err();
+        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::InvalidArgs);
+        assert_eq!(err.message, "app_name is null");
+    }
+
+    #[test]
+    fn optional_adapter_string_invalid_utf8_returns_err_naming_the_field() {
+        let bad: [u8; 3] = [0xFF, 0xFE, 0x00];
+        let err = optional_adapter_string(bad.as_ptr() as *const c_char, "role").unwrap_err();
+        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::InvalidArgs);
+        assert_eq!(err.message, "role is not valid UTF-8");
+    }
 }

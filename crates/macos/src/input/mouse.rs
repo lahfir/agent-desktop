@@ -6,7 +6,9 @@ use agent_desktop_core::{
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use core_graphics::event::{CGEvent, CGEventTapLocation, CGEventType, CGMouseButton};
+    use core_graphics::event::{
+        CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
+    };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use core_graphics::geometry::CGPoint;
 
@@ -201,17 +203,7 @@ mod imp {
     }
 
     fn set_click_count(event: &CGEvent, count: i64) {
-        unsafe {
-            CGEventSetIntegerValueField(
-                event as *const CGEvent as *const std::ffi::c_void,
-                1,
-                count,
-            );
-        }
-    }
-
-    unsafe extern "C" {
-        fn CGEventSetIntegerValueField(event: *const std::ffi::c_void, field: u32, value: i64);
+        event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, count);
     }
 
     fn create_event(
@@ -299,7 +291,9 @@ mod imp {
             fn CGEventPost(tap: u32, event: *mut std::ffi::c_void);
         }
 
-        let event = unsafe { CGEventCreateScrollWheelEvent(std::ptr::null(), 0, 2, dy, dx) };
+        let event = unsafe {
+            CGEventCreateScrollWheelEvent(std::ptr::null(), ScrollEventUnit::LINE, 2, dy, dx)
+        };
         if event.is_null() {
             return Err(AdapterError::internal("scroll event creation failed"));
         }
