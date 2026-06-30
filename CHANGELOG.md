@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [0.4.5](https://github.com/lahfir/agent-desktop/compare/v0.4.4...v0.4.5) (2026-06-30)
+
+
+### Features
+
+* add --wait-for selector polling flags ([#86](https://github.com/lahfir/agent-desktop/issues/86)) ([ce23278](https://github.com/lahfir/agent-desktop/commit/ce232787b50270d6f590e11bd2b16c7354de623d))
+
 ## [0.4.4](https://github.com/lahfir/agent-desktop/compare/v0.4.3...v0.4.4) (2026-06-29)
 
 
