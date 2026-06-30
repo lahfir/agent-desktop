@@ -5,7 +5,7 @@ use crate::{
     adapter::{PlatformAdapter, TreeOptions, WindowFilter},
     commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
-    error::{AppError, ErrorCode},
+    error::AppError,
     node::WindowInfo,
     refs::{RefEntry, validate_ref_id},
     refs_store::RefStore,
@@ -127,13 +127,7 @@ pub(crate) fn execute_ref_action_with_context(
         request,
         context,
     )?;
-    let app = probe_app_name(adapter, &entry);
-    apply_post_action_wait(
-        serde_json::to_value(result)?,
-        app.as_deref(),
-        adapter,
-        context,
-    )
+    apply_post_action_wait(serde_json::to_value(result)?, &entry, adapter, context)
 }
 
 /// Resolves the app name a ref belongs to for post-action polling. Normal
@@ -151,7 +145,7 @@ pub(crate) fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) ->
 
 pub(crate) fn apply_post_action_wait(
     result: Value,
-    app: Option<&str>,
+    entry: &RefEntry,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
@@ -162,8 +156,8 @@ pub(crate) fn apply_post_action_wait(
         WaitSelectorInput {
             query_raw: wait.query_raw.clone(),
             gone: wait.gone,
-            app: app.map(str::to_string),
-            window_id: None,
+            app: probe_app_name(adapter, entry),
+            window_id: entry.source_window_id.clone(),
             opts: TreeOptions::default(),
             timeout_ms: wait.timeout_ms,
         },
@@ -176,7 +170,7 @@ pub(crate) fn apply_post_action_wait(
             }
             Ok(snapshot)
         }
-        Err(AppError::Adapter(mut adapter_err)) if adapter_err.code == ErrorCode::Timeout => {
+        Err(AppError::Adapter(mut adapter_err)) => {
             let mut details = adapter_err.details.take().unwrap_or_else(|| json!({}));
             if let Some(obj) = details.as_object_mut() {
                 obj.insert("after_action".into(), result);

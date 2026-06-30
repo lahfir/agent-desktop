@@ -23,13 +23,7 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let query = query::parse_selector(&input.query_raw);
-    if query.is_match_everything() {
-        return Err(AppError::invalid_input_with_suggestion(
-            "Selector must constrain at least role or text",
-            "Use forms like \"button:Submit\", \"button\", or \":Saved!\".",
-        ));
-    }
+    let query = query::validate_selector(&input.query_raw)?;
 
     let start = Instant::now();
     let timeout = Duration::from_millis(input.timeout_ms);
@@ -92,9 +86,6 @@ pub fn execute(
     }
 }
 
-/// Success payload for a `--wait-for-gone` wait whose target app or window has
-/// itself disappeared: there is no tree left to snapshot, but the element is
-/// definitively absent, which is exactly the condition the caller waited on.
 fn target_absent_response(query_raw: &str, elapsed_ms: u128) -> Value {
     json!({
         "matched_selector": query_raw,
@@ -120,9 +111,6 @@ fn persist_last_built(
     Ok(Some(snapshot_id))
 }
 
-/// App/window gone means the element is absent. For a `--wait-for-gone` wait
-/// that is success; for a presence wait the target may still be launching, so
-/// the caller keeps polling until timeout.
 fn is_target_gone_error(err: &AppError) -> bool {
     matches!(
         err,

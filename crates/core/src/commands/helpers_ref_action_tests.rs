@@ -284,6 +284,110 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
     assert_eq!(value["matched_selector"], ":saved!");
 }
 
+struct MultiWindowAdapter;
+
+impl PlatformAdapter for MultiWindowAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+    ) -> Result<ActionResult, AdapterError> {
+        Ok(ActionResult::new("ok"))
+    }
+
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Ok(vec![
+            WindowInfo {
+                id: "w-other".into(),
+                title: "Other".into(),
+                app: "App".into(),
+                pid: 1,
+                bounds: None,
+                is_focused: true,
+            },
+            WindowInfo {
+                id: "w-target".into(),
+                title: "Target".into(),
+                app: "App".into(),
+                pid: 1,
+                bounds: None,
+                is_focused: false,
+            },
+        ])
+    }
+
+    fn get_tree(
+        &self,
+        win: &WindowInfo,
+        _opts: &crate::adapter::TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        let children = if win.id == "w-target" {
+            vec![AccessibilityNode {
+                ref_id: None,
+                role: "button".into(),
+                name: Some("Saved!".into()),
+                value: None,
+                description: None,
+                hint: None,
+                states: vec![],
+                available_actions: vec![],
+                bounds: None,
+                children_count: None,
+                children: vec![],
+            }]
+        } else {
+            vec![]
+        };
+        Ok(AccessibilityNode {
+            ref_id: None,
+            role: "window".into(),
+            name: Some(win.title.clone()),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            available_actions: vec![],
+            bounds: None,
+            children_count: None,
+            children,
+        })
+    }
+}
+
+#[test]
+fn post_action_wait_polls_acted_on_window_not_focused_window() {
+    let _guard = HomeGuard::new();
+    let mut refmap = RefMap::new();
+    let mut entry = entry();
+    entry.source_app = Some("App".into());
+    entry.source_window_id = Some("w-target".into());
+    refmap.allocate(entry);
+    let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
+    let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
+        query_raw: ":saved!".into(),
+        gone: false,
+        timeout_ms: 500,
+    }));
+    let args = RefArgs {
+        ref_id: "@e1".into(),
+        snapshot_id: Some(snapshot_id),
+    };
+
+    let value = execute_ref_action_with_context(
+        args,
+        &MultiWindowAdapter,
+        ActionRequest::headless(Action::Click),
+        &context,
+    )
+    .expect("wait must match in the acted-on window, not the focused empty window");
+    assert_eq!(value["matched_selector"], ":saved!");
+    assert_eq!(value["window"]["id"], "w-target");
+}
+
 #[test]
 fn post_action_wait_without_flag_returns_action_only() {
     let _guard = HomeGuard::new();

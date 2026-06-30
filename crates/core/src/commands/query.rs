@@ -1,4 +1,4 @@
-use crate::{node::AccessibilityNode, roles, search_text};
+use crate::{error::AppError, node::AccessibilityNode, roles, search_text};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindQuery {
@@ -12,6 +12,17 @@ impl FindQuery {
     pub fn is_match_everything(&self) -> bool {
         self.role.is_none() && self.name.is_none() && self.value.is_none() && self.text.is_none()
     }
+}
+
+pub fn validate_selector(raw: &str) -> Result<FindQuery, AppError> {
+    let query = parse_selector(raw);
+    if query.is_match_everything() {
+        return Err(AppError::invalid_input_with_suggestion(
+            "Selector must constrain at least role or text",
+            "Use forms like \"button:Submit\", \"button\", or \":Saved!\".",
+        ));
+    }
+    Ok(query)
 }
 
 pub fn parse_selector(raw: &str) -> FindQuery {

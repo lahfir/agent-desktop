@@ -54,7 +54,7 @@ pub fn execute(
         Err(err) => response["menu_probe"] = probe_error_json(&err),
     }
 
-    apply_post_action_wait(response, probe_app.as_deref(), adapter, context)
+    apply_post_action_wait(response, &entry, adapter, context)
 }
 
 fn probe_error_json(err: &AppError) -> Value {

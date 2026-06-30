@@ -31,9 +31,11 @@ agent-desktop click @e5 --wait-for-gone "progressindicator" --wait-timeout 5000
 
 **Selector grammar:** one `role:text` string split on the first `:`. Examples: `"button:Submit"` (role + text), `"button"` (role only), `":Saved!"` (text only). Matching uses the same `find` matcher (`node_matches`); text searches name, value, and description.
 
-**Supported commands:** `snapshot` and ref-resolving actions (`click`, `type`, `set-value`, `scroll`, … — 16 total). Other commands (`find`, `launch`, …) return `INVALID_ARGS`. Workaround: `snapshot --app Foo -w "button:Login"`.
+**Supported commands:** `snapshot` plus the 16 ref-resolving actions (`click`, `type`, `set-value`, `scroll`, …) — 17 commands total. Other commands (`find`, `launch`, …) return `INVALID_ARGS`. Workaround: `snapshot --app Foo -w "button:Login"`.
 
-**Post-action waits** poll the **acted-on ref's app** (`entry.source_app`), not the frontmost app — critical in headless mode where the terminal usually has focus. The action result is preserved under `data.after_action` in the snapshot envelope.
+**Post-action waits** poll the **acted-on ref's own window** (`entry.source_window_id`, scoped to `entry.source_app`), not the frontmost window — critical in headless and multi-window apps where the terminal or a sibling window has focus. The action result is preserved under `after_action` in the returned envelope.
+
+**Success shape:** a match returns the full snapshot envelope (`app`, `window`, `ref_count`, `snapshot_id`, `tree`) plus `elapsed_ms` and `matched_selector`. The one exception is `--wait-for-gone` when the target **app or window has itself closed**: there is no tree left to capture, so the success payload is the compact `{ "matched_selector", "gone": true, "target_absent": true, "elapsed_ms" }`. On timeout the `wait_timeout` error `details` carry `last_error` (when a poll errored) and the `snapshot_id` of the last tree built.
 
 **Snapshot constraints:** `--root` and `--wait-for`/`--wait-for-gone` are mutually exclusive (`INVALID_ARGS`). Batch items never inherit an outer `-w` (use per-item flows or run `snapshot -w` separately).
 

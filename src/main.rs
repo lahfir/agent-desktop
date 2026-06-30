@@ -127,12 +127,7 @@ fn validate_wait_for_command(cmd_name: &str, wait: &WaitSelector) -> Result<(), 
             "Use snapshot --wait-for \"<selector>\" or a supported ref action (click, type, …).",
         ));
     }
-    if agent_desktop_core::commands::query::parse_selector(&wait.query_raw).is_match_everything() {
-        return Err(AppError::invalid_input_with_suggestion(
-            "Selector must constrain at least role or text",
-            "Use forms like \"button:Submit\", \"button\", or \":Saved!\".",
-        ));
-    }
+    agent_desktop_core::commands::query::validate_selector(&wait.query_raw)?;
     Ok(())
 }
 
