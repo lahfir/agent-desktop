@@ -118,6 +118,8 @@ EXAMPLES
   agent-desktop --headed mouse-click --xy 500,300
   agent-desktop wait --text "Loading complete" --app Safari --timeout 5000
   agent-desktop wait --element @e5 --predicate actionable --timeout 5000
+  agent-desktop snapshot --app Finder -w "button:OK"
+  agent-desktop click @e5 -w ":Saved!"
   agent-desktop --session run-a --trace /tmp/ad.jsonl click @e5
   agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'
   agent-desktop --session run-a batch '[{"command":"status","session":"run-b","args":{}}]'

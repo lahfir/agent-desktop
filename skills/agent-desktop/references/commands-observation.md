@@ -13,6 +13,7 @@ agent-desktop snapshot --app "App" --surface menu
 agent-desktop snapshot --app "App" --window-id "w-1234"
 agent-desktop snapshot --app "App" -i --compact
 agent-desktop snapshot --app "App" --skeleton -i
+agent-desktop snapshot --app "App" -w "button:Submit"
 agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 ```
 

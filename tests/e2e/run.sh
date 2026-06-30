@@ -250,6 +250,33 @@ wt="$("$bin" wait --text appeared-text --app "$app" --timeout 5000 2>/dev/null)"
 assert "wait text resolved" "$([ "$(echo "$wt" | field "['data']['found']")" = "True" ] && echo 1 || echo 0)" \
     "found=$(echo "$wt" | field "['data']['found']") elapsed_ms=$(echo "$wt" | field "['data']['elapsed_ms']")"
 
+note "wait-for selector (global -w / --wait-for-gone)"
+"$bin" focus-window --app "$app" >/dev/null 2>&1
+wf_out="$("$bin" click "$(resolve button appear-later)" -w ":appeared-text" --wait-timeout 8000 2>&1)"
+wf_ok="$(echo "$wf_out" | field "['ok']")"
+wf_sel="$(echo "$wf_out" | field "['data']['matched_selector']")"
+wf_after="$(echo "$wf_out" | field "['data']['after_action']['action']")"
+assert "post-action -w waits for async text" \
+    "$([ "$wf_ok" = "True" ] && [ "$wf_sel" = ":appeared-text" ] && [ "$wf_after" = "click" ] && echo 1 || echo 0)" \
+    "ok=$wf_ok matched=$wf_sel after_action=$wf_after"
+wg_out="$("$bin" click "$(resolve button remove-row)" --wait-for-gone ":removable-row" --wait-timeout 5000 2>&1)"
+wg_ok="$(echo "$wg_out" | field "['ok']")"
+wg_gone="$(echo "$wg_out" | field "['data']['matched_selector']")"
+assert "--wait-for-gone after remove-row" \
+    "$([ "$wg_ok" = "True" ] && [ "$wg_gone" = ":removable-row" ] && echo 1 || echo 0)" \
+    "ok=$wg_ok matched=$wg_gone"
+to_out="$("$bin" snapshot --app "$app" -w ":does-not-exist-xyz" --wait-timeout 400 2>&1)"; to_ec=$?
+to_kind="$(echo "$to_out" | field "['error']['details']['kind']")"
+to_pred="$(echo "$to_out" | field "['error']['details']['predicate']")"
+to_sid="$(echo "$to_out" | field "['error']['details']['snapshot_id']")"
+assert "wait-for timeout envelope" \
+    "$([ "$to_ec" -ne 0 ] && [ "$to_kind" = "wait_timeout" ] && [ "$to_pred" = "selector" ] && [ -n "$to_sid" ] && echo 1 || echo 0)" \
+    "exit=$to_ec kind=$to_kind predicate=$to_pred snapshot_id=${to_sid:0:12}..."
+find_wf="$("$bin" find --app "$app" -w "button:OK" 2>&1)"
+find_wf_code="$(echo "$find_wf" | field "['error']['code']")"
+assert "unsupported command rejects -w" "$([ "$find_wf_code" = "INVALID_ARGS" ] && echo 1 || echo 0)" \
+    "find -w code=$find_wf_code"
+
 note "skeleton traversal + scoped drill-down"
 sk="$("$bin" snapshot --app "$app" --skeleton 2>/dev/null)"; sk_id="$(echo "$sk" | field "['data']['snapshot_id']")"
 sk_refs="$(echo "$sk" | field "['data']['ref_count']")"

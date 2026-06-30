@@ -1,8 +1,59 @@
 use super::*;
-use crate::error::ErrorCode;
+use crate::adapter::{PlatformAdapter, WindowFilter};
+use crate::context::{CommandContext, WaitSelector};
+use crate::error::{AdapterError, ErrorCode};
+use crate::node::{AccessibilityNode, WindowInfo};
+use crate::refs_test_support::HomeGuard;
 
 struct NoopAdapter;
 impl PlatformAdapter for NoopAdapter {}
+
+struct WaitSnapshotAdapter;
+
+impl PlatformAdapter for WaitSnapshotAdapter {
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Ok(vec![WindowInfo {
+            id: "w-1".into(),
+            title: "Doc".into(),
+            app: "FixtureApp".into(),
+            pid: 1,
+            bounds: None,
+            is_focused: true,
+        }])
+    }
+
+    fn get_tree(
+        &self,
+        _win: &WindowInfo,
+        _opts: &crate::adapter::TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        Ok(AccessibilityNode {
+            ref_id: None,
+            role: "window".into(),
+            name: Some("Doc".into()),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            available_actions: vec![],
+            bounds: None,
+            children_count: None,
+            children: vec![AccessibilityNode {
+                ref_id: None,
+                role: "button".into(),
+                name: Some("Submit".into()),
+                value: None,
+                description: None,
+                hint: None,
+                states: vec![],
+                available_actions: vec![],
+                bounds: None,
+                children_count: None,
+                children: vec![],
+            }],
+        })
+    }
+}
 
 fn base_args() -> SnapshotArgs {
     SnapshotArgs {
@@ -129,5 +180,38 @@ fn test_valid_root_ref_format_does_not_trigger_invalid_args() {
             ErrorCode::InvalidArgs,
             "well-formed ref must not trigger INVALID_ARGS"
         );
+    }
+}
+
+#[test]
+fn wait_for_selector_returns_matched_snapshot() {
+    let _guard = HomeGuard::new();
+    let mut args = base_args();
+    args.app = Some("FixtureApp".into());
+    let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
+        query_raw: "button:Submit".into(),
+        gone: false,
+        timeout_ms: 5_000,
+    }));
+    let value = execute(args, &WaitSnapshotAdapter, &context).unwrap();
+    assert_eq!(value["matched_selector"], "button:Submit");
+    assert!(value["snapshot_id"].as_str().is_some());
+}
+
+#[test]
+fn root_and_wait_for_are_mutually_exclusive() {
+    let mut args = base_args();
+    args.root_ref = Some("@e1".into());
+    let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
+        query_raw: "button:Submit".into(),
+        gone: false,
+        timeout_ms: 5_000,
+    }));
+    let err = execute(args, &NoopAdapter, &context).expect_err("root + wait must fail");
+    match err {
+        AppError::Adapter(adapter_err) => {
+            assert_eq!(adapter_err.code, ErrorCode::InvalidArgs);
+        }
+        other => panic!("expected InvalidArgs, got {other:?}"),
     }
 }

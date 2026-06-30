@@ -39,6 +39,7 @@ pub mod notification_action;
 pub mod permissions;
 pub(crate) mod point_resolve;
 pub mod press;
+pub mod query;
 pub mod resize_window;
 pub mod restore;
 pub mod right_click;
@@ -60,6 +61,7 @@ pub(crate) mod wait_element;
 pub(crate) mod wait_latest_ref_cache;
 pub(crate) mod wait_mode;
 pub(crate) mod wait_predicate;
+pub mod wait_selector;
 pub(crate) mod wait_text_match;
 pub(crate) mod wait_timeout;
 

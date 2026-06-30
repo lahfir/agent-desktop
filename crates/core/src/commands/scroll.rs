@@ -1,7 +1,7 @@
 use crate::{
     action::{Action, Direction},
     adapter::PlatformAdapter,
-    commands::helpers::execute_ref_action_result_with_context,
+    commands::helpers::{apply_post_action_wait, execute_ref_action_result_with_context},
     context::CommandContext,
     error::AppError,
 };
@@ -20,12 +20,17 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let request = context.request_base(Action::Scroll(args.direction, args.amount));
-    let (_entry, result) = execute_ref_action_result_with_context(
+    let (entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),
         adapter,
         request,
         context,
     )?;
-    Ok(serde_json::to_value(result)?)
+    apply_post_action_wait(
+        serde_json::to_value(result)?,
+        entry.source_app.as_deref(),
+        adapter,
+        context,
+    )
 }

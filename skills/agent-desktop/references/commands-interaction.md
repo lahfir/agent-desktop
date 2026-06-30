@@ -13,6 +13,32 @@ Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) a
 
 `--headed` is a global flag and also applies to every `batch` entry.
 
+### `--wait-for` / `--wait-for-gone` (global)
+
+Three global flags poll the accessibility tree until a compact selector matches (or, with `--wait-for-gone`, until it no longer matches), then return a snapshot envelope:
+
+```bash
+agent-desktop snapshot --app Finder -w "button:OK"
+agent-desktop click @e5 -w ":Saved!"
+agent-desktop click @e5 --wait-for-gone "progressindicator" --wait-timeout 5000
+```
+
+| Flag | Short | Default | Meaning |
+|------|-------|---------|---------|
+| `--wait-for <SELECTOR>` | `-w` | — | Block until an element matching `<SELECTOR>` is present |
+| `--wait-for-gone <SELECTOR>` | — | — | Block until no element matches (mutually exclusive with `--wait-for`) |
+| `--wait-timeout <MS>` | — | `30000` | Poll budget; on expiry exit `1` with `kind: "wait_timeout"`, `predicate: "selector"` |
+
+**Selector grammar:** one `role:text` string split on the first `:`. Examples: `"button:Submit"` (role + text), `"button"` (role only), `":Saved!"` (text only). Matching uses the same `find` matcher (`node_matches`); text searches name, value, and description.
+
+**Supported commands:** `snapshot` and ref-resolving actions (`click`, `type`, `set-value`, `scroll`, … — 16 total). Other commands (`find`, `launch`, …) return `INVALID_ARGS`. Workaround: `snapshot --app Foo -w "button:Login"`.
+
+**Post-action waits** poll the **acted-on ref's app** (`entry.source_app`), not the frontmost app — critical in headless mode where the terminal usually has focus. The action result is preserved under `data.after_action` in the snapshot envelope.
+
+**Snapshot constraints:** `--root` and `--wait-for`/`--wait-for-gone` are mutually exclusive (`INVALID_ARGS`). Batch items never inherit an outer `-w` (use per-item flows or run `snapshot -w` separately).
+
+**Timeout envelope:** exit `1`, `error.code` `TIMEOUT`, `error.details.kind` `"wait_timeout"`, `error.details.snapshot_id` holds the last built tree for inspection. Post-action timeouts also embed `error.details.after_action`.
+
 #### Which gestures have a headless path
 
 The command surface is platform-agnostic: every ref action builds an `Action` and calls the platform adapter, which owns the headless-vs-physical implementation. The table below is the **macOS (Phase 1) adapter's** behavior — a gesture is headless-capable there only when macOS exposes an accessibility action for it. If a future Windows (UIA) or Linux (AT-SPI) adapter exposes a headless path for `double-click`/`triple-click`, that command lights up headlessly on that platform with **no change to the command or core** — only the adapter changes (`hover`/`drag` are modeled as raw cursor gestures, so they stay physical everywhere by design).

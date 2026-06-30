@@ -5,11 +5,19 @@ use crate::{
 use serde_json::Value;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone)]
+pub struct WaitSelector {
+    pub query_raw: String,
+    pub gone: bool,
+    pub timeout_ms: u64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CommandContext {
     session_id: Option<String>,
     trace: TraceConfig,
     headed: bool,
+    wait_selector: Option<WaitSelector>,
 }
 
 impl CommandContext {
@@ -25,6 +33,7 @@ impl CommandContext {
             session_id,
             trace: TraceConfig::new(trace_path, trace_strict)?,
             headed: false,
+            wait_selector: None,
         })
     }
 
@@ -35,6 +44,15 @@ impl CommandContext {
     pub fn with_headed(mut self, headed: bool) -> Self {
         self.headed = headed;
         self
+    }
+
+    pub fn with_wait_selector(mut self, wait_selector: Option<WaitSelector>) -> Self {
+        self.wait_selector = wait_selector;
+        self
+    }
+
+    pub fn wait_selector(&self) -> Option<&WaitSelector> {
+        self.wait_selector.as_ref()
     }
 
     /// Builds the action request for a ref command. Headless (default) uses the
@@ -82,6 +100,7 @@ impl CommandContext {
             session_id,
             trace: self.trace.clone(),
             headed: self.headed,
+            wait_selector: None,
         })
     }
 
@@ -315,6 +334,17 @@ mod tests {
     fn trace_strict_requires_trace_path() {
         let err = CommandContext::new(None, None, true).unwrap_err();
         assert_eq!(err.code(), "INVALID_ARGS");
+    }
+
+    #[test]
+    fn batch_item_clears_wait_selector() {
+        let parent = CommandContext::default().with_wait_selector(Some(WaitSelector {
+            query_raw: "button:OK".into(),
+            gone: false,
+            timeout_ms: 5_000,
+        }));
+        let child = parent.for_batch_item(None).unwrap();
+        assert!(child.wait_selector().is_none());
     }
 
     #[test]

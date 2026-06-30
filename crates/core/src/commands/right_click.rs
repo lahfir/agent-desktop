@@ -1,7 +1,7 @@
 use crate::{
     action::Action,
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
-    commands::helpers::{RefArgs, execute_ref_action_result_with_context},
+    commands::helpers::{RefArgs, apply_post_action_wait, execute_ref_action_result_with_context},
     context::CommandContext,
     error::AppError,
     refs::RefEntry,
@@ -53,7 +53,7 @@ pub fn execute(
         Err(err) => response["menu_probe"] = probe_error_json(&err),
     }
 
-    Ok(response)
+    apply_post_action_wait(response, entry.source_app.as_deref(), adapter, context)
 }
 
 fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) -> Option<String> {

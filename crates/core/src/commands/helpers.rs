@@ -2,9 +2,10 @@ use crate::{
     action::WindowOp,
     action_request::ActionRequest,
     action_result::ActionResult,
-    adapter::{PlatformAdapter, WindowFilter},
+    adapter::{PlatformAdapter, TreeOptions, WindowFilter},
+    commands::{query, wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
-    error::AppError,
+    error::{AppError, ErrorCode},
     node::WindowInfo,
     refs::{RefEntry, validate_ref_id},
     refs_store::RefStore,
@@ -119,14 +120,59 @@ pub(crate) fn execute_ref_action_with_context(
     request: ActionRequest,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let (_entry, result) = execute_ref_action_result_with_context(
+    let (entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),
         adapter,
         request,
         context,
     )?;
-    Ok(serde_json::to_value(result)?)
+    apply_post_action_wait(
+        serde_json::to_value(result)?,
+        entry.source_app.as_deref(),
+        adapter,
+        context,
+    )
+}
+
+pub(crate) fn apply_post_action_wait(
+    result: Value,
+    app: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let Some(wait) = context.wait_selector() else {
+        return Ok(result);
+    };
+    let query = query::parse_selector(&wait.query_raw);
+    match wait_selector::execute(
+        WaitSelectorInput {
+            query,
+            query_raw: wait.query_raw.clone(),
+            gone: wait.gone,
+            app: app.map(str::to_string),
+            window_id: None,
+            opts: TreeOptions::default(),
+            timeout_ms: wait.timeout_ms,
+        },
+        adapter,
+        context,
+    ) {
+        Ok(mut snapshot) => {
+            if let Some(body) = snapshot.as_object_mut() {
+                body.insert("after_action".into(), result);
+            }
+            Ok(snapshot)
+        }
+        Err(AppError::Adapter(mut adapter_err)) if adapter_err.code == ErrorCode::Timeout => {
+            let mut details = adapter_err.details.take().unwrap_or_else(|| json!({}));
+            if let Some(obj) = details.as_object_mut() {
+                obj.insert("after_action".into(), result);
+            }
+            Err(AppError::Adapter(adapter_err.with_details(details)))
+        }
+        Err(err) => Err(err),
+    }
 }
 
 pub(crate) fn execute_ref_action_result_with_context(

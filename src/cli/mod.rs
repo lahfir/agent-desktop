@@ -67,6 +67,31 @@ pub(crate) struct Cli {
     )]
     pub headed: bool,
 
+    #[arg(
+        long,
+        short = 'w',
+        global = true,
+        conflicts_with = "wait_for_gone",
+        help = "Poll until an element matching the role:text selector appears, then return the snapshot"
+    )]
+    pub wait_for: Option<String>,
+
+    #[arg(
+        long,
+        global = true,
+        conflicts_with = "wait_for",
+        help = "Poll until no element matches the role:text selector, then return the snapshot"
+    )]
+    pub wait_for_gone: Option<String>,
+
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 30_000,
+        help = "Maximum wait time in milliseconds for --wait-for / --wait-for-gone (default: 30000)"
+    )]
+    pub wait_timeout: u64,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -247,6 +272,10 @@ impl Commands {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "wait_for_cli_tests.rs"]
+mod wait_for_cli_tests;
 
 #[cfg(test)]
 #[path = "contract_tests.rs"]

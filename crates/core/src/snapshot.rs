@@ -8,6 +8,7 @@ use crate::{
     refs_store::RefStore,
 };
 
+#[derive(Clone)]
 pub struct SnapshotResult {
     pub tree: AccessibilityNode,
     pub refmap: RefMap,
