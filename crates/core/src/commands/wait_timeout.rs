@@ -99,8 +99,10 @@ pub(crate) fn selector(
         "selector": selector,
         "gone": gone,
         "timeout_ms": timeout_ms,
-        "last_error": last_error
     });
+    if let Some(err) = last_error {
+        details["last_error"] = err;
+    }
     if let Some(snapshot_id) = last_snapshot_id {
         details["snapshot_id"] = json!(snapshot_id);
     }

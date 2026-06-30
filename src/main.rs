@@ -108,31 +108,32 @@ fn main() {
 }
 
 fn build_wait_selector(cli: &Cli) -> Option<WaitSelector> {
-    if let Some(query_raw) = cli.wait_for.clone() {
-        return Some(WaitSelector {
-            query_raw,
-            gone: false,
-            timeout_ms: cli.wait_timeout,
-        });
-    }
-    if let Some(query_raw) = cli.wait_for_gone.clone() {
-        return Some(WaitSelector {
-            query_raw,
-            gone: true,
-            timeout_ms: cli.wait_timeout,
-        });
-    }
-    None
+    let (query_raw, gone) = cli
+        .wait_for
+        .as_ref()
+        .map(|raw| (raw, false))
+        .or_else(|| cli.wait_for_gone.as_ref().map(|raw| (raw, true)))?;
+    Some(WaitSelector {
+        query_raw: query_raw.clone(),
+        gone,
+        timeout_ms: cli.wait_timeout,
+    })
 }
 
-fn validate_wait_for_command(cmd_name: &str, _wait: &WaitSelector) -> Result<(), AppError> {
-    if WAIT_SUPPORTED.contains(&cmd_name) {
-        return Ok(());
+fn validate_wait_for_command(cmd_name: &str, wait: &WaitSelector) -> Result<(), AppError> {
+    if !WAIT_SUPPORTED.contains(&cmd_name) {
+        return Err(AppError::invalid_input_with_suggestion(
+            format!("Command '{cmd_name}' does not support --wait-for or --wait-for-gone"),
+            "Use snapshot --wait-for \"<selector>\" or a supported ref action (click, type, …).",
+        ));
     }
-    Err(AppError::invalid_input_with_suggestion(
-        format!("Command '{cmd_name}' does not support --wait-for or --wait-for-gone"),
-        "Use snapshot --wait-for \"<selector>\" or a supported ref action (click, type, …).",
-    ))
+    if agent_desktop_core::commands::query::parse_selector(&wait.query_raw).is_match_everything() {
+        return Err(AppError::invalid_input_with_suggestion(
+            "Selector must constrain at least role or text",
+            "Use forms like \"button:Submit\", \"button\", or \":Saved!\".",
+        ));
+    }
+    Ok(())
 }
 
 fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) {

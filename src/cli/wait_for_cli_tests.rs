@@ -1,5 +1,14 @@
 use super::Cli;
+use agent_desktop_core::context::WaitSelector;
 use clap::{CommandFactory, Parser};
+
+fn selector(query_raw: &str) -> WaitSelector {
+    WaitSelector {
+        query_raw: query_raw.into(),
+        gone: false,
+        timeout_ms: 30_000,
+    }
+}
 
 #[test]
 fn help_lists_global_wait_for_flags() {
@@ -53,4 +62,40 @@ fn wait_timeout_parses_custom_value() {
     ])
     .expect("custom wait timeout should parse");
     assert_eq!(cli.wait_timeout, 5_000);
+}
+
+#[test]
+fn validate_rejects_unsupported_command() {
+    let err = crate::validate_wait_for_command("find", &selector("button:OK"))
+        .expect_err("find must not accept --wait-for");
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn validate_rejects_match_everything_selector_before_dispatch() {
+    let err = crate::validate_wait_for_command("click", &selector(""))
+        .expect_err("empty selector must be rejected before the action runs");
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(crate::validate_wait_for_command("click", &selector(":")).is_err());
+}
+
+#[test]
+fn validate_accepts_supported_command_with_constraining_selector() {
+    assert!(crate::validate_wait_for_command("click", &selector(":Saved!")).is_ok());
+    assert!(crate::validate_wait_for_command("snapshot", &selector("button")).is_ok());
+}
+
+#[test]
+fn wait_supported_names_are_real_subcommands() {
+    let cmd = Cli::command();
+    let subcommands: Vec<String> = cmd
+        .get_subcommands()
+        .map(|sub| sub.get_name().to_string())
+        .collect();
+    for name in crate::WAIT_SUPPORTED {
+        assert!(
+            subcommands.iter().any(|sub| sub == name),
+            "WAIT_SUPPORTED entry '{name}' is not a real subcommand"
+        );
+    }
 }

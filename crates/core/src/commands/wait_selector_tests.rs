@@ -1,7 +1,6 @@
 use super::*;
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::query::parse_selector,
     context::CommandContext,
     error::{AdapterError, ErrorCode},
     node::{AccessibilityNode, WindowInfo},
@@ -107,9 +106,18 @@ impl PlatformAdapter for ErrorThenTreeAdapter {
     }
 }
 
+struct CodeErrorAdapter {
+    code: ErrorCode,
+}
+
+impl PlatformAdapter for CodeErrorAdapter {
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Err(AdapterError::new(self.code.clone(), "poll error"))
+    }
+}
+
 fn base_input(query_raw: &str, gone: bool) -> WaitSelectorInput {
     WaitSelectorInput {
-        query: parse_selector(query_raw),
         query_raw: query_raw.into(),
         gone,
         app: Some("TestApp".into()),
@@ -124,7 +132,6 @@ fn match_everything_selector_rejected() {
     let _guard = HomeGuard::new();
     let err = execute(
         WaitSelectorInput {
-            query: parse_selector(""),
             query_raw: String::new(),
             gone: false,
             app: None,
@@ -192,6 +199,7 @@ fn gone_true_returns_when_element_disappears() {
     )
     .unwrap();
     assert_eq!(value["matched_selector"], "button:spinner");
+    assert!(adapter.calls.load(Ordering::SeqCst) >= 2);
 }
 
 #[test]
@@ -232,7 +240,10 @@ fn timeout_includes_last_snapshot_id() {
     assert_eq!(details["kind"], "wait_timeout");
     assert_eq!(details["predicate"], "selector");
     assert!(details["snapshot_id"].as_str().is_some());
-    assert!(details.get("last_error").is_none() || details["last_error"].is_null());
+    assert!(
+        details.get("last_error").is_none(),
+        "last_error must be omitted when no poll error occurred, got {details}"
+    );
 }
 
 #[test]
@@ -253,6 +264,74 @@ fn retryable_app_not_found_swallowed_until_timeout() {
         other => panic!("expected adapter timeout, got {other:?}"),
     };
     assert_eq!(details["last_error"]["code"], "APP_NOT_FOUND");
+}
+
+#[test]
+fn gone_true_with_app_not_found_returns_immediately() {
+    let _guard = HomeGuard::new();
+    let value = execute(
+        WaitSelectorInput {
+            timeout_ms: 30_000,
+            ..base_input("button:spinner", true)
+        },
+        &ErrorThenTreeAdapter,
+        &CommandContext::default(),
+    )
+    .expect("app gone satisfies a wait-for-gone");
+    assert_eq!(value["gone"], true);
+    assert_eq!(value["target_absent"], true);
+    assert_eq!(value["matched_selector"], "button:spinner");
+}
+
+#[test]
+fn gone_true_with_window_not_found_returns_immediately() {
+    let _guard = HomeGuard::new();
+    let value = execute(
+        WaitSelectorInput {
+            timeout_ms: 30_000,
+            ..base_input("button:spinner", true)
+        },
+        &CodeErrorAdapter {
+            code: ErrorCode::WindowNotFound,
+        },
+        &CommandContext::default(),
+    )
+    .expect("window gone satisfies a wait-for-gone");
+    assert_eq!(value["target_absent"], true);
+}
+
+#[test]
+fn appearance_window_not_found_swallowed_until_timeout() {
+    let _guard = HomeGuard::new();
+    let err = execute(
+        WaitSelectorInput {
+            timeout_ms: 50,
+            ..base_input("button:saved", false)
+        },
+        &CodeErrorAdapter {
+            code: ErrorCode::WindowNotFound,
+        },
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "TIMEOUT");
+}
+
+#[test]
+fn appearance_element_not_found_swallowed_until_timeout() {
+    let _guard = HomeGuard::new();
+    let err = execute(
+        WaitSelectorInput {
+            timeout_ms: 50,
+            ..base_input("button:saved", false)
+        },
+        &CodeErrorAdapter {
+            code: ErrorCode::ElementNotFound,
+        },
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "TIMEOUT");
 }
 
 #[test]

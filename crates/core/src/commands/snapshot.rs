@@ -1,6 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface},
-    commands::{query, wait_selector, wait_selector::WaitSelectorInput},
+    commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
     error::AppError,
     refs::validate_ref_id,
@@ -78,10 +78,8 @@ pub fn execute(
     }
 
     if let Some(wait) = context.wait_selector() {
-        let query = query::parse_selector(&wait.query_raw);
         return wait_selector::execute(
             WaitSelectorInput {
-                query,
                 query_raw: wait.query_raw.clone(),
                 gone: wait.gone,
                 app: args.app.clone(),

@@ -3,7 +3,7 @@ use crate::{
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::{PlatformAdapter, TreeOptions, WindowFilter},
-    commands::{query, wait_selector, wait_selector::WaitSelectorInput},
+    commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
     error::{AppError, ErrorCode},
     node::WindowInfo,
@@ -127,12 +127,26 @@ pub(crate) fn execute_ref_action_with_context(
         request,
         context,
     )?;
+    let app = probe_app_name(adapter, &entry);
     apply_post_action_wait(
         serde_json::to_value(result)?,
-        entry.source_app.as_deref(),
+        app.as_deref(),
         adapter,
         context,
     )
+}
+
+/// Resolves the app name a ref belongs to for post-action polling. Normal
+/// refmaps always carry `source_app`; the pid lookup is a fallback for legacy
+/// or partially-populated entries so the wait never silently polls the focused
+/// window instead of the acted-on app.
+pub(crate) fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) -> Option<String> {
+    if entry.source_app.is_some() {
+        return entry.source_app.clone();
+    }
+    window_lookup::find_window_for_pid(entry.pid, adapter)
+        .ok()
+        .map(|window| window.app)
 }
 
 pub(crate) fn apply_post_action_wait(
@@ -144,10 +158,8 @@ pub(crate) fn apply_post_action_wait(
     let Some(wait) = context.wait_selector() else {
         return Ok(result);
     };
-    let query = query::parse_selector(&wait.query_raw);
     match wait_selector::execute(
         WaitSelectorInput {
-            query,
             query_raw: wait.query_raw.clone(),
             gone: wait.gone,
             app: app.map(str::to_string),

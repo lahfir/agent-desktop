@@ -1,9 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, TreeOptions},
-    commands::{
-        query::{self, FindQuery},
-        snapshot as snapshot_cmd, wait_timeout,
-    },
+    commands::{query, snapshot as snapshot_cmd, wait_timeout},
     context::CommandContext,
     error::{AppError, ErrorCode},
     refs_store::RefStore,
@@ -13,7 +10,6 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
 pub struct WaitSelectorInput {
-    pub query: FindQuery,
     pub query_raw: String,
     pub gone: bool,
     pub app: Option<String>,
@@ -27,7 +23,8 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    if input.query.is_match_everything() {
+    let query = query::parse_selector(&input.query_raw);
+    if query.is_match_everything() {
         return Err(AppError::invalid_input_with_suggestion(
             "Selector must constrain at least role or text",
             "Use forms like \"button:Submit\", \"button\", or \":Saved!\".",
@@ -48,8 +45,7 @@ pub fn execute(
             input.window_id.as_deref(),
         ) {
             Ok(mut result) => {
-                last_built = Some(result.clone());
-                let present = query::tree_has_match(&result.tree, &input.query);
+                let present = query::tree_has_match(&result.tree, &query);
                 let matched = if input.gone { !present } else { present };
                 if matched {
                     let snapshot_id = RefStore::for_session(context.session_id())?
@@ -62,12 +58,19 @@ pub fn execute(
                         Some(&input.query_raw),
                     );
                 }
+                last_built = Some(result);
             }
-            Err(err) if is_retryable_wait_app_error(&err) => {
-                last_error = Some(json!({
-                    "code": err.code(),
-                    "message": err.to_string()
-                }));
+            Err(err) if is_target_gone_error(&err) => {
+                if input.gone {
+                    return Ok(target_absent_response(
+                        &input.query_raw,
+                        start.elapsed().as_millis(),
+                    ));
+                }
+                last_error = Some(poll_error_json(&err));
+            }
+            Err(err) if is_transient_poll_error(&err) => {
+                last_error = Some(poll_error_json(&err));
             }
             Err(err) => return Err(err),
         }
@@ -89,6 +92,22 @@ pub fn execute(
     }
 }
 
+/// Success payload for a `--wait-for-gone` wait whose target app or window has
+/// itself disappeared: there is no tree left to snapshot, but the element is
+/// definitively absent, which is exactly the condition the caller waited on.
+fn target_absent_response(query_raw: &str, elapsed_ms: u128) -> Value {
+    json!({
+        "matched_selector": query_raw,
+        "gone": true,
+        "target_absent": true,
+        "elapsed_ms": elapsed_ms,
+    })
+}
+
+fn poll_error_json(err: &AppError) -> Value {
+    json!({ "code": err.code(), "message": err.to_string() })
+}
+
 fn persist_last_built(
     context: &CommandContext,
     last_built: Option<&snapshot::SnapshotResult>,
@@ -101,18 +120,23 @@ fn persist_last_built(
     Ok(Some(snapshot_id))
 }
 
-fn is_retryable_wait_poll_error(code: &ErrorCode) -> bool {
+/// App/window gone means the element is absent. For a `--wait-for-gone` wait
+/// that is success; for a presence wait the target may still be launching, so
+/// the caller keeps polling until timeout.
+fn is_target_gone_error(err: &AppError) -> bool {
     matches!(
-        code,
-        ErrorCode::Timeout
-            | ErrorCode::ElementNotFound
-            | ErrorCode::AppNotFound
-            | ErrorCode::WindowNotFound
+        err,
+        AppError::Adapter(e)
+            if matches!(e.code, ErrorCode::AppNotFound | ErrorCode::WindowNotFound)
     )
 }
 
-fn is_retryable_wait_app_error(err: &AppError) -> bool {
-    matches!(err, AppError::Adapter(e) if is_retryable_wait_poll_error(&e.code))
+fn is_transient_poll_error(err: &AppError) -> bool {
+    matches!(
+        err,
+        AppError::Adapter(e)
+            if matches!(e.code, ErrorCode::Timeout | ErrorCode::ElementNotFound)
+    )
 }
 
 #[cfg(test)]
