@@ -1,6 +1,8 @@
 use crate::{
-    action::Action, adapter::PlatformAdapter,
-    commands::helpers::execute_ref_action_result_with_context, context::CommandContext,
+    action::Action,
+    adapter::PlatformAdapter,
+    commands::helpers::{RefArgs, execute_ref_action_with_context},
+    context::CommandContext,
     error::AppError,
 };
 use serde_json::Value;
@@ -17,12 +19,13 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let request = context.request_base(Action::Select(args.value));
-    let (_entry, result) = execute_ref_action_result_with_context(
-        &args.ref_id,
-        args.snapshot_id.as_deref(),
+    execute_ref_action_with_context(
+        RefArgs {
+            ref_id: args.ref_id,
+            snapshot_id: args.snapshot_id,
+        },
         adapter,
         request,
         context,
-    )?;
-    Ok(serde_json::to_value(result)?)
+    )
 }

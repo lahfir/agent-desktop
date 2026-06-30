@@ -7,6 +7,9 @@ pub(crate) fn normalize(value: &str) -> String {
 }
 
 pub(crate) fn contains(haystack: &str, normalized_needle: &str) -> bool {
+    if normalized_needle.is_empty() {
+        return true;
+    }
     if haystack.is_ascii() && normalized_needle.is_ascii() {
         return haystack
             .as_bytes()

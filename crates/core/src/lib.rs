@@ -45,7 +45,7 @@ pub use adapter::{
     ImageBuffer, ImageFormat, NativeHandle, PlatformAdapter, ScreenshotTarget, TreeOptions,
     WindowFilter,
 };
-pub use context::CommandContext;
+pub use context::{CommandContext, WaitSelector};
 pub use element_state::ElementState;
 pub use error::{AdapterError, AppError, ErrorCode};
 pub use interaction_policy::InteractionPolicy;

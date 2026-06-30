@@ -1,10 +1,11 @@
 use crate::{
     action::Action,
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
-    commands::helpers::{RefArgs, execute_ref_action_result_with_context},
+    commands::helpers::{
+        RefArgs, apply_post_action_wait, execute_ref_action_result_with_context, probe_app_name,
+    },
     context::CommandContext,
     error::AppError,
-    refs::RefEntry,
     snapshot,
 };
 use serde_json::{Value, json};
@@ -53,16 +54,7 @@ pub fn execute(
         Err(err) => response["menu_probe"] = probe_error_json(&err),
     }
 
-    Ok(response)
-}
-
-fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) -> Option<String> {
-    if entry.source_app.is_some() {
-        return entry.source_app.clone();
-    }
-    crate::window_lookup::find_window_for_pid(entry.pid, adapter)
-        .ok()
-        .map(|window| window.app)
+    apply_post_action_wait(response, &entry, adapter, context)
 }
 
 fn probe_error_json(err: &AppError) -> Value {

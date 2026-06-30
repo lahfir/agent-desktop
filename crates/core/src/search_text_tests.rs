@@ -30,6 +30,12 @@ fn contains_handles_non_ascii_text() {
 }
 
 #[test]
+fn contains_empty_needle_is_true_not_panic() {
+    assert!(contains("anything", ""));
+    assert!(contains("", ""));
+}
+
+#[test]
 fn node_contains_searches_name_value_and_description() {
     assert!(node_contains(
         &node(None, None, Some("Secondary text")),

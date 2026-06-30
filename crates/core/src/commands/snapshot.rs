@@ -1,5 +1,6 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface},
+    commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
     error::AppError,
     refs::validate_ref_id,
@@ -54,20 +55,41 @@ pub fn execute(
 
     let opts = tree_options(&args);
 
-    if let Some(ref root) = args.root_ref {
+    if let Some(root) = args.root_ref {
+        if context.wait_selector().is_some() {
+            return Err(AppError::invalid_input_with_suggestion(
+                "--root cannot be combined with --wait-for or --wait-for-gone",
+                "Run snapshot without --root, or omit the wait selector flags.",
+            ));
+        }
         if !matches!(args.surface, SnapshotSurface::Window) {
             return Err(AppError::invalid_input(
                 "--root cannot be combined with --surface",
             ));
         }
-        validate_ref_id(root)?;
+        validate_ref_id(&root)?;
         return format_result(snapshot_ref::run_from_ref_with_context(
             adapter,
             &opts,
-            root,
+            &root,
             args.snapshot_id.as_deref(),
             context,
         )?);
+    }
+
+    if let Some(wait) = context.wait_selector() {
+        return wait_selector::execute(
+            WaitSelectorInput {
+                query_raw: wait.query_raw.clone(),
+                gone: wait.gone,
+                app: args.app.clone(),
+                window_id: args.window_id.clone(),
+                opts,
+                timeout_ms: wait.timeout_ms,
+            },
+            adapter,
+            context,
+        );
     }
 
     let result = snapshot::run_with_context(
@@ -82,6 +104,14 @@ pub fn execute(
 }
 
 fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
+    format_snapshot_fields(&result, None, None)
+}
+
+pub(crate) fn format_snapshot_fields(
+    result: &snapshot::SnapshotResult,
+    elapsed_ms: Option<u128>,
+    matched_selector: Option<&str>,
+) -> Result<Value, AppError> {
     let ref_count = result.refmap.len();
     let tree = serde_json::to_value(&result.tree)?;
     let win = &result.window;
@@ -93,7 +123,7 @@ fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
         ref_count
     );
 
-    Ok(json!({
+    let mut body = json!({
         "app": win.app,
         "window": {
             "id": win.id,
@@ -102,7 +132,14 @@ fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
         "ref_count": ref_count,
         "snapshot_id": result.snapshot_id,
         "tree": tree
-    }))
+    });
+    if let Some(ms) = elapsed_ms {
+        body["elapsed_ms"] = json!(ms);
+    }
+    if let Some(selector) = matched_selector {
+        body["matched_selector"] = json!(selector);
+    }
+    Ok(body)
 }
 
 #[cfg(test)]

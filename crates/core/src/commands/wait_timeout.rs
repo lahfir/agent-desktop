@@ -35,6 +35,13 @@ pub(crate) fn element(
     )
 }
 
+fn with_last_error(mut details: Value, last_error: Option<Value>) -> Value {
+    if let Some(err) = last_error {
+        details["last_error"] = err;
+    }
+    details
+}
+
 pub(crate) fn window(
     title: &str,
     timeout_ms: u64,
@@ -42,12 +49,14 @@ pub(crate) fn window(
 ) -> Result<Value, AppError> {
     timeout_err(
         format!("Window with title '{title}' not found within {timeout_ms}ms"),
-        json!({
-            "predicate": "window",
-            "title": title,
-            "timeout_ms": timeout_ms,
-            "last_error": last_error
-        }),
+        with_last_error(
+            json!({
+                "predicate": "window",
+                "title": title,
+                "timeout_ms": timeout_ms,
+            }),
+            last_error,
+        ),
     )
 }
 
@@ -59,13 +68,15 @@ pub(crate) fn text(
 ) -> Result<Value, AppError> {
     timeout_err(
         format!("Text '{text}' did not match within {timeout_ms}ms"),
-        json!({
-            "predicate": "text",
-            "text_chars": text.chars().count(),
-            "timeout_ms": timeout_ms,
-            "expected_count": expected_count,
-            "last_error": last_error
-        }),
+        with_last_error(
+            json!({
+                "predicate": "text",
+                "text_chars": text.chars().count(),
+                "timeout_ms": timeout_ms,
+                "expected_count": expected_count,
+            }),
+            last_error,
+        ),
     )
 }
 
@@ -77,12 +88,42 @@ pub(crate) fn notification(
 ) -> Result<Value, AppError> {
     timeout_err(
         format!("No new notification within {timeout_ms}ms"),
+        with_last_error(
+            json!({
+                "predicate": "notification",
+                "timeout_ms": timeout_ms,
+                "app": app,
+                "text_chars": text.map(|text| text.chars().count()),
+            }),
+            last_error,
+        ),
+    )
+}
+
+pub(crate) fn selector(
+    selector: &str,
+    gone: bool,
+    timeout_ms: u64,
+    last_error: Option<Value>,
+    last_snapshot_id: Option<String>,
+) -> Result<Value, AppError> {
+    let mut details = with_last_error(
         json!({
-            "predicate": "notification",
+            "predicate": "selector",
+            "selector": selector,
+            "gone": gone,
             "timeout_ms": timeout_ms,
-            "app": app,
-            "text_chars": text.map(|text| text.chars().count()),
-            "last_error": last_error
         }),
+        last_error,
+    );
+    if let Some(snapshot_id) = last_snapshot_id {
+        details["snapshot_id"] = json!(snapshot_id);
+    }
+    timeout_err(
+        format!(
+            "Selector '{selector}' did not {} within {timeout_ms}ms",
+            if gone { "disappear" } else { "appear" }
+        ),
+        details,
     )
 }

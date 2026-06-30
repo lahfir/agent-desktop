@@ -6,13 +6,34 @@ mod dispatch;
 
 use agent_desktop_core::{
     adapter::PlatformAdapter,
-    context::CommandContext,
+    context::{CommandContext, WaitSelector},
+    error::AppError,
     output::{ENVELOPE_VERSION, ErrorPayload, Response},
 };
 use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
 use cli_args::skills::SkillsAction;
 use std::io::{BufWriter, Write};
+
+const WAIT_SUPPORTED: &[&str] = &[
+    "snapshot",
+    "click",
+    "double-click",
+    "triple-click",
+    "right-click",
+    "clear",
+    "focus",
+    "toggle",
+    "check",
+    "uncheck",
+    "expand",
+    "collapse",
+    "scroll-to",
+    "type",
+    "set-value",
+    "select",
+    "scroll",
+];
 
 fn main() {
     let cli = match Cli::try_parse() {
@@ -35,8 +56,11 @@ fn main() {
     };
 
     init_tracing(cli.verbose);
+    let wait_selector = build_wait_selector(&cli);
     let context = match CommandContext::new(cli.session, cli.trace, cli.trace_strict) {
-        Ok(context) => context.with_headed(cli.headed),
+        Ok(context) => context
+            .with_headed(cli.headed)
+            .with_wait_selector(wait_selector.clone()),
         Err(err) => {
             finish("unknown", Err(err));
             return;
@@ -52,6 +76,13 @@ fn main() {
     };
 
     let cmd_name = cmd.name();
+
+    if let Some(wait) = wait_selector.as_ref() {
+        if let Err(err) = validate_wait_for_command(cmd_name, wait) {
+            finish(cmd_name, Err(err));
+            return;
+        }
+    }
 
     match cmd {
         Commands::Version => {
@@ -74,6 +105,30 @@ fn main() {
         }
         cmd => run_with_adapter(cmd, cmd_name, &context),
     }
+}
+
+fn build_wait_selector(cli: &Cli) -> Option<WaitSelector> {
+    let (query_raw, gone) = cli
+        .wait_for
+        .as_ref()
+        .map(|raw| (raw, false))
+        .or_else(|| cli.wait_for_gone.as_ref().map(|raw| (raw, true)))?;
+    Some(WaitSelector {
+        query_raw: query_raw.clone(),
+        gone,
+        timeout_ms: cli.wait_timeout,
+    })
+}
+
+fn validate_wait_for_command(cmd_name: &str, wait: &WaitSelector) -> Result<(), AppError> {
+    if !WAIT_SUPPORTED.contains(&cmd_name) {
+        return Err(AppError::invalid_input_with_suggestion(
+            format!("Command '{cmd_name}' does not support --wait-for or --wait-for-gone"),
+            "Use snapshot --wait-for \"<selector>\" or a supported ref action (click, type, …).",
+        ));
+    }
+    agent_desktop_core::commands::query::validate_selector(&wait.query_raw)?;
+    Ok(())
 }
 
 fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) {

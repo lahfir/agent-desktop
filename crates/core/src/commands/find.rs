@@ -1,11 +1,13 @@
 use crate::{
-    adapter::PlatformAdapter, context::CommandContext, error::AppError, node::AccessibilityNode,
-    roles, search_text, snapshot,
+    adapter::PlatformAdapter, commands::query, context::CommandContext, error::AppError,
+    node::AccessibilityNode, roles, search_text, snapshot,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 const DEFAULT_LIMIT: usize = 50;
+
+pub use query::FindQuery;
 
 pub struct FindArgs {
     pub app: Option<String>,
@@ -149,14 +151,6 @@ fn validate_find_mode(args: &FindArgs) -> Result<(), AppError> {
     Ok(())
 }
 
-#[derive(Debug)]
-struct FindQuery {
-    role: Option<String>,
-    name: Option<String>,
-    value: Option<String>,
-    text: Option<String>,
-}
-
 impl FindQuery {
     fn from_args(args: &FindArgs) -> Self {
         Self {
@@ -178,7 +172,7 @@ fn search_tree(
     if max_matches.is_some_and(|limit| matches.len() >= limit) {
         return true;
     }
-    if node_matches(node, query) {
+    if query::node_matches(node, query) {
         let interactive = node.ref_id.is_some();
         let display_name = node
             .name
@@ -221,31 +215,12 @@ fn search_tree(
 }
 
 fn count_matches(node: &AccessibilityNode, query: &FindQuery) -> usize {
-    usize::from(node_matches(node, query))
+    usize::from(query::node_matches(node, query))
         + node
             .children
             .iter()
             .map(|child| count_matches(child, query))
             .sum::<usize>()
-}
-
-fn node_matches(node: &AccessibilityNode, query: &FindQuery) -> bool {
-    let role_match = query.role.as_deref().is_none_or(|r| node.role == r);
-    let name_match = query.name.as_deref().is_none_or(|n| {
-        node.name
-            .as_deref()
-            .is_some_and(|text| search_text::contains(text, n))
-    });
-    let value_match = query.value.as_deref().is_none_or(|v| {
-        node.value
-            .as_deref()
-            .is_some_and(|val| search_text::contains(val, v))
-    });
-    let text_match = query
-        .text
-        .as_deref()
-        .is_none_or(|t| search_text::node_contains(node, t));
-    role_match && name_match && value_match && text_match
 }
 
 #[cfg(test)]

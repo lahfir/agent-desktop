@@ -2,7 +2,8 @@ use crate::{
     action::WindowOp,
     action_request::ActionRequest,
     action_result::ActionResult,
-    adapter::{PlatformAdapter, WindowFilter},
+    adapter::{PlatformAdapter, TreeOptions, WindowFilter},
+    commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
     error::AppError,
     node::WindowInfo,
@@ -119,14 +120,65 @@ pub(crate) fn execute_ref_action_with_context(
     request: ActionRequest,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let (_entry, result) = execute_ref_action_result_with_context(
+    let (entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),
         adapter,
         request,
         context,
     )?;
-    Ok(serde_json::to_value(result)?)
+    apply_post_action_wait(serde_json::to_value(result)?, &entry, adapter, context)
+}
+
+/// Resolves the app name a ref belongs to for post-action polling. Normal
+/// refmaps always carry `source_app`; the pid lookup is a fallback for legacy
+/// or partially-populated entries so the wait never silently polls the focused
+/// window instead of the acted-on app.
+pub(crate) fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) -> Option<String> {
+    if entry.source_app.is_some() {
+        return entry.source_app.clone();
+    }
+    window_lookup::find_window_for_pid(entry.pid, adapter)
+        .ok()
+        .map(|window| window.app)
+}
+
+pub(crate) fn apply_post_action_wait(
+    result: Value,
+    entry: &RefEntry,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let Some(wait) = context.wait_selector() else {
+        return Ok(result);
+    };
+    match wait_selector::execute(
+        WaitSelectorInput {
+            query_raw: wait.query_raw.clone(),
+            gone: wait.gone,
+            app: probe_app_name(adapter, entry),
+            window_id: entry.source_window_id.clone(),
+            opts: TreeOptions::default(),
+            timeout_ms: wait.timeout_ms,
+        },
+        adapter,
+        context,
+    ) {
+        Ok(mut snapshot) => {
+            if let Some(body) = snapshot.as_object_mut() {
+                body.insert("after_action".into(), result);
+            }
+            Ok(snapshot)
+        }
+        Err(AppError::Adapter(mut adapter_err)) => {
+            let mut details = adapter_err.details.take().unwrap_or_else(|| json!({}));
+            if let Some(obj) = details.as_object_mut() {
+                obj.insert("after_action".into(), result);
+            }
+            Err(AppError::Adapter(adapter_err.with_details(details)))
+        }
+        Err(err) => Err(err),
+    }
 }
 
 pub(crate) fn execute_ref_action_result_with_context(

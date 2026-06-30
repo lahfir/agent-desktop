@@ -10,6 +10,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "helpers_test_support",
     "mod",
     "point_resolve",
+    "query",
     "wait_element",
     "wait_latest_ref_cache",
     "wait_mode",
@@ -17,6 +18,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "wait_test_support",
     "wait_text_match",
     "wait_timeout",
+    "wait_selector",
 ];
 
 const COMMAND_SPECIFIC_TESTS: &[&str] = &[
