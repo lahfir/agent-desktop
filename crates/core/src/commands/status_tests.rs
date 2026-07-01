@@ -34,3 +34,30 @@ fn status_uses_precomputed_permission_report() {
     assert_eq!(permissions["screen_recording"]["state"], "granted");
     assert_eq!(permissions["automation"]["state"], "not_required");
 }
+
+#[test]
+fn status_reports_tracing_false_when_writer_failed() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
+    let session = crate::session::start_session(crate::session::StartSessionOptions {
+        name: None,
+        trace: crate::session::SessionTraceMode::On,
+        force: true,
+    })
+    .unwrap();
+    let unopenable = std::env::temp_dir()
+        .join("agent-desktop-status-nodir")
+        .join("trace.jsonl");
+    let context = CommandContext::new(Some(session.id), Some(unopenable), false).unwrap();
+    let report = PermissionReport {
+        accessibility: PermissionState::Granted,
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+
+    let value = execute_with_report_with_context(&DeniedAdapter, &report, &context).unwrap();
+
+    assert_eq!(
+        value["tracing"], false,
+        "a failed trace writer must not report tracing:true"
+    );
+}

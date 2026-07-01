@@ -5,7 +5,7 @@ use crate::{
     context::CommandContext,
     error::AppError,
     refs_store::RefStore,
-    session::{read_current_session_pointer, trace_enabled_for_session},
+    session::read_current_session_pointer,
 };
 use serde_json::{Value, json};
 
@@ -27,10 +27,7 @@ pub fn execute_with_report_with_context(
         .session_id()
         .map(str::to_string)
         .or_else(|| read_current_session_pointer().ok().flatten());
-    let tracing = context.trace_enabled()
-        || session_id
-            .as_deref()
-            .is_some_and(|id| trace_enabled_for_session(id).unwrap_or(false));
+    let tracing = context.trace_enabled();
 
     Ok(json!({
         "platform": std::env::consts::OS,
