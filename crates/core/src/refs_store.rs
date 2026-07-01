@@ -226,6 +226,14 @@ impl RefStore {
             .join("refmap.json")
     }
 
+    pub(crate) fn base_dir(&self) -> &Path {
+        &self.base_dir
+    }
+
+    pub(crate) fn trace_dir(&self) -> PathBuf {
+        self.base_dir.join("trace")
+    }
+
     fn snapshots_dir(&self) -> PathBuf {
         self.base_dir.join("snapshots")
     }

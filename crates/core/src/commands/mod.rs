@@ -47,6 +47,7 @@ pub mod screenshot;
 pub mod scroll;
 pub mod scroll_to;
 pub mod select;
+pub mod session;
 pub mod set_value;
 pub mod skills;
 pub mod snapshot;

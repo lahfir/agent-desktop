@@ -367,3 +367,40 @@ fn duplicate_snapshot_id_across_sessions_is_rejected_on_load() {
     assert_eq!(err.code(), "INVALID_ARGS");
     assert!(err.to_string().contains("more than one session"));
 }
+
+#[test]
+fn trace_dir_points_under_session_base() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::for_session(Some("run-42")).unwrap();
+    assert_eq!(store.trace_dir(), store.base_dir().join("trace"));
+}
+
+#[test]
+fn trace_dir_accessors_create_no_directories() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::for_session(Some("run-42")).unwrap();
+    let _ = store.trace_dir();
+    assert!(
+        !store.trace_dir().exists(),
+        "trace_dir accessor must not create directories"
+    );
+}
+
+#[test]
+fn prune_never_removes_trace_segments() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::for_session(Some("trace-retention")).unwrap();
+    let trace_dir = store.trace_dir();
+    std::fs::create_dir_all(&trace_dir).unwrap();
+    let segment = trace_dir.join("1234-5678.jsonl");
+    std::fs::write(&segment, b"{}\n").unwrap();
+    for index in 0..=MAX_SAVED_SNAPSHOTS {
+        let snapshot_id = format!("snap-{index:04}");
+        store
+            .save_snapshot(&snapshot_id, &map_with(&snapshot_id))
+            .unwrap();
+        store.set_latest(&snapshot_id).unwrap();
+    }
+    assert!(segment.is_file());
+    assert!(trace_dir.is_dir());
+}

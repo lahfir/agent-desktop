@@ -11,6 +11,7 @@ use crate::cli_args::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
         NotificationActionCliArgs,
     },
+    session::SessionArgs,
     skills::SkillsArgs,
     system::{
         AppRefArgs, BatchArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
@@ -210,6 +211,8 @@ pub(crate) enum Commands {
     Batch(BatchArgs),
     #[command(about = "Bundled skill docs for AI agents (list, get, path)")]
     Skills(SkillsArgs),
+    #[command(about = "Manage trace-enabled agent sessions (start, end, list, gc)")]
+    Session(SessionArgs),
 }
 
 impl Commands {
@@ -269,6 +272,7 @@ impl Commands {
             Self::Version => "version",
             Self::Batch(_) => "batch",
             Self::Skills(_) => "skills",
+            Self::Session(_) => "session",
         }
     }
 }

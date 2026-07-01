@@ -73,10 +73,14 @@ WAIT
   wait --notification        Block until a new notification arrives (--text filters it)
 
 SYSTEM
-  status                     Adapter health, platform, and permission state
+  status                     Adapter health, platform, permission, session, and tracing state
   permissions                Check nested permission states: {state,...}
   version                    Show version, target architecture, and OS
   skills                     Bundled skill docs for AI agents (list, get, path)
+  session start              Create a trace-enabled session and set the active pointer
+  session end                  Seal the session manifest and clear the active pointer
+  session list                 List session manifests
+  session gc                   Remove ended or provably-stale sessions
 
 BATCH
   batch <json>               Run commands from a JSON array (--stop-on-error)
@@ -88,13 +92,16 @@ REF IDs
   --snapshot <snapshot_id> to pin a command to a known snapshot; explicit
   snapshot IDs do not require --session. When --snapshot is omitted, ref
   commands use the active session's latest saved snapshot. Run snapshot again
-  after UI changes. Use --session <id> as a shared latest-snapshot namespace
-  for concurrent agents.
+  after UI changes. Use `session start` once per run for automatic JSONL tracing
+  under ~/.agent-desktop/sessions/<id>/trace/, or pass --session <id> for
+  snapshot namespace only (no trace without a session manifest). Set
+  AGENT_DESKTOP_SESSION for concurrent independent sessions. Explicit --session
+  overrides the env var and current-session pointer.
   Ref actions use strict resolution: stale targets return STALE_REF; duplicate
   plausible targets return AMBIGUOUS_TARGET instead of choosing arbitrarily.
   Ref actions run actionability checks before dispatch. Use --trace <path> to
-  write JSONL diagnostics outside stdout; --trace-strict fails on trace setup
-  and pre-action writes. Post-action success traces are best-effort.
+  override the session trace sink; --trace-strict fails on trace setup and
+  pre-action writes. Post-action success traces are best-effort.
 
 KEY COMBOS
   Single keys:               return, escape, tab, space, delete, up, down, left, right

@@ -186,6 +186,13 @@ fn process_is_alive(_pid: u32) -> Option<bool> {
     None
 }
 
+pub(crate) fn lock_holder_is_live(lock_path: &Path) -> bool {
+    match LockSnapshot::read(lock_path) {
+        Ok(Some(snapshot)) => !snapshot.is_stale(),
+        Ok(None) | Err(()) => false,
+    }
+}
+
 impl Drop for RefStoreLock {
     fn drop(&mut self) {
         let should_remove = LockSnapshot::read(&self.path)

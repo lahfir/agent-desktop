@@ -3,6 +3,7 @@ use serde::Deserialize;
 
 pub(crate) mod actions;
 pub(crate) mod notifications;
+pub(crate) mod session;
 pub(crate) mod skills;
 pub(crate) mod system;
 

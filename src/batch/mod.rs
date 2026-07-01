@@ -13,6 +13,7 @@ use serde_json::{Map, Value, json};
 use crate::{
     cli::Commands,
     cli_args::{
+        session::{SessionAction, SessionArgs, SessionEndArgs, SessionGcArgs, SessionStartArgs},
         skills::{SkillsAction, SkillsArgs, SkillsGetArgs},
         system::BatchArgs,
     },
@@ -102,6 +103,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "permissions" => decode(command, item.args).map(Commands::Permissions),
         "version" => no_args(command, item.args).map(|()| Commands::Version),
         "skills" => parse_skills(item.args).map(Commands::Skills),
+        "session" => parse_session(item.args).map(Commands::Session),
         "batch" => Err(AppError::invalid_input_with_suggestion(
             "Batch commands cannot be nested",
             "Flatten nested batches into one top-level batch array",
@@ -183,6 +185,44 @@ fn parse_skills(args: Value) -> Result<SkillsArgs, AppError> {
         }
     };
     Ok(SkillsArgs { action })
+}
+
+#[derive(Deserialize)]
+struct BatchSessionArgs {
+    #[serde(default)]
+    action: Option<String>,
+    name: Option<String>,
+    #[serde(default)]
+    no_trace: bool,
+    #[serde(default)]
+    force: bool,
+    id: Option<String>,
+    older_than: Option<u64>,
+    #[serde(default)]
+    ended: bool,
+}
+
+fn parse_session(args: Value) -> Result<SessionArgs, AppError> {
+    let args: BatchSessionArgs = decode("session", args)?;
+    let action = match args.action.as_deref() {
+        None | Some("list") => SessionAction::List,
+        Some("start") => SessionAction::Start(SessionStartArgs {
+            name: args.name,
+            no_trace: args.no_trace,
+            force: args.force,
+        }),
+        Some("end") => SessionAction::End(SessionEndArgs { id: args.id }),
+        Some("gc") => SessionAction::Gc(SessionGcArgs {
+            older_than: args.older_than,
+            ended: args.ended,
+        }),
+        Some(other) => {
+            return Err(AppError::invalid_input(format!(
+                "Unknown session action '{other}'"
+            )));
+        }
+    };
+    Ok(SessionArgs { action })
 }
 
 #[cfg(test)]

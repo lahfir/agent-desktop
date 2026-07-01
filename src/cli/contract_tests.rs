@@ -28,6 +28,7 @@ const COMMAND_SPECIFIC_TESTS: &[&str] = &[
     "list-apps",
     "right-click",
     "skills",
+    "session",
     "snapshot",
     "status",
     "wait",

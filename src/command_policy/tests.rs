@@ -74,6 +74,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "version"
             | "batch"
             | "skills"
+            | "session"
     )
 }
 

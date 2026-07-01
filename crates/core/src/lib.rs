@@ -28,6 +28,7 @@ mod refs_test_support;
 pub(crate) mod resolved_element;
 pub mod roles;
 pub(crate) mod search_text;
+pub mod session;
 pub mod snapshot;
 pub mod snapshot_ref;
 pub(crate) mod trace;

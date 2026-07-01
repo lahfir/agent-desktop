@@ -9,6 +9,7 @@ use agent_desktop_core::{
     context::{CommandContext, WaitSelector},
     error::AppError,
     output::{ENVELOPE_VERSION, ErrorPayload, Response},
+    session::resolve_active_session,
 };
 use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
@@ -57,7 +58,17 @@ fn main() {
 
     init_tracing(cli.verbose);
     let wait_selector = build_wait_selector(&cli);
-    let context = match CommandContext::new(cli.session, cli.trace, cli.trace_strict) {
+    let session_id = match resolve_active_session(
+        cli.session.as_deref(),
+        std::env::var("AGENT_DESKTOP_SESSION").ok().as_deref(),
+    ) {
+        Ok(session_id) => session_id,
+        Err(err) => {
+            finish("unknown", Err(err));
+            return;
+        }
+    };
+    let context = match CommandContext::new(session_id, cli.trace, cli.trace_strict) {
         Ok(context) => context
             .with_headed(cli.headed)
             .with_wait_selector(wait_selector.clone()),
