@@ -144,7 +144,13 @@ impl TraceConfig {
     }
 
     pub(crate) fn has_sink(&self) -> bool {
-        !matches!(self.state.pending, TracePending::None)
+        if matches!(self.state.pending, TracePending::None) {
+            return false;
+        }
+        match self.state.writer.lock() {
+            Ok(writer) => !matches!(*writer, WriterState::Failed),
+            Err(_) => true,
+        }
     }
 
     pub(crate) fn pending_file_path(&self) -> Option<&Path> {
@@ -161,7 +167,13 @@ impl TraceConfig {
         if self.pending_file_path().is_some() {
             return Ok(self.clone());
         }
-        Self::build(None, session_segment_dir, self.strict)
+        match session_segment_dir {
+            Some(dir) => Self::build(None, Some(dir), self.strict),
+            None => Ok(Self {
+                strict: self.strict,
+                state: Arc::new(TraceState::default()),
+            }),
+        }
     }
 }
 

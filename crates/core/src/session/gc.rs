@@ -1,6 +1,6 @@
 use super::{
-    TRACE_LIVENESS_WINDOW, list_sessions, now_millis, read_current_session_pointer, read_manifest,
-    session_dir,
+    SessionManifest, TRACE_LIVENESS_WINDOW, list_sessions, now_millis,
+    read_current_session_pointer, read_manifest,
 };
 use crate::{
     context::validate_session_id,
@@ -31,22 +31,23 @@ pub fn pointer_references_live_session() -> Result<bool, AppError> {
 pub fn is_live(session_id: &str) -> Result<bool, AppError> {
     validate_session_id(session_id)?;
     let store = RefStore::for_session(Some(session_id))?;
-    let base = store.base_dir();
-    if lock_holder_is_live(&base.join("refstore.lock")) {
+    if lock_holder_is_live(&store.base_dir().join("refstore.lock")) {
         return Ok(true);
     }
-    if path_recently_modified(&base.join("snapshots"))
+    let manifest = read_manifest(session_id)?;
+    Ok(has_recent_activity(&store, manifest.as_ref()))
+}
+
+fn has_recent_activity(store: &RefStore, manifest: Option<&SessionManifest>) -> bool {
+    if path_recently_modified(&store.base_dir().join("snapshots"))
         || trace_dir_recently_written(&store.trace_dir())
     {
-        return Ok(true);
+        return true;
     }
-    if let Some(manifest) = read_manifest(session_id)? {
+    manifest.is_some_and(|manifest| {
         let age = Duration::from_millis(now_millis().saturating_sub(manifest.created_at));
-        if manifest.ended_at.is_none() && age < TRACE_LIVENESS_WINDOW {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+        manifest.ended_at.is_none() && age < TRACE_LIVENESS_WINDOW
+    })
 }
 
 pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
@@ -71,11 +72,16 @@ pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
         } else if manifest.ended_at.is_none() {
             continue;
         }
-        let dir = session_dir(&manifest.id)?;
+        let store = RefStore::for_session(Some(&manifest.id))?;
+        let dir = store.base_dir().to_path_buf();
         let lock = match RefStoreLock::acquire(&dir.join("refstore.lock")) {
             Ok(lock) => lock,
             Err(_) => continue,
         };
+        if has_recent_activity(&store, Some(&manifest)) {
+            drop(lock);
+            continue;
+        }
         let did_remove = remove_session_dir(&dir)?;
         drop(lock);
         if did_remove {

@@ -372,7 +372,9 @@ pub(crate) fn dispatch(
                 no_trace: s.no_trace,
                 force: s.force,
             }),
-            SessionAction::End(e) => session::execute(session::SessionAction::End { id: e.id }),
+            SessionAction::End(e) => session::execute(session::SessionAction::End {
+                id: e.id.or_else(|| context.session_id().map(str::to_string)),
+            }),
             SessionAction::List => session::execute(session::SessionAction::List),
             SessionAction::Gc(g) => session::execute(session::SessionAction::Gc {
                 older_than_secs: g.older_than,

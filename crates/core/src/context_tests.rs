@@ -321,3 +321,25 @@ fn batch_item_session_override_uses_its_own_segment_dir() {
         .trace_dir();
     assert!(child_trace.is_dir());
 }
+
+#[test]
+fn strict_parent_allows_no_trace_batch_override() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
+    let traced = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::On,
+        force: true,
+    })
+    .unwrap();
+    let untraced = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::Off,
+        force: true,
+    })
+    .unwrap();
+    let parent = CommandContext::new(Some(traced.id.clone()), None, true).unwrap();
+    let child = parent
+        .for_batch_item(Some(untraced.id.clone()))
+        .expect("a no-trace session override must not fail under a strict parent");
+    assert_eq!(child.session_id(), Some(untraced.id.as_str()));
+}

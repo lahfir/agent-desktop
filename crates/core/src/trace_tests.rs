@@ -273,3 +273,15 @@ fn segment_open_rejects_symlinked_trace_dir() {
     let _ = fs::remove_file(&base);
     let _ = fs::remove_dir_all(&real);
 }
+
+#[test]
+fn failed_writer_reports_no_sink() {
+    let missing = std::env::temp_dir()
+        .join("agent-desktop-nodir-hassink")
+        .join("trace.jsonl");
+    let config = TraceConfig::build(Some(missing), None, false).unwrap();
+    assert!(
+        !config.has_sink(),
+        "a trace writer whose open failed must not report an active sink"
+    );
+}

@@ -71,22 +71,17 @@ pub fn read_current_session_pointer() -> Result<Option<String>, AppError> {
     let mut file = match open_session_file(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => {
+        Err(err) if is_symlinked(&path) => {
             tracing::warn!(
-                "ignoring unreadable session pointer {}: {err}",
+                "ignoring symlinked session pointer {}: {err}",
                 path.display()
             );
             return Ok(None);
         }
+        Err(err) => return Err(err.into()),
     };
     let mut id = String::new();
-    if let Err(err) = file.read_to_string(&mut id) {
-        tracing::warn!(
-            "ignoring unreadable session pointer {}: {err}",
-            path.display()
-        );
-        return Ok(None);
-    }
+    file.read_to_string(&mut id)?;
     let id = id.trim().to_string();
     if id.is_empty() || validate_session_id(&id).is_err() {
         return Ok(None);
@@ -112,16 +107,21 @@ pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppErr
     let mut file = match open_session_file(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
+        Err(err) if is_symlinked(&path) => return Ok(ignore_unreadable_manifest(&path, &err)),
+        Err(err) => return Err(err.into()),
     };
     let mut json = String::new();
-    if let Err(err) = file.read_to_string(&mut json) {
-        return Ok(ignore_unreadable_manifest(&path, &err));
-    }
+    file.read_to_string(&mut json)?;
     match serde_json::from_str(&json) {
         Ok(manifest) => Ok(Some(manifest)),
         Err(err) => Ok(ignore_unreadable_manifest(&path, &err)),
     }
+}
+
+fn is_symlinked(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false)
 }
 
 fn ignore_unreadable_manifest<E: std::fmt::Display>(
