@@ -226,6 +226,35 @@ fn corrupt_manifest_is_ignored_not_fatal() {
     assert!(!listed.iter().any(|id| id == "corruptsess"));
 }
 
+#[cfg(unix)]
+#[test]
+fn unreadable_manifest_is_skipped_not_fatal_for_list_and_gc() {
+    use std::os::unix::fs::PermissionsExt;
+
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let _guard = HomeGuard::new();
+    let good = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::Off,
+        force: true,
+    })
+    .unwrap();
+    let bad_dir = session_dir("unreadablesess").unwrap();
+    fs::create_dir_all(&bad_dir).unwrap();
+    let manifest = bad_dir.join("session.json");
+    fs::write(&manifest, b"{}").unwrap();
+    fs::set_permissions(&manifest, fs::Permissions::from_mode(0o000)).unwrap();
+
+    let listed: Vec<String> = list_sessions().unwrap().into_iter().map(|m| m.id).collect();
+    assert!(listed.contains(&good.id));
+    assert!(!listed.iter().any(|id| id == "unreadablesess"));
+    assert!(read_manifest("unreadablesess").unwrap().is_none());
+
+    fs::set_permissions(&manifest, fs::Permissions::from_mode(0o600)).unwrap();
+}
+
 #[test]
 fn gc_leaves_recently_created_unended_session() {
     let _guard = HomeGuard::new();

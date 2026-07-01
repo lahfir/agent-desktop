@@ -107,11 +107,12 @@ pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppErr
     let mut file = match open_session_file(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) if is_symlinked(&path) => return Ok(ignore_unreadable_manifest(&path, &err)),
-        Err(err) => return Err(err.into()),
+        Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
     };
     let mut json = String::new();
-    file.read_to_string(&mut json)?;
+    if let Err(err) = file.read_to_string(&mut json) {
+        return Ok(ignore_unreadable_manifest(&path, &err));
+    }
     match serde_json::from_str(&json) {
         Ok(manifest) => Ok(Some(manifest)),
         Err(err) => Ok(ignore_unreadable_manifest(&path, &err)),
