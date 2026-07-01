@@ -1,6 +1,6 @@
 ---
 name: agent-desktop
-version: 0.3.0
+version: 0.4.0
 tags: desktop-automation, accessibility, ai-agent, gui-automation, cli
 requirements:
   - agent-desktop
@@ -9,8 +9,8 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 54 commands across observation, interaction, keyboard/mouse, app lifecycle,
-  notifications (macOS), clipboard, wait, and a `skills` command that prints these
+  Covers 55 commands across observation, interaction, keyboard/mouse, app lifecycle,
+  notifications (macOS), clipboard, wait, session lifecycle, and a `skills` command
   bundled docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
@@ -43,7 +43,7 @@ Detailed documentation is split into focused reference files. Read them as neede
 |-----------|----------|
 | `references/commands-observation.md` | snapshot, find, get, is, screenshot, list-surfaces — all flags, output examples |
 | `references/commands-interaction.md` | click, type, set-value, select, toggle, scroll, drag, keyboard, mouse — choosing the right command |
-| `references/commands-system.md` | launch, close, windows, clipboard, wait, batch, status, permissions, version |
+| `references/commands-system.md` | launch, close, windows, clipboard, wait, batch, session, status, permissions, version |
 | `references/workflows.md` | 12 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
 | `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, Notification Center, troubleshooting |
 
@@ -95,8 +95,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
 - **Headless vs headed:** ref actions are headless by default (AX-only, no cursor) and fail closed when only a physical gesture would work. `type` uses a focus-fallback base policy because typing needs focus but never moves the cursor. Pass the global `--headed` flag to permit cursor movement and focus stealing so physical fallbacks can complete; the AX path is still tried first, so `--headed` never regresses headless-capable elements. Raw cursor commands (`hover`, `drag`, `mouse-*`) are physical and require `--headed`; keyboard commands (`press`, `key-down`, `key-up`) are explicit low-level input.
-- **Sessions:** use `--session <id>` for concurrent or multi-agent runs that share a latest snapshot pointer; batch entries may override with `"session": "id"`.
-- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened. Trace fields with sensitive key tokens such as `text`, `value`, `expected`, `name`, `username`, `description`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, or `placeholder` are redacted to `{ "redacted": true }` at every nesting depth. Token matching handles snake_case, kebab-case, and camelCase keys (for example, `source_window_title`, `api_token`, and `typedText` redact, while `filename` stays readable). Top-level `--trace` is inherited by every `batch` entry, including entries with a `session` override.
+- **Sessions and tracing:** run `session start` once per agent run to create a manifest with `trace: on` (default). Subsequent commands in that run record JSONL automatically to per-process segments under `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl` — no `--trace` on every call. A session owns both its trace and its latest-snapshot namespace; activating it (via pointer, env, or flag) relocates implicit "latest" to that session. Explicit `--snapshot <id>` still resolves cross-session. **`--session <id>` alone** (no manifest from `session start`) selects only the snapshot namespace — existing callers see no surprise trace files. **`--trace <path>`** still overrides to one atomic file for CI or one-offs. Activation precedence: `--session` > `AGENT_DESKTOP_SESSION` > `~/.agent-desktop/current_session` (written only by `session start`). Concurrent independent agents set `AGENT_DESKTOP_SESSION` per process; the pointer is a single-active-session convenience. Multi-agent shared sessions: each agent acts on the `snapshot_id` from its own `snapshot` call — implicit latest is not a cross-agent guarantee. Run `status` to see `session_id` and `tracing`. Trace lines include `ts_ms`, monotonic per-process `seq`, and redacted sensitive fields (`text`, `value`, `expected`, `name`, `username`, `description`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, `placeholder` → `{ "redacted": true }`). `--trace-strict` fails on trace setup and pre-action writes; post-action success traces are best-effort.
 
 ## JSON Output Contract
 
@@ -131,7 +130,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 
 `TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
-## Command Quick Reference (54 commands)
+## Command Quick Reference (55 commands)
 
 ### Observation
 ```
@@ -229,7 +228,11 @@ agent-desktop wait --notification --app "App"   # Wait for new notification
 
 ### System
 ```
-agent-desktop status                            # Health check
+agent-desktop session start [--name LABEL] [--no-trace] [--force]  # Create trace-enabled session + pointer
+agent-desktop session end [id]                                      # Seal manifest, clear pointer
+agent-desktop session list                                          # List session manifests
+agent-desktop session gc [--older-than SECS] [--ended]              # Reclaim ended/stale sessions
+agent-desktop status                            # Health, session_id, tracing, permissions
 agent-desktop permissions                       # Check permission
 agent-desktop permissions --request             # Trigger permission dialog
 agent-desktop version                           # Version info (always JSON envelope)
@@ -251,5 +254,5 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused.
 10. **Batch for performance.** Multiple commands in one invocation.
 11. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use explicit `focus`, `press`, `hover`, `drag`, or `mouse-*` commands only when physical/headed interaction is intended.
-12. **Use sessions for parallel work.** Add `--session <id>` when multiple agents or batches can run at once.
-13. **Trace hard failures.** Add `--trace /tmp/agent-desktop.jsonl` when diagnosing stale, ambiguous, or actionability failures.
+12. **Start a session once per run.** `session start` enables automatic tracing and relocates the latest-snapshot namespace. Use `AGENT_DESKTOP_SESSION` for concurrent independent agents; use `--session <id>` to override the active pointer for a single command.
+13. **Trace hard failures.** With an active trace-enabled session, segments are written automatically. Add `--trace /tmp/agent-desktop.jsonl` only when you need a single override file (CI, one-offs). Check `status` when unsure whether tracing is active.

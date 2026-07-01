@@ -1,6 +1,6 @@
 ---
 name: agent-desktop-ffi
-version: 0.4.0
+version: 0.4.1
 tags: ffi, c-bindings, cdylib, python, swift, node, go, rust-ffi
 requirements:
   - agent-desktop-ffi
@@ -76,10 +76,20 @@ to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
   symbols increment the major.
 
 - **Session adapters.** `ad_adapter_create_with_session("session-id")` associates
-  the adapter with a named session for refmap persistence. Passing the same session
-  ID across adapter lifetimes lets `ad_execute_by_ref` with `snapshot_id=NULL`
-  target the latest snapshot from that session. Session IDs: 1–64 chars, ASCII
-  alphanumeric / `-` / `_`. Invalid IDs return null (check `ad_last_error_*`).
+  the adapter with a session namespace for refmap persistence — the same as CLI
+  `--session <id>`. Passing the same session ID across adapter lifetimes lets
+  `ad_execute_by_ref` with `snapshot_id=NULL` target the latest snapshot from
+  that session. Session IDs: 1–64 chars, ASCII alphanumeric / `-` / `_`.
+  Invalid IDs return null (check `ad_last_error_*`).
+
+- **Structured session trace (no ABI change).** File-based JSONL tracing activates
+  only when the session has a manifest with `trace: on` from `session start`
+  (CLI) or equivalent on-disk setup. `ad_adapter_create_with_session` alone does
+  **not** create trace files. When tracing is active, `command_context()`-backed
+  commands append to one segment per OS process under
+  `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl`. A long-lived host
+  reuses the same segment filename for all calls in that process. For unstructured
+  diagnostics regardless of session manifest, use `ad_set_log_callback` (below).
 
 - **Main thread only (macOS).** Call every adapter-touching entrypoint
   (`ad_snapshot`, `ad_execute_by_ref`, `ad_wait`, `ad_get_tree`, `ad_find`,
@@ -141,17 +151,24 @@ to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
   for activation-chain actions. Each entry has `label` and `outcome` strings and
   is owned by the result; release with `ad_free_action_result(&out)`.
 
-- **Tracing / log callback.** `ad_set_log_callback(cb)` installs a `tracing`
-  subscriber layer that delivers events as JSON to your callback. `cb` receives an
-  int32_t level (1=ERROR … 5=TRACE) and a `const char *msg` valid only for the
-  duration of the call. Pass `NULL` to unregister. The layer is installed on the
-  first non-null call; if a foreign global subscriber already owns the process at
-  that point, the install fails with `AD_RESULT_ERR_INTERNAL` and no events are
-  ever delivered. Sensitive field values (password, token, text, …) are replaced
-  with `{"redacted":true}` before formatting. A panicking callback is caught and
-  silently discarded. The callback may fire from threads other than the registering
-  thread, and may still fire briefly after a `NULL` unregister — keep the callback
-  and any data it captures valid for the process lifetime.
+- **Tracing / log callback.** Two tracing surfaces coexist:
+
+  1. **Structured file trace** — same JSONL contract as CLI `--trace`, gated by a
+     `trace: on` session manifest. Segments include `event`, `ts_ms`, `seq`, and
+     redacted fields. Requires `session start` (or equivalent manifest on disk)
+     before creating the adapter; plain session-id adapters write nothing to disk.
+
+  2. **`ad_set_log_callback(cb)`** — installs a `tracing` subscriber layer that
+     delivers events as JSON to your callback. `cb` receives an int32_t level
+     (1=ERROR … 5=TRACE) and a `const char *msg` valid only for the duration of
+     the call. Pass `NULL` to unregister. The layer is installed on the first
+     non-null call; if a foreign global subscriber already owns the process at
+     that point, the install fails with `AD_RESULT_ERR_INTERNAL` and no events are
+     ever delivered. Sensitive field values (password, token, text, …) are
+     replaced with `{"redacted":true}` before formatting. A panicking callback is
+     caught and silently discarded. The callback may fire from threads other than
+     the registering thread, and may still fire briefly after a `NULL` unregister
+     — keep the callback and any data it captures valid for the process lifetime.
 
 - **Wait.** `ad_wait(adapter, args, &out)` runs the full CLI `wait` command
   (element-appear, window-appear, text-appear, menu-open/close, notification,
