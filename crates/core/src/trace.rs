@@ -18,9 +18,17 @@ enum TracePending {
 }
 
 #[derive(Debug, Clone, Default)]
+enum WriterState {
+    #[default]
+    Unopened,
+    Open(Arc<Mutex<std::fs::File>>),
+    Failed,
+}
+
+#[derive(Debug, Clone, Default)]
 struct TraceState {
     pending: TracePending,
-    opened: Arc<Mutex<Option<Arc<Mutex<std::fs::File>>>>>,
+    writer: Arc<Mutex<WriterState>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -41,25 +49,28 @@ impl TraceConfig {
                 "Provide --trace <path>, start a session with tracing, or remove --trace-strict.",
             ));
         }
-        let (pending, opened) = match explicit_path {
+        let (pending, writer) = match explicit_path {
             Some(path) => match open_trace_file(&path) {
-                Ok(file) => (TracePending::File(path), Some(Arc::new(Mutex::new(file)))),
+                Ok(file) => (
+                    TracePending::File(path),
+                    WriterState::Open(Arc::new(Mutex::new(file))),
+                ),
                 Err(err) if strict || err.code() == "INVALID_ARGS" => return Err(err),
                 Err(err) => {
                     tracing::warn!("trace open failed: {err}");
-                    (TracePending::File(path), None)
+                    (TracePending::File(path), WriterState::Failed)
                 }
             },
             None => match session_segment_dir {
-                Some(dir) => (TracePending::SegmentDir(dir), None),
-                None => (TracePending::None, None),
+                Some(dir) => (TracePending::SegmentDir(dir), WriterState::Unopened),
+                None => (TracePending::None, WriterState::Unopened),
             },
         };
         Ok(Self {
             strict,
             state: Arc::new(TraceState {
                 pending,
-                opened: Arc::new(Mutex::new(opened)),
+                writer: Arc::new(Mutex::new(writer)),
             }),
         })
     }
@@ -98,29 +109,38 @@ impl TraceConfig {
     }
 
     fn ensure_writer(&self) -> Result<Option<Arc<Mutex<std::fs::File>>>, AppError> {
-        let mut opened = self
+        let mut writer = self
             .state
-            .opened
+            .writer
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
-        if opened.is_none() {
-            let open_result = match &self.state.pending {
-                TracePending::None => return Ok(None),
-                TracePending::File(path) => open_trace_file(path),
-                TracePending::SegmentDir(dir) => open_segment_trace_file(dir),
-            };
-            let file = match open_result {
-                Ok(file) => file,
-                Err(err) if self.strict => return Err(err),
-                Err(err) if err.code() == "INVALID_ARGS" => return Err(err),
-                Err(err) => {
-                    tracing::warn!("trace open failed: {err}");
-                    return Ok(None);
-                }
-            };
-            *opened = Some(Arc::new(Mutex::new(file)));
+        match &*writer {
+            WriterState::Open(file) => return Ok(Some(file.clone())),
+            WriterState::Failed => return Ok(None),
+            WriterState::Unopened => {}
         }
-        Ok(opened.clone())
+        let open_result = match &self.state.pending {
+            TracePending::None => {
+                *writer = WriterState::Failed;
+                return Ok(None);
+            }
+            TracePending::File(path) => open_trace_file(path),
+            TracePending::SegmentDir(dir) => open_segment_trace_file(dir),
+        };
+        match open_result {
+            Ok(file) => {
+                let file = Arc::new(Mutex::new(file));
+                *writer = WriterState::Open(file.clone());
+                Ok(Some(file))
+            }
+            Err(err) if self.strict => Err(err),
+            Err(err) if err.code() == "INVALID_ARGS" => Err(err),
+            Err(err) => {
+                tracing::warn!("trace open failed: {err}");
+                *writer = WriterState::Failed;
+                Ok(None)
+            }
+        }
     }
 
     pub(crate) fn has_sink(&self) -> bool {
@@ -166,6 +186,14 @@ fn open_segment_trace_file(dir: &Path) -> Result<std::fs::File, AppError> {
 }
 
 fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
+    if let Ok(meta) = std::fs::symlink_metadata(dir) {
+        if meta.file_type().is_symlink() {
+            return Err(AppError::invalid_input_with_suggestion(
+                "Refusing to write trace segments through a symlinked trace directory",
+                "Remove the symlink under the session's trace/ directory.",
+            ));
+        }
+    }
     if dir.is_dir() {
         return Ok(());
     }

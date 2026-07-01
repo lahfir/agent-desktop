@@ -71,15 +71,26 @@ pub fn read_current_session_pointer() -> Result<Option<String>, AppError> {
     let mut file = match open_session_file(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(err.into()),
+        Err(err) => {
+            tracing::warn!(
+                "ignoring unreadable session pointer {}: {err}",
+                path.display()
+            );
+            return Ok(None);
+        }
     };
     let mut id = String::new();
-    file.read_to_string(&mut id)?;
-    let id = id.trim().to_string();
-    if id.is_empty() {
+    if let Err(err) = file.read_to_string(&mut id) {
+        tracing::warn!(
+            "ignoring unreadable session pointer {}: {err}",
+            path.display()
+        );
         return Ok(None);
     }
-    validate_session_id(&id)?;
+    let id = id.trim().to_string();
+    if id.is_empty() || validate_session_id(&id).is_err() {
+        return Ok(None);
+    }
     Ok(Some(id))
 }
 
@@ -101,20 +112,27 @@ pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppErr
     let mut file = match open_session_file(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(err.into()),
+        Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
     };
     let mut json = String::new();
-    file.read_to_string(&mut json)?;
+    if let Err(err) = file.read_to_string(&mut json) {
+        return Ok(ignore_unreadable_manifest(&path, &err));
+    }
     match serde_json::from_str(&json) {
         Ok(manifest) => Ok(Some(manifest)),
-        Err(err) => {
-            tracing::warn!(
-                "ignoring unreadable session manifest {}: {err}",
-                path.display()
-            );
-            Ok(None)
-        }
+        Err(err) => Ok(ignore_unreadable_manifest(&path, &err)),
     }
+}
+
+fn ignore_unreadable_manifest<E: std::fmt::Display>(
+    path: &Path,
+    err: &E,
+) -> Option<SessionManifest> {
+    tracing::warn!(
+        "ignoring unreadable session manifest {}: {err}",
+        path.display()
+    );
+    None
 }
 
 pub fn write_manifest(manifest: &SessionManifest) -> Result<(), AppError> {
@@ -191,7 +209,6 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
         ));
     }
     let id = new_session_id();
-    validate_session_id(&id)?;
     let name = options
         .name
         .map(|name| validate_session_name(&name))

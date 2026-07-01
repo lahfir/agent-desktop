@@ -190,6 +190,7 @@ fn parse_skills(args: Value) -> Result<SkillsArgs, AppError> {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BatchSessionArgs {
     #[serde(default)]
     action: Option<String>,

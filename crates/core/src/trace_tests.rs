@@ -252,3 +252,24 @@ fn trace_rejects_loose_existing_file_permissions() {
     assert_eq!(err.code(), "INVALID_ARGS");
     let _ = fs::remove_file(path);
 }
+
+#[cfg(unix)]
+#[test]
+fn segment_open_rejects_symlinked_trace_dir() {
+    let base = std::env::temp_dir().join(format!(
+        "agent-desktop-symtrace-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let real = base.with_extension("real");
+    fs::create_dir_all(&real).unwrap();
+    std::os::unix::fs::symlink(&real, &base).unwrap();
+
+    let err = super::open_segment_trace_file(&base).unwrap_err();
+    assert_eq!(err.code(), "INVALID_ARGS");
+
+    let _ = fs::remove_file(&base);
+    let _ = fs::remove_dir_all(&real);
+}

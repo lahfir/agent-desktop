@@ -81,7 +81,7 @@ impl CommandContext {
         if let Some(id) = session_id.as_deref() {
             validate_session_id(id)?;
         }
-        let trace = if self.trace.pending_file_path().is_some() {
+        let trace = if self.trace.pending_file_path().is_some() || session_id == self.session_id {
             self.trace.clone()
         } else {
             let segment_dir = session_segment_dir(session_id.as_deref(), false)?;

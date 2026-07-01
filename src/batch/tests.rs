@@ -25,6 +25,20 @@ fn parses_optional_batch_session_scope() {
 }
 
 #[test]
+fn session_batch_rejects_unknown_field() {
+    assert!(
+        parse_command(item("session", serde_json::json!({ "action": "start" }))).is_ok(),
+        "a valid session start must still parse"
+    );
+    let err = parse_command(item(
+        "session",
+        serde_json::json!({ "action": "start", "no_trce": true }),
+    ))
+    .expect_err("a misspelled session field must be rejected, not silently defaulted");
+    assert!(err.to_string().contains("no_trce"));
+}
+
+#[test]
 fn parses_ref_command_into_cli_enum() {
     let command =
         parse_command(item("click", serde_json::json!({ "ref_id": "@e1" }))).expect("click parses");

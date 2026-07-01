@@ -202,7 +202,9 @@ fn gc_respects_older_than_threshold() {
 
 #[test]
 fn new_session_id_includes_process_id() {
-    assert!(new_session_id().contains(&std::process::id().to_string()));
+    let id = new_session_id();
+    assert!(id.contains(&std::process::id().to_string()));
+    validate_session_id(&id).expect("new_session_id must always be a valid session id");
 }
 
 #[test]
@@ -284,4 +286,38 @@ fn trace_enabled_false_once_session_ended() {
     assert!(trace_enabled_for_session(&manifest.id).unwrap());
     end_session(Some(&manifest.id)).unwrap();
     assert!(!trace_enabled_for_session(&manifest.id).unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_manifest_is_ignored_not_fatal() {
+    let _guard = HomeGuard::new();
+    let good = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::Off,
+        force: true,
+    })
+    .unwrap();
+    let dir = session_dir("symsess").unwrap();
+    fs::create_dir_all(&dir).unwrap();
+    let target = dir.with_extension("target");
+    fs::write(&target, b"{}").unwrap();
+    std::os::unix::fs::symlink(&target, dir.join("session.json")).unwrap();
+
+    assert!(!trace_enabled_for_session("symsess").unwrap());
+    let ids: Vec<String> = list_sessions().unwrap().into_iter().map(|m| m.id).collect();
+    assert!(ids.contains(&good.id));
+    assert!(!ids.iter().any(|id| id == "symsess"));
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_session_pointer_degrades_to_none() {
+    let _guard = HomeGuard::new();
+    let target = agent_desktop_dir().unwrap().join("pointer-target");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(&target, b"whatever").unwrap();
+    std::os::unix::fs::symlink(&target, current_session_path().unwrap()).unwrap();
+
+    assert!(read_current_session_pointer().unwrap().is_none());
 }

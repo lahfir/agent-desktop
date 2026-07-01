@@ -3,7 +3,9 @@ use super::{
     session_dir,
 };
 use crate::{
-    context::validate_session_id, error::AppError, refs_lock::lock_holder_is_live,
+    context::validate_session_id,
+    error::AppError,
+    refs_lock::{RefStoreLock, lock_holder_is_live},
     refs_store::RefStore,
 };
 use std::path::Path;
@@ -70,7 +72,13 @@ pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
             continue;
         }
         let dir = session_dir(&manifest.id)?;
-        if remove_session_dir(&dir)? {
+        let lock = match RefStoreLock::acquire(&dir.join("refstore.lock")) {
+            Ok(lock) => lock,
+            Err(_) => continue,
+        };
+        let did_remove = remove_session_dir(&dir)?;
+        drop(lock);
+        if did_remove {
             removed.push(manifest.id);
         }
     }
