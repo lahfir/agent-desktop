@@ -165,6 +165,9 @@ safe for agents to use with machine-readable command output:
 - let `--trace-strict` fail on setup and pre-action trace writes
 - keep post-action success trace writes best-effort after the desktop mutation
   has already happened
+- with a trace-enabled session manifest from `session start`, write per-process
+  JSONL segments under `sessions/<id>/trace/<pid>-*.jsonl` automatically;
+  `--trace <path>` still overrides to one file for CI or one-offs
 
 Reporting a successful desktop mutation as failed because the final trace write
 failed is worse than losing that final diagnostic event.

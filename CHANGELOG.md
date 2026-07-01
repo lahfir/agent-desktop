@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Refactor
+
+* make sessions the first-class trace container: `session start/end/list/gc`, manifest-gated automatic JSONL segments under `sessions/<id>/trace/`, and `--trace <path>` override preserved ([#89](https://github.com/lahfir/agent-desktop/pull/89))
+
 ## [0.4.5](https://github.com/lahfir/agent-desktop/compare/v0.4.4...v0.4.5) (2026-06-30)
 
 

@@ -160,7 +160,7 @@ Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries i
 
 ### Additive Phase Model
 
-- **Phase 1:** Foundation + macOS MVP (54 commands, core engine, macOS adapter)
+- **Phase 1:** Foundation + macOS MVP (55 commands, core engine, macOS adapter)
 - **Phase 2:** Windows + Linux adapters, 10+ new commands — core untouched
 - **Phase 3:** MCP server mode via `--mcp` flag — wraps existing commands
 - **Phase 4:** Daemon, sessions, enterprise quality gates
@@ -327,6 +327,8 @@ The `error` object may also carry an optional `details` object (e.g. the actiona
 - Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets
 - Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
 - RefMap size check: write-side guard prevents >1MB refmap files
+- **Sessions:** `session start` creates a manifest-gated session under `~/.agent-desktop/sessions/<id>/`, sets `current_session`, and (by default) enables automatic trace segments. Bare `--session <id>` without a manifest scopes only the snapshot namespace — no surprise trace files
+- **Trace:** manifest `trace: on` writes per-process JSONL segments under `<session>/trace/<pid>-<procTs>.jsonl`; `--trace <path>` overrides to one file; activation resolves `--session` > `AGENT_DESKTOP_SESSION` > `current_session`
 
 ## PlatformAdapter Trait
 
@@ -367,11 +369,11 @@ for the actionability preflight (`get_live_*`), and `is_protected_process`
 
 ## Commands
 
-54 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
-Mouse, Notifications (macOS), Clipboard, Wait, System, and Batch. The full
-surface and per-command reference live in `skills/agent-desktop/`. All 54 are
-implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the same
-surface. Adding a command: see the Extensibility Pattern above.
+55 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
+Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
+Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
+All 55 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
+same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
 

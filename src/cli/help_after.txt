@@ -127,16 +127,17 @@ EXAMPLES
   agent-desktop wait --element @e5 --predicate actionable --timeout 5000
   agent-desktop snapshot --app Finder -w "button:OK"
   agent-desktop click @e5 -w ":Saved!"
-  agent-desktop --session run-a --trace /tmp/ad.jsonl click @e5
+  agent-desktop session start --name run-a
+  agent-desktop click @e5
   agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'
-  agent-desktop --session run-a batch '[{"command":"status","session":"run-b","args":{}}]'
+  agent-desktop --session run-b batch '[{"command":"status","session":"run-b","args":{}}]'
 
 AGENT LOOP
   1. Use `skills get desktop --full` when you need detailed guidance.
-  2. Use `--session <id>` when another agent or task may also run commands.
+  2. Run `session start` once per agent run (or set AGENT_DESKTOP_SESSION).
   3. Observe with `snapshot -i` or `snapshot --skeleton -i --compact`.
   4. Keep `snapshot_id`; pass it to every ref-consuming action.
   5. Use `wait --predicate actionable`, `wait --text`, or `wait --window`
      instead of sleeping blindly.
   6. On STALE_REF or AMBIGUOUS_TARGET, snapshot again and choose a fresh ref.
-  7. Add `--trace <path>` when diagnosing stale, ambiguous, or actionability failures.
+  7. Check `status` for `tracing: true`, or add `--trace <path>` to override.
