@@ -30,11 +30,13 @@ pub(crate) fn execute(
 
     for item in commands {
         let command = item.command.clone();
-        let item_context = context.for_batch_item(item.session.clone())?;
-        let result = parse_command(item).and_then(|typed| {
-            crate::command_policy::preflight(&typed, permission_report)?;
-            crate::dispatch::dispatch(typed, adapter, permission_report, &item_context)
-        });
+        let result = match context.for_batch_item(item.session.clone()) {
+            Ok(item_context) => parse_command(item).and_then(|typed| {
+                crate::command_policy::preflight(&typed, permission_report)?;
+                crate::dispatch::dispatch(typed, adapter, permission_report, &item_context)
+            }),
+            Err(err) => Err(err),
+        };
         let ok = result.is_ok();
         results.push(batch_entry(&command, result));
         if !ok && args.stop_on_error {

@@ -9,14 +9,15 @@ const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
 
 static EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 enum TracePending {
+    #[default]
     None,
     File(PathBuf),
     SegmentDir(PathBuf),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct TraceState {
     pending: TracePending,
     opened: Arc<Mutex<Option<Arc<Mutex<std::fs::File>>>>>,
@@ -26,15 +27,6 @@ struct TraceState {
 pub struct TraceConfig {
     strict: bool,
     state: Arc<TraceState>,
-}
-
-impl Default for TraceState {
-    fn default() -> Self {
-        Self {
-            pending: TracePending::None,
-            opened: Arc::new(Mutex::new(None)),
-        }
-    }
 }
 
 impl TraceConfig {
@@ -49,18 +41,25 @@ impl TraceConfig {
                 "Provide --trace <path>, start a session with tracing, or remove --trace-strict.",
             ));
         }
-        let pending = match explicit_path {
-            Some(path) => TracePending::File(path),
+        let (pending, opened) = match explicit_path {
+            Some(path) => match open_trace_file(&path) {
+                Ok(file) => (TracePending::File(path), Some(Arc::new(Mutex::new(file)))),
+                Err(err) if strict || err.code() == "INVALID_ARGS" => return Err(err),
+                Err(err) => {
+                    tracing::warn!("trace open failed: {err}");
+                    (TracePending::File(path), None)
+                }
+            },
             None => match session_segment_dir {
-                Some(dir) => TracePending::SegmentDir(dir),
-                None => TracePending::None,
+                Some(dir) => (TracePending::SegmentDir(dir), None),
+                None => (TracePending::None, None),
             },
         };
         Ok(Self {
             strict,
             state: Arc::new(TraceState {
                 pending,
-                opened: Arc::new(Mutex::new(None)),
+                opened: Arc::new(Mutex::new(opened)),
             }),
         })
     }
@@ -105,26 +104,19 @@ impl TraceConfig {
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
         if opened.is_none() {
-            let file = match &self.state.pending {
+            let open_result = match &self.state.pending {
                 TracePending::None => return Ok(None),
-                TracePending::File(path) => match open_trace_file(path) {
-                    Ok(file) => file,
-                    Err(err) if self.strict => return Err(err),
-                    Err(err) if err.code() == "INVALID_ARGS" => return Err(err),
-                    Err(err) => {
-                        tracing::warn!("trace open failed: {err}");
-                        return Ok(None);
-                    }
-                },
-                TracePending::SegmentDir(dir) => match open_segment_trace_file(dir) {
-                    Ok(file) => file,
-                    Err(err) if self.strict => return Err(err),
-                    Err(err) if err.code() == "INVALID_ARGS" => return Err(err),
-                    Err(err) => {
-                        tracing::warn!("trace open failed: {err}");
-                        return Ok(None);
-                    }
-                },
+                TracePending::File(path) => open_trace_file(path),
+                TracePending::SegmentDir(dir) => open_segment_trace_file(dir),
+            };
+            let file = match open_result {
+                Ok(file) => file,
+                Err(err) if self.strict => return Err(err),
+                Err(err) if err.code() == "INVALID_ARGS" => return Err(err),
+                Err(err) => {
+                    tracing::warn!("trace open failed: {err}");
+                    return Ok(None);
+                }
             };
             *opened = Some(Arc::new(Mutex::new(file)));
         }

@@ -8,13 +8,15 @@ pub struct SessionManifest {
     pub created_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<u64>,
+    #[serde(default)]
     pub trace: SessionTraceMode,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionTraceMode {
     On,
+    #[default]
     Off,
 }
 

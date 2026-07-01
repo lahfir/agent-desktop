@@ -60,25 +60,33 @@ fn ffi_trace_on_session_writes_segment() {
         force: false,
     })
     .unwrap();
-    unsafe {
-        let session = CString::new(manifest.id.as_str()).unwrap();
-        let ptr = ad_adapter_create_with_session(session.as_ptr());
-        assert!(!ptr.is_null());
-        let ctx = (*ptr)
-            .command_context()
-            .expect("command_context must succeed");
-        ctx.trace("ffi.event", serde_json::json!({ "ok": true }))
-            .unwrap();
-        ad_adapter_destroy(ptr);
+    for call in 0..2 {
+        unsafe {
+            let session = CString::new(manifest.id.as_str()).unwrap();
+            let ptr = ad_adapter_create_with_session(session.as_ptr());
+            assert!(!ptr.is_null());
+            let ctx = (*ptr)
+                .command_context()
+                .expect("command_context must succeed");
+            ctx.trace("ffi.event", serde_json::json!({ "call": call }))
+                .unwrap();
+            ad_adapter_destroy(ptr);
+        }
     }
     let trace_dir = trace_dir_for(&manifest.id);
-    let body: String = fs::read_dir(trace_dir)
+    let segments: Vec<_> = fs::read_dir(trace_dir)
         .unwrap()
         .flatten()
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
-        .map(|entry| fs::read_to_string(entry.path()).unwrap())
         .collect();
-    assert!(body.contains("ffi.event"));
+    assert_eq!(
+        segments.len(),
+        1,
+        "a long-lived process must write one segment across many FFI calls"
+    );
+    let body = fs::read_to_string(segments[0].path()).unwrap();
+    assert!(body.contains("\"call\":0"));
+    assert!(body.contains("\"call\":1"));
 }
 
 #[test]

@@ -151,7 +151,7 @@ fn remove_session_dir_rejects_symlink() {
     let target = dir.with_extension("target");
     fs::create_dir_all(&target).unwrap();
     std::os::unix::fs::symlink(&target, &dir).unwrap();
-    let err = super::remove_session_dir(&dir).unwrap_err();
+    let err = super::gc::remove_session_dir(&dir).unwrap_err();
     assert_eq!(err.code(), "INVALID_ARGS");
 }
 
@@ -198,4 +198,90 @@ fn gc_respects_older_than_threshold() {
     })
     .unwrap();
     assert!(report.removed.is_empty());
+}
+
+#[test]
+fn new_session_id_includes_process_id() {
+    assert!(new_session_id().contains(&std::process::id().to_string()));
+}
+
+#[test]
+fn corrupt_manifest_is_ignored_not_fatal() {
+    let _guard = HomeGuard::new();
+    let good = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::Off,
+        force: true,
+    })
+    .unwrap();
+    let bad_dir = session_dir("corruptsess").unwrap();
+    fs::create_dir_all(&bad_dir).unwrap();
+    fs::write(bad_dir.join("session.json"), b"{ not valid json").unwrap();
+
+    assert!(!trace_enabled_for_session("corruptsess").unwrap());
+    let listed: Vec<String> = list_sessions().unwrap().into_iter().map(|m| m.id).collect();
+    assert!(listed.contains(&good.id));
+    assert!(!listed.iter().any(|id| id == "corruptsess"));
+}
+
+#[test]
+fn gc_leaves_recently_created_unended_session() {
+    let _guard = HomeGuard::new();
+    let started = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::Off,
+        force: true,
+    })
+    .unwrap();
+    clear_current_session_pointer().unwrap();
+    let report = gc(GcOptions {
+        ended_only: false,
+        older_than: Some(Duration::from_secs(0)),
+    })
+    .unwrap();
+    assert!(!report.removed.contains(&started.id));
+    assert!(session_dir(&started.id).unwrap().is_dir());
+}
+
+#[test]
+fn start_with_force_overrides_live_pointer() {
+    let _guard = HomeGuard::new();
+    let first = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::On,
+        force: false,
+    })
+    .unwrap();
+    let _lock = RefStoreLock::acquire(
+        &crate::refs_store::RefStore::for_session(Some(&first.id))
+            .unwrap()
+            .base_dir()
+            .join("refstore.lock"),
+    )
+    .unwrap();
+    let second = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::On,
+        force: true,
+    })
+    .unwrap();
+    assert_ne!(first.id, second.id);
+    assert_eq!(
+        read_current_session_pointer().unwrap().as_deref(),
+        Some(second.id.as_str())
+    );
+}
+
+#[test]
+fn trace_enabled_false_once_session_ended() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        name: None,
+        trace: SessionTraceMode::On,
+        force: false,
+    })
+    .unwrap();
+    assert!(trace_enabled_for_session(&manifest.id).unwrap());
+    end_session(Some(&manifest.id)).unwrap();
+    assert!(!trace_enabled_for_session(&manifest.id).unwrap());
 }

@@ -37,7 +37,7 @@ const WAIT_SUPPORTED: &[&str] = &[
 ];
 
 fn main() {
-    let cli = match Cli::try_parse() {
+    let mut cli = match Cli::try_parse() {
         Ok(c) => c,
         Err(e) => {
             if matches!(
@@ -57,28 +57,8 @@ fn main() {
     };
 
     init_tracing(cli.verbose);
-    let wait_selector = build_wait_selector(&cli);
-    let session_id = match resolve_active_session(
-        cli.session.as_deref(),
-        std::env::var("AGENT_DESKTOP_SESSION").ok().as_deref(),
-    ) {
-        Ok(session_id) => session_id,
-        Err(err) => {
-            finish("unknown", Err(err));
-            return;
-        }
-    };
-    let context = match CommandContext::new(session_id, cli.trace, cli.trace_strict) {
-        Ok(context) => context
-            .with_headed(cli.headed)
-            .with_wait_selector(wait_selector.clone()),
-        Err(err) => {
-            finish("unknown", Err(err));
-            return;
-        }
-    };
 
-    let cmd = match cli.command {
+    let cmd = match cli.command.take() {
         Some(c) => c,
         None => {
             Cli::command().print_help().unwrap_or(());
@@ -88,17 +68,9 @@ fn main() {
 
     let cmd_name = cmd.name();
 
-    if let Some(wait) = wait_selector.as_ref() {
-        if let Err(err) = validate_wait_for_command(cmd_name, wait) {
-            finish(cmd_name, Err(err));
-            return;
-        }
-    }
-
     match cmd {
         Commands::Version => {
-            let result = agent_desktop_core::commands::version::execute();
-            finish(cmd_name, result);
+            finish(cmd_name, agent_desktop_core::commands::version::execute());
         }
         Commands::Skills(a) => {
             let result = match a.action.unwrap_or(SkillsAction::List) {
@@ -114,7 +86,35 @@ fn main() {
             };
             finish(cmd_name, result);
         }
-        cmd => run_with_adapter(cmd, cmd_name, &context),
+        cmd => {
+            let wait_selector = build_wait_selector(&cli);
+            let session_id = match resolve_active_session(
+                cli.session.as_deref(),
+                std::env::var("AGENT_DESKTOP_SESSION").ok().as_deref(),
+            ) {
+                Ok(session_id) => session_id,
+                Err(err) => {
+                    finish(cmd_name, Err(err));
+                    return;
+                }
+            };
+            let context = match CommandContext::new(session_id, cli.trace, cli.trace_strict) {
+                Ok(context) => context
+                    .with_headed(cli.headed)
+                    .with_wait_selector(wait_selector.clone()),
+                Err(err) => {
+                    finish(cmd_name, Err(err));
+                    return;
+                }
+            };
+            if let Some(wait) = wait_selector.as_ref() {
+                if let Err(err) = validate_wait_for_command(cmd_name, wait) {
+                    finish(cmd_name, Err(err));
+                    return;
+                }
+            }
+            run_with_adapter(cmd, cmd_name, &context);
+        }
     }
 }
 

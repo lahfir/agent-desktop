@@ -215,7 +215,9 @@ pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), AppErr
     #[cfg(not(unix))]
     std::fs::create_dir_all(dir)?;
 
-    let tmp = path.with_extension("tmp");
+    static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let unique = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("{}.{unique}.tmp", std::process::id()));
     let written = write_tmp_then_rename(&tmp, path, bytes);
     if written.is_err() {
         let _ = std::fs::remove_file(&tmp);

@@ -1,6 +1,6 @@
 use crate::{
     action::Action, action_request::ActionRequest, error::AppError,
-    interaction_policy::InteractionPolicy, refs_store::RefStore, session, trace::TraceConfig,
+    interaction_policy::InteractionPolicy, session, trace::TraceConfig,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -126,7 +126,7 @@ fn session_segment_dir(
     if !session::trace_enabled_for_session(session_id)? {
         return Ok(None);
     }
-    Ok(Some(RefStore::for_session(Some(session_id))?.trace_dir()))
+    Ok(Some(session::trace_dir(session_id)?))
 }
 
 pub fn validate_session_id(id: &str) -> Result<(), AppError> {

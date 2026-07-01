@@ -111,9 +111,9 @@ fn segment_configs_in_same_process_share_filename() {
 }
 
 #[test]
-fn lazy_open_writes_no_file_until_first_event() {
+fn explicit_trace_opens_eagerly_at_build() {
     let path = std::env::temp_dir().join(format!(
-        "agent-desktop-lazy-{}",
+        "agent-desktop-eager-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -121,7 +121,10 @@ fn lazy_open_writes_no_file_until_first_event() {
     ));
     let _ = fs::remove_file(&path);
     let config = TraceConfig::build(Some(path.clone()), None, false).unwrap();
-    assert!(!path.exists());
+    assert!(
+        path.exists(),
+        "explicit --trace validates and opens the destination at build (fail-fast)"
+    );
     config.emit("event", None, json!({})).unwrap();
     assert!(path.exists());
     let _ = fs::remove_file(path);
@@ -193,12 +196,11 @@ fn truncated_final_line_leaves_prior_lines_parseable() {
 }
 
 #[test]
-fn strict_missing_trace_path_fails_on_first_emit() {
+fn strict_missing_trace_path_fails_at_build() {
     let missing = std::env::temp_dir()
         .join("agent-desktop-missing-dir")
         .join("trace.jsonl");
-    let config = TraceConfig::build(Some(missing), None, true).unwrap();
-    assert!(config.emit("event", None, json!({})).is_err());
+    assert!(TraceConfig::build(Some(missing), None, true).is_err());
 }
 
 #[test]
@@ -245,8 +247,7 @@ fn trace_rejects_loose_existing_file_permissions() {
     fs::write(&path, "").unwrap();
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
 
-    let config = TraceConfig::build(Some(path.clone()), None, false).unwrap();
-    let err = config.emit("event", None, json!({})).unwrap_err();
+    let err = TraceConfig::build(Some(path.clone()), None, false).unwrap_err();
 
     assert_eq!(err.code(), "INVALID_ARGS");
     let _ = fs::remove_file(path);

@@ -125,8 +125,7 @@ fn trace_rejects_loose_existing_file_permissions() {
     std::fs::write(&path, "").unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    let context = CommandContext::new(None, Some(path.clone()), false).unwrap();
-    let err = context.trace("event", json!({})).unwrap_err();
+    let err = CommandContext::new(None, Some(path.clone()), false).unwrap_err();
 
     assert_eq!(err.code(), "INVALID_ARGS");
     let _ = std::fs::remove_file(path);

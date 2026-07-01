@@ -343,3 +343,7 @@ mod prune;
 #[cfg(test)]
 #[path = "refs_store_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "refs_store_trace_tests.rs"]
+mod trace_tests;

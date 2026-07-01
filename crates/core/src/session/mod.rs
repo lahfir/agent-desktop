@@ -1,12 +1,13 @@
+mod gc;
 mod manifest;
 
+pub use gc::{GcOptions, GcReport, gc, is_live, pointer_references_live_session};
 pub use manifest::{SessionManifest, SessionTraceMode};
 
 use crate::{
     context::validate_session_id,
     error::AppError,
     refs::{home_dir, write_private_file},
-    refs_lock::lock_holder_is_live,
     refs_store::RefStore,
 };
 use serde_json;
@@ -17,23 +18,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CURRENT_SESSION_FILE: &str = "current_session";
 const SESSION_MANIFEST_FILE: &str = "session.json";
-const TRACE_LIVENESS_WINDOW: Duration = Duration::from_secs(300);
+pub(super) const TRACE_LIVENESS_WINDOW: Duration = Duration::from_secs(300);
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct StartSessionOptions {
     pub name: Option<String>,
     pub trace: SessionTraceMode,
     pub force: bool,
-}
-
-pub struct GcOptions {
-    pub ended_only: bool,
-    pub older_than: Option<Duration>,
-}
-
-#[derive(Debug)]
-pub struct GcReport {
-    pub removed: Vec<String>,
 }
 
 pub fn agent_desktop_dir() -> Result<PathBuf, AppError> {
@@ -114,7 +105,16 @@ pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppErr
     };
     let mut json = String::new();
     file.read_to_string(&mut json)?;
-    Ok(Some(serde_json::from_str(&json)?))
+    match serde_json::from_str(&json) {
+        Ok(manifest) => Ok(Some(manifest)),
+        Err(err) => {
+            tracing::warn!(
+                "ignoring unreadable session manifest {}: {err}",
+                path.display()
+            );
+            Ok(None)
+        }
+    }
 }
 
 pub fn write_manifest(manifest: &SessionManifest) -> Result<(), AppError> {
@@ -129,11 +129,8 @@ pub fn trace_enabled_for_session(session_id: &str) -> Result<bool, AppError> {
 
 pub fn new_session_id() -> String {
     let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    format!("run-{millis}-{n}")
+    let pid = std::process::id();
+    format!("run-{}-{pid}-{n}", now_millis())
 }
 
 pub fn validate_session_name(name: &str) -> Result<String, AppError> {
@@ -156,25 +153,6 @@ pub fn validate_session_name(name: &str) -> Result<String, AppError> {
         ));
     }
     Ok(name.to_string())
-}
-
-pub fn pointer_references_live_session() -> Result<bool, AppError> {
-    let Some(id) = read_current_session_pointer()? else {
-        return Ok(false);
-    };
-    is_live(&id)
-}
-
-pub fn is_live(session_id: &str) -> Result<bool, AppError> {
-    validate_session_id(session_id)?;
-    let store = RefStore::for_session(Some(session_id))?;
-    if lock_holder_is_live(&store.base_dir().join("refstore.lock")) {
-        return Ok(true);
-    }
-    if trace_dir_recently_written(&store.trace_dir()) {
-        return Ok(true);
-    }
-    Ok(false)
 }
 
 pub fn list_sessions() -> Result<Vec<SessionManifest>, AppError> {
@@ -261,36 +239,6 @@ pub fn end_session(session_id: Option<&str>) -> Result<SessionManifest, AppError
     Ok(manifest)
 }
 
-pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
-    let pointer = read_current_session_pointer()?;
-    let mut removed = Vec::new();
-    for manifest in list_sessions()? {
-        if pointer.as_deref() == Some(manifest.id.as_str()) {
-            continue;
-        }
-        if is_live(&manifest.id)? {
-            continue;
-        }
-        if options.ended_only && manifest.ended_at.is_none() {
-            continue;
-        }
-        if let Some(older_than) = options.older_than {
-            let age_reference = manifest.ended_at.unwrap_or(manifest.created_at);
-            let age_ms = now_millis().saturating_sub(age_reference);
-            if Duration::from_millis(age_ms) < older_than {
-                continue;
-            }
-        } else if manifest.ended_at.is_none() {
-            continue;
-        }
-        let dir = session_dir(&manifest.id)?;
-        if remove_session_dir(&dir)? {
-            removed.push(manifest.id);
-        }
-    }
-    Ok(GcReport { removed })
-}
-
 fn create_session_tree(dir: &Path) -> Result<(), AppError> {
     #[cfg(unix)]
     {
@@ -315,44 +263,11 @@ fn manifest_path(session_id: &str) -> Result<PathBuf, AppError> {
     Ok(session_dir(session_id)?.join(SESSION_MANIFEST_FILE))
 }
 
-fn now_millis() -> u64 {
+pub(super) fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
-}
-
-fn trace_dir_recently_written(trace_dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(trace_dir) else {
-        return false;
-    };
-    let cutoff = SystemTime::now()
-        .checked_sub(TRACE_LIVENESS_WINDOW)
-        .unwrap_or(UNIX_EPOCH);
-    entries.flatten().any(|entry| {
-        entry
-            .metadata()
-            .ok()
-            .and_then(|metadata| metadata.modified().ok())
-            .is_some_and(|modified| modified >= cutoff)
-    })
-}
-
-pub(crate) fn remove_session_dir(dir: &Path) -> Result<bool, AppError> {
-    if !dir.is_dir() {
-        return Ok(false);
-    }
-    if std::fs::symlink_metadata(dir)
-        .map(|meta| meta.file_type().is_symlink())
-        .unwrap_or(true)
-    {
-        return Err(AppError::invalid_input_with_suggestion(
-            "Refusing to remove a symlinked session directory",
-            "Remove the symlink manually before running session gc.",
-        ));
-    }
-    std::fs::remove_dir_all(dir)?;
-    Ok(true)
 }
 
 fn open_session_file(path: &Path) -> std::io::Result<std::fs::File> {

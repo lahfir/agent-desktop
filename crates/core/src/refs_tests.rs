@@ -266,7 +266,7 @@ fn test_save_oversize_preserves_previous_file() {
 
 #[cfg(unix)]
 #[test]
-fn test_write_private_file_rejects_tmp_symlink() {
+fn test_write_private_file_ignores_stale_predictable_tmp_symlink() {
     let dir = std::env::temp_dir().join(format!(
         "agent-desktop-ref-symlink-{}",
         std::time::SystemTime::now()
@@ -277,13 +277,13 @@ fn test_write_private_file_rejects_tmp_symlink() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("refmap.json");
     let target = dir.join("target.json");
-    let tmp = path.with_extension("tmp");
+    let stale = path.with_extension("tmp");
     std::fs::write(&target, b"existing").unwrap();
-    std::os::unix::fs::symlink(&target, &tmp).unwrap();
+    std::os::unix::fs::symlink(&target, &stale).unwrap();
 
-    let result = write_private_file(&path, b"new");
+    write_private_file(&path, b"new").unwrap();
 
-    assert!(result.is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"new");
     assert_eq!(std::fs::read(&target).unwrap(), b"existing");
     let _ = std::fs::remove_dir_all(dir);
 }
