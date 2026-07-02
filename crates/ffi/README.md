@@ -29,9 +29,10 @@ returns `PLATFORM_NOT_SUPPORTED` for every adapter call.
 | Group | Key symbols |
 |-------|-------------|
 | ABI handshake | `ad_abi_version()`, `ad_init(expected_major)` |
-| Adapter lifecycle | `ad_adapter_create()`, `ad_adapter_destroy()` |
+| Adapter lifecycle | `ad_adapter_create()`, `ad_adapter_create_with_session(id)`, `ad_adapter_destroy()` |
 | Command-backed JSON entrypoints | `ad_snapshot`, `ad_execute_by_ref`, `ad_wait`, `ad_version`, `ad_status` |
-| Log callback | `ad_set_log_callback(fn(level, msg))` |
+| Log callback | `ad_set_log_callback(fn(level, msg))` — unstructured tracing to a callback |
+| Structured file trace | Same JSONL contract as CLI, gated by a `trace: on` session manifest (no ABI change); use `session start` before creating a session adapter |
 | Errno last-error | `ad_last_error_code()`, `ad_last_error_message()`, `ad_last_error_suggestion()`, `ad_last_error_platform_detail()` |
 | Type accessors / size getters | `ad_*_size()`, `ad_*_list_{count,get,free}()`, `ad_image_buffer_*()` |
 | Free helpers | `ad_free_string()`, `ad_free_handle()`, `ad_free_tree()`, `ad_free_action_result()` |

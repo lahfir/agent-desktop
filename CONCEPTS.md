@@ -45,9 +45,19 @@ Strict ref resolution rejects missing, stale, and ambiguous matches instead of g
 ## Coordination
 
 ### Session
-A coordination key for one agent or a coordinated group of agents that share a latest-snapshot pointer.
+An on-disk container under `~/.agent-desktop/sessions/<id>/` that owns snapshot refmaps, an optional trace directory, and a `session.json` manifest.
 
-Use sessions when callers intentionally omit `--snapshot` and want a shared latest observation. Explicit snapshot IDs remain the deterministic path for pinned actions and can be resolved without also passing the session.
+`session start` writes the manifest (`trace: on` unless `--no-trace`), pre-creates `trace/` when tracing is on, and sets `~/.agent-desktop/current_session`. Activating a session (via pointer, `AGENT_DESKTOP_SESSION`, or `--session`) relocates the latest-snapshot namespace as well as the trace sink. Bare `--session <id>` without a manifest remains snapshot-namespace-only for backward compatibility.
+
+Use sessions when callers intentionally omit `--snapshot` and want a shared latest observation — typically after `session start` for a coordinated run. Explicit snapshot IDs remain the deterministic path for pinned actions and can be resolved without also passing the session.
+
+### Session Manifest
+The `session.json` file describing one session: id, optional name, created/ended timestamps, and `trace: on|off`.
+
+Structured file tracing activates only when the manifest has `trace: on`. FFI adapters and bare `--session` ids without this manifest do not write trace segments.
+
+### Trace Segment
+One append-only JSONL file per OS process under `<session>/trace/<pid>-<procStartTs>.jsonl`, written lazily with atomic lines (`ts_ms`, monotonic `seq`, redacted fields). Explicit `--trace <path>` overrides to a single file.
 
 ### Protected Process
 A session-critical operating-system process that agent-desktop refuses to close on every surface, because terminating it would break the user's desktop session.
@@ -93,4 +103,4 @@ The requirement that language bindings using refs follow the same strict resolut
 
 ## Relationships
 
-A session owns one latest-snapshot pointer. A snapshot persists a ref map and can be selected directly by snapshot ID. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch, and the action chain executes that dispatch under its own deadline with the interaction policy gating its physical steps. FFI ref-action parity keeps that same relationship true for language bindings.
+A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected directly by snapshot ID. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch, and the action chain executes that dispatch under its own deadline with the interaction policy gating its physical steps. FFI ref-action parity keeps that same relationship true for language bindings.

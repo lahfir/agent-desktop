@@ -21,7 +21,8 @@ adapter-provided refs.
 | Wait recovery | `wait --element` can poll the latest session refmap when no snapshot is pinned, honors the caller timeout while resolving, and reports the last observed predicate state |
 | Session latest scope | Commands that omit `--snapshot` read and write only the active session's latest refmap |
 | Explicit snapshot scope | Passing `--snapshot <id>` resolves that pinned snapshot even when the caller omits the original session |
-| Trace | `--trace <path>` writes JSONL diagnostics outside stdout and is best-effort unless strict |
+| Trace | With a `trace: on` session manifest (from `session start`), commands write per-process JSONL segments under the session directory; `--trace <path>` overrides to one file. Best-effort unless `--trace-strict`. |
+| Session lifecycle | `session start/end/list/gc` manage manifests, the current-session pointer, and trace directories |
 | FFI parity | FFI ref actions use strict resolve and actionability checks before adapter dispatch |
 
 ## Platform Matrix

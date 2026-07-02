@@ -236,7 +236,9 @@ Execute multiple commands in sequence from a JSON array. Each entry has `command
 
 Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
 
-Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level `--session`. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs. Top-level `--trace` is inherited by every entry — including entries with a `session` override — so one JSONL file captures the whole batch.
+Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level resolved session. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs.
+
+**Trace in batch:** when the top-level CLI passes `--trace <path>`, every entry writes to that single file (override). Without `--trace`, entries inherit the resolved session's manifest-gated segment sink; a per-entry `"session"` override re-derives the sink for that session (events never land in the parent session's segment). Session subcommands (`session start`, etc.) are also available in batch JSON via `"action": "start"|"end"|"list"|"gc"`.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -248,7 +250,8 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
   { "command": "click", "args": { "ref_id": "@e1", "snapshot": "<snapshot_id>" } },
   { "command": "wait", "args": { "ms": 500 } },
   { "command": "type", "args": { "ref_id": "@e2", "snapshot": "<snapshot_id>", "text": "hello" } },
-  { "command": "status", "session": "other-agent", "args": {} }
+  { "command": "status", "session": "other-agent", "args": {} },
+  { "command": "session", "args": { "action": "start", "name": "batch-run" } }
 ]
 ```
 
@@ -276,13 +279,59 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 
 `skeleton: true` clamps depth to 3 and tags truncated containers with `children_count`. `root: "@eN"` starts traversal from that ref instead of the window root; it cannot be combined with `surface`.
 
+## Session lifecycle
+
+Sessions are on-disk containers under `~/.agent-desktop/sessions/<id>/` with a `session.json` manifest, snapshot refmaps, and (when tracing is on) a `trace/` directory. **`session start` is the only command that writes `~/.agent-desktop/current_session`.**
+
+### session start
+```bash
+agent-desktop session start
+agent-desktop session start --name "nightly-run"
+agent-desktop session start --no-trace          # Namespace only — no automatic JSONL
+agent-desktop session start --force             # Override pointer even if it references a live session
+```
+Creates the session directory, pre-creates `trace/` (when tracing is on), writes `session.json` (`trace: on` unless `--no-trace`), sets the current-session pointer, and prints `{ "session_id", "name", "trace", "created_at" }`.
+
+Refuses to clobber a pointer that still references a **live** session unless `--force`. Live means an active `refstore.lock` holder or recent writes under `trace/`.
+
+### session end
+```bash
+agent-desktop session end
+agent-desktop session end run-1719763200123-0
+```
+Seals the manifest with `ended_at` and clears the pointer when it still points at this session.
+
+### session list
+```bash
+agent-desktop session list
+```
+Returns manifest fields only (`session_id`, `name`, `created_at`, `ended_at`, `trace`) — no subtree walk.
+
+### session gc
+```bash
+agent-desktop session gc
+agent-desktop session gc --ended
+agent-desktop session gc --older-than 3600
+```
+Removes ended sessions that are not live and not pointer-referenced. Never reaps a session with a live lock holder or recent `trace/` activity. Refuses symlinked session directories.
+
+### Activation (all commands)
+
+| Source | Precedence |
+|--------|------------|
+| `--session <id>` | Highest |
+| `AGENT_DESKTOP_SESSION` env var | Middle |
+| `~/.agent-desktop/current_session` | Lowest (set only by `session start`) |
+
+Trace-on requires a manifest with `trace: on` from `session start`. Bare `--session` or FFI `ad_adapter_create_with_session` without that manifest selects the snapshot namespace only.
+
 ## System Health
 
 ### status
 ```bash
 agent-desktop status
 ```
-Returns adapter health, platform info, permission report, and latest snapshot metadata (`snapshot_id`, `ref_count`) when available.
+Returns adapter health, platform info, permission report, latest snapshot metadata (`snapshot_id`, `ref_count`) when available, plus **`session_id`** (resolved active session, if any) and **`tracing`** (whether structured trace output is configured for this process — explicit `--trace`, or a trace-enabled session manifest).
 
 ### permissions
 ```bash

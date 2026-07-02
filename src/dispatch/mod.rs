@@ -9,8 +9,9 @@ use agent_desktop_core::{
         double_click, drag, expand, find, focus, focus_window, get, helpers, hover, is_check,
         key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, minimize,
         mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
-        resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
-        skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
+        resize_window, restore, right_click, screenshot, scroll, scroll_to, select, session,
+        set_value, skills, snapshot, status, toggle, triple_click, type_text, uncheck, version,
+        wait,
     },
     context::CommandContext,
     error::AppError,
@@ -18,6 +19,7 @@ use agent_desktop_core::{
 use serde_json::Value;
 
 use crate::cli::Commands;
+use crate::cli_args::session::SessionAction;
 use crate::cli_args::skills::SkillsAction;
 use parse::{
     parse_direction, parse_get_property, parse_is_property, parse_mouse_button, parse_xy,
@@ -361,6 +363,22 @@ pub(crate) fn dispatch(
                 name: g.name,
                 full: g.full,
                 reference: g.reference,
+            }),
+        },
+
+        Commands::Session(a) => match a.action {
+            SessionAction::Start(s) => session::execute(session::SessionAction::Start {
+                name: s.name,
+                no_trace: s.no_trace,
+                force: s.force,
+            }),
+            SessionAction::End(e) => session::execute(session::SessionAction::End {
+                id: e.id.or_else(|| context.session_id().map(str::to_string)),
+            }),
+            SessionAction::List => session::execute(session::SessionAction::List),
+            SessionAction::Gc(g) => session::execute(session::SessionAction::Gc {
+                older_than_secs: g.older_than,
+                ended_only: g.ended,
             }),
         },
 

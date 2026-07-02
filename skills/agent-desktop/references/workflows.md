@@ -15,6 +15,31 @@ agent-desktop permissions --request
 
 For screenshots, also grant Screen Recording. `permissions` reports `accessibility`, `screen_recording`, and `automation` separately.
 
+## Pattern: Session-Scoped Tracing (Default for Multi-Step Runs)
+
+Start one session per agent run so tracing and the latest-snapshot namespace follow automatically — no `--trace` on every command.
+
+```bash
+# 1. Start once — creates manifest (trace: on), pointer, and trace/ directory
+agent-desktop session start --name "invoice-bot"
+# Note session_id from data.session_id (also written to ~/.agent-desktop/current_session)
+
+# 2. Observe-act loop — segments land under sessions/<id>/trace/<pid>-*.jsonl
+agent-desktop snapshot --app "Preview" -i --compact
+agent-desktop click @e3 --snapshot <snapshot_id>
+agent-desktop status   # confirms session_id + tracing: true
+
+# 3. End and reclaim when finished
+agent-desktop session end
+agent-desktop session gc
+```
+
+**Concurrent independent agents:** set `AGENT_DESKTOP_SESSION=<id>` in each process instead of sharing the global pointer. Each agent still uses the `snapshot_id` from its own `snapshot` call when sharing a session id.
+
+**Namespace without tracing:** `session start --no-trace` or bare `--session legacy-id` (no manifest) — snapshots namespaced, no JSONL files.
+
+**Override file trace:** `--trace /tmp/run.jsonl` still forces a single file regardless of session manifest.
+
 ## Pattern: Progressive Skeleton Traversal (Default for Dense Apps)
 
 The recommended approach for Electron apps (Slack, VS Code, Discord) and any app with 50+ interactive elements. Reduces token consumption 78-96%.

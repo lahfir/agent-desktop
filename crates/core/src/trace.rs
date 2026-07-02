@@ -1,37 +1,78 @@
 use crate::error::AppError;
 use serde_json::{Map, Value, json};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
+static EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, Default)]
+enum TracePending {
+    #[default]
+    None,
+    File(PathBuf),
+    SegmentDir(PathBuf),
+}
+
+#[derive(Debug, Clone, Default)]
+enum WriterState {
+    #[default]
+    Unopened,
+    Open(Arc<Mutex<std::fs::File>>),
+    Failed,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TraceState {
+    pending: TracePending,
+    writer: Arc<Mutex<WriterState>>,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct TraceConfig {
     strict: bool,
-    writer: Option<Arc<Mutex<std::fs::File>>>,
+    state: Arc<TraceState>,
 }
 
 impl TraceConfig {
-    pub fn new(path: Option<PathBuf>, strict: bool) -> Result<Self, AppError> {
-        if strict && path.is_none() {
+    pub fn build(
+        explicit_path: Option<PathBuf>,
+        session_segment_dir: Option<PathBuf>,
+        strict: bool,
+    ) -> Result<Self, AppError> {
+        if strict && explicit_path.is_none() && session_segment_dir.is_none() {
             return Err(AppError::invalid_input_with_suggestion(
-                "--trace-strict requires --trace",
-                "Provide --trace <path> or remove --trace-strict.",
+                "--trace-strict requires --trace or an active trace-enabled session",
+                "Provide --trace <path>, start a session with tracing, or remove --trace-strict.",
             ));
         }
-        let writer = match path.as_deref() {
-            Some(path) => match open_trace_file(path) {
-                Ok(file) => Some(Arc::new(Mutex::new(file))),
-                Err(err) if err.code() == "INVALID_ARGS" => return Err(err),
-                Err(err) if strict => return Err(err),
+        let (pending, writer) = match explicit_path {
+            Some(path) => match open_trace_file(&path) {
+                Ok(file) => (
+                    TracePending::File(path),
+                    WriterState::Open(Arc::new(Mutex::new(file))),
+                ),
+                Err(err) if strict || err.code() == "INVALID_ARGS" => return Err(err),
                 Err(err) => {
                     tracing::warn!("trace open failed: {err}");
-                    None
+                    (TracePending::File(path), WriterState::Failed)
                 }
             },
-            None => None,
+            None => match session_segment_dir {
+                Some(dir) => (TracePending::SegmentDir(dir), WriterState::Unopened),
+                None => (TracePending::None, WriterState::Unopened),
+            },
         };
-        Ok(Self { strict, writer })
+        Ok(Self {
+            strict,
+            state: Arc::new(TraceState {
+                pending,
+                writer: Arc::new(Mutex::new(writer)),
+            }),
+        })
     }
 
     pub fn emit(
@@ -49,8 +90,9 @@ impl TraceConfig {
         session_id: Option<&str>,
         fields: impl FnOnce() -> Value,
     ) -> Result<(), AppError> {
-        let Some(writer) = self.writer.as_ref() else {
-            return Ok(());
+        let writer = match self.ensure_writer()? {
+            Some(writer) => writer,
+            None => return Ok(()),
         };
         match writer
             .lock()
@@ -65,6 +107,119 @@ impl TraceConfig {
             }
         }
     }
+
+    fn ensure_writer(&self) -> Result<Option<Arc<Mutex<std::fs::File>>>, AppError> {
+        let mut writer = self
+            .state
+            .writer
+            .lock()
+            .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
+        match &*writer {
+            WriterState::Open(file) => return Ok(Some(file.clone())),
+            WriterState::Failed => return Ok(None),
+            WriterState::Unopened => {}
+        }
+        let open_result = match &self.state.pending {
+            TracePending::None => {
+                *writer = WriterState::Failed;
+                return Ok(None);
+            }
+            TracePending::File(path) => open_trace_file(path),
+            TracePending::SegmentDir(dir) => open_segment_trace_file(dir),
+        };
+        match open_result {
+            Ok(file) => {
+                let file = Arc::new(Mutex::new(file));
+                *writer = WriterState::Open(file.clone());
+                Ok(Some(file))
+            }
+            Err(err) if self.strict => Err(err),
+            Err(err) if err.code() == "INVALID_ARGS" => Err(err),
+            Err(err) => {
+                tracing::warn!("trace open failed: {err}");
+                *writer = WriterState::Failed;
+                Ok(None)
+            }
+        }
+    }
+
+    pub(crate) fn has_sink(&self) -> bool {
+        if matches!(self.state.pending, TracePending::None) {
+            return false;
+        }
+        match self.state.writer.lock() {
+            Ok(writer) => !matches!(*writer, WriterState::Failed),
+            Err(_) => true,
+        }
+    }
+
+    pub(crate) fn pending_file_path(&self) -> Option<&Path> {
+        match &self.state.pending {
+            TracePending::File(path) => Some(path),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn clone_with_session_segment(
+        &self,
+        session_segment_dir: Option<PathBuf>,
+    ) -> Result<Self, AppError> {
+        if self.pending_file_path().is_some() {
+            return Ok(self.clone());
+        }
+        match session_segment_dir {
+            Some(dir) => Self::build(None, Some(dir), self.strict),
+            None => Ok(Self {
+                strict: self.strict,
+                state: Arc::new(TraceState::default()),
+            }),
+        }
+    }
+}
+
+fn process_segment_suffix() -> &'static str {
+    static SUFFIX: OnceLock<String> = OnceLock::new();
+    SUFFIX.get_or_init(|| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        format!("{}-{ts}", std::process::id())
+    })
+}
+
+pub(crate) fn segment_path_for_dir(dir: &Path) -> PathBuf {
+    dir.join(format!("{}.jsonl", process_segment_suffix()))
+}
+
+fn open_segment_trace_file(dir: &Path) -> Result<std::fs::File, AppError> {
+    ensure_trace_dir(dir)?;
+    open_trace_file(&segment_path_for_dir(dir))
+}
+
+fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
+    if let Ok(meta) = std::fs::symlink_metadata(dir) {
+        if meta.file_type().is_symlink() {
+            return Err(AppError::invalid_input_with_suggestion(
+                "Refusing to write trace segments through a symlinked trace directory",
+                "Remove the symlink under the session's trace/ directory.",
+            ));
+        }
+    }
+    if dir.is_dir() {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)?;
+    }
+    #[cfg(not(unix))]
+    std::fs::create_dir_all(dir)?;
+    Ok(())
 }
 
 fn open_trace_file(path: &Path) -> Result<std::fs::File, AppError> {
@@ -99,6 +254,10 @@ fn write_event(
                 .as_millis()
         ),
     );
+    body.insert(
+        "seq".to_string(),
+        json!(EVENT_SEQ.fetch_add(1, Ordering::Relaxed)),
+    );
     if let Value::Object(fields) = sanitize_trace_value(fields) {
         for (key, value) in fields {
             body.insert(key, value);
@@ -107,9 +266,10 @@ fn write_event(
     if let Some(sid) = session_id {
         body.insert("session_id".to_string(), json!(sid));
     }
-    serde_json::to_writer(&mut *file, &Value::Object(body))?;
-    use std::io::Write;
-    file.write_all(b"\n").map_err(AppError::from)
+    let mut line = Vec::new();
+    serde_json::to_writer(&mut line, &Value::Object(body))?;
+    line.push(b'\n');
+    file.write_all(&line).map_err(AppError::from)
 }
 
 fn reject_oversized_trace(file: &std::fs::File) -> Result<(), AppError> {
@@ -225,98 +385,5 @@ fn redacted_value(value: Value) -> Value {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[cfg(unix)]
-    #[test]
-    fn trace_open_rejects_symlink_paths() {
-        let base = std::env::temp_dir().join(format!(
-            "agent-desktop-trace-symlink-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let target = base.with_extension("target");
-        let link = base.with_extension("link");
-        std::fs::write(&target, b"existing").unwrap();
-        std::os::unix::fs::symlink(&target, &link).unwrap();
-
-        let result = open_trace_file(&link);
-
-        assert!(result.is_err());
-        let _ = std::fs::remove_file(&link);
-        let _ = std::fs::remove_file(&target);
-    }
-
-    #[test]
-    fn trace_redacts_sensitive_fields_but_preserves_messages() {
-        let value = sanitize_trace_value(json!({
-            "text": "secret",
-            "message": "Target is not actionable: supported_action failed",
-            "details": { "name": "Private Button" },
-            "title": "Window"
-        }));
-
-        assert_eq!(value["text"]["redacted"], true);
-        assert_eq!(value["details"]["name"]["redacted"], true);
-        assert_eq!(value["title"]["redacted"], true);
-        assert_eq!(
-            value["message"],
-            "Target is not actionable: supported_action failed"
-        );
-    }
-
-    #[test]
-    fn trace_redaction_covers_nested_shapes_and_substring_keys() {
-        let value = sanitize_trace_value(json!({
-            "action": {
-                "typed_text": ["secret", "another"],
-                "api_token": {"kind": "bearer"},
-                "typedText": "secret",
-                "apiToken": "secret",
-                "targetLabel": "secret",
-                "userName": "secret",
-                "filename": "report.txt",
-                "password": null,
-                "counter": 3
-            }
-        }));
-
-        assert_eq!(value["action"]["typed_text"]["redacted"], true);
-        assert_eq!(value["action"]["api_token"]["redacted"], true);
-        assert_eq!(value["action"]["typedText"]["redacted"], true);
-        assert_eq!(value["action"]["apiToken"]["redacted"], true);
-        assert_eq!(value["action"]["targetLabel"]["redacted"], true);
-        assert_eq!(value["action"]["userName"]["redacted"], true);
-        assert_eq!(value["action"]["filename"], "report.txt");
-        assert!(value["action"]["password"].is_null());
-        assert_eq!(value["action"]["counter"], 3);
-    }
-
-    #[test]
-    fn trace_write_rejects_files_at_size_cap() {
-        let path = std::env::temp_dir().join(format!(
-            "agent-desktop-trace-cap-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let file = std::fs::File::create(&path).unwrap();
-        file.set_len(MAX_TRACE_FILE_BYTES).unwrap();
-        drop(file);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-        }
-        let mut file = open_trace_file(&path).unwrap();
-
-        let err = write_event(&mut file, "event", None, json!({})).unwrap_err();
-
-        assert_eq!(err.code(), "INVALID_ARGS");
-        let _ = std::fs::remove_file(path);
-    }
-}
+#[path = "trace_tests.rs"]
+mod tests;

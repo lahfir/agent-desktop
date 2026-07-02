@@ -41,7 +41,7 @@
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
 - **C-ABI cdylib** (`libagent_desktop_ffi`): Load once from Python / Swift / Go / Ruby / Node / C instead of forking the CLI per call
-- **54 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, plus a bundled `skills` doc loader
+- **55 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, plus a bundled `skills` doc loader
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using compact snapshot IDs and deterministic element references (`@e1`, `@e2`)
 - **Headless-by-default interactions**: Ref actions use accessibility APIs and block silent focus, cursor, keyboard, or pasteboard side effects
@@ -141,23 +141,20 @@ Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
 
 ### Shared sessions for multi-agent workflows
 
-Use the same `--session <id>` when multiple agents coordinate on one desktop task. A session owns a latest-snapshot pointer, not a security boundary. Each snapshot gets its own `snapshot_id`; pass `--snapshot <id>` when an agent must act on a specific observation. Explicit snapshot IDs can be used without repeating `--session`; keep `--session` when you omit `--snapshot` and want that session's latest snapshot.
+Run `session start` once per agent run to create a trace-enabled session (manifest `trace: on` by default) and set the active pointer. Subsequent commands in that run get automatic JSONL segments under `~/.agent-desktop/sessions/<id>/trace/` and share the session's latest-snapshot namespace — no `--trace` on every call.
 
-```mermaid
-flowchart LR
-    S["--session release-fix"] --> A["snapshot -> s1"]
-    S --> B["snapshot -> s2"]
-    A --> C["Agent A: click @e4 --snapshot s1"]
-    B --> D["Agent B: wait --element @e9 --predicate actionable"]
-    S --> E["latest_snapshot_id points at newest snapshot"]
-    C --> F["Explicit snapshot id works outside session too"]
-```
+For concurrent **independent** agents, set `AGENT_DESKTOP_SESSION=<id>` per process instead of relying on the global pointer. When multiple agents share one session id, each agent should act on the `snapshot_id` from its own `snapshot` call; implicit latest is a single-agent convenience.
+
+Bare `--session <id>` without a manifest (no `session start`) still scopes the snapshot namespace only and writes no trace files. Explicit `--snapshot <id>` resolves cross-session.
 
 ```bash
-agent-desktop --session release-fix snapshot --app Xcode -i --compact
-agent-desktop --session release-fix wait --element @e9 --predicate actionable --timeout 5000
-agent-desktop --session release-fix click @e9
-agent-desktop click @e9 --snapshot s2
+agent-desktop session start --name release-fix
+agent-desktop snapshot --app Xcode -i --compact          # uses active session + tracing
+agent-desktop wait --element @e9 --predicate actionable --timeout 5000
+agent-desktop click @e9
+agent-desktop click @e9 --snapshot s2                   # pin to a specific observation
+agent-desktop session end
+agent-desktop session gc
 ```
 
 ## Commands
@@ -291,10 +288,15 @@ agent-desktop --session run-a batch '[
 ### System
 
 ```bash
-agent-desktop status                     # platform, permission report, latest snapshot
+agent-desktop session start [--name LABEL] [--no-trace]  # trace-enabled run (sets active pointer)
+agent-desktop session end [id]
+agent-desktop session list
+agent-desktop session gc [--older-than SECS] [--ended]
+agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot
 agent-desktop permissions                # check accessibility/screen-recording/automation
 agent-desktop permissions --request      # invoke platform request path
 agent-desktop version                    # version string
+agent-desktop skills get desktop --full  # bundled agent guidance
 ```
 
 ## Snapshot Options
@@ -374,13 +376,15 @@ Static elements (labels, groups, containers) appear in the tree for context but 
 
 Reliability contract:
 
-- `--session <id>` scopes the latest snapshot pointer to one caller or agent team; explicit `--snapshot <id>` resolves the saved snapshot directly.
+- `session start` creates a manifest-gated session with automatic trace segments and relocates the latest-snapshot namespace. Activation resolves `--session` > `AGENT_DESKTOP_SESSION` > `~/.agent-desktop/current_session` (pointer written only by `session start`).
+- Bare `--session <id>` without a manifest scopes snapshots only — no surprise trace files for existing callers.
+- Explicit `--snapshot <id>` resolves the saved snapshot directly, including across sessions.
 - Ref actions re-identify targets at action time: a moved unique target can proceed, while missing or changed stable identity returns `STALE_REF`.
 - Mutable value text is not treated as stable identity, so text fields and timers can keep resolving when the saved window, path, role, and bounds evidence still identify the same element.
 - Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - Actions run an actionability preflight before dispatch: visibility, stability, enabled state, supported action, policy, and editability.
 - `wait --element @e3 --predicate actionable` polls until the target can be acted on.
-- `--trace <path>` appends JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action trace writes, while post-action success traces are best-effort after the desktop mutation has already happened.
+- With an active trace-enabled session, JSONL segments land under `sessions/<id>/trace/<pid>-*.jsonl` automatically. `--trace <path>` overrides to one file; `--trace-strict` fails on setup and pre-action writes (post-action traces are best-effort).
 
 Stale ref recovery:
 
@@ -425,7 +429,7 @@ No. The core workflow reads native accessibility trees and assigns refs to inter
 |-----------|----------|
 | **Native Rust CLI** | Fast, single binary, no runtime dependencies |
 | **C-ABI cdylib** | Load once from Python, Swift, Go, Ruby, Node, or C instead of forking |
-| **54 Commands** | Observation, interaction, keyboard, mouse, notifications, clipboard, window management, and bundled `skills` docs |
+| **55 Commands** | Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, and bundled `skills` docs |
 | **Snapshot & Refs** | Compact snapshot IDs and deterministic element refs like `@e1`, `@e2` |
 | **Structured JSON** | Machine-readable responses with error codes and recovery hints |
 
