@@ -122,6 +122,8 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             }
         };
 
+        let scope = context.command_scope("execute_by_ref");
+
         let result = agent_desktop_core::commands::execute_by_ref::execute(
             &ref_str,
             snapshot_str.as_deref(),
@@ -130,6 +132,7 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             adapter_ref.inner.as_ref(),
             &context,
         );
+        scope.complete(&result);
 
         unsafe { write_command_envelope("execute_by_ref", result, out) }
     })

@@ -2,7 +2,7 @@ mod gc;
 mod manifest;
 
 pub use gc::{GcOptions, GcReport, gc, is_live, pointer_references_live_session};
-pub use manifest::{SessionManifest, SessionTraceMode};
+pub use manifest::{ArtifactsMode, SessionManifest, SessionTraceMode};
 
 use crate::{
     context::validate_session_id,
@@ -24,7 +24,19 @@ static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct StartSessionOptions {
     pub name: Option<String>,
     pub trace: SessionTraceMode,
+    pub artifacts: ArtifactsMode,
     pub force: bool,
+}
+
+impl Default for StartSessionOptions {
+    fn default() -> Self {
+        Self {
+            name: None,
+            trace: SessionTraceMode::On,
+            artifacts: ArtifactsMode::Events,
+            force: false,
+        }
+    }
 }
 
 pub fn agent_desktop_dir() -> Result<PathBuf, AppError> {
@@ -203,6 +215,14 @@ pub fn list_sessions() -> Result<Vec<SessionManifest>, AppError> {
 }
 
 pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, AppError> {
+    if matches!(options.trace, SessionTraceMode::Off)
+        && matches!(options.artifacts, ArtifactsMode::Full)
+    {
+        return Err(AppError::invalid_input_with_suggestion(
+            "Artifacts mode full requires tracing",
+            "Remove --no-trace or omit --screenshots.",
+        ));
+    }
     if !options.force && pointer_references_live_session()? {
         return Err(AppError::invalid_input_with_suggestion(
             "Refusing to clobber the current session pointer while it references a live session",
@@ -222,6 +242,7 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
         created_at: now_millis(),
         ended_at: None,
         trace: options.trace,
+        artifacts: options.artifacts,
     };
     write_manifest(&manifest)?;
     write_current_session_pointer(&id)?;

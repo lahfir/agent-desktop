@@ -147,6 +147,75 @@ fn nested_batch_rejection_has_suggestion() {
 }
 
 #[test]
+fn trace_batch_show_parses() {
+    let command = parse_command(item(
+        "trace",
+        serde_json::json!({ "action": "show", "limit": 0, "event": "action." }),
+    ))
+    .expect("trace show parses");
+
+    match command {
+        Commands::Trace(args) => match args.action {
+            crate::cli_args::trace::TraceAction::Show(show) => {
+                assert_eq!(show.limit, 0);
+                assert_eq!(show.event.as_deref(), Some("action."));
+            }
+            other => panic!("unexpected trace action: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn trace_batch_export_parses() {
+    let command = parse_command(item(
+        "trace",
+        serde_json::json!({ "action": "export", "limit": 100 }),
+    ))
+    .expect("trace export parses");
+
+    match command {
+        Commands::Trace(args) => match args.action {
+            crate::cli_args::trace::TraceAction::Export(export) => {
+                assert_eq!(export.limit, 100);
+                assert!(export.out.is_none());
+            }
+            other => panic!("unexpected trace action: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn trace_batch_rejects_unknown_field() {
+    let err = parse_command(item(
+        "trace",
+        serde_json::json!({ "action": "show", "limitt": 1 }),
+    ))
+    .expect_err("unknown trace field rejected");
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn session_batch_accepts_screenshots_flag() {
+    let command = parse_command(item(
+        "session",
+        serde_json::json!({ "action": "start", "screenshots": true }),
+    ))
+    .expect("session start with screenshots parses");
+
+    match command {
+        Commands::Session(args) => match args.action {
+            crate::cli_args::session::SessionAction::Start(start) => {
+                assert!(start.screenshots);
+            }
+            other => panic!("unexpected action: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn every_cli_subcommand_is_known_to_batch_parser() {
     for subcommand in crate::cli::Cli::command().get_subcommands() {
         let name = subcommand.get_name();

@@ -43,8 +43,11 @@ pub unsafe extern "C" fn ad_status(
 
         let report = adapter.inner.permission_report();
 
+        let scope = ctx.command_scope("status");
+
         let result: Result<serde_json::Value, AppError> =
             execute_with_report_with_context(&*adapter.inner, &report, &ctx);
+        scope.complete(&result);
 
         unsafe { write_command_envelope("status", result, out) }
     })

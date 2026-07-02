@@ -10,6 +10,16 @@ pub struct SessionManifest {
     pub ended_at: Option<u64>,
     #[serde(default)]
     pub trace: SessionTraceMode,
+    #[serde(default)]
+    pub artifacts: ArtifactsMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArtifactsMode {
+    Full,
+    #[default]
+    Events,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -23,5 +33,9 @@ pub enum SessionTraceMode {
 impl SessionManifest {
     pub fn trace_enabled(&self) -> bool {
         matches!(self.trace, SessionTraceMode::On) && self.ended_at.is_none()
+    }
+
+    pub fn artifacts_full(&self) -> bool {
+        matches!(self.artifacts, ArtifactsMode::Full) && self.ended_at.is_none()
     }
 }

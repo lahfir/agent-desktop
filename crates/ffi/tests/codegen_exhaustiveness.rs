@@ -15,7 +15,15 @@ use agent_desktop_core::interaction_policy::InteractionPolicy;
 
 /// Known Family-B commands — the exhaustive set of command-backed JSON
 /// wrappers that must appear in `src/commands/generated.rs`.
-const EXPECTED_COMMANDS: &[&str] = &["execute_by_ref", "snapshot", "status", "version", "wait"];
+const EXPECTED_COMMANDS: &[&str] = &[
+    "execute_by_ref",
+    "snapshot",
+    "status",
+    "trace_export",
+    "trace_show",
+    "version",
+    "wait",
+];
 
 #[test]
 fn generated_file_contains_all_expected_wrappers() {

@@ -16,6 +16,7 @@ use crate::{
         session::{SessionAction, SessionArgs, SessionEndArgs, SessionGcArgs, SessionStartArgs},
         skills::{SkillsAction, SkillsArgs, SkillsGetArgs},
         system::BatchArgs,
+        trace::{TraceAction, TraceArgs, TraceExportArgs, TraceShowArgs},
     },
 };
 
@@ -106,6 +107,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "version" => no_args(command, item.args).map(|()| Commands::Version),
         "skills" => parse_skills(item.args).map(Commands::Skills),
         "session" => parse_session(item.args).map(Commands::Session),
+        "trace" => parse_trace(item.args).map(Commands::Trace),
         "batch" => Err(AppError::invalid_input_with_suggestion(
             "Batch commands cannot be nested",
             "Flatten nested batches into one top-level batch array",
@@ -198,6 +200,8 @@ struct BatchSessionArgs {
     #[serde(default)]
     no_trace: bool,
     #[serde(default)]
+    screenshots: bool,
+    #[serde(default)]
     force: bool,
     id: Option<String>,
     older_than: Option<u64>,
@@ -212,6 +216,7 @@ fn parse_session(args: Value) -> Result<SessionArgs, AppError> {
         Some("start") => SessionAction::Start(SessionStartArgs {
             name: args.name,
             no_trace: args.no_trace,
+            screenshots: args.screenshots,
             force: args.force,
         }),
         Some("end") => SessionAction::End(SessionEndArgs { id: args.id }),
@@ -226,6 +231,40 @@ fn parse_session(args: Value) -> Result<SessionArgs, AppError> {
         }
     };
     Ok(SessionArgs { action })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchTraceArgs {
+    action: String,
+    #[serde(default)]
+    limit: Option<usize>,
+    event: Option<String>,
+    out: Option<std::path::PathBuf>,
+}
+
+fn parse_trace(args: Value) -> Result<TraceArgs, AppError> {
+    let args: BatchTraceArgs = decode("trace", args)?;
+    let action = match args.action.as_str() {
+        "show" => TraceAction::Show(TraceShowArgs {
+            limit: args
+                .limit
+                .unwrap_or(agent_desktop_core::commands::trace::TRACE_SHOW_DEFAULT_LIMIT),
+            event: args.event,
+        }),
+        "export" => TraceAction::Export(TraceExportArgs {
+            limit: args
+                .limit
+                .unwrap_or(agent_desktop_core::trace_read::TRACE_EXPORT_DEFAULT_LIMIT),
+            out: args.out,
+        }),
+        other => {
+            return Err(AppError::invalid_input(format!(
+                "Unknown trace action '{other}'"
+            )));
+        }
+    };
+    Ok(TraceArgs { action })
 }
 
 #[cfg(test)]

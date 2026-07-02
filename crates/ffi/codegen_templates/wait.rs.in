@@ -90,11 +90,14 @@ pub unsafe extern "C" fn ad_wait(
             }
         };
 
+        let scope = ctx.command_scope("wait");
+
         let result = agent_desktop_core::commands::wait::execute(
             wait_args,
             adapter_ref.inner.as_ref(),
             &ctx,
         );
+        scope.complete(&result);
 
         unsafe { write_command_envelope("wait", result, out) }
     })

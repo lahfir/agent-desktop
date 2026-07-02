@@ -1075,6 +1075,58 @@ AdResult ad_snapshot(const struct AdAdapter *adapter,
 AdResult ad_status(const struct AdAdapter *adapter, char **out);
 
 /**
+ * Exports the merged trace timeline for the adapter's active session as a
+ * single self-contained HTML file matching `agent-desktop trace export`.
+ *
+ * `limit` controls tail semantics: `0` embeds all events; the default `5000`
+ * matches the CLI. Pass `-1` to use the CLI default explicitly.
+ *
+ * `out_path` may be null; when set it must be a NUL-terminated UTF-8 path
+ * within `AD_MAX_STRING_BYTES + 1` bytes.
+ *
+ * On success `*out` is a heap-allocated JSON envelope freed with
+ * `ad_free_string`. On command-level failure `*out` still holds an error
+ * envelope that must be freed.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer from `ad_adapter_create` or
+ * `ad_adapter_create_with_session`. `out` must be non-null. `out_path`
+ * may be null or a NUL-terminated UTF-8 string within `AD_MAX_STRING_BYTES + 1`
+ * bytes.
+ */
+AdResult ad_trace_export(const struct AdAdapter *adapter,
+                         int32_t limit,
+                         const char *out_path,
+                         char **out);
+
+/**
+ * Returns the merged trace timeline for the adapter's active session as a
+ * JSON envelope matching `agent-desktop trace show`.
+ *
+ * `limit` controls tail semantics: `0` embeds all events; the default `500`
+ * matches the CLI. Pass `-1` to use the CLI default explicitly.
+ *
+ * `event_prefix` may be null; when set, only events whose name starts with the
+ * prefix are returned before the tail limit is applied.
+ *
+ * On success `*out` is a heap-allocated JSON envelope freed with
+ * `ad_free_string`. On command-level failure `*out` still holds an error
+ * envelope that must be freed.
+ *
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer from `ad_adapter_create` or
+ * `ad_adapter_create_with_session`. `out` must be non-null. `event_prefix`
+ * may be null or a NUL-terminated UTF-8 string within `AD_MAX_STRING_BYTES + 1`
+ * bytes.
+ */
+AdResult ad_trace_show(const struct AdAdapter *adapter,
+                       int32_t limit,
+                       const char *event_prefix,
+                       char **out);
+
+/**
  * Returns the `agent-desktop` version envelope as an owned JSON C string.
  *
  * The returned string has the same `{version, ok, command, data}` shape

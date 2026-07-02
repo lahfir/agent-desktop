@@ -72,9 +72,12 @@ pub fn run_from_ref_with_context(
 
     let saved_snapshot_id = if let Some(id) = active_snapshot_id {
         store.save_existing_snapshot(&id, &refmap)?;
+        crate::trace_artifacts::copy_refmap_if_full(context, &store, &id)?;
         Some(id)
     } else {
-        Some(store.save_new_snapshot(&refmap)?)
+        let id = store.save_new_snapshot(&refmap)?;
+        crate::trace_artifacts::copy_refmap_if_full(context, &store, &id)?;
+        Some(id)
     };
     context.trace_lazy("snapshot.root.saved", || {
         serde_json::json!({

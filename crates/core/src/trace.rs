@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::trace_sanitize::sanitize_trace_value;
 use serde_json::{Map, Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -90,10 +91,11 @@ impl TraceConfig {
         session_id: Option<&str>,
         fields: impl FnOnce() -> Value,
     ) -> Result<(), AppError> {
-        let writer = match self.ensure_writer()? {
+        let writer = match self.ensure_writer(session_id)? {
             Some(writer) => writer,
             None => return Ok(()),
         };
+        self.ensure_meta_if_needed(&writer, session_id)?;
         match writer
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))
@@ -108,7 +110,10 @@ impl TraceConfig {
         }
     }
 
-    fn ensure_writer(&self) -> Result<Option<Arc<Mutex<std::fs::File>>>, AppError> {
+    fn ensure_writer(
+        &self,
+        session_id: Option<&str>,
+    ) -> Result<Option<Arc<Mutex<std::fs::File>>>, AppError> {
         let mut writer = self
             .state
             .writer
@@ -128,7 +133,10 @@ impl TraceConfig {
             TracePending::SegmentDir(dir) => open_segment_trace_file(dir),
         };
         match open_result {
-            Ok(file) => {
+            Ok(mut file) => {
+                if file.metadata()?.len() == 0 {
+                    write_meta_header(&mut file, session_id)?;
+                }
                 let file = Arc::new(Mutex::new(file));
                 *writer = WriterState::Open(file.clone());
                 Ok(Some(file))
@@ -175,6 +183,20 @@ impl TraceConfig {
             }),
         }
     }
+
+    fn ensure_meta_if_needed(
+        &self,
+        writer: &Arc<Mutex<std::fs::File>>,
+        session_id: Option<&str>,
+    ) -> Result<(), AppError> {
+        let mut file = writer
+            .lock()
+            .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
+        if file.metadata()?.len() > 0 {
+            return Ok(());
+        }
+        write_meta_header(&mut file, session_id)
+    }
 }
 
 fn process_segment_suffix() -> &'static str {
@@ -197,7 +219,32 @@ fn open_segment_trace_file(dir: &Path) -> Result<std::fs::File, AppError> {
     open_trace_file(&segment_path_for_dir(dir))
 }
 
-fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
+fn process_start_ms() -> u64 {
+    static START_MS: OnceLock<u64> = OnceLock::new();
+    *START_MS.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    })
+}
+
+fn write_meta_header(file: &mut std::fs::File, session_id: Option<&str>) -> Result<(), AppError> {
+    write_event(
+        file,
+        "trace.meta",
+        session_id,
+        json!({
+            "schema": 1,
+            "version": env!("CARGO_PKG_VERSION"),
+            "os": std::env::consts::OS,
+            "pid": std::process::id(),
+            "proc_start_ms": process_start_ms(),
+        }),
+    )
+}
+
+pub(crate) fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
     if let Ok(meta) = std::fs::symlink_metadata(dir) {
         if meta.file_type().is_symlink() {
             return Err(AppError::invalid_input_with_suggestion(
@@ -300,88 +347,6 @@ fn reject_loose_trace_permissions(file: &std::fs::File) -> Result<(), AppError> 
 #[cfg(not(unix))]
 fn reject_loose_trace_permissions(_file: &std::fs::File) -> Result<(), AppError> {
     Ok(())
-}
-
-/// Recursively redacts fields whose keys match `SENSITIVE_KEYS`. Non-sensitive
-/// fields and non-object values are left unchanged. Array elements are
-/// recursively scanned. Used by both the file-trace writer and the FFI log
-/// callback layer so that sensitive values never reach a consumer.
-pub fn sanitize_trace_value(value: Value) -> Value {
-    match value {
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .map(|(key, value)| {
-                    if is_sensitive_trace_key(&key) {
-                        (key, redacted_value(value))
-                    } else {
-                        (key, sanitize_trace_value(value))
-                    }
-                })
-                .collect(),
-        ),
-        Value::Array(items) => Value::Array(items.into_iter().map(sanitize_trace_value).collect()),
-        other => other,
-    }
-}
-
-fn is_sensitive_trace_key(key: &str) -> bool {
-    const SENSITIVE_KEYS: &[&str] = &[
-        "text",
-        "value",
-        "expected",
-        "name",
-        "username",
-        "description",
-        "label",
-        "query",
-        "secret",
-        "token",
-        "password",
-        "title",
-        "url",
-        "help",
-        "placeholder",
-    ];
-    trace_key_tokens(key)
-        .iter()
-        .any(|part| SENSITIVE_KEYS.contains(&part.as_str()))
-}
-
-fn trace_key_tokens(key: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut previous_was_lower_or_digit = false;
-
-    for ch in key.chars() {
-        if !ch.is_ascii_alphanumeric() {
-            push_trace_key_token(&mut tokens, &mut current);
-            previous_was_lower_or_digit = false;
-            continue;
-        }
-
-        if ch.is_ascii_uppercase() && previous_was_lower_or_digit {
-            push_trace_key_token(&mut tokens, &mut current);
-        }
-
-        current.push(ch.to_ascii_lowercase());
-        previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
-    }
-
-    push_trace_key_token(&mut tokens, &mut current);
-    tokens
-}
-
-fn push_trace_key_token(tokens: &mut Vec<String>, current: &mut String) {
-    if !current.is_empty() {
-        tokens.push(std::mem::take(current));
-    }
-}
-
-fn redacted_value(value: Value) -> Value {
-    match value {
-        Value::Null => Value::Null,
-        _ => json!({ "redacted": true }),
-    }
 }
 
 #[cfg(test)]

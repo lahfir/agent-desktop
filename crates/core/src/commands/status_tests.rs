@@ -42,6 +42,7 @@ fn status_reports_tracing_false_when_writer_failed() {
         name: None,
         trace: crate::session::SessionTraceMode::On,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     let unopenable = std::env::temp_dir()
@@ -60,4 +61,24 @@ fn status_reports_tracing_false_when_writer_failed() {
         value["tracing"], false,
         "a failed trace writer must not report tracing:true"
     );
+}
+
+#[test]
+fn status_surfaces_artifacts_mode_for_active_session() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
+    let session = crate::session::start_session(crate::session::StartSessionOptions {
+        artifacts: crate::session::ArtifactsMode::Full,
+        ..Default::default()
+    })
+    .unwrap();
+    let context = CommandContext::new(Some(session.id.clone()), None, false).unwrap();
+    let report = PermissionReport {
+        accessibility: PermissionState::Granted,
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+
+    let value = execute_with_report_with_context(&DeniedAdapter, &report, &context).unwrap();
+
+    assert_eq!(value["artifacts"], "full");
 }

@@ -58,6 +58,7 @@ fn ffi_trace_on_session_writes_segment() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     for call in 0..2 {

@@ -4,7 +4,8 @@ use crate::{
     context::CommandContext,
     error::{AppError, ErrorCode},
     refs_store::RefStore,
-    snapshot,
+    snapshot::{self, emit_snapshot_saved},
+    trace_artifacts,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -42,9 +43,11 @@ pub fn execute(
                 let present = query::tree_has_match(&result.tree, &query);
                 let matched = if input.gone { !present } else { present };
                 if matched {
-                    let snapshot_id = RefStore::for_session(context.session_id())?
-                        .save_new_snapshot(&result.refmap)?;
-                    result.snapshot_id = Some(snapshot_id);
+                    let store = RefStore::for_session(context.session_id())?;
+                    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+                    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id)?;
+                    result.snapshot_id = Some(snapshot_id.clone());
+                    emit_snapshot_saved(context, &result)?;
                     let elapsed = start.elapsed().as_millis();
                     return snapshot_cmd::format_snapshot_fields(
                         &result,
@@ -106,8 +109,9 @@ fn persist_last_built(
     let Some(result) = last_built else {
         return Ok(None);
     };
-    let snapshot_id =
-        RefStore::for_session(context.session_id())?.save_new_snapshot(&result.refmap)?;
+    let store = RefStore::for_session(context.session_id())?;
+    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id)?;
     Ok(Some(snapshot_id))
 }
 

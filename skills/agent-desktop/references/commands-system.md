@@ -325,6 +325,34 @@ Removes ended sessions that are not live and not pointer-referenced. Never reaps
 
 Trace-on requires a manifest with `trace: on` from `session start`. Bare `--session` or FFI `ad_adapter_create_with_session` without that manifest selects the snapshot namespace only.
 
+## Trace read and export
+
+Both commands require an active trace-enabled session (`session start` or `--session <id>` with a manifest). They are permissionless — no accessibility or screen-recording grant is needed to read or export traces from disk.
+
+### trace show
+```bash
+agent-desktop trace show [--limit N] [--event PREFIX]
+```
+Merges every segment under `<session>/trace/` into one deterministic timeline. Default `--limit 500` returns the **tail**; `--limit 0` returns all events. `--event action.` filters by event-name prefix before the tail slice.
+
+Response `data` includes `session_id`, per-segment stats (`segments[]` with `segment`, `pid`, `schema`, `event_count`, `skipped_lines`), `total_events`, `returned_events`, `truncated`, optional `warnings[]` (`kind`, `message`), and the merged `events[]` (each annotated with `writer_pid` and `segment`).
+
+Reader tolerance: truncated final lines, corrupt JSON, foreign files, symlinked segments, and unpaired `command.start`/`command.end` pairs degrade to counted warnings — never hard errors.
+
+### trace export
+```bash
+agent-desktop trace export [--out trace-<session>.html] [--limit N]
+```
+Builds one self-contained HTML file with embedded JSON and base64 PNG screenshots. Default `--limit 5000` (ten times `trace show`'s default). Works from `file://` with no network fetches.
+
+Response `data` reports `path`, `event_count`, `screenshots_embedded`, `screenshots_skipped`, and `bytes`. Export refuses symlinked `--out` paths and returns `INVALID_ARGS` when the embedded JSON exceeds 200MiB (use a smaller `--limit`).
+
+### Replay artifacts (`--screenshots`)
+```bash
+agent-desktop session start --screenshots   # manifest artifacts: full
+```
+Requires tracing (`trace: on`; `--no-trace --screenshots` is rejected). Ref actions capture pre/post PNGs under `trace/screens/`; snapshot saves copy refmaps to `trace/refmaps/`. Skips are recorded in `action.artifacts` events with machine-readable reasons. Artifacts are **unredacted** and may appear in exported HTML — opt in only when that sensitivity is acceptable.
+
 ## System Health
 
 ### status

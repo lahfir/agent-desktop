@@ -2,13 +2,16 @@ use crate::{
     action::Action, action_request::ActionRequest, error::AppError,
     interaction_policy::InteractionPolicy, session, trace::TraceConfig,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandContext {
     session_id: Option<String>,
     trace: TraceConfig,
+    artifacts_full: bool,
     headed: bool,
     wait_selector: Option<WaitSelector>,
 }
@@ -20,6 +23,62 @@ pub struct WaitSelector {
     pub timeout_ms: u64,
 }
 
+pub struct CommandScope<'a> {
+    context: &'a CommandContext,
+    command: &'static str,
+    started: Instant,
+    finished: Cell<bool>,
+}
+
+impl CommandScope<'_> {
+    pub fn complete(self, result: &Result<Value, AppError>) {
+        self.finished.set(true);
+        let duration_ms = self.started.elapsed().as_millis();
+        match result {
+            Ok(_) => {
+                let _ = self.context.trace(
+                    "command.end",
+                    json!({
+                        "command": self.command,
+                        "ok": true,
+                        "duration_ms": duration_ms,
+                    }),
+                );
+            }
+            Err(err) => {
+                let _ = self.context.trace(
+                    "command.end",
+                    json!({
+                        "command": self.command,
+                        "ok": false,
+                        "duration_ms": duration_ms,
+                        "code": err.code(),
+                        "message": err.to_string(),
+                    }),
+                );
+            }
+        }
+    }
+}
+
+impl Drop for CommandScope<'_> {
+    fn drop(&mut self) {
+        if self.finished.get() {
+            return;
+        }
+        let _ = self.context.trace(
+            "command.end",
+            json!({
+                "command": self.command,
+                "ok": false,
+                "duration_ms": self.started.elapsed().as_millis(),
+                "code": "INTERNAL",
+                "message": "command scope dropped without completion",
+            }),
+        );
+    }
+}
+
 impl CommandContext {
     pub fn new(
         session_id: Option<String>,
@@ -29,10 +88,12 @@ impl CommandContext {
         if let Some(id) = session_id.as_deref() {
             validate_session_id(id)?;
         }
-        let segment_dir = session_segment_dir(session_id.as_deref(), trace_path.is_some())?;
+        let (segment_dir, artifacts_full) =
+            session_trace_state(session_id.as_deref(), trace_path.is_some())?;
         Ok(Self {
             session_id,
             trace: TraceConfig::build(trace_path, segment_dir, trace_strict)?,
+            artifacts_full,
             headed: false,
             wait_selector: None,
         })
@@ -50,6 +111,16 @@ impl CommandContext {
 
     pub fn wait_selector(&self) -> Option<&WaitSelector> {
         self.wait_selector.as_ref()
+    }
+
+    pub fn command_scope(&self, command: &'static str) -> CommandScope<'_> {
+        let _ = self.trace("command.start", json!({ "command": command }));
+        CommandScope {
+            context: self,
+            command,
+            started: Instant::now(),
+            finished: Cell::new(false),
+        }
     }
 
     pub fn request(&self, action: Action, base: InteractionPolicy) -> ActionRequest {
@@ -81,15 +152,19 @@ impl CommandContext {
         if let Some(id) = session_id.as_deref() {
             validate_session_id(id)?;
         }
+        let (segment_dir, artifacts_full) = session_trace_state(
+            session_id.as_deref(),
+            self.trace.pending_file_path().is_some(),
+        )?;
         let trace = if self.trace.pending_file_path().is_some() || session_id == self.session_id {
             self.trace.clone()
         } else {
-            let segment_dir = session_segment_dir(session_id.as_deref(), false)?;
             self.trace.clone_with_session_segment(segment_dir)?
         };
         Ok(Self {
             session_id,
             trace,
+            artifacts_full,
             headed: self.headed,
             wait_selector: None,
         })
@@ -111,22 +186,30 @@ impl CommandContext {
     pub fn trace_enabled(&self) -> bool {
         self.trace.has_sink()
     }
+
+    pub fn artifacts_full(&self) -> bool {
+        self.artifacts_full
+    }
 }
 
-fn session_segment_dir(
+fn session_trace_state(
     session_id: Option<&str>,
     explicit_trace: bool,
-) -> Result<Option<PathBuf>, AppError> {
+) -> Result<(Option<PathBuf>, bool), AppError> {
     if explicit_trace {
-        return Ok(None);
+        return Ok((None, false));
     }
     let Some(session_id) = session_id else {
-        return Ok(None);
+        return Ok((None, false));
     };
-    if !session::trace_enabled_for_session(session_id)? {
-        return Ok(None);
-    }
-    Ok(Some(session::trace_dir(session_id)?))
+    let manifest = session::read_manifest(session_id)?;
+    let trace_dir = if manifest.as_ref().is_some_and(|m| m.trace_enabled()) {
+        Some(session::trace_dir(session_id)?)
+    } else {
+        None
+    };
+    let artifacts_full = manifest.as_ref().is_some_and(|m| m.artifacts_full());
+    Ok((trace_dir, artifacts_full))
 }
 
 pub fn validate_session_id(id: &str) -> Result<(), AppError> {

@@ -32,6 +32,9 @@ pub mod session;
 pub mod snapshot;
 pub mod snapshot_ref;
 pub(crate) mod trace;
+pub(crate) mod trace_artifacts;
+pub mod trace_read;
+pub mod trace_sanitize;
 mod window_lookup;
 
 pub use action::{
@@ -57,4 +60,4 @@ pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use refs::{RefEntry, RefMap};
 pub use refs_store::RefStore;
-pub use trace::sanitize_trace_value;
+pub use trace_sanitize::sanitize_trace_value;

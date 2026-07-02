@@ -7,6 +7,7 @@ use crate::{
     error::{AdapterError, AppError},
     refs::RefEntry,
     resolved_element::ResolvedElement,
+    trace_artifacts,
 };
 use serde_json::json;
 
@@ -27,12 +28,26 @@ pub(crate) fn execute_resolved(
     request: ActionRequest,
 ) -> Result<ActionResult, AppError> {
     check_actionability_with_trace(&target, &request)?;
+    let pre = trace_artifacts::capture_action_screenshot(
+        target.context,
+        target.adapter,
+        target.entry.pid,
+        "pre",
+    );
     target.context.trace_lazy(
         "action.dispatch.start",
         || json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
     let action_name = request.action.name();
-    let result = target.adapter.execute_action(target.handle, request)?;
+    let dispatch_result = target.adapter.execute_action(target.handle, request);
+    let post = trace_artifacts::capture_action_screenshot(
+        target.context,
+        target.adapter,
+        target.entry.pid,
+        "post",
+    );
+    let _ = trace_artifacts::emit_action_artifacts(target.context, target.ref_id, &pre, &post);
+    let result = dispatch_result?;
     let _ = target.context.trace_lazy(
         "action.dispatch.ok",
         || json!({ "ref": target.ref_id, "action": action_name, "result": &result }),

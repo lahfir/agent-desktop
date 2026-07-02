@@ -53,6 +53,7 @@ pub mod skills;
 pub mod snapshot;
 pub mod status;
 pub mod toggle;
+pub mod trace;
 pub mod triple_click;
 pub mod type_text;
 pub mod uncheck;

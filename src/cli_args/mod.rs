@@ -6,6 +6,7 @@ pub(crate) mod notifications;
 pub(crate) mod session;
 pub(crate) mod skills;
 pub(crate) mod system;
+pub(crate) mod trace;
 
 fn default_max_depth() -> u8 {
     10

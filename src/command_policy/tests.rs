@@ -75,6 +75,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "batch"
             | "skills"
             | "session"
+            | "trace"
     )
 }
 
@@ -174,4 +175,26 @@ fn invalid_snapshot_root_is_rejected_before_permission_preflight() {
     let err = preflight(&command, &report).expect_err("invalid root fails first");
 
     assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn trace_show_passes_preflight_with_permissions_denied() {
+    let report = PermissionReport {
+        accessibility: PermissionState::Denied {
+            suggestion: "denied".into(),
+        },
+        screen_recording: PermissionState::Denied {
+            suggestion: "denied".into(),
+        },
+        automation: PermissionState::Denied {
+            suggestion: "denied".into(),
+        },
+    };
+    let command = Commands::Trace(crate::cli_args::trace::TraceArgs {
+        action: crate::cli_args::trace::TraceAction::Show(crate::cli_args::trace::TraceShowArgs {
+            limit: 500,
+            event: None,
+        }),
+    });
+    assert!(preflight(&command, &report).is_ok());
 }

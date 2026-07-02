@@ -1,7 +1,7 @@
 use super::*;
 use crate::refs_lock::RefStoreLock;
 use crate::refs_test_support::HomeGuard;
-use crate::session::SessionTraceMode;
+use crate::session::{ArtifactsMode, SessionTraceMode};
 use std::fs;
 use std::time::Duration;
 
@@ -49,6 +49,7 @@ fn manifest_round_trips_with_optional_fields() {
         created_at: 1,
         ended_at: None,
         trace: SessionTraceMode::On,
+        artifacts: ArtifactsMode::Events,
     };
     write_manifest(&manifest).unwrap();
     let loaded = read_manifest("run-1").unwrap().expect("manifest");
@@ -68,6 +69,7 @@ fn start_creates_tree_manifest_and_pointer() {
         name: Some("demo".into()),
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     assert!(session_dir(&manifest.id).unwrap().join("trace").is_dir());
@@ -84,6 +86,7 @@ fn start_refuses_live_pointer_without_force() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let _lock = RefStoreLock::acquire(
@@ -97,6 +100,7 @@ fn start_refuses_live_pointer_without_force() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap_err();
     assert_eq!(err.code(), "INVALID_ARGS");
@@ -109,6 +113,7 @@ fn end_seals_manifest_and_clears_pointer() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let ended = end_session(None).unwrap();
@@ -123,12 +128,14 @@ fn gc_removes_ended_sessions_but_not_pointer_or_live() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let ended = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     end_session(Some(&ended.id)).unwrap();
@@ -162,6 +169,7 @@ fn list_reports_manifest_fields_only() {
         name: Some("listed".into()),
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let listed = list_sessions().unwrap();
@@ -176,6 +184,7 @@ fn trace_enabled_requires_manifest_on() {
         name: None,
         trace: SessionTraceMode::Off,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     assert!(!trace_enabled_for_session(&manifest.id).unwrap());
@@ -188,6 +197,7 @@ fn gc_respects_older_than_threshold() {
         name: None,
         trace: SessionTraceMode::Off,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     end_session(Some(&manifest.id)).unwrap();
@@ -214,6 +224,7 @@ fn corrupt_manifest_is_ignored_not_fatal() {
         name: None,
         trace: SessionTraceMode::Off,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     let bad_dir = session_dir("corruptsess").unwrap();
@@ -239,6 +250,7 @@ fn unreadable_manifest_is_skipped_not_fatal_for_list_and_gc() {
         name: None,
         trace: SessionTraceMode::Off,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     let bad_dir = session_dir("unreadablesess").unwrap();
@@ -262,6 +274,7 @@ fn gc_leaves_recently_created_unended_session() {
         name: None,
         trace: SessionTraceMode::Off,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     clear_current_session_pointer().unwrap();
@@ -281,6 +294,7 @@ fn start_with_force_overrides_live_pointer() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let _lock = RefStoreLock::acquire(
@@ -294,6 +308,7 @@ fn start_with_force_overrides_live_pointer() {
         name: None,
         trace: SessionTraceMode::On,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     assert_ne!(first.id, second.id);
@@ -310,11 +325,75 @@ fn trace_enabled_false_once_session_ended() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     assert!(trace_enabled_for_session(&manifest.id).unwrap());
     end_session(Some(&manifest.id)).unwrap();
     assert!(!trace_enabled_for_session(&manifest.id).unwrap());
+}
+
+#[test]
+fn start_with_screenshots_records_full_artifacts_mode() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        artifacts: ArtifactsMode::Full,
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(manifest.artifacts, ArtifactsMode::Full);
+    let loaded = read_manifest(&manifest.id).unwrap().expect("manifest");
+    assert_eq!(loaded.artifacts, ArtifactsMode::Full);
+}
+
+#[test]
+fn start_without_screenshots_records_events_artifacts_mode() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(manifest.artifacts, ArtifactsMode::Events);
+}
+
+#[test]
+fn legacy_manifest_without_artifacts_defaults_to_events() {
+    let _guard = HomeGuard::new();
+    let dir = session_dir("legacy").unwrap();
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("session.json"),
+        r#"{"id":"legacy","created_at":1,"trace":"on"}"#,
+    )
+    .unwrap();
+    let manifest = read_manifest("legacy").unwrap().expect("manifest");
+    assert_eq!(manifest.artifacts, ArtifactsMode::Events);
+}
+
+#[test]
+fn no_trace_with_screenshots_is_invalid_args() {
+    let _guard = HomeGuard::new();
+    let err = start_session(StartSessionOptions {
+        trace: SessionTraceMode::Off,
+        artifacts: ArtifactsMode::Full,
+        ..Default::default()
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn ended_session_reports_artifacts_full_false() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        artifacts: ArtifactsMode::Full,
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(manifest.artifacts_full());
+    end_session(Some(&manifest.id)).unwrap();
+    let ended = read_manifest(&manifest.id).unwrap().expect("manifest");
+    assert!(!ended.artifacts_full());
 }
 
 #[cfg(unix)]
@@ -325,6 +404,7 @@ fn symlinked_manifest_is_ignored_not_fatal() {
         name: None,
         trace: SessionTraceMode::Off,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     let dir = session_dir("symsess").unwrap();

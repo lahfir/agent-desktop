@@ -41,7 +41,7 @@
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
 - **C-ABI cdylib** (`libagent_desktop_ffi`): Load once from Python / Swift / Go / Ruby / Node / C instead of forking the CLI per call
-- **55 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, plus a bundled `skills` doc loader
+- **56 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, trace read/export, plus a bundled `skills` doc loader
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using compact snapshot IDs and deterministic element references (`@e1`, `@e2`)
 - **Headless-by-default interactions**: Ref actions use accessibility APIs and block silent focus, cursor, keyboard, or pasteboard side effects
@@ -138,6 +138,18 @@ agent-desktop snapshot -i               # re-observe after UI changes
 ```
 Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
 ```
+
+### Trace viewer (read back a session)
+
+```bash
+agent-desktop session start --screenshots    # opt-in replay artifacts (PNG + refmap copies)
+agent-desktop snapshot --app Finder -i       # work normally under the active session
+agent-desktop click @e5
+agent-desktop trace show --limit 500         # bounded JSON timeline for agents
+agent-desktop trace export --out run.html    # single-file HTML viewer (works from file://)
+```
+
+`trace show` merges all segment files deterministically and requires no permissions. `trace export` embeds the timeline plus screenshots as base64 in one static HTML file. Treat exported HTML like a screenshot when `artifacts: full` was enabled.
 
 ### Shared sessions for multi-agent workflows
 
@@ -429,7 +441,7 @@ No. The core workflow reads native accessibility trees and assigns refs to inter
 |-----------|----------|
 | **Native Rust CLI** | Fast, single binary, no runtime dependencies |
 | **C-ABI cdylib** | Load once from Python, Swift, Go, Ruby, Node, or C instead of forking |
-| **55 Commands** | Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, and bundled `skills` docs |
+| **56 Commands** | Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, trace read/export, and bundled `skills` docs |
 | **Snapshot & Refs** | Compact snapshot IDs and deterministic element refs like `@e1`, `@e2` |
 | **Structured JSON** | Machine-readable responses with error codes and recovery hints |
 

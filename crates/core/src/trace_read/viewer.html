@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-desktop trace</title>
+<style>{{CSS}}</style>
+</head>
+<body>
+<header>
+<h1>agent-desktop trace</h1>
+<p id="meta"></p>
+<div id="warnings" class="banner hidden" role="status"></div>
+<label class="filter-label">Filter <input id="filter" type="search" placeholder="event name…" autocomplete="off"></label>
+</header>
+<main id="layout">
+<section id="timeline" aria-label="Event timeline"></section>
+<section id="detail" aria-label="Event detail">
+<h2 id="detail-title">Detail</h2>
+<pre id="detail-body"></pre>
+<div id="shots"></div>
+</section>
+</main>
+<script id="trace-data" type="application/json">{{DATA}}</script>
+<script>{{JS}}</script>
+</body>
+</html>
