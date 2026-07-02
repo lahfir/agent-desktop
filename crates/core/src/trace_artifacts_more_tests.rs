@@ -5,6 +5,7 @@ use crate::refs::RefMap;
 use crate::refs_store::RefStore;
 use crate::trace_artifacts::clear_test_budgets;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 #[test]
 fn artifacts_full_captures_pre_and_post_pngs() {
@@ -167,6 +168,48 @@ fn refmap_budget_skip_then_prune_leaves_prior_copy() {
             .is_file()
     );
     clear_test_budgets();
+}
+
+#[test]
+fn reserve_atomic_bytes_never_overshoots_under_concurrency() {
+    let used = Arc::new(AtomicU64::new(0));
+    let byte_len: u64 = 7;
+    let limit: u64 = byte_len * 10;
+    let mut handles = Vec::with_capacity(100);
+    for _ in 0..100 {
+        let used = used.clone();
+        handles.push(std::thread::spawn(move || {
+            reserve_atomic_bytes(&used, limit, byte_len).is_ok()
+        }));
+    }
+    let successes = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .filter(|ok| *ok)
+        .count() as u64;
+    assert!(used.load(Ordering::Relaxed) <= limit);
+    assert!(successes * byte_len <= limit);
+    assert_eq!(successes, 10);
+}
+
+#[test]
+fn reserve_atomic_count_never_overshoots_under_concurrency() {
+    let used = Arc::new(AtomicU32::new(0));
+    let limit: u32 = 10;
+    let mut handles = Vec::with_capacity(100);
+    for _ in 0..100 {
+        let used = used.clone();
+        handles.push(std::thread::spawn(move || {
+            reserve_atomic_count(&used, limit).is_ok()
+        }));
+    }
+    let successes = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .filter(|ok| *ok)
+        .count() as u32;
+    assert!(used.load(Ordering::Relaxed) <= limit);
+    assert_eq!(successes, limit);
 }
 
 #[test]

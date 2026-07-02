@@ -57,7 +57,7 @@ fn show(context: &CommandContext, limit: usize, event: Option<String>) -> Result
         &trace_dir,
         &ReadOptions {
             limit,
-            event_prefix: event.clone(),
+            event_prefix: event,
         },
     )?;
     if merged.segments.is_empty() {
@@ -67,38 +67,20 @@ fn show(context: &CommandContext, limit: usize, event: Option<String>) -> Result
     let mut body = json!({
         "session_id": session_id,
         "segments": merged.segments,
+        "total_events": merged.total_events,
         "returned_events": merged.returned_events,
         "truncated": merged.truncated,
         "events": merged.events,
     });
 
-    match &event {
-        Some(prefix) => {
-            let unfiltered = read_merged(&trace_dir, &ReadOptions::default())?;
-            body["matched_events"] = json!(count_matching_events(&unfiltered.events, prefix));
-            body["total_events"] = json!(unfiltered.total_events);
-        }
-        None => {
-            body["total_events"] = json!(merged.total_events);
-        }
+    if let Some(matched_events) = merged.matched_events {
+        body["matched_events"] = json!(matched_events);
     }
 
     if !merged.warnings.is_empty() {
         body["warnings"] = json!(merged.warnings);
     }
     Ok(body)
-}
-
-fn count_matching_events(events: &[Value], prefix: &str) -> usize {
-    events
-        .iter()
-        .filter(|event| {
-            event
-                .get("event")
-                .and_then(Value::as_str)
-                .is_some_and(|name| name.starts_with(prefix))
-        })
-        .count()
 }
 
 fn export(context: &CommandContext, limit: usize, out: Option<PathBuf>) -> Result<Value, AppError> {
@@ -108,13 +90,20 @@ fn export(context: &CommandContext, limit: usize, out: Option<PathBuf>) -> Resul
         &session_id,
         &ExportOptions { limit, out },
     )?;
-    Ok(json!({
+    let mut body = json!({
         "path": stats.path,
         "event_count": stats.event_count,
         "screenshots_embedded": stats.screenshots_embedded,
         "screenshots_skipped": stats.screenshots_skipped,
         "bytes": stats.bytes,
-    }))
+        "total_events": stats.total_events,
+        "returned_events": stats.returned_events,
+        "truncated": stats.truncated,
+    });
+    if !stats.warnings.is_empty() {
+        body["warnings"] = json!(stats.warnings);
+    }
+    Ok(body)
 }
 
 #[cfg(test)]

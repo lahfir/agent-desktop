@@ -306,3 +306,7 @@ pub(super) fn now_millis() -> u64 {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "session_gc_tests.rs"]
+mod gc_tests;

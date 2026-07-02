@@ -20,6 +20,17 @@ fn trace_redacts_sensitive_fields_but_preserves_messages() {
 }
 
 #[test]
+fn trace_redacts_selector_keyed_values_including_in_nested_details() {
+    let value = sanitize_trace_value(json!({
+        "selector": "button:Submit password",
+        "details": { "selector": "text:my secret" }
+    }));
+
+    assert_eq!(value["selector"]["redacted"], true);
+    assert_eq!(value["details"]["selector"]["redacted"], true);
+}
+
+#[test]
 fn trace_redaction_covers_nested_shapes_and_substring_keys() {
     let value = sanitize_trace_value(json!({
         "action": {

@@ -15,6 +15,7 @@ const SCREENSHOT_BYTE_BUDGET: u64 = 128 * 1024 * 1024;
 const SCREENSHOT_COUNT_BUDGET: u32 = 200;
 const REFMAP_BYTE_BUDGET: u64 = 64 * 1024 * 1024;
 
+// ponytail: per-process budget ceiling — a long multi-invocation session can exceed the intended per-session disk cap; session-scoped accounting (persisted counter under the refstore lock) is deferred to the Phase 4 daemon.
 static CAPTURE_SEQ: AtomicU32 = AtomicU32::new(0);
 static SCREENSHOT_BYTES_USED: AtomicU64 = AtomicU64::new(0);
 static SCREENSHOT_COUNT_USED: AtomicU32 = AtomicU32::new(0);
@@ -84,12 +85,21 @@ fn reserve_refmap_local(byte_len: u64) -> Option<Result<(), &'static str>> {
 }
 
 fn reserve_atomic_bytes(used: &AtomicU64, limit: u64, byte_len: u64) -> Result<(), &'static str> {
-    let current = used.load(Ordering::Relaxed);
-    if current.saturating_add(byte_len) > limit {
-        return Err("budget");
-    }
-    used.fetch_add(byte_len, Ordering::Relaxed);
-    Ok(())
+    used.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |cur| {
+        let next = cur.saturating_add(byte_len);
+        if next > limit { None } else { Some(next) }
+    })
+    .map(|_| ())
+    .map_err(|_| "budget")
+}
+
+fn reserve_atomic_count(used: &AtomicU32, limit: u32) -> Result<(), &'static str> {
+    used.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |cur| {
+        let next = cur.saturating_add(1);
+        if next > limit { None } else { Some(next) }
+    })
+    .map(|_| ())
+    .map_err(|_| "count_budget")
 }
 
 fn reserve_screenshot(byte_len: u64) -> Result<(), &'static str> {
@@ -97,12 +107,13 @@ fn reserve_screenshot(byte_len: u64) -> Result<(), &'static str> {
     if let Some(result) = reserve_screenshot_local(byte_len) {
         return result;
     }
-    let current_count = SCREENSHOT_COUNT_USED.load(Ordering::Relaxed);
-    if current_count >= SCREENSHOT_COUNT_BUDGET {
-        return Err("count_budget");
+    reserve_atomic_count(&SCREENSHOT_COUNT_USED, SCREENSHOT_COUNT_BUDGET)?;
+    if let Err(reason) =
+        reserve_atomic_bytes(&SCREENSHOT_BYTES_USED, SCREENSHOT_BYTE_BUDGET, byte_len)
+    {
+        SCREENSHOT_COUNT_USED.fetch_sub(1, Ordering::Relaxed);
+        return Err(reason);
     }
-    reserve_atomic_bytes(&SCREENSHOT_BYTES_USED, SCREENSHOT_BYTE_BUDGET, byte_len)?;
-    SCREENSHOT_COUNT_USED.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
 

@@ -23,6 +23,14 @@ pub struct WaitSelector {
     pub timeout_ms: u64,
 }
 
+/// Emits `command.start` on construction and `command.end` on `complete`.
+/// The `Drop` guard emits a fallback `command.end` for a scope abandoned
+/// without `complete` (normal early return, or a panic under the unwind
+/// test profile). It cannot fire on a genuine panic in the release binary:
+/// `[profile.release]` uses `panic = "abort"`, which terminates without
+/// unwinding `Drop`. A panicked release command therefore leaves an
+/// unpaired `command.start`, which the trace reader tolerates as an
+/// `unpaired_command` warning rather than a lost record.
 pub struct CommandScope<'a> {
     context: &'a CommandContext,
     command: &'static str,
@@ -144,8 +152,8 @@ impl CommandContext {
         if let Some(id) = session_id.as_deref() {
             validate_session_id(id)?;
         }
-        let reuses_parent_trace =
-            self.trace.pending_file_path().is_some() || session_id == self.session_id;
+        let reuses_parent_trace = session_id == self.session_id
+            || (self.trace.pending_file_path().is_some() && self.trace.has_sink());
         let (trace, artifacts_full) = if reuses_parent_trace {
             (self.trace.clone(), self.artifacts_full)
         } else {

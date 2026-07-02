@@ -58,6 +58,7 @@ pub struct MergedTrace {
     pub warnings: Vec<TraceWarning>,
     pub warnings_truncated: bool,
     pub total_events: usize,
+    pub matched_events: Option<usize>,
     pub returned_events: usize,
     pub truncated: bool,
 }
@@ -130,20 +131,24 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
     merge_sources.sort_by(|a, b| a.2.cmp(&b.2));
 
     let merged = merge_segments(merge_sources);
-    let mut all_events: Vec<Value> = merged.iter().map(annotate_provenance).collect();
+    let all_events: Vec<Value> = merged.iter().map(annotate_provenance).collect();
     let total_events = all_events.len();
 
-    all_events = filter_by_event_prefix(all_events, options.event_prefix.as_deref());
-    let filtered_total = all_events.len();
-
-    let (returned_events, truncated) = apply_tail_limit(all_events, options.limit);
-
-    for msg in detect_unpaired_commands(&returned_events) {
+    for msg in detect_unpaired_commands(&all_events) {
         warnings.push(TraceWarning {
             kind: TraceWarningKind::UnpairedCommand,
             message: msg,
         });
     }
+
+    let filtered_events = filter_by_event_prefix(all_events, options.event_prefix.as_deref());
+    let matched_events = if options.event_prefix.is_some() {
+        Some(filtered_events.len())
+    } else {
+        None
+    };
+
+    let (returned_events, truncated) = apply_tail_limit(filtered_events, options.limit);
 
     let (segments, segments_truncated) = cap_list(segment_infos, METADATA_LIST_CAP);
     let (warnings, warnings_truncated) = cap_list(warnings, METADATA_LIST_CAP);
@@ -155,11 +160,8 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
         segments_truncated,
         warnings,
         warnings_truncated,
-        total_events: if options.event_prefix.is_some() {
-            filtered_total
-        } else {
-            total_events
-        },
+        total_events,
+        matched_events,
         truncated,
     })
 }

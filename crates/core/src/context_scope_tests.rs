@@ -90,6 +90,46 @@ fn artifacts_full_follows_manifest_mode() {
 }
 
 #[test]
+fn batch_item_with_failed_parent_trace_writes_to_its_own_session_segment() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
+    let session = start_session(StartSessionOptions {
+        trace: SessionTraceMode::On,
+        ..Default::default()
+    })
+    .unwrap();
+    let unopenable = std::env::temp_dir()
+        .join("agent-desktop-batch-failed-parent-nodir")
+        .join("trace.jsonl");
+    let parent = CommandContext::new(None, Some(unopenable), false).unwrap();
+    assert!(
+        !parent.trace_enabled(),
+        "parent explicit --trace to an unopenable path must have a failed (sinkless) writer"
+    );
+
+    let child = parent.for_batch_item(Some(session.id.clone())).unwrap();
+    child
+        .trace("batch.item.event", json!({ "ok": true }))
+        .unwrap();
+
+    let trace_dir = crate::refs_store::RefStore::for_session(Some(&session.id))
+        .unwrap()
+        .trace_dir();
+    let wrote = std::fs::read_dir(&trace_dir)
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                std::fs::read_to_string(entry.path())
+                    .map(|c| c.contains("batch.item.event"))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+    assert!(
+        wrote,
+        "a batch item targeting a trace-enabled session must write to that session's segment, not inherit the parent's dead --trace writer"
+    );
+}
+
+#[test]
 fn wait_text_timeout_message_omits_raw_text_from_trace_segment() {
     let path = std::env::temp_dir().join(format!(
         "agent-desktop-scope-wait-text-redact-{}.jsonl",

@@ -32,6 +32,7 @@ fn is_sensitive_trace_key(key: &str) -> bool {
         "description",
         "label",
         "query",
+        "selector",
         "secret",
         "token",
         "password",

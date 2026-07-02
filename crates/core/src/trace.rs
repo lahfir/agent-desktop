@@ -168,7 +168,7 @@ impl TraceConfig {
         &self,
         session_segment_dir: Option<PathBuf>,
     ) -> Result<Self, AppError> {
-        if self.pending_file_path().is_some() {
+        if self.pending_file_path().is_some() && self.has_sink() {
             return Ok(self.clone());
         }
         match session_segment_dir {
