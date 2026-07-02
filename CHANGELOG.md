@@ -6,6 +6,13 @@
 
 * make sessions the first-class trace container: `session start/end/list/gc`, manifest-gated automatic JSONL segments under `sessions/<id>/trace/`, and `--trace <path>` override preserved ([#89](https://github.com/lahfir/agent-desktop/pull/89))
 
+## [0.4.7](https://github.com/lahfir/agent-desktop/compare/v0.4.6...v0.4.7) (2026-07-02)
+
+
+### Features
+
+* add trace viewer and replay artifacts ([e3e1872](https://github.com/lahfir/agent-desktop/commit/e3e1872ff3088f03f3e50e65ebc9e2b068a17b5f))
+
 ## [0.4.6](https://github.com/lahfir/agent-desktop/compare/v0.4.5...v0.4.6) (2026-07-02)
 
 
