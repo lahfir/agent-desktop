@@ -192,10 +192,16 @@ fn parse_skills(args: Value) -> Result<SkillsArgs, AppError> {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct BatchSessionArgs {
+struct BatchSessionActionArgs {
     #[serde(default)]
     action: Option<String>,
+    #[serde(flatten)]
+    rest: Map<String, Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchSessionStartArgs {
     name: Option<String>,
     #[serde(default)]
     no_trace: bool,
@@ -203,27 +209,50 @@ struct BatchSessionArgs {
     screenshots: bool,
     #[serde(default)]
     force: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchSessionEndArgs {
     id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchSessionGcArgs {
     older_than: Option<u64>,
     #[serde(default)]
     ended: bool,
 }
 
 fn parse_session(args: Value) -> Result<SessionArgs, AppError> {
-    let args: BatchSessionArgs = decode("session", args)?;
-    let action = match args.action.as_deref() {
-        None | Some("list") => SessionAction::List,
-        Some("start") => SessionAction::Start(SessionStartArgs {
-            name: args.name,
-            no_trace: args.no_trace,
-            screenshots: args.screenshots,
-            force: args.force,
-        }),
-        Some("end") => SessionAction::End(SessionEndArgs { id: args.id }),
-        Some("gc") => SessionAction::Gc(SessionGcArgs {
-            older_than: args.older_than,
-            ended: args.ended,
-        }),
+    let discriminant: BatchSessionActionArgs = decode("session", args)?;
+    let rest = Value::Object(discriminant.rest);
+    let action = match discriminant.action.as_deref() {
+        None | Some("list") => {
+            no_args("session", rest)?;
+            SessionAction::List
+        }
+        Some("start") => {
+            let args: BatchSessionStartArgs = decode("session", rest)?;
+            SessionAction::Start(SessionStartArgs {
+                name: args.name,
+                no_trace: args.no_trace,
+                screenshots: args.screenshots,
+                force: args.force,
+            })
+        }
+        Some("end") => {
+            let args: BatchSessionEndArgs = decode("session", rest)?;
+            SessionAction::End(SessionEndArgs { id: args.id })
+        }
+        Some("gc") => {
+            let args: BatchSessionGcArgs = decode("session", rest)?;
+            SessionAction::Gc(SessionGcArgs {
+                older_than: args.older_than,
+                ended: args.ended,
+            })
+        }
         Some(other) => {
             return Err(AppError::invalid_input(format!(
                 "Unknown session action '{other}'"

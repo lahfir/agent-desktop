@@ -247,6 +247,33 @@ fn write_tmp_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), Ap
     Ok(())
 }
 
+pub(crate) fn is_symlink(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+pub(crate) fn open_nofollow(path: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+    }
+    #[cfg(not(unix))]
+    {
+        if std::fs::symlink_metadata(path)?.file_type().is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "path must not be a symlink",
+            ));
+        }
+        std::fs::File::open(path)
+    }
+}
+
 pub(crate) fn home_dir() -> Option<PathBuf> {
     let home = HOME_OVERRIDE
         .with(|cell| cell.borrow().clone())

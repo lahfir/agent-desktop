@@ -45,7 +45,12 @@ pub fn execute(
                 if matched {
                     let store = RefStore::for_session(context.session_id())?;
                     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
-                    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id)?;
+                    trace_artifacts::copy_refmap_if_full(
+                        context,
+                        &store,
+                        &snapshot_id,
+                        &result.refmap,
+                    )?;
                     result.snapshot_id = Some(snapshot_id.clone());
                     emit_snapshot_saved(context, &result)?;
                     let elapsed = start.elapsed().as_millis();
@@ -111,7 +116,7 @@ fn persist_last_built(
     };
     let store = RefStore::for_session(context.session_id())?;
     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
-    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id)?;
+    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id, &result.refmap)?;
     Ok(Some(snapshot_id))
 }
 

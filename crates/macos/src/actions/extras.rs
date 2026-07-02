@@ -37,7 +37,10 @@ pub(crate) fn select_value(el: &AXElement, value: &str) -> Result<(), AdapterErr
             if !select_child_by_name(el, value) {
                 return Err(AdapterError::new(
                     ErrorCode::ElementNotFound,
-                    format!("No child matching '{value}' found in list"),
+                    format!(
+                        "No child matching the requested value ({} chars) found in list",
+                        value.chars().count()
+                    ),
                 )
                 .with_suggestion("Use 'find --role' to discover available items."));
             }
@@ -76,7 +79,10 @@ fn wait_for_value(el: &AXElement, value: &str) -> Result<(), AdapterError> {
         if std::time::Instant::now() >= deadline {
             return Err(AdapterError::new(
                 ErrorCode::ActionFailed,
-                format!("Selection did not change to '{value}'"),
+                format!(
+                    "Selection did not change to the requested value ({} chars)",
+                    value.chars().count()
+                ),
             )
             .with_suggestion("Refresh the snapshot and inspect available values."));
         }
@@ -88,7 +94,10 @@ fn wait_for_value(el: &AXElement, value: &str) -> Result<(), AdapterError> {
 fn option_not_found(value: &str) -> AdapterError {
     AdapterError::new(
         ErrorCode::ElementNotFound,
-        format!("No menu item matching '{value}' found"),
+        format!(
+            "No menu item matching the requested value ({} chars) found",
+            value.chars().count()
+        ),
     )
     .with_suggestion("Use 'click' to open the menu, then 'snapshot' to see available options.")
 }

@@ -106,6 +106,76 @@ fn show_honors_limit_and_event_prefix() {
 }
 
 #[test]
+fn show_reports_raw_total_and_matched_count_when_filtered() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        trace: SessionTraceMode::On,
+        ..Default::default()
+    })
+    .unwrap();
+    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
+        .unwrap()
+        .trace_dir();
+    copy_fixture_trace(&trace_dir);
+
+    let context = CommandContext::new(Some(manifest.id), None, false).unwrap();
+    let body = execute(
+        TraceAction::Show {
+            limit: 0,
+            event: Some("command.".into()),
+        },
+        &context,
+    )
+    .unwrap();
+
+    assert_eq!(body["total_events"].as_u64().unwrap(), 5);
+    assert_eq!(body["matched_events"].as_u64().unwrap(), 2);
+    assert_eq!(body["returned_events"], 2);
+}
+
+#[test]
+fn show_on_empty_trace_directory_is_invalid_args() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        trace: SessionTraceMode::On,
+        ..Default::default()
+    })
+    .unwrap();
+    let context = CommandContext::new(Some(manifest.id), None, false).unwrap();
+    let err = execute(
+        TraceAction::Show {
+            limit: 500,
+            event: None,
+        },
+        &context,
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.to_string().contains("empty trace directory"));
+}
+
+#[test]
+fn export_on_empty_trace_directory_is_invalid_args() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        trace: SessionTraceMode::On,
+        ..Default::default()
+    })
+    .unwrap();
+    let context = CommandContext::new(Some(manifest.id), None, false).unwrap();
+    let err = execute(
+        TraceAction::Export {
+            limit: 0,
+            out: None,
+        },
+        &context,
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.to_string().contains("empty trace directory"));
+}
+
+#[test]
 fn tail_limit_surfaces_unpaired_command_warning() {
     let _guard = HomeGuard::new();
     let manifest = start_session(StartSessionOptions {

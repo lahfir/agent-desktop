@@ -47,7 +47,7 @@ fn truncated_final_line_is_skipped() {
     writeln!(file, r#"{{"event":"click","ts_ms":1000,"seq":1}}"#).unwrap();
     write!(file, r#"{{"event":"click","ts_ms":1001,"seq":2,"trunc"#).unwrap();
 
-    let (_, stats) = read_segment_events(&path, 100).unwrap();
+    let (_, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.skipped_lines, 1);
     assert_eq!(stats.event_count, 1);
 }
@@ -65,7 +65,7 @@ fn corrupt_middle_line_is_skipped() {
         ],
     );
 
-    let (events, stats) = read_segment_events(&path, 100).unwrap();
+    let (events, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.skipped_lines, 1);
     assert_eq!(events.len(), 2);
 }
@@ -83,7 +83,7 @@ fn non_object_json_line_is_skipped() {
         ],
     );
 
-    let (events, stats) = read_segment_events(&path, 100).unwrap();
+    let (events, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.skipped_lines, 2);
     assert_eq!(events.len(), 1);
 }
@@ -98,7 +98,7 @@ fn oversized_line_is_skipped() {
     writeln!(file, "{{\"event\":\"big\",\"data\":\"{big}\"}}").unwrap();
     writeln!(file, r#"{{"event":"ok","ts_ms":1,"seq":1}}"#).unwrap();
 
-    let (events, stats) = read_segment_events(&path, 100).unwrap();
+    let (events, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.skipped_lines, 1);
     assert_eq!(events.len(), 1);
 }
@@ -115,7 +115,7 @@ fn trace_meta_sets_schema() {
         ],
     );
 
-    let (_, stats) = read_segment_events(&path, 100).unwrap();
+    let (_, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.schema, 1);
 }
 
@@ -128,7 +128,7 @@ fn absent_meta_reads_as_schema_zero() {
         &[r#"{"event":"click","ts_ms":1,"seq":1}"#],
     );
 
-    let (_, stats) = read_segment_events(&path, 100).unwrap();
+    let (_, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.schema, 0);
     assert!(stats.schema_warning.is_none());
 }
@@ -145,7 +145,7 @@ fn schema_two_produces_warning() {
         ],
     );
 
-    let (_, stats) = read_segment_events(&path, 100).unwrap();
+    let (_, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.schema, 2);
     assert!(stats.schema_warning.is_some());
 }
@@ -163,7 +163,7 @@ fn multiple_meta_lines_only_first_counts_for_schema() {
         ],
     );
 
-    let (events, stats) = read_segment_events(&path, 100).unwrap();
+    let (events, stats) = read_segment_events(&path).unwrap();
     assert_eq!(stats.schema, 1);
     assert_eq!(events.len(), 3);
 }
@@ -177,5 +177,26 @@ fn symlinked_segment_is_detected() {
     fs::write(&target, b"{\"event\":\"a\",\"ts_ms\":1,\"seq\":1}\n").unwrap();
     let link = dir.join("200-2000.jsonl");
     std::os::unix::fs::symlink(&target, &link).unwrap();
-    assert!(super::segment::is_symlink(&link));
+    assert!(crate::refs::is_symlink(&link));
+}
+
+#[test]
+fn invalid_utf8_line_is_skipped_not_fatal() {
+    let dir = temp_dir("trace-seg-badutf8");
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("100-1000.jsonl");
+    let mut file = fs::File::create(&path).unwrap();
+    writeln!(file, r#"{{"event":"a","ts_ms":1,"seq":1}}"#).unwrap();
+    file.write_all(b"\xFF\xFE not valid utf8 at all\n").unwrap();
+    writeln!(file, r#"{{"event":"b","ts_ms":2,"seq":2}}"#).unwrap();
+    drop(file);
+
+    let (events, stats) = read_segment_events(&path).unwrap();
+    assert_eq!(stats.skipped_lines, 1);
+    assert_eq!(events.len(), 2);
+    let names: Vec<_> = events
+        .iter()
+        .map(|e| e.value["event"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["a", "b"]);
 }

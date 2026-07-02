@@ -239,7 +239,10 @@ mod imp {
         }
         Err(AdapterError::new(
             ErrorCode::InvalidArgs,
-            format!("'{value}' is not a number; this control holds a numeric value"),
+            format!(
+                "The requested value ({} chars) is not a number; this control holds a numeric value",
+                value.chars().count()
+            ),
         )
         .with_suggestion("Pass a numeric value, e.g. set-value @e1 50"))
     }

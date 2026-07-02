@@ -103,7 +103,7 @@ fn event_prefix_filter_with_tail_limit() {
     let events: Vec<Value> = (0..10)
         .map(|i| json!({"event": if i % 2 == 0 { "action.click" } else { "other" }, "ts_ms": i}))
         .collect();
-    let filtered = filter_by_event_prefix(&events, Some("action."));
+    let filtered = filter_by_event_prefix(events, Some("action."));
     assert_eq!(filtered.len(), 5);
     let (tail, truncated) = apply_tail_limit(filtered, 2);
     assert!(truncated);

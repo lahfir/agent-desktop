@@ -180,7 +180,12 @@ fn wait_for_text(
                 if matched {
                     let store = RefStore::for_session(context.session_id())?;
                     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
-                    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id)?;
+                    trace_artifacts::copy_refmap_if_full(
+                        context,
+                        &store,
+                        &snapshot_id,
+                        &result.refmap,
+                    )?;
                     emit_snapshot_saved(context, &result)?;
                     let elapsed = start.elapsed().as_millis();
                     let found = matches.first();

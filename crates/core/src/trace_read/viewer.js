@@ -38,21 +38,26 @@
 
   function groupEvents(events) {
     var groups = [];
-    var current = null;
+    var stack = [];
     events.forEach(function (event, index) {
       var name = event.event || "";
       if (name === "command.start") {
-        current = { command: event.command || "command", start: event, children: [], end: null, open: true };
-        groups.push({ type: "group", group: current });
+        var frame = { command: event.command || "command", start: event, children: [], end: null, open: true };
+        groups.push({ type: "group", group: frame });
+        stack.push(frame);
         return;
       }
-      if (name === "command.end" && current) {
-        current.end = event;
-        current.open = false;
-        current = null;
+      if (name === "command.end") {
+        if (stack.length) {
+          var top = stack.pop();
+          top.end = event;
+          top.open = false;
+        } else {
+          groups.push({ type: "event", event: event, index: index });
+        }
         return;
       }
-      if (current) current.children.push({ event: event, index: index });
+      if (stack.length) stack[stack.length - 1].children.push({ event: event, index: index });
       else groups.push({ type: "event", event: event, index: index });
     });
     return groups;

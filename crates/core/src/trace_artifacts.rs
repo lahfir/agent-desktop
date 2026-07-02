@@ -2,13 +2,13 @@ use crate::{
     adapter::{PlatformAdapter, ScreenshotTarget},
     context::CommandContext,
     error::AppError,
-    refs::write_private_file,
+    refs::{RefMap, is_symlink, open_nofollow, write_private_file},
     refs_store::RefStore,
-    trace::ensure_trace_dir,
+    trace::{ensure_trace_dir, process_start_ms},
 };
 use serde_json::json;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 const SCREENSHOT_BYTE_BUDGET: u64 = 128 * 1024 * 1024;
@@ -16,9 +16,6 @@ const SCREENSHOT_COUNT_BUDGET: u32 = 200;
 const REFMAP_BYTE_BUDGET: u64 = 64 * 1024 * 1024;
 
 static CAPTURE_SEQ: AtomicU32 = AtomicU32::new(0);
-static SCREENSHOT_BYTE_LIMIT: AtomicU64 = AtomicU64::new(SCREENSHOT_BYTE_BUDGET);
-static SCREENSHOT_COUNT_LIMIT: AtomicU32 = AtomicU32::new(SCREENSHOT_COUNT_BUDGET);
-static REFMAP_BYTE_LIMIT: AtomicU64 = AtomicU64::new(REFMAP_BYTE_BUDGET);
 static SCREENSHOT_BYTES_USED: AtomicU64 = AtomicU64::new(0);
 static SCREENSHOT_COUNT_USED: AtomicU32 = AtomicU32::new(0);
 static REFMAP_BYTES_USED: AtomicU64 = AtomicU64::new(0);
@@ -86,21 +83,26 @@ fn reserve_refmap_local(byte_len: u64) -> Option<Result<(), &'static str>> {
     Some(Ok(()))
 }
 
+fn reserve_atomic_bytes(used: &AtomicU64, limit: u64, byte_len: u64) -> Result<(), &'static str> {
+    let current = used.load(Ordering::Relaxed);
+    if current.saturating_add(byte_len) > limit {
+        return Err("budget");
+    }
+    used.fetch_add(byte_len, Ordering::Relaxed);
+    Ok(())
+}
+
 fn reserve_screenshot(byte_len: u64) -> Result<(), &'static str> {
     #[cfg(test)]
     if let Some(result) = reserve_screenshot_local(byte_len) {
         return result;
     }
     let current_count = SCREENSHOT_COUNT_USED.load(Ordering::Relaxed);
-    if current_count >= SCREENSHOT_COUNT_LIMIT.load(Ordering::Relaxed) {
+    if current_count >= SCREENSHOT_COUNT_BUDGET {
         return Err("count_budget");
     }
-    let current_bytes = SCREENSHOT_BYTES_USED.load(Ordering::Relaxed);
-    if current_bytes.saturating_add(byte_len) > SCREENSHOT_BYTE_LIMIT.load(Ordering::Relaxed) {
-        return Err("budget");
-    }
+    reserve_atomic_bytes(&SCREENSHOT_BYTES_USED, SCREENSHOT_BYTE_BUDGET, byte_len)?;
     SCREENSHOT_COUNT_USED.fetch_add(1, Ordering::Relaxed);
-    SCREENSHOT_BYTES_USED.fetch_add(byte_len, Ordering::Relaxed);
     Ok(())
 }
 
@@ -109,28 +111,13 @@ fn reserve_refmap(byte_len: u64) -> Result<(), &'static str> {
     if let Some(result) = reserve_refmap_local(byte_len) {
         return result;
     }
-    let current = REFMAP_BYTES_USED.load(Ordering::Relaxed);
-    if current.saturating_add(byte_len) > REFMAP_BYTE_LIMIT.load(Ordering::Relaxed) {
-        return Err("budget");
-    }
-    REFMAP_BYTES_USED.fetch_add(byte_len, Ordering::Relaxed);
-    Ok(())
+    reserve_atomic_bytes(&REFMAP_BYTES_USED, REFMAP_BYTE_BUDGET, byte_len)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ArtifactOutcome {
     Captured(String),
     Skipped(String),
-}
-
-fn process_start_ms() -> u64 {
-    static START_MS: OnceLock<u64> = OnceLock::new();
-    *START_MS.get_or_init(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
-    })
 }
 
 fn artifacts_enabled(context: &CommandContext) -> bool {
@@ -149,12 +136,6 @@ fn screens_dir(trace_dir: &Path) -> PathBuf {
 
 fn refmaps_dir(trace_dir: &Path) -> PathBuf {
     trace_dir.join("refmaps")
-}
-
-fn is_symlink_path(path: &Path) -> bool {
-    std::fs::symlink_metadata(path)
-        .map(|meta| meta.file_type().is_symlink())
-        .unwrap_or(false)
 }
 
 fn relative_to_trace(trace_dir: &Path, path: &Path) -> String {
@@ -176,9 +157,6 @@ pub(crate) fn capture_action_screenshot(
         return ArtifactOutcome::Skipped("no_session".into());
     };
     let screens = screens_dir(&trace_dir);
-    if screens.exists() && is_symlink_path(&screens) {
-        return ArtifactOutcome::Skipped("symlinked_dir".into());
-    }
     if let Err(err) = ensure_trace_dir(&screens) {
         return ArtifactOutcome::Skipped(format!("dir: {err}"));
     }
@@ -207,24 +185,34 @@ pub(crate) fn copy_refmap_if_full(
     context: &CommandContext,
     store: &RefStore,
     snapshot_id: &str,
+    refmap: &RefMap,
 ) -> Result<(), AppError> {
     if !artifacts_enabled(context) {
         return Ok(());
     }
     let trace_dir = store.trace_dir();
     let refmaps = refmaps_dir(&trace_dir);
-    if refmaps.exists() && is_symlink_path(&refmaps) {
+    if let Err(err) = ensure_trace_dir(&refmaps) {
+        tracing::warn!("refmap artifact dir unavailable: {err}");
         return Ok(());
     }
-    ensure_trace_dir(&refmaps)?;
     let dest = refmaps.join(format!("{snapshot_id}.json"));
     if dest.is_file() {
         return Ok(());
     }
-    let refmap = store.load(Some(snapshot_id))?;
-    let json = refmap.serialize_with_size_check()?;
+    let json = match refmap.serialize_with_size_check() {
+        Ok(json) => json,
+        Err(err) => {
+            tracing::warn!("refmap artifact serialize failed: {err}");
+            return Ok(());
+        }
+    };
     let byte_len = json.len() as u64;
     if reserve_refmap(byte_len).is_err() {
+        let _ = context.trace_lazy(
+            "action.artifacts.refmap_skipped",
+            || json!({ "snapshot_id": snapshot_id }),
+        );
         return Ok(());
     }
     let _ = write_private_file(&dest, json.as_bytes());
@@ -289,7 +277,7 @@ pub(crate) fn resolve_screenshot_path(trace_dir: &Path, relative: &str) -> Optio
     if !canonical.starts_with(&trace_canonical) {
         return None;
     }
-    if is_symlink_path(&joined) {
+    if is_symlink(&joined) {
         return None;
     }
     Some(joined)
@@ -297,9 +285,16 @@ pub(crate) fn resolve_screenshot_path(trace_dir: &Path, relative: &str) -> Optio
 
 pub(crate) fn read_screenshot_for_embed(trace_dir: &Path, relative: &str) -> Option<Vec<u8>> {
     let path = resolve_screenshot_path(trace_dir, relative)?;
-    std::fs::read(path).ok()
+    let mut file = open_nofollow(&path).ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    Some(bytes)
 }
 
 #[cfg(test)]
 #[path = "trace_artifacts_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "trace_artifacts_more_tests.rs"]
+mod more_tests;

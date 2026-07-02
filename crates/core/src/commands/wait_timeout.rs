@@ -23,7 +23,7 @@ pub(crate) fn element(
 ) -> Result<Value, AppError> {
     timeout_err(
         format!(
-            "Element {ref_id} did not satisfy predicate '{}' within {timeout_ms}ms; last_observed={last_observed}",
+            "Element {ref_id} did not satisfy predicate '{}' within {timeout_ms}ms",
             predicate.name()
         ),
         json!({
@@ -48,7 +48,10 @@ pub(crate) fn window(
     last_error: Option<Value>,
 ) -> Result<Value, AppError> {
     timeout_err(
-        format!("Window with title '{title}' not found within {timeout_ms}ms"),
+        format!(
+            "Window title ({} chars) not found within {timeout_ms}ms",
+            title.chars().count()
+        ),
         with_last_error(
             json!({
                 "predicate": "window",
@@ -67,7 +70,10 @@ pub(crate) fn text(
     last_error: Option<Value>,
 ) -> Result<Value, AppError> {
     timeout_err(
-        format!("Text '{text}' did not match within {timeout_ms}ms"),
+        format!(
+            "Text ({} chars) did not match within {timeout_ms}ms",
+            text.chars().count()
+        ),
         with_last_error(
             json!({
                 "predicate": "text",
@@ -121,7 +127,8 @@ pub(crate) fn selector(
     }
     timeout_err(
         format!(
-            "Selector '{selector}' did not {} within {timeout_ms}ms",
+            "Selector ({} chars) did not {} within {timeout_ms}ms",
+            selector.chars().count(),
             if gone { "disappear" } else { "appear" }
         ),
         details,

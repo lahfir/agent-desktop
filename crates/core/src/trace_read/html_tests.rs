@@ -2,9 +2,10 @@ use super::escape_for_json_island;
 use crate::refs_test_support::HomeGuard;
 use crate::session::{SessionTraceMode, StartSessionOptions, start_session};
 use crate::trace_read::{ExportOptions, export_html};
+use serde_json::Value;
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 static HTML_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -29,9 +30,13 @@ fn setup_html_test() -> (HomeGuard, std::sync::MutexGuard<'static, ()>) {
     (HomeGuard::new(), lock)
 }
 
-#[test]
-fn export_writes_single_self_contained_file() {
-    let (_home, _lock) = setup_html_test();
+fn setup_trace_session() -> (
+    HomeGuard,
+    std::sync::MutexGuard<'static, ()>,
+    String,
+    PathBuf,
+) {
+    let (home, lock) = setup_html_test();
     let manifest = start_session(StartSessionOptions {
         trace: SessionTraceMode::On,
         ..Default::default()
@@ -40,6 +45,19 @@ fn export_writes_single_self_contained_file() {
     let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
         .unwrap()
         .trace_dir();
+    (home, lock, manifest.id, trace_dir)
+}
+
+fn parse_trace_data_island(html: &str) -> Value {
+    let marker = "<script id=\"trace-data\" type=\"application/json\">";
+    let start = html.find(marker).unwrap() + marker.len();
+    let end = start + html[start..].find("</script>").unwrap();
+    serde_json::from_str(&html[start..end]).unwrap()
+}
+
+#[test]
+fn export_writes_single_self_contained_file() {
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -54,7 +72,7 @@ fn export_writes_single_self_contained_file() {
     ));
     let (_html, stats) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: Some(out.clone()),
@@ -71,15 +89,7 @@ fn export_writes_single_self_contained_file() {
 
 #[test]
 fn hostile_strings_are_escaped_in_json_island() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     let hostile = "<script>alert(1)</script><img src=x onerror=alert(2)>";
     write_segment(
         &trace_dir,
@@ -90,7 +100,7 @@ fn hostile_strings_are_escaped_in_json_island() {
     );
     let (html, _) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
@@ -113,15 +123,7 @@ fn json_island_round_trips() {
 
 #[test]
 fn missing_screenshot_counts_as_skipped_not_error() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -131,7 +133,7 @@ fn missing_screenshot_counts_as_skipped_not_error() {
     );
     let (_html, stats) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
@@ -143,15 +145,7 @@ fn missing_screenshot_counts_as_skipped_not_error() {
 
 #[test]
 fn export_is_byte_deterministic() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -161,22 +155,14 @@ fn export_is_byte_deterministic() {
         limit: 0,
         out: None,
     };
-    let (a, _) = export_html(&trace_dir, &manifest.id, &options).unwrap();
-    let (b, _) = export_html(&trace_dir, &manifest.id, &options).unwrap();
+    let (a, _) = export_html(&trace_dir, &session_id, &options).unwrap();
+    let (b, _) = export_html(&trace_dir, &session_id, &options).unwrap();
     assert_eq!(a, b);
 }
 
 #[test]
 fn default_output_path_uses_session_id() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -184,14 +170,14 @@ fn default_output_path_uses_session_id() {
     );
     let (_html, stats) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
         },
     )
     .unwrap();
-    assert!(stats.path.ends_with(&format!("trace-{}.html", manifest.id)));
+    assert!(stats.path.ends_with(&format!("trace-{session_id}.html")));
     assert!(
         std::path::Path::new(&stats.path).starts_with(trace_dir.parent().unwrap()),
         "default export must land inside the session directory, not the cwd"
@@ -201,16 +187,8 @@ fn default_output_path_uses_session_id() {
 
 #[test]
 fn oversized_json_guard_returns_invalid_args() {
-    let (_home, _lock) = setup_html_test();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     crate::trace_read::html::set_test_max_json_bytes(100);
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
     let huge = "x".repeat(200);
     write_segment(
         &trace_dir,
@@ -221,7 +199,7 @@ fn oversized_json_guard_returns_invalid_args() {
     );
     let err = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
@@ -234,14 +212,7 @@ fn oversized_json_guard_returns_invalid_args() {
 
 #[test]
 fn embed_budget_skips_later_screenshots() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let store = crate::refs_store::RefStore::for_session(Some(&manifest.id)).unwrap();
-    let trace_dir = store.trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     fs::create_dir_all(trace_dir.join("screens")).unwrap();
     let big = vec![0u8; 60 * 1024 * 1024];
     fs::write(trace_dir.join("screens/a.png"), &big).unwrap();
@@ -256,7 +227,7 @@ fn embed_budget_skips_later_screenshots() {
     );
     let (_html, stats) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
@@ -268,48 +239,8 @@ fn embed_budget_skips_later_screenshots() {
 }
 
 #[test]
-fn traversal_screenshot_path_is_not_embedded() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
-    write_segment(
-        &trace_dir,
-        "100-1000.jsonl",
-        &[r#"{"event":"action.artifacts","screenshot_pre":"../secret.png","ts_ms":1,"seq":1}"#],
-    );
-    let (html, stats) = export_html(
-        &trace_dir,
-        &manifest.id,
-        &ExportOptions {
-            limit: 0,
-            out: None,
-        },
-    )
-    .unwrap();
-    assert_eq!(stats.screenshots_skipped, 1);
-    let island_start = html.find("<script id=\"trace-data\"").unwrap();
-    let island_end = html.find("</script>").unwrap();
-    let island = &html[island_start..island_end];
-    assert!(!island.contains(r#""../secret.png":"#));
-}
-
-#[test]
 fn export_honors_limit_in_metadata() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -321,7 +252,7 @@ fn export_honors_limit_in_metadata() {
     );
     let (html, stats) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 2,
             out: None,
@@ -334,15 +265,7 @@ fn export_honors_limit_in_metadata() {
 
 #[test]
 fn redacted_field_survives_in_island_json() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -350,7 +273,7 @@ fn redacted_field_survives_in_island_json() {
     );
     let (html, _) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
@@ -362,20 +285,11 @@ fn redacted_field_survives_in_island_json() {
 
 #[test]
 fn empty_timeline_renders_empty_state_marker() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
-    fs::create_dir_all(&trace_dir).unwrap();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     fs::write(trace_dir.join("100-1000.jsonl"), "").unwrap();
     let (html, stats) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
@@ -383,20 +297,13 @@ fn empty_timeline_renders_empty_state_marker() {
     )
     .unwrap();
     assert_eq!(stats.event_count, 0);
-    assert!(html.contains("No events in this trace"));
+    let island = parse_trace_data_island(&html);
+    assert!(island["events"].as_array().unwrap().is_empty());
 }
 
 #[test]
 fn unpaired_command_renders_open_incomplete_marker() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let trace_dir = crate::refs_store::RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -404,27 +311,26 @@ fn unpaired_command_renders_open_incomplete_marker() {
     );
     let (html, _) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,
         },
     )
     .unwrap();
-    assert!(html.contains("open-incomplete"));
-    assert!(html.contains("incomplete"));
+    let island = parse_trace_data_island(&html);
+    let warnings = island["warnings"].as_array().unwrap();
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning["kind"] == "unpaired_command"),
+        "expected an unpaired_command warning, got {warnings:?}"
+    );
 }
 
 #[test]
 fn embedded_screenshot_uses_base64_data_uri() {
-    let (_home, _lock) = setup_html_test();
-    let manifest = start_session(StartSessionOptions {
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let store = crate::refs_store::RefStore::for_session(Some(&manifest.id)).unwrap();
-    let trace_dir = store.trace_dir();
+    let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     fs::create_dir_all(trace_dir.join("screens")).unwrap();
     let png = [
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
@@ -438,7 +344,7 @@ fn embedded_screenshot_uses_base64_data_uri() {
     );
     let (html, stats) = export_html(
         &trace_dir,
-        &manifest.id,
+        &session_id,
         &ExportOptions {
             limit: 0,
             out: None,

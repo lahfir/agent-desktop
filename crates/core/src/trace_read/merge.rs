@@ -1,4 +1,6 @@
 use super::segment::ParsedEvent;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct MergeItem {
@@ -14,6 +16,14 @@ struct StreamState {
     segment: String,
 }
 
+type HeapKey = (u64, u32, u64, usize);
+
+fn stream_head_key(streams: &[StreamState], stream_idx: usize) -> Option<HeapKey> {
+    let stream = &streams[stream_idx];
+    let event = stream.events.get(stream.index)?;
+    Some((event.ts_ms, stream.writer_pid, event.position, stream_idx))
+}
+
 pub(crate) fn merge_segments(sources: Vec<(Vec<ParsedEvent>, u32, String)>) -> Vec<MergeItem> {
     let mut streams: Vec<StreamState> = sources
         .into_iter()
@@ -25,34 +35,23 @@ pub(crate) fn merge_segments(sources: Vec<(Vec<ParsedEvent>, u32, String)>) -> V
         })
         .collect();
 
+    let mut heap: BinaryHeap<Reverse<HeapKey>> = (0..streams.len())
+        .filter_map(|stream_idx| stream_head_key(&streams, stream_idx).map(Reverse))
+        .collect();
+
     let mut merged = Vec::new();
-    loop {
-        let mut best: Option<usize> = None;
-        let mut best_key: Option<(u64, u32, u64)> = None;
-
-        for (i, stream) in streams.iter().enumerate() {
-            if stream.index >= stream.events.len() {
-                continue;
-            }
-            let event = &stream.events[stream.index];
-            let key = (event.ts_ms, stream.writer_pid, event.position);
-            if best_key.is_none_or(|current| key < current) {
-                best_key = Some(key);
-                best = Some(i);
-            }
-        }
-
-        let Some(i) = best else {
-            break;
-        };
-        let stream = &streams[i];
-        let event = stream.events[stream.index].clone();
+    while let Some(Reverse((_, _, _, stream_idx))) = heap.pop() {
+        let cursor = streams[stream_idx].index;
         merged.push(MergeItem {
-            event,
-            writer_pid: stream.writer_pid,
-            segment: stream.segment.clone(),
+            event: streams[stream_idx].events[cursor].clone(),
+            writer_pid: streams[stream_idx].writer_pid,
+            segment: streams[stream_idx].segment.clone(),
         });
-        streams[i].index += 1;
+        streams[stream_idx].index += 1;
+
+        if let Some(key) = stream_head_key(&streams, stream_idx) {
+            heap.push(Reverse(key));
+        }
     }
     merged
 }
@@ -70,28 +69,27 @@ pub(crate) fn annotate_provenance(item: &MergeItem) -> Value {
     value
 }
 
-pub(crate) fn filter_by_event_prefix(events: &[Value], prefix: Option<&str>) -> Vec<Value> {
+pub(crate) fn filter_by_event_prefix(events: Vec<Value>, prefix: Option<&str>) -> Vec<Value> {
     let Some(prefix) = prefix.filter(|p| !p.is_empty()) else {
-        return events.to_vec();
+        return events;
     };
     events
-        .iter()
+        .into_iter()
         .filter(|event| {
             event
                 .get("event")
                 .and_then(Value::as_str)
                 .is_some_and(|name| name.starts_with(prefix))
         })
-        .cloned()
         .collect()
 }
 
-pub(crate) fn apply_tail_limit(events: Vec<Value>, limit: usize) -> (Vec<Value>, bool) {
+pub(crate) fn apply_tail_limit(mut events: Vec<Value>, limit: usize) -> (Vec<Value>, bool) {
     if limit == 0 || events.len() <= limit {
         return (events, false);
     }
     let start = events.len() - limit;
-    (events[start..].to_vec(), true)
+    (events.split_off(start), true)
 }
 
 pub(crate) fn detect_unpaired_commands(events: &[Value]) -> Vec<String> {

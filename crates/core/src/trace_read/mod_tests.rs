@@ -1,4 +1,4 @@
-use super::{ReadOptions, TraceWarningKind, read_merged};
+use super::{METADATA_LIST_CAP, ReadOptions, TraceWarningKind, cap_list, read_merged};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -192,4 +192,86 @@ fn symlinked_segment_is_skipped_with_warning() {
             .any(|w| w.kind == TraceWarningKind::SymlinkedSegment)
     );
     assert_eq!(result.events.len(), 2);
+}
+
+#[test]
+fn cap_list_below_threshold_is_unmodified() {
+    let (items, truncated) = cap_list(vec![1, 2, 3], 5);
+    assert_eq!(items, vec![1, 2, 3]);
+    assert!(!truncated);
+}
+
+#[test]
+fn cap_list_above_threshold_truncates_and_flags() {
+    let (items, truncated) = cap_list(vec![1, 2, 3, 4, 5], 3);
+    assert_eq!(items, vec![1, 2, 3]);
+    assert!(truncated);
+}
+
+#[test]
+fn segments_metadata_list_is_capped() {
+    let dir = temp_dir("trace-mod-seg-cap");
+    fs::create_dir(&dir).unwrap();
+    for pid in 0..=METADATA_LIST_CAP {
+        fs::File::create(dir.join(format!("{pid}-0.jsonl"))).unwrap();
+    }
+    let result = read_merged(&dir, &ReadOptions::default()).unwrap();
+    assert!(result.segments_truncated);
+    assert_eq!(result.segments.len(), METADATA_LIST_CAP);
+}
+
+#[test]
+fn warnings_list_is_capped() {
+    let dir = temp_dir("trace-mod-warn-cap");
+    fs::create_dir(&dir).unwrap();
+    for i in 0..=METADATA_LIST_CAP {
+        fs::write(dir.join(format!("junk{i}.txt")), b"").unwrap();
+    }
+    let result = read_merged(&dir, &ReadOptions::default()).unwrap();
+    assert!(result.warnings_truncated);
+    assert_eq!(result.warnings.len(), METADATA_LIST_CAP);
+}
+
+#[test]
+fn read_merged_discovery_order_independent_on_genuine_tie() {
+    let dir_low_stem_created_first = temp_dir("trace-mod-tie-fwd");
+    write_segment(
+        &dir_low_stem_created_first,
+        "100-1000.jsonl",
+        &[r#"{"event":"from_early_stem","ts_ms":500,"seq":1}"#],
+    );
+    write_segment(
+        &dir_low_stem_created_first,
+        "100-2000.jsonl",
+        &[r#"{"event":"from_late_stem","ts_ms":500,"seq":1}"#],
+    );
+
+    let dir_high_stem_created_first = temp_dir("trace-mod-tie-rev");
+    write_segment(
+        &dir_high_stem_created_first,
+        "100-2000.jsonl",
+        &[r#"{"event":"from_late_stem","ts_ms":500,"seq":1}"#],
+    );
+    write_segment(
+        &dir_high_stem_created_first,
+        "100-1000.jsonl",
+        &[r#"{"event":"from_early_stem","ts_ms":500,"seq":1}"#],
+    );
+
+    let forward = read_merged(&dir_low_stem_created_first, &ReadOptions::default()).unwrap();
+    let reverse = read_merged(&dir_high_stem_created_first, &ReadOptions::default()).unwrap();
+
+    let names_forward: Vec<_> = forward
+        .events
+        .iter()
+        .map(|e| e["event"].as_str().unwrap().to_string())
+        .collect();
+    let names_reverse: Vec<_> = reverse
+        .events
+        .iter()
+        .map(|e| e["event"].as_str().unwrap().to_string())
+        .collect();
+
+    assert_eq!(names_forward, names_reverse);
+    assert_eq!(names_forward, vec!["from_early_stem", "from_late_stem"]);
 }

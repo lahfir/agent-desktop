@@ -33,31 +33,28 @@ pub struct CommandScope<'a> {
 impl CommandScope<'_> {
     pub fn complete(self, result: &Result<Value, AppError>) {
         self.finished.set(true);
-        let duration_ms = self.started.elapsed().as_millis();
         match result {
-            Ok(_) => {
-                let _ = self.context.trace(
-                    "command.end",
-                    json!({
-                        "command": self.command,
-                        "ok": true,
-                        "duration_ms": duration_ms,
-                    }),
-                );
-            }
+            Ok(_) => self.emit_end(true, None, None),
             Err(err) => {
-                let _ = self.context.trace(
-                    "command.end",
-                    json!({
-                        "command": self.command,
-                        "ok": false,
-                        "duration_ms": duration_ms,
-                        "code": err.code(),
-                        "message": err.to_string(),
-                    }),
-                );
+                let message = err.to_string();
+                self.emit_end(false, Some(err.code()), Some(message.as_str()));
             }
         }
+    }
+
+    fn emit_end(&self, ok: bool, code: Option<&str>, message: Option<&str>) {
+        let mut fields = json!({
+            "command": self.command,
+            "ok": ok,
+            "duration_ms": self.started.elapsed().as_millis(),
+        });
+        if let Some(code) = code {
+            fields["code"] = json!(code);
+        }
+        if let Some(message) = message {
+            fields["message"] = json!(message);
+        }
+        let _ = self.context.trace("command.end", fields);
     }
 }
 
@@ -66,15 +63,10 @@ impl Drop for CommandScope<'_> {
         if self.finished.get() {
             return;
         }
-        let _ = self.context.trace(
-            "command.end",
-            json!({
-                "command": self.command,
-                "ok": false,
-                "duration_ms": self.started.elapsed().as_millis(),
-                "code": "INTERNAL",
-                "message": "command scope dropped without completion",
-            }),
+        self.emit_end(
+            false,
+            Some("INTERNAL"),
+            Some("command scope dropped without completion"),
         );
     }
 }
@@ -152,14 +144,16 @@ impl CommandContext {
         if let Some(id) = session_id.as_deref() {
             validate_session_id(id)?;
         }
-        let (segment_dir, artifacts_full) = session_trace_state(
-            session_id.as_deref(),
-            self.trace.pending_file_path().is_some(),
-        )?;
-        let trace = if self.trace.pending_file_path().is_some() || session_id == self.session_id {
-            self.trace.clone()
+        let reuses_parent_trace =
+            self.trace.pending_file_path().is_some() || session_id == self.session_id;
+        let (trace, artifacts_full) = if reuses_parent_trace {
+            (self.trace.clone(), self.artifacts_full)
         } else {
-            self.trace.clone_with_session_segment(segment_dir)?
+            let (segment_dir, artifacts_full) = session_trace_state(session_id.as_deref(), false)?;
+            (
+                self.trace.clone_with_session_segment(segment_dir)?,
+                artifacts_full,
+            )
         };
         Ok(Self {
             session_id,
@@ -230,3 +224,7 @@ pub fn validate_session_id(id: &str) -> Result<(), AppError> {
 #[cfg(test)]
 #[path = "context_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "context_scope_tests.rs"]
+mod scope_tests;

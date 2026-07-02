@@ -1,11 +1,10 @@
-use super::{ReadOptions, TraceWarning, read_merged};
+use super::{ReadOptions, read_merged};
 use crate::error::AppError;
 use crate::trace_artifacts::read_screenshot_for_embed;
 use base64::Engine;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-
-#[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const VIEWER_HTML: &str = include_str!("viewer.html");
@@ -15,6 +14,8 @@ const VIEWER_JS: &str = include_str!("viewer.js");
 pub const TRACE_EXPORT_DEFAULT_LIMIT: usize = 5000;
 const MAX_EMBED_SCREENSHOT_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_JSON_BYTES: u64 = 200 * 1024 * 1024;
+
+static EXPORT_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
 static TEST_MAX_JSON_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -67,16 +68,18 @@ pub fn export_html(
             event_prefix: None,
         },
     )?;
+    if merged.segments.is_empty() {
+        return Err(empty_trace_dir_error(session_id));
+    }
 
     let (screenshots, embedded, skipped) = embed_screenshots(trace_dir, &merged.events)?;
-    let warnings: Vec<Value> = merged.warnings.iter().map(serialize_warning).collect();
 
     let island = json!({
         "session_id": session_id,
         "total_events": merged.total_events,
         "returned_events": merged.returned_events,
         "truncated": merged.truncated,
-        "warnings": warnings,
+        "warnings": merged.warnings,
         "screenshots": screenshots,
         "screenshots_embedded": embedded,
         "screenshots_skipped": skipped,
@@ -97,7 +100,7 @@ pub fn export_html(
         .replace("{{JS}}", VIEWER_JS)
         .replace("{{DATA}}", &escaped);
 
-    if html.len() as u64 > MAX_JSON_BYTES + (512 * 1024) {
+    if html.len() as u64 > max_json_bytes() + (512 * 1024) {
         return Err(AppError::invalid_input_with_suggestion(
             "Trace export exceeds the maximum output size",
             "Re-run with a smaller --limit to embed fewer events.",
@@ -126,39 +129,32 @@ pub fn export_html(
     ))
 }
 
-fn serialize_warning(warning: &TraceWarning) -> Value {
-    json!({
-        "kind": warning_kind(warning),
-        "message": warning.message,
-    })
-}
-
-fn warning_kind(warning: &TraceWarning) -> &'static str {
-    use super::TraceWarningKind;
-    match warning.kind {
-        TraceWarningKind::ForeignFile => "foreign_file",
-        TraceWarningKind::UnreadableSegment => "unreadable_segment",
-        TraceWarningKind::SymlinkedSegment => "symlinked_segment",
-        TraceWarningKind::SchemaUnknown => "schema_unknown",
-        TraceWarningKind::UnpairedCommand => "unpaired_command",
-    }
+fn empty_trace_dir_error(session_id: &str) -> AppError {
+    AppError::invalid_input_with_suggestion(
+        format!("Session '{session_id}' has an empty trace directory"),
+        "Run `session start` with tracing enabled before recording commands.",
+    )
 }
 
 fn embed_screenshots(
     trace_dir: &Path,
     events: &[Value],
 ) -> Result<(Value, usize, usize), AppError> {
-    let mut paths = Vec::new();
+    let mut paths: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
     for event in events {
         if event.get("event").and_then(Value::as_str) != Some("action.artifacts") {
             continue;
         }
         for key in ["screenshot_pre", "screenshot_post"] {
-            if let Some(path) = event.get(key).and_then(Value::as_str) {
-                if !paths.contains(&path.to_string()) {
-                    paths.push(path.to_string());
-                }
+            let Some(path) = event.get(key).and_then(Value::as_str) else {
+                continue;
+            };
+            if seen.contains(path) {
+                continue;
             }
+            seen.insert(path.to_string());
+            paths.push(path.to_string());
         }
     }
 
@@ -186,17 +182,19 @@ fn embed_screenshots(
     Ok((Value::Object(map), embedded, skipped))
 }
 
-pub fn escape_for_json_island(json: &str) -> String {
-    json.chars()
-        .map(|ch| match ch {
-            '<' => "\\u003c".to_string(),
-            '>' => "\\u003e".to_string(),
-            '&' => "\\u0026".to_string(),
-            '\u{2028}' => "\\u2028".to_string(),
-            '\u{2029}' => "\\u2029".to_string(),
-            other => other.to_string(),
-        })
-        .collect()
+fn escape_for_json_island(json: &str) -> String {
+    let mut out = String::with_capacity(json.len());
+    for ch in json.chars() {
+        match ch {
+            '<' => out.push_str("\\u003c"),
+            '>' => out.push_str("\\u003e"),
+            '&' => out.push_str("\\u0026"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn write_export_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
@@ -211,9 +209,40 @@ fn write_export_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
             std::fs::create_dir_all(parent)?;
         }
     }
-    std::fs::write(path, bytes).map_err(AppError::from)
+    let unique = EXPORT_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("{}.{unique}.tmp", std::process::id()));
+    let result = write_export_tmp_then_rename(&tmp, path, bytes);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+fn write_export_tmp_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), AppError> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(tmp)?;
+        file.write_all(bytes)?;
+        file.flush()?;
+    }
+    #[cfg(not(unix))]
+    std::fs::write(tmp, bytes)?;
+
+    std::fs::rename(tmp, path)?;
+    Ok(())
 }
 
 #[cfg(test)]
 #[path = "html_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "html_screenshot_tests.rs"]
+mod screenshot_tests;

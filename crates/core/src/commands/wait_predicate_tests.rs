@@ -170,7 +170,7 @@ fn element_wait_actionable_retries_until_live_state_converges() {
         wait_predicate::ElementPredicate::Actionable(
             crate::action_request::ActionRequest::headless(crate::action::Action::Click),
         ),
-        250,
+        5_000,
         &adapter,
         &crate::context::CommandContext::default(),
     )

@@ -3,7 +3,7 @@ use crate::trace_sanitize::sanitize_trace_value;
 use serde_json::{Map, Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
@@ -26,10 +26,11 @@ enum WriterState {
     Failed,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 struct TraceState {
     pending: TracePending,
     writer: Arc<Mutex<WriterState>>,
+    meta_written: AtomicBool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -72,6 +73,7 @@ impl TraceConfig {
             state: Arc::new(TraceState {
                 pending,
                 writer: Arc::new(Mutex::new(writer)),
+                meta_written: AtomicBool::new(false),
             }),
         })
     }
@@ -91,7 +93,7 @@ impl TraceConfig {
         session_id: Option<&str>,
         fields: impl FnOnce() -> Value,
     ) -> Result<(), AppError> {
-        let writer = match self.ensure_writer(session_id)? {
+        let writer = match self.ensure_writer()? {
             Some(writer) => writer,
             None => return Ok(()),
         };
@@ -110,10 +112,7 @@ impl TraceConfig {
         }
     }
 
-    fn ensure_writer(
-        &self,
-        session_id: Option<&str>,
-    ) -> Result<Option<Arc<Mutex<std::fs::File>>>, AppError> {
+    fn ensure_writer(&self) -> Result<Option<Arc<Mutex<std::fs::File>>>, AppError> {
         let mut writer = self
             .state
             .writer
@@ -133,10 +132,7 @@ impl TraceConfig {
             TracePending::SegmentDir(dir) => open_segment_trace_file(dir),
         };
         match open_result {
-            Ok(mut file) => {
-                if file.metadata()?.len() == 0 {
-                    write_meta_header(&mut file, session_id)?;
-                }
+            Ok(file) => {
                 let file = Arc::new(Mutex::new(file));
                 *writer = WriterState::Open(file.clone());
                 Ok(Some(file))
@@ -189,13 +185,19 @@ impl TraceConfig {
         writer: &Arc<Mutex<std::fs::File>>,
         session_id: Option<&str>,
     ) -> Result<(), AppError> {
+        if self.state.meta_written.load(Ordering::Relaxed) {
+            return Ok(());
+        }
         let mut file = writer
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
         if file.metadata()?.len() > 0 {
+            self.state.meta_written.store(true, Ordering::Relaxed);
             return Ok(());
         }
-        write_meta_header(&mut file, session_id)
+        write_meta_header(&mut file, session_id)?;
+        self.state.meta_written.store(true, Ordering::Relaxed);
+        Ok(())
     }
 }
 
@@ -219,7 +221,7 @@ fn open_segment_trace_file(dir: &Path) -> Result<std::fs::File, AppError> {
     open_trace_file(&segment_path_for_dir(dir))
 }
 
-fn process_start_ms() -> u64 {
+pub(crate) fn process_start_ms() -> u64 {
     static START_MS: OnceLock<u64> = OnceLock::new();
     *START_MS.get_or_init(|| {
         std::time::SystemTime::now()

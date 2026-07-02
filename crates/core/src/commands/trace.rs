@@ -6,7 +6,6 @@ use crate::{
     trace_read::{ExportOptions, ReadOptions, export_html, read_merged},
 };
 use serde_json::{Value, json};
-use std::fs;
 use std::path::PathBuf;
 
 const DEFAULT_SHOW_LIMIT: usize = 500;
@@ -41,37 +40,65 @@ fn resolve_trace_session(context: &CommandContext) -> Result<(String, RefStore),
             "Run `session start` with tracing enabled before recording commands.",
         ));
     }
-    if fs::read_dir(&trace_dir)?.next().is_none() {
-        return Err(AppError::invalid_input_with_suggestion(
-            format!("Session '{session_id}' has an empty trace directory"),
-            "Run `session start` with tracing enabled before recording commands.",
-        ));
-    }
     Ok((session_id, store))
+}
+
+fn empty_trace_dir_error(session_id: &str) -> AppError {
+    AppError::invalid_input_with_suggestion(
+        format!("Session '{session_id}' has an empty trace directory"),
+        "Run `session start` with tracing enabled before recording commands.",
+    )
 }
 
 fn show(context: &CommandContext, limit: usize, event: Option<String>) -> Result<Value, AppError> {
     let (session_id, store) = resolve_trace_session(context)?;
+    let trace_dir = store.trace_dir();
     let merged = read_merged(
-        &store.trace_dir(),
+        &trace_dir,
         &ReadOptions {
             limit,
-            event_prefix: event,
+            event_prefix: event.clone(),
         },
     )?;
+    if merged.segments.is_empty() {
+        return Err(empty_trace_dir_error(&session_id));
+    }
 
     let mut body = json!({
         "session_id": session_id,
         "segments": merged.segments,
-        "total_events": merged.total_events,
         "returned_events": merged.returned_events,
         "truncated": merged.truncated,
         "events": merged.events,
     });
+
+    match &event {
+        Some(prefix) => {
+            let unfiltered = read_merged(&trace_dir, &ReadOptions::default())?;
+            body["matched_events"] = json!(count_matching_events(&unfiltered.events, prefix));
+            body["total_events"] = json!(unfiltered.total_events);
+        }
+        None => {
+            body["total_events"] = json!(merged.total_events);
+        }
+    }
+
     if !merged.warnings.is_empty() {
-        body["warnings"] = json!(serialize_warnings(&merged.warnings));
+        body["warnings"] = json!(merged.warnings);
     }
     Ok(body)
+}
+
+fn count_matching_events(events: &[Value], prefix: &str) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            event
+                .get("event")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.starts_with(prefix))
+        })
+        .count()
 }
 
 fn export(context: &CommandContext, limit: usize, out: Option<PathBuf>) -> Result<Value, AppError> {
@@ -88,26 +115,6 @@ fn export(context: &CommandContext, limit: usize, out: Option<PathBuf>) -> Resul
         "screenshots_skipped": stats.screenshots_skipped,
         "bytes": stats.bytes,
     }))
-}
-
-fn serialize_warnings(warnings: &[crate::trace_read::TraceWarning]) -> Vec<Value> {
-    use crate::trace_read::TraceWarningKind;
-    warnings
-        .iter()
-        .map(|warning| {
-            let kind = match warning.kind {
-                TraceWarningKind::ForeignFile => "foreign_file",
-                TraceWarningKind::UnreadableSegment => "unreadable_segment",
-                TraceWarningKind::SymlinkedSegment => "symlinked_segment",
-                TraceWarningKind::SchemaUnknown => "schema_unknown",
-                TraceWarningKind::UnpairedCommand => "unpaired_command",
-            };
-            json!({
-                "kind": kind,
-                "message": warning.message,
-            })
-        })
-        .collect()
 }
 
 #[cfg(test)]

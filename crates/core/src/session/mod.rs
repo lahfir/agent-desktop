@@ -80,10 +80,10 @@ pub fn resolve_active_session(
 
 pub fn read_current_session_pointer() -> Result<Option<String>, AppError> {
     let path = current_session_path()?;
-    let mut file = match open_session_file(&path) {
+    let mut file = match crate::refs::open_nofollow(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) if is_symlinked(&path) => {
+        Err(err) if crate::refs::is_symlink(&path) => {
             tracing::warn!(
                 "ignoring symlinked session pointer {}: {err}",
                 path.display()
@@ -116,7 +116,7 @@ pub fn clear_current_session_pointer() -> Result<(), AppError> {
 
 pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppError> {
     let path = manifest_path(session_id)?;
-    let mut file = match open_session_file(&path) {
+    let mut file = match crate::refs::open_nofollow(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
         Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
@@ -129,12 +129,6 @@ pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppErr
         Ok(manifest) => Ok(Some(manifest)),
         Err(err) => Ok(ignore_unreadable_manifest(&path, &err)),
     }
-}
-
-fn is_symlinked(path: &Path) -> bool {
-    std::fs::symlink_metadata(path)
-        .map(|meta| meta.file_type().is_symlink())
-        .unwrap_or(false)
 }
 
 fn ignore_unreadable_manifest<E: std::fmt::Display>(
@@ -307,27 +301,6 @@ pub(super) fn now_millis() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
-}
-
-fn open_session_file(path: &Path) -> std::io::Result<std::fs::File> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(path)
-    }
-    #[cfg(not(unix))]
-    {
-        if std::fs::symlink_metadata(path)?.file_type().is_symlink() {
-            return Err(std::io::Error::new(
-                ErrorKind::PermissionDenied,
-                "session path must not be a symlink",
-            ));
-        }
-        std::fs::File::open(path)
-    }
 }
 
 #[cfg(test)]

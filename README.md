@@ -149,7 +149,7 @@ agent-desktop trace show --limit 500         # bounded JSON timeline for agents
 agent-desktop trace export --out run.html    # single-file HTML viewer (works from file://)
 ```
 
-`trace show` merges all segment files deterministically and requires no permissions. `trace export` embeds the timeline plus screenshots as base64 in one static HTML file. Treat exported HTML like a screenshot when `artifacts: full` was enabled.
+`trace show` merges all segment files deterministically and requires no permissions. `trace export` embeds the timeline plus screenshots as base64 in one static HTML file. Without `--out`, the HTML is written to the session directory (`~/.agent-desktop/sessions/<id>/trace-<id>.html`), not the current directory; `--out` overrides the path. Treat exported HTML like a screenshot when `artifacts: full` was enabled.
 
 ### Shared sessions for multi-agent workflows
 

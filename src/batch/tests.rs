@@ -216,6 +216,57 @@ fn session_batch_accepts_screenshots_flag() {
 }
 
 #[test]
+fn session_batch_end_rejects_start_only_field() {
+    let err = parse_command(item(
+        "session",
+        serde_json::json!({ "action": "end", "screenshots": true }),
+    ))
+    .expect_err("'screenshots' is not valid for the 'end' action and must be rejected");
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.to_string().contains("screenshots"));
+}
+
+#[test]
+fn session_batch_gc_parses_older_than() {
+    let command = parse_command(item(
+        "session",
+        serde_json::json!({ "action": "gc", "older_than": 5, "ended": true }),
+    ))
+    .expect("session gc parses");
+
+    match command {
+        Commands::Session(args) => match args.action {
+            crate::cli_args::session::SessionAction::Gc(gc) => {
+                assert_eq!(gc.older_than, Some(5));
+                assert!(gc.ended);
+            }
+            other => panic!("unexpected action: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn session_batch_end_parses_id() {
+    let command = parse_command(item(
+        "session",
+        serde_json::json!({ "action": "end", "id": "s-1" }),
+    ))
+    .expect("session end parses");
+
+    match command {
+        Commands::Session(args) => match args.action {
+            crate::cli_args::session::SessionAction::End(end) => {
+                assert_eq!(end.id.as_deref(), Some("s-1"));
+            }
+            other => panic!("unexpected action: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn every_cli_subcommand_is_known_to_batch_parser() {
     for subcommand in crate::cli::Cli::command().get_subcommands() {
         let name = subcommand.get_name();

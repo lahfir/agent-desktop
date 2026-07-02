@@ -132,7 +132,7 @@ pub fn run_with_context(
     let mut result = build(adapter, opts, app_name, window_id)?;
     let store = RefStore::for_session(context.session_id())?;
     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
-    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id)?;
+    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id, &result.refmap)?;
     result.snapshot_id = Some(snapshot_id);
     emit_snapshot_saved(context, &result)?;
     Ok(result)
@@ -207,10 +207,10 @@ pub fn append_surface_refs_with_context(
     let tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
     if let Some(id) = store.latest_snapshot_id() {
         store.save_existing_snapshot(&id, &refmap)?;
-        trace_artifacts::copy_refmap_if_full(context, &store, &id)?;
+        trace_artifacts::copy_refmap_if_full(context, &store, &id, &refmap)?;
     } else {
         let id = store.save_new_snapshot(&refmap)?;
-        trace_artifacts::copy_refmap_if_full(context, &store, &id)?;
+        trace_artifacts::copy_refmap_if_full(context, &store, &id, &refmap)?;
     }
     Ok(Some(tree))
 }

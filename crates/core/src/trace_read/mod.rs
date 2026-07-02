@@ -9,7 +9,7 @@ use merge::{
     annotate_provenance, apply_tail_limit, detect_unpaired_commands, filter_by_event_prefix,
     merge_segments,
 };
-use segment::{SegmentReadStats, is_symlink, parse_segment_filename, read_segment_events};
+use segment::{SegmentReadStats, parse_segment_filename, read_segment_events};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
@@ -54,11 +54,15 @@ fn is_zero(v: &usize) -> bool {
 pub struct MergedTrace {
     pub events: Vec<Value>,
     pub segments: Vec<SegmentInfo>,
+    pub segments_truncated: bool,
     pub warnings: Vec<TraceWarning>,
+    pub warnings_truncated: bool,
     pub total_events: usize,
     pub returned_events: usize,
     pub truncated: bool,
 }
+
+const METADATA_LIST_CAP: usize = 500;
 
 pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrace, AppError> {
     if !trace_dir.is_dir() {
@@ -83,8 +87,7 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
             continue;
         }
 
-        let parsed_name = parse_segment_filename(name);
-        if parsed_name.is_none() {
+        let Some(parsed_name) = parse_segment_filename(name) else {
             if !name.starts_with('.') {
                 warnings.push(TraceWarning {
                     kind: TraceWarningKind::ForeignFile,
@@ -92,12 +95,10 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
                 });
             }
             continue;
-        }
-
-        let parsed_name = parsed_name.unwrap_or_else(|| unreachable!());
+        };
         let path = entry.path();
 
-        if is_symlink(&path) {
+        if crate::refs::is_symlink(&path) {
             warnings.push(TraceWarning {
                 kind: TraceWarningKind::SymlinkedSegment,
                 message: format!("Skipping symlinked segment: {name}"),
@@ -105,7 +106,7 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
             continue;
         }
 
-        match read_segment_events(&path, parsed_name.pid) {
+        match read_segment_events(&path) {
             Ok((events, stats)) => {
                 if let Some(ref msg) = stats.schema_warning {
                     warnings.push(TraceWarning {
@@ -126,12 +127,13 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
     }
 
     segment_infos.sort_by(|a, b| a.segment.cmp(&b.segment));
+    merge_sources.sort_by(|a, b| a.2.cmp(&b.2));
 
     let merged = merge_segments(merge_sources);
     let mut all_events: Vec<Value> = merged.iter().map(annotate_provenance).collect();
     let total_events = all_events.len();
 
-    all_events = filter_by_event_prefix(&all_events, options.event_prefix.as_deref());
+    all_events = filter_by_event_prefix(all_events, options.event_prefix.as_deref());
     let filtered_total = all_events.len();
 
     let (returned_events, truncated) = apply_tail_limit(all_events, options.limit);
@@ -143,11 +145,16 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
         });
     }
 
+    let (segments, segments_truncated) = cap_list(segment_infos, METADATA_LIST_CAP);
+    let (warnings, warnings_truncated) = cap_list(warnings, METADATA_LIST_CAP);
+
     Ok(MergedTrace {
         returned_events: returned_events.len(),
         events: returned_events,
-        segments: segment_infos,
+        segments,
+        segments_truncated,
         warnings,
+        warnings_truncated,
         total_events: if options.event_prefix.is_some() {
             filtered_total
         } else {
@@ -155,6 +162,14 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
         },
         truncated,
     })
+}
+
+fn cap_list<T>(mut items: Vec<T>, cap: usize) -> (Vec<T>, bool) {
+    if items.len() <= cap {
+        return (items, false);
+    }
+    items.truncate(cap);
+    (items, true)
 }
 
 fn segment_info_from_stats(
