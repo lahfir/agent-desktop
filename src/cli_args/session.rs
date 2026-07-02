@@ -26,6 +26,11 @@ pub(crate) struct SessionStartArgs {
     pub no_trace: bool,
     #[arg(
         long,
+        help = "Capture pre/post-action screenshots and refmap copies (requires tracing; sensitive)"
+    )]
+    pub screenshots: bool,
+    #[arg(
+        long,
         help = "Override the current-session pointer even when it references a live session"
     )]
     pub force: bool,

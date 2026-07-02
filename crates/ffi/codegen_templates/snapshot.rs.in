@@ -93,11 +93,14 @@ pub unsafe extern "C" fn ad_snapshot(
             snapshot_id: None,
         };
 
+        let scope = context.command_scope("snapshot");
+
         let result = agent_desktop_core::commands::snapshot::execute(
             args,
             adapter_ref.inner.as_ref(),
             &context,
         );
+        scope.complete(&result);
 
         unsafe { write_command_envelope("snapshot", result, out) }
     })

@@ -57,7 +57,16 @@ The `session.json` file describing one session: id, optional name, created/ended
 Structured file tracing activates only when the manifest has `trace: on`. FFI adapters and bare `--session` ids without this manifest do not write trace segments.
 
 ### Trace Segment
-One append-only JSONL file per OS process under `<session>/trace/<pid>-<procStartTs>.jsonl`, written lazily with atomic lines (`ts_ms`, monotonic `seq`, redacted fields). Explicit `--trace <path>` overrides to a single file.
+One append-only JSONL file per OS process under `<session>/trace/<pid>-<procStartTs>.jsonl`, written lazily with atomic lines. Each new segment opens with a `trace.meta` header (`schema`, binary version, `os`, `pid`, `proc_start_ms`, `session_id`). Older traces without meta read as schema 0. Explicit `--trace <path>` overrides to a single file.
+
+### Trace Timeline
+The merged, deterministic ordering of all events from every segment in a session, produced by `trace show` and `trace export`. Merge key is `(ts_ms, writer pid, in-file position)`; the reader tolerates truncated tails, corrupt lines, and foreign files with counted warnings rather than hard errors.
+
+### Trace Schema
+Additive-only evolution contract: new event types and optional fields may appear; existing meanings never change. Readers ignore unknown content. Segments declare their schema in the leading `trace.meta` line; unknown future schemas warn and parse best-effort.
+
+### Replay Artifacts
+Opt-in capture mode (`session start --screenshots`, manifest `artifacts: full`) that stores pre/post-action PNGs under `<session>/trace/screens/` and refmap copies under `<session>/trace/refmaps/`. Event-mode traces (`artifacts: events`, the default) record JSONL only. Artifacts are unredacted and may appear in exported HTML — treat them like screenshots.
 
 ### Protected Process
 A session-critical operating-system process that agent-desktop refuses to close on every surface, because terminating it would break the user's desktop session.

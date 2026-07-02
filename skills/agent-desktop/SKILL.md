@@ -9,7 +9,7 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 55 commands across observation, interaction, keyboard/mouse, app lifecycle,
+  Covers 56 commands across observation, interaction, keyboard/mouse, app lifecycle,
   notifications (macOS), clipboard, wait, session lifecycle, and a `skills` command
   bundled docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
@@ -95,7 +95,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
 - **Headless vs headed:** ref actions are headless by default (AX-only, no cursor) and fail closed when only a physical gesture would work. `type` uses a focus-fallback base policy because typing needs focus but never moves the cursor. Pass the global `--headed` flag to permit cursor movement and focus stealing so physical fallbacks can complete; the AX path is still tried first, so `--headed` never regresses headless-capable elements. Raw cursor commands (`hover`, `drag`, `mouse-*`) are physical and require `--headed`; keyboard commands (`press`, `key-down`, `key-up`) are explicit low-level input.
-- **Sessions and tracing:** run `session start` once per agent run to create a manifest with `trace: on` (default). Subsequent commands in that run record JSONL automatically to per-process segments under `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl` — no `--trace` on every call. A session owns both its trace and its latest-snapshot namespace; activating it (via pointer, env, or flag) relocates implicit "latest" to that session. Explicit `--snapshot <id>` still resolves cross-session. **`--session <id>` alone** (no manifest from `session start`) selects only the snapshot namespace — existing callers see no surprise trace files. **`--trace <path>`** still overrides to one atomic file for CI or one-offs. Activation precedence: `--session` > `AGENT_DESKTOP_SESSION` > `~/.agent-desktop/current_session` (written only by `session start`). Concurrent independent agents set `AGENT_DESKTOP_SESSION` per process; the pointer is a single-active-session convenience. Multi-agent shared sessions: each agent acts on the `snapshot_id` from its own `snapshot` call — implicit latest is not a cross-agent guarantee. Run `status` to see `session_id` and `tracing`. Trace lines include `ts_ms`, monotonic per-process `seq`, and redacted sensitive fields (`text`, `value`, `expected`, `name`, `username`, `description`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, `placeholder` → `{ "redacted": true }`). `--trace-strict` fails on trace setup and pre-action writes; post-action success traces are best-effort.
+- **Sessions and tracing:** run `session start` once per agent run to create a manifest with `trace: on` (default). Use `session start --screenshots` when you need replay artifacts (`artifacts: full`): pre/post-action PNGs and refmap copies under the session trace directory (sensitive — treat exports like screenshots). Subsequent commands record JSONL automatically to per-process segments under `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl` — no `--trace` on every call. Read traces back with `trace show` (bounded JSON for agents) or `trace export` (single-file HTML for humans). A session owns both its trace and its latest-snapshot namespace; activating it (via pointer, env, or flag) relocates implicit "latest" to that session. Explicit `--snapshot <id>` still resolves cross-session. **`--session <id>` alone** (no manifest from `session start`) selects only the snapshot namespace — existing callers see no surprise trace files. **`--trace <path>`** still overrides to one atomic file for CI or one-offs. Activation precedence: `--session` > `AGENT_DESKTOP_SESSION` > `~/.agent-desktop/current_session` (written only by `session start`). Concurrent independent agents set `AGENT_DESKTOP_SESSION` per process; the pointer is a single-active-session convenience. Multi-agent shared sessions: each agent acts on the `snapshot_id` from its own `snapshot` call — implicit latest is not a cross-agent guarantee. Run `status` to see `session_id` and `tracing`. Trace lines include `ts_ms`, monotonic per-process `seq`, and redacted sensitive fields (`text`, `value`, `expected`, `name`, `username`, `description`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, `placeholder` → `{ "redacted": true }`). `--trace-strict` fails on trace setup and pre-action writes; post-action success traces are best-effort.
 
 ## JSON Output Contract
 
@@ -130,7 +130,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 
 `TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
-## Command Quick Reference (55 commands)
+## Command Quick Reference (56 commands)
 
 ### Observation
 ```
@@ -228,11 +228,13 @@ agent-desktop wait --notification --app "App"   # Wait for new notification
 
 ### System
 ```
-agent-desktop session start [--name LABEL] [--no-trace] [--force]  # Create trace-enabled session + pointer
+agent-desktop session start [--name LABEL] [--screenshots] [--no-trace] [--force]  # Trace-enabled session; --screenshots enables replay artifacts (sensitive)
 agent-desktop session end [id]                                      # Seal manifest, clear pointer
 agent-desktop session list                                          # List session manifests
 agent-desktop session gc [--older-than SECS] [--ended]              # Reclaim ended/stale sessions
-agent-desktop status                            # Health, session_id, tracing, permissions
+agent-desktop trace show [--limit N] [--event PREFIX]               # Merge trace segments (default tail 500; 0 = all)
+agent-desktop trace export [--out path.html] [--limit N]            # Self-contained HTML viewer (default tail 5000)
+agent-desktop status                            # Health, session_id, tracing, artifacts, permissions
 agent-desktop permissions                       # Check permission
 agent-desktop permissions --request             # Trigger permission dialog
 agent-desktop version                           # Version info (always JSON envelope)

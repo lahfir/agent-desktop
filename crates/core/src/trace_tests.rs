@@ -26,51 +26,6 @@ fn trace_open_rejects_symlink_paths() {
 }
 
 #[test]
-fn trace_redacts_sensitive_fields_but_preserves_messages() {
-    let value = sanitize_trace_value(json!({
-        "text": "secret",
-        "message": "Target is not actionable: supported_action failed",
-        "details": { "name": "Private Button" },
-        "title": "Window"
-    }));
-
-    assert_eq!(value["text"]["redacted"], true);
-    assert_eq!(value["details"]["name"]["redacted"], true);
-    assert_eq!(value["title"]["redacted"], true);
-    assert_eq!(
-        value["message"],
-        "Target is not actionable: supported_action failed"
-    );
-}
-
-#[test]
-fn trace_redaction_covers_nested_shapes_and_substring_keys() {
-    let value = sanitize_trace_value(json!({
-        "action": {
-            "typed_text": ["secret", "another"],
-            "api_token": {"kind": "bearer"},
-            "typedText": "secret",
-            "apiToken": "secret",
-            "targetLabel": "secret",
-            "userName": "secret",
-            "filename": "report.txt",
-            "password": null,
-            "counter": 3
-        }
-    }));
-
-    assert_eq!(value["action"]["typed_text"]["redacted"], true);
-    assert_eq!(value["action"]["api_token"]["redacted"], true);
-    assert_eq!(value["action"]["typedText"]["redacted"], true);
-    assert_eq!(value["action"]["apiToken"]["redacted"], true);
-    assert_eq!(value["action"]["targetLabel"]["redacted"], true);
-    assert_eq!(value["action"]["userName"]["redacted"], true);
-    assert_eq!(value["action"]["filename"], "report.txt");
-    assert!(value["action"]["password"].is_null());
-    assert_eq!(value["action"]["counter"], 3);
-}
-
-#[test]
 fn trace_write_rejects_files_at_size_cap() {
     let path = std::env::temp_dir().join(format!(
         "agent-desktop-trace-cap-{}",
@@ -159,14 +114,16 @@ fn write_event_emits_single_atomic_jsonl_line_with_seq() {
     config.emit("second", None, json!({})).unwrap();
     let body = fs::read_to_string(&path).unwrap();
     let lines: Vec<&str> = body.lines().collect();
-    assert_eq!(lines.len(), 2);
+    assert_eq!(lines.len(), 3);
     let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
     let second: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
-    assert_eq!(first["event"], "first");
-    assert_eq!(second["event"], "second");
-    assert!(first["seq"].as_u64().is_some());
+    let third: serde_json::Value = serde_json::from_str(lines[2]).unwrap();
+    assert_eq!(first["event"], "trace.meta");
+    assert_eq!(second["event"], "first");
+    assert_eq!(third["event"], "second");
     assert!(second["seq"].as_u64().is_some());
-    assert!(second["seq"].as_u64().unwrap() > first["seq"].as_u64().unwrap());
+    assert!(third["seq"].as_u64().is_some());
+    assert!(third["seq"].as_u64().unwrap() > second["seq"].as_u64().unwrap());
     let _ = fs::remove_file(path);
 }
 
@@ -191,7 +148,7 @@ fn truncated_final_line_leaves_prior_lines_parseable() {
             parsed += 1;
         }
     }
-    assert_eq!(parsed, 1);
+    assert_eq!(parsed, 2);
     let _ = fs::remove_file(path);
 }
 
@@ -272,6 +229,50 @@ fn segment_open_rejects_symlinked_trace_dir() {
 
     let _ = fs::remove_file(&base);
     let _ = fs::remove_dir_all(&real);
+}
+
+#[test]
+fn trace_meta_is_first_line_of_new_segment() {
+    let trace_dir = std::env::temp_dir().join(format!(
+        "agent-desktop-meta-dir-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let config = TraceConfig::build(None, Some(trace_dir.clone()), false).unwrap();
+    config
+        .emit(
+            "snapshot.saved",
+            Some("sess-1"),
+            json!({ "snapshot_id": "s1" }),
+        )
+        .unwrap();
+    let segment = segment_path_for_dir(&trace_dir);
+    let body = fs::read_to_string(segment).unwrap();
+    let first: serde_json::Value = serde_json::from_str(body.lines().next().unwrap()).unwrap();
+    assert_eq!(first["event"], "trace.meta");
+    assert_eq!(first["schema"], 1);
+    assert_eq!(first["session_id"], "sess-1");
+    assert!(first["pid"].as_u64().is_some());
+    let _ = fs::remove_dir_all(trace_dir);
+}
+
+#[test]
+fn explicit_trace_file_opens_with_meta_header() {
+    let path = std::env::temp_dir().join(format!(
+        "agent-desktop-meta-file-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let config = TraceConfig::build(Some(path.clone()), None, false).unwrap();
+    config.emit("event", None, json!({})).unwrap();
+    let first: serde_json::Value =
+        serde_json::from_str(fs::read_to_string(&path).unwrap().lines().next().unwrap()).unwrap();
+    assert_eq!(first["event"], "trace.meta");
+    let _ = fs::remove_file(path);
 }
 
 #[test]

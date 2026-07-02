@@ -31,6 +31,7 @@ const COMMAND_SPECIFIC_TESTS: &[&str] = &[
     "session",
     "snapshot",
     "status",
+    "trace",
     "wait",
 ];
 

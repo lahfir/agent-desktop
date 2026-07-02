@@ -1,6 +1,6 @@
 //! @generated — produced by crates/ffi/build.rs codegen.
 //! Edit the templates under crates/ffi/codegen_templates/, not this file.
-//! Commands in alphabetical order: execute_by_ref, snapshot, status, version, wait.
+//! Commands in alphabetical order: execute_by_ref, snapshot, status, trace_export, trace_show, version, wait.
 
 use crate::AdAdapter;
 use crate::actions::conversion::action_from_c;
@@ -147,6 +147,8 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             }
         };
 
+        let scope = context.command_scope("execute_by_ref");
+
         let result = agent_desktop_core::commands::execute_by_ref::execute(
             &ref_str,
             snapshot_str.as_deref(),
@@ -155,6 +157,7 @@ pub unsafe extern "C" fn ad_execute_by_ref(
             adapter_ref.inner.as_ref(),
             &context,
         );
+        scope.complete(&result);
 
         unsafe { write_command_envelope("execute_by_ref", result, out) }
     })
@@ -254,11 +257,14 @@ pub unsafe extern "C" fn ad_snapshot(
             snapshot_id: None,
         };
 
+        let scope = context.command_scope("snapshot");
+
         let result = agent_desktop_core::commands::snapshot::execute(
             args,
             adapter_ref.inner.as_ref(),
             &context,
         );
+        scope.complete(&result);
 
         unsafe { write_command_envelope("snapshot", result, out) }
     })
@@ -308,10 +314,151 @@ pub unsafe extern "C" fn ad_status(
 
         let report = adapter.inner.permission_report();
 
+        let scope = ctx.command_scope("status");
+
         let result: Result<serde_json::Value, AppError> =
             execute_with_report_with_context(&*adapter.inner, &report, &ctx);
+        scope.complete(&result);
 
         unsafe { write_command_envelope("status", result, out) }
+    })
+}
+
+/// Exports the merged trace timeline for the adapter's active session as a
+/// single self-contained HTML file matching `agent-desktop trace export`.
+///
+/// `limit` controls tail semantics: `0` embeds all events; the default `5000`
+/// matches the CLI. Pass `-1` to use the CLI default explicitly.
+///
+/// `out_path` may be null; when set it must be a NUL-terminated UTF-8 path
+/// within `AD_MAX_STRING_BYTES + 1` bytes.
+///
+/// On success `*out` is a heap-allocated JSON envelope freed with
+/// `ad_free_string`. On command-level failure `*out` still holds an error
+/// envelope that must be freed.
+///
+/// # Safety
+///
+/// `adapter` must be a non-null pointer from `ad_adapter_create` or
+/// `ad_adapter_create_with_session`. `out` must be non-null. `out_path`
+/// may be null or a NUL-terminated UTF-8 string within `AD_MAX_STRING_BYTES + 1`
+/// bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_trace_export(
+    adapter: *const AdAdapter,
+    limit: i32,
+    out_path: *const c_char,
+    out: *mut *mut c_char,
+) -> AdResult {
+    guard_non_null!(out, c"out is null");
+    unsafe { *out = ptr::null_mut() };
+    trap_panic(|| {
+        guard_non_null!(adapter, c"adapter is null");
+
+        let path = match optional_adapter_string(out_path, "out_path") {
+            Ok(value) => value,
+            Err(e) => {
+                set_last_error(&e);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+
+        let effective_limit = if limit < 0 {
+            agent_desktop_core::trace_read::TRACE_EXPORT_DEFAULT_LIMIT
+        } else {
+            limit as usize
+        };
+
+        let adapter_ref = unsafe { &*adapter };
+        let context = match adapter_ref.command_context() {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                let ae = app_error_to_adapter(e);
+                set_last_error(&ae);
+                return crate::error::last_error_code();
+            }
+        };
+
+        let scope = context.command_scope("trace");
+        let result = agent_desktop_core::commands::trace::execute(
+            agent_desktop_core::commands::trace::TraceAction::Export {
+                limit: effective_limit,
+                out: path.map(std::path::PathBuf::from),
+            },
+            &context,
+        );
+        scope.complete(&result);
+
+        unsafe { write_command_envelope("trace", result, out) }
+    })
+}
+
+/// Returns the merged trace timeline for the adapter's active session as a
+/// JSON envelope matching `agent-desktop trace show`.
+///
+/// `limit` controls tail semantics: `0` embeds all events; the default `500`
+/// matches the CLI. Pass `-1` to use the CLI default explicitly.
+///
+/// `event_prefix` may be null; when set, only events whose name starts with the
+/// prefix are returned before the tail limit is applied.
+///
+/// On success `*out` is a heap-allocated JSON envelope freed with
+/// `ad_free_string`. On command-level failure `*out` still holds an error
+/// envelope that must be freed.
+///
+/// # Safety
+///
+/// `adapter` must be a non-null pointer from `ad_adapter_create` or
+/// `ad_adapter_create_with_session`. `out` must be non-null. `event_prefix`
+/// may be null or a NUL-terminated UTF-8 string within `AD_MAX_STRING_BYTES + 1`
+/// bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_trace_show(
+    adapter: *const AdAdapter,
+    limit: i32,
+    event_prefix: *const c_char,
+    out: *mut *mut c_char,
+) -> AdResult {
+    guard_non_null!(out, c"out is null");
+    unsafe { *out = ptr::null_mut() };
+    trap_panic(|| {
+        guard_non_null!(adapter, c"adapter is null");
+
+        let event = match optional_adapter_string(event_prefix, "event_prefix") {
+            Ok(value) => value,
+            Err(e) => {
+                set_last_error(&e);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+
+        let effective_limit = if limit < 0 {
+            agent_desktop_core::commands::trace::TRACE_SHOW_DEFAULT_LIMIT
+        } else {
+            limit as usize
+        };
+
+        let adapter_ref = unsafe { &*adapter };
+        let context = match adapter_ref.command_context() {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                let ae = app_error_to_adapter(e);
+                set_last_error(&ae);
+                return crate::error::last_error_code();
+            }
+        };
+
+        let scope = context.command_scope("trace");
+        let result = agent_desktop_core::commands::trace::execute(
+            agent_desktop_core::commands::trace::TraceAction::Show {
+                limit: effective_limit,
+                event,
+            },
+            &context,
+        );
+        scope.complete(&result);
+
+        unsafe { write_command_envelope("trace", result, out) }
     })
 }
 
@@ -330,7 +477,17 @@ pub unsafe extern "C" fn ad_version(out: *mut *mut c_char) -> AdResult {
     trap_panic(|| unsafe {
         guard_non_null!(out, c"out is null");
         *out = ptr::null_mut();
+        let context = match agent_desktop_core::context::CommandContext::new(None, None, false) {
+            Ok(ctx) => ctx,
+            Err(app_err) => {
+                let ae = app_error_to_adapter(app_err);
+                set_last_error(&ae);
+                return crate::error::last_error_code();
+            }
+        };
+        let scope = context.command_scope("version");
         let result = agent_desktop_core::commands::version::execute();
+        scope.complete(&result);
         write_command_envelope("version", result, out)
     })
 }
@@ -426,11 +583,14 @@ pub unsafe extern "C" fn ad_wait(
             }
         };
 
+        let scope = ctx.command_scope("wait");
+
         let result = agent_desktop_core::commands::wait::execute(
             wait_args,
             adapter_ref.inner.as_ref(),
             &ctx,
         );
+        scope.complete(&result);
 
         unsafe { write_command_envelope("wait", result, out) }
     })

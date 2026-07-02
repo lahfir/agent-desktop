@@ -14,7 +14,17 @@ pub unsafe extern "C" fn ad_version(out: *mut *mut c_char) -> AdResult {
     trap_panic(|| unsafe {
         guard_non_null!(out, c"out is null");
         *out = ptr::null_mut();
+        let context = match agent_desktop_core::context::CommandContext::new(None, None, false) {
+            Ok(ctx) => ctx,
+            Err(app_err) => {
+                let ae = app_error_to_adapter(app_err);
+                set_last_error(&ae);
+                return crate::error::last_error_code();
+            }
+        };
+        let scope = context.command_scope("version");
         let result = agent_desktop_core::commands::version::execute();
+        scope.complete(&result);
         write_command_envelope("version", result, out)
     })
 }

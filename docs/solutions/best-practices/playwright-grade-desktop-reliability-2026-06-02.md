@@ -161,7 +161,10 @@ safe for agents to use with machine-readable command output:
 
 - create private trace files
 - reject symlink trace paths on Unix
-- redact sensitive text/value/name/message fields
+- redact sensitive fields by key name (`text`/`value`/`name`/…); note that
+  `message` is NOT key-redacted, so raw caller arguments must never be
+  interpolated into it — see
+  `docs/solutions/conventions/keep-raw-arguments-out-of-trace-reachable-error-messages.md`
 - let `--trace-strict` fail on setup and pre-action trace writes
 - keep post-action success trace writes best-effort after the desktop mutation
   has already happened

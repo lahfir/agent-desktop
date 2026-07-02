@@ -92,7 +92,7 @@ fn is_live_read_unsupported(err: &AdapterError) -> bool {
 
 pub enum ScreenshotTarget {
     Screen(usize),
-    /// Capture the frontmost window owned by this process ID.
+    /// Capture the largest visible window owned by this process ID.
     Window(i32),
     FullScreen,
 }

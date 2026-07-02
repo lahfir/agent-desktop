@@ -319,6 +319,37 @@ assert "trace recorded resolver events" "$has_events" "bytes=$bytes resolver_eve
 assert "typed secret NOT in trace" "$([ "$leaked" = "0" ] && echo 1 || echo 0)" "secret_present=$([ "$leaked" = 1 ] && echo YES || echo no) redaction_markers=$([ "$redacted" = 1 ] && echo yes || echo no)"
 rm -f "$trf"
 
+note "trace show/export with replay artifacts"
+trace_start="$("$bin" session start --screenshots --force --name e2e-trace 2>/dev/null)"
+trace_sess="$(echo "$trace_start" | field "['data']['session_id']")"
+"$bin" --session "$trace_sess" snapshot --app "$app" -i >/dev/null 2>&1; sleep 0.3
+"$bin" --session "$trace_sess" click "$(resolve button primary-button)" >/dev/null 2>&1; sleep 0.3
+"$bin" --session "$trace_sess" type "$(resolve textfield text-input)" "trace-e2e" >/dev/null 2>&1; sleep 0.5
+trace_show="$("$bin" --session "$trace_sess" trace show --limit 0 2>/dev/null)"
+trace_parse="$(echo "$trace_show" | python3 -c "import json,sys
+d=json.load(sys.stdin)
+ev=[e.get('event') for e in d.get('data',{}).get('events',[])]
+print(int('command.start' in ev and 'command.end' in ev and 'snapshot.saved' in ev))" 2>/dev/null)"
+trace_dir="${HOME}/.agent-desktop/sessions/${trace_sess}/trace"
+png_magic=0
+if [ -d "$trace_dir/screens" ]; then
+  first_png="$(find "$trace_dir/screens" -name '*.png' -print -quit 2>/dev/null)"
+  if [ -n "$first_png" ] && [ "$(head -c 8 "$first_png" | xxd -p)" = "89504e470d0a1a0a" ]; then
+    png_magic=1
+  fi
+fi
+assert "trace show lists command and snapshot events" "$trace_parse" "events parsed from envelope"
+assert "artifact PNGs exist with PNG magic" "$png_magic" "trace_dir=$trace_dir/screens"
+trace_html="$(mktemp -t agentdesk-e2e-trace-export.XXXXXX.html)"
+"$bin" --session "$trace_sess" trace export --out "$trace_html" --limit 0 >/dev/null 2>&1
+html_ok=0
+if [ -f "$trace_html" ] && ! grep -q 'src="http' "$trace_html" && grep -q 'application/json' "$trace_html"; then
+  html_ok=1
+fi
+assert "trace export is self-contained HTML" "$html_ok" "path=$trace_html"
+rm -f "$trace_html"
+"$bin" session end "$trace_sess" >/dev/null 2>&1
+
 note "surface: open sheet, list-surfaces sees it, act inside"
 sheet_b="$(read_value sheet-status)"
 "$bin" click "$(resolve button open-sheet)" >/dev/null 2>&1; sleep 0.6

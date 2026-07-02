@@ -325,6 +325,59 @@ Removes ended sessions that are not live and not pointer-referenced. Never reaps
 
 Trace-on requires a manifest with `trace: on` from `session start`. Bare `--session` or FFI `ad_adapter_create_with_session` without that manifest selects the snapshot namespace only.
 
+## Trace read and export
+
+Both commands require an active trace-enabled session (`session start` or `--session <id>` with a manifest). They are permissionless — no accessibility or screen-recording grant is needed to read or export traces from disk.
+
+### trace show
+```bash
+agent-desktop trace show [--limit N] [--event PREFIX]
+```
+Merges every segment under `<session>/trace/` into one deterministic timeline. Default `--limit 500` returns the **tail**; `--limit 0` returns all events. `--event action.` filters by event-name prefix before the tail slice.
+
+Response `data` includes `session_id`, per-segment stats (`segments[]` with `segment`, `pid`, `schema`, `event_count`, `skipped_lines`), `total_events`, `returned_events`, `truncated`, optional `warnings[]` (`kind`, `message`), and the merged `events[]` (each annotated with `writer_pid` and `segment`).
+
+Reader tolerance: truncated final lines, corrupt JSON, foreign files, symlinked segments, and unpaired `command.start`/`command.end` pairs degrade to counted warnings — never hard errors.
+
+`warnings[].kind` is one of:
+
+| `kind` | Meaning |
+|--------|---------|
+| `foreign_file` | A file under `trace/` doesn't match the `<pid>-<procTs>.jsonl` segment name pattern (and isn't dotfile-hidden); ignored entirely |
+| `unreadable_segment` | The segment file could not be opened or read; the whole segment is skipped |
+| `symlinked_segment` | The segment path is a symlink; skipped before any read is attempted |
+| `schema_unknown` | The segment's `trace.meta` declares a schema newer than this reader supports; still read best-effort |
+| `unpaired_command` | A `command.start` has no matching `command.end` (or vice versa) within the returned event window |
+
+### trace export
+```bash
+agent-desktop trace export [--out path.html] [--limit N]
+```
+Builds one self-contained HTML file with embedded JSON and base64 PNG screenshots. Default `--limit 5000` (ten times `trace show`'s default). Works from `file://` with no network fetches.
+
+Without `--out`, the file is written into the **session directory** as `trace-<session_id>.html` (`~/.agent-desktop/sessions/<id>/trace-<id>.html`) — not the current working directory. `--out` overrides the path, including writing outside the session directory.
+
+Response `data` reports `path`, `event_count`, `screenshots_embedded`, `screenshots_skipped`, and `bytes`. Export refuses symlinked `--out` paths and returns `INVALID_ARGS` when the embedded JSON exceeds 200MiB (use a smaller `--limit`).
+
+### Replay artifacts (`--screenshots`)
+```bash
+agent-desktop session start --screenshots   # manifest artifacts: full
+```
+Requires tracing (`trace: on`; `--no-trace --screenshots` is rejected). Ref actions capture pre/post PNGs under `trace/screens/`; snapshot saves copy refmaps to `trace/refmaps/`. Skips are recorded in `action.artifacts` events with machine-readable reasons. Artifacts are **unredacted** and may appear in exported HTML — opt in only when that sensitivity is acceptable.
+
+A skip reason lands in `skipped` when the pre- and post-action screenshot outcomes share one reason, otherwise it splits across `skipped_pre`/`skipped_post`. Reasons include (non-exhaustive):
+
+| Token | Meaning |
+|-------|---------|
+| `no_session` | No active session could be resolved for this action |
+| `count_budget` | Per-process screenshot count budget (200) exceeded |
+| `budget` | Per-process screenshot byte budget (128MiB) exceeded |
+| `write_failed` | Writing the PNG to disk failed |
+| `dir: <error>` | Creating `trace/screens/` failed |
+| `adapter: <ERROR_CODE>` | The platform screenshot call failed with the given error code |
+
+Refmap copies under `trace/refmaps/` are best-effort — a skipped or failed copy never fails the primary command and leaves any prior copy intact.
+
 ## System Health
 
 ### status
@@ -332,6 +385,8 @@ Trace-on requires a manifest with `trace: on` from `session start`. Bare `--sess
 agent-desktop status
 ```
 Returns adapter health, platform info, permission report, latest snapshot metadata (`snapshot_id`, `ref_count`) when available, plus **`session_id`** (resolved active session, if any) and **`tracing`** (whether structured trace output is configured for this process — explicit `--trace`, or a trace-enabled session manifest).
+
+When `session_id` resolves to a session with a readable manifest, the response also includes **`artifacts`**: `full` (`session start --screenshots` — screenshots and refmaps captured) or `events` (default — JSONL events only, no binary artifacts). Omitted when there is no active session.
 
 ### permissions
 ```bash

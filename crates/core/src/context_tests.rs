@@ -31,7 +31,11 @@ fn trace_writes_jsonl_without_stdout_dependency() {
         .unwrap();
 
     let body = std::fs::read_to_string(&path).unwrap();
-    let event: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
+    let event_line = body
+        .lines()
+        .find(|line| line.contains(r#""event":"ref.resolve.ok""#))
+        .expect("event line");
+    let event: serde_json::Value = serde_json::from_str(event_line).unwrap();
     assert_eq!(event["event"], "ref.resolve.ok");
     assert_eq!(event["ref"], "@e1");
     assert!(event["ts_ms"].as_u64().is_some());
@@ -56,7 +60,11 @@ fn trace_injects_session_id_as_top_level_unredacted_field() {
         .unwrap();
 
     let body = std::fs::read_to_string(&path).unwrap();
-    let event: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
+    let event_line = body
+        .lines()
+        .find(|line| line.contains(r#""event":"ref.resolve.ok""#))
+        .expect("event line");
+    let event: serde_json::Value = serde_json::from_str(event_line).unwrap();
     assert_eq!(event["session_id"], "my-session");
     assert_eq!(event["event"], "ref.resolve.ok");
     assert!(event["ts_ms"].as_u64().is_some());
@@ -162,7 +170,11 @@ fn trace_redacts_sensitive_text_and_value_fields() {
         .unwrap();
 
     let body = std::fs::read_to_string(&path).unwrap();
-    let event: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
+    let event_line = body
+        .lines()
+        .find(|line| line.contains(r#""event":"event""#))
+        .expect("event line");
+    let event: serde_json::Value = serde_json::from_str(event_line).unwrap();
     assert_eq!(event["text"]["redacted"], true);
     assert_eq!(event["value"]["redacted"], true);
     assert_eq!(event["message"], "diagnostic error");
@@ -225,6 +237,7 @@ fn trace_on_session_writes_segment_without_explicit_trace_flag() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let context = CommandContext::new(Some(manifest.id.clone()), None, false).unwrap();
@@ -246,6 +259,7 @@ fn no_trace_session_still_namespaces_snapshots() {
         name: None,
         trace: SessionTraceMode::Off,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     assert!(!trace_enabled_for_session(&manifest.id).unwrap());
@@ -261,6 +275,7 @@ fn explicit_trace_overrides_session_sink() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let path = std::env::temp_dir().join(format!(
@@ -291,12 +306,14 @@ fn batch_item_session_override_uses_its_own_segment_dir() {
         name: None,
         trace: SessionTraceMode::On,
         force: false,
+        ..Default::default()
     })
     .unwrap();
     let child_session = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     let parent = CommandContext::new(Some(parent_session.id.clone()), None, false).unwrap();
@@ -329,12 +346,14 @@ fn strict_parent_allows_no_trace_batch_override() {
         name: None,
         trace: SessionTraceMode::On,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     let untraced = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
         force: true,
+        ..Default::default()
     })
     .unwrap();
     let parent = CommandContext::new(Some(traced.id.clone()), None, true).unwrap();

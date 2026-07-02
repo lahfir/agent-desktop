@@ -1,8 +1,9 @@
 use crate::error::AppError;
+use crate::trace_sanitize::sanitize_trace_value;
 use serde_json::{Map, Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
@@ -25,10 +26,11 @@ enum WriterState {
     Failed,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 struct TraceState {
     pending: TracePending,
     writer: Arc<Mutex<WriterState>>,
+    meta_written: AtomicBool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,6 +73,7 @@ impl TraceConfig {
             state: Arc::new(TraceState {
                 pending,
                 writer: Arc::new(Mutex::new(writer)),
+                meta_written: AtomicBool::new(false),
             }),
         })
     }
@@ -94,6 +97,7 @@ impl TraceConfig {
             Some(writer) => writer,
             None => return Ok(()),
         };
+        self.ensure_meta_if_needed(&writer, session_id)?;
         match writer
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))
@@ -164,7 +168,7 @@ impl TraceConfig {
         &self,
         session_segment_dir: Option<PathBuf>,
     ) -> Result<Self, AppError> {
-        if self.pending_file_path().is_some() {
+        if self.pending_file_path().is_some() && self.has_sink() {
             return Ok(self.clone());
         }
         match session_segment_dir {
@@ -174,6 +178,26 @@ impl TraceConfig {
                 state: Arc::new(TraceState::default()),
             }),
         }
+    }
+
+    fn ensure_meta_if_needed(
+        &self,
+        writer: &Arc<Mutex<std::fs::File>>,
+        session_id: Option<&str>,
+    ) -> Result<(), AppError> {
+        if self.state.meta_written.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        let mut file = writer
+            .lock()
+            .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
+        if file.metadata()?.len() > 0 {
+            self.state.meta_written.store(true, Ordering::Relaxed);
+            return Ok(());
+        }
+        write_meta_header(&mut file, session_id)?;
+        self.state.meta_written.store(true, Ordering::Relaxed);
+        Ok(())
     }
 }
 
@@ -197,7 +221,32 @@ fn open_segment_trace_file(dir: &Path) -> Result<std::fs::File, AppError> {
     open_trace_file(&segment_path_for_dir(dir))
 }
 
-fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
+pub(crate) fn process_start_ms() -> u64 {
+    static START_MS: OnceLock<u64> = OnceLock::new();
+    *START_MS.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    })
+}
+
+fn write_meta_header(file: &mut std::fs::File, session_id: Option<&str>) -> Result<(), AppError> {
+    write_event(
+        file,
+        "trace.meta",
+        session_id,
+        json!({
+            "schema": 1,
+            "version": env!("CARGO_PKG_VERSION"),
+            "os": std::env::consts::OS,
+            "pid": std::process::id(),
+            "proc_start_ms": process_start_ms(),
+        }),
+    )
+}
+
+pub(crate) fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
     if let Ok(meta) = std::fs::symlink_metadata(dir) {
         if meta.file_type().is_symlink() {
             return Err(AppError::invalid_input_with_suggestion(
@@ -300,88 +349,6 @@ fn reject_loose_trace_permissions(file: &std::fs::File) -> Result<(), AppError> 
 #[cfg(not(unix))]
 fn reject_loose_trace_permissions(_file: &std::fs::File) -> Result<(), AppError> {
     Ok(())
-}
-
-/// Recursively redacts fields whose keys match `SENSITIVE_KEYS`. Non-sensitive
-/// fields and non-object values are left unchanged. Array elements are
-/// recursively scanned. Used by both the file-trace writer and the FFI log
-/// callback layer so that sensitive values never reach a consumer.
-pub fn sanitize_trace_value(value: Value) -> Value {
-    match value {
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .map(|(key, value)| {
-                    if is_sensitive_trace_key(&key) {
-                        (key, redacted_value(value))
-                    } else {
-                        (key, sanitize_trace_value(value))
-                    }
-                })
-                .collect(),
-        ),
-        Value::Array(items) => Value::Array(items.into_iter().map(sanitize_trace_value).collect()),
-        other => other,
-    }
-}
-
-fn is_sensitive_trace_key(key: &str) -> bool {
-    const SENSITIVE_KEYS: &[&str] = &[
-        "text",
-        "value",
-        "expected",
-        "name",
-        "username",
-        "description",
-        "label",
-        "query",
-        "secret",
-        "token",
-        "password",
-        "title",
-        "url",
-        "help",
-        "placeholder",
-    ];
-    trace_key_tokens(key)
-        .iter()
-        .any(|part| SENSITIVE_KEYS.contains(&part.as_str()))
-}
-
-fn trace_key_tokens(key: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut previous_was_lower_or_digit = false;
-
-    for ch in key.chars() {
-        if !ch.is_ascii_alphanumeric() {
-            push_trace_key_token(&mut tokens, &mut current);
-            previous_was_lower_or_digit = false;
-            continue;
-        }
-
-        if ch.is_ascii_uppercase() && previous_was_lower_or_digit {
-            push_trace_key_token(&mut tokens, &mut current);
-        }
-
-        current.push(ch.to_ascii_lowercase());
-        previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
-    }
-
-    push_trace_key_token(&mut tokens, &mut current);
-    tokens
-}
-
-fn push_trace_key_token(tokens: &mut Vec<String>, current: &mut String) {
-    if !current.is_empty() {
-        tokens.push(std::mem::take(current));
-    }
-}
-
-fn redacted_value(value: Value) -> Value {
-    match value {
-        Value::Null => Value::Null,
-        _ => json!({ "redacted": true }),
-    }
 }
 
 #[cfg(test)]

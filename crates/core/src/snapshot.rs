@@ -6,7 +6,9 @@ use crate::{
     ref_alloc::{self, RefAllocConfig},
     refs::RefMap,
     refs_store::RefStore,
+    trace_artifacts,
 };
+use serde_json::json;
 
 #[derive(Clone)]
 pub struct SnapshotResult {
@@ -130,12 +132,26 @@ pub fn run_with_context(
     let mut result = build(adapter, opts, app_name, window_id)?;
     let store = RefStore::for_session(context.session_id())?;
     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+    trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id, &result.refmap)?;
     result.snapshot_id = Some(snapshot_id);
-    context.trace_lazy(
-        "snapshot.saved",
-        || serde_json::json!({ "snapshot_id": result.snapshot_id, "ref_count": result.refmap.len() }),
-    )?;
+    emit_snapshot_saved(context, &result)?;
     Ok(result)
+}
+
+pub(crate) fn emit_snapshot_saved(
+    context: &CommandContext,
+    result: &SnapshotResult,
+) -> Result<(), AppError> {
+    context.trace_lazy("snapshot.saved", || {
+        let mut fields = json!({
+            "snapshot_id": result.snapshot_id,
+            "ref_count": result.refmap.len(),
+        });
+        if !result.window.app.is_empty() {
+            fields["app"] = json!(result.window.app);
+        }
+        fields
+    })
 }
 
 pub fn append_surface_refs(
@@ -191,8 +207,10 @@ pub fn append_surface_refs_with_context(
     let tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
     if let Some(id) = store.latest_snapshot_id() {
         store.save_existing_snapshot(&id, &refmap)?;
+        trace_artifacts::copy_refmap_if_full(context, &store, &id, &refmap)?;
     } else {
-        store.save_new_snapshot(&refmap)?;
+        let id = store.save_new_snapshot(&refmap)?;
+        trace_artifacts::copy_refmap_if_full(context, &store, &id, &refmap)?;
     }
     Ok(Some(tree))
 }

@@ -18,6 +18,7 @@ use crate::cli_args::{
         ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
         WaitArgs,
     },
+    trace::TraceArgs,
 };
 
 const BEFORE_HELP: &str = include_str!("help_before.txt");
@@ -213,6 +214,8 @@ pub(crate) enum Commands {
     Skills(SkillsArgs),
     #[command(about = "Manage trace-enabled agent sessions (start, end, list, gc)")]
     Session(SessionArgs),
+    #[command(about = "Read merged session trace timelines")]
+    Trace(TraceArgs),
 }
 
 impl Commands {
@@ -273,6 +276,7 @@ impl Commands {
             Self::Batch(_) => "batch",
             Self::Skills(_) => "skills",
             Self::Session(_) => "session",
+            Self::Trace(_) => "trace",
         }
     }
 }

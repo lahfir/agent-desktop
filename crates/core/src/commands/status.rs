@@ -28,8 +28,12 @@ pub fn execute_with_report_with_context(
         .map(str::to_string)
         .or_else(|| read_current_session_pointer().ok().flatten());
     let tracing = context.trace_enabled();
+    let artifacts = session_id
+        .as_deref()
+        .and_then(|id| crate::session::read_manifest(id).ok().flatten())
+        .map(|manifest| manifest.artifacts);
 
-    Ok(json!({
+    let mut body = json!({
         "platform": std::env::consts::OS,
         "version": env!("CARGO_PKG_VERSION"),
         "permissions": permissions,
@@ -37,7 +41,11 @@ pub fn execute_with_report_with_context(
         "ref_count": ref_count,
         "session_id": session_id,
         "tracing": tracing,
-    }))
+    });
+    if let Some(artifacts) = artifacts {
+        body["artifacts"] = json!(artifacts);
+    }
+    Ok(body)
 }
 
 #[cfg(test)]

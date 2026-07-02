@@ -2,7 +2,7 @@ mod gc;
 mod manifest;
 
 pub use gc::{GcOptions, GcReport, gc, is_live, pointer_references_live_session};
-pub use manifest::{SessionManifest, SessionTraceMode};
+pub use manifest::{ArtifactsMode, SessionManifest, SessionTraceMode};
 
 use crate::{
     context::validate_session_id,
@@ -24,7 +24,19 @@ static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct StartSessionOptions {
     pub name: Option<String>,
     pub trace: SessionTraceMode,
+    pub artifacts: ArtifactsMode,
     pub force: bool,
+}
+
+impl Default for StartSessionOptions {
+    fn default() -> Self {
+        Self {
+            name: None,
+            trace: SessionTraceMode::On,
+            artifacts: ArtifactsMode::Events,
+            force: false,
+        }
+    }
 }
 
 pub fn agent_desktop_dir() -> Result<PathBuf, AppError> {
@@ -68,10 +80,10 @@ pub fn resolve_active_session(
 
 pub fn read_current_session_pointer() -> Result<Option<String>, AppError> {
     let path = current_session_path()?;
-    let mut file = match open_session_file(&path) {
+    let mut file = match crate::refs::open_nofollow(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) if is_symlinked(&path) => {
+        Err(err) if crate::refs::is_symlink(&path) => {
             tracing::warn!(
                 "ignoring symlinked session pointer {}: {err}",
                 path.display()
@@ -104,7 +116,7 @@ pub fn clear_current_session_pointer() -> Result<(), AppError> {
 
 pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppError> {
     let path = manifest_path(session_id)?;
-    let mut file = match open_session_file(&path) {
+    let mut file = match crate::refs::open_nofollow(&path) {
         Ok(file) => file,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
         Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
@@ -117,12 +129,6 @@ pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppErr
         Ok(manifest) => Ok(Some(manifest)),
         Err(err) => Ok(ignore_unreadable_manifest(&path, &err)),
     }
-}
-
-fn is_symlinked(path: &Path) -> bool {
-    std::fs::symlink_metadata(path)
-        .map(|meta| meta.file_type().is_symlink())
-        .unwrap_or(false)
 }
 
 fn ignore_unreadable_manifest<E: std::fmt::Display>(
@@ -203,6 +209,14 @@ pub fn list_sessions() -> Result<Vec<SessionManifest>, AppError> {
 }
 
 pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, AppError> {
+    if matches!(options.trace, SessionTraceMode::Off)
+        && matches!(options.artifacts, ArtifactsMode::Full)
+    {
+        return Err(AppError::invalid_input_with_suggestion(
+            "Artifacts mode full requires tracing",
+            "Remove --no-trace or omit --screenshots.",
+        ));
+    }
     if !options.force && pointer_references_live_session()? {
         return Err(AppError::invalid_input_with_suggestion(
             "Refusing to clobber the current session pointer while it references a live session",
@@ -222,6 +236,7 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
         created_at: now_millis(),
         ended_at: None,
         trace: options.trace,
+        artifacts: options.artifacts,
     };
     write_manifest(&manifest)?;
     write_current_session_pointer(&id)?;
@@ -288,27 +303,10 @@ pub(super) fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
-fn open_session_file(path: &Path) -> std::io::Result<std::fs::File> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(path)
-    }
-    #[cfg(not(unix))]
-    {
-        if std::fs::symlink_metadata(path)?.file_type().is_symlink() {
-            return Err(std::io::Error::new(
-                ErrorKind::PermissionDenied,
-                "session path must not be a symlink",
-            ));
-        }
-        std::fs::File::open(path)
-    }
-}
-
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "session_gc_tests.rs"]
+mod gc_tests;

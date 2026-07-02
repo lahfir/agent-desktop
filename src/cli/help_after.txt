@@ -78,9 +78,14 @@ SYSTEM
   version                    Show version, target architecture, and OS
   skills                     Bundled skill docs for AI agents (list, get, path)
   session start              Create a trace-enabled session and set the active pointer
+  session start --screenshots  Opt in to screenshot/refmap replay artifacts (requires tracing)
   session end                  Seal the session manifest and clear the active pointer
   session list                 List session manifests
   session gc                   Remove ended or provably-stale sessions
+
+TRACE
+  trace show                 Merge session trace segments into a bounded JSON timeline (--limit defaults to 500; 0 = all)
+  trace export               Export a self-contained HTML trace viewer (--limit defaults to 5000; 0 = all)
 
 BATCH
   batch <json>               Run commands from a JSON array (--stop-on-error)

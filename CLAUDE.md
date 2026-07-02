@@ -160,7 +160,7 @@ Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries i
 
 ### Additive Phase Model
 
-- **Phase 1:** Foundation + macOS MVP (55 commands, core engine, macOS adapter)
+- **Phase 1:** Foundation + macOS MVP (56 commands, core engine, macOS adapter)
 - **Phase 2:** Windows + Linux adapters, 10+ new commands — core untouched
 - **Phase 3:** MCP server mode via `--mcp` flag — wraps existing commands
 - **Phase 4:** Daemon, sessions, enterprise quality gates
@@ -369,10 +369,10 @@ for the actionability preflight (`get_live_*`), and `is_protected_process`
 
 ## Commands
 
-55 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
+56 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
-All 55 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
+All 56 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
 same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals

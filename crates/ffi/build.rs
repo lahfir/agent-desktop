@@ -54,6 +54,14 @@ fn command_templates() -> BTreeMap<&'static str, &'static str> {
     );
     m.insert("snapshot", include_str!("codegen_templates/snapshot.rs.in"));
     m.insert("status", include_str!("codegen_templates/status.rs.in"));
+    m.insert(
+        "trace_export",
+        include_str!("codegen_templates/trace_export.rs.in"),
+    );
+    m.insert(
+        "trace_show",
+        include_str!("codegen_templates/trace_show.rs.in"),
+    );
     m.insert("version", include_str!("codegen_templates/version.rs.in"));
     m.insert("wait", include_str!("codegen_templates/wait.rs.in"));
     m

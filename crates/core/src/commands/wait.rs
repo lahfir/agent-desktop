@@ -10,7 +10,9 @@ use crate::{
     error::{AppError, ErrorCode},
     notification::{NotificationFilter, NotificationInfo},
     refs_store::RefStore,
-    search_text, snapshot,
+    search_text,
+    snapshot::{self, emit_snapshot_saved},
+    trace_artifacts,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -176,8 +178,15 @@ fn wait_for_text(
                     .map(|expected| matches.len() == expected)
                     .unwrap_or_else(|| !matches.is_empty());
                 if matched {
-                    let snapshot_id = RefStore::for_session(context.session_id())?
-                        .save_new_snapshot(&result.refmap)?;
+                    let store = RefStore::for_session(context.session_id())?;
+                    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+                    trace_artifacts::copy_refmap_if_full(
+                        context,
+                        &store,
+                        &snapshot_id,
+                        &result.refmap,
+                    )?;
+                    emit_snapshot_saved(context, &result)?;
                     let elapsed = start.elapsed().as_millis();
                     let found = matches.first();
                     let mut body = json!({
