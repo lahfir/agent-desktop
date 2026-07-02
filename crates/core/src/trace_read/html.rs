@@ -104,10 +104,12 @@ pub fn export_html(
         ));
     }
 
-    let path = options
-        .out
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(format!("trace-{session_id}.html")));
+    let path = options.out.clone().unwrap_or_else(|| {
+        trace_dir
+            .parent()
+            .unwrap_or(trace_dir)
+            .join(format!("trace-{session_id}.html"))
+    });
 
     write_export_file(&path, html.as_bytes())?;
     let bytes = html.len();

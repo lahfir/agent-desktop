@@ -191,7 +191,11 @@ fn default_output_path_uses_session_id() {
         },
     )
     .unwrap();
-    assert_eq!(stats.path, format!("trace-{}.html", manifest.id));
+    assert!(stats.path.ends_with(&format!("trace-{}.html", manifest.id)));
+    assert!(
+        std::path::Path::new(&stats.path).starts_with(trace_dir.parent().unwrap()),
+        "default export must land inside the session directory, not the cwd"
+    );
     let _ = fs::remove_file(&stats.path);
 }
 

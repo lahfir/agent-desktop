@@ -82,3 +82,6 @@ todos/
 .cursor/
 .context/
 rust_out
+
+# trace export artifacts must never land in the repo tree
+trace-*.html
