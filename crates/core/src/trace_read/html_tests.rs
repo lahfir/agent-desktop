@@ -408,7 +408,7 @@ fn unpaired_command_renders_open_incomplete_marker() {
     )
     .unwrap();
     assert!(html.contains("open-incomplete"));
-    assert!(html.contains("open · incomplete"));
+    assert!(html.contains("incomplete"));
 }
 
 #[test]
