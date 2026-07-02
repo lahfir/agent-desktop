@@ -54,6 +54,10 @@ pub struct ExportStats {
     pub screenshots_embedded: usize,
     pub screenshots_skipped: usize,
     pub bytes: usize,
+    pub warnings: Vec<Value>,
+    pub truncated: bool,
+    pub total_events: usize,
+    pub returned_events: usize,
 }
 
 pub fn export_html(
@@ -117,6 +121,12 @@ pub fn export_html(
     write_export_file(&path, html.as_bytes())?;
     let bytes = html.len();
 
+    let warnings: Vec<Value> = merged
+        .warnings
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<Result<_, _>>()?;
+
     Ok((
         html,
         ExportStats {
@@ -125,6 +135,10 @@ pub fn export_html(
             screenshots_embedded: embedded,
             screenshots_skipped: skipped,
             bytes,
+            warnings,
+            truncated: merged.truncated,
+            total_events: merged.total_events,
+            returned_events: merged.returned_events,
         },
     ))
 }
@@ -227,6 +241,7 @@ fn write_export_tmp_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> Result
             .write(true)
             .create(true)
             .truncate(true)
+            .mode(0o600)
             .custom_flags(libc::O_NOFOLLOW)
             .open(tmp)?;
         file.write_all(bytes)?;
@@ -246,3 +261,7 @@ mod tests;
 #[cfg(test)]
 #[path = "html_screenshot_tests.rs"]
 mod screenshot_tests;
+
+#[cfg(test)]
+#[path = "html_export_stats_tests.rs"]
+mod export_stats_tests;
