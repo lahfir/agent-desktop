@@ -1,21 +1,7 @@
-use crate::AdAdapter;
-use crate::actions::conversion::action_from_c;
-use crate::commands::app_error_to_adapter;
-use crate::commands::envelope_out::write_command_envelope;
-use crate::convert::string::{optional_adapter_string, required_adapter_string};
-use crate::error::{self, AdResult, set_last_error};
-use crate::ffi_try::trap_panic;
-use crate::main_thread::require_main_thread;
-use crate::pointer_guard::guard_non_null;
-use crate::types::{AdAction, AdPolicyKind};
-use agent_desktop_core::error::{AdapterError, ErrorCode};
-use agent_desktop_core::refs::validate_ref_id;
-use std::ffi::c_char;
-use std::ptr;
 
-/// Same as [`crate::commands::generated::ad_execute_by_ref`] but with an
-/// explicit pre-action auto-wait budget in milliseconds. `timeout_ms == 0`
-/// disables auto-wait (single-shot resolve and actionability check).
+/// Same as `ad_execute_by_ref` but with an explicit pre-action auto-wait
+/// budget in milliseconds. `timeout_ms == 0` disables auto-wait (single-shot
+/// resolve and actionability check).
 ///
 /// # Safety
 ///
@@ -50,7 +36,7 @@ pub unsafe extern "C" fn ad_execute_by_ref_timeout(
         if let Err(app_err) = validate_ref_id(&ref_str) {
             let ae = app_error_to_adapter(app_err);
             set_last_error(&ae);
-            return error::last_error_code();
+            return crate::error::last_error_code();
         }
 
         let snapshot_str = match optional_adapter_string(snapshot_id, "snapshot_id") {
@@ -88,7 +74,7 @@ pub unsafe extern "C" fn ad_execute_by_ref_timeout(
             Err(e) => {
                 let ae = app_error_to_adapter(e);
                 set_last_error(&ae);
-                return error::last_error_code();
+                return crate::error::last_error_code();
             }
         };
 

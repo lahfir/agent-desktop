@@ -138,7 +138,35 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
     );
     assert_eq!(size_of::<AdRefEntry>(), 200);
     assert_eq!(align_of::<AdRefEntry>(), align_of::<usize>());
+
+    // Explicit per-field offsets, not just monotonic ordering: a prebuilt C
+    // consumer memcpy's this struct at a fixed layout, so a field silently
+    // shifting position (even without a size change) breaks every field read
+    // from that point onward. `native_id` is appended last (KTD/F7): earlier
+    // Family-B/-A structs (see `AdActionStep`) establish append-only as the
+    // ABI-stable evolution pattern, so any new field must land here too.
     assert_eq!(offset_of!(AdRefEntry, pid), 0);
+    assert_eq!(offset_of!(AdRefEntry, role), 8);
+    assert_eq!(offset_of!(AdRefEntry, name), 16);
+    assert_eq!(offset_of!(AdRefEntry, value), 24);
+    assert_eq!(offset_of!(AdRefEntry, description), 32);
+    assert_eq!(offset_of!(AdRefEntry, states), 40);
+    assert_eq!(offset_of!(AdRefEntry, state_count), 48);
+    assert_eq!(offset_of!(AdRefEntry, available_actions), 56);
+    assert_eq!(offset_of!(AdRefEntry, available_action_count), 64);
+    assert_eq!(offset_of!(AdRefEntry, bounds), 72);
+    assert_eq!(offset_of!(AdRefEntry, has_bounds), 104);
+    assert_eq!(offset_of!(AdRefEntry, bounds_hash), 112);
+    assert_eq!(offset_of!(AdRefEntry, has_bounds_hash), 120);
+    assert_eq!(offset_of!(AdRefEntry, source_app), 128);
+    assert_eq!(offset_of!(AdRefEntry, source_window_id), 136);
+    assert_eq!(offset_of!(AdRefEntry, source_window_title), 144);
+    assert_eq!(offset_of!(AdRefEntry, source_surface), 152);
+    assert_eq!(offset_of!(AdRefEntry, root_ref), 160);
+    assert_eq!(offset_of!(AdRefEntry, path_is_absolute), 168);
+    assert_eq!(offset_of!(AdRefEntry, path), 176);
+    assert_eq!(offset_of!(AdRefEntry, path_count), 184);
+    assert_eq!(offset_of!(AdRefEntry, native_id), 192);
 
     let offsets = [
         offset_of!(AdRefEntry, pid),
@@ -146,7 +174,6 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
         offset_of!(AdRefEntry, name),
         offset_of!(AdRefEntry, value),
         offset_of!(AdRefEntry, description),
-        offset_of!(AdRefEntry, native_id),
         offset_of!(AdRefEntry, states),
         offset_of!(AdRefEntry, state_count),
         offset_of!(AdRefEntry, available_actions),
@@ -163,6 +190,7 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
         offset_of!(AdRefEntry, path_is_absolute),
         offset_of!(AdRefEntry, path),
         offset_of!(AdRefEntry, path_count),
+        offset_of!(AdRefEntry, native_id),
     ];
     assert!(offsets.windows(2).all(|pair| pair[0] < pair[1]));
 
@@ -172,6 +200,7 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
     };
     assert_eq!(copied.pid, 0);
     assert_eq!(copied.path_count, 0);
+    assert!(copied.native_id.is_null());
 }
 
 #[test]

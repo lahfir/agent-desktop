@@ -52,6 +52,10 @@ fn command_templates() -> BTreeMap<&'static str, &'static str> {
         "execute_by_ref",
         include_str!("codegen_templates/execute_by_ref.rs.in"),
     );
+    m.insert(
+        "execute_by_ref_timeout",
+        include_str!("codegen_templates/execute_by_ref_timeout.rs.in"),
+    );
     m.insert("snapshot", include_str!("codegen_templates/snapshot.rs.in"));
     m.insert("status", include_str!("codegen_templates/status.rs.in"));
     m.insert(

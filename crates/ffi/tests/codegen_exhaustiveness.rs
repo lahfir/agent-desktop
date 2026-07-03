@@ -17,6 +17,7 @@ use agent_desktop_core::interaction_policy::InteractionPolicy;
 /// wrappers that must appear in `src/commands/generated.rs`.
 const EXPECTED_COMMANDS: &[&str] = &[
     "execute_by_ref",
+    "execute_by_ref_timeout",
     "snapshot",
     "status",
     "trace_export",
