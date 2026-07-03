@@ -88,7 +88,7 @@ mod imp {
             }
 
             Action::DoubleClick => {
-                chain_defs::double_click(el, request.policy)?;
+                steps.extend(chain_defs::double_click(el, request.policy)?);
             }
 
             Action::RightClick => {
@@ -195,7 +195,7 @@ mod imp {
             }
 
             Action::TripleClick => {
-                chain_defs::triple_click(el, request.policy)?;
+                steps.extend(chain_defs::triple_click(el, request.policy)?);
             }
 
             Action::ScrollTo => {

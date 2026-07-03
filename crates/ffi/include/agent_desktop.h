@@ -68,7 +68,7 @@
 
 #define AD_ACTION_RESULT_SIZE 40
 
-#define AD_ACTION_STEP_SIZE 16
+#define AD_ACTION_STEP_SIZE 32
 
 #define AD_DRAG_PARAMS_SIZE 48
 
@@ -287,6 +287,20 @@ typedef enum AdSnapshotSurface AdSnapshotSurface;
 typedef int32_t AdSnapshotSurface;
 #endif // __STDC_VERSION__ >= 202311L
 
+enum AdStepMechanism
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
+  AD_STEP_MECHANISM_SEMANTIC_API = 1,
+  AD_STEP_MECHANISM_PHYSICAL_SYNTHETIC = 2,
+};
+#if __STDC_VERSION__ >= 202311L
+typedef enum AdStepMechanism AdStepMechanism;
+#else
+typedef int32_t AdStepMechanism;
+#endif // __STDC_VERSION__ >= 202311L
+
 enum AdWindowOpKind
 #if __STDC_VERSION__ >= 202311L
   : int32_t
@@ -427,6 +441,11 @@ typedef struct AdElementState {
 typedef struct AdActionStep {
   const char *label;
   const char *outcome;
+  int32_t mechanism;
+  bool has_mechanism;
+  bool verified;
+  bool has_verified;
+  uint64_t _reserved;
 } AdActionStep;
 
 typedef struct AdActionResult {
@@ -1818,6 +1837,10 @@ _Static_assert(sizeof(AdActionStep) == AD_ACTION_STEP_SIZE, "AdActionStep ABI si
 _Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
 _Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
 _Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+_Static_assert(offsetof(AdActionStep, mechanism) == 16, "AdActionStep.mechanism offset changed");
+_Static_assert(offsetof(AdActionStep, has_mechanism) == 20, "AdActionStep.has_mechanism offset changed");
+_Static_assert(offsetof(AdActionStep, verified) == 21, "AdActionStep.verified offset changed");
+_Static_assert(offsetof(AdActionStep, has_verified) == 22, "AdActionStep.has_verified offset changed");
 _Static_assert(sizeof(AdActionResult) == AD_ACTION_RESULT_SIZE, "AdActionResult ABI size changed");
 _Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
 _Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");

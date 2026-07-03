@@ -157,14 +157,29 @@ fn free_action_result_releases_non_empty_steps_array() {
         AdActionStep {
             label: CString::new("AXScrollToVisible").unwrap().into_raw(),
             outcome: CString::new("attempted").unwrap().into_raw(),
+            mechanism: 1,
+            has_mechanism: true,
+            verified: false,
+            has_verified: false,
+            _reserved: 0,
         },
         AdActionStep {
             label: CString::new("AXPress").unwrap().into_raw(),
             outcome: CString::new("succeeded").unwrap().into_raw(),
+            mechanism: 1,
+            has_mechanism: true,
+            verified: true,
+            has_verified: true,
+            _reserved: 0,
         },
         AdActionStep {
             label: std::ptr::null(),
             outcome: std::ptr::null(),
+            mechanism: 0,
+            has_mechanism: false,
+            verified: false,
+            has_verified: false,
+            _reserved: 0,
         },
     ]
     .into_boxed_slice();

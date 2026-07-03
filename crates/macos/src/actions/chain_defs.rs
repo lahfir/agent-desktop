@@ -9,7 +9,10 @@ mod imp {
         chain_disclosure_steps, chain_menu_steps, chain_steps,
     };
     use crate::tree::AXElement;
-    use agent_desktop_core::{action::MouseButton, interaction_policy::InteractionPolicy};
+    use agent_desktop_core::{
+        action::MouseButton, action_step::ActionStep, interaction_policy::InteractionPolicy,
+        step_mechanism::StepMechanism,
+    };
 
     pub(crate) static CLICK_CHAIN: ChainDef = ChainDef {
         pre_scroll: true,
@@ -183,11 +186,16 @@ mod imp {
     pub(crate) fn double_click(
         el: &AXElement,
         policy: InteractionPolicy,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         if ax_helpers::has_ax_action(el, "AXOpen") && ax_helpers::try_ax_action(el, "AXOpen") {
-            return Ok(());
+            return Ok(vec![
+                ActionStep::succeeded("AXOpen").with_mechanism(StepMechanism::SemanticApi),
+            ]);
         }
-        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy)
+        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy)?;
+        Ok(vec![
+            ActionStep::succeeded("CGClick").with_mechanism(StepMechanism::PhysicalSynthetic),
+        ])
     }
 
     /// Triple-click has no AX semantic equivalent on macOS and is therefore
@@ -197,8 +205,11 @@ mod imp {
     pub(crate) fn triple_click(
         el: &AXElement,
         policy: InteractionPolicy,
-    ) -> Result<(), AdapterError> {
-        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 3, policy)
+    ) -> Result<Vec<ActionStep>, AdapterError> {
+        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 3, policy)?;
+        Ok(vec![
+            ActionStep::succeeded("CGClick").with_mechanism(StepMechanism::PhysicalSynthetic),
+        ])
     }
 }
 

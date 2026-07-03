@@ -45,7 +45,7 @@ fn action_result_layout_is_guarded_for_c_consumers() {
     );
     assert_eq!(
         agent_desktop_ffi::types::action_step::AD_ACTION_STEP_SIZE,
-        16
+        32
     );
     assert_eq!(
         unsafe { common::ad_action_step_size() },
@@ -65,6 +65,23 @@ fn action_result_layout_is_guarded_for_c_consumers() {
     assert_eq!(offset_of!(AdActionResult, step_count), 32);
     assert_eq!(offset_of!(AdActionStep, label), 0);
     assert_eq!(offset_of!(AdActionStep, outcome), 8);
+    assert_eq!(offset_of!(AdActionStep, mechanism), 16);
+    assert_eq!(offset_of!(AdActionStep, has_mechanism), 20);
+    assert_eq!(offset_of!(AdActionStep, verified), 21);
+    assert_eq!(offset_of!(AdActionStep, has_verified), 22);
+    assert_eq!(offset_of!(AdActionStep, _reserved), 24);
+
+    let copied = unsafe {
+        let step = MaybeUninit::<AdActionStep>::zeroed().assume_init();
+        std::ptr::read(&step as *const AdActionStep)
+    };
+    assert!(copied.label.is_null());
+    assert!(copied.outcome.is_null());
+    assert_eq!(copied.mechanism, 0);
+    assert!(!copied.has_mechanism);
+    assert!(!copied.verified);
+    assert!(!copied.has_verified);
+    assert_eq!(copied._reserved, 0);
 }
 
 #[test]

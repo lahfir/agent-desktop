@@ -68,6 +68,10 @@ _Static_assert(sizeof(AdActionStep) == AD_ACTION_STEP_SIZE, "AdActionStep ABI si
 _Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
 _Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
 _Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+_Static_assert(offsetof(AdActionStep, mechanism) == 16, "AdActionStep.mechanism offset changed");
+_Static_assert(offsetof(AdActionStep, has_mechanism) == 20, "AdActionStep.has_mechanism offset changed");
+_Static_assert(offsetof(AdActionStep, verified) == 21, "AdActionStep.verified offset changed");
+_Static_assert(offsetof(AdActionStep, has_verified) == 22, "AdActionStep.has_verified offset changed");
 _Static_assert(sizeof(AdActionResult) == AD_ACTION_RESULT_SIZE, "AdActionResult ABI size changed");
 _Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
 _Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");
@@ -103,6 +107,7 @@ include = [
     "AdPolicyKind",
     "AdScreenshotKind",
     "AdSnapshotSurface",
+    "AdStepMechanism",
     "AdWindowOpKind",
 ]
 

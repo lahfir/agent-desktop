@@ -1,7 +1,11 @@
 use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
-use crate::types::{AdActionResult, AdElementState, action_step::AdActionStep};
+use crate::types::{
+    AdActionResult, AdElementState,
+    action_step::{AdActionStep, AdStepMechanism},
+};
 use agent_desktop_core::action_result::ActionResult as CoreActionResult;
 use agent_desktop_core::action_step_outcome::ActionStepOutcome;
+use agent_desktop_core::step_mechanism::StepMechanism;
 use std::ptr;
 
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
@@ -84,9 +88,18 @@ fn action_steps_to_c(r: &CoreActionResult) -> *mut AdActionStep {
     let mut steps = r
         .steps
         .iter()
-        .map(|step| AdActionStep {
-            label: string_to_c_lossy(step.label()),
-            outcome: string_to_c_lossy(step_outcome_name(&step.outcome)),
+        .map(|step| {
+            let mechanism = step.mechanism().map(core_mechanism_to_c);
+            let verified = step.verified();
+            AdActionStep {
+                label: string_to_c_lossy(step.label()),
+                outcome: string_to_c_lossy(step_outcome_name(&step.outcome)),
+                mechanism: mechanism.unwrap_or(AdStepMechanism::SemanticApi) as i32,
+                has_mechanism: mechanism.is_some(),
+                verified: verified.unwrap_or(false),
+                has_verified: verified.is_some(),
+                _reserved: 0,
+            }
         })
         .collect::<Vec<_>>();
     steps.push(step_sentinel());
@@ -108,6 +121,18 @@ fn step_sentinel() -> AdActionStep {
     AdActionStep {
         label: ptr::null(),
         outcome: ptr::null(),
+        mechanism: 0,
+        has_mechanism: false,
+        verified: false,
+        has_verified: false,
+        _reserved: 0,
+    }
+}
+
+fn core_mechanism_to_c(mechanism: StepMechanism) -> AdStepMechanism {
+    match mechanism {
+        StepMechanism::SemanticApi => AdStepMechanism::SemanticApi,
+        StepMechanism::PhysicalSynthetic => AdStepMechanism::PhysicalSynthetic,
     }
 }
 
@@ -194,6 +219,11 @@ mod tests {
             AdActionStep {
                 label: crate::convert::string::string_to_c_lossy("AXPress"),
                 outcome: crate::convert::string::string_to_c_lossy("succeeded"),
+                mechanism: AdStepMechanism::SemanticApi as i32,
+                has_mechanism: true,
+                verified: false,
+                has_verified: false,
+                _reserved: 0,
             },
             step_sentinel(),
         ]
@@ -216,8 +246,11 @@ mod tests {
     #[test]
     fn action_result_to_c_preserves_steps() {
         let core_result = CoreActionResult::new("click").with_steps(vec![
-            agent_desktop_core::action_step::ActionStep::attempted("AXScrollToVisible"),
-            agent_desktop_core::action_step::ActionStep::succeeded("AXPress"),
+            agent_desktop_core::action_step::ActionStep::attempted("AXScrollToVisible")
+                .with_mechanism(StepMechanism::SemanticApi),
+            agent_desktop_core::action_step::ActionStep::succeeded("AXPress")
+                .with_mechanism(StepMechanism::SemanticApi)
+                .with_verified(true),
         ]);
 
         let mut c_result = action_result_to_c(&core_result);
@@ -233,6 +266,12 @@ mod tests {
                 c_to_string((*c_result.steps.add(0)).outcome).as_deref(),
                 Some("attempted")
             );
+            assert!((*c_result.steps.add(0)).has_mechanism);
+            assert_eq!(
+                (*c_result.steps.add(0)).mechanism,
+                AdStepMechanism::SemanticApi as i32
+            );
+            assert!(!(*c_result.steps.add(0)).has_verified);
             assert_eq!(
                 c_to_string((*c_result.steps.add(1)).label).as_deref(),
                 Some("AXPress")
@@ -241,6 +280,13 @@ mod tests {
                 c_to_string((*c_result.steps.add(1)).outcome).as_deref(),
                 Some("succeeded")
             );
+            assert!((*c_result.steps.add(1)).has_mechanism);
+            assert_eq!(
+                (*c_result.steps.add(1)).mechanism,
+                AdStepMechanism::SemanticApi as i32
+            );
+            assert!((*c_result.steps.add(1)).has_verified);
+            assert!((*c_result.steps.add(1)).verified);
         }
 
         unsafe { ad_free_action_result(&mut c_result) };

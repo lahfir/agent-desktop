@@ -67,6 +67,10 @@ int main(void) {
     _Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
     _Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
     _Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+    _Static_assert(offsetof(AdActionStep, mechanism) == 16, "AdActionStep.mechanism offset changed");
+    _Static_assert(offsetof(AdActionStep, has_mechanism) == 20, "AdActionStep.has_mechanism offset changed");
+    _Static_assert(offsetof(AdActionStep, verified) == 21, "AdActionStep.verified offset changed");
+    _Static_assert(offsetof(AdActionStep, has_verified) == 22, "AdActionStep.has_verified offset changed");
     _Static_assert(AD_ELEMENT_STATE_SIZE == sizeof(AdElementState), "AdElementState size macro drifted");
     (void)ad_action_step_size;
     (void)ad_ref_entry_size;

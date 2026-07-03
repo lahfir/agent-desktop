@@ -41,7 +41,7 @@ pub mod window_op_kind;
 pub use action::AdAction;
 pub use action_kind::AdActionKind;
 pub use action_result::AdActionResult;
-pub use action_step::AdActionStep;
+pub use action_step::{AdActionStep, AdStepMechanism};
 pub use app_info::AdAppInfo;
 pub use app_list::AdAppList;
 pub use direction::AdDirection;

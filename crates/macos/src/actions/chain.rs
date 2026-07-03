@@ -1,4 +1,6 @@
+use agent_desktop_core::action_step_outcome::ActionStepOutcome;
 use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::step_mechanism::StepMechanism;
 use agent_desktop_core::{action_step::ActionStep, interaction_policy::InteractionPolicy};
 
 use crate::actions::discovery::ElementCaps;
@@ -42,7 +44,10 @@ mod imp {
         if def.pre_scroll {
             tracing::debug!("chain: pre-scroll AXScrollToVisible");
             ax_helpers::ensure_visible(el);
-            steps.push(ActionStep::attempted("AXScrollToVisible"));
+            steps.push(
+                ActionStep::attempted("AXScrollToVisible")
+                    .with_mechanism(StepMechanism::SemanticApi),
+            );
         }
 
         for (i, step) in def.steps.iter().enumerate() {
@@ -53,11 +58,10 @@ mod imp {
                     .iter()
                     .find(|s| matches!(s, ChainStep::CGClick { .. }))
                 {
-                    let label = step_label(cg);
                     if physical_click_permitted(policy) && execute_step(el, caps, cg, &ctx, policy)?
                     {
                         tracing::debug!("chain: CGClick fallback succeeded");
-                        steps.push(ActionStep::succeeded(label));
+                        steps.push(build_step(cg, ActionStepOutcome::Succeeded));
                         return Ok(steps);
                     }
                 }
@@ -76,11 +80,11 @@ mod imp {
             let label = step_label(step);
             if execute_step(el, caps, step, &ctx, policy)? {
                 tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
-                steps.push(ActionStep::succeeded(label));
+                steps.push(build_step(step, ActionStepOutcome::Succeeded));
                 return Ok(steps);
             }
             tracing::debug!("chain: [{}/{}] {} -> skip", i + 1, total, label);
-            steps.push(ActionStep::skipped(label));
+            steps.push(build_step(step, ActionStepOutcome::Skipped));
         }
 
         tracing::debug!("chain: all {total} steps exhausted");
@@ -88,6 +92,46 @@ mod imp {
             AdapterError::new(ErrorCode::ActionFailed, "All chain steps exhausted")
                 .with_suggestion(def.suggestion),
         )
+    }
+
+    fn step_mechanism(step: &ChainStep) -> StepMechanism {
+        match step {
+            ChainStep::CGClick { .. } | ChainStep::FocusThenClearByKeyboard => {
+                StepMechanism::PhysicalSynthetic
+            }
+            _ => StepMechanism::SemanticApi,
+        }
+    }
+
+    fn step_verifies_effect(step: &ChainStep) -> bool {
+        match step {
+            ChainStep::SetBool { .. }
+            | ChainStep::SetDynamic { .. }
+            | ChainStep::FocusThenSetDynamic { .. }
+            | ChainStep::IncrementToDynamic => true,
+            ChainStep::Custom { label, .. } => matches!(
+                *label,
+                "verified_press" | "value_relay" | "visible_in_scroll_context"
+            ),
+            ChainStep::CustomWithDeadline { label, .. } => {
+                matches!(*label, "expand_verified" | "collapse_verified")
+            }
+            _ => false,
+        }
+    }
+
+    fn build_step(step: &ChainStep, outcome: ActionStepOutcome) -> ActionStep {
+        let label = step_label(step);
+        let mut built = match outcome {
+            ActionStepOutcome::Attempted => ActionStep::attempted(label),
+            ActionStepOutcome::Skipped => ActionStep::skipped(label),
+            ActionStepOutcome::Succeeded => ActionStep::succeeded(label),
+        };
+        built = built.with_mechanism(step_mechanism(step));
+        if matches!(outcome, ActionStepOutcome::Succeeded) && step_verifies_effect(step) {
+            built = built.with_verified(true);
+        }
+        built
     }
 
     fn step_label(step: &ChainStep) -> &'static str {
@@ -318,7 +362,10 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
-        use super::finite_target;
+        use super::{ChainStep, build_step, finite_target, step_mechanism, step_verifies_effect};
+        use agent_desktop_core::action::MouseButton;
+        use agent_desktop_core::action_step_outcome::ActionStepOutcome;
+        use agent_desktop_core::step_mechanism::StepMechanism;
 
         #[test]
         fn finite_target_rejects_non_finite_numbers() {
@@ -327,6 +374,64 @@ mod imp {
             assert_eq!(finite_target("inf"), None);
             assert_eq!(finite_target("-inf"), None);
             assert_eq!(finite_target("not-a-number"), None);
+        }
+
+        #[test]
+        fn step_mechanism_tags_physical_for_cgclick_and_keyboard_clear() {
+            assert_eq!(
+                step_mechanism(&ChainStep::CGClick {
+                    button: MouseButton::Left,
+                    count: 1,
+                }),
+                StepMechanism::PhysicalSynthetic
+            );
+            assert_eq!(
+                step_mechanism(&ChainStep::FocusThenClearByKeyboard),
+                StepMechanism::PhysicalSynthetic
+            );
+            assert_eq!(
+                step_mechanism(&ChainStep::Action("AXPress")),
+                StepMechanism::SemanticApi
+            );
+        }
+
+        #[test]
+        fn step_verifies_effect_matches_verified_chain_steps() {
+            assert!(step_verifies_effect(&ChainStep::SetBool {
+                attr: "AXSelected",
+                value: true,
+            }));
+            assert!(step_verifies_effect(&ChainStep::Custom {
+                label: "verified_press",
+                func: |_| Ok(false),
+            }));
+            assert!(step_verifies_effect(&ChainStep::CustomWithDeadline {
+                label: "expand_verified",
+                func: |_, _| Ok(false),
+            }));
+            assert!(!step_verifies_effect(&ChainStep::Action("AXPress")));
+        }
+
+        #[test]
+        fn build_step_tags_mechanism_and_verified_on_success() {
+            let step = ChainStep::SetBool {
+                attr: "AXSelected",
+                value: true,
+            };
+            let built = build_step(&step, ActionStepOutcome::Succeeded);
+            assert_eq!(built.mechanism(), Some(StepMechanism::SemanticApi));
+            assert_eq!(built.verified(), Some(true));
+        }
+
+        #[test]
+        fn build_step_skipped_does_not_tag_verified() {
+            let step = ChainStep::SetBool {
+                attr: "AXSelected",
+                value: true,
+            };
+            let built = build_step(&step, ActionStepOutcome::Skipped);
+            assert_eq!(built.mechanism(), Some(StepMechanism::SemanticApi));
+            assert!(built.verified().is_none());
         }
     }
 }
