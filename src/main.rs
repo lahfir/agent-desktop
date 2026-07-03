@@ -4,6 +4,14 @@ mod cli_args;
 mod command_policy;
 mod dispatch;
 
+/// Shared blanket-default `PlatformAdapter` test double, sourced once from
+/// `tests/support/noop_ops.rs` (also consumed by the standalone
+/// `conformance` integration-test crate) and reused by any in-crate unit
+/// test that needs "some adapter" without exercising a live capability.
+#[cfg(test)]
+#[path = "../tests/support/noop_ops.rs"]
+mod test_noop_ops;
+
 use agent_desktop_core::{
     context::{CommandContext, WaitSelector},
     error::AppError,

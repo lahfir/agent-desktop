@@ -96,25 +96,7 @@ impl std::str::FromStr for Role {
 
 impl Role {
     pub fn is_interactive(self) -> bool {
-        matches!(
-            self,
-            Self::Button
-                | Self::Cell
-                | Self::Checkbox
-                | Self::Colorwell
-                | Self::Combobox
-                | Self::Dockitem
-                | Self::Incrementor
-                | Self::Link
-                | Self::Menubutton
-                | Self::Menuitem
-                | Self::Radiobutton
-                | Self::Slider
-                | Self::Switch
-                | Self::Tab
-                | Self::Textfield
-                | Self::Treeitem
-        )
+        crate::roles::INTERACTIVE_ROLES.contains(&self.as_str())
     }
 }
 

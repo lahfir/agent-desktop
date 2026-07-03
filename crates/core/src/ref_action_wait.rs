@@ -69,6 +69,38 @@ pub(crate) fn budget_from_ms(ms: u64) -> Duration {
     Duration::from_millis(ms.min(MAX_BUDGET_MS))
 }
 
+/// Outcome of one capped resolve attempt inside a deadline-bounded poll loop.
+pub(crate) enum ResolveAttemptOutcome {
+    Resolved(crate::adapter::NativeHandle),
+    Failed(AdapterError),
+    DeadlinePassed,
+}
+
+/// Single owner of the "poll resolve, capped per attempt, until deadline"
+/// math shared by the ref-action auto-wait loop and `wait --element`. Caps
+/// each individual [`ObservationOps::resolve_element_strict_with_timeout`]
+/// call to [`RESOLVE_ATTEMPT`] (never exceeding what's left before
+/// `deadline`), so a slow resolve cannot consume the whole wait budget on a
+/// single attempt. Callers own everything after the resolve: what to do with
+/// a resolved handle, which failure codes are retryable for them (e.g.
+/// `wait --element` additionally retries `ELEMENT_NOT_FOUND`), and any
+/// side-effects like refreshing a `LatestRefCache`.
+pub(crate) fn resolve_within_deadline(
+    adapter: &dyn PlatformAdapter,
+    entry: &RefEntry,
+    deadline: Instant,
+) -> ResolveAttemptOutcome {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return ResolveAttemptOutcome::DeadlinePassed;
+    }
+    let attempt = remaining.min(RESOLVE_ATTEMPT);
+    match adapter.resolve_element_strict_with_timeout(entry, attempt) {
+        Ok(handle) => ResolveAttemptOutcome::Resolved(handle),
+        Err(err) => ResolveAttemptOutcome::Failed(err),
+    }
+}
+
 pub(crate) fn execute_with_auto_wait(
     adapter: &dyn PlatformAdapter,
     entry: &RefEntry,
@@ -141,13 +173,11 @@ fn execute_poll_loop(
     let mut last_report: Option<Value> = None;
     let mut saw_ambiguity = false;
     loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Err(actionability_timeout(last_report));
-        }
-        let attempt = remaining.min(RESOLVE_ATTEMPT);
-        match adapter.resolve_element_strict_with_timeout(entry, attempt) {
-            Ok(handle) => {
+        match resolve_within_deadline(adapter, entry, deadline) {
+            ResolveAttemptOutcome::DeadlinePassed => {
+                return Err(actionability_timeout(last_report));
+            }
+            ResolveAttemptOutcome::Resolved(handle) => {
                 let resolved = ResolvedElement::new(adapter, handle);
                 maybe_scroll_into_view(adapter, entry, resolved.handle(), &request);
                 match dispatch(
@@ -176,7 +206,7 @@ fn execute_poll_loop(
                     }
                 }
             }
-            Err(err) => {
+            ResolveAttemptOutcome::Failed(err) => {
                 let code = err.code.clone();
                 if is_permanent_error(&code) {
                     trace_resolve_error(context, ref_id, &err);

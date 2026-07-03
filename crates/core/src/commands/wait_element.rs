@@ -3,15 +3,11 @@ use crate::{
     commands::{wait_latest_ref_cache::LatestRefCache, wait_predicate, wait_timeout},
     context::CommandContext,
     error::{AppError, ErrorCode},
+    ref_action_wait::{POLL_INTERVAL, ResolveAttemptOutcome, resolve_within_deadline},
     refs_store::RefStore,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
-
-/// Per-attempt cap on ref resolution inside a wait loop, so a slow resolve
-/// cannot consume the whole wait budget on the first poll; the predicate is
-/// re-checked every attempt across the full timeout.
-const WAIT_RESOLVE_ATTEMPT: Duration = Duration::from_millis(750);
 
 pub(crate) struct ElementWaitInput {
     pub(crate) ref_id: String,
@@ -33,6 +29,7 @@ pub(crate) fn wait_for_element(
     } = input;
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
+    let deadline = start + timeout;
     let store = RefStore::for_session(context.session_id())?;
     let fixed_refmap = match snapshot_id.as_deref() {
         Some(id) => Some(store.load_snapshot(id)?),
@@ -61,13 +58,11 @@ pub(crate) fn wait_for_element(
             .and_then(|r| r.get(&ref_id).cloned())
             .or_else(|| latest_cache.as_ref().and_then(|c| c.entry(&ref_id)));
         if let Some(entry) = entry {
-            let remaining = timeout.saturating_sub(start.elapsed());
-            if remaining.is_zero() {
-                return wait_timeout::element(ref_id, predicate, timeout_ms, last_observed);
-            }
-            let attempt = remaining.min(WAIT_RESOLVE_ATTEMPT);
-            match adapter.resolve_element_strict_with_timeout(&entry, attempt) {
-                Ok(handle) => {
+            match resolve_within_deadline(adapter, &entry, deadline) {
+                ResolveAttemptOutcome::DeadlinePassed => {
+                    return wait_timeout::element(ref_id, predicate, timeout_ms, last_observed);
+                }
+                ResolveAttemptOutcome::Resolved(handle) => {
                     let observed = wait_predicate::observe(&entry, &handle, &predicate, adapter);
                     let _ = adapter.release_handle(&handle);
                     last_observed = observed.map_err(AppError::Adapter)?;
@@ -82,7 +77,9 @@ pub(crate) fn wait_for_element(
                         }));
                     }
                 }
-                Err(err) if is_retryable_wait_resolution_error(&err.code) => {
+                ResolveAttemptOutcome::Failed(err)
+                    if is_retryable_wait_resolution_error(&err.code) =>
+                {
                     last_observed = json!({
                         "error": err.code.as_str(),
                         "message": err.message
@@ -93,17 +90,17 @@ pub(crate) fn wait_for_element(
                         }
                     }
                 }
-                Err(err) => return Err(AppError::Adapter(err)),
+                ResolveAttemptOutcome::Failed(err) => return Err(AppError::Adapter(err)),
             }
         } else if let Some(cache) = latest_cache.as_mut() {
             cache.refresh_if_due()?;
         }
 
-        let remaining = timeout.saturating_sub(start.elapsed());
+        let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return wait_timeout::element(ref_id, predicate, timeout_ms, last_observed);
         }
-        std::thread::sleep(remaining.min(Duration::from_millis(100)));
+        std::thread::sleep(remaining.min(POLL_INTERVAL));
     }
 }
 

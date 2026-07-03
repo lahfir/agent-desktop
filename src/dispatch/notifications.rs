@@ -64,17 +64,7 @@ fn notification_index(index: u64) -> Result<usize, AppError> {
 mod tests {
     use super::*;
     use crate::cli_args::notifications::{DismissNotificationCliArgs, NotificationActionCliArgs};
-    use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-
-    struct NoopAdapter;
-
-    impl ObservationOps for NoopAdapter {}
-
-    impl ActionOps for NoopAdapter {}
-
-    impl InputOps for NoopAdapter {}
-
-    impl SystemOps for NoopAdapter {}
+    use crate::test_noop_ops::NoopAdapter;
 
     #[test]
     fn dismiss_notification_rejects_zero_index_before_adapter() {

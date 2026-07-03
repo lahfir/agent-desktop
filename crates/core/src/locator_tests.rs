@@ -1,5 +1,5 @@
 use super::*;
-use crate::{native_handle::NativeHandle, node::AccessibilityNode, search_text, state};
+use crate::{node::AccessibilityNode, search_text, state};
 
 fn node(
     role: &str,
@@ -94,22 +94,6 @@ fn has_subquery_matches_descendant() {
         ..LocatorQuery::default()
     };
     assert!(accessibility_node_matches(&root, &query));
-}
-
-#[test]
-fn classify_query_result_shapes() {
-    assert!(matches!(
-        classify_query_result(&[]),
-        QueryClassification::NotFound
-    ));
-    assert!(matches!(
-        classify_query_result(&[NativeHandle::null()]),
-        QueryClassification::Single(0)
-    ));
-    assert!(matches!(
-        classify_query_result(&[NativeHandle::null(), NativeHandle::null()]),
-        QueryClassification::Ambiguous { .. }
-    ));
 }
 
 #[test]

@@ -17,19 +17,22 @@ pub(crate) fn window_element_for_info(win: &WindowInfo) -> Result<AXElement, Ada
 }
 
 pub(crate) fn resolve_window_strict(win: &WindowInfo) -> Result<WindowInfo, AdapterError> {
-    let window_number = parse_window_number(&win.id).ok_or_else(|| invalid_window_id(&win.id))?;
-    let record = find_window_record(window_number).ok_or_else(|| window_not_found(&win.id))?;
-    verify_window_record(win, &record)?;
+    let (_, record) = locate_verified_record(win)?;
     Ok(window_info_from_record(win, &record))
 }
 
 fn resolve_window_element_strict(win: &WindowInfo) -> Result<AXElement, AdapterError> {
-    let window_number = parse_window_number(&win.id).ok_or_else(|| invalid_window_id(&win.id))?;
-    verify_window_record(
-        win,
-        &find_window_record(window_number).ok_or_else(|| window_not_found(&win.id))?,
-    )?;
+    let (window_number, _) = locate_verified_record(win)?;
     ax_window_element_for_number(win.pid, window_number).ok_or_else(|| window_not_found(&win.id))
+}
+
+/// Single owner of the parse-id → find-record → verify-identity chain shared
+/// by [`resolve_window_strict`] and [`resolve_window_element_strict`].
+fn locate_verified_record(win: &WindowInfo) -> Result<(i64, WindowRecord), AdapterError> {
+    let window_number = parse_window_number(&win.id).ok_or_else(|| invalid_window_id(&win.id))?;
+    let record = find_window_record(window_number).ok_or_else(|| window_not_found(&win.id))?;
+    verify_window_record(win, &record)?;
+    Ok((window_number, record))
 }
 
 pub(crate) fn parse_window_number(id: &str) -> Option<i64> {

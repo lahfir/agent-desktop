@@ -124,6 +124,9 @@ fn element_matches(
     window_bounds: Option<Rect>,
     remaining_depth: u8,
 ) -> Result<bool, AdapterError> {
+    if !locator::role_matches(query, role) {
+        return Ok(false);
+    }
     let state_ctx = StateReaderContext {
         focused: None,
         window_bounds,

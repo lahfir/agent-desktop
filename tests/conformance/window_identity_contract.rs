@@ -6,6 +6,9 @@ use agent_desktop_core::{
 };
 use std::sync::Mutex;
 
+#[path = "../support/noop_ops.rs"]
+mod noop_ops;
+
 struct WindowIdentityAdapter {
     windows: Vec<WindowInfo>,
     last_window_op_id: Mutex<Option<String>>,
@@ -107,13 +110,7 @@ fn recycled_id_with_wrong_pid_fails_closed() {
 
 #[test]
 fn resolve_window_strict_default_is_not_supported() {
-    struct StubSystemOps;
-    impl ObservationOps for StubSystemOps {}
-    impl ActionOps for StubSystemOps {}
-    impl InputOps for StubSystemOps {}
-    impl SystemOps for StubSystemOps {}
-
-    let err = StubSystemOps
+    let err = noop_ops::NoopAdapter
         .resolve_window_strict(&untitled("w-1", 10))
         .unwrap_err();
 

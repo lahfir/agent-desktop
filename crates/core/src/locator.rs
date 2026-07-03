@@ -1,6 +1,5 @@
 use crate::{
     error::{AdapterError, ErrorCode},
-    native_handle::NativeHandle,
     node::AccessibilityNode,
     roles, search_text,
     state::{self, STATE_VOCABULARY},
@@ -71,44 +70,6 @@ impl LocatorQuery {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum QueryClassification {
-    NotFound,
-    Single(usize),
-    Ambiguous { candidate_indices: Vec<usize> },
-}
-
-pub fn classify_query_result(handles: &[NativeHandle]) -> QueryClassification {
-    match handles.len() {
-        0 => QueryClassification::NotFound,
-        1 => QueryClassification::Single(0),
-        count if count > 1 => QueryClassification::Ambiguous {
-            candidate_indices: (0..count).collect(),
-        },
-        _ => QueryClassification::NotFound,
-    }
-}
-
-pub fn ambiguous_candidate_summaries(
-    handles: &[NativeHandle],
-    summaries: &[QueryCandidateSummary],
-) -> serde_json::Value {
-    let capped: Vec<_> = summaries.iter().take(10).cloned().collect();
-    serde_json::json!({
-        "candidate_count": handles.len(),
-        "candidates": capped,
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QueryCandidateSummary {
-    pub role: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_id: Option<String>,
-}
-
 pub struct NodeMatchContext<'a> {
     pub role: &'a str,
     pub name: Option<&'a str>,
@@ -170,7 +131,11 @@ pub fn accessibility_node_matches(node: &AccessibilityNode, query: &LocatorQuery
     node_matches(query, node_context(node))
 }
 
-fn role_matches(query: &LocatorQuery, role: &str) -> bool {
+/// Cheap standalone role predicate, factored out of [`node_matches`] so
+/// callers building a full match context (states, children, name/value
+/// text) can short-circuit before paying for that work when the role alone
+/// already rules a candidate out.
+pub fn role_matches(query: &LocatorQuery, role: &str) -> bool {
     query
         .role
         .as_deref()

@@ -120,14 +120,7 @@ fn finish_from_live_handles(
     let selected = select_live_indices(args, handles.len());
     let matches: Vec<Value> = selected
         .into_iter()
-        .filter_map(|index| {
-            materialize_match(
-                index,
-                snapshot_matches.get(index),
-                &snapshot_result.tree,
-                query,
-            )
-        })
+        .filter_map(|index| materialize_match(snapshot_matches.get(index)))
         .collect();
 
     if args.first || args.last || args.nth.is_some() {
@@ -220,16 +213,8 @@ fn select_live_indices(args: &FindArgs, total: usize) -> Vec<usize> {
     (0..total.min(limit)).collect()
 }
 
-fn materialize_match(
-    index: usize,
-    snapshot_match: Option<&Value>,
-    tree: &AccessibilityNode,
-    query: &LocatorQuery,
-) -> Option<Value> {
-    snapshot_match.cloned().or_else(|| {
-        let _ = (index, tree, query);
-        None
-    })
+fn materialize_match(snapshot_match: Option<&Value>) -> Option<Value> {
+    snapshot_match.cloned()
 }
 
 fn attach_roles_present_hint(

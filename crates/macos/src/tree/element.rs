@@ -38,11 +38,56 @@ mod imp {
         base::{CFType, CFTypeRef, TCFType},
         boolean::CFBoolean,
         number::CFNumber,
-        string::CFString,
+        string::{CFString, CFStringRef},
     };
     use core_graphics::geometry::{CGPoint, CGSize};
 
     const SCROLLBAR_ATTRS: [&str; 2] = ["AXVerticalScrollBar", "AXHorizontalScrollBar"];
+
+    const FETCH_ATTR_NAMES: [&str; 18] = [
+        kAXRoleAttribute,
+        kAXTitleAttribute,
+        kAXDescriptionAttribute,
+        kAXValueAttribute,
+        kAXEnabledAttribute,
+        "AXFocused",
+        "AXExpanded",
+        "AXDisclosing",
+        "AXSelected",
+        "AXHidden",
+        "AXElementBusy",
+        "AXModal",
+        "AXRequired",
+        "AXIdentifier",
+        kAXPositionAttribute,
+        kAXSizeAttribute,
+        SCROLLBAR_ATTRS[0],
+        SCROLLBAR_ATTRS[1],
+    ];
+
+    /// Owns the CFStrings backing [`FETCH_ATTR_NAMES`] alongside the
+    /// non-retaining `CFArray` view over them, so the array stays valid for
+    /// the lifetime of this thread-local cache.
+    struct AttrNamesCache {
+        _names: Vec<CFString>,
+        array: CFArray<CFStringRef>,
+    }
+
+    impl AttrNamesCache {
+        fn build() -> Self {
+            let names: Vec<CFString> = FETCH_ATTR_NAMES.iter().map(|a| CFString::new(a)).collect();
+            let refs: Vec<CFStringRef> = names.iter().map(|s| s.as_concrete_TypeRef()).collect();
+            let array = CFArray::from_copyable(&refs);
+            Self {
+                _names: names,
+                array,
+            }
+        }
+    }
+
+    thread_local! {
+        static ATTR_NAMES_CACHE: AttrNamesCache = AttrNamesCache::build();
+    }
 
     pub fn element_for_pid(pid: i32) -> AXElement {
         let el = AXElement(unsafe { AXUIElementCreateApplication(pid) });
@@ -53,39 +98,15 @@ mod imp {
     }
 
     pub fn fetch_node_attrs(el: &AXElement) -> NodeAttrs {
-        let attr_names = [
-            kAXRoleAttribute,
-            kAXTitleAttribute,
-            kAXDescriptionAttribute,
-            kAXValueAttribute,
-            kAXEnabledAttribute,
-            "AXFocused",
-            "AXExpanded",
-            "AXDisclosing",
-            "AXSelected",
-            "AXHidden",
-            "AXElementBusy",
-            "AXModal",
-            "AXRequired",
-            "AXIdentifier",
-            kAXPositionAttribute,
-            kAXSizeAttribute,
-            SCROLLBAR_ATTRS[0],
-            SCROLLBAR_ATTRS[1],
-        ];
-        let cf_names: Vec<CFString> = attr_names.iter().map(|a| CFString::new(a)).collect();
-        let cf_refs: Vec<_> = cf_names.iter().map(|s| s.as_concrete_TypeRef()).collect();
-        let names_arr = CFArray::from_copyable(&cf_refs);
-
         let mut result_ref: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
+        let err = ATTR_NAMES_CACHE.with(|cache| unsafe {
             AXUIElementCopyMultipleAttributeValues(
                 el.0,
-                names_arr.as_concrete_TypeRef(),
+                cache.array.as_concrete_TypeRef(),
                 0,
                 &mut result_ref as *mut _ as *mut _,
             )
-        };
+        });
 
         if err != kAXErrorSuccess || result_ref.is_null() {
             return fetch_node_attrs_slow(el);
@@ -114,8 +135,7 @@ mod imp {
 
         let get = |i: usize| texts.get(i).and_then(|v| v.clone());
         let role = get(0);
-        let readonly = editable_ax_role(role.as_deref())
-            .then(|| !crate::tree::capabilities::is_attr_settable(el, kAXValueAttribute));
+        let readonly = compute_readonly(el, role.as_deref());
         NodeAttrs {
             role,
             title: get(1),
@@ -195,8 +215,7 @@ mod imp {
         let desc = copy_string_attr(el, kAXDescriptionAttribute);
         let val = copy_value_typed(el);
         let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
-        let readonly = editable_ax_role(role.as_deref())
-            .then(|| !crate::tree::capabilities::is_attr_settable(el, kAXValueAttribute));
+        let readonly = compute_readonly(el, role.as_deref());
         let native_id =
             crate::tree::native_id::meaningful_native_id(copy_string_attr(el, "AXIdentifier"));
         NodeAttrs {
@@ -220,6 +239,16 @@ mod imp {
             bounds: read_bounds(el),
             has_scrollbars: copy_first_element_attr(el, &SCROLLBAR_ATTRS).is_some(),
         }
+    }
+
+    /// Single owner of the readonly derivation shared by the fast
+    /// (`AXUIElementCopyMultipleAttributeValues`) and slow (per-attribute)
+    /// read paths: an element only carries a readonly flag when its role is
+    /// editable, and the flag is the negation of whether `AXValue` is
+    /// currently settable.
+    fn compute_readonly(el: &AXElement, role: Option<&str>) -> Option<bool> {
+        editable_ax_role(role)
+            .then(|| !crate::tree::capabilities::is_attr_settable(el, kAXValueAttribute))
     }
 
     fn editable_ax_role(role: Option<&str>) -> bool {
