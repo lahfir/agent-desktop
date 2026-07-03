@@ -59,7 +59,12 @@ impl Action {
     pub fn requires_hit_test(&self) -> bool {
         matches!(
             self,
-            Self::Click | Self::DoubleClick | Self::RightClick | Self::TripleClick | Self::Hover
+            Self::Click
+                | Self::DoubleClick
+                | Self::RightClick
+                | Self::TripleClick
+                | Self::Hover
+                | Self::Drag(_)
         )
     }
 

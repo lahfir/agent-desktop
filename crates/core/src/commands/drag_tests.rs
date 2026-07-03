@@ -5,6 +5,7 @@ use crate::{
     adapter::NativeHandle,
     capability,
     error::{AdapterError, ErrorCode},
+    hit_test::HitTestResult,
     node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
@@ -295,6 +296,72 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
 
     assert_eq!(value["dragged"], true);
     assert!(adapter.resolve_calls.load(Ordering::SeqCst) >= 3);
+}
+
+struct OccludedFromAdapter {
+    captured: Mutex<Option<DragParams>>,
+}
+
+impl ObservationOps for OccludedFromAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        Ok(Some(Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 40.0,
+            height: 60.0,
+        }))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::action::Point,
+    ) -> Result<HitTestResult, AdapterError> {
+        Ok(HitTestResult::InterceptedBy {
+            role: Some("AXSheet".into()),
+            name: Some("Save changes?".into()),
+            bounds: None,
+        })
+    }
+}
+
+impl ActionOps for OccludedFromAdapter {}
+
+impl InputOps for OccludedFromAdapter {
+    fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
+        *self.captured.lock().unwrap() = Some(params);
+        Ok(())
+    }
+}
+
+impl SystemOps for OccludedFromAdapter {}
+
+/// F27 regression: `drag --from <ref>` previously resolved bounds to a point
+/// and dispatched without ever consulting `hit_test`, so a `from` ref
+/// occluded by a modal sheet was dragged blind. This proves the preflight
+/// now fails before `adapter.drag` is ever called.
+#[test]
+fn drag_from_occluded_ref_fails_preflight_before_dispatch() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = cross_app_snapshot();
+    let adapter = OccludedFromAdapter {
+        captured: Mutex::new(None),
+    };
+
+    let err = execute(
+        cross_app_args(snapshot_id),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "ACTION_FAILED");
+    assert!(err.to_string().contains("AXSheet"));
+    assert!(adapter.captured.lock().unwrap().is_none());
 }
 
 #[test]

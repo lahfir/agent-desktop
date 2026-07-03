@@ -4,6 +4,7 @@ use crate::{
     adapter::NativeHandle,
     capability,
     error::{AdapterError, ErrorCode},
+    hit_test::HitTestResult,
     node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
@@ -213,6 +214,72 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
 
     assert_eq!(value["hovered"], true);
     assert!(adapter.resolve_calls.load(Ordering::SeqCst) >= 3);
+}
+
+struct OccludedTargetAdapter {
+    moved_to: Mutex<Option<MouseEvent>>,
+}
+
+impl ObservationOps for OccludedTargetAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        Ok(Some(Rect {
+            x: 100.0,
+            y: 200.0,
+            width: 20.0,
+            height: 10.0,
+        }))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::action::Point,
+    ) -> Result<HitTestResult, AdapterError> {
+        Ok(HitTestResult::InterceptedBy {
+            role: Some("AXSheet".into()),
+            name: Some("Save changes?".into()),
+            bounds: None,
+        })
+    }
+}
+
+impl ActionOps for OccludedTargetAdapter {}
+
+impl InputOps for OccludedTargetAdapter {
+    fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
+        *self.moved_to.lock().unwrap() = Some(event);
+        Ok(())
+    }
+}
+
+impl SystemOps for OccludedTargetAdapter {}
+
+/// F27 regression: `hover --ref` previously resolved the ref's bounds to a
+/// point and dispatched the mouse move without ever consulting `hit_test`,
+/// so an occluded target (e.g. a modal sheet over it) was hovered blind.
+/// This proves the preflight now fails before any mouse event is sent.
+#[test]
+fn hover_on_occluded_ref_fails_preflight_before_dispatch() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = ref_snapshot(42);
+    let adapter = OccludedTargetAdapter {
+        moved_to: Mutex::new(None),
+    };
+
+    let err = execute(
+        ref_args(snapshot_id),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "ACTION_FAILED");
+    assert!(err.to_string().contains("AXSheet"));
+    assert!(adapter.moved_to.lock().unwrap().is_none());
 }
 
 #[test]

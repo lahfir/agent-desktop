@@ -123,3 +123,47 @@ fn hover_and_drag_base_policy_is_headless_independent_of_cursor_requirement() {
         "Drag.requires_cursor_policy() must still be true"
     );
 }
+
+#[test]
+fn requires_hit_test_covers_ref_targeted_pointer_actions() {
+    let hit_tested: &[Action] = &[
+        Action::Click,
+        Action::DoubleClick,
+        Action::RightClick,
+        Action::TripleClick,
+        Action::Hover,
+        Action::Drag(dummy_drag()),
+    ];
+    for action in hit_tested {
+        assert!(
+            action.requires_hit_test(),
+            "{} must require a hit test before dispatch",
+            action.name()
+        );
+    }
+
+    let not_hit_tested: &[Action] = &[
+        Action::SetValue("v".into()),
+        Action::SetFocus,
+        Action::Expand,
+        Action::Collapse,
+        Action::Select("s".into()),
+        Action::Toggle,
+        Action::Check,
+        Action::Uncheck,
+        Action::Scroll(Direction::Down, 1),
+        Action::ScrollTo,
+        Action::PressKey(dummy_key()),
+        Action::KeyDown(dummy_key()),
+        Action::KeyUp(dummy_key()),
+        Action::TypeText("t".into()),
+        Action::Clear,
+    ];
+    for action in not_hit_tested {
+        assert!(
+            !action.requires_hit_test(),
+            "{} must not require a hit test",
+            action.name()
+        );
+    }
+}

@@ -73,6 +73,26 @@ fn zero_sized_bounds_fail_visibility() {
 }
 
 #[test]
+fn hidden_state_fails_visibility_before_action_dispatch() {
+    let mut entry = entry();
+    entry.states.push(crate::state::HIDDEN.into());
+
+    let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
+
+    assert!(err.message.contains("visible"));
+}
+
+#[test]
+fn offscreen_state_fails_visibility_before_action_dispatch() {
+    let mut entry = entry();
+    entry.states.push(crate::state::OFFSCREEN.into());
+
+    let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
+
+    assert!(err.message.contains("visible"));
+}
+
+#[test]
 fn text_input_requires_editable_target() {
     let err = check(
         &entry(),

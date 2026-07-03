@@ -1,11 +1,13 @@
 use crate::capability;
 use crate::{
-    action::Action,
+    action::{Action, Point},
     action_request::ActionRequest,
     adapter::{NativeHandle, PlatformAdapter},
     error::{AdapterError, ErrorCode},
+    hit_test::HitTestResult,
     node::Rect,
     refs::RefEntry,
+    state,
 };
 use serde_json::json;
 
@@ -13,7 +15,7 @@ mod check;
 mod report;
 mod status;
 
-pub use check::ActionabilityCheck;
+pub use check::{ActionabilityCheck, Occluder};
 pub use report::ActionabilityReport;
 pub use status::ActionabilityStatus;
 
@@ -120,6 +122,12 @@ fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
     let Some(bounds) = entry.bounds else {
         return unknown("visible", "bounds unavailable");
     };
+    if state::has_state(&entry.states, state::HIDDEN) {
+        return fail("visible", "entry state contains hidden");
+    }
+    if state::has_state(&entry.states, state::OFFSCREEN) {
+        return fail("visible", "entry state contains offscreen");
+    }
     if !bounds_are_visible(Some(bounds)) {
         return fail("visible", "bounds are zero-sized");
     }
@@ -209,7 +217,6 @@ fn receives_events_check(
     adapter: &dyn PlatformAdapter,
     request: &ActionRequest,
 ) -> ActionabilityCheck {
-    use crate::action::Point;
     if !request.action.requires_hit_test() {
         return pass("receives_events");
     }
@@ -221,18 +228,45 @@ fn receives_events_check(
         y: bounds.y + bounds.height / 2.0,
     };
     match adapter.hit_test(handle, point) {
-        Ok(result) if result.receives_events => pass("receives_events"),
-        Ok(_) => fail("receives_events", "element is occluded at its center"),
-        Err(err)
-            if matches!(
-                err.code,
-                ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
-            ) =>
-        {
-            unknown("receives_events", "hit test unavailable")
-        }
-        Err(_) => fail("receives_events", "hit test failed"),
+        Ok(HitTestResult::ReachesTarget) => pass("receives_events"),
+        Ok(HitTestResult::Unknown) => unknown("receives_events", "hit test result inconclusive"),
+        Ok(HitTestResult::InterceptedBy {
+            role,
+            name,
+            bounds: occluder_bounds,
+        }) => occluded(role, name, occluder_bounds),
+        Err(_) => unknown("receives_events", "hit test unavailable"),
     }
+}
+
+/// The occlusion-only counterpart to [`check_live`] for ref-targeted pointer
+/// commands (`hover`, `drag`) that resolve a point via `point_resolve`
+/// instead of dispatching an [`ActionRequest`] through `check_live` — they
+/// have no `supported_action`/`editable` semantics to check, only whether the
+/// resolved point actually reaches the target. Mirrors the three-way
+/// [`HitTestResult`] contract: `ReachesTarget` and `Unknown` (including probe
+/// errors and `not_supported`) both proceed, only `InterceptedBy` fails.
+pub(crate) fn require_receives_events(
+    handle: &NativeHandle,
+    point: Point,
+    adapter: &dyn PlatformAdapter,
+) -> Result<(), AdapterError> {
+    let check = match adapter.hit_test(handle, point) {
+        Ok(HitTestResult::ReachesTarget | HitTestResult::Unknown) | Err(_) => return Ok(()),
+        Ok(HitTestResult::InterceptedBy { role, name, bounds }) => occluded(role, name, bounds),
+    };
+    let report = ActionabilityReport {
+        actionable: false,
+        checks: vec![check],
+    };
+    Err(AdapterError::new(
+        ErrorCode::ActionFailed,
+        format!("Target is not actionable: {}", failure_reasons(&report)),
+    )
+    .with_details(json!(report))
+    .with_suggestion(
+        "Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended.",
+    ))
 }
 
 fn failure_reasons(report: &ActionabilityReport) -> String {
@@ -257,6 +291,7 @@ fn pass(name: &'static str) -> ActionabilityCheck {
         name,
         status: ActionabilityStatus::Pass,
         reason: None,
+        occluder: None,
     }
 }
 
@@ -265,6 +300,7 @@ fn fail(name: &'static str, reason: impl Into<String>) -> ActionabilityCheck {
         name,
         status: ActionabilityStatus::Fail,
         reason: Some(reason.into()),
+        occluder: None,
     }
 }
 
@@ -273,6 +309,24 @@ fn unknown(name: &'static str, reason: impl Into<String>) -> ActionabilityCheck 
         name,
         status: ActionabilityStatus::Unknown,
         reason: Some(reason.into()),
+        occluder: None,
+    }
+}
+
+fn occluded(
+    role: Option<String>,
+    name: Option<String>,
+    bounds: Option<Rect>,
+) -> ActionabilityCheck {
+    let reason = match role.as_deref() {
+        Some(role) => format!("occluded by {role}"),
+        None => "occluded by another element".to_string(),
+    };
+    ActionabilityCheck {
+        name: "receives_events",
+        status: ActionabilityStatus::Fail,
+        reason: Some(reason),
+        occluder: Some(Occluder { role, name, bounds }),
     }
 }
 

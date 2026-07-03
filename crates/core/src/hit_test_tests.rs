@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     action::Action,
     action_request::ActionRequest,
-    actionability::check_live,
+    actionability::{ActionabilityCheck, ActionabilityStatus, check_live},
     adapter::{ActionOps, InputOps, LiveElement, NativeHandle, ObservationOps, SystemOps},
     element_state::ElementState,
     error::{AdapterError, ErrorCode},
@@ -11,7 +11,7 @@ use crate::{
 use smallvec::SmallVec;
 
 struct HitTestAdapter {
-    receives: bool,
+    outcome: Result<HitTestResult, AdapterError>,
 }
 
 impl ObservationOps for HitTestAdapter {
@@ -41,11 +41,7 @@ impl ObservationOps for HitTestAdapter {
         _handle: &NativeHandle,
         _point: crate::action::Point,
     ) -> Result<HitTestResult, AdapterError> {
-        Ok(if self.receives {
-            HitTestResult::receives_events(Some("AXButton".into()))
-        } else {
-            HitTestResult::blocked(Some("AXGroup".into()))
-        })
+        self.outcome.clone()
     }
 }
 
@@ -80,21 +76,84 @@ fn clickable_entry() -> RefEntry {
     }
 }
 
-#[test]
-fn occluded_target_fails_receives_events_check() {
-    let adapter = HitTestAdapter { receives: false };
+/// Runs `check_live` for a `Click` (which requires a hit test) against the
+/// given hit-test outcome and returns the `receives_events` check. Only the
+/// `InterceptedBy` outcome fails actionability, so every other outcome is
+/// safe to unwrap here; the `InterceptedBy` case is asserted separately
+/// against the `Err` path so its occluder details can be inspected.
+fn run_receives_events_check(outcome: Result<HitTestResult, AdapterError>) -> ActionabilityCheck {
+    let adapter = HitTestAdapter { outcome };
     let entry = clickable_entry();
     let request = ActionRequest::headless(Action::Click);
-    let err = check_live(&entry, &NativeHandle::null(), &adapter, &request)
-        .expect_err("occluded targets must fail actionability");
-    assert_eq!(err.code, ErrorCode::ActionFailed);
-    assert!(err.message.contains("receives_events"));
+    let report = check_live(&entry, &NativeHandle::null(), &adapter, &request)
+        .expect("only an InterceptedBy hit-test outcome fails actionability");
+    report
+        .checks
+        .into_iter()
+        .find(|check| check.name == "receives_events")
+        .expect("Click requires a receives_events check")
 }
 
 #[test]
-fn unoccluded_target_passes_receives_events_check() {
-    let adapter = HitTestAdapter { receives: true };
+fn reaches_target_result_passes_receives_events_check() {
+    let check = run_receives_events_check(Ok(HitTestResult::ReachesTarget));
+    assert_eq!(check.status, ActionabilityStatus::Pass);
+}
+
+#[test]
+fn unknown_hit_test_result_does_not_block_action() {
+    let check = run_receives_events_check(Ok(HitTestResult::Unknown));
+    assert_eq!(check.status, ActionabilityStatus::Unknown);
+}
+
+#[test]
+fn not_supported_hit_test_does_not_block_action() {
+    let check = run_receives_events_check(Err(AdapterError::not_supported("hit_test")));
+    assert_eq!(check.status, ActionabilityStatus::Unknown);
+}
+
+#[test]
+fn hit_test_probe_error_does_not_block_action() {
+    let check = run_receives_events_check(Err(AdapterError::internal(
+        "AXUIElementCopyElementAtPosition failed",
+    )));
+    assert_eq!(
+        check.status,
+        ActionabilityStatus::Unknown,
+        "a probe failure must never be reported as a Fail"
+    );
+}
+
+#[test]
+fn intercepted_by_result_fails_and_carries_redactable_occluder() {
+    let adapter = HitTestAdapter {
+        outcome: Ok(HitTestResult::InterceptedBy {
+            role: Some("AXSheet".into()),
+            name: Some("Save changes?".into()),
+            bounds: None,
+        }),
+    };
     let entry = clickable_entry();
     let request = ActionRequest::headless(Action::Click);
-    check_live(&entry, &NativeHandle::null(), &adapter, &request).expect("clickable target");
+
+    let err = check_live(&entry, &NativeHandle::null(), &adapter, &request)
+        .expect_err("a hit outside the target's ancestor chain must fail actionability");
+
+    assert_eq!(err.code, ErrorCode::ActionFailed);
+    assert!(err.message.contains("AXSheet"));
+    assert!(!err.message.contains("Save changes?"));
+
+    let details = err
+        .details
+        .expect("a Fail report attaches actionability details");
+    let checks = details["checks"]
+        .as_array()
+        .expect("details.checks is an array");
+    let receives_events = checks
+        .iter()
+        .find(|check| check["name"] == "receives_events")
+        .expect("receives_events check must be present when Click requires a hit test");
+    assert_eq!(receives_events["status"], "fail");
+    assert_eq!(receives_events["occluder"]["name"], "Save changes?");
+    assert_eq!(receives_events["occluder"]["role"], "AXSheet");
 }

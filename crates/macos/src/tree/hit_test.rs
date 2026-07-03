@@ -1,14 +1,22 @@
 #[cfg(target_os = "macos")]
 mod imp {
+    use crate::actions::ax_helpers;
     use crate::tree::{
-        AXElement, capabilities::same_element, copy_element_attr, copy_string_attr, read_bounds,
+        AXElement, capabilities::same_element, element::ABSOLUTE_MAX_DEPTH, read_bounds,
+        resolve_element_name,
     };
-    use accessibility_sys::{AXUIElementCopyElementAtPosition, kAXErrorSuccess, kAXRoleAttribute};
+    use accessibility_sys::{AXUIElementCopyElementAtPosition, kAXErrorSuccess};
     use agent_desktop_core::{
         action::Point, error::AdapterError, hit_test::HitTestResult, native_handle::NativeHandle,
     };
     use std::mem::ManuallyDrop;
 
+    /// Hit-tests `point` against `target`'s owning application, then
+    /// classifies the result against `target`'s ancestor chain: a hit on
+    /// `target` or a descendant reaches it, a hit outside that chain names a
+    /// real occluder, and a hit on `target`'s own ancestor — like any probe
+    /// failure — is `Unknown` rather than a false occlusion, since composited
+    /// or custom-drawn views often expose no distinct child node to hit-test.
     pub fn hit_test_impl(
         handle: &NativeHandle,
         point: Point,
@@ -28,46 +36,61 @@ mod imp {
 
     fn hit_test_element(target: &AXElement, point: Point) -> Result<HitTestResult, AdapterError> {
         let Some(bounds) = read_bounds(target) else {
-            return Err(AdapterError::new(
-                agent_desktop_core::error::ErrorCode::ActionFailed,
-                "Element bounds unavailable for hit test",
-            ));
+            return Ok(HitTestResult::Unknown);
         };
         if bounds.width <= 0.0 || bounds.height <= 0.0 {
-            return Ok(HitTestResult::blocked(None));
+            return Ok(HitTestResult::Unknown);
         }
-        let pid = crate::system::app_ops::pid_from_element(target)
-            .ok_or_else(|| AdapterError::internal("Could not read pid for hit test"))?;
+        let Some(pid) = crate::system::app_ops::pid_from_element(target) else {
+            return Ok(HitTestResult::Unknown);
+        };
         let app = crate::tree::element_for_pid(pid);
         let mut hit_ref: accessibility_sys::AXUIElementRef = std::ptr::null_mut();
         let err = unsafe {
             AXUIElementCopyElementAtPosition(app.0, point.x as f32, point.y as f32, &mut hit_ref)
         };
         if err != kAXErrorSuccess || hit_ref.is_null() {
-            return Ok(HitTestResult::blocked(None));
+            return Ok(HitTestResult::Unknown);
         }
         let hit = AXElement(hit_ref);
-        let topmost_role = copy_string_attr(&hit, kAXRoleAttribute);
-        let receives = element_contains(target, &hit) || element_contains(&hit, target);
-        Ok(if receives {
-            HitTestResult::receives_events(topmost_role)
-        } else {
-            HitTestResult::blocked(topmost_role)
-        })
+        Ok(classify_hit(target, &hit))
     }
 
-    fn element_contains(ancestor: &AXElement, candidate: &AXElement) -> bool {
-        if same_element(ancestor, candidate) {
-            return true;
+    fn classify_hit(target: &AXElement, hit: &AXElement) -> HitTestResult {
+        let limit = ABSOLUTE_MAX_DEPTH as usize;
+        let reaches_target = same_element(target, hit)
+            || ax_helpers::try_each_ancestor(hit, |ancestor| same_element(ancestor, target), limit);
+        let is_ancestor_of_target = !reaches_target
+            && ax_helpers::try_each_ancestor(target, |ancestor| same_element(ancestor, hit), limit);
+        match classify_relation(reaches_target, is_ancestor_of_target) {
+            HitClassification::ReachesTarget => HitTestResult::ReachesTarget,
+            HitClassification::AncestorOfTarget => HitTestResult::Unknown,
+            HitClassification::Unrelated => HitTestResult::InterceptedBy {
+                role: ax_helpers::element_role(hit),
+                name: resolve_element_name(hit),
+                bounds: read_bounds(hit),
+            },
         }
-        let mut current = copy_element_attr(candidate, "AXParent");
-        while let Some(parent) = current {
-            if same_element(ancestor, &parent) {
-                return true;
-            }
-            current = copy_element_attr(&parent, "AXParent");
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum HitClassification {
+        ReachesTarget,
+        AncestorOfTarget,
+        Unrelated,
+    }
+
+    pub(super) fn classify_relation(
+        reaches_target: bool,
+        is_ancestor_of_target: bool,
+    ) -> HitClassification {
+        if reaches_target {
+            HitClassification::ReachesTarget
+        } else if is_ancestor_of_target {
+            HitClassification::AncestorOfTarget
+        } else {
+            HitClassification::Unrelated
         }
-        false
     }
 }
 
@@ -86,3 +109,7 @@ mod imp {
 }
 
 pub use imp::hit_test_impl;
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "hit_test_tests.rs"]
+mod tests;

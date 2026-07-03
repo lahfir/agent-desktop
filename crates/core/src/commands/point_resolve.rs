@@ -1,5 +1,6 @@
 use crate::{
     action::Point,
+    actionability,
     adapter::PlatformAdapter,
     commands::helpers::resolve_ref_with_context,
     context::CommandContext,
@@ -44,11 +45,13 @@ pub(crate) fn resolve_point_from_ref_or_xy_with_context(
         let bounds = adapter
             .get_element_bounds(handle.handle())?
             .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
+        let point = Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        };
+        actionability::require_receives_events(handle.handle(), point.clone(), adapter)?;
         return Ok(ResolvedPoint {
-            point: Point {
-                x: bounds.x + bounds.width / 2.0,
-                y: bounds.y + bounds.height / 2.0,
-            },
+            point,
             pid: Some(entry.pid),
         });
     }
@@ -87,18 +90,5 @@ pub(crate) fn focus_for_physical_input(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn physical_input_requires_headed_context() {
-        let err = require_cursor_policy(&CommandContext::default(), "mouse-move").unwrap_err();
-
-        assert_eq!(err.code(), "POLICY_DENIED");
-    }
-
-    #[test]
-    fn headed_context_allows_physical_input() {
-        require_cursor_policy(&CommandContext::default().with_headed(true), "mouse-move").unwrap();
-    }
-}
+#[path = "point_resolve_tests.rs"]
+mod tests;
