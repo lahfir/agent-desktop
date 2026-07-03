@@ -84,12 +84,12 @@ pub(crate) fn parse_xy_opt(s: Option<&str>) -> Result<Option<(f64, f64)>, AppErr
 
 pub(crate) fn parse_clipboard_format(s: &str) -> Result<ClipboardFormat, AppError> {
     match s {
-        "plain_text" | "plaintext" | "text" => Ok(ClipboardFormat::PlainText),
-        "html" => Ok(ClipboardFormat::Html),
-        "rtf" => Ok(ClipboardFormat::Rtf),
-        "png" => Ok(ClipboardFormat::Png),
+        "auto" => Ok(ClipboardFormat::Auto),
+        "text" | "plain_text" | "plaintext" => Ok(ClipboardFormat::Text),
+        "image" | "png" => Ok(ClipboardFormat::Image),
+        "file-urls" | "file_urls" | "fileurls" => Ok(ClipboardFormat::FileUrls),
         other => Err(AppError::invalid_input(format!(
-            "Unknown clipboard format '{other}'. Valid: plain_text, html, rtf, png"
+            "Unknown clipboard format '{other}'. Valid: auto, text, image, file-urls"
         ))),
     }
 }

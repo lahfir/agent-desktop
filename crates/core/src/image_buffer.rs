@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct ImageBuffer {
     pub data: Vec<u8>,
     pub format: ImageFormat,
@@ -6,6 +7,7 @@ pub struct ImageBuffer {
     pub scale_factor: f64,
 }
 
+#[derive(Debug)]
 pub enum ImageFormat {
     Png,
     Jpg,

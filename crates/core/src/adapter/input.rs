@@ -1,5 +1,6 @@
 use crate::{
     action::{DragParams, KeyCombo, MouseEvent},
+    clipboard_content::{ClipboardContent, ClipboardFormat},
     error::AdapterError,
 };
 
@@ -16,29 +17,23 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("drag"))
     }
 
-    fn get_clipboard(&self) -> Result<String, AdapterError> {
-        Err(AdapterError::not_supported("get_clipboard"))
-    }
-
-    fn set_clipboard(&self, _text: &str) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("set_clipboard"))
-    }
-
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("clear_clipboard"))
     }
 
+    /// Reads the requested clipboard representation. Returns `Ok(None)`
+    /// when the pasteboard has no data of the requested shape (or, for
+    /// `Auto`, no data at all) — a normal, non-error outcome distinct from
+    /// `Err(not_supported)`, which means this platform never implements
+    /// clipboard reads.
     fn get_clipboard_content(
         &self,
-        _format: crate::clipboard_content::ClipboardFormat,
-    ) -> Result<crate::clipboard_content::ClipboardContent, AdapterError> {
+        _format: ClipboardFormat,
+    ) -> Result<Option<ClipboardContent>, AdapterError> {
         Err(AdapterError::not_supported("get_clipboard_content"))
     }
 
-    fn set_clipboard_content(
-        &self,
-        _content: &crate::clipboard_content::ClipboardContent,
-    ) -> Result<(), AdapterError> {
+    fn set_clipboard_content(&self, _content: &ClipboardContent) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("set_clipboard_content"))
     }
 
@@ -53,3 +48,7 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("mouse_wheel"))
     }
 }
+
+#[cfg(test)]
+#[path = "input_tests.rs"]
+mod tests;

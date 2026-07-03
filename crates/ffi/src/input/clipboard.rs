@@ -2,6 +2,7 @@ use crate::AdAdapter;
 use crate::convert::string::{c_to_string, free_c_string, string_to_c};
 use crate::error::{self, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_void};
+use agent_desktop_core::clipboard_content::{ClipboardContent, ClipboardFormat};
 use std::os::raw::c_char;
 
 /// Reads the current clipboard text and writes an owned C string into
@@ -24,8 +25,12 @@ pub unsafe extern "C" fn ad_get_clipboard(
         }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let adapter = &*adapter;
-        match adapter.inner.get_clipboard() {
-            Ok(text) => {
+        match adapter.inner.get_clipboard_content(ClipboardFormat::Text) {
+            Ok(content) => {
+                let text = match content {
+                    Some(ClipboardContent::Text(text)) => text,
+                    _ => String::new(),
+                };
                 let c = string_to_c(&text);
                 if c.is_null() {
                     error::set_last_error(&agent_desktop_core::error::AdapterError::new(
@@ -72,7 +77,10 @@ pub unsafe extern "C" fn ad_set_clipboard(
                 return AdResult::ErrInvalidArgs;
             }
         };
-        match adapter.inner.set_clipboard(&text) {
+        match adapter
+            .inner
+            .set_clipboard_content(&ClipboardContent::Text(text))
+        {
             Ok(()) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);

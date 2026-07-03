@@ -117,22 +117,38 @@ pub(crate) struct ClipboardGetArgs {
     #[arg(
         long,
         value_name = "FORMAT",
-        help = "Clipboard format: plain_text (default), html, rtf, png"
+        help = "Clipboard format to read: text (default), auto, image, file-urls"
     )]
     pub format: Option<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Where to write image content; defaults to a private temp file under the session dir"
+    )]
+    pub out: Option<std::path::PathBuf>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ClipboardSetArgs {
-    #[arg(value_name = "TEXT", help = "Text to write to the clipboard")]
-    pub text: String,
+    #[arg(
+        value_name = "TEXT",
+        help = "Text to write to the clipboard (ignored if --image or --file-url is given)"
+    )]
+    pub text: Option<String>,
     #[arg(
         long,
-        value_name = "FORMAT",
-        help = "Clipboard format: plain_text (default), html, rtf, png"
+        value_name = "PATH",
+        help = "Path to a PNG file to write to the clipboard"
     )]
-    pub format: Option<String>,
+    pub image: Option<std::path::PathBuf>,
+    #[arg(
+        long = "file-url",
+        value_name = "PATH",
+        help = "File path to write to the clipboard as a file reference; repeatable"
+    )]
+    #[serde(default)]
+    pub file_url: Vec<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]

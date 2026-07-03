@@ -1,8 +1,14 @@
 use agent_desktop_core::error::AdapterError;
 
 #[cfg(target_os = "macos")]
+#[path = "clipboard_rich.rs"]
+mod clipboard_rich;
+
+#[cfg(target_os = "macos")]
 mod imp {
     use super::*;
+    use agent_desktop_core::clipboard_content::{ClipboardContent, ClipboardFormat};
+    use agent_desktop_core::image_buffer::{ImageBuffer, ImageFormat};
     use core_foundation::base::TCFType;
     use std::ffi::c_void;
 
@@ -69,20 +75,7 @@ mod imp {
         }
     }
 
-    pub fn get() -> Result<String, AdapterError> {
-        tracing::debug!("clipboard: get");
-        unsafe {
-            let pb = pasteboard()?;
-            let Some(result) = read_string(pb) else {
-                tracing::debug!("clipboard: get -> empty");
-                return Ok(String::new());
-            };
-            tracing::debug!("clipboard: get -> {} chars", result.len());
-            Ok(result)
-        }
-    }
-
-    pub fn set(text: &str) -> Result<(), AdapterError> {
+    pub(crate) fn set(text: &str) -> Result<(), AdapterError> {
         tracing::debug!("clipboard: set {} chars", text.len());
         unsafe {
             let pb = pasteboard()?;
@@ -107,25 +100,74 @@ mod imp {
         }
     }
 
-    pub fn get_content(
-        format: agent_desktop_core::clipboard_content::ClipboardFormat,
-    ) -> Result<agent_desktop_core::clipboard_content::ClipboardContent, AdapterError> {
-        match format {
-            agent_desktop_core::clipboard_content::ClipboardFormat::PlainText => {
-                Ok(agent_desktop_core::clipboard_content::ClipboardContent::plain_text(get()?))
+    pub fn get_content(format: ClipboardFormat) -> Result<Option<ClipboardContent>, AdapterError> {
+        tracing::debug!("clipboard: get_content format={format:?}");
+        unsafe {
+            let pb = pasteboard()?;
+            match format {
+                ClipboardFormat::Text => Ok(read_string(pb).map(ClipboardContent::Text)),
+                ClipboardFormat::Image => {
+                    Ok(super::clipboard_rich::read_image(pb).map(build_image_content))
+                }
+                ClipboardFormat::FileUrls => {
+                    let urls = super::clipboard_rich::read_file_urls(pb);
+                    Ok((!urls.is_empty()).then_some(ClipboardContent::FileUrls(urls)))
+                }
+                ClipboardFormat::Auto => Ok(auto_content(pb)),
             }
-            _ => Err(AdapterError::not_supported("clipboard format")),
         }
     }
 
-    pub fn set_content(
-        content: &agent_desktop_core::clipboard_content::ClipboardContent,
-    ) -> Result<(), AdapterError> {
-        match content.format {
-            agent_desktop_core::clipboard_content::ClipboardFormat::PlainText => {
-                set(content.text.as_deref().unwrap_or_default())
+    unsafe fn auto_content(pb: Id) -> Option<ClipboardContent> {
+        unsafe {
+            let urls = super::clipboard_rich::read_file_urls(pb);
+            if !urls.is_empty() {
+                return Some(ClipboardContent::FileUrls(urls));
             }
-            _ => Err(AdapterError::not_supported("clipboard format")),
+            if let Some(bytes) = super::clipboard_rich::read_image(pb) {
+                return Some(build_image_content(bytes));
+            }
+            read_string(pb).map(ClipboardContent::Text)
+        }
+    }
+
+    fn build_image_content(bytes: Vec<u8>) -> ClipboardContent {
+        let (width, height) = super::clipboard_rich::png_dimensions(&bytes);
+        ClipboardContent::Image(ImageBuffer {
+            data: bytes,
+            format: ImageFormat::Png,
+            width,
+            height,
+            scale_factor: 1.0,
+        })
+    }
+
+    pub fn set_content(content: &ClipboardContent) -> Result<(), AdapterError> {
+        match content {
+            ClipboardContent::Text(text) => set(text),
+            ClipboardContent::Image(image) => set_with_restore(
+                |pb| super::clipboard_rich::write_image(pb, &image.data),
+                "image",
+            ),
+            ClipboardContent::FileUrls(paths) => set_with_restore(
+                |pb| super::clipboard_rich::write_file_urls(pb, paths),
+                "file URLs",
+            ),
+        }
+    }
+
+    fn set_with_restore(write: impl FnOnce(Id) -> bool, kind: &str) -> Result<(), AdapterError> {
+        unsafe {
+            let pb = pasteboard()?;
+            let previous = ClipboardSnapshot::capture()?;
+            clear_pasteboard(pb);
+            if !write(pb) {
+                let _ = previous.restore();
+                return Err(AdapterError::internal(format!(
+                    "NSPasteboard write failed for clipboard {kind}"
+                )));
+            }
+            Ok(())
         }
     }
 
@@ -297,21 +339,13 @@ mod imp {
 mod imp {
     use super::*;
 
-    pub fn get() -> Result<String, AdapterError> {
-        Err(AdapterError::not_supported("clipboard_get"))
-    }
-
-    pub fn set(_text: &str) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("clipboard_set"))
-    }
-
     pub fn clear() -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("clipboard_clear"))
     }
 
     pub fn get_content(
         _format: agent_desktop_core::clipboard_content::ClipboardFormat,
-    ) -> Result<agent_desktop_core::clipboard_content::ClipboardContent, AdapterError> {
+    ) -> Result<Option<agent_desktop_core::clipboard_content::ClipboardContent>, AdapterError> {
         Err(AdapterError::not_supported("get_clipboard_content"))
     }
 
@@ -332,7 +366,15 @@ mod imp {
             Err(AdapterError::not_supported("clipboard_snapshot"))
         }
     }
+
+    pub(crate) fn set(_text: &str) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("clipboard_set"))
+    }
 }
 
-pub(crate) use imp::ClipboardSnapshot;
-pub use imp::{clear, get, get_content, set, set_content};
+pub(crate) use imp::{ClipboardSnapshot, set};
+pub use imp::{clear, get_content, set_content};
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "clipboard_tests.rs"]
+mod tests;

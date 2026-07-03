@@ -367,17 +367,16 @@ fn dispatch_inner(
                     .as_deref()
                     .map(parse_clipboard_format)
                     .transpose()?,
+                out: a.out,
             },
             adapter,
+            context,
         ),
         Commands::ClipboardSet(a) => clipboard_set::execute(
             clipboard_set::ClipboardSetArgs {
                 text: a.text,
-                format: a
-                    .format
-                    .as_deref()
-                    .map(parse_clipboard_format)
-                    .transpose()?,
+                image: a.image,
+                file_urls: a.file_url,
             },
             adapter,
         ),

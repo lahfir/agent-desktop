@@ -249,14 +249,6 @@ impl InputOps for MacOSAdapter {
         crate::input::mouse::synthesize_drag(params)
     }
 
-    fn get_clipboard(&self) -> Result<String, AdapterError> {
-        crate::input::clipboard::get()
-    }
-
-    fn set_clipboard(&self, text: &str) -> Result<(), AdapterError> {
-        crate::input::clipboard::set(text)
-    }
-
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
         crate::input::clipboard::clear()
     }
@@ -264,7 +256,7 @@ impl InputOps for MacOSAdapter {
     fn get_clipboard_content(
         &self,
         format: agent_desktop_core::clipboard_content::ClipboardFormat,
-    ) -> Result<agent_desktop_core::clipboard_content::ClipboardContent, AdapterError> {
+    ) -> Result<Option<agent_desktop_core::clipboard_content::ClipboardContent>, AdapterError> {
         crate::input::clipboard::get_content(format)
     }
 

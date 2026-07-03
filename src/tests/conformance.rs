@@ -142,7 +142,8 @@ fn platform_adapter_exposes_all_capability_methods() {
         });
         let _ = adapter.list_apps();
         let _ = adapter.permission_report();
-        let _ = adapter.get_clipboard();
+        let _ = adapter
+            .get_clipboard_content(agent_desktop_core::clipboard_content::ClipboardFormat::Text);
         let _ = adapter.execute_action(
             &NativeHandle::null(),
             ActionRequest::headless(agent_desktop_core::action::Action::Click),
