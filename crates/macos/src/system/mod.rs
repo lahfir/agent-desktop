@@ -13,4 +13,5 @@ pub mod wait;
 pub(crate) mod window_inventory;
 pub mod window_list;
 pub mod window_ops;
+pub(crate) mod window_resolve;
 pub(crate) mod workspace_apps;

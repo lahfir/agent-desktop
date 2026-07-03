@@ -36,7 +36,7 @@ impl ObservationOps for MacOSAdapter {
         opts: &TreeOptions,
     ) -> Result<AccessibilityNode, AdapterError> {
         let el = match opts.surface {
-            SnapshotSurface::Window => crate::tree::window_element_for(win.pid, &win.title),
+            SnapshotSurface::Window => crate::system::window_resolve::window_element_for_info(win)?,
             SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::internal("No focused surface found"))?,
             SnapshotSurface::Menu => crate::tree::surfaces::menu_element_for_pid(win.pid)
@@ -296,6 +296,10 @@ impl SystemOps for MacOSAdapter {
 
     fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
         crate::system::wait::wait_for_menu(pid, open, timeout_ms)
+    }
+
+    fn resolve_window_strict(&self, win: &WindowInfo) -> Result<WindowInfo, AdapterError> {
+        crate::system::window_resolve::resolve_window_strict(win)
     }
 
     fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {

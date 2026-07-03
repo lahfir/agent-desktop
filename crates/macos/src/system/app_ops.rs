@@ -87,7 +87,7 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
         win.title
     );
     ensure_app_focused(win.pid)?;
-    let main_win = crate::tree::window_element_for(win.pid, &win.title);
+    let main_win = crate::system::window_resolve::window_element_for_info(win)?;
     crate::system::window_ops::raise_window(&main_win);
     Ok(())
 }

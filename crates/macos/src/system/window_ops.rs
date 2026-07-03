@@ -23,7 +23,7 @@ mod imp {
             win.app,
             win.title
         );
-        let win_el = crate::tree::window_element_for(win.pid, &win.title);
+        let win_el = crate::system::window_resolve::window_element_for_info(win)?;
         match op {
             WindowOp::Resize { width, height } => set_size(&win_el, width, height),
             WindowOp::Move { x, y } => set_position(&win_el, x, y),

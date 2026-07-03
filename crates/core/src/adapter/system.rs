@@ -96,6 +96,13 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("window_op"))
     }
 
+    /// Resolves a live window by `WindowInfo.id`, corroborating the match against
+    /// `pid` and, when present, `title`. Opaque ids must not be parsed as numeric
+    /// outside the adapter; macOS uses `w-<kCGWindowNumber>`.
+    fn resolve_window_strict(&self, _win: &WindowInfo) -> Result<WindowInfo, AdapterError> {
+        Err(AdapterError::not_supported("resolve_window_strict"))
+    }
+
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
