@@ -1,7 +1,7 @@
 use crate::{
     action::Action,
     action_request::ActionRequest,
-    actionability::{bounds_are_visible, states_are_enabled},
+    actionability::states_are_enabled,
     adapter::{NativeHandle, PlatformAdapter, optional_live_read},
     error::{AdapterError, AppError, ErrorCode},
     refs::RefEntry,
@@ -146,12 +146,23 @@ fn enabled(
 }
 
 fn visible(
-    entry: &RefEntry,
+    _entry: &RefEntry,
     handle: &NativeHandle,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AdapterError> {
-    let bounds = optional_live_read(adapter.get_element_bounds(handle))?.or(entry.bounds);
-    Ok(json!({ "visible": bounds_are_visible(bounds) }))
+    let live_bounds = optional_live_read(adapter.get_element_bounds(handle))?;
+    let live_state = optional_live_read(adapter.get_live_state(handle))?;
+    let states_from_live = live_state.is_some();
+    let evidence = crate::state::VisibilityEvidence {
+        bounds: live_bounds,
+        states: live_state.map(|state| state.states).unwrap_or_default(),
+        bounds_from_live: live_bounds.is_some(),
+        states_from_live,
+    };
+    Ok(json!({
+        "visible": evidence.result(),
+        "applicable": evidence.applicable(),
+    }))
 }
 
 fn actionable(

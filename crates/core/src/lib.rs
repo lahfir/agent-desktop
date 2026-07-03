@@ -29,6 +29,7 @@ pub mod refs_store;
 #[cfg(test)]
 mod refs_test_support;
 pub(crate) mod resolved_element;
+pub mod role;
 pub mod roles;
 pub mod screenshot_target;
 pub(crate) mod search_text;
@@ -36,6 +37,7 @@ pub mod session;
 pub mod snapshot;
 pub mod snapshot_ref;
 pub mod snapshot_surface;
+pub mod state;
 pub(crate) mod trace;
 pub(crate) mod trace_artifacts;
 pub mod trace_read;
