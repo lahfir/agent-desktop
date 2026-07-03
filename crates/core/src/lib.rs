@@ -43,6 +43,7 @@ pub mod roles;
 pub mod screenshot_target;
 pub(crate) mod search_text;
 pub mod session;
+pub mod session_affinity;
 pub mod signals;
 pub mod snapshot;
 pub mod snapshot_ref;

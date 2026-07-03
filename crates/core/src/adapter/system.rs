@@ -82,10 +82,23 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("capture_signal_baseline"))
     }
 
+    /// Opens adapter-native session affinity for a host that outlives a
+    /// single command (an FFI embedder, a future daemon) — the landing zone
+    /// for a Windows COM-MTA apartment thread or a Linux D-Bus connection
+    /// before those adapters exist. `affinity.session_id` lets the caller
+    /// tie the native connection's lifetime to a CLI-level session (see
+    /// [`crate::session::SessionManifest`]). The returned session may hold
+    /// native connection state but must never hold a resolved element
+    /// handle — commands keep resolving elements per call from a
+    /// `RefEntry`, exactly as they do today. Nothing in the CLI/dispatch
+    /// path calls this yet; the stateless request-per-command flow is
+    /// unaffected until a persistent host opts in. Adapters with no native
+    /// connection state to manage return `not_supported`.
     fn open_session(
         &self,
-    ) -> Result<Option<Box<dyn crate::adapter_session::AdapterSession>>, AdapterError> {
-        Ok(None)
+        _affinity: &crate::session_affinity::SessionAffinity,
+    ) -> Result<Box<dyn crate::adapter_session::AdapterSession>, AdapterError> {
+        Err(AdapterError::not_supported("open_session"))
     }
 
     fn close_app(&self, _id: &str, _force: bool) -> Result<(), AdapterError> {
@@ -188,3 +201,7 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("notification_action"))
     }
 }
+
+#[cfg(test)]
+#[path = "system_tests.rs"]
+mod tests;

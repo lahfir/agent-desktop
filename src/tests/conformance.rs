@@ -280,3 +280,43 @@ fn adapter_contract_wait_predicates_cover_live_state_paths() {
     assert_eq!(actionable["observed"]["actionable"], true);
     assert_eq!(value["observed"]["matched"], true);
 }
+
+/// U16/KTD15: `open_session` is a contract-only hook — its doc says the CLI
+/// path stays stateless and nothing calls it yet. This scans the actual
+/// CLI/dispatch surface (not just today's known-empty call list) so a future
+/// PR that wires a call site without revisiting that contract fails loudly
+/// here instead of silently drifting from the plan.
+#[test]
+fn open_session_has_no_cli_dispatch_call_site() {
+    let src_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scanned_dirs = [
+        src_root.join("dispatch"),
+        src_root.join("batch"),
+        src_root.join("cli"),
+        src_root.join("cli_args"),
+        src_root.join("command_policy"),
+        src_root.join("../crates/core/src/commands"),
+    ];
+
+    for dir in scanned_dirs {
+        for path in rust_files_in(&dir) {
+            let source =
+                std::fs::read_to_string(&path).expect("scanned source file should be readable");
+            assert!(
+                !source.contains(".open_session("),
+                "{} calls open_session; U16/KTD15 keeps this hook uncalled by the CLI/\
+                 dispatch path until a persistent host (FFI/daemon) opts in",
+                path.display()
+            );
+        }
+    }
+}
+
+fn rust_files_in(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("{} should be readable: {e}", dir.display()))
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect()
+}
