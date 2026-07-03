@@ -24,11 +24,6 @@ fn osascript_quit_keeps_action_failed_for_other_errors() {
 }
 
 #[test]
-fn open_app_args_preserve_current_focus() {
-    assert_eq!(open_app_args("Mail"), ["-g", "-a", "Mail"]);
-}
-
-#[test]
 fn protected_processes_match_display_and_bundle_forms() {
     assert!(is_protected_process("Finder"));
     assert!(is_protected_process("Dock"));

@@ -5,6 +5,7 @@ pub(crate) mod cg_window;
 pub mod display;
 pub(crate) mod force_close;
 pub mod key_dispatch;
+pub mod launch;
 pub mod permissions;
 pub(crate) mod process;
 pub(crate) mod process_apps;

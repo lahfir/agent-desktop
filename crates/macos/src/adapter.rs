@@ -301,7 +301,7 @@ impl SystemOps for MacOSAdapter {
     }
 
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
-        crate::system::app_ops::launch_app_impl(id, timeout_ms)
+        crate::system::launch::launch_app_impl(id, timeout_ms)
     }
 
     fn launch_app_with_options(
@@ -310,7 +310,7 @@ impl SystemOps for MacOSAdapter {
         options: &agent_desktop_core::launch_options::LaunchOptions,
         timeout_ms: u64,
     ) -> Result<WindowInfo, AdapterError> {
-        crate::system::app_ops::launch_app_with_options_impl(id, options, timeout_ms)
+        crate::system::launch::launch_app_with_options_impl(id, options, timeout_ms)
     }
 
     fn process_state(
