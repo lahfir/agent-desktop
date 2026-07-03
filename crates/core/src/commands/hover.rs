@@ -38,6 +38,7 @@ pub fn execute(
         kind: MouseEventKind::Move,
         point: resolved.point.clone(),
         button: MouseButton::Left,
+        modifiers: Vec::new(),
     })?;
     if let Some(ms) = args.duration_ms {
         std::thread::sleep(std::time::Duration::from_millis(ms));

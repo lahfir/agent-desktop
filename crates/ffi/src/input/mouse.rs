@@ -73,6 +73,7 @@ pub unsafe extern "C" fn ad_mouse_event(
             kind,
             point,
             button,
+            modifiers: Vec::new(),
         };
         match adapter.inner.mouse_event(core_event) {
             Ok(()) => AdResult::Ok,

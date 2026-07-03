@@ -25,6 +25,12 @@ pub(crate) enum WaitMode {
         app: Option<String>,
         text: Option<String>,
     },
+    Event {
+        event: String,
+        app: Option<String>,
+        window_id: Option<String>,
+        window_title: Option<String>,
+    },
 }
 
 impl WaitMode {
@@ -43,6 +49,14 @@ impl WaitMode {
             return Ok(Self::Notification {
                 app: args.app,
                 text: args.mode.text,
+            });
+        }
+        if let Some(event) = args.mode.event {
+            return Ok(Self::Event {
+                event,
+                app: args.app,
+                window_id: args.mode.window_id,
+                window_title: args.mode.window,
             });
         }
         if let Some(ref_id) = args.mode.element {
@@ -99,6 +113,7 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
         args.mode.menu,
         args.mode.menu_closed,
         args.mode.notification,
+        args.mode.event.is_some(),
     ]
     .into_iter()
     .filter(|selected| *selected)
@@ -111,12 +126,12 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
     }
     Err(AppError::invalid_input_with_suggestion(
         "wait accepts exactly one mode",
-        "Use one of: ms, --element, --window, --text, --menu, --menu-closed, or --notification.",
+        "Use one of: ms, --element, --window, --text, --menu, --menu-closed, --notification, or --event.",
     ))
 }
 
 fn missing_wait_mode() -> AppError {
     AppError::invalid_input(
-        "Provide a duration (ms), --menu, --notification, --element <ref>, --window <title>, or --text <text>",
+        "Provide a duration (ms), --menu, --notification, --event, --element <ref>, --window <title>, or --text <text>",
     )
 }

@@ -14,6 +14,7 @@ pub(crate) mod dispatch;
 pub(crate) mod extras;
 pub(crate) mod post_state;
 pub(crate) mod scroll;
+pub(crate) mod scroll_into_view;
 pub(crate) mod toggle_state;
 pub(crate) mod type_text;
 

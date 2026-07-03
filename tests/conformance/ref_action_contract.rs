@@ -52,6 +52,8 @@ pub fn run_wait_element_command_with_predicate(
                     menu: false,
                     menu_closed: false,
                     notification: false,
+                    event: None,
+                    window_id: None,
                 },
                 predicate: wait::WaitPredicateArgs {
                     snapshot_id: None,

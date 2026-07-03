@@ -107,6 +107,28 @@ mod imp {
         }
     }
 
+    pub fn get_content(
+        format: agent_desktop_core::clipboard_content::ClipboardFormat,
+    ) -> Result<agent_desktop_core::clipboard_content::ClipboardContent, AdapterError> {
+        match format {
+            agent_desktop_core::clipboard_content::ClipboardFormat::PlainText => {
+                Ok(agent_desktop_core::clipboard_content::ClipboardContent::plain_text(get()?))
+            }
+            _ => Err(AdapterError::not_supported("clipboard format")),
+        }
+    }
+
+    pub fn set_content(
+        content: &agent_desktop_core::clipboard_content::ClipboardContent,
+    ) -> Result<(), AdapterError> {
+        match content.format {
+            agent_desktop_core::clipboard_content::ClipboardFormat::PlainText => {
+                set(content.text.as_deref().unwrap_or_default())
+            }
+            _ => Err(AdapterError::not_supported("clipboard format")),
+        }
+    }
+
     unsafe fn read_string(pb: Id) -> Option<String> {
         unsafe {
             let sel = sel_registerName(c"stringForType:".as_ptr());
@@ -287,6 +309,18 @@ mod imp {
         Err(AdapterError::not_supported("clipboard_clear"))
     }
 
+    pub fn get_content(
+        _format: agent_desktop_core::clipboard_content::ClipboardFormat,
+    ) -> Result<agent_desktop_core::clipboard_content::ClipboardContent, AdapterError> {
+        Err(AdapterError::not_supported("get_clipboard_content"))
+    }
+
+    pub fn set_content(
+        _content: &agent_desktop_core::clipboard_content::ClipboardContent,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("set_clipboard_content"))
+    }
+
     pub(crate) struct ClipboardSnapshot;
 
     impl ClipboardSnapshot {
@@ -301,4 +335,4 @@ mod imp {
 }
 
 pub(crate) use imp::ClipboardSnapshot;
-pub use imp::{clear, get, set};
+pub use imp::{clear, get, get_content, set, set_content};

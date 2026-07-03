@@ -26,6 +26,7 @@ pub fn execute(
             y: args.y,
         },
         button: args.button,
+        modifiers: Vec::new(),
     })?;
     Ok(json!({ "pressed": true, "x": args.x, "y": args.y }))
 }

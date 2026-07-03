@@ -45,6 +45,49 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("launch_app"))
     }
 
+    fn launch_app_with_options(
+        &self,
+        id: &str,
+        options: &crate::launch_options::LaunchOptions,
+        timeout_ms: u64,
+    ) -> Result<WindowInfo, AdapterError> {
+        if !options.args.is_empty()
+            || options.cwd.is_some()
+            || !options.env.is_empty()
+            || !options.attach
+        {
+            return Err(AdapterError::not_supported("launch_app_with_options"));
+        }
+        self.launch_app(id, timeout_ms)
+    }
+
+    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+        Err(AdapterError::not_supported("process_state"))
+    }
+
+    fn supported_surfaces(&self) -> Vec<crate::adapter::SnapshotSurface> {
+        vec![crate::adapter::SnapshotSurface::Window]
+    }
+
+    fn capture_signal_baseline(&self) -> Result<crate::signals::SignalBaseline, AdapterError> {
+        Err(AdapterError::not_supported("capture_signal_baseline"))
+    }
+
+    fn wait_for_signal(
+        &self,
+        _baseline: &crate::signals::SignalBaseline,
+        _signal: &crate::signals::DesktopSignal,
+        _timeout_ms: u64,
+    ) -> Result<crate::signals::DesktopSignal, AdapterError> {
+        Err(AdapterError::not_supported("wait_for_signal"))
+    }
+
+    fn open_session(
+        &self,
+    ) -> Result<Option<Box<dyn crate::adapter_session::AdapterSession>>, AdapterError> {
+        Ok(None)
+    }
+
     fn close_app(&self, _id: &str, _force: bool) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("close_app"))
     }

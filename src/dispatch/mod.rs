@@ -10,9 +10,10 @@ use agent_desktop_core::{
         check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app, collapse,
         double_click, drag, expand, find, focus, focus_window, get, helpers, hover, is_check,
         key_down, key_up, launch, list_apps, list_displays, list_surfaces, list_windows, maximize,
-        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
-        resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
-        skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
+        minimize, mouse_click, mouse_down, mouse_move, mouse_up, mouse_wheel, move_window,
+        permissions, press, resize_window, restore, right_click, screenshot, scroll, scroll_to,
+        select, set_value, skills, snapshot, status, toggle, triple_click, type_text, uncheck,
+        version, wait,
     },
     context::CommandContext,
     error::AppError,
@@ -22,8 +23,8 @@ use serde_json::Value;
 use crate::cli::Commands;
 use crate::cli_args::skills::SkillsAction;
 use parse::{
-    parse_direction, parse_get_property, parse_is_property, parse_mouse_button, parse_xy,
-    parse_xy_opt,
+    build_launch_options, parse_clipboard_format, parse_direction, parse_get_property,
+    parse_is_property, parse_modifiers, parse_mouse_button, parse_xy, parse_xy_opt,
 };
 
 pub(crate) fn dispatch(
@@ -273,10 +274,22 @@ fn dispatch_inner(
             )
         }
 
+        Commands::MouseWheel(a) => mouse_wheel::execute(
+            mouse_wheel::MouseWheelArgs {
+                x: a.x,
+                y: a.y,
+                dy: a.dy,
+                dx: a.dx,
+                modifiers: parse_modifiers(&a.modifiers)?,
+            },
+            adapter,
+        ),
+
         Commands::Launch(a) => launch::execute(
             launch::LaunchArgs {
                 app: a.app,
                 timeout_ms: a.timeout,
+                options: build_launch_options(&a.args, &a.env, a.cwd, a.no_attach)?,
             },
             adapter,
         ),
@@ -341,8 +354,27 @@ fn dispatch_inner(
         | Commands::DismissAllNotifications(_)
         | Commands::NotificationAction(_) => notifications::dispatch_notification(cmd, adapter),
 
-        Commands::ClipboardGet => clipboard_get::execute(adapter),
-        Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
+        Commands::ClipboardGet(a) => clipboard_get::execute(
+            clipboard_get::ClipboardGetArgs {
+                format: a
+                    .format
+                    .as_deref()
+                    .map(parse_clipboard_format)
+                    .transpose()?,
+            },
+            adapter,
+        ),
+        Commands::ClipboardSet(a) => clipboard_set::execute(
+            clipboard_set::ClipboardSetArgs {
+                text: a.text,
+                format: a
+                    .format
+                    .as_deref()
+                    .map(parse_clipboard_format)
+                    .transpose()?,
+            },
+            adapter,
+        ),
         Commands::ClipboardClear => clipboard_clear::execute(adapter),
 
         Commands::Wait(a) => wait::execute(
@@ -355,6 +387,8 @@ fn dispatch_inner(
                     menu: a.mode.menu,
                     menu_closed: a.mode.menu_closed,
                     notification: a.mode.notification,
+                    event: a.mode.event,
+                    window_id: a.mode.window_id,
                 },
                 predicate: wait::WaitPredicateArgs {
                     snapshot_id: a.predicate.snapshot,

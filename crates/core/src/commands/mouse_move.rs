@@ -25,6 +25,7 @@ pub fn execute(
             y: args.y,
         },
         button: MouseButton::Left,
+        modifiers: Vec::new(),
     })?;
     Ok(json!({ "moved": true, "x": args.x, "y": args.y }))
 }

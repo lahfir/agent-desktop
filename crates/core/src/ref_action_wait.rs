@@ -11,6 +11,22 @@ use crate::{
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
+fn ensure_process_responsive(
+    adapter: &dyn PlatformAdapter,
+    entry: &RefEntry,
+) -> Result<(), AdapterError> {
+    let state = match adapter.process_state(entry.pid) {
+        Ok(state) => state,
+        Err(err) if err.code == ErrorCode::PlatformNotSupported => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    if state == crate::process_state::ProcessState::Unresponsive {
+        let app = entry.source_app.as_deref().unwrap_or("target application");
+        return Err(AdapterError::app_unresponsive(app));
+    }
+    Ok(())
+}
+
 fn trace_resolve_error(context: &CommandContext, ref_id: &str, err: &AdapterError) {
     let _ = context.trace_lazy("ref.resolve.error", || {
         json!({
@@ -36,6 +52,7 @@ pub(crate) fn execute_with_auto_wait(
         ActionRequest,
     ) -> Result<ActionResult, crate::error::AppError>,
 ) -> Result<ActionResult, AdapterError> {
+    ensure_process_responsive(adapter, entry)?;
     let Some(budget_ms) = request.timeout_ms else {
         return execute_single_shot(adapter, entry, ref_id, context, request, dispatch);
     };
@@ -65,6 +82,7 @@ fn execute_single_shot(
         .resolve_element_strict(entry)
         .inspect_err(|err| trace_resolve_error(context, ref_id, err))?;
     let handle = ResolvedElement::new(adapter, handle);
+    maybe_scroll_into_view(adapter, entry, handle.handle(), &request);
     dispatch(
         crate::ref_action::ResolvedRefAction {
             adapter,
@@ -102,6 +120,7 @@ fn execute_poll_loop(
         match adapter.resolve_element_strict_with_timeout(entry, attempt) {
             Ok(handle) => {
                 let resolved = ResolvedElement::new(adapter, handle);
+                maybe_scroll_into_view(adapter, entry, resolved.handle(), &request);
                 match actionability::check_live(entry, resolved.handle(), adapter, &request) {
                     Ok(_report) => {
                         let mut result = dispatch(
@@ -164,6 +183,7 @@ fn is_permanent_error(code: &ErrorCode) -> bool {
             | ErrorCode::ActionNotSupported
             | ErrorCode::InvalidArgs
             | ErrorCode::PolicyDenied
+            | ErrorCode::AppUnresponsive
     )
 }
 
@@ -172,6 +192,25 @@ fn is_retryable_resolve_error(code: &ErrorCode) -> bool {
         code,
         ErrorCode::StaleRef | ErrorCode::AmbiguousTarget | ErrorCode::Timeout
     )
+}
+
+fn maybe_scroll_into_view(
+    adapter: &dyn PlatformAdapter,
+    entry: &RefEntry,
+    handle: &crate::adapter::NativeHandle,
+    request: &ActionRequest,
+) {
+    if !request.action.requires_scroll_into_view() {
+        return;
+    }
+    let needs_scroll = crate::state::has_state(&entry.states, crate::state::OFFSCREEN)
+        || entry
+            .bounds
+            .is_none_or(|bounds| bounds.width <= 0.0 || bounds.height <= 0.0);
+    if !needs_scroll {
+        return;
+    }
+    let _ = adapter.scroll_into_view(handle);
 }
 
 fn actionability_timeout(last_report: Option<Value>) -> AdapterError {

@@ -20,7 +20,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         Commands::Version | Commands::Skills(_) | Commands::Session(_) | Commands::Trace(_) => None,
         Commands::Status | Commands::Permissions(_) => None,
         Commands::ListWindows(_) | Commands::ListDisplays | Commands::ListApps(_) => None,
-        Commands::ClipboardGet | Commands::ClipboardSet(_) | Commands::ClipboardClear => None,
+        Commands::ClipboardGet(_) | Commands::ClipboardSet(_) | Commands::ClipboardClear => None,
         Commands::Batch(_) => None,
 
         Commands::Snapshot(_)
@@ -59,7 +59,8 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         | Commands::MouseMove(_)
         | Commands::MouseClick(_)
         | Commands::MouseDown(_)
-        | Commands::MouseUp(_) => Accessibility,
+        | Commands::MouseUp(_)
+        | Commands::MouseWheel(_) => Accessibility,
 
         Commands::Launch(_)
         | Commands::CloseApp(_)
@@ -170,6 +171,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::MouseClick(_)
         | Commands::MouseDown(_)
         | Commands::MouseUp(_)
+        | Commands::MouseWheel(_)
         | Commands::Launch(_)
         | Commands::CloseApp(_)
         | Commands::ListWindows(_)
@@ -186,7 +188,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::DismissNotification(_)
         | Commands::DismissAllNotifications(_)
         | Commands::NotificationAction(_)
-        | Commands::ClipboardGet
+        | Commands::ClipboardGet(_)
         | Commands::ClipboardSet(_)
         | Commands::ClipboardClear
         | Commands::Status

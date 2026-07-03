@@ -19,4 +19,9 @@ pub trait ActionOps: Send + Sync {
     fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
         Ok(())
     }
+
+    fn scroll_into_view(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
+        let _ = handle;
+        Err(AdapterError::not_supported("scroll_into_view"))
+    }
 }

@@ -50,6 +50,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "mouse-click"
             | "mouse-down"
             | "mouse-up"
+            | "mouse-wheel"
             | "launch"
             | "close-app"
             | "list-windows"

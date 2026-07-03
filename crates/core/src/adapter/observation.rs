@@ -123,4 +123,11 @@ pub trait ObservationOps: Send + Sync {
         let _ = (handle, point);
         Err(AdapterError::not_supported("hit_test"))
     }
+
+    fn get_live_name_evidence(
+        &self,
+        _handle: &NativeHandle,
+    ) -> Result<crate::accname::NameEvidence, AdapterError> {
+        Err(AdapterError::not_supported("get_live_name_evidence"))
+    }
 }

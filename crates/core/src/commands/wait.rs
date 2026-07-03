@@ -28,7 +28,7 @@ pub struct WaitArgs {
     pub app: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WaitModeArgs {
     pub ms: Option<u64>,
     pub element: Option<String>,
@@ -37,6 +37,8 @@ pub struct WaitModeArgs {
     pub menu: bool,
     pub menu_closed: bool,
     pub notification: bool,
+    pub event: Option<String>,
+    pub window_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -87,6 +89,19 @@ pub fn execute(
             },
             adapter,
             context,
+        ),
+        WaitMode::Event {
+            event,
+            app,
+            window_id,
+            window_title,
+        } => crate::commands::wait_event::wait_for_event(
+            &event,
+            app,
+            window_id,
+            window_title,
+            timeout_ms,
+            adapter,
         ),
     }
 }

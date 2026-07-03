@@ -63,6 +63,13 @@ impl Action {
         )
     }
 
+    pub fn requires_scroll_into_view(&self) -> bool {
+        !matches!(
+            self,
+            Self::Scroll(_, _) | Self::ScrollTo | Self::Hover | Self::Drag(_)
+        )
+    }
+
     pub fn may_use_focus_fallback(&self) -> bool {
         matches!(self, Self::TypeText(_) | Self::PressKey(_))
     }
@@ -127,6 +134,8 @@ pub struct MouseEvent {
     pub kind: MouseEventKind,
     pub point: Point,
     pub button: MouseButton,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modifiers: Vec<Modifier>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

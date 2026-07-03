@@ -21,6 +21,7 @@ pub enum ErrorCode {
     NotificationNotFound,
     SnapshotNotFound,
     PolicyDenied,
+    AppUnresponsive,
     Internal,
 }
 
@@ -41,6 +42,7 @@ impl ErrorCode {
             ErrorCode::NotificationNotFound => "NOTIFICATION_NOT_FOUND",
             ErrorCode::SnapshotNotFound => "SNAPSHOT_NOT_FOUND",
             ErrorCode::PolicyDenied => "POLICY_DENIED",
+            ErrorCode::AppUnresponsive => "APP_UNRESPONSIVE",
             ErrorCode::Internal => "INTERNAL",
         }
     }
@@ -137,6 +139,14 @@ impl AdapterError {
              Re-run a notification list to see current notifications \
              (CLI: list-notifications; FFI: ad_list_notifications)",
         )
+    }
+
+    pub fn app_unresponsive(app: &str) -> Self {
+        Self::new(
+            ErrorCode::AppUnresponsive,
+            format!("Application '{app}' is not responding"),
+        )
+        .with_suggestion("Wait for the app to recover or force-quit it before retrying automation")
     }
 
     pub fn internal(msg: impl Into<String>) -> Self {

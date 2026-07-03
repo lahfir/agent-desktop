@@ -69,6 +69,8 @@ pub unsafe extern "C" fn ad_wait(
                 menu: args.menu,
                 menu_closed: args.menu_closed,
                 notification: args.notification,
+                event: None,
+                window_id: None,
             },
             predicate: WaitPredicateArgs {
                 snapshot_id,

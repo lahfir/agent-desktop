@@ -81,6 +81,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "mouse-click" => decode(command, item.args).map(Commands::MouseClick),
         "mouse-down" => decode(command, item.args).map(Commands::MouseDown),
         "mouse-up" => decode(command, item.args).map(Commands::MouseUp),
+        "mouse-wheel" => decode(command, item.args).map(Commands::MouseWheel),
         "launch" => decode(command, item.args).map(Commands::Launch),
         "close-app" => decode(command, item.args).map(Commands::CloseApp),
         "list-windows" => decode(command, item.args).map(Commands::ListWindows),
@@ -99,7 +100,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
             decode(command, item.args).map(Commands::DismissAllNotifications)
         }
         "notification-action" => decode(command, item.args).map(Commands::NotificationAction),
-        "clipboard-get" => no_args(command, item.args).map(|()| Commands::ClipboardGet),
+        "clipboard-get" => decode(command, item.args).map(Commands::ClipboardGet),
         "clipboard-set" => decode(command, item.args).map(Commands::ClipboardSet),
         "clipboard-clear" => no_args(command, item.args).map(|()| Commands::ClipboardClear),
         "wait" => decode(command, item.args).map(Commands::Wait),

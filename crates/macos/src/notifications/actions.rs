@@ -207,6 +207,7 @@ fn hover_over(el: &crate::tree::AXElement) -> Result<(), AdapterError> {
             y: bounds.y + bounds.height / 2.0,
         },
         button: MouseButton::Left,
+        modifiers: Vec::new(),
     })
 }
 

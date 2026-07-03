@@ -27,6 +27,7 @@ pub fn execute(
             y: args.y,
         },
         button: args.button,
+        modifiers: Vec::new(),
     })?;
     Ok(json!({ "clicked": true, "x": args.x, "y": args.y, "count": args.count }))
 }

@@ -115,6 +115,8 @@ fn wait_args() -> WaitArgs {
             menu: false,
             menu_closed: false,
             notification: false,
+            event: None,
+            window_id: None,
         },
         predicate: WaitPredicateArgs {
             snapshot_id: None,

@@ -41,6 +41,11 @@ pub fn execute_with_report_with_context(
         "ref_count": ref_count,
         "session_id": session_id,
         "tracing": tracing,
+        "supported_surfaces": adapter
+            .supported_surfaces()
+            .into_iter()
+            .map(|surface| surface.as_str())
+            .collect::<Vec<_>>(),
     });
     if let Some(artifacts) = artifacts {
         body["artifacts"] = json!(artifacts);

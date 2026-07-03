@@ -23,6 +23,7 @@ pub enum AdResult {
     ErrSnapshotNotFound = -13,
     ErrPolicyDenied = -14,
     ErrAmbiguousTarget = -15,
+    ErrAppUnresponsive = -16,
 }
 
 const _: () = assert!(AdResult::ErrPermDenied as i32 == -1);
@@ -40,6 +41,7 @@ const _: () = assert!(AdResult::ErrInternal as i32 == -12);
 const _: () = assert!(AdResult::ErrSnapshotNotFound as i32 == -13);
 const _: () = assert!(AdResult::ErrPolicyDenied as i32 == -14);
 const _: () = assert!(AdResult::ErrAmbiguousTarget as i32 == -15);
+const _: () = assert!(AdResult::ErrAppUnresponsive as i32 == -16);
 
 enum MessageSource {
     Owned(CString),
@@ -100,6 +102,7 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
         ErrorCode::Internal => AdResult::ErrInternal,
         ErrorCode::SnapshotNotFound => AdResult::ErrSnapshotNotFound,
         ErrorCode::PolicyDenied => AdResult::ErrPolicyDenied,
+        ErrorCode::AppUnresponsive => AdResult::ErrAppUnresponsive,
     }
 }
 

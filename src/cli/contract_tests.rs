@@ -18,6 +18,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "wait_test_support",
     "wait_text_match",
     "wait_timeout",
+    "wait_event",
     "wait_selector",
 ];
 
@@ -79,6 +80,7 @@ const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "mouse-down",
     "mouse-move",
     "mouse-up",
+    "mouse-wheel",
     "move-window",
     "notification-action",
     "press",

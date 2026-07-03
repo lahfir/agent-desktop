@@ -106,6 +106,16 @@ impl ObservationOps for MacOSAdapter {
         crate::tree::hit_test::hit_test_impl(handle, point)
     }
 
+    fn get_live_name_evidence(
+        &self,
+        handle: &NativeHandle,
+    ) -> Result<agent_desktop_core::accname::NameEvidence, AdapterError> {
+        Ok(with_borrowed_ax_element(
+            handle,
+            crate::tree::name_evidence::name_evidence_impl,
+        ))
+    }
+
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
@@ -213,6 +223,13 @@ impl ActionOps for MacOSAdapter {
         }
         Ok(())
     }
+
+    fn scroll_into_view(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
+        with_borrowed_ax_element(
+            handle,
+            crate::actions::scroll_into_view::scroll_into_view_impl,
+        )
+    }
 }
 
 impl InputOps for MacOSAdapter {
@@ -243,6 +260,31 @@ impl InputOps for MacOSAdapter {
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
         crate::input::clipboard::clear()
     }
+
+    fn get_clipboard_content(
+        &self,
+        format: agent_desktop_core::clipboard_content::ClipboardFormat,
+    ) -> Result<agent_desktop_core::clipboard_content::ClipboardContent, AdapterError> {
+        crate::input::clipboard::get_content(format)
+    }
+
+    fn set_clipboard_content(
+        &self,
+        content: &agent_desktop_core::clipboard_content::ClipboardContent,
+    ) -> Result<(), AdapterError> {
+        crate::input::clipboard::set_content(content)
+    }
+
+    fn mouse_wheel(
+        &self,
+        x: f64,
+        y: f64,
+        dy: i32,
+        dx: i32,
+        _modifiers: &[agent_desktop_core::action::Modifier],
+    ) -> Result<(), AdapterError> {
+        crate::input::mouse::synthesize_scroll_at(x, y, dy, dx)
+    }
 }
 
 impl SystemOps for MacOSAdapter {
@@ -268,6 +310,41 @@ impl SystemOps for MacOSAdapter {
 
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
         crate::system::app_ops::launch_app_impl(id, timeout_ms)
+    }
+
+    fn launch_app_with_options(
+        &self,
+        id: &str,
+        options: &agent_desktop_core::launch_options::LaunchOptions,
+        timeout_ms: u64,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::system::app_ops::launch_app_with_options_impl(id, options, timeout_ms)
+    }
+
+    fn process_state(
+        &self,
+        pid: i32,
+    ) -> Result<agent_desktop_core::process_state::ProcessState, AdapterError> {
+        crate::system::process_state::process_state_impl(pid)
+    }
+
+    fn supported_surfaces(&self) -> Vec<SnapshotSurface> {
+        crate::system::signals::supported_surfaces_impl()
+    }
+
+    fn capture_signal_baseline(
+        &self,
+    ) -> Result<agent_desktop_core::signals::SignalBaseline, AdapterError> {
+        crate::system::signals::capture_signal_baseline_impl()
+    }
+
+    fn wait_for_signal(
+        &self,
+        baseline: &agent_desktop_core::signals::SignalBaseline,
+        signal: &agent_desktop_core::signals::DesktopSignal,
+        timeout_ms: u64,
+    ) -> Result<agent_desktop_core::signals::DesktopSignal, AdapterError> {
+        crate::system::signals::wait_for_signal_impl(baseline, signal, timeout_ms)
     }
 
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {

@@ -1,8 +1,11 @@
 use agent_desktop_core::{
-    action::{Direction, MouseButton},
+    action::{Direction, Modifier, MouseButton},
+    clipboard_content::ClipboardFormat,
     commands::{get, is_check},
     error::AppError,
+    launch_options::LaunchOptions,
 };
+use std::collections::HashMap;
 
 pub(crate) fn parse_get_property(s: &str) -> Result<get::GetProperty, AppError> {
     match s {
@@ -77,6 +80,65 @@ pub(crate) fn parse_xy_opt(s: Option<&str>) -> Result<Option<(f64, f64)>, AppErr
         Some(s) => parse_xy(s).map(Some),
         None => Ok(None),
     }
+}
+
+pub(crate) fn parse_clipboard_format(s: &str) -> Result<ClipboardFormat, AppError> {
+    match s {
+        "plain_text" | "plaintext" | "text" => Ok(ClipboardFormat::PlainText),
+        "html" => Ok(ClipboardFormat::Html),
+        "rtf" => Ok(ClipboardFormat::Rtf),
+        "png" => Ok(ClipboardFormat::Png),
+        other => Err(AppError::invalid_input(format!(
+            "Unknown clipboard format '{other}'. Valid: plain_text, html, rtf, png"
+        ))),
+    }
+}
+
+pub(crate) fn parse_modifiers(values: &[String]) -> Result<Vec<Modifier>, AppError> {
+    values.iter().map(|value| parse_modifier(value)).collect()
+}
+
+pub(crate) fn parse_modifier(s: &str) -> Result<Modifier, AppError> {
+    match s.to_ascii_lowercase().as_str() {
+        "shift" => Ok(Modifier::Shift),
+        "cmd" | "command" | "meta" => Ok(Modifier::Cmd),
+        "ctrl" | "control" => Ok(Modifier::Ctrl),
+        "alt" | "option" => Ok(Modifier::Alt),
+        other => Err(AppError::invalid_input(format!(
+            "Unknown modifier '{other}'. Valid: shift, cmd, ctrl, alt"
+        ))),
+    }
+}
+
+pub(crate) fn build_launch_options(
+    args: &[String],
+    env: &[String],
+    cwd: Option<std::path::PathBuf>,
+    no_attach: bool,
+) -> Result<LaunchOptions, AppError> {
+    let mut env_map = HashMap::new();
+    for pair in env {
+        let (key, value) = parse_env_pair(pair)?;
+        env_map.insert(key, value);
+    }
+    Ok(LaunchOptions {
+        args: args.to_vec(),
+        env: env_map,
+        cwd,
+        attach: !no_attach,
+    })
+}
+
+fn parse_env_pair(pair: &str) -> Result<(String, String), AppError> {
+    let (key, value) = pair.split_once('=').ok_or_else(|| {
+        AppError::invalid_input(format!("Invalid --env value '{pair}'. Expected KEY=VALUE"))
+    })?;
+    if key.is_empty() {
+        return Err(AppError::invalid_input(format!(
+            "Invalid --env value '{pair}'. KEY must not be empty"
+        )));
+    }
+    Ok((key.to_string(), value.to_string()))
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ use crate::cli_args::{
         DragCliArgs, HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs,
         PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
+    mouse_wheel::MouseWheelArgs,
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
         NotificationActionCliArgs,
@@ -14,9 +15,9 @@ use crate::cli_args::{
     session::SessionArgs,
     skills::SkillsArgs,
     system::{
-        AppRefArgs, BatchArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
-        ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
-        WaitArgs,
+        AppRefArgs, BatchArgs, ClipboardGetArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs,
+        LaunchArgs, ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs,
+        ResizeWindowCliArgs, WaitArgs,
     },
     trace::TraceArgs,
 };
@@ -162,6 +163,8 @@ pub(crate) enum Commands {
     MouseDown(MousePointArgs),
     #[command(about = "Release mouse button at coordinates (requires --headed)")]
     MouseUp(MousePointArgs),
+    #[command(about = "Scroll the mouse wheel at absolute coordinates (requires --headed)")]
+    MouseWheel(MouseWheelArgs),
     #[command(about = "Launch application and wait until its window is visible")]
     Launch(LaunchArgs),
     #[command(about = "Quit an application gracefully (--force to terminate)")]
@@ -194,8 +197,8 @@ pub(crate) enum Commands {
     DismissAllNotifications(DismissAllNotificationsCliArgs),
     #[command(about = "Click an action button on a notification")]
     NotificationAction(NotificationActionCliArgs),
-    #[command(about = "Read plain-text clipboard contents")]
-    ClipboardGet,
+    #[command(about = "Read plain-text or typed clipboard contents")]
+    ClipboardGet(ClipboardGetArgs),
     #[command(about = "Write text to the clipboard")]
     ClipboardSet(ClipboardSetArgs),
     #[command(about = "Clear the clipboard")]
@@ -253,6 +256,7 @@ impl Commands {
             Self::MouseClick(_) => "mouse-click",
             Self::MouseDown(_) => "mouse-down",
             Self::MouseUp(_) => "mouse-up",
+            Self::MouseWheel(_) => "mouse-wheel",
             Self::Launch(_) => "launch",
             Self::CloseApp(_) => "close-app",
             Self::ListWindows(_) => "list-windows",
@@ -269,7 +273,7 @@ impl Commands {
             Self::DismissNotification(_) => "dismiss-notification",
             Self::DismissAllNotifications(_) => "dismiss-all-notifications",
             Self::NotificationAction(_) => "notification-action",
-            Self::ClipboardGet => "clipboard-get",
+            Self::ClipboardGet(_) => "clipboard-get",
             Self::ClipboardSet(_) => "clipboard-set",
             Self::ClipboardClear => "clipboard-clear",
             Self::Wait(_) => "wait",

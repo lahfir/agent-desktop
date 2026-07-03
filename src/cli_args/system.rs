@@ -21,6 +21,27 @@ pub(crate) struct LaunchArgs {
     )]
     #[serde(default = "default_launch_timeout")]
     pub timeout: u64,
+    #[arg(
+        long = "arg",
+        help = "Command-line argument passed to the launched app"
+    )]
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[arg(
+        long = "env",
+        value_name = "KEY=VALUE",
+        help = "Environment variable for the launched process"
+    )]
+    #[serde(default)]
+    pub env: Vec<String>,
+    #[arg(long, help = "Working directory for the launched process")]
+    pub cwd: Option<std::path::PathBuf>,
+    #[arg(
+        long = "no-attach",
+        help = "Launch without waiting for a window to appear"
+    )]
+    #[serde(default)]
+    pub no_attach: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -92,9 +113,26 @@ pub(crate) struct AppRefArgs {
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct ClipboardGetArgs {
+    #[arg(
+        long,
+        value_name = "FORMAT",
+        help = "Clipboard format: plain_text (default), html, rtf, png"
+    )]
+    pub format: Option<String>,
+}
+
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ClipboardSetArgs {
     #[arg(value_name = "TEXT", help = "Text to write to the clipboard")]
     pub text: String,
+    #[arg(
+        long,
+        value_name = "FORMAT",
+        help = "Clipboard format: plain_text (default), html, rtf, png"
+    )]
+    pub format: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -140,6 +178,17 @@ pub(crate) struct WaitModeArgs {
     #[arg(long, help = "Block until a new notification arrives")]
     #[serde(default)]
     pub notification: bool,
+    #[arg(
+        long,
+        help = "Block until a desktop lifecycle signal: app_activated, window_focused, window_closed"
+    )]
+    pub event: Option<String>,
+    #[arg(
+        long,
+        name = "window-id",
+        help = "Window ID for --event window_focused or window_closed"
+    )]
+    pub window_id: Option<String>,
 }
 
 #[derive(Args, Debug, Deserialize)]

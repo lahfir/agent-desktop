@@ -60,6 +60,7 @@ mod imp {
             kind: MouseEventKind::Click { count },
             point: center,
             button,
+            modifiers: Vec::new(),
         })
     }
 

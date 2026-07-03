@@ -27,4 +27,29 @@ pub trait InputOps: Send + Sync {
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("clear_clipboard"))
     }
+
+    fn get_clipboard_content(
+        &self,
+        _format: crate::clipboard_content::ClipboardFormat,
+    ) -> Result<crate::clipboard_content::ClipboardContent, AdapterError> {
+        Err(AdapterError::not_supported("get_clipboard_content"))
+    }
+
+    fn set_clipboard_content(
+        &self,
+        _content: &crate::clipboard_content::ClipboardContent,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("set_clipboard_content"))
+    }
+
+    fn mouse_wheel(
+        &self,
+        _x: f64,
+        _y: f64,
+        _dy: i32,
+        _dx: i32,
+        _modifiers: &[crate::action::Modifier],
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("mouse_wheel"))
+    }
 }
