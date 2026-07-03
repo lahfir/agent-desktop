@@ -1,5 +1,5 @@
 use crate::{
-    action::{MouseButton, MouseEvent, MouseEventKind, Point},
+    action::{Modifier, MouseButton, MouseEvent, MouseEventKind, Point},
     adapter::PlatformAdapter,
     commands::point_resolve::require_cursor_policy,
     context::CommandContext,
@@ -12,6 +12,7 @@ pub struct MouseClickArgs {
     pub y: f64,
     pub button: MouseButton,
     pub count: u32,
+    pub modifiers: Vec<Modifier>,
 }
 
 pub fn execute(
@@ -27,7 +28,11 @@ pub fn execute(
             y: args.y,
         },
         button: args.button,
-        modifiers: Vec::new(),
+        modifiers: args.modifiers,
     })?;
     Ok(json!({ "clicked": true, "x": args.x, "y": args.y, "count": args.count }))
 }
+
+#[cfg(test)]
+#[path = "mouse_click_tests.rs"]
+mod tests;

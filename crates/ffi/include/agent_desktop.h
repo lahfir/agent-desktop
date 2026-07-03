@@ -1323,12 +1323,32 @@ AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *par
  * at the given screen point. Click count is only consulted when `event.kind`
  * is `CLICK` (e.g., `click_count == 2` for a double-click). Callers that
  * need headless policy enforcement should use ref actions with policy.
+ * Carries no modifier chord — use [`ad_mouse_event_with_modifiers`] for
+ * cmd/ctrl/alt/shift-held clicks.
  *
  * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
  * `event` must be a non-null pointer to a valid `AdMouseEvent`.
  */
 AdResult ad_mouse_event(const struct AdAdapter *adapter, const struct AdMouseEvent *event);
+
+/**
+ * Additive counterpart to [`ad_mouse_event`] that also carries a held
+ * modifier chord (cmd/ctrl/alt/shift) — e.g. cmd-click for additive
+ * selection, shift-click for range selection. `AdMouseEvent`'s layout is
+ * unchanged; modifiers travel as a separate array + count, mirroring
+ * `AdKeyCombo::modifiers`/`modifier_count`.
+ *
+ * # Safety
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `event` must be a non-null pointer to a valid `AdMouseEvent`.
+ * `modifiers` must point to `modifier_count` valid `int32_t` values, or be
+ * null when `modifier_count` is 0.
+ */
+AdResult ad_mouse_event_with_modifiers(const struct AdAdapter *adapter,
+                                       const struct AdMouseEvent *event,
+                                       const int32_t *modifiers,
+                                       uint32_t modifier_count);
 
 /**
  * Registers a callback to receive `tracing` events, or unregisters the

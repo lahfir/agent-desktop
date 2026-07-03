@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    action::{DragParams, MouseButton, MouseEvent, MouseEventKind},
+    action::{DragParams, Modifier, MouseButton, MouseEvent, MouseEventKind},
     error::AdapterError,
 };
 
@@ -7,27 +7,48 @@ use agent_desktop_core::{
 mod imp {
     use super::*;
     use core_graphics::event::{
-        CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
+        CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
+        ScrollEventUnit,
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use core_graphics::geometry::CGPoint;
 
+    /// Maps a held modifier chord to the `CGEventFlags` bits that make a
+    /// synthetic event read as cmd/ctrl/alt/shift-held to the receiving app.
+    /// Pure and stateless: every mouse event below computes its flags fresh
+    /// from `event.modifiers` and applies them explicitly — including the
+    /// empty case — so no ambient hardware state or prior-call flags can
+    /// leak onto an unmodified event.
+    pub(crate) fn event_flags(modifiers: &[Modifier]) -> CGEventFlags {
+        modifiers.iter().fold(CGEventFlags::empty(), |flags, m| {
+            flags
+                | match m {
+                    Modifier::Cmd => CGEventFlags::CGEventFlagCommand,
+                    Modifier::Shift => CGEventFlags::CGEventFlagShift,
+                    Modifier::Alt => CGEventFlags::CGEventFlagAlternate,
+                    Modifier::Ctrl => CGEventFlags::CGEventFlagControl,
+                }
+        })
+    }
+
     pub fn synthesize_mouse(event: MouseEvent) -> Result<(), AdapterError> {
         tracing::debug!(
-            "mouse: {:?} {:?} at ({:.0}, {:.0})",
+            "mouse: {:?} {:?} at ({:.0}, {:.0}) modifiers={:?}",
             event.kind,
             event.button,
             event.point.x,
-            event.point.y
+            event.point.y,
+            event.modifiers
         );
         let point = CGPoint::new(event.point.x, event.point.y);
         let cg_button = to_cg_button(&event.button);
+        let flags = event_flags(&event.modifiers);
         match event.kind {
-            MouseEventKind::Move => post_event(CGEventType::MouseMoved, point, cg_button),
-            MouseEventKind::Down => post_event(down_type(&event.button), point, cg_button),
-            MouseEventKind::Up => post_event(up_type(&event.button), point, cg_button),
+            MouseEventKind::Move => post_event(CGEventType::MouseMoved, point, cg_button, flags),
+            MouseEventKind::Down => post_event(down_type(&event.button), point, cg_button, flags),
+            MouseEventKind::Up => post_event(up_type(&event.button), point, cg_button, flags),
             MouseEventKind::Click { count } => {
-                synthesize_click(point, cg_button, &event.button, count)
+                synthesize_click(point, cg_button, &event.button, count, flags)
             }
         }
     }
@@ -71,6 +92,7 @@ mod imp {
             CGEventType::LeftMouseDown,
             from,
             CGMouseButton::Left,
+            CGEventFlags::empty(),
         )?;
         let mut release = MouseUpGuard {
             source: &source,
@@ -88,6 +110,7 @@ mod imp {
                 CGEventType::LeftMouseDragged,
                 CGPoint::new(x, y),
                 CGMouseButton::Left,
+                CGEventFlags::empty(),
             )?;
             sleep(step_delay);
         }
@@ -127,6 +150,7 @@ mod imp {
                 CGEventType::LeftMouseUp,
                 point,
                 CGMouseButton::Left,
+                CGEventFlags::empty(),
             )?;
             self.armed = false;
             Ok(())
@@ -141,12 +165,14 @@ mod imp {
                     CGEventType::LeftMouseDragged,
                     self.origin,
                     CGMouseButton::Left,
+                    CGEventFlags::empty(),
                 );
                 let _ = post_event_with_source(
                     self.source,
                     CGEventType::LeftMouseUp,
                     self.origin,
                     CGMouseButton::Left,
+                    CGEventFlags::empty(),
                 );
             }
         }
@@ -173,6 +199,7 @@ mod imp {
                 CGEventType::LeftMouseDragged,
                 to,
                 CGMouseButton::Left,
+                CGEventFlags::empty(),
             )?;
             sleep(Duration::from_millis(tick_ms));
         }
@@ -184,12 +211,13 @@ mod imp {
         cg_button: CGMouseButton,
         button: &MouseButton,
         count: u32,
+        flags: CGEventFlags,
     ) -> Result<(), AdapterError> {
         let down_ty = down_type(button);
         let up_ty = up_type(button);
         for i in 1..=count {
-            let down = create_event(down_ty, point, cg_button)?;
-            let up = create_event(up_ty, point, cg_button)?;
+            let down = create_event(down_ty, point, cg_button, flags)?;
+            let up = create_event(up_ty, point, cg_button, flags)?;
             set_click_count(&down, i as i64);
             set_click_count(&up, i as i64);
             down.post(CGEventTapLocation::HID);
@@ -206,13 +234,14 @@ mod imp {
         event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, count);
     }
 
-    fn create_event(
+    pub(crate) fn create_event(
         event_type: CGEventType,
         point: CGPoint,
         button: CGMouseButton,
+        flags: CGEventFlags,
     ) -> Result<CGEvent, AdapterError> {
         let source = event_source()?;
-        create_event_with_source(&source, event_type, point, button)
+        create_event_with_source(&source, event_type, point, button, flags)
     }
 
     fn create_event_with_source(
@@ -220,9 +249,12 @@ mod imp {
         event_type: CGEventType,
         point: CGPoint,
         button: CGMouseButton,
+        flags: CGEventFlags,
     ) -> Result<CGEvent, AdapterError> {
-        CGEvent::new_mouse_event(source.clone(), event_type, point, button)
-            .map_err(|()| AdapterError::internal("CGEvent::new_mouse_event failed"))
+        let event = CGEvent::new_mouse_event(source.clone(), event_type, point, button)
+            .map_err(|()| AdapterError::internal("CGEvent::new_mouse_event failed"))?;
+        event.set_flags(flags);
+        Ok(event)
     }
 
     fn event_source() -> Result<CGEventSource, AdapterError> {
@@ -234,8 +266,9 @@ mod imp {
         event_type: CGEventType,
         point: CGPoint,
         button: CGMouseButton,
+        flags: CGEventFlags,
     ) -> Result<(), AdapterError> {
-        let ev = create_event(event_type, point, button)?;
+        let ev = create_event(event_type, point, button, flags)?;
         ev.post(CGEventTapLocation::HID);
         Ok(())
     }
@@ -245,8 +278,9 @@ mod imp {
         event_type: CGEventType,
         point: CGPoint,
         button: CGMouseButton,
+        flags: CGEventFlags,
     ) -> Result<(), AdapterError> {
-        let ev = create_event_with_source(source, event_type, point, button)?;
+        let ev = create_event_with_source(source, event_type, point, button, flags)?;
         ev.post(CGEventTapLocation::HID);
         Ok(())
     }
@@ -275,8 +309,14 @@ mod imp {
         }
     }
 
-    pub fn synthesize_scroll_at(x: f64, y: f64, dy: i32, dx: i32) -> Result<(), AdapterError> {
-        tracing::debug!("mouse: scroll at ({x:.0},{y:.0}) dy={dy} dx={dx}");
+    pub fn synthesize_scroll_at(
+        x: f64,
+        y: f64,
+        dy: i32,
+        dx: i32,
+        modifiers: &[Modifier],
+    ) -> Result<(), AdapterError> {
+        tracing::debug!("mouse: scroll at ({x:.0},{y:.0}) dy={dy} dx={dx} modifiers={modifiers:?}");
         use core_graphics::geometry::CGPoint;
 
         unsafe extern "C" {
@@ -288,6 +328,7 @@ mod imp {
                 wheel2: i32,
             ) -> *mut std::ffi::c_void;
             fn CGEventSetLocation(event: *mut std::ffi::c_void, point: CGPoint);
+            fn CGEventSetFlags(event: *mut std::ffi::c_void, flags: u64);
             fn CGEventPost(tap: u32, event: *mut std::ffi::c_void);
         }
 
@@ -299,6 +340,7 @@ mod imp {
         }
         unsafe {
             CGEventSetLocation(event, CGPoint::new(x, y));
+            CGEventSetFlags(event, event_flags(modifiers).bits());
             CGEventPost(0, event);
             core_foundation::base::CFRelease(event as _);
         }
@@ -318,9 +360,22 @@ mod imp {
         Err(AdapterError::not_supported("drag"))
     }
 
-    pub fn synthesize_scroll_at(_x: f64, _y: f64, _dy: i32, _dx: i32) -> Result<(), AdapterError> {
+    pub fn synthesize_scroll_at(
+        _x: f64,
+        _y: f64,
+        _dy: i32,
+        _dx: i32,
+        _modifiers: &[Modifier],
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("scroll"))
     }
 }
 
 pub use imp::{synthesize_drag, synthesize_mouse, synthesize_scroll_at};
+
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) use imp::{create_event, event_flags};
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "mouse_tests.rs"]
+mod tests;

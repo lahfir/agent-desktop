@@ -222,6 +222,13 @@ pub(crate) struct MouseClickArgs {
     #[arg(long, default_value = "1", help = "Number of clicks")]
     #[serde(default = "default_mouse_click_count")]
     pub count: u32,
+    #[arg(
+        long,
+        value_name = "MODIFIER",
+        help = "Held modifiers: shift, cmd, ctrl, alt (repeatable)"
+    )]
+    #[serde(default)]
+    pub modifiers: Vec<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -236,6 +243,13 @@ pub(crate) struct MousePointArgs {
     )]
     #[serde(default = "default_mouse_button")]
     pub button: String,
+    #[arg(
+        long,
+        value_name = "MODIFIER",
+        help = "Held modifiers: shift, cmd, ctrl, alt (repeatable)"
+    )]
+    #[serde(default)]
+    pub modifiers: Vec<String>,
 }
 
 #[cfg(test)]

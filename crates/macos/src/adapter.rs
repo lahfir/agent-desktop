@@ -273,9 +273,9 @@ impl InputOps for MacOSAdapter {
         y: f64,
         dy: i32,
         dx: i32,
-        _modifiers: &[agent_desktop_core::action::Modifier],
+        modifiers: &[agent_desktop_core::action::Modifier],
     ) -> Result<(), AdapterError> {
-        crate::input::mouse::synthesize_scroll_at(x, y, dy, dx)
+        crate::input::mouse::synthesize_scroll_at(x, y, dy, dx, modifiers)
     }
 }
 

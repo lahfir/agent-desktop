@@ -167,3 +167,36 @@ fn requires_hit_test_covers_ref_targeted_pointer_actions() {
         );
     }
 }
+
+/// F10 regression coverage: `MouseEvent.modifiers` must stay `#[serde(default)]`
+/// so a legacy payload recorded before modifiers existed (or any FFI/batch
+/// caller that omits the key) still deserializes instead of erroring out.
+#[test]
+fn mouse_event_json_without_modifiers_key_deserializes_to_empty() {
+    let event: MouseEvent = serde_json::from_value(serde_json::json!({
+        "kind": { "Click": { "count": 1 } },
+        "point": { "x": 1.0, "y": 2.0 },
+        "button": "Left",
+    }))
+    .unwrap();
+
+    assert!(event.modifiers.is_empty());
+}
+
+#[test]
+fn mouse_event_json_with_modifiers_round_trips() {
+    let event = MouseEvent {
+        kind: MouseEventKind::Click { count: 2 },
+        point: Point { x: 1.0, y: 2.0 },
+        button: MouseButton::Left,
+        modifiers: vec![Modifier::Cmd, Modifier::Shift],
+    };
+
+    let json = serde_json::to_value(&event).unwrap();
+    let round_tripped: MouseEvent = serde_json::from_value(json).unwrap();
+
+    assert_eq!(
+        round_tripped.modifiers,
+        vec![Modifier::Cmd, Modifier::Shift]
+    );
+}

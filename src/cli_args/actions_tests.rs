@@ -88,3 +88,59 @@ fn drag_cli_args_batch_json_omitted_timeout_defaults_to_5000() {
         serde_json::from_value(serde_json::json!({ "from": "@e1", "to": "@e2" })).unwrap();
     assert_eq!(args.timeout_ms, 5000);
 }
+
+/// F10 regression: `MouseClickArgs`/`MousePointArgs` (mouse-click, mouse-down,
+/// mouse-up) previously had no `--modifiers` flag at all — only mouse-wheel
+/// carried one — so a chorded click was unreachable from the CLI regardless
+/// of what the macOS layer supported. Each pair proves the repeatable flag
+/// parses on the CLI and that legacy batch JSON without the key still
+/// deserializes (serde default empty), matching `MouseWheelArgs`'s existing
+/// contract.
+#[test]
+fn mouse_click_args_cli_modifiers_repeatable_flag_parses() {
+    let args = MouseClickArgs::try_parse_from([
+        "mouse-click",
+        "--xy",
+        "10,20",
+        "--modifiers",
+        "cmd",
+        "--modifiers",
+        "shift",
+    ])
+    .unwrap();
+    assert_eq!(args.modifiers, vec!["cmd".to_string(), "shift".to_string()]);
+}
+
+#[test]
+fn mouse_click_args_cli_omitted_modifiers_defaults_to_empty() {
+    let args = MouseClickArgs::try_parse_from(["mouse-click", "--xy", "10,20"]).unwrap();
+    assert!(args.modifiers.is_empty());
+}
+
+#[test]
+fn mouse_click_args_batch_json_without_modifiers_key_still_deserializes() {
+    let args: MouseClickArgs =
+        serde_json::from_value(serde_json::json!({ "xy": "10,20" })).unwrap();
+    assert!(args.modifiers.is_empty());
+}
+
+#[test]
+fn mouse_point_args_cli_modifiers_repeatable_flag_parses() {
+    let args =
+        MousePointArgs::try_parse_from(["mouse-down", "--xy", "10,20", "--modifiers", "ctrl"])
+            .unwrap();
+    assert_eq!(args.modifiers, vec!["ctrl".to_string()]);
+}
+
+#[test]
+fn mouse_point_args_cli_omitted_modifiers_defaults_to_empty() {
+    let args = MousePointArgs::try_parse_from(["mouse-up", "--xy", "10,20"]).unwrap();
+    assert!(args.modifiers.is_empty());
+}
+
+#[test]
+fn mouse_point_args_batch_json_without_modifiers_key_still_deserializes() {
+    let args: MousePointArgs =
+        serde_json::from_value(serde_json::json!({ "xy": "10,20" })).unwrap();
+    assert!(args.modifiers.is_empty());
+}
