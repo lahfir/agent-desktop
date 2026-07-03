@@ -151,12 +151,25 @@ pub(crate) struct ClipboardSetArgs {
     pub file_url: Vec<String>,
 }
 
+/// `event`/`window_id` flatten in as a sibling of `mode`/`predicate` here
+/// (not nested inside [`WaitModeArgs`]) even though they are conceptually
+/// part of the wait mode: serde does not support `#[serde(deny_unknown_fields)]`
+/// on a struct that is both a flatten *target* and a flatten *owner*, and
+/// every struct in this file needs `deny_unknown_fields` to keep rejecting
+/// typoed batch-JSON keys. Keeping the flatten nesting at exactly one level
+/// (three flatten fields side by side, mirroring the existing `mode`/
+/// `predicate` split) sidesteps that limitation; the CLI surface is
+/// unaffected since `#[command(flatten)]` merges flags regardless of Rust
+/// struct nesting depth.
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WaitArgs {
     #[command(flatten)]
     #[serde(flatten)]
     pub mode: WaitModeArgs,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub event: WaitEventArgs,
     #[command(flatten)]
     #[serde(flatten)]
     pub predicate: WaitPredicateArgs,
@@ -169,6 +182,25 @@ pub(crate) struct WaitArgs {
     pub timeout: u64,
     #[arg(long, help = "Scope element, window, or text wait to this application")]
     pub app: Option<String>,
+}
+
+/// The `--event`/`--window-id` pair, grouped out of [`WaitModeArgs`] to keep
+/// it under the repo's field-count limit. `window_id` only ever narrows an
+/// `--event` wait, so the two travel together.
+#[derive(Args, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WaitEventArgs {
+    #[arg(
+        long,
+        help = "Block until a desktop lifecycle signal, detected by baseline diff without needing to know the id/title up front: window-opened, window-closed, app-launched, app-terminated, focus-changed, surface-appeared, surface-dismissed"
+    )]
+    pub event: Option<String>,
+    #[arg(
+        long,
+        name = "window-id",
+        help = "Optional: narrow --event window-opened/window-closed/focus-changed to one window ID"
+    )]
+    pub window_id: Option<String>,
 }
 
 #[derive(Args, Debug, Deserialize)]
@@ -197,17 +229,6 @@ pub(crate) struct WaitModeArgs {
     #[arg(long, help = "Block until a new notification arrives")]
     #[serde(default)]
     pub notification: bool,
-    #[arg(
-        long,
-        help = "Block until a desktop lifecycle signal, detected by baseline diff without needing to know the id/title up front: window-opened, window-closed, app-launched, app-terminated, focus-changed, surface-appeared, surface-dismissed"
-    )]
-    pub event: Option<String>,
-    #[arg(
-        long,
-        name = "window-id",
-        help = "Optional: narrow --event window-opened/window-closed/focus-changed to one window ID"
-    )]
-    pub window_id: Option<String>,
 }
 
 #[derive(Args, Debug, Deserialize)]
@@ -260,3 +281,7 @@ pub(crate) struct BatchArgs {
     #[arg(long, help = "Halt the batch on the first failed command")]
     pub stop_on_error: bool,
 }
+
+#[cfg(test)]
+#[path = "system_tests.rs"]
+mod tests;

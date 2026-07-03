@@ -3,7 +3,7 @@ use crate::{
     commands::{helpers::resolve_app_pid, query},
     context::CommandContext,
     error::AppError,
-    locator::{LocatorQuery, StatePredicate},
+    locator::{IdentityPredicate, LocatorQuery, StatePredicate},
     node::AccessibilityNode,
     roles, search_text, snapshot,
 };
@@ -14,8 +14,9 @@ const DEFAULT_LIMIT: usize = 50;
 
 pub use query::FindQuery;
 
-pub struct FindArgs {
-    pub app: Option<String>,
+/// Match-criteria fields: how a candidate element is identified. Grouped out
+/// of [`FindArgs`] to keep it under the repo's field-count limit.
+pub struct FindFilterArgs {
     pub role: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
@@ -23,12 +24,23 @@ pub struct FindArgs {
     pub value: Option<String>,
     pub text: Option<String>,
     pub exact: bool,
-    pub states: Vec<StatePredicate>,
+}
+
+/// Result-shaping fields: which of the matches to return. Mutually exclusive
+/// at the CLI/batch layer (enforced by [`validate_find_mode`]).
+pub struct FindSelectionArgs {
     pub count: bool,
     pub first: bool,
     pub last: bool,
     pub nth: Option<usize>,
     pub limit: Option<usize>,
+}
+
+pub struct FindArgs {
+    pub app: Option<String>,
+    pub filter: FindFilterArgs,
+    pub states: Vec<StatePredicate>,
+    pub selection: FindSelectionArgs,
 }
 
 pub fn execute(
@@ -78,13 +90,19 @@ pub fn parse_state_flag(raw: &str) -> Result<StatePredicate, AppError> {
 
 fn locator_query_from_args(args: &FindArgs) -> Result<LocatorQuery, AppError> {
     Ok(LocatorQuery {
-        role: args.role.as_deref().map(roles::normalize_role_query),
-        name: args.name.as_deref().map(search_text::normalize),
-        description: args.description.as_deref().map(search_text::normalize),
-        native_id: args.native_id.clone(),
-        value: args.value.as_deref().map(search_text::normalize),
-        has_text: args.text.as_deref().map(search_text::normalize),
-        exact: args.exact,
+        identity: IdentityPredicate {
+            role: args.filter.role.as_deref().map(roles::normalize_role_query),
+            name: args.filter.name.as_deref().map(search_text::normalize),
+            description: args
+                .filter
+                .description
+                .as_deref()
+                .map(search_text::normalize),
+            native_id: args.filter.native_id.clone(),
+            value: args.filter.value.as_deref().map(search_text::normalize),
+        },
+        has_text: args.filter.text.as_deref().map(search_text::normalize),
+        exact: args.filter.exact,
         states: args.states.clone(),
         ..LocatorQuery::default()
     })
@@ -97,7 +115,7 @@ fn finish_from_live_handles(
     context: &CommandContext,
     handles: Vec<crate::native_handle::NativeHandle>,
 ) -> Result<Value, AppError> {
-    if args.count {
+    if args.selection.count {
         return Ok(json!({ "count": handles.len() }));
     }
 
@@ -123,7 +141,7 @@ fn finish_from_live_handles(
         .filter_map(|index| materialize_match(snapshot_matches.get(index)))
         .collect();
 
-    if args.first || args.last || args.nth.is_some() {
+    if args.selection.first || args.selection.last || args.selection.nth.is_some() {
         return Ok(single_match_response(
             matches.into_iter().next(),
             query,
@@ -149,13 +167,13 @@ fn execute_snapshot_search(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let opts = crate::adapter::TreeOptions::default();
-    let result = if args.count {
+    let result = if args.selection.count {
         snapshot::build(adapter, &opts, args.app.as_deref(), None)?
     } else {
         snapshot::run_with_context(adapter, &opts, args.app.as_deref(), None, context)?
     };
 
-    if args.count {
+    if args.selection.count {
         return Ok(json!({ "count": count_matches(&result.tree, query) }));
     }
 
@@ -169,7 +187,7 @@ fn execute_snapshot_search(
         max_matches,
     );
 
-    if args.first {
+    if args.selection.first {
         return Ok(single_match_response(
             matches.into_iter().next(),
             query,
@@ -177,7 +195,7 @@ fn execute_snapshot_search(
         ));
     }
 
-    if args.last {
+    if args.selection.last {
         return Ok(single_match_response(
             matches.into_iter().last(),
             query,
@@ -185,7 +203,7 @@ fn execute_snapshot_search(
         ));
     }
 
-    if let Some(n) = args.nth {
+    if let Some(n) = args.selection.nth {
         return Ok(single_match_response(
             matches.into_iter().nth(n),
             query,
@@ -200,13 +218,13 @@ fn execute_snapshot_search(
 }
 
 fn select_live_indices(args: &FindArgs, total: usize) -> Vec<usize> {
-    if args.first {
+    if args.selection.first {
         return vec![0].into_iter().filter(|_| total > 0).collect();
     }
-    if args.last {
+    if args.selection.last {
         return total.checked_sub(1).into_iter().collect();
     }
-    if let Some(n) = args.nth {
+    if let Some(n) = args.selection.nth {
         return (n < total).then_some(n).into_iter().collect();
     }
     let limit = max_matches_for_args(args).unwrap_or(total);
@@ -223,7 +241,7 @@ fn attach_roles_present_hint(
     query: &LocatorQuery,
     tree: &AccessibilityNode,
 ) {
-    if !is_empty || query.role.is_none() {
+    if !is_empty || query.identity.role.is_none() {
         return;
     }
     let mut present = BTreeSet::new();
@@ -255,27 +273,32 @@ fn collect_roles(node: &AccessibilityNode, roles: &mut BTreeSet<String>) {
 }
 
 fn max_matches_for_args(args: &FindArgs) -> Option<usize> {
-    if args.count || args.last {
+    if args.selection.count || args.selection.last {
         return None;
     }
-    if args.first {
+    if args.selection.first {
         return Some(1);
     }
-    if let Some(n) = args.nth {
+    if let Some(n) = args.selection.nth {
         return Some(n.saturating_add(1));
     }
-    match args.limit.unwrap_or(DEFAULT_LIMIT) {
+    match args.selection.limit.unwrap_or(DEFAULT_LIMIT) {
         0 => None,
         limit => Some(limit),
     }
 }
 
 fn validate_find_mode(args: &FindArgs) -> Result<(), AppError> {
-    let selector_count = [args.count, args.first, args.last, args.nth.is_some()]
-        .into_iter()
-        .filter(|selected| *selected)
-        .count();
-    if selector_count > 1 || (selector_count == 1 && args.limit.is_some()) {
+    let selector_count = [
+        args.selection.count,
+        args.selection.first,
+        args.selection.last,
+        args.selection.nth.is_some(),
+    ]
+    .into_iter()
+    .filter(|selected| *selected)
+    .count();
+    if selector_count > 1 || (selector_count == 1 && args.selection.limit.is_some()) {
         return Err(AppError::invalid_input_with_suggestion(
             "find accepts only one result-shaping mode",
             "Use one of --count, --first, --last, --nth, or --limit.",

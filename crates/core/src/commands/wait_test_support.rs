@@ -1,4 +1,5 @@
 use crate::adapter::{ActionOps, InputOps, ObservationOps, PlatformAdapter, SystemOps};
+use crate::commands::wait::{WaitArgs, WaitModeArgs, WaitPredicateArgs};
 use crate::commands::wait_element::{ElementWaitInput, wait_for_element};
 use crate::commands::wait_predicate;
 use crate::{
@@ -11,6 +12,34 @@ use crate::{
     refs_store::RefStore,
 };
 use serde_json::Value;
+
+/// Baseline `WaitArgs` with every mode/predicate field cleared, shared by the
+/// notification- and text/menu-scenario test groups so both can build a
+/// specific mode via `..wait_args()` struct-update syntax.
+pub(super) fn wait_args() -> WaitArgs {
+    WaitArgs {
+        mode: WaitModeArgs {
+            ms: None,
+            element: None,
+            window: None,
+            text: None,
+            menu: false,
+            menu_closed: false,
+            notification: false,
+            event: None,
+            window_id: None,
+        },
+        predicate: WaitPredicateArgs {
+            snapshot_id: None,
+            predicate: None,
+            value: None,
+            action: None,
+            count: None,
+        },
+        timeout_ms: 1,
+        app: None,
+    }
+}
 
 pub(super) fn wait_for_element_test(
     ref_id: String,

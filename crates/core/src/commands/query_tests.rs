@@ -1,5 +1,5 @@
 use super::*;
-use crate::{node::AccessibilityNode, search_text};
+use crate::{locator::IdentityPredicate, node::AccessibilityNode, search_text};
 
 fn node(role: &str, name: Option<&str>, value: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
@@ -21,21 +21,21 @@ fn node(role: &str, name: Option<&str>, value: Option<&str>) -> AccessibilityNod
 #[test]
 fn parse_selector_role_and_text() {
     let query = parse_selector("button:Submit");
-    assert_eq!(query.role.as_deref(), Some("button"));
+    assert_eq!(query.identity.role.as_deref(), Some("button"));
     assert_eq!(query.has_text.as_deref(), Some("submit"));
 }
 
 #[test]
 fn parse_selector_role_only() {
     let query = parse_selector("button");
-    assert_eq!(query.role.as_deref(), Some("button"));
+    assert_eq!(query.identity.role.as_deref(), Some("button"));
     assert!(query.has_text.is_none());
 }
 
 #[test]
 fn parse_selector_text_only() {
     let query = parse_selector(":Saved!");
-    assert!(query.role.is_none());
+    assert!(query.identity.role.is_none());
     assert_eq!(query.has_text.as_deref(), Some("saved!"));
 }
 
@@ -50,21 +50,21 @@ fn parse_selector_match_everything_variants() {
 #[test]
 fn parse_selector_empty_text_side_becomes_none() {
     let query = parse_selector("button:");
-    assert_eq!(query.role.as_deref(), Some("button"));
+    assert_eq!(query.identity.role.as_deref(), Some("button"));
     assert!(query.has_text.is_none());
 }
 
 #[test]
 fn parse_selector_trims_whitespace() {
     let query = parse_selector(" button : Submit ");
-    assert_eq!(query.role.as_deref(), Some("button"));
+    assert_eq!(query.identity.role.as_deref(), Some("button"));
     assert_eq!(query.has_text.as_deref(), Some("submit"));
 }
 
 #[test]
 fn parse_selector_splits_on_first_colon_only() {
     let query = parse_selector("textfield:a:b");
-    assert_eq!(query.role.as_deref(), Some("textfield"));
+    assert_eq!(query.identity.role.as_deref(), Some("textfield"));
     assert_eq!(query.has_text.as_deref(), Some("a:b"));
 }
 
@@ -72,7 +72,10 @@ fn parse_selector_splits_on_first_colon_only() {
 fn find_query_without_text_never_calls_contains_with_empty_needle() {
     let root = node("button", Some("Save"), None);
     let query = FindQuery {
-        role: Some("button".into()),
+        identity: IdentityPredicate {
+            role: Some("button".into()),
+            ..IdentityPredicate::default()
+        },
         ..FindQuery::default()
     };
     assert!(tree_has_match(&root, &query));
@@ -83,7 +86,10 @@ fn tree_has_match_finds_nested_node() {
     let mut root = node("window", None, None);
     root.children.push(node("button", Some("Submit"), None));
     let query = FindQuery {
-        role: Some("button".into()),
+        identity: IdentityPredicate {
+            role: Some("button".into()),
+            ..IdentityPredicate::default()
+        },
         has_text: Some(search_text::normalize("submit")),
         ..FindQuery::default()
     };

@@ -127,10 +127,12 @@ fn none_timeout_uses_single_resolve_attempt() {
         resolve_calls: AtomicU32::new(0),
     };
     let err = execute_with_auto_wait(
-        &adapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         ActionRequest::headless(Action::Click),
         crate::ref_action::execute_resolved,
     )
@@ -145,10 +147,12 @@ fn budget_timeout_retries_until_success() {
         resolve_calls: AtomicU32::new(0),
     };
     let result = execute_with_auto_wait(
-        &adapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         request_with_timeout(5_000),
         crate::ref_action::execute_resolved,
     )
@@ -163,10 +167,12 @@ fn transient_ambiguity_is_recorded_in_result_details() {
         resolve_calls: AtomicU32::new(0),
     };
     let result = execute_with_auto_wait(
-        &adapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         request_with_timeout(5_000),
         crate::ref_action::execute_resolved,
     )
@@ -257,10 +263,12 @@ fn check_live_runs_exactly_once_per_iteration_not_twice() {
     };
 
     let result = execute_with_auto_wait(
-        &adapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         request_with_timeout(5_000),
         crate::ref_action::execute_resolved,
     )

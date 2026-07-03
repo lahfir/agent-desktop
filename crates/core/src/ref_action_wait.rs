@@ -76,6 +76,20 @@ pub(crate) enum ResolveAttemptOutcome {
     DeadlinePassed,
 }
 
+/// Bundles the fixed identity of an in-flight ref action (adapter, target
+/// entry, tracing ref id, command context) so the auto-wait loop functions
+/// stay within the repo's 5-parameter limit. Mirrors
+/// [`crate::ref_action::ResolvedRefAction`] minus the resolved handle, which
+/// this struct's callers have not obtained yet. All fields are shared
+/// references, so the type is trivially `Copy`.
+#[derive(Clone, Copy)]
+pub(crate) struct RefActionWaitCtx<'a> {
+    pub(crate) adapter: &'a dyn PlatformAdapter,
+    pub(crate) entry: &'a RefEntry,
+    pub(crate) ref_id: &'a str,
+    pub(crate) context: &'a CommandContext,
+}
+
 /// Single owner of the "poll resolve, capped per attempt, until deadline"
 /// math shared by the ref-action auto-wait loop and `wait --element`. Caps
 /// each individual [`ObservationOps::resolve_element_strict_with_timeout`]
@@ -102,10 +116,7 @@ pub(crate) fn resolve_within_deadline(
 }
 
 pub(crate) fn execute_with_auto_wait(
-    adapter: &dyn PlatformAdapter,
-    entry: &RefEntry,
-    ref_id: &str,
-    context: &CommandContext,
+    ctx: RefActionWaitCtx<'_>,
     request: ActionRequest,
     dispatch: impl Fn(
         crate::ref_action::ResolvedRefAction<'_>,
@@ -113,44 +124,34 @@ pub(crate) fn execute_with_auto_wait(
     ) -> Result<ActionResult, crate::error::AppError>,
 ) -> Result<ActionResult, AdapterError> {
     let Some(budget_ms) = request.timeout_ms else {
-        return execute_single_shot(adapter, entry, ref_id, context, request, dispatch)
-            .map_err(|err| enrich_with_process_state(adapter, entry, err));
+        return execute_single_shot(ctx, request, dispatch)
+            .map_err(|err| enrich_with_process_state(ctx.adapter, ctx.entry, err));
     };
-    execute_poll_loop(
-        adapter,
-        entry,
-        ref_id,
-        context,
-        request,
-        budget_from_ms(budget_ms),
-        dispatch,
-    )
-    .map_err(|err| enrich_with_process_state(adapter, entry, err))
+    execute_poll_loop(ctx, request, budget_from_ms(budget_ms), dispatch)
+        .map_err(|err| enrich_with_process_state(ctx.adapter, ctx.entry, err))
 }
 
 fn execute_single_shot(
-    adapter: &dyn PlatformAdapter,
-    entry: &RefEntry,
-    ref_id: &str,
-    context: &CommandContext,
+    ctx: RefActionWaitCtx<'_>,
     request: ActionRequest,
     dispatch: impl Fn(
         crate::ref_action::ResolvedRefAction<'_>,
         ActionRequest,
     ) -> Result<ActionResult, crate::error::AppError>,
 ) -> Result<ActionResult, AdapterError> {
-    let handle = adapter
-        .resolve_element_strict(entry)
-        .inspect_err(|err| trace_resolve_error(context, ref_id, err))?;
-    let handle = ResolvedElement::new(adapter, handle);
-    maybe_scroll_into_view(adapter, entry, handle.handle(), &request);
+    let handle = ctx
+        .adapter
+        .resolve_element_strict(ctx.entry)
+        .inspect_err(|err| trace_resolve_error(ctx.context, ctx.ref_id, err))?;
+    let handle = ResolvedElement::new(ctx.adapter, handle);
+    maybe_scroll_into_view(ctx.adapter, ctx.entry, handle.handle(), &request);
     dispatch(
         crate::ref_action::ResolvedRefAction {
-            adapter,
-            entry,
+            adapter: ctx.adapter,
+            entry: ctx.entry,
             handle: handle.handle(),
-            ref_id,
-            context,
+            ref_id: ctx.ref_id,
+            context: ctx.context,
         },
         request,
     )
@@ -158,10 +159,7 @@ fn execute_single_shot(
 }
 
 fn execute_poll_loop(
-    adapter: &dyn PlatformAdapter,
-    entry: &RefEntry,
-    ref_id: &str,
-    context: &CommandContext,
+    ctx: RefActionWaitCtx<'_>,
     request: ActionRequest,
     budget: Duration,
     dispatch: impl Fn(
@@ -173,20 +171,20 @@ fn execute_poll_loop(
     let mut last_report: Option<Value> = None;
     let mut saw_ambiguity = false;
     loop {
-        match resolve_within_deadline(adapter, entry, deadline) {
+        match resolve_within_deadline(ctx.adapter, ctx.entry, deadline) {
             ResolveAttemptOutcome::DeadlinePassed => {
                 return Err(actionability_timeout(last_report));
             }
             ResolveAttemptOutcome::Resolved(handle) => {
-                let resolved = ResolvedElement::new(adapter, handle);
-                maybe_scroll_into_view(adapter, entry, resolved.handle(), &request);
+                let resolved = ResolvedElement::new(ctx.adapter, handle);
+                maybe_scroll_into_view(ctx.adapter, ctx.entry, resolved.handle(), &request);
                 match dispatch(
                     crate::ref_action::ResolvedRefAction {
-                        adapter,
-                        entry,
+                        adapter: ctx.adapter,
+                        entry: ctx.entry,
                         handle: resolved.handle(),
-                        ref_id,
-                        context,
+                        ref_id: ctx.ref_id,
+                        context: ctx.context,
                     },
                     request.clone(),
                 ) {
@@ -209,13 +207,13 @@ fn execute_poll_loop(
             ResolveAttemptOutcome::Failed(err) => {
                 let code = err.code.clone();
                 if is_permanent_error(&code) {
-                    trace_resolve_error(context, ref_id, &err);
+                    trace_resolve_error(ctx.context, ctx.ref_id, &err);
                     return Err(err);
                 }
                 if code == ErrorCode::AmbiguousTarget {
                     saw_ambiguity = true;
                 } else if !is_retryable_resolve_error(&code) {
-                    trace_resolve_error(context, ref_id, &err);
+                    trace_resolve_error(ctx.context, ctx.ref_id, &err);
                     return Err(err);
                 }
                 sleep_poll_interval(deadline);

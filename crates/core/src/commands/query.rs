@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    locator::{self, LocatorQuery},
+    locator::{self, IdentityPredicate, LocatorQuery},
     node::AccessibilityNode,
     roles, search_text,
 };
@@ -32,7 +32,10 @@ pub fn parse_selector(raw: &str) -> LocatorQuery {
         .map(search_text::normalize);
 
     LocatorQuery {
-        role,
+        identity: IdentityPredicate {
+            role,
+            ..IdentityPredicate::default()
+        },
         has_text,
         ..LocatorQuery::default()
     }

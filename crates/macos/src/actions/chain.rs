@@ -13,7 +13,8 @@ pub(crate) use super::chain_step::ChainStep;
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use crate::actions::{ax_helpers, chain_verify};
+    use crate::actions::ax_helpers;
+    use crate::actions::chain_step_exec::execute_step;
     use std::time::{Duration, Instant};
 
     const DEFAULT_CHAIN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -94,7 +95,7 @@ mod imp {
         )
     }
 
-    fn step_mechanism(step: &ChainStep) -> StepMechanism {
+    pub(crate) fn step_mechanism(step: &ChainStep) -> StepMechanism {
         match step {
             ChainStep::CGClick { .. } | ChainStep::FocusThenClearByKeyboard => {
                 StepMechanism::PhysicalSynthetic
@@ -103,7 +104,7 @@ mod imp {
         }
     }
 
-    fn step_verifies_effect(step: &ChainStep) -> bool {
+    pub(crate) fn step_verifies_effect(step: &ChainStep) -> bool {
         match step {
             ChainStep::SetBool { .. }
             | ChainStep::SetDynamic { .. }
@@ -120,7 +121,7 @@ mod imp {
         }
     }
 
-    fn build_step(step: &ChainStep, outcome: ActionStepOutcome) -> ActionStep {
+    pub(crate) fn build_step(step: &ChainStep, outcome: ActionStepOutcome) -> ActionStep {
         let label = step_label(step);
         let mut built = match outcome {
             ActionStepOutcome::Attempted => ActionStep::attempted(label),
@@ -150,112 +151,6 @@ mod imp {
         }
     }
 
-    fn execute_step(
-        el: &AXElement,
-        caps: &ElementCaps,
-        step: &ChainStep,
-        ctx: &ChainContext,
-        policy: InteractionPolicy,
-    ) -> Result<bool, AdapterError> {
-        match step {
-            ChainStep::Action(name) => ax_helpers::try_ax_action_retried_or_err(el, name),
-
-            ChainStep::SetBool { attr, value } => {
-                let settable = match *attr {
-                    "AXSelected" => caps.settable_selected,
-                    "AXDisclosing" => caps.settable_disclosing,
-                    "AXFocused" => caps.settable_focus,
-                    _ => ax_helpers::is_attr_settable(el, attr),
-                };
-                Ok(settable && set_bool_verified(el, attr, *value)?)
-            }
-
-            ChainStep::SetDynamic { attr } => {
-                let value = match ctx.dynamic_value {
-                    Some(v) => v,
-                    None => return Ok(false),
-                };
-                set_dynamic_verified(el, attr, value)
-            }
-
-            ChainStep::FocusThenSetDynamic { attr } => {
-                if !policy.allow_focus_steal {
-                    return Ok(false);
-                }
-                let value = match ctx.dynamic_value {
-                    Some(v) => v,
-                    None => return Ok(false),
-                };
-                if !ax_helpers::ax_focus_or_err(el)? {
-                    return Ok(false);
-                }
-                std::thread::sleep(Duration::from_millis(50));
-                set_dynamic_verified(el, attr, value)
-            }
-
-            ChainStep::IncrementToDynamic => match ctx.dynamic_value {
-                Some(value) => increment_to_value(el, value, ctx.deadline),
-                None => Ok(false),
-            },
-
-            ChainStep::FocusThenClearByKeyboard => {
-                if !policy.allow_focus_steal {
-                    return Ok(false);
-                }
-                if !ax_helpers::ax_focus_or_err(el)? {
-                    return Ok(false);
-                }
-                std::thread::sleep(Duration::from_millis(20));
-                Ok(crate::input::keyboard::synthesize_key_for_element(
-                    el,
-                    &agent_desktop_core::action::KeyCombo {
-                        key: "a".into(),
-                        modifiers: vec![agent_desktop_core::action::Modifier::Cmd],
-                    },
-                )
-                .and_then(|_| {
-                    crate::input::keyboard::synthesize_key_for_element(
-                        el,
-                        &agent_desktop_core::action::KeyCombo {
-                            key: "delete".into(),
-                            modifiers: vec![],
-                        },
-                    )
-                })
-                .is_ok())
-            }
-
-            ChainStep::ChildActions { actions, limit } => Ok(ax_helpers::try_each_child(
-                el,
-                |child| {
-                    let child_actions = ax_helpers::list_ax_actions(child);
-                    ax_helpers::try_action_from_list(child, &child_actions, actions)
-                },
-                *limit,
-            )),
-
-            ChainStep::AncestorActions { actions, limit } => Ok(ax_helpers::try_each_ancestor(
-                el,
-                |ancestor| {
-                    let al = ax_helpers::list_ax_actions(ancestor);
-                    ax_helpers::try_action_from_list(ancestor, &al, actions)
-                },
-                *limit,
-            )),
-
-            ChainStep::Custom { label: _, func } => func(el),
-
-            ChainStep::CustomWithDeadline { label: _, func } => func(el, ctx.deadline),
-
-            ChainStep::CGClick { button, count } => {
-                Ok(
-                    crate::actions::dispatch::click_via_bounds(el, button.clone(), *count, policy)
-                        .is_ok(),
-                )
-            }
-        }
-    }
-
     fn chain_timeout() -> Duration {
         std::env::var("AGENT_DESKTOP_CHAIN_TIMEOUT_MS")
             .ok()
@@ -269,172 +164,14 @@ mod imp {
     fn physical_click_permitted(policy: InteractionPolicy) -> bool {
         policy.allow_focus_steal && policy.allow_cursor_move
     }
-
-    fn set_dynamic_verified(el: &AXElement, attr: &str, value: &str) -> Result<bool, AdapterError> {
-        if attr == "AXValue" {
-            ax_helpers::set_ax_value_coerced(el, value)?;
-        } else {
-            ax_helpers::set_ax_string_or_err(el, attr, value)?;
-        }
-        Ok(chain_verify::dynamic_write_had_effect(
-            attr,
-            ax_helpers::element_role(el).as_deref(),
-            value,
-            crate::tree::copy_value_typed(el).as_deref(),
-        ))
-    }
-
-    /// Drives AXIncrement/AXDecrement until the control reaches `target`.
-    /// Steppers and some sliders expose no settable AXValue but step through
-    /// these actions. Stops on reaching the target or on no observable
-    /// progress (the action stopped moving the value). Deadline expiry is a
-    /// hard error: the control may sit at a half-applied value, and silently
-    /// reporting "step failed" would mask that mutation as ACTION_FAILED with
-    /// recovery guidance pointing the wrong way.
-    fn increment_to_value(
-        el: &AXElement,
-        target: &str,
-        deadline: Option<Instant>,
-    ) -> Result<bool, AdapterError> {
-        const MAX_INCREMENT_STEPS: usize = 1024;
-
-        let target = match finite_target(target) {
-            Some(target) => target,
-            None => return Ok(false),
-        };
-        let read = || crate::tree::copy_value_typed(el).and_then(|v| v.parse::<f64>().ok());
-        let mut current = match read() {
-            Some(c) => c,
-            None => return Ok(false),
-        };
-        let actions = ax_helpers::list_ax_actions(el);
-        if !actions.iter().any(|action| action == "AXIncrement")
-            && !actions.iter().any(|action| action == "AXDecrement")
-        {
-            return Ok(false);
-        }
-        let start = current;
-        for _ in 0..MAX_INCREMENT_STEPS {
-            if (current - target).abs() < 0.5 {
-                return Ok(true);
-            }
-            if deadline.is_some_and(|dl| Instant::now() > dl) {
-                return Err(chain_verify::increment_deadline_error(
-                    start, current, target,
-                ));
-            }
-            let action = if current < target {
-                "AXIncrement"
-            } else {
-                "AXDecrement"
-            };
-            if !ax_helpers::try_ax_action(el, action) {
-                break;
-            }
-            match read() {
-                Some(next) if (next - current).abs() >= f64::EPSILON => current = next,
-                _ => break,
-            }
-        }
-        if (current - target).abs() < 0.5 {
-            return Ok(true);
-        }
-        if (current - start).abs() >= f64::EPSILON {
-            return Err(chain_verify::increment_step_limit_error(
-                start, current, target,
-            ));
-        }
-        Ok(false)
-    }
-
-    fn finite_target(target: &str) -> Option<f64> {
-        target.parse::<f64>().ok().filter(|value| value.is_finite())
-    }
-
-    fn set_bool_verified(el: &AXElement, attr: &str, value: bool) -> Result<bool, AdapterError> {
-        Ok(ax_helpers::set_ax_bool_or_err(el, attr, value)?
-            && chain_verify::bool_write_had_effect(
-                attr,
-                value,
-                crate::tree::copy_bool_attr(el, attr),
-            ))
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::{ChainStep, build_step, finite_target, step_mechanism, step_verifies_effect};
-        use agent_desktop_core::action::MouseButton;
-        use agent_desktop_core::action_step_outcome::ActionStepOutcome;
-        use agent_desktop_core::step_mechanism::StepMechanism;
-
-        #[test]
-        fn finite_target_rejects_non_finite_numbers() {
-            assert_eq!(finite_target("42.5"), Some(42.5));
-            assert_eq!(finite_target("NaN"), None);
-            assert_eq!(finite_target("inf"), None);
-            assert_eq!(finite_target("-inf"), None);
-            assert_eq!(finite_target("not-a-number"), None);
-        }
-
-        #[test]
-        fn step_mechanism_tags_physical_for_cgclick_and_keyboard_clear() {
-            assert_eq!(
-                step_mechanism(&ChainStep::CGClick {
-                    button: MouseButton::Left,
-                    count: 1,
-                }),
-                StepMechanism::PhysicalSynthetic
-            );
-            assert_eq!(
-                step_mechanism(&ChainStep::FocusThenClearByKeyboard),
-                StepMechanism::PhysicalSynthetic
-            );
-            assert_eq!(
-                step_mechanism(&ChainStep::Action("AXPress")),
-                StepMechanism::SemanticApi
-            );
-        }
-
-        #[test]
-        fn step_verifies_effect_matches_verified_chain_steps() {
-            assert!(step_verifies_effect(&ChainStep::SetBool {
-                attr: "AXSelected",
-                value: true,
-            }));
-            assert!(step_verifies_effect(&ChainStep::Custom {
-                label: "verified_press",
-                func: |_| Ok(false),
-            }));
-            assert!(step_verifies_effect(&ChainStep::CustomWithDeadline {
-                label: "expand_verified",
-                func: |_, _| Ok(false),
-            }));
-            assert!(!step_verifies_effect(&ChainStep::Action("AXPress")));
-        }
-
-        #[test]
-        fn build_step_tags_mechanism_and_verified_on_success() {
-            let step = ChainStep::SetBool {
-                attr: "AXSelected",
-                value: true,
-            };
-            let built = build_step(&step, ActionStepOutcome::Succeeded);
-            assert_eq!(built.mechanism(), Some(StepMechanism::SemanticApi));
-            assert_eq!(built.verified(), Some(true));
-        }
-
-        #[test]
-        fn build_step_skipped_does_not_tag_verified() {
-            let step = ChainStep::SetBool {
-                attr: "AXSelected",
-                value: true,
-            };
-            let built = build_step(&step, ActionStepOutcome::Skipped);
-            assert_eq!(built.mechanism(), Some(StepMechanism::SemanticApi));
-            assert!(built.verified().is_none());
-        }
-    }
 }
+
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) use imp::{build_step, step_mechanism, step_verifies_effect};
+
+#[cfg(test)]
+#[path = "chain_tests.rs"]
+mod tests;
 
 #[cfg(not(target_os = "macos"))]
 mod imp {

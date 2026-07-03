@@ -111,10 +111,12 @@ pub fn execute_entry_with_context(
 ) -> Result<ActionResult, AdapterError> {
     let label = ref_label_from_entry(entry);
     crate::ref_action_wait::execute_with_auto_wait(
-        adapter,
-        entry,
-        &label,
-        context,
+        crate::ref_action_wait::RefActionWaitCtx {
+            adapter,
+            entry,
+            ref_id: &label,
+            context,
+        },
         request,
         execute_resolved,
     )

@@ -32,6 +32,28 @@ fn query_from_args(args: &FindArgs) -> LocatorQuery {
     locator_query_from_args(args).unwrap()
 }
 
+fn no_filter() -> FindFilterArgs {
+    FindFilterArgs {
+        role: None,
+        name: None,
+        description: None,
+        native_id: None,
+        value: None,
+        text: None,
+        exact: false,
+    }
+}
+
+fn no_selection() -> FindSelectionArgs {
+    FindSelectionArgs {
+        count: false,
+        first: false,
+        last: false,
+        nth: None,
+        limit: None,
+    }
+}
+
 #[test]
 fn display_name_prefers_value_before_description() {
     let root = node(None, Some("current value"), Some("help text"));
@@ -110,19 +132,13 @@ fn default_limit_caps_materialized_matches() {
 fn limit_conflicts_with_single_result_modes_for_batch_too() {
     let err = validate_find_mode(&FindArgs {
         app: None,
-        role: None,
-        name: None,
-        description: None,
-        native_id: None,
-        value: None,
-        text: None,
-        exact: false,
+        filter: no_filter(),
         states: vec![],
-        count: false,
-        first: true,
-        last: false,
-        nth: None,
-        limit: Some(10),
+        selection: FindSelectionArgs {
+            first: true,
+            limit: Some(10),
+            ..no_selection()
+        },
     })
     .unwrap_err();
 
@@ -166,22 +182,15 @@ fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
 fn textarea_alias_resolves_to_textfield_query() {
     let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("textarea".into()),
-        name: None,
-        description: None,
-        native_id: None,
-        value: None,
-        text: None,
-        exact: false,
+        filter: FindFilterArgs {
+            role: Some("textarea".into()),
+            ..no_filter()
+        },
         states: vec![],
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        selection: no_selection(),
     });
 
-    assert_eq!(query.role.as_deref(), Some("textfield"));
+    assert_eq!(query.identity.role.as_deref(), Some("textfield"));
 
     let root = node(None, Some("doc body"), None);
     let mut matches = Vec::new();
@@ -193,22 +202,15 @@ fn textarea_alias_resolves_to_textfield_query() {
 fn unknown_role_passes_through_and_matches_nothing() {
     let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("navbar".into()),
-        name: None,
-        description: None,
-        native_id: None,
-        value: None,
-        text: None,
-        exact: false,
+        filter: FindFilterArgs {
+            role: Some("navbar".into()),
+            ..no_filter()
+        },
         states: vec![],
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        selection: no_selection(),
     });
 
-    assert_eq!(query.role.as_deref(), Some("navbar"));
+    assert_eq!(query.identity.role.as_deref(), Some("navbar"));
 
     let root = role_node("textfield", Some("body"));
     let mut matches = Vec::new();
@@ -226,19 +228,12 @@ fn empty_role_filtered_result_reports_roles_present_from_tree() {
 
     let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("navbar".into()),
-        name: None,
-        description: None,
-        native_id: None,
-        value: None,
-        text: None,
-        exact: false,
+        filter: FindFilterArgs {
+            role: Some("navbar".into()),
+            ..no_filter()
+        },
         states: vec![],
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        selection: no_selection(),
     });
     let response = single_match_response(None, &query, &root);
 
@@ -255,19 +250,12 @@ fn roles_present_hint_is_omitted_when_a_match_is_found() {
     let root = role_node("textfield", Some("body"));
     let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("textfield".into()),
-        name: None,
-        description: None,
-        native_id: None,
-        value: None,
-        text: None,
-        exact: false,
+        filter: FindFilterArgs {
+            role: Some("textfield".into()),
+            ..no_filter()
+        },
         states: vec![],
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        selection: no_selection(),
     });
 
     let mut matches = Vec::new();

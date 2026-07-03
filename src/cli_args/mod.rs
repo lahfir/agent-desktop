@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, ValueEnum};
 use serde::Deserialize;
 
 pub(crate) mod actions;
@@ -99,11 +99,11 @@ pub(crate) struct SnapshotArgs {
     pub snapshot: Option<String>,
 }
 
-#[derive(Parser, Debug, Deserialize)]
+/// Match-criteria fields, grouped out of [`FindArgs`] to keep it under the
+/// repo's field-count limit. Mirrors `core::commands::find::FindFilterArgs`.
+#[derive(Args, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FindArgs {
-    #[arg(long, help = "Filter to application by name")]
-    pub app: Option<String>,
+pub(crate) struct FindFilterArgs {
     #[arg(
         long,
         help = "Match by accessibility role (button, textfield, checkbox ...)"
@@ -125,13 +125,15 @@ pub(crate) struct FindArgs {
     )]
     #[serde(default)]
     pub exact: bool,
-    #[arg(
-        long = "state",
-        value_name = "TOKEN[=BOOL]",
-        help = "Filter by state token (repeatable); append =true or =false"
-    )]
-    #[serde(default)]
-    pub states: Vec<String>,
+}
+
+/// Result-shaping fields, grouped out of [`FindArgs`] to keep it under the
+/// repo's field-count limit. Mutually exclusive at the CLI layer (enforced
+/// via `conflicts_with_all` on each field, unaffected by the grouping since
+/// clap arg ids stay global across `#[command(flatten)]` boundaries).
+#[derive(Args, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FindSelectionArgs {
     #[arg(
         long,
         help = "Return match count only",
@@ -165,6 +167,26 @@ pub(crate) struct FindArgs {
         conflicts_with_all = ["count", "first", "last", "nth"]
     )]
     pub limit: Option<usize>,
+}
+
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FindArgs {
+    #[arg(long, help = "Filter to application by name")]
+    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub filter: FindFilterArgs,
+    #[arg(
+        long = "state",
+        value_name = "TOKEN[=BOOL]",
+        help = "Filter by state token (repeatable); append =true or =false"
+    )]
+    #[serde(default)]
+    pub states: Vec<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub selection: FindSelectionArgs,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -254,3 +276,7 @@ pub(crate) struct ListSurfacesArgs {
     #[arg(long, help = "Filter to application by name")]
     pub app: Option<String>,
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod mod_tests;

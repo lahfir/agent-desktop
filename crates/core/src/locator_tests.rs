@@ -26,8 +26,11 @@ fn node(
 #[test]
 fn role_and_name_substring_match() {
     let query = LocatorQuery {
-        role: Some("button".into()),
-        name: Some(search_text::normalize("save")),
+        identity: IdentityPredicate {
+            role: Some("button".into()),
+            name: Some(search_text::normalize("save")),
+            ..IdentityPredicate::default()
+        },
         ..LocatorQuery::default()
     };
     let target = node("button", Some("Save Changes"), None, vec![]);
@@ -37,7 +40,10 @@ fn role_and_name_substring_match() {
 #[test]
 fn exact_name_requires_equality() {
     let query = LocatorQuery {
-        name: Some(search_text::normalize("save")),
+        identity: IdentityPredicate {
+            name: Some(search_text::normalize("save")),
+            ..IdentityPredicate::default()
+        },
         exact: true,
         ..LocatorQuery::default()
     };
@@ -75,7 +81,10 @@ fn native_id_exact_match() {
     let mut target = node("button", Some("X"), None, vec![]);
     target.native_id = Some("submit-btn".into());
     let query = LocatorQuery {
-        native_id: Some("submit-btn".into()),
+        identity: IdentityPredicate {
+            native_id: Some("submit-btn".into()),
+            ..IdentityPredicate::default()
+        },
         ..LocatorQuery::default()
     };
     assert!(accessibility_node_matches(&target, &query));
@@ -87,10 +96,13 @@ fn has_subquery_matches_descendant() {
     root.children
         .push(node("statictext", Some("Hello"), None, vec![]));
     let query = LocatorQuery {
-        has: Some(Box::new(LocatorQuery {
-            has_text: Some(search_text::normalize("hello")),
-            ..LocatorQuery::default()
-        })),
+        containment: ContainmentPredicate {
+            has: Some(Box::new(LocatorQuery {
+                has_text: Some(search_text::normalize("hello")),
+                ..LocatorQuery::default()
+            })),
+            ..ContainmentPredicate::default()
+        },
         ..LocatorQuery::default()
     };
     assert!(accessibility_node_matches(&root, &query));
@@ -114,13 +126,78 @@ fn has_not_excludes_subtree_match() {
     root.children
         .push(node("button", Some("Delete"), None, vec![]));
     let query = LocatorQuery {
-        role: Some("group".into()),
-        has_not: Some(Box::new(LocatorQuery {
-            role: Some("button".into()),
-            name: Some(search_text::normalize("delete")),
-            ..LocatorQuery::default()
-        })),
+        identity: IdentityPredicate {
+            role: Some("group".into()),
+            ..IdentityPredicate::default()
+        },
+        containment: ContainmentPredicate {
+            has_not: Some(Box::new(LocatorQuery {
+                identity: IdentityPredicate {
+                    role: Some("button".into()),
+                    name: Some(search_text::normalize("delete")),
+                    ..IdentityPredicate::default()
+                },
+                ..LocatorQuery::default()
+            })),
+            ..ContainmentPredicate::default()
+        },
         ..LocatorQuery::default()
     };
     assert!(!accessibility_node_matches(&root, &query));
+}
+
+/// The `IdentityPredicate`/`ContainmentPredicate` split (god-object fix) must
+/// stay wire-compatible: JSON consumers still see a single flat object, not
+/// `{"identity": {...}}`. Reverting the `#[serde(flatten)]` attributes (e.g.
+/// accidentally serializing the grouped sub-structs as nested objects) would
+/// fail this assertion.
+#[test]
+fn identity_and_containment_fields_serialize_flat_not_nested() {
+    let query = LocatorQuery {
+        identity: IdentityPredicate {
+            role: Some("button".into()),
+            ..IdentityPredicate::default()
+        },
+        containment: ContainmentPredicate {
+            has: Some(Box::new(LocatorQuery {
+                identity: IdentityPredicate {
+                    role: Some("statictext".into()),
+                    ..IdentityPredicate::default()
+                },
+                ..LocatorQuery::default()
+            })),
+            ..ContainmentPredicate::default()
+        },
+        ..LocatorQuery::default()
+    };
+
+    let json = serde_json::to_value(&query).unwrap();
+
+    assert_eq!(json["role"], "button");
+    assert!(json.get("identity").is_none());
+    assert!(json.get("containment").is_none());
+    assert_eq!(json["has"]["role"], "statictext");
+}
+
+/// Round-trips a flat JSON payload (the shape any pre-existing caller sends)
+/// back through the new nested Rust representation.
+#[test]
+fn flat_json_deserializes_into_nested_identity_and_containment() {
+    let query: LocatorQuery = serde_json::from_value(serde_json::json!({
+        "role": "button",
+        "native_id": "submit-btn",
+        "has_not": { "role": "textfield" }
+    }))
+    .unwrap();
+
+    assert_eq!(query.identity.role.as_deref(), Some("button"));
+    assert_eq!(query.identity.native_id.as_deref(), Some("submit-btn"));
+    assert_eq!(
+        query
+            .containment
+            .has_not
+            .as_ref()
+            .and_then(|q| q.identity.role.as_deref()),
+        Some("textfield")
+    );
 }

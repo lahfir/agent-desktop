@@ -89,10 +89,12 @@ fn terminal_stale_ref_against_unresponsive_process_surfaces_app_unresponsive() {
     };
 
     let err = execute_with_auto_wait(
-        &adapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         ActionRequest::headless(Action::Click),
         crate::ref_action::execute_resolved,
     )
@@ -147,10 +149,12 @@ impl SystemOps for ExitedProcessAdapter {
 #[test]
 fn terminal_stale_ref_against_exited_process_carries_process_state_detail() {
     let err = execute_with_auto_wait(
-        &ExitedProcessAdapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &ExitedProcessAdapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         ActionRequest::headless(Action::Click),
         crate::ref_action::execute_resolved,
     )
@@ -212,10 +216,12 @@ fn enrichment_never_converts_a_successful_action_into_a_failure() {
     };
 
     let result = execute_with_auto_wait(
-        &adapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         ActionRequest::headless(Action::Click),
         crate::ref_action::execute_resolved,
     )
@@ -281,10 +287,12 @@ fn probe_call_count_is_independent_of_auto_wait_tick_count() {
     };
 
     let err = execute_with_auto_wait(
-        &adapter,
-        &entry(),
-        "@e1",
-        &CommandContext::default(),
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
         request_with_timeout(5_000),
         crate::ref_action::execute_resolved,
     )

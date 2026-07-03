@@ -196,10 +196,12 @@ pub(crate) fn execute_ref_action_result_with_context(
 ) -> Result<(RefEntry, ActionResult), AppError> {
     let entry = load_ref_entry(ref_id, snapshot_id, context)?;
     let result = crate::ref_action_wait::execute_with_auto_wait(
-        adapter,
-        &entry,
-        ref_id,
-        context,
+        crate::ref_action_wait::RefActionWaitCtx {
+            adapter,
+            entry: &entry,
+            ref_id,
+            context,
+        },
         request,
         crate::ref_action::execute_resolved,
     )
@@ -312,5 +314,9 @@ mod test_support;
 mod tests;
 
 #[cfg(test)]
-#[path = "helpers_ref_action_tests.rs"]
-mod ref_action_tests;
+#[path = "helpers_ref_action_dispatch_tests.rs"]
+mod ref_action_dispatch_tests;
+
+#[cfg(test)]
+#[path = "helpers_ref_action_wait_tests.rs"]
+mod ref_action_wait_tests;

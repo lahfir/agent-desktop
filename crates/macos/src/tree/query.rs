@@ -133,7 +133,7 @@ fn element_matches(
         is_secure_text: attrs.role.as_deref() == Some("AXSecureTextField"),
     };
     let states = state_reader::states_from_element(el, attrs, role, &state_ctx);
-    let children = if query.has.is_some() || query.has_not.is_some() {
+    let children = if query.containment.has.is_some() || query.containment.has_not.is_some() {
         build_child_nodes(el, remaining_depth, window_bounds)
     } else {
         Vec::new()

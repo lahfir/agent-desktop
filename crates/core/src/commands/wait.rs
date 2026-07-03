@@ -352,6 +352,10 @@ mod test_support;
 mod tests;
 
 #[cfg(test)]
+#[path = "wait_scenario_tests.rs"]
+mod scenario_tests;
+
+#[cfg(test)]
 #[path = "wait_element_tests.rs"]
 mod element_tests;
 

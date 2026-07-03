@@ -13,8 +13,12 @@ pub struct StatePredicate {
     pub expected: Option<bool>,
 }
 
+/// Fields that identify a candidate element: role plus its text-bearing
+/// evidence. Grouped out of [`LocatorQuery`] so the query stays under the
+/// repo's field-count limit; flattened back onto the wire so JSON callers
+/// still see a single flat object.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct LocatorQuery {
+pub struct IdentityPredicate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -25,29 +29,43 @@ pub struct LocatorQuery {
     pub native_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub has_text: Option<String>,
-    #[serde(default)]
-    pub exact: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub states: Vec<StatePredicate>,
+}
+
+/// Subtree-containment predicates: recursive sub-queries a matching element's
+/// descendants must (or must not) satisfy. Flattened back onto the wire.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ContainmentPredicate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has: Option<Box<LocatorQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has_not: Option<Box<LocatorQuery>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct LocatorQuery {
+    #[serde(flatten)]
+    pub identity: IdentityPredicate,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_text: Option<String>,
+    #[serde(default)]
+    pub exact: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub states: Vec<StatePredicate>,
+    #[serde(flatten)]
+    pub containment: ContainmentPredicate,
+}
+
 impl LocatorQuery {
     pub fn is_empty(&self) -> bool {
-        self.role.is_none()
-            && self.name.is_none()
-            && self.description.is_none()
-            && self.native_id.is_none()
-            && self.value.is_none()
+        self.identity.role.is_none()
+            && self.identity.name.is_none()
+            && self.identity.description.is_none()
+            && self.identity.native_id.is_none()
+            && self.identity.value.is_none()
             && self.has_text.is_none()
             && self.states.is_empty()
-            && self.has.is_none()
-            && self.has_not.is_none()
+            && self.containment.has.is_none()
+            && self.containment.has_not.is_none()
     }
 
     pub fn validate_states(&self) -> Result<(), AdapterError> {
@@ -60,10 +78,10 @@ impl LocatorQuery {
                 .with_suggestion(format!("Use one of: {}", STATE_VOCABULARY.join(", "))));
             }
         }
-        if let Some(has) = &self.has {
+        if let Some(has) = &self.containment.has {
             has.validate_states()?;
         }
-        if let Some(has_not) = &self.has_not {
+        if let Some(has_not) = &self.containment.has_not {
             has_not.validate_states()?;
         }
         Ok(())
@@ -96,16 +114,20 @@ pub fn node_matches(query: &LocatorQuery, ctx: NodeMatchContext<'_>) -> bool {
     if !role_matches(query, ctx.role) {
         return false;
     }
-    if !text_field_matches(query.name.as_deref(), ctx.name, query.exact) {
+    if !text_field_matches(query.identity.name.as_deref(), ctx.name, query.exact) {
         return false;
     }
-    if !text_field_matches(query.description.as_deref(), ctx.description, query.exact) {
+    if !text_field_matches(
+        query.identity.description.as_deref(),
+        ctx.description,
+        query.exact,
+    ) {
         return false;
     }
-    if !native_id_matches(query.native_id.as_deref(), ctx.native_id) {
+    if !native_id_matches(query.identity.native_id.as_deref(), ctx.native_id) {
         return false;
     }
-    if !text_field_matches(query.value.as_deref(), ctx.value, query.exact) {
+    if !text_field_matches(query.identity.value.as_deref(), ctx.value, query.exact) {
         return false;
     }
     if !has_text_matches(query.has_text.as_deref(), &ctx) {
@@ -114,12 +136,12 @@ pub fn node_matches(query: &LocatorQuery, ctx: NodeMatchContext<'_>) -> bool {
     if !state_predicates_match(&query.states, ctx.states) {
         return false;
     }
-    if let Some(has) = &query.has {
+    if let Some(has) = &query.containment.has {
         if !subtree_contains(has, ctx.children) {
             return false;
         }
     }
-    if let Some(has_not) = &query.has_not {
+    if let Some(has_not) = &query.containment.has_not {
         if subtree_contains(has_not, ctx.children) {
             return false;
         }
@@ -137,6 +159,7 @@ pub fn accessibility_node_matches(node: &AccessibilityNode, query: &LocatorQuery
 /// already rules a candidate out.
 pub fn role_matches(query: &LocatorQuery, role: &str) -> bool {
     query
+        .identity
         .role
         .as_deref()
         .is_none_or(|expected| roles::normalize_role_query(expected) == role)
