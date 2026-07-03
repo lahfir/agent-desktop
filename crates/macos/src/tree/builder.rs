@@ -4,9 +4,8 @@ use rustc_hash::FxHashSet;
 
 use super::AXElement;
 use super::action_list::platform_available_actions;
-use super::attributes::{copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_string_attr};
+use super::attributes::{copy_ax_array, copy_ax_array_prefix, copy_string_attr};
 use super::build_context::TreeBuildContext;
-use super::capabilities::same_element;
 use super::element::{
     ABSOLUTE_MAX_DEPTH, child_attributes, count_children, element_for_pid, fetch_node_attrs,
 };
@@ -128,7 +127,7 @@ pub fn build_subtree(
     let (role, promoted_label) =
         crate::tree::roles::normalized_role_and_label(el, attrs.role.as_deref());
     let is_secure_text = is_secure_text_role(attrs.role.as_deref());
-    let value = redact_secure_value(attrs.role.as_deref(), attrs.value);
+    let value = redact_secure_value(attrs.role.as_deref(), attrs.value.clone());
     let is_promoted_item = promoted_label.is_some();
     let available_actions = if is_promoted_item {
         vec![capability::CLICK.into(), capability::RIGHT_CLICK.into()]
@@ -138,7 +137,7 @@ pub fn build_subtree(
 
     let name = promoted_label.or_else(|| attrs.title.clone().or_else(|| attrs.description.clone()));
     let description = if attrs.title.is_some() {
-        attrs.description
+        attrs.description.clone()
     } else {
         None
     };
@@ -149,31 +148,12 @@ pub fn build_subtree(
         name
     };
 
-    let mut states = Vec::new();
-    if context
-        .focused
-        .as_ref()
-        .is_some_and(|focused| same_element(el, focused))
-    {
-        states.push("focused".into());
-    }
-    if !attrs.states.enabled {
-        states.push("disabled".into());
-    }
-    if is_secure_text {
-        states.push("secure".into());
-    }
-    if attrs
-        .states
-        .expanded
-        .or(attrs.states.disclosing)
-        .unwrap_or_else(|| element_is_expanded(el))
-    {
-        states.push("expanded".into());
-    }
-    if super::roles::is_toggleable_role(&role) && value_is_checked(value.as_deref()) {
-        states.push("checked".into());
-    }
+    let state_ctx = super::state_reader::StateReaderContext {
+        focused: context.focused.as_ref(),
+        window_bounds: context.window_bounds,
+        is_secure_text,
+    };
+    let states = super::state_reader::states_from_element(el, &attrs, &role, &state_ctx);
 
     let bounds = context.bounds_for(attrs.bounds);
 
@@ -216,6 +196,13 @@ pub fn build_subtree(
     let children_raw = copy_children(el, attrs.role.as_deref()).unwrap_or_default();
     let name = name.or_else(|| label_from_children(&children_raw));
 
+    let child_window_bounds = if attrs.role.as_deref() == Some("AXWindow") {
+        attrs.bounds.or(context.window_bounds)
+    } else {
+        context.window_bounds
+    };
+    let child_context = context.child_context(child_window_bounds);
+
     let children = if is_promoted_item {
         Vec::new()
     } else {
@@ -229,7 +216,7 @@ pub fn build_subtree(
                     max_depth,
                     ancestors,
                     skeleton,
-                    context,
+                    &child_context,
                 )
             })
             .collect()
@@ -262,16 +249,6 @@ fn redact_secure_value(ax_role: Option<&str>, value: Option<String>) -> Option<S
     } else {
         value
     }
-}
-
-fn element_is_expanded(el: &AXElement) -> bool {
-    copy_bool_attr(el, "AXExpanded")
-        .or_else(|| copy_bool_attr(el, "AXDisclosing"))
-        .unwrap_or(false)
-}
-
-fn value_is_checked(value: Option<&str>) -> bool {
-    matches!(value, Some("1" | "true"))
 }
 
 pub fn label_from_children(children: &[AXElement]) -> Option<String> {

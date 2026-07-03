@@ -17,6 +17,7 @@ mod resolve_identity;
 mod resolve_roots;
 mod resolve_search;
 pub mod roles;
+pub mod state_reader;
 pub mod surfaces;
 
 pub(crate) use attributes::{

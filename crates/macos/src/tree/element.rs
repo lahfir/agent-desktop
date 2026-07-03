@@ -63,6 +63,11 @@ mod imp {
             "AXFocused",
             "AXExpanded",
             "AXDisclosing",
+            "AXSelected",
+            "AXHidden",
+            "AXElementBusy",
+            "AXModal",
+            "AXRequired",
             kAXPositionAttribute,
             kAXSizeAttribute,
             SCROLLBAR_ATTRS[0],
@@ -90,16 +95,16 @@ mod imp {
             return fetch_node_attrs_slow(el);
         };
 
-        let mut texts: [Option<String>; 8] = Default::default();
+        let mut texts: [Option<String>; 13] = Default::default();
         let mut position: Option<CGPoint> = None;
         let mut size: Option<CGSize> = None;
         let mut has_scrollbars = false;
         for (idx, item) in arr.into_iter().enumerate() {
             match idx {
-                0..=7 => texts[idx] = decode_text_attr(idx, &item),
-                8 => position = decode_ax_point(&item),
-                9 => size = decode_ax_size(&item),
-                10 | 11 => {
+                0..=12 => texts[idx] = decode_text_attr(idx, &item),
+                13 => position = decode_ax_point(&item),
+                14 => size = decode_ax_size(&item),
+                15 | 16 => {
                     has_scrollbars =
                         has_scrollbars || ax_value::retained_ax_element(&item).is_some();
                 }
@@ -108,8 +113,11 @@ mod imp {
         }
 
         let get = |i: usize| texts.get(i).and_then(|v| v.clone());
+        let role = get(0);
+        let readonly = editable_ax_role(role.as_deref())
+            .then(|| !crate::tree::capabilities::is_attr_settable(el, kAXValueAttribute));
         NodeAttrs {
-            role: get(0),
+            role,
             title: get(1),
             description: get(2),
             value: get(3),
@@ -118,6 +126,12 @@ mod imp {
                 focused: parse_bool_attr(get(5)),
                 expanded: parse_bool_attr(get(6)),
                 disclosing: parse_bool_attr(get(7)),
+                selected: parse_bool_attr(get(8)),
+                hidden: parse_bool_attr(get(9)),
+                busy: parse_bool_attr(get(10)),
+                modal: parse_bool_attr(get(11)),
+                required: parse_bool_attr(get(12)),
+                readonly,
             },
             bounds: position.zip(size).and_then(|(p, s)| rect_from_parts(p, s)),
             has_scrollbars,
@@ -143,7 +157,7 @@ mod imp {
                 }
                 None
             }
-            4..=7 => item
+            4..=12 => item
                 .downcast::<CFBoolean>()
                 .map(|b| bool::from(b).to_string()),
             _ => None,
@@ -180,6 +194,8 @@ mod imp {
         let desc = copy_string_attr(el, kAXDescriptionAttribute);
         let val = copy_value_typed(el);
         let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
+        let readonly = editable_ax_role(role.as_deref())
+            .then(|| !crate::tree::capabilities::is_attr_settable(el, kAXValueAttribute));
         NodeAttrs {
             role,
             title,
@@ -190,10 +206,33 @@ mod imp {
                 focused: copy_bool_attr(el, "AXFocused"),
                 expanded: copy_bool_attr(el, "AXExpanded"),
                 disclosing: copy_bool_attr(el, "AXDisclosing"),
+                selected: copy_bool_attr(el, "AXSelected"),
+                hidden: copy_bool_attr(el, "AXHidden"),
+                busy: copy_bool_attr(el, "AXElementBusy"),
+                modal: copy_bool_attr(el, "AXModal"),
+                required: copy_bool_attr(el, "AXRequired"),
+                readonly,
             },
             bounds: read_bounds(el),
             has_scrollbars: copy_first_element_attr(el, &SCROLLBAR_ATTRS).is_some(),
         }
+    }
+
+    fn editable_ax_role(role: Option<&str>) -> bool {
+        matches!(
+            role,
+            Some(
+                "AXTextField"
+                    | "AXTextArea"
+                    | "AXSearchField"
+                    | "AXComboBox"
+                    | "AXPopUpButton"
+                    | "AXIncrementor"
+                    | "AXStepper"
+                    | "AXSlider"
+                    | "AXValueIndicator"
+            )
+        )
     }
 
     pub fn resolve_element_name(el: &AXElement) -> Option<String> {

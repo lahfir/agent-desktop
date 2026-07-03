@@ -17,6 +17,12 @@ pub(crate) struct NodeAttrStates {
     pub(crate) focused: Option<bool>,
     pub(crate) expanded: Option<bool>,
     pub(crate) disclosing: Option<bool>,
+    pub(crate) selected: Option<bool>,
+    pub(crate) hidden: Option<bool>,
+    pub(crate) busy: Option<bool>,
+    pub(crate) modal: Option<bool>,
+    pub(crate) required: Option<bool>,
+    pub(crate) readonly: Option<bool>,
 }
 
 impl Default for NodeAttrStates {
@@ -26,6 +32,12 @@ impl Default for NodeAttrStates {
             focused: None,
             expanded: None,
             disclosing: None,
+            selected: None,
+            hidden: None,
+            busy: None,
+            modal: None,
+            required: None,
+            readonly: None,
         }
     }
 }
