@@ -40,6 +40,11 @@ fn trace_resolve_error(context: &CommandContext, ref_id: &str, err: &AdapterErro
 
 pub(crate) const POLL_INTERVAL: Duration = Duration::from_millis(100);
 pub(crate) const RESOLVE_ATTEMPT: Duration = Duration::from_millis(750);
+const MAX_BUDGET_MS: u64 = 24 * 60 * 60 * 1000;
+
+pub(crate) fn budget_from_ms(ms: u64) -> Duration {
+    Duration::from_millis(ms.min(MAX_BUDGET_MS))
+}
 
 pub(crate) fn execute_with_auto_wait(
     adapter: &dyn PlatformAdapter,
@@ -62,7 +67,7 @@ pub(crate) fn execute_with_auto_wait(
         ref_id,
         context,
         request,
-        Duration::from_millis(budget_ms),
+        budget_from_ms(budget_ms),
         dispatch,
     )
 }

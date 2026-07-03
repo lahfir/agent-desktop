@@ -8,6 +8,16 @@ use crate::{
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
+#[test]
+fn oversized_timeout_budget_is_clamped_and_never_overflows() {
+    assert_eq!(budget_from_ms(100), Duration::from_millis(100));
+    let clamped = budget_from_ms(u64::MAX);
+    assert!(
+        std::time::Instant::now().checked_add(clamped).is_some(),
+        "deadline construction must not overflow for an oversized --timeout-ms"
+    );
+}
+
 struct RetryAdapter {
     resolve_calls: AtomicU32,
 }

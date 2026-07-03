@@ -316,6 +316,7 @@ mod tests {
             (ErrorCode::NotificationNotFound, "NOTIFICATION_NOT_FOUND"),
             (ErrorCode::SnapshotNotFound, "SNAPSHOT_NOT_FOUND"),
             (ErrorCode::PolicyDenied, "POLICY_DENIED"),
+            (ErrorCode::AppUnresponsive, "APP_UNRESPONSIVE"),
             (ErrorCode::Internal, "INTERNAL"),
         ];
         for (code, expected) in cases {
