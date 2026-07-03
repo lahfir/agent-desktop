@@ -117,8 +117,8 @@ pub(crate) fn build_launch_options(
     no_attach: bool,
 ) -> Result<LaunchOptions, AppError> {
     let mut env_map = HashMap::new();
-    for pair in env {
-        let (key, value) = parse_env_pair(pair)?;
+    for (idx, pair) in env.iter().enumerate() {
+        let (key, value) = parse_env_pair(pair, idx)?;
         env_map.insert(key, value);
     }
     Ok(LaunchOptions {
@@ -129,13 +129,13 @@ pub(crate) fn build_launch_options(
     })
 }
 
-fn parse_env_pair(pair: &str) -> Result<(String, String), AppError> {
+fn parse_env_pair(pair: &str, idx: usize) -> Result<(String, String), AppError> {
     let (key, value) = pair.split_once('=').ok_or_else(|| {
-        AppError::invalid_input(format!("Invalid --env value '{pair}'. Expected KEY=VALUE"))
+        AppError::invalid_input(format!("Invalid --env entry #{idx}: expected KEY=VALUE"))
     })?;
     if key.is_empty() {
         return Err(AppError::invalid_input(format!(
-            "Invalid --env value '{pair}'. KEY must not be empty"
+            "Invalid --env entry #{idx}: KEY must not be empty"
         )));
     }
     Ok((key.to_string(), value.to_string()))

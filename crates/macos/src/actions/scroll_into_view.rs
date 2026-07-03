@@ -1,14 +1,11 @@
 #[cfg(target_os = "macos")]
 mod imp {
+    use crate::actions::ax_helpers;
     use crate::tree::AXElement;
-    use accessibility_sys::{AXUIElementPerformAction, kAXErrorSuccess};
     use agent_desktop_core::error::AdapterError;
-    use core_foundation::{base::TCFType, string::CFString};
 
     pub fn scroll_into_view_impl(el: &AXElement) -> Result<(), AdapterError> {
-        let action = CFString::new("AXScrollToVisible");
-        let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
-        if err == kAXErrorSuccess {
+        if ax_helpers::try_ax_action(el, "AXScrollToVisible") {
             return Ok(());
         }
         Err(AdapterError::not_supported(

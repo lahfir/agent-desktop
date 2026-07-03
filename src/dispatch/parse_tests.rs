@@ -9,6 +9,31 @@ fn rejects_unknown_direction() {
 }
 
 #[test]
+fn env_parse_errors_never_echo_the_value() {
+    let secret = "sk_live_supersecret_token_value";
+    let no_equals = parse_env_pair(secret, 0).unwrap_err();
+    let no_equals_msg = no_equals.to_string();
+    assert_eq!(no_equals.code(), "INVALID_ARGS");
+    assert!(
+        !no_equals_msg.contains(secret),
+        "malformed --env message leaked the raw value: {no_equals_msg}"
+    );
+
+    let empty_key = format!("={secret}");
+    let err = parse_env_pair(&empty_key, 3).unwrap_err();
+    let err_msg = err.to_string();
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(
+        !err_msg.contains(secret),
+        "empty-key --env message leaked the raw value: {err_msg}"
+    );
+    assert!(
+        err_msg.contains("#3"),
+        "message should carry the entry index"
+    );
+}
+
+#[test]
 fn rejects_unknown_get_property() {
     match parse_get_property("placeholder") {
         Ok(_) => panic!("expected invalid get property"),
