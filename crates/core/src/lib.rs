@@ -8,6 +8,7 @@ pub mod adapter;
 pub mod capability;
 pub mod commands;
 pub mod context;
+pub mod display_info;
 pub mod element_state;
 pub mod error;
 pub mod hints;
@@ -60,6 +61,7 @@ pub use adapter::{
     WindowFilter,
 };
 pub use context::{CommandContext, WaitSelector};
+pub use display_info::DisplayInfo;
 pub use element_state::ElementState;
 pub use error::{AdapterError, AppError, ErrorCode};
 pub use interaction_policy::InteractionPolicy;

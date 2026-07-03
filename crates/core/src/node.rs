@@ -35,7 +35,7 @@ pub struct AccessibilityNode {
     pub children: Vec<AccessibilityNode>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Rect {
     #[serde(default, deserialize_with = "f64_or_zero")]
     pub x: f64,

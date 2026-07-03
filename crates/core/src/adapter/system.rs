@@ -2,6 +2,7 @@ use crate::{
     PermissionReport, PermissionState,
     action::{KeyCombo, WindowOp},
     action_result::ActionResult,
+    display_info::DisplayInfo,
     error::AdapterError,
     image_buffer::ImageBuffer,
     node::WindowInfo,
@@ -69,6 +70,10 @@ pub trait SystemOps: Send + Sync {
 
     fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         Err(AdapterError::not_supported("screenshot"))
+    }
+
+    fn list_displays(&self) -> Result<Vec<DisplayInfo>, AdapterError> {
+        Err(AdapterError::not_supported("list_displays"))
     }
 
     fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {

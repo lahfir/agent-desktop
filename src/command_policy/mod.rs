@@ -19,7 +19,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
     match cmd {
         Commands::Version | Commands::Skills(_) | Commands::Session(_) | Commands::Trace(_) => None,
         Commands::Status | Commands::Permissions(_) => None,
-        Commands::ListWindows(_) | Commands::ListApps(_) => None,
+        Commands::ListWindows(_) | Commands::ListDisplays | Commands::ListApps(_) => None,
         Commands::ClipboardGet | Commands::ClipboardSet(_) | Commands::ClipboardClear => None,
         Commands::Batch(_) => None,
 
@@ -173,6 +173,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::Launch(_)
         | Commands::CloseApp(_)
         | Commands::ListWindows(_)
+        | Commands::ListDisplays
         | Commands::ListApps(_)
         | Commands::FocusWindow(_)
         | Commands::ResizeWindow(_)

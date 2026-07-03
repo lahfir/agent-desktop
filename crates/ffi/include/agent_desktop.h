@@ -1607,6 +1607,14 @@ uint32_t ad_image_buffer_height(const struct AdImageBuffer *buf);
 AdImageFormat ad_image_buffer_format(const struct AdImageBuffer *buf);
 
 /**
+ * Point-to-pixel scale factor for the captured display or window.
+ *
+ * # Safety
+ * `buf` must be null or returned by `ad_screenshot`.
+ */
+double ad_image_buffer_scale_factor(const struct AdImageBuffer *buf);
+
+/**
  * Allocates and returns an opaque `AdImageBuffer`. The handle owns its
  * byte buffer; inspect it through `ad_image_buffer_data` /
  * `ad_image_buffer_size` / `ad_image_buffer_format` / `_width` / `_height`

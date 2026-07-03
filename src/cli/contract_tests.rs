@@ -72,6 +72,7 @@ const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "list-notifications",
     "list-surfaces",
     "list-windows",
+    "list-displays",
     "maximize",
     "minimize",
     "mouse-click",

@@ -85,6 +85,7 @@ impl SystemOps for PngAdapter {
             format: ImageFormat::Png,
             width: 1,
             height: 1,
+            scale_factor: 1.0,
         })
     }
 }
@@ -151,6 +152,7 @@ impl SystemOps for FailingActionAdapter {
             format: ImageFormat::Png,
             width: 1,
             height: 1,
+            scale_factor: 1.0,
         })
     }
 }

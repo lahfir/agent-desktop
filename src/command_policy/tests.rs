@@ -53,6 +53,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "launch"
             | "close-app"
             | "list-windows"
+            | "list-displays"
             | "list-apps"
             | "focus-window"
             | "resize-window"
@@ -85,6 +86,7 @@ fn unknown_permission_does_not_mask_platform_errors() {
     let command = Commands::Screenshot(ScreenshotArgs {
         app: None,
         window_id: None,
+        screen: None,
         output_path: None,
     });
 
@@ -103,6 +105,7 @@ fn screen_recording_denial_is_preflighted() {
     let command = Commands::Screenshot(ScreenshotArgs {
         app: None,
         window_id: None,
+        screen: None,
         output_path: None,
     });
 

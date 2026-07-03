@@ -25,6 +25,9 @@ pub mod key_down;
 pub mod key_up;
 pub mod launch;
 pub mod list_apps;
+pub mod list_displays;
+#[cfg(test)]
+mod list_displays_tests;
 pub mod list_notifications;
 pub mod list_surfaces;
 pub mod list_windows;

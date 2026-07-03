@@ -56,6 +56,7 @@ pub unsafe extern "C" fn ad_screenshot(
                         ImageFormat::Png => AdImageFormat::Png,
                         ImageFormat::Jpg => AdImageFormat::Jpg,
                     },
+                    scale_factor: img.scale_factor,
                 });
                 *out = Box::into_raw(buffer);
                 AdResult::Ok

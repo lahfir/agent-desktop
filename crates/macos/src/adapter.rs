@@ -265,6 +265,10 @@ impl SystemOps for MacOSAdapter {
         crate::input::blocked_combo::is_blocked(combo)
     }
 
+    fn list_displays(&self) -> Result<Vec<agent_desktop_core::DisplayInfo>, AdapterError> {
+        crate::system::display::list_displays_impl()
+    }
+
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         match target {
             ScreenshotTarget::Window(pid) => crate::system::screenshot::capture_app(pid),

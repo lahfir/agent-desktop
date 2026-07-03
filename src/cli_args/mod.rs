@@ -160,6 +160,11 @@ pub(crate) struct ScreenshotArgs {
         help = "Filter to window ID (from list-windows)"
     )]
     pub window_id: Option<String>,
+    #[arg(
+        long,
+        help = "Capture display by index (from list-displays; 0 = primary)"
+    )]
+    pub screen: Option<usize>,
     #[arg(value_name = "PATH", help = "Save to file instead of returning base64")]
     pub output_path: Option<std::path::PathBuf>,
 }

@@ -9,8 +9,8 @@ use agent_desktop_core::{
     commands::{
         check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app, collapse,
         double_click, drag, expand, find, focus, focus_window, get, helpers, hover, is_check,
-        key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, minimize,
-        mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
+        key_down, key_up, launch, list_apps, list_displays, list_surfaces, list_windows, maximize,
+        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
         resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
         skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
     },
@@ -84,6 +84,7 @@ fn dispatch_inner(
             screenshot::ScreenshotArgs {
                 app: a.app,
                 window_id: a.window_id,
+                screen: a.screen,
                 output_path: a.output_path,
             },
             adapter,
@@ -280,6 +281,8 @@ fn dispatch_inner(
         Commands::ListWindows(a) => {
             list_windows::execute(list_windows::ListWindowsArgs { app: a.app }, adapter)
         }
+
+        Commands::ListDisplays => list_displays::execute(adapter),
 
         Commands::ListApps(a) => {
             list_apps::execute(list_apps::ListAppsArgs { app: a.app }, adapter)

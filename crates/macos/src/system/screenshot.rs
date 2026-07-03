@@ -19,13 +19,28 @@ mod imp {
     const SCREENSHOT_TIMEOUT: Duration = Duration::from_millis(20);
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
-    fn capture(window_id: Option<u32>) -> Result<ImageBuffer, AdapterError> {
+    fn capture(
+        window_id: Option<u32>,
+        display_index: Option<usize>,
+    ) -> Result<ImageBuffer, AdapterError> {
+        let scale_factor = display_index
+            .map(crate::system::display::display_at)
+            .transpose()?
+            .map(|display| display.scale)
+            .unwrap_or_else(primary_display_scale);
         let temp = TempPng::new()?;
         let mut command = Command::new(SCREENCAPTURE);
         command.args(["-x", "-t", "png"]);
 
         if let Some(wid) = window_id {
             command.args(["-l", &wid.to_string()]);
+        } else if let Some(idx) = display_index {
+            let display = crate::system::display::display_at(idx)?;
+            let x = (display.bounds.x * display.scale).round() as i32;
+            let y = (display.bounds.y * display.scale).round() as i32;
+            let w = (display.bounds.width * display.scale).round() as i32;
+            let h = (display.bounds.height * display.scale).round() as i32;
+            command.args(["-R", &format!("{x},{y},{w},{h}")]);
         }
 
         command.arg(temp.path());
@@ -35,17 +50,25 @@ mod imp {
             return Err(map_screencapture_error(&output));
         }
 
-        read_png(temp.path())
+        let mut buffer = read_png(temp.path())?;
+        buffer.scale_factor = scale_factor;
+        Ok(buffer)
+    }
+
+    fn primary_display_scale() -> f64 {
+        crate::system::display::display_at(0)
+            .map(|display| display.scale)
+            .unwrap_or(1.0)
     }
 
     pub fn capture_app(pid: i32) -> Result<ImageBuffer, AdapterError> {
         tracing::debug!("system: screenshot app pid={pid}");
-        capture(find_cg_window_id_for_pid(pid))
+        capture(find_cg_window_id_for_pid(pid), None)
     }
 
-    pub fn capture_screen(_idx: usize) -> Result<ImageBuffer, AdapterError> {
-        tracing::debug!("system: screenshot screen");
-        capture(None)
+    pub fn capture_screen(idx: usize) -> Result<ImageBuffer, AdapterError> {
+        tracing::debug!("system: screenshot screen idx={idx}");
+        capture(None, Some(idx))
     }
 
     struct TempPng {
@@ -99,6 +122,7 @@ mod imp {
             format: ImageFormat::Png,
             width,
             height,
+            scale_factor: 1.0,
         })
     }
 

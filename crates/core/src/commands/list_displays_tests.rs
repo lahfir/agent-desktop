@@ -1,0 +1,55 @@
+use crate::{
+    adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
+    commands::list_displays,
+    display_info::DisplayInfo,
+    error::AdapterError,
+    node::Rect,
+};
+
+struct DisplayAdapter {
+    displays: Vec<DisplayInfo>,
+}
+
+impl ObservationOps for DisplayAdapter {}
+impl ActionOps for DisplayAdapter {}
+impl InputOps for DisplayAdapter {}
+
+impl SystemOps for DisplayAdapter {
+    fn list_displays(&self) -> Result<Vec<DisplayInfo>, AdapterError> {
+        Ok(self.displays.clone())
+    }
+}
+
+#[test]
+fn list_displays_returns_adapter_displays() {
+    let adapter = DisplayAdapter {
+        displays: vec![DisplayInfo {
+            id: "1".into(),
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1440.0,
+                height: 900.0,
+            },
+            is_primary: true,
+            scale: 2.0,
+        }],
+    };
+    let value = list_displays::execute(&adapter).expect("list-displays");
+    let displays: Vec<DisplayInfo> = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(displays.len(), 1);
+    assert!(displays[0].is_primary);
+    assert_eq!(displays[0].scale, 2.0);
+}
+
+#[test]
+fn default_trait_impl_returns_platform_not_supported() {
+    struct Stub;
+    impl ObservationOps for Stub {}
+    impl ActionOps for Stub {}
+    impl InputOps for Stub {}
+    impl SystemOps for Stub {}
+
+    let err = list_displays::execute(&Stub).expect_err("stub has no displays");
+    assert_eq!(err.code(), "PLATFORM_NOT_SUPPORTED");
+}

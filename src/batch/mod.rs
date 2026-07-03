@@ -84,6 +84,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "launch" => decode(command, item.args).map(Commands::Launch),
         "close-app" => decode(command, item.args).map(Commands::CloseApp),
         "list-windows" => decode(command, item.args).map(Commands::ListWindows),
+        "list-displays" => Ok(Commands::ListDisplays),
         "list-apps" => decode(command, item.args).map(Commands::ListApps),
         "focus-window" => decode(command, item.args).map(Commands::FocusWindow),
         "resize-window" => decode(command, item.args).map(Commands::ResizeWindow),

@@ -168,6 +168,8 @@ pub(crate) enum Commands {
     CloseApp(CloseAppArgs),
     #[command(about = "List all visible windows (--app to filter by application)")]
     ListWindows(ListWindowsArgs),
+    #[command(about = "List connected displays with bounds and scale factor")]
+    ListDisplays,
     #[command(about = "List all running GUI applications (--app to filter)")]
     ListApps(ListAppsArgs),
     #[command(about = "Bring a window to front and confirm OS focus")]
@@ -254,6 +256,7 @@ impl Commands {
             Self::Launch(_) => "launch",
             Self::CloseApp(_) => "close-app",
             Self::ListWindows(_) => "list-windows",
+            Self::ListDisplays => "list-displays",
             Self::ListApps(_) => "list-apps",
             Self::FocusWindow(_) => "focus-window",
             Self::ResizeWindow(_) => "resize-window",
