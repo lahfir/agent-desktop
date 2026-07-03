@@ -169,6 +169,7 @@ mod tests {
             name: None,
             value: None,
             description: None,
+            native_id: None,
             hint: None,
             states: states.iter().map(|s| s.to_string()).collect(),
             available_actions: vec![],

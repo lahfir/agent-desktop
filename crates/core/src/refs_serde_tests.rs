@@ -8,6 +8,7 @@ fn minimal_entry(role: &str) -> RefEntry {
         name: None,
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,
@@ -141,6 +142,7 @@ fn ref_entry_full_roundtrip_preserves_all_fields() {
         name: Some("Email".into()),
         value: Some("user@example.com".into()),
         description: Some("Enter email".into()),
+        native_id: Some("email-field".into()),
         states: vec!["focused".into()],
         bounds: None,
         bounds_hash: Some(0xDEAD_BEEF),
@@ -161,6 +163,7 @@ fn ref_entry_full_roundtrip_preserves_all_fields() {
     assert_eq!(back.name, original.name);
     assert_eq!(back.value, original.value);
     assert_eq!(back.description, original.description);
+    assert_eq!(back.native_id, original.native_id);
     assert_eq!(back.states, original.states);
     assert_eq!(back.bounds_hash, original.bounds_hash);
     assert_eq!(back.available_actions, original.available_actions);

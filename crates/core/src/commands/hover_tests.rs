@@ -65,6 +65,7 @@ fn ref_snapshot(pid: i32) -> String {
         name: Some("Target".into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

@@ -8,6 +8,7 @@ fn node(role: &str, name: Option<&str>, value: Option<&str>) -> AccessibilityNod
         name: name.map(String::from),
         value: value.map(String::from),
         description: None,
+        native_id: None,
         hint: None,
         states: vec![],
         available_actions: vec![],

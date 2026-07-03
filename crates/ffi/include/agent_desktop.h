@@ -74,7 +74,7 @@
 
 #define AD_ELEMENT_STATE_SIZE 32
 
-#define AD_REF_ENTRY_SIZE 192
+#define AD_REF_ENTRY_SIZE 200
 
 /**
  * Per-field input caps enforced when converting an `AdRefEntry` at the C
@@ -469,6 +469,7 @@ typedef struct AdRefEntry {
   const char *name;
   const char *value;
   const char *description;
+  const char *native_id;
   const char *const *states;
   size_t state_count;
   const char *const *available_actions;

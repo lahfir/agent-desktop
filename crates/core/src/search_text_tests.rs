@@ -8,6 +8,7 @@ fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> A
         name: name.map(String::from),
         value: value.map(String::from),
         description: description.map(String::from),
+        native_id: None,
         hint: None,
         states: vec![],
         available_actions: vec![],

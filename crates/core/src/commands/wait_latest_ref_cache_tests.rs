@@ -21,6 +21,7 @@ fn refmap_with_ref(pid: i32, name: Option<&str>) -> RefMap {
         name: name.map(String::from),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

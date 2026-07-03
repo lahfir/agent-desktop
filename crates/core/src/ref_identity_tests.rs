@@ -7,6 +7,7 @@ fn entry() -> RefEntry {
         name: None,
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,
@@ -28,10 +29,16 @@ fn empty_identity_matches_missing_or_empty_ax_text() {
     entry.name = Some(String::new());
 
     assert!(!has_meaningful_identity(&entry));
-    assert!(identity_matches(&entry, None, None, None));
-    assert!(identity_matches(&entry, Some(""), None, None));
-    assert!(identity_matches(&entry, None, Some(""), None));
-    assert!(!identity_matches(&entry, Some("Insert Shape"), None, None));
+    assert!(identity_matches(&entry, None, None, None, None));
+    assert!(identity_matches(&entry, Some(""), None, None, None));
+    assert!(identity_matches(&entry, None, Some(""), None, None));
+    assert!(!identity_matches(
+        &entry,
+        Some("Insert Shape"),
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -44,20 +51,23 @@ fn description_identity_matches_blank_title_controls() {
         &entry,
         Some(""),
         None,
-        Some("Insert Text Box")
+        Some("Insert Text Box"),
+        None,
     ));
     assert!(identity_matches(
         &entry,
         Some("Insert Text Box"),
         None,
-        None
+        None,
+        None,
     ));
-    assert!(!identity_matches(&entry, Some(""), None, None));
+    assert!(!identity_matches(&entry, Some(""), None, None, None));
     assert!(!identity_matches(
         &entry,
         Some(""),
         None,
-        Some("Insert Shape")
+        Some("Insert Shape"),
+        None,
     ));
 }
 
@@ -67,15 +77,16 @@ fn name_identity_cannot_be_rescued_by_matching_description() {
     entry.name = Some("Primary".into());
     entry.description = Some("Generic".into());
 
-    assert!(identity_matches(&entry, Some("Primary"), None, None));
-    assert!(identity_matches(&entry, None, Some("Primary"), None));
+    assert!(identity_matches(&entry, Some("Primary"), None, None, None));
+    assert!(identity_matches(&entry, None, Some("Primary"), None, None));
     assert!(!identity_matches(
         &entry,
         Some("Other"),
         None,
-        Some("Primary")
+        Some("Primary"),
+        None,
     ));
-    assert!(!identity_matches(&entry, Some("Generic"), None, None));
+    assert!(!identity_matches(&entry, Some("Generic"), None, None, None));
 }
 
 #[test]
@@ -83,9 +94,15 @@ fn value_identity_cannot_be_rescued_by_matching_name_when_value_mismatches() {
     let mut entry = entry();
     entry.value = Some("On".into());
 
-    assert!(identity_matches(&entry, None, Some("On"), None));
-    assert!(identity_matches(&entry, Some("On"), None, None));
-    assert!(!identity_matches(&entry, Some("On"), Some("Off"), None));
+    assert!(identity_matches(&entry, None, Some("On"), None, None));
+    assert!(identity_matches(&entry, Some("On"), None, None, None));
+    assert!(!identity_matches(
+        &entry,
+        Some("On"),
+        Some("Off"),
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -95,7 +112,7 @@ fn mutable_value_role_does_not_go_stale_when_value_changes() {
     entry.value = Some("seed".into());
 
     assert!(!has_meaningful_identity(&entry));
-    assert!(identity_matches(&entry, None, Some("changed"), None));
+    assert!(identity_matches(&entry, None, Some("changed"), None, None));
 }
 
 #[test]
@@ -108,6 +125,7 @@ fn unnamed_mutable_value_role_does_not_go_stale_when_content_becomes_name() {
         &entry,
         Some("typed document text"),
         Some("typed document text"),
+        None,
         None
     ));
 }
@@ -120,7 +138,13 @@ fn mutable_value_text_promoted_to_name_is_not_stable_identity() {
     entry.value = Some("00:01".into());
 
     assert!(!has_meaningful_identity(&entry));
-    assert!(identity_matches(&entry, Some("00:06"), Some("00:06"), None));
+    assert!(identity_matches(
+        &entry,
+        Some("00:06"),
+        Some("00:06"),
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -131,7 +155,13 @@ fn formatted_numeric_mutable_value_promoted_to_name_is_not_stable_identity() {
     entry.value = Some("50.0".into());
 
     assert!(!has_meaningful_identity(&entry));
-    assert!(identity_matches(&entry, Some("51"), Some("51.0"), None));
+    assert!(identity_matches(
+        &entry,
+        Some("51"),
+        Some("51.0"),
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -146,12 +176,14 @@ fn named_mutable_value_role_still_uses_name_identity() {
         &entry,
         Some("Search"),
         Some("new query"),
+        None,
         None
     ));
     assert!(!identity_matches(
         &entry,
         Some("Replace"),
         Some("new query"),
+        None,
         None
     ));
 }
@@ -164,8 +196,58 @@ fn mutable_role_label_different_from_value_remains_stable_identity() {
     entry.value = Some("Helvetica".into());
 
     assert!(has_meaningful_identity(&entry));
-    assert!(identity_matches(&entry, Some("Font"), Some("Arial"), None));
-    assert!(!identity_matches(&entry, Some("Size"), Some("Arial"), None));
+    assert!(identity_matches(
+        &entry,
+        Some("Font"),
+        Some("Arial"),
+        None,
+        None
+    ));
+    assert!(!identity_matches(
+        &entry,
+        Some("Size"),
+        Some("Arial"),
+        None,
+        None
+    ));
+}
+
+#[test]
+fn native_id_is_strongest_identity_signal() {
+    let mut entry = entry();
+    entry.native_id = Some("submit-btn".into());
+    entry.name = Some("Old Label".into());
+
+    assert!(has_meaningful_identity(&entry));
+    assert!(identity_matches(
+        &entry,
+        Some("Renamed"),
+        None,
+        None,
+        Some("submit-btn"),
+    ));
+    assert!(!identity_matches(
+        &entry,
+        Some("Renamed"),
+        None,
+        None,
+        Some("cancel-btn"),
+    ));
+}
+
+#[test]
+fn differing_native_ids_are_hard_non_match() {
+    let mut entry = entry();
+    entry.native_id = Some("field-a".into());
+    entry.name = Some("Same".into());
+
+    assert!(!identity_matches(
+        &entry,
+        Some("Same"),
+        None,
+        None,
+        Some("field-b"),
+    ));
 }
 
 #[test]

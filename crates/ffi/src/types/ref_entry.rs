@@ -8,6 +8,7 @@ pub struct AdRefEntry {
     pub name: *const c_char,
     pub value: *const c_char,
     pub description: *const c_char,
+    pub native_id: *const c_char,
     pub states: *const *const c_char,
     pub state_count: usize,
     pub available_actions: *const *const c_char,
@@ -26,7 +27,7 @@ pub struct AdRefEntry {
     pub path_count: usize,
 }
 
-pub const AD_REF_ENTRY_SIZE: usize = 192;
+pub const AD_REF_ENTRY_SIZE: usize = 200;
 
 /// Per-field input caps enforced when converting an `AdRefEntry` at the C
 /// boundary, sized from what real accessibility trees produce (a handful of

@@ -324,6 +324,7 @@ impl ObservationOps for TextlessTreeAdapter {
             name: Some("Doc".into()),
             value: None,
             description: None,
+            native_id: None,
             hint: None,
             states: vec![],
             available_actions: vec![],

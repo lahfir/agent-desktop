@@ -140,6 +140,7 @@ fn entry() -> RefEntry {
         name: Some("OK".into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: Some(bounds),
         bounds_hash: Some(bounds.bounds_hash()),

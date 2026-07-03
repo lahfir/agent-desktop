@@ -84,6 +84,7 @@ fn snapshot_id() -> String {
         name: Some("Target".into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

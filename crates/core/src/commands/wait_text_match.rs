@@ -51,6 +51,7 @@ mod tests {
             name: Some(name.into()),
             value: None,
             description: None,
+            native_id: None,
             hint: None,
             states: vec![],
             available_actions: vec![],

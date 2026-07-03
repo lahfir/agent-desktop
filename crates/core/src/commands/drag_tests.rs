@@ -111,6 +111,7 @@ fn ref_entry(pid: i32) -> RefEntry {
         name: Some("Item".into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

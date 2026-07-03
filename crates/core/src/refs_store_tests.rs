@@ -12,6 +12,7 @@ fn entry(name: &str) -> RefEntry {
         name: Some(name.into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: Some(42),

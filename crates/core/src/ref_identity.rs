@@ -2,12 +2,13 @@ use crate::{adapter::SnapshotSurface, refs::RefEntry, roles::is_mutable_value_ro
 
 /// Returns true when a saved ref has stable text identity beyond role/path/bounds.
 pub fn has_meaningful_identity(entry: &RefEntry) -> bool {
-    stable_name(
-        entry.role.as_str(),
-        entry.name.as_deref(),
-        entry.value.as_deref(),
-    )
-    .is_some()
+    meaningful_text(entry.native_id.as_deref()).is_some()
+        || stable_name(
+            entry.role.as_str(),
+            entry.name.as_deref(),
+            entry.value.as_deref(),
+        )
+        .is_some()
         || stable_value(entry.role.as_str(), entry.value.as_deref()).is_some()
         || meaningful_text(entry.description.as_deref()).is_some()
 }
@@ -19,7 +20,17 @@ pub fn identity_matches(
     actual_name: Option<&str>,
     actual_value: Option<&str>,
     actual_description: Option<&str>,
+    actual_native_id: Option<&str>,
 ) -> bool {
+    match (
+        meaningful_text(entry.native_id.as_deref()),
+        meaningful_text(actual_native_id),
+    ) {
+        (Some(expected), Some(actual)) => return actual == expected,
+        (Some(_), None) => return false,
+        (None, _) => {}
+    }
+
     let expected_name = stable_name(
         entry.role.as_str(),
         entry.name.as_deref(),

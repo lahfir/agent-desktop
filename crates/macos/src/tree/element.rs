@@ -68,6 +68,7 @@ mod imp {
             "AXElementBusy",
             "AXModal",
             "AXRequired",
+            "AXIdentifier",
             kAXPositionAttribute,
             kAXSizeAttribute,
             SCROLLBAR_ATTRS[0],
@@ -95,16 +96,16 @@ mod imp {
             return fetch_node_attrs_slow(el);
         };
 
-        let mut texts: [Option<String>; 13] = Default::default();
+        let mut texts: [Option<String>; 14] = Default::default();
         let mut position: Option<CGPoint> = None;
         let mut size: Option<CGSize> = None;
         let mut has_scrollbars = false;
         for (idx, item) in arr.into_iter().enumerate() {
             match idx {
-                0..=12 => texts[idx] = decode_text_attr(idx, &item),
-                13 => position = decode_ax_point(&item),
-                14 => size = decode_ax_size(&item),
-                15 | 16 => {
+                0..=13 => texts[idx] = decode_text_attr(idx, &item),
+                14 => position = decode_ax_point(&item),
+                15 => size = decode_ax_size(&item),
+                16 | 17 => {
                     has_scrollbars =
                         has_scrollbars || ax_value::retained_ax_element(&item).is_some();
                 }
@@ -121,6 +122,7 @@ mod imp {
             title: get(1),
             description: get(2),
             value: get(3),
+            native_id: crate::tree::native_id::meaningful_native_id(get(13)),
             states: NodeAttrStates {
                 enabled: parse_enabled(get(4)),
                 focused: parse_bool_attr(get(5)),
@@ -196,11 +198,14 @@ mod imp {
         let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
         let readonly = editable_ax_role(role.as_deref())
             .then(|| !crate::tree::capabilities::is_attr_settable(el, kAXValueAttribute));
+        let native_id =
+            crate::tree::native_id::meaningful_native_id(copy_string_attr(el, "AXIdentifier"));
         NodeAttrs {
             role,
             title,
             description: desc,
             value: val,
+            native_id,
             states: NodeAttrStates {
                 enabled,
                 focused: copy_bool_attr(el, "AXFocused"),

@@ -137,6 +137,7 @@ pub fn default_ref_entry() -> AdRefEntry {
         name: std::ptr::null(),
         value: std::ptr::null(),
         description: std::ptr::null(),
+        native_id: std::ptr::null(),
         states: std::ptr::null(),
         state_count: 0,
         available_actions: std::ptr::null(),

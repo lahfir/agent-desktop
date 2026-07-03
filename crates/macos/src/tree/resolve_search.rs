@@ -181,11 +181,14 @@ fn element_identity_matches(
     let elem_name = promoted_label.or_else(|| resolve_element_name(el));
     let elem_value = crate::tree::copy_value_typed(el);
     let elem_description = copy_string_attr(el, accessibility_sys::kAXDescriptionAttribute);
+    let elem_native_id =
+        super::native_id::meaningful_native_id(copy_string_attr(el, "AXIdentifier"));
     identity_matches(
         entry,
         elem_name.as_deref(),
         elem_value.as_deref(),
         elem_description.as_deref(),
+        elem_native_id.as_deref(),
     )
 }
 

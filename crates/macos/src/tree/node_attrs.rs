@@ -6,6 +6,7 @@ pub(crate) struct NodeAttrs {
     pub(crate) title: Option<String>,
     pub(crate) description: Option<String>,
     pub(crate) value: Option<String>,
+    pub(crate) native_id: Option<String>,
     pub(crate) states: NodeAttrStates,
     pub(crate) bounds: Option<Rect>,
     pub(crate) has_scrollbars: bool,

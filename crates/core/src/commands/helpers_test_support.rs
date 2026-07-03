@@ -7,6 +7,7 @@ pub(super) fn entry() -> RefEntry {
         name: Some("OK".into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

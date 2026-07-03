@@ -131,12 +131,12 @@ fn ref_entry_input_caps_match_the_published_header_values() {
 
 #[test]
 fn ref_entry_layout_is_guarded_for_c_consumers() {
-    assert_eq!(agent_desktop_ffi::types::ref_entry::AD_REF_ENTRY_SIZE, 192);
+    assert_eq!(agent_desktop_ffi::types::ref_entry::AD_REF_ENTRY_SIZE, 200);
     assert_eq!(
         unsafe { common::ad_ref_entry_size() },
         agent_desktop_ffi::types::ref_entry::AD_REF_ENTRY_SIZE
     );
-    assert_eq!(size_of::<AdRefEntry>(), 192);
+    assert_eq!(size_of::<AdRefEntry>(), 200);
     assert_eq!(align_of::<AdRefEntry>(), align_of::<usize>());
     assert_eq!(offset_of!(AdRefEntry, pid), 0);
 
@@ -146,6 +146,7 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
         offset_of!(AdRefEntry, name),
         offset_of!(AdRefEntry, value),
         offset_of!(AdRefEntry, description),
+        offset_of!(AdRefEntry, native_id),
         offset_of!(AdRefEntry, states),
         offset_of!(AdRefEntry, state_count),
         offset_of!(AdRefEntry, available_actions),

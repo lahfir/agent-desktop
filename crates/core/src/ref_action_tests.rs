@@ -70,6 +70,7 @@ fn entry() -> RefEntry {
         name: Some("Run".into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash: None,

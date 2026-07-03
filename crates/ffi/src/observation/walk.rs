@@ -63,6 +63,7 @@ mod tests {
             name: name.map(str::to_string),
             value: value.map(str::to_string),
             description: None,
+            native_id: None,
             hint: None,
             states: vec![],
             available_actions: vec![],

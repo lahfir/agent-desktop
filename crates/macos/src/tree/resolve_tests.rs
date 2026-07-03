@@ -18,6 +18,7 @@ fn entry(
         name: Some("Investors".into()),
         value: None,
         description: None,
+        native_id: None,
         states: vec![],
         bounds: None,
         bounds_hash,

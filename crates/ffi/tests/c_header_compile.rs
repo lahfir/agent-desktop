@@ -76,7 +76,7 @@ int main(void) {
     (void)ad_ref_entry_size;
     (void)ad_last_error_details;
     _Static_assert(AD_REF_ENTRY_SIZE == sizeof(AdRefEntry), "AdRefEntry size macro drifted");
-    _Static_assert(AD_REF_ENTRY_SIZE == 192, "AdRefEntry ABI size changed");
+    _Static_assert(AD_REF_ENTRY_SIZE == 200, "AdRefEntry ABI size changed");
     return 0;
 }
 "#;

@@ -115,6 +115,7 @@ mod tests {
             title: None,
             description: None,
             value: Some("2".into()),
+            native_id: None,
             states: NodeAttrStates {
                 enabled: true,
                 focused: None,

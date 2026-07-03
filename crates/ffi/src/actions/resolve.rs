@@ -61,6 +61,7 @@ pub(crate) unsafe fn core_ref_entry_from_ffi(
     let name = unsafe { optional_string(entry.name, "name") }?;
     let value = unsafe { optional_string(entry.value, "value") }?;
     let description = unsafe { optional_string(entry.description, "description") }?;
+    let native_id = unsafe { optional_string(entry.native_id, "native_id") }?;
     let states = unsafe {
         string_array(
             entry.states,
@@ -103,6 +104,7 @@ pub(crate) unsafe fn core_ref_entry_from_ffi(
         name,
         value,
         description,
+        native_id,
         states,
         bounds,
         bounds_hash,

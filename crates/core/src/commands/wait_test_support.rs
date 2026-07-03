@@ -90,6 +90,7 @@ fn save_ref_in_store(store: RefStore, states: Vec<String>) -> String {
         name: Some("Run".into()),
         value: None,
         description: None,
+        native_id: None,
         states,
         bounds: None,
         bounds_hash: None,

@@ -15,6 +15,7 @@ fn node(role: &str) -> AccessibilityNode {
         name: None,
         value: None,
         description: None,
+        native_id: None,
         hint: None,
         states: vec![],
         available_actions: vec![],

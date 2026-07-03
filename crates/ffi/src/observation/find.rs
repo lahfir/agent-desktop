@@ -98,6 +98,7 @@ pub unsafe extern "C" fn ad_find(
             name: matched.name.clone(),
             value: matched.value.clone(),
             description: matched.description.clone(),
+            native_id: matched.native_id.clone(),
             states: matched.states.clone(),
             bounds: matched.bounds,
             bounds_hash,
