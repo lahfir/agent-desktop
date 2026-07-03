@@ -249,14 +249,8 @@ end tell"#
             let output =
                 crate::system::process::run_with_timeout(&mut command, "osascript", QUIT_TIMEOUT)?;
             if !output.status.success() {
-                return Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    format!("Failed to request graceful quit for app '{id}'"),
-                )
-                .with_platform_detail(String::from_utf8_lossy(&output.stderr).trim().to_string())
-                .with_suggestion(
-                    "Use 'list-apps' to verify the app name, or retry with --force.",
-                ));
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(map_osascript_quit_error(id, stderr.trim()));
             }
         }
     }
@@ -296,6 +290,28 @@ fn try_quit_via_menu_bar(app_el: &crate::tree::AXElement) -> bool {
         }
     }
     false
+}
+
+pub(crate) fn map_osascript_quit_error(id: &str, stderr: &str) -> AdapterError {
+    let lower = stderr.to_lowercase();
+    if lower.contains("not authorized to send apple events")
+        || lower.contains("erraeventnotpermitted")
+        || stderr.contains("-1743")
+    {
+        return AdapterError::new(
+            ErrorCode::PermDenied,
+            format!("Automation permission denied for app '{id}'"),
+        )
+        .with_suggestion(crate::system::permissions::AUTOMATION_SUGGESTION)
+        .with_platform_detail(stderr.to_string());
+    }
+
+    AdapterError::new(
+        ErrorCode::ActionFailed,
+        format!("Failed to request graceful quit for app '{id}'"),
+    )
+    .with_platform_detail(stderr.to_string())
+    .with_suggestion("Use 'list-apps' to verify the app name, or retry with --force.")
 }
 
 #[cfg(not(target_os = "macos"))]

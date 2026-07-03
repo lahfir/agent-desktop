@@ -1,4 +1,27 @@
 use super::*;
+use agent_desktop_core::error::ErrorCode;
+
+#[test]
+fn osascript_quit_maps_automation_denial_to_perm_denied() {
+    let stderr =
+        "36:44: execution error: Not authorized to send Apple events to System Events. (-1743)";
+    let err = map_osascript_quit_error("TextEdit", stderr);
+
+    assert_eq!(err.code, ErrorCode::PermDenied);
+    assert!(err.suggestion.is_some());
+    assert!(
+        err.platform_detail
+            .as_ref()
+            .is_some_and(|d| d.contains("-1743"))
+    );
+}
+
+#[test]
+fn osascript_quit_keeps_action_failed_for_other_errors() {
+    let err = map_osascript_quit_error("TextEdit", "application isn't running");
+
+    assert_eq!(err.code, ErrorCode::ActionFailed);
+}
 
 #[test]
 fn open_app_args_preserve_current_focus() {
