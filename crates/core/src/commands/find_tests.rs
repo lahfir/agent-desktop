@@ -1,4 +1,5 @@
 use super::*;
+use crate::locator::LocatorQuery;
 
 fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
@@ -17,15 +18,24 @@ fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> A
     }
 }
 
+fn search_tree(
+    root: &AccessibilityNode,
+    query: &LocatorQuery,
+    path: &mut Vec<String>,
+    matches: &mut Vec<serde_json::Value>,
+    max_matches: Option<usize>,
+) {
+    collect_snapshot_matches(root, query, path, matches, max_matches);
+}
+
+fn query_from_args(args: &FindArgs) -> LocatorQuery {
+    locator_query_from_args(args).unwrap()
+}
+
 #[test]
 fn display_name_prefers_value_before_description() {
     let root = node(None, Some("current value"), Some("help text"));
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: None,
-    };
+    let query = LocatorQuery::default();
     let mut matches = Vec::new();
 
     search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
@@ -37,12 +47,7 @@ fn display_name_prefers_value_before_description() {
 fn search_tree_match_uses_ref_id_contract_and_includes_states() {
     let mut root = node(Some("Save"), None, None);
     root.states = vec!["enabled".into()];
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: None,
-    };
+    let query = LocatorQuery::default();
     let mut matches = Vec::new();
 
     search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
@@ -55,11 +60,9 @@ fn search_tree_match_uses_ref_id_contract_and_includes_states() {
 #[test]
 fn search_tree_matches_text_across_fields() {
     let root = node(None, Some("Primary"), Some("Secondary"));
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: Some(search_text::normalize("secondary")),
+    let query = LocatorQuery {
+        has_text: Some(search_text::normalize("secondary")),
+        ..LocatorQuery::default()
     };
     let mut matches = Vec::new();
 
@@ -86,11 +89,9 @@ fn default_limit_caps_materialized_matches() {
             .map(|i| node(Some(&format!("Button {i}")), None, None))
             .collect(),
     };
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: Some(search_text::normalize("button")),
+    let query = LocatorQuery {
+        has_text: Some(search_text::normalize("button")),
+        ..LocatorQuery::default()
     };
     let mut matches = Vec::new();
 
@@ -111,8 +112,12 @@ fn limit_conflicts_with_single_result_modes_for_batch_too() {
         app: None,
         role: None,
         name: None,
+        description: None,
+        native_id: None,
         value: None,
         text: None,
+        exact: false,
+        states: vec![],
         count: false,
         first: true,
         last: false,
@@ -143,11 +148,9 @@ fn count_matches_does_not_build_result_json() {
             node(Some("Cancel"), None, None),
         ],
     };
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: Some(search_text::normalize("a")),
+    let query = LocatorQuery {
+        has_text: Some(search_text::normalize("a")),
+        ..LocatorQuery::default()
     };
 
     assert_eq!(count_matches(&root, &query), 2);
@@ -161,12 +164,16 @@ fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
 
 #[test]
 fn textarea_alias_resolves_to_textfield_query() {
-    let query = FindQuery::from_args(&FindArgs {
+    let query = query_from_args(&FindArgs {
         app: None,
         role: Some("textarea".into()),
         name: None,
+        description: None,
+        native_id: None,
         value: None,
         text: None,
+        exact: false,
+        states: vec![],
         count: false,
         first: false,
         last: false,
@@ -184,12 +191,16 @@ fn textarea_alias_resolves_to_textfield_query() {
 
 #[test]
 fn unknown_role_passes_through_and_matches_nothing() {
-    let query = FindQuery::from_args(&FindArgs {
+    let query = query_from_args(&FindArgs {
         app: None,
         role: Some("navbar".into()),
         name: None,
+        description: None,
+        native_id: None,
         value: None,
         text: None,
+        exact: false,
+        states: vec![],
         count: false,
         first: false,
         last: false,
@@ -213,12 +224,16 @@ fn empty_role_filtered_result_reports_roles_present_from_tree() {
         role_node("textfield", None),
     ];
 
-    let query = FindQuery::from_args(&FindArgs {
+    let query = query_from_args(&FindArgs {
         app: None,
         role: Some("navbar".into()),
         name: None,
+        description: None,
+        native_id: None,
         value: None,
         text: None,
+        exact: false,
+        states: vec![],
         count: false,
         first: false,
         last: false,
@@ -238,12 +253,16 @@ fn empty_role_filtered_result_reports_roles_present_from_tree() {
 #[test]
 fn roles_present_hint_is_omitted_when_a_match_is_found() {
     let root = role_node("textfield", Some("body"));
-    let query = FindQuery::from_args(&FindArgs {
+    let query = query_from_args(&FindArgs {
         app: None,
         role: Some("textfield".into()),
         name: None,
+        description: None,
+        native_id: None,
         value: None,
         text: None,
+        exact: false,
+        states: vec![],
         count: false,
         first: false,
         last: false,

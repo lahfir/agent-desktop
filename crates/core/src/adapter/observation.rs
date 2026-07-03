@@ -105,4 +105,13 @@ pub trait ObservationOps: Send + Sync {
     fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
         Err(AdapterError::not_supported("get_element_bounds"))
     }
+
+    fn resolve_query(
+        &self,
+        _query: &crate::locator::LocatorQuery,
+        _scope: Option<&NativeHandle>,
+        _pid: i32,
+    ) -> Result<Vec<NativeHandle>, AdapterError> {
+        Err(AdapterError::not_supported("resolve_query"))
+    }
 }

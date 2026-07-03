@@ -10,6 +10,7 @@ pub mod element_bounds;
 pub(crate) mod element_dedupe;
 pub mod native_id;
 pub(crate) mod node_attrs;
+pub mod query;
 pub mod resolve;
 mod resolve_bounds;
 mod resolve_classify;

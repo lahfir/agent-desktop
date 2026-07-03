@@ -89,6 +89,15 @@ impl ObservationOps for MacOSAdapter {
         Ok(crate::tree::surfaces::list_surfaces_for_pid(pid))
     }
 
+    fn resolve_query(
+        &self,
+        query: &agent_desktop_core::locator::LocatorQuery,
+        scope: Option<&NativeHandle>,
+        pid: i32,
+    ) -> Result<Vec<NativeHandle>, AdapterError> {
+        crate::tree::query::resolve_query_impl(query, pid, scope)
+    }
+
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         #[cfg(target_os = "macos")]
         {

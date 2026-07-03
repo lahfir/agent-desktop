@@ -114,6 +114,23 @@ pub(crate) struct FindArgs {
     pub value: Option<String>,
     #[arg(long, help = "Match by text in name, value, title, or description")]
     pub text: Option<String>,
+    #[arg(long, help = "Match by accessible description")]
+    pub description: Option<String>,
+    #[arg(long, help = "Match by native automation id (AXIdentifier)")]
+    pub native_id: Option<String>,
+    #[arg(
+        long,
+        help = "Require exact (case-insensitive) name/description/value matches"
+    )]
+    #[serde(default)]
+    pub exact: bool,
+    #[arg(
+        long = "state",
+        value_name = "TOKEN[=BOOL]",
+        help = "Filter by state token (repeatable); append =true or =false"
+    )]
+    #[serde(default)]
+    pub states: Vec<String>,
     #[arg(
         long,
         help = "Return match count only",

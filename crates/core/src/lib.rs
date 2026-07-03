@@ -15,6 +15,7 @@ pub mod hints;
 pub mod image_buffer;
 pub mod interaction_policy;
 pub mod live_element;
+pub mod locator;
 pub mod native_handle;
 pub mod node;
 pub mod notification;

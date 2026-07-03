@@ -63,22 +63,33 @@ fn dispatch_inner(
             context,
         ),
 
-        Commands::Find(a) => find::execute(
-            find::FindArgs {
-                app: a.app,
-                role: a.role,
-                name: a.name,
-                value: a.value,
-                text: a.text,
-                count: a.count,
-                first: a.first,
-                last: a.last,
-                nth: a.nth,
-                limit: a.limit,
-            },
-            adapter,
-            context,
-        ),
+        Commands::Find(a) => {
+            let states = a
+                .states
+                .iter()
+                .map(|raw| find::parse_state_flag(raw))
+                .collect::<Result<Vec<_>, _>>()?;
+            find::execute(
+                find::FindArgs {
+                    app: a.app,
+                    role: a.role,
+                    name: a.name,
+                    description: a.description,
+                    native_id: a.native_id,
+                    value: a.value,
+                    text: a.text,
+                    exact: a.exact,
+                    states,
+                    count: a.count,
+                    first: a.first,
+                    last: a.last,
+                    nth: a.nth,
+                    limit: a.limit,
+                },
+                adapter,
+                context,
+            )
+        }
 
         Commands::Screenshot(a) => screenshot::execute(
             screenshot::ScreenshotArgs {
