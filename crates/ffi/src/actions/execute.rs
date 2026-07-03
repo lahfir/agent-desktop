@@ -201,6 +201,7 @@ fn action_request(policy: AdPolicyKind, action: Action) -> ActionRequest {
     ActionRequest {
         action,
         policy: policy.to_interaction_policy(),
+        timeout_ms: Some(5000),
     }
 }
 

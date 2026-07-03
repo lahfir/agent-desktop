@@ -956,6 +956,23 @@ const struct AdAppInfo *ad_app_list_get(const struct AdAppList *list, uint32_t i
 void ad_app_list_free(struct AdAppList *list);
 
 /**
+ * Same as [`crate::commands::generated::ad_execute_by_ref`] but with an
+ * explicit pre-action auto-wait budget in milliseconds. `timeout_ms == 0`
+ * disables auto-wait (single-shot resolve and actionability check).
+ *
+ * # Safety
+ *
+ * Same pointer and threading requirements as `ad_execute_by_ref`.
+ */
+AdResult ad_execute_by_ref_timeout(const struct AdAdapter *adapter,
+                                   const char *ref_id,
+                                   const char *snapshot_id,
+                                   const struct AdAction *action,
+                                   int32_t policy,
+                                   uint64_t timeout_ms,
+                                   char **out);
+
+/**
  * Drives a ref action (`@e5`, action) through the canonical ref-action
  * pipeline: `RefStore` load → `RefMap` lookup (→ `STALE_REF` on missing) →
  * strict element resolution (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live

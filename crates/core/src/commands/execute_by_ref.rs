@@ -2,12 +2,14 @@ use crate::{
     action::Action,
     action_request::ActionRequest,
     adapter::PlatformAdapter,
-    commands::helpers::{RefArgs, execute_ref_action_with_context},
+    commands::helpers::{RefArgs, execute_ref_action_with_context, normalize_action_timeout_ms},
     context::CommandContext,
     error::AppError,
     interaction_policy::InteractionPolicy,
 };
 use serde_json::Value;
+
+pub const DEFAULT_ACTION_TIMEOUT_MS: u64 = 5000;
 
 /// Executes an action addressed by a snapshot ref through the canonical
 /// ref-action pipeline: `RefStore` load → `RefMap` lookup → strict element
@@ -32,16 +34,39 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    execute_with_timeout(
+        ref_id,
+        snapshot_id,
+        action,
+        caller_policy,
+        adapter,
+        context,
+        DEFAULT_ACTION_TIMEOUT_MS,
+    )
+}
+
+pub fn execute_with_timeout(
+    ref_id: &str,
+    snapshot_id: Option<&str>,
+    action: Action,
+    caller_policy: InteractionPolicy,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let timeout_ms = normalize_action_timeout_ms(timeout_ms);
     let base = action.base_interaction_policy();
     let effective = base.join(caller_policy);
     let request = ActionRequest {
         action,
         policy: effective,
+        timeout_ms: None,
     };
     execute_ref_action_with_context(
         RefArgs {
             ref_id: ref_id.to_owned(),
             snapshot_id: snapshot_id.map(ToOwned::to_owned),
+            timeout_ms,
         },
         adapter,
         request,

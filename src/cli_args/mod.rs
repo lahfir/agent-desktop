@@ -238,6 +238,13 @@ pub(crate) struct RefArgs {
     )]
     #[serde(rename = "snapshot", alias = "snapshot_id")]
     pub snapshot_id: Option<String>,
+    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_ref_timeout_ms() -> u64 {
+    5000
 }
 
 #[derive(Parser, Debug, Deserialize)]

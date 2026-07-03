@@ -1,4 +1,5 @@
 pub(crate) mod envelope_out;
+pub(crate) mod execute_by_ref_timeout;
 pub(crate) mod generated;
 
 use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};

@@ -404,5 +404,8 @@ fn ref_args(args: crate::cli_args::RefArgs) -> helpers::RefArgs {
     helpers::RefArgs {
         ref_id: args.ref_id,
         snapshot_id: args.snapshot_id,
+        timeout_ms: agent_desktop_core::commands::helpers::normalize_action_timeout_ms(
+            args.timeout_ms,
+        ),
     }
 }

@@ -190,6 +190,7 @@ mod tests {
                 value: Some("OK".to_owned()),
             }),
             steps: Vec::new(),
+            details: None,
         };
         let c_result = action_result_to_c(&core_result);
         unsafe {

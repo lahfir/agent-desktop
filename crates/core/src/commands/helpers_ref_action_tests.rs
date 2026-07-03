@@ -88,6 +88,7 @@ fn execute_ref_action_preserves_action_and_policy() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     execute_ref_action_with_context(
@@ -115,6 +116,7 @@ fn execute_ref_action_does_not_dispatch_ambiguous_target() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     let err = execute_ref_action_with_context(
@@ -149,6 +151,7 @@ fn ref_action_trace_includes_ambiguous_details_without_candidate_names() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     let err = execute_ref_action_with_context(
@@ -186,6 +189,7 @@ fn ref_action_trace_does_not_include_typed_text_payload() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     execute_ref_action_with_context(
@@ -285,6 +289,7 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     let value = execute_ref_action_with_context(
@@ -402,6 +407,7 @@ fn post_action_wait_polls_acted_on_window_not_focused_window() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     let value = execute_ref_action_with_context(
@@ -427,6 +433,7 @@ fn post_action_wait_without_flag_returns_action_only() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     let value = execute_ref_action_with_context(
@@ -461,6 +468,7 @@ fn post_action_wait_timeout_embeds_action_result_in_details() {
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
+        timeout_ms: None,
     };
 
     let err = execute_ref_action_with_context(

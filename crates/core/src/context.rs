@@ -127,6 +127,7 @@ impl CommandContext {
         ActionRequest {
             action,
             policy: self.policy_with_base(base),
+            timeout_ms: None,
         }
     }
 

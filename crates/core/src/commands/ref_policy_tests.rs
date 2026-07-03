@@ -120,6 +120,7 @@ fn ref_args(snapshot_id: &str) -> RefArgs {
     RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id.to_owned()),
+        timeout_ms: None,
     }
 }
 

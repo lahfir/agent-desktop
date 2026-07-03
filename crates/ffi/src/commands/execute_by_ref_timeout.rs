@@ -1,0 +1,110 @@
+use crate::AdAdapter;
+use crate::actions::conversion::action_from_c;
+use crate::commands::app_error_to_adapter;
+use crate::commands::envelope_out::write_command_envelope;
+use crate::convert::string::{optional_adapter_string, required_adapter_string};
+use crate::error::{self, AdResult, set_last_error};
+use crate::ffi_try::trap_panic;
+use crate::main_thread::require_main_thread;
+use crate::pointer_guard::guard_non_null;
+use crate::types::{AdAction, AdPolicyKind};
+use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::refs::validate_ref_id;
+use std::ffi::c_char;
+use std::ptr;
+
+/// Same as [`crate::commands::generated::ad_execute_by_ref`] but with an
+/// explicit pre-action auto-wait budget in milliseconds. `timeout_ms == 0`
+/// disables auto-wait (single-shot resolve and actionability check).
+///
+/// # Safety
+///
+/// Same pointer and threading requirements as `ad_execute_by_ref`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_execute_by_ref_timeout(
+    adapter: *const AdAdapter,
+    ref_id: *const c_char,
+    snapshot_id: *const c_char,
+    action: *const AdAction,
+    policy: i32,
+    timeout_ms: u64,
+    out: *mut *mut c_char,
+) -> AdResult {
+    guard_non_null!(out, c"out is null");
+    unsafe { *out = ptr::null_mut() };
+    trap_panic(|| {
+        if let Err(rc) = require_main_thread() {
+            return rc;
+        }
+        guard_non_null!(adapter, c"adapter is null");
+        guard_non_null!(action, c"action is null");
+
+        let ref_str = match required_adapter_string(ref_id, "ref_id") {
+            Ok(s) => s,
+            Err(e) => {
+                set_last_error(&e);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+
+        if let Err(app_err) = validate_ref_id(&ref_str) {
+            let ae = app_error_to_adapter(app_err);
+            set_last_error(&ae);
+            return error::last_error_code();
+        }
+
+        let snapshot_str = match optional_adapter_string(snapshot_id, "snapshot_id") {
+            Ok(opt) => opt,
+            Err(e) => {
+                set_last_error(&e);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+
+        let caller_policy = match AdPolicyKind::from_c(policy) {
+            Some(p) => p,
+            None => {
+                set_last_error(&AdapterError::new(
+                    ErrorCode::InvalidArgs,
+                    "invalid policy kind discriminant",
+                ));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+
+        let core_action = match unsafe { action_from_c(&*action) } {
+            Ok(a) => a,
+            Err(msg) => {
+                set_last_error(&AdapterError::new(ErrorCode::InvalidArgs, msg));
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+
+        let caller_ip = caller_policy.to_interaction_policy();
+
+        let adapter_ref = unsafe { &*adapter };
+        let context = match adapter_ref.command_context() {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                let ae = app_error_to_adapter(e);
+                set_last_error(&ae);
+                return error::last_error_code();
+            }
+        };
+
+        let scope = context.command_scope("execute_by_ref");
+
+        let result = agent_desktop_core::commands::execute_by_ref::execute_with_timeout(
+            &ref_str,
+            snapshot_str.as_deref(),
+            core_action,
+            caller_ip,
+            adapter_ref.inner.as_ref(),
+            &context,
+            timeout_ms,
+        );
+        scope.complete(&result);
+
+        unsafe { write_command_envelope("execute_by_ref", result, out) }
+    })
+}

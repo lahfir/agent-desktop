@@ -23,6 +23,7 @@ pub mod output;
 pub mod permission_report;
 pub mod permission_state;
 pub mod ref_action;
+pub mod ref_action_wait;
 pub mod ref_alloc;
 pub mod ref_identity;
 pub mod refs;

@@ -6,7 +6,6 @@ use crate::{
     context::CommandContext,
     error::{AdapterError, AppError},
     refs::RefEntry,
-    resolved_element::ResolvedElement,
     trace_artifacts,
 };
 use serde_json::json;
@@ -111,19 +110,14 @@ pub fn execute_entry_with_context(
     context: &CommandContext,
 ) -> Result<ActionResult, AdapterError> {
     let label = ref_label_from_entry(entry);
-    let handle = adapter.resolve_element_strict(entry)?;
-    let handle = ResolvedElement::new(adapter, handle);
-    let result = execute_resolved(
-        ResolvedRefAction {
-            adapter,
-            entry,
-            handle: handle.handle(),
-            ref_id: &label,
-            context,
-        },
+    crate::ref_action_wait::execute_with_auto_wait(
+        adapter,
+        entry,
+        &label,
+        context,
         request,
-    );
-    result.map_err(into_adapter_error)
+        execute_resolved,
+    )
 }
 
 /// Executes a pre-resolved ref-action entry with a default (no-session,
@@ -137,7 +131,7 @@ pub fn execute_entry(
     execute_entry_with_context(adapter, entry, request, &CommandContext::default())
 }
 
-fn into_adapter_error(err: AppError) -> AdapterError {
+pub(crate) fn into_adapter_error(err: AppError) -> AdapterError {
     match err {
         AppError::Adapter(err) => err,
         other => AdapterError::internal(other.to_string()),

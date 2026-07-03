@@ -21,6 +21,11 @@ pub struct AppArgs {
 pub struct RefArgs {
     pub ref_id: String,
     pub snapshot_id: Option<String>,
+    pub timeout_ms: Option<u64>,
+}
+
+pub fn normalize_action_timeout_ms(raw: u64) -> Option<u64> {
+    if raw == 0 { None } else { Some(raw) }
 }
 
 pub(crate) fn resolve_ref_with_context<'a>(
@@ -120,6 +125,7 @@ pub(crate) fn execute_ref_action_with_context(
     request: ActionRequest,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    let request = request.with_timeout_ms(args.timeout_ms);
     let (entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),
@@ -188,18 +194,31 @@ pub(crate) fn execute_ref_action_result_with_context(
     request: ActionRequest,
     context: &CommandContext,
 ) -> Result<(RefEntry, ActionResult), AppError> {
-    let (entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
-    let result = crate::ref_action::execute_resolved(
-        crate::ref_action::ResolvedRefAction {
-            adapter,
-            entry: &entry,
-            handle: handle.handle(),
-            ref_id,
-            context,
-        },
+    let entry = load_ref_entry(ref_id, snapshot_id, context)?;
+    let result = crate::ref_action_wait::execute_with_auto_wait(
+        adapter,
+        &entry,
+        ref_id,
+        context,
         request,
-    )?;
+        crate::ref_action::execute_resolved,
+    )
+    .map_err(AppError::Adapter)?;
     Ok((entry, result))
+}
+
+fn load_ref_entry(
+    ref_id: &str,
+    snapshot_id: Option<&str>,
+    context: &CommandContext,
+) -> Result<RefEntry, AppError> {
+    validate_ref_id(ref_id)?;
+    let store = RefStore::for_session(context.session_id())?;
+    let refmap = store.load(snapshot_id)?;
+    refmap
+        .get(ref_id)
+        .cloned()
+        .ok_or_else(|| AppError::stale_ref(ref_id))
 }
 
 pub(crate) fn window_op_command(

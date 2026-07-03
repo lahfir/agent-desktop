@@ -8,6 +8,8 @@ pub struct ActionResult {
     pub post_state: Option<ElementState>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub steps: Vec<ActionStep>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 impl ActionResult {
@@ -16,6 +18,7 @@ impl ActionResult {
             action: action.into(),
             post_state: None,
             steps: Vec::new(),
+            details: None,
         }
     }
 
@@ -26,6 +29,11 @@ impl ActionResult {
 
     pub fn with_steps(mut self, steps: Vec<ActionStep>) -> Self {
         self.steps = steps;
+        self
+    }
+
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
         self
     }
 }

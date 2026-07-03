@@ -24,6 +24,7 @@ pub fn execute(
         RefArgs {
             ref_id: args.ref_id,
             snapshot_id: args.snapshot_id,
+            timeout_ms: None,
         },
         adapter,
         request,

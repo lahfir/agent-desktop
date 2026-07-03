@@ -115,6 +115,7 @@ fn returns_action_success_when_menu_probe_fails() {
         RefArgs {
             ref_id: "@e1".into(),
             snapshot_id: Some(snapshot_id),
+            timeout_ms: None,
         },
         &ProbeFailingAdapter { tree_error: None },
         &CommandContext::default(),
@@ -135,6 +136,7 @@ fn element_not_found_menu_probe_uses_right_click_specific_guidance() {
         RefArgs {
             ref_id: "@e1".into(),
             snapshot_id: Some(snapshot_id),
+            timeout_ms: None,
         },
         &ProbeFailingAdapter {
             tree_error: Some(ErrorCode::ElementNotFound),

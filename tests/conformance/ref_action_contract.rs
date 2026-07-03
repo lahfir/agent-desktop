@@ -19,6 +19,7 @@ pub fn run_click_command(
             RefArgs {
                 ref_id: "@e1".into(),
                 snapshot_id: Some(snapshot_id),
+                timeout_ms: None,
             },
             adapter,
             &context,

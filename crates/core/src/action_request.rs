@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct ActionRequest {
     pub action: Action,
     pub policy: InteractionPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
 }
 
 impl ActionRequest {
@@ -13,6 +15,7 @@ impl ActionRequest {
         Self {
             action,
             policy: InteractionPolicy::headless(),
+            timeout_ms: None,
         }
     }
 
@@ -20,6 +23,7 @@ impl ActionRequest {
         Self {
             action,
             policy: InteractionPolicy::focus_fallback(),
+            timeout_ms: None,
         }
     }
 
@@ -27,7 +31,13 @@ impl ActionRequest {
         Self {
             action,
             policy: InteractionPolicy::headed(),
+            timeout_ms: None,
         }
+    }
+
+    pub fn with_timeout_ms(mut self, timeout_ms: Option<u64>) -> Self {
+        self.timeout_ms = timeout_ms;
+        self
     }
 }
 

@@ -126,6 +126,7 @@ fn accessibility_denial_is_preflighted_for_ax_commands() {
     let command = Commands::Click(crate::cli_args::RefArgs {
         ref_id: VALID_REF_ID.into(),
         snapshot_id: None,
+        timeout_ms: 5000,
     });
 
     let err = preflight(&command, &report).expect_err("denied accessibility fails");
@@ -146,6 +147,7 @@ fn invalid_ref_args_are_rejected_before_permission_preflight() {
     let command = Commands::Click(RefArgs {
         ref_id: "bad-ref".into(),
         snapshot_id: None,
+        timeout_ms: 5000,
     });
 
     let err = preflight(&command, &report).expect_err("invalid ref fails first");
