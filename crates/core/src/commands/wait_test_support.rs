@@ -1,7 +1,8 @@
+use crate::adapter::{ActionOps, InputOps, ObservationOps, PlatformAdapter, SystemOps};
 use crate::commands::wait_element::{ElementWaitInput, wait_for_element};
 use crate::commands::wait_predicate;
 use crate::{
-    adapter::{NativeHandle, PlatformAdapter},
+    adapter::NativeHandle,
     context::CommandContext,
     element_state::ElementState,
     error::{AdapterError, AppError},
@@ -37,7 +38,7 @@ pub(super) struct PredicateAdapter {
     pub(super) bounds: Option<Rect>,
 }
 
-impl PlatformAdapter for PredicateAdapter {
+impl ObservationOps for PredicateAdapter {
     fn resolve_element_strict_with_timeout(
         &self,
         _entry: &RefEntry,
@@ -58,6 +59,12 @@ impl PlatformAdapter for PredicateAdapter {
         Ok(self.bounds)
     }
 }
+
+impl ActionOps for PredicateAdapter {}
+
+impl InputOps for PredicateAdapter {}
+
+impl SystemOps for PredicateAdapter {}
 
 pub(super) fn snapshot_with_one_ref() -> String {
     save_ref(Vec::new())

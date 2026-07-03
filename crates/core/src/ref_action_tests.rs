@@ -1,4 +1,5 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     action::Action,
     action_result::ActionResult,
@@ -9,11 +10,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 struct ReleaseFailingAdapter;
 
-impl PlatformAdapter for ReleaseFailingAdapter {
+impl ObservationOps for ReleaseFailingAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for ReleaseFailingAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -27,15 +30,21 @@ impl PlatformAdapter for ReleaseFailingAdapter {
     }
 }
 
+impl InputOps for ReleaseFailingAdapter {}
+
+impl SystemOps for ReleaseFailingAdapter {}
+
 struct ErrorReleasingAdapter {
     releases: AtomicU32,
 }
 
-impl PlatformAdapter for ErrorReleasingAdapter {
+impl ObservationOps for ErrorReleasingAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for ErrorReleasingAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -49,6 +58,10 @@ impl PlatformAdapter for ErrorReleasingAdapter {
         Ok(())
     }
 }
+
+impl InputOps for ErrorReleasingAdapter {}
+
+impl SystemOps for ErrorReleasingAdapter {}
 
 fn entry() -> RefEntry {
     RefEntry {

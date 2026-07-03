@@ -1,16 +1,22 @@
 use super::*;
-use crate::adapter::{PlatformAdapter, WindowFilter};
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps, WindowFilter};
 use crate::context::{CommandContext, WaitSelector};
 use crate::error::{AdapterError, ErrorCode};
 use crate::node::{AccessibilityNode, WindowInfo};
 use crate::refs_test_support::HomeGuard;
 
 struct NoopAdapter;
-impl PlatformAdapter for NoopAdapter {}
+impl ObservationOps for NoopAdapter {}
+
+impl ActionOps for NoopAdapter {}
+
+impl InputOps for NoopAdapter {}
+
+impl SystemOps for NoopAdapter {}
 
 struct WaitSnapshotAdapter;
 
-impl PlatformAdapter for WaitSnapshotAdapter {
+impl ObservationOps for WaitSnapshotAdapter {
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![WindowInfo {
             id: "w-1".into(),
@@ -54,6 +60,12 @@ impl PlatformAdapter for WaitSnapshotAdapter {
         })
     }
 }
+
+impl ActionOps for WaitSnapshotAdapter {}
+
+impl InputOps for WaitSnapshotAdapter {}
+
+impl SystemOps for WaitSnapshotAdapter {}
 
 fn base_args() -> SnapshotArgs {
     SnapshotArgs {

@@ -1,9 +1,10 @@
 use super::*;
-use crate::{adapter::PlatformAdapter, error::AdapterError, node::AppInfo};
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use crate::{error::AdapterError, node::AppInfo};
 
 struct AppsAdapter;
 
-impl PlatformAdapter for AppsAdapter {
+impl ObservationOps for AppsAdapter {
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
         Ok(vec![
             AppInfo {
@@ -19,6 +20,12 @@ impl PlatformAdapter for AppsAdapter {
         ])
     }
 }
+
+impl ActionOps for AppsAdapter {}
+
+impl InputOps for AppsAdapter {}
+
+impl SystemOps for AppsAdapter {}
 
 #[test]
 fn app_filter_matches_by_name_case_insensitively() {

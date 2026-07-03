@@ -1,6 +1,6 @@
 use super::*;
 use crate::action_request::ActionRequest;
-use crate::adapter::{NativeHandle, PlatformAdapter};
+use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps};
 use crate::error::AdapterError;
 use crate::node::AccessibilityNode;
 use crate::ref_alloc::ref_entry_from_node;
@@ -57,7 +57,7 @@ impl StubAdapter {
     }
 }
 
-impl PlatformAdapter for StubAdapter {
+impl ObservationOps for StubAdapter {
     fn resolve_element_strict(
         &self,
         _entry: &crate::refs::RefEntry,
@@ -76,7 +76,9 @@ impl PlatformAdapter for StubAdapter {
         }
         Ok(self.subtree.clone())
     }
+}
 
+impl ActionOps for StubAdapter {
     fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
         self.release_calls.fetch_add(1, Ordering::SeqCst);
         Ok(())
@@ -90,6 +92,10 @@ impl PlatformAdapter for StubAdapter {
         Err(AdapterError::not_supported("execute_action"))
     }
 }
+
+impl InputOps for StubAdapter {}
+
+impl SystemOps for StubAdapter {}
 
 fn save_latest(refmap: RefMap) -> String {
     RefStore::new()

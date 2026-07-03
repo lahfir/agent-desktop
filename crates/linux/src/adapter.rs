@@ -1,4 +1,4 @@
-use agent_desktop_core::adapter::PlatformAdapter;
+use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 
 pub struct LinuxAdapter;
 
@@ -14,4 +14,7 @@ impl Default for LinuxAdapter {
     }
 }
 
-impl PlatformAdapter for LinuxAdapter {}
+impl ObservationOps for LinuxAdapter {}
+impl ActionOps for LinuxAdapter {}
+impl InputOps for LinuxAdapter {}
+impl SystemOps for LinuxAdapter {}

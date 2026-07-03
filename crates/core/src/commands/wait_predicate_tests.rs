@@ -2,13 +2,10 @@ use super::test_support::{
     PredicateAdapter, snapshot_with_disabled_ref, snapshot_with_one_ref, wait_for_element_test,
 };
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::{NativeHandle, PlatformAdapter},
-    commands::wait_predicate,
-    element_state::ElementState,
-    error::AdapterError,
-    refs::RefEntry,
-    refs_test_support::HomeGuard,
+    adapter::NativeHandle, commands::wait_predicate, element_state::ElementState,
+    error::AdapterError, refs::RefEntry, refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
 
@@ -16,7 +13,7 @@ struct FlippingPredicateAdapter {
     states: Mutex<Vec<Vec<String>>>,
 }
 
-impl PlatformAdapter for FlippingPredicateAdapter {
+impl ObservationOps for FlippingPredicateAdapter {
     fn resolve_element_strict_with_timeout(
         &self,
         _entry: &RefEntry,
@@ -34,6 +31,12 @@ impl PlatformAdapter for FlippingPredicateAdapter {
         }))
     }
 }
+
+impl ActionOps for FlippingPredicateAdapter {}
+
+impl InputOps for FlippingPredicateAdapter {}
+
+impl SystemOps for FlippingPredicateAdapter {}
 
 #[test]
 fn element_wait_enabled_predicate_uses_live_state() {

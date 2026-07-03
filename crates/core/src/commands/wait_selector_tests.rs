@@ -1,6 +1,7 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::{PlatformAdapter, WindowFilter},
+    adapter::WindowFilter,
     context::CommandContext,
     error::{AdapterError, ErrorCode},
     node::{AccessibilityNode, WindowInfo},
@@ -45,7 +46,7 @@ struct StaticTreeAdapter {
     tree: AccessibilityNode,
 }
 
-impl PlatformAdapter for StaticTreeAdapter {
+impl ObservationOps for StaticTreeAdapter {
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![WindowInfo {
             id: "w-1".into(),
@@ -66,13 +67,19 @@ impl PlatformAdapter for StaticTreeAdapter {
     }
 }
 
+impl ActionOps for StaticTreeAdapter {}
+
+impl InputOps for StaticTreeAdapter {}
+
+impl SystemOps for StaticTreeAdapter {}
+
 struct FlippingTreeAdapter {
     calls: AtomicUsize,
     before: AccessibilityNode,
     after: AccessibilityNode,
 }
 
-impl PlatformAdapter for FlippingTreeAdapter {
+impl ObservationOps for FlippingTreeAdapter {
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![WindowInfo {
             id: "w-1".into(),
@@ -98,23 +105,41 @@ impl PlatformAdapter for FlippingTreeAdapter {
     }
 }
 
+impl ActionOps for FlippingTreeAdapter {}
+
+impl InputOps for FlippingTreeAdapter {}
+
+impl SystemOps for FlippingTreeAdapter {}
+
 struct ErrorThenTreeAdapter;
 
-impl PlatformAdapter for ErrorThenTreeAdapter {
+impl ObservationOps for ErrorThenTreeAdapter {
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::new(ErrorCode::AppNotFound, "app missing"))
     }
 }
 
+impl ActionOps for ErrorThenTreeAdapter {}
+
+impl InputOps for ErrorThenTreeAdapter {}
+
+impl SystemOps for ErrorThenTreeAdapter {}
+
 struct CodeErrorAdapter {
     code: ErrorCode,
 }
 
-impl PlatformAdapter for CodeErrorAdapter {
+impl ObservationOps for CodeErrorAdapter {
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::new(self.code.clone(), "poll error"))
     }
 }
+
+impl ActionOps for CodeErrorAdapter {}
+
+impl InputOps for CodeErrorAdapter {}
+
+impl SystemOps for CodeErrorAdapter {}
 
 fn base_input(query_raw: &str, gone: bool) -> WaitSelectorInput {
     WaitSelectorInput {

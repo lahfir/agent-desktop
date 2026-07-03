@@ -1,5 +1,5 @@
+use agent_desktop_core::adapter::PlatformAdapter;
 use agent_desktop_core::{
-    adapter::PlatformAdapter,
     commands::{
         dismiss_all_notifications, dismiss_notification, list_notifications, notification_action,
     },
@@ -64,10 +64,17 @@ fn notification_index(index: u64) -> Result<usize, AppError> {
 mod tests {
     use super::*;
     use crate::cli_args::notifications::{DismissNotificationCliArgs, NotificationActionCliArgs};
+    use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 
     struct NoopAdapter;
 
-    impl PlatformAdapter for NoopAdapter {}
+    impl ObservationOps for NoopAdapter {}
+
+    impl ActionOps for NoopAdapter {}
+
+    impl InputOps for NoopAdapter {}
+
+    impl SystemOps for NoopAdapter {}
 
     #[test]
     fn dismiss_notification_rejects_zero_index_before_adapter() {

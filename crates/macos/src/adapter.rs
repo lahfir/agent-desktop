@@ -4,8 +4,8 @@ use agent_desktop_core::{
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::{
-        ImageBuffer, LiveElement, NativeHandle, PlatformAdapter, ScreenshotTarget, SnapshotSurface,
-        TreeOptions, WindowFilter,
+        ActionOps, ImageBuffer, InputOps, LiveElement, NativeHandle, ObservationOps,
+        ScreenshotTarget, SnapshotSurface, SystemOps, TreeOptions, WindowFilter,
     },
     element_state::ElementState,
     error::AdapterError,
@@ -29,19 +29,7 @@ impl Default for MacOSAdapter {
     }
 }
 
-impl PlatformAdapter for MacOSAdapter {
-    fn permission_report(&self) -> PermissionReport {
-        crate::system::permissions::report()
-    }
-
-    fn request_permissions(&self) -> PermissionReport {
-        crate::system::permissions::request_report()
-    }
-
-    fn unknown_accessibility_means_unsupported(&self) -> bool {
-        false
-    }
-
+impl ObservationOps for MacOSAdapter {
     fn get_tree(
         &self,
         win: &WindowInfo,
@@ -77,14 +65,6 @@ impl PlatformAdapter for MacOSAdapter {
         .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
     }
 
-    fn execute_action(
-        &self,
-        handle: &NativeHandle,
-        request: ActionRequest,
-    ) -> Result<ActionResult, AdapterError> {
-        execute_action_impl(handle, request)
-    }
-
     fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         crate::tree::resolve::resolve_element_impl(entry)
     }
@@ -97,17 +77,6 @@ impl PlatformAdapter for MacOSAdapter {
         crate::tree::resolve::resolve_element_with_timeout(entry, timeout)
     }
 
-    fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
-        let raw = handle.as_raw();
-        if raw.is_null() {
-            return Ok(());
-        }
-        unsafe {
-            core_foundation::base::CFRelease(raw as core_foundation::base::CFTypeRef);
-        }
-        Ok(())
-    }
-
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         crate::system::window_list::list_windows_impl(filter)
     }
@@ -116,69 +85,8 @@ impl PlatformAdapter for MacOSAdapter {
         crate::system::app_list::list_apps_impl()
     }
 
-    fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError> {
-        crate::system::app_ops::focus_window_impl(win)
-    }
-
-    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
-        crate::system::app_ops::ensure_app_focused(pid)
-    }
-
-    fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
-        crate::system::app_ops::launch_app_impl(id, timeout_ms)
-    }
-
-    fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {
-        crate::system::app_ops::close_app_impl(id, force)
-    }
-
-    fn is_protected_process(&self, identifier: &str) -> bool {
-        crate::system::app_ops::is_protected_process(identifier)
-    }
-
-    fn is_blocked_combo(&self, combo: &agent_desktop_core::action::KeyCombo) -> bool {
-        crate::input::blocked_combo::is_blocked(combo)
-    }
-
-    fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
-        match target {
-            ScreenshotTarget::Window(pid) => crate::system::screenshot::capture_app(pid),
-            ScreenshotTarget::Screen(idx) => crate::system::screenshot::capture_screen(idx),
-            ScreenshotTarget::FullScreen => crate::system::screenshot::capture_screen(0),
-        }
-    }
-
-    fn get_clipboard(&self) -> Result<String, AdapterError> {
-        crate::input::clipboard::get()
-    }
-
-    fn set_clipboard(&self, text: &str) -> Result<(), AdapterError> {
-        crate::input::clipboard::set(text)
-    }
-
-    fn press_key_for_app(
-        &self,
-        app_name: &str,
-        combo: &agent_desktop_core::action::KeyCombo,
-    ) -> Result<ActionResult, AdapterError> {
-        crate::system::key_dispatch::press_for_app_impl(app_name, combo)
-    }
-
-    fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
-        crate::system::wait::wait_for_menu(pid, open, timeout_ms)
-    }
-
     fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> {
         Ok(crate::tree::surfaces::list_surfaces_for_pid(pid))
-    }
-
-    fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {
-        let filter = WindowFilter {
-            focused_only: true,
-            app: None,
-        };
-        let windows = self.list_windows(&filter)?;
-        Ok(windows.into_iter().next())
     }
 
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
@@ -241,10 +149,56 @@ impl PlatformAdapter for MacOSAdapter {
         }
     }
 
-    fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {
-        crate::system::window_ops::execute(win, op)
+    fn get_subtree(
+        &self,
+        handle: &NativeHandle,
+        opts: &TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        with_borrowed_ax_element(handle, |el| {
+            let mut ancestors = FxHashSet::default();
+            let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
+            crate::tree::build_subtree(
+                el,
+                0,
+                0,
+                opts.max_depth,
+                &mut ancestors,
+                opts.skeleton,
+                &context,
+            )
+            .ok_or_else(|| {
+                AdapterError::new(
+                    agent_desktop_core::error::ErrorCode::ElementNotFound,
+                    "Element no longer exists in accessibility tree",
+                )
+                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+            })
+        })
+    }
+}
+
+impl ActionOps for MacOSAdapter {
+    fn execute_action(
+        &self,
+        handle: &NativeHandle,
+        request: ActionRequest,
+    ) -> Result<ActionResult, AdapterError> {
+        execute_action_impl(handle, request)
     }
 
+    fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
+        let raw = handle.as_raw();
+        if raw.is_null() {
+            return Ok(());
+        }
+        unsafe {
+            core_foundation::base::CFRelease(raw as core_foundation::base::CFTypeRef);
+        }
+        Ok(())
+    }
+}
+
+impl InputOps for MacOSAdapter {
     fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
         crate::input::mouse::synthesize_mouse(event)
     }
@@ -261,8 +215,87 @@ impl PlatformAdapter for MacOSAdapter {
         crate::input::mouse::synthesize_drag(params)
     }
 
+    fn get_clipboard(&self) -> Result<String, AdapterError> {
+        crate::input::clipboard::get()
+    }
+
+    fn set_clipboard(&self, text: &str) -> Result<(), AdapterError> {
+        crate::input::clipboard::set(text)
+    }
+
     fn clear_clipboard(&self) -> Result<(), AdapterError> {
         crate::input::clipboard::clear()
+    }
+}
+
+impl SystemOps for MacOSAdapter {
+    fn permission_report(&self) -> PermissionReport {
+        crate::system::permissions::report()
+    }
+
+    fn request_permissions(&self) -> PermissionReport {
+        crate::system::permissions::request_report()
+    }
+
+    fn unknown_accessibility_means_unsupported(&self) -> bool {
+        false
+    }
+
+    fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError> {
+        crate::system::app_ops::focus_window_impl(win)
+    }
+
+    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
+        crate::system::app_ops::ensure_app_focused(pid)
+    }
+
+    fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
+        crate::system::app_ops::launch_app_impl(id, timeout_ms)
+    }
+
+    fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {
+        crate::system::app_ops::close_app_impl(id, force)
+    }
+
+    fn is_protected_process(&self, identifier: &str) -> bool {
+        crate::system::app_ops::is_protected_process(identifier)
+    }
+
+    fn is_blocked_combo(&self, combo: &agent_desktop_core::action::KeyCombo) -> bool {
+        crate::input::blocked_combo::is_blocked(combo)
+    }
+
+    fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
+        match target {
+            ScreenshotTarget::Window(pid) => crate::system::screenshot::capture_app(pid),
+            ScreenshotTarget::Screen(idx) => crate::system::screenshot::capture_screen(idx),
+            ScreenshotTarget::FullScreen => crate::system::screenshot::capture_screen(0),
+        }
+    }
+
+    fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {
+        let filter = WindowFilter {
+            focused_only: true,
+            app: None,
+        };
+        let windows = self.list_windows(&filter)?;
+        Ok(windows.into_iter().next())
+    }
+
+    fn press_key_for_app(
+        &self,
+        app_name: &str,
+        combo: &agent_desktop_core::action::KeyCombo,
+    ) -> Result<ActionResult, AdapterError> {
+        crate::system::key_dispatch::press_for_app_impl(app_name, combo)
+    }
+
+    fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
+        crate::system::wait::wait_for_menu(pid, open, timeout_ms)
+    }
+
+    fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {
+        crate::system::window_ops::execute(win, op)
     }
 
     fn list_notifications(
@@ -294,33 +327,6 @@ impl PlatformAdapter for MacOSAdapter {
         action_name: &str,
     ) -> Result<ActionResult, AdapterError> {
         crate::notifications::actions::notification_action(index, identity, action_name)
-    }
-
-    fn get_subtree(
-        &self,
-        handle: &NativeHandle,
-        opts: &TreeOptions,
-    ) -> Result<AccessibilityNode, AdapterError> {
-        with_borrowed_ax_element(handle, |el| {
-            let mut ancestors = FxHashSet::default();
-            let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
-            crate::tree::build_subtree(
-                el,
-                0,
-                0,
-                opts.max_depth,
-                &mut ancestors,
-                opts.skeleton,
-                &context,
-            )
-            .ok_or_else(|| {
-                AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::ElementNotFound,
-                    "Element no longer exists in accessibility tree",
-                )
-                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
-            })
-        })
     }
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     action_request::ActionRequest,
     action_result::ActionResult,
@@ -14,17 +15,9 @@ struct ProbeFailingAdapter {
     tree_error: Option<ErrorCode>,
 }
 
-impl PlatformAdapter for ProbeFailingAdapter {
+impl ObservationOps for ProbeFailingAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
-    }
-
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-    ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("right_click"))
     }
 
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
@@ -73,6 +66,20 @@ impl PlatformAdapter for ProbeFailingAdapter {
         })
     }
 }
+
+impl ActionOps for ProbeFailingAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+    ) -> Result<ActionResult, AdapterError> {
+        Ok(ActionResult::new("right_click"))
+    }
+}
+
+impl InputOps for ProbeFailingAdapter {}
+
+impl SystemOps for ProbeFailingAdapter {}
 
 fn save_refmap(source_app: Option<String>) -> String {
     let mut refmap = RefMap::new();

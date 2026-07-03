@@ -1,4 +1,5 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     adapter::NativeHandle,
     capability,
@@ -24,7 +25,7 @@ impl HoverCaptureAdapter {
     }
 }
 
-impl PlatformAdapter for HoverCaptureAdapter {
+impl ObservationOps for HoverCaptureAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
@@ -37,14 +38,20 @@ impl PlatformAdapter for HoverCaptureAdapter {
             height: 10.0,
         }))
     }
+}
 
-    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
-        self.focused_pids.lock().unwrap().push(pid);
-        Ok(())
-    }
+impl ActionOps for HoverCaptureAdapter {}
 
+impl InputOps for HoverCaptureAdapter {
     fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
         *self.moved_to.lock().unwrap() = Some(event);
+        Ok(())
+    }
+}
+
+impl SystemOps for HoverCaptureAdapter {
+    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
+        self.focused_pids.lock().unwrap().push(pid);
         Ok(())
     }
 }

@@ -1,8 +1,9 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     action::Action,
     action_request::ActionRequest,
-    adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
+    adapter::{LiveElement, NativeHandle, SnapshotSurface},
     capability,
     element_state::ElementState,
     node::Rect,
@@ -15,7 +16,7 @@ struct LiveAdapter {
     actions: Option<Vec<String>>,
 }
 
-impl PlatformAdapter for LiveAdapter {
+impl ObservationOps for LiveAdapter {
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
         Ok(self.state.clone())
     }
@@ -32,9 +33,15 @@ impl PlatformAdapter for LiveAdapter {
     }
 }
 
+impl ActionOps for LiveAdapter {}
+
+impl InputOps for LiveAdapter {}
+
+impl SystemOps for LiveAdapter {}
+
 struct CombinedLiveAdapter;
 
-impl PlatformAdapter for CombinedLiveAdapter {
+impl ObservationOps for CombinedLiveAdapter {
     fn get_live_element(&self, _handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
         Ok(LiveElement {
             state: Some(ElementState {
@@ -68,21 +75,39 @@ impl PlatformAdapter for CombinedLiveAdapter {
     }
 }
 
+impl ActionOps for CombinedLiveAdapter {}
+
+impl InputOps for CombinedLiveAdapter {}
+
+impl SystemOps for CombinedLiveAdapter {}
+
 struct LiveReadErrorAdapter;
 
-impl PlatformAdapter for LiveReadErrorAdapter {
+impl ObservationOps for LiveReadErrorAdapter {
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
         Err(AdapterError::permission_denied())
     }
 }
 
+impl ActionOps for LiveReadErrorAdapter {}
+
+impl InputOps for LiveReadErrorAdapter {}
+
+impl SystemOps for LiveReadErrorAdapter {}
+
 struct UnsupportedLiveAdapter;
 
-impl PlatformAdapter for UnsupportedLiveAdapter {}
+impl ObservationOps for UnsupportedLiveAdapter {}
+
+impl ActionOps for UnsupportedLiveAdapter {}
+
+impl InputOps for UnsupportedLiveAdapter {}
+
+impl SystemOps for UnsupportedLiveAdapter {}
 
 struct DeadLiveElementAdapter;
 
-impl PlatformAdapter for DeadLiveElementAdapter {
+impl ObservationOps for DeadLiveElementAdapter {
     fn get_live_element(&self, _handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
         Ok(LiveElement {
             state: Some(ElementState {
@@ -95,6 +120,12 @@ impl PlatformAdapter for DeadLiveElementAdapter {
         })
     }
 }
+
+impl ActionOps for DeadLiveElementAdapter {}
+
+impl InputOps for DeadLiveElementAdapter {}
+
+impl SystemOps for DeadLiveElementAdapter {}
 
 fn entry() -> RefEntry {
     let bounds = Rect {

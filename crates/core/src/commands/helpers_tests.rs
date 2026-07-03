@@ -2,6 +2,7 @@ use super::test_support::entry;
 use super::*;
 use crate::action::Action;
 use crate::adapter::NativeHandle;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::capability;
 use crate::error::{AdapterError, ErrorCode};
 use crate::node::AppInfo;
@@ -13,22 +14,28 @@ struct ReleaseCountingAdapter {
     releases: AtomicU32,
 }
 
-impl PlatformAdapter for ReleaseCountingAdapter {
+impl ObservationOps for ReleaseCountingAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for ReleaseCountingAdapter {
     fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
         self.releases.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 }
 
+impl InputOps for ReleaseCountingAdapter {}
+
+impl SystemOps for ReleaseCountingAdapter {}
+
 struct RestoreWithoutWindowAdapter {
     op_count: AtomicU32,
 }
 
-impl PlatformAdapter for RestoreWithoutWindowAdapter {
+impl ObservationOps for RestoreWithoutWindowAdapter {
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
         Ok(vec![AppInfo {
             name: "TextEdit".into(),
@@ -43,7 +50,13 @@ impl PlatformAdapter for RestoreWithoutWindowAdapter {
     ) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::new(ErrorCode::WindowNotFound, "no windows"))
     }
+}
 
+impl ActionOps for RestoreWithoutWindowAdapter {}
+
+impl InputOps for RestoreWithoutWindowAdapter {}
+
+impl SystemOps for RestoreWithoutWindowAdapter {
     fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {
         assert_eq!(win.pid, 42);
         assert!(matches!(op, WindowOp::Restore));
@@ -161,7 +174,7 @@ impl CountingPipelineAdapter {
     }
 }
 
-impl PlatformAdapter for CountingPipelineAdapter {
+impl ObservationOps for CountingPipelineAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         self.resolves.fetch_add(1, Ordering::SeqCst);
         Ok(NativeHandle::null())
@@ -182,7 +195,9 @@ impl PlatformAdapter for CountingPipelineAdapter {
             available_actions: Some(vec![capability::CLICK.into()]),
         })
     }
+}
 
+impl ActionOps for CountingPipelineAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -197,6 +212,10 @@ impl PlatformAdapter for CountingPipelineAdapter {
         Ok(())
     }
 }
+
+impl InputOps for CountingPipelineAdapter {}
+
+impl SystemOps for CountingPipelineAdapter {}
 
 #[test]
 fn ref_action_pipeline_makes_one_resolve_one_preflight_one_dispatch() {

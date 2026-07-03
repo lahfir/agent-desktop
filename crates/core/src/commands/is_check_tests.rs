@@ -1,4 +1,5 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     adapter::NativeHandle, error::AdapterError, refs::RefMap, refs_store::RefStore,
     refs_test_support::HomeGuard,
@@ -9,7 +10,7 @@ struct LiveStateAdapter {
     state: Mutex<Option<ElementState>>,
 }
 
-impl PlatformAdapter for LiveStateAdapter {
+impl ObservationOps for LiveStateAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
@@ -18,6 +19,12 @@ impl PlatformAdapter for LiveStateAdapter {
         Ok(self.state.lock().unwrap().clone())
     }
 }
+
+impl ActionOps for LiveStateAdapter {}
+
+impl InputOps for LiveStateAdapter {}
+
+impl SystemOps for LiveStateAdapter {}
 
 fn save_entry(entry: RefEntry) -> String {
     let mut refmap = RefMap::new();

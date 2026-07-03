@@ -1,4 +1,4 @@
-use agent_desktop_core::adapter::PlatformAdapter;
+use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 
 pub struct WindowsAdapter;
 
@@ -14,4 +14,7 @@ impl Default for WindowsAdapter {
     }
 }
 
-impl PlatformAdapter for WindowsAdapter {}
+impl ObservationOps for WindowsAdapter {}
+impl ActionOps for WindowsAdapter {}
+impl InputOps for WindowsAdapter {}
+impl SystemOps for WindowsAdapter {}

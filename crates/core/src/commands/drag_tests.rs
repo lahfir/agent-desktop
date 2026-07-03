@@ -1,7 +1,8 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     action::DragParams,
-    adapter::{NativeHandle, PlatformAdapter},
+    adapter::NativeHandle,
     capability,
     error::AdapterError,
     node::Rect,
@@ -25,7 +26,7 @@ impl DragCaptureAdapter {
     }
 }
 
-impl PlatformAdapter for DragCaptureAdapter {
+impl ObservationOps for DragCaptureAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
@@ -38,14 +39,20 @@ impl PlatformAdapter for DragCaptureAdapter {
             height: 60.0,
         }))
     }
+}
 
-    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
-        self.focused_pids.lock().unwrap().push(pid);
-        Ok(())
-    }
+impl ActionOps for DragCaptureAdapter {}
 
+impl InputOps for DragCaptureAdapter {
     fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
         *self.captured.lock().unwrap() = Some(params);
+        Ok(())
+    }
+}
+
+impl SystemOps for DragCaptureAdapter {
+    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
+        self.focused_pids.lock().unwrap().push(pid);
         Ok(())
     }
 }

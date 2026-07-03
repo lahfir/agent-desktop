@@ -1,6 +1,7 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::{PlatformAdapter, WindowFilter},
+    adapter::WindowFilter,
     error::{AdapterError, ErrorCode},
     node::WindowInfo,
     notification::{NotificationFilter, NotificationInfo},
@@ -8,11 +9,23 @@ use crate::{
 
 struct NoopAdapter;
 
-impl PlatformAdapter for NoopAdapter {}
+impl ObservationOps for NoopAdapter {}
+
+impl ActionOps for NoopAdapter {}
+
+impl InputOps for NoopAdapter {}
+
+impl SystemOps for NoopAdapter {}
 
 struct NotificationErrorAdapter;
 
-impl PlatformAdapter for NotificationErrorAdapter {
+impl ObservationOps for NotificationErrorAdapter {}
+
+impl ActionOps for NotificationErrorAdapter {}
+
+impl InputOps for NotificationErrorAdapter {}
+
+impl SystemOps for NotificationErrorAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
@@ -38,7 +51,13 @@ impl FlakyNotificationAdapter {
     }
 }
 
-impl PlatformAdapter for FlakyNotificationAdapter {
+impl ObservationOps for FlakyNotificationAdapter {}
+
+impl ActionOps for FlakyNotificationAdapter {}
+
+impl InputOps for FlakyNotificationAdapter {}
+
+impl SystemOps for FlakyNotificationAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
@@ -74,11 +93,17 @@ fn notification_wait_args(timeout_ms: u64) -> WaitArgs {
 
 struct WindowErrorAdapter;
 
-impl PlatformAdapter for WindowErrorAdapter {
+impl ObservationOps for WindowErrorAdapter {
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::permission_denied())
     }
 }
+
+impl ActionOps for WindowErrorAdapter {}
+
+impl InputOps for WindowErrorAdapter {}
+
+impl SystemOps for WindowErrorAdapter {}
 
 fn wait_args() -> WaitArgs {
     WaitArgs {
@@ -276,7 +301,7 @@ fn predicate_requires_element_mode() {
 
 struct TextlessTreeAdapter;
 
-impl PlatformAdapter for TextlessTreeAdapter {
+impl ObservationOps for TextlessTreeAdapter {
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![WindowInfo {
             id: "w-1".into(),
@@ -309,6 +334,12 @@ impl PlatformAdapter for TextlessTreeAdapter {
     }
 }
 
+impl ActionOps for TextlessTreeAdapter {}
+
+impl InputOps for TextlessTreeAdapter {}
+
+impl SystemOps for TextlessTreeAdapter {}
+
 #[test]
 fn text_wait_with_count_zero_detects_absence() {
     let _guard = crate::refs_test_support::HomeGuard::new();
@@ -339,7 +370,7 @@ struct MenuWaitAdapter {
     open_seen: std::sync::Mutex<Option<bool>>,
 }
 
-impl PlatformAdapter for MenuWaitAdapter {
+impl ObservationOps for MenuWaitAdapter {
     fn list_apps(&self) -> Result<Vec<crate::node::AppInfo>, AdapterError> {
         Ok(vec![crate::node::AppInfo {
             name: "MenuApp".into(),
@@ -347,7 +378,13 @@ impl PlatformAdapter for MenuWaitAdapter {
             bundle_id: None,
         }])
     }
+}
 
+impl ActionOps for MenuWaitAdapter {}
+
+impl InputOps for MenuWaitAdapter {}
+
+impl SystemOps for MenuWaitAdapter {
     fn wait_for_menu(&self, _pid: i32, open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
         *self.open_seen.lock().unwrap() = Some(open);
         Ok(())

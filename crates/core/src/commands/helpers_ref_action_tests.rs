@@ -1,6 +1,6 @@
 use super::test_support::{entry, text_entry};
 use super::*;
-use crate::adapter::{NativeHandle, WindowFilter};
+use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps, WindowFilter};
 use crate::context::WaitSelector;
 use crate::error::AdapterError;
 use crate::node::{AccessibilityNode, WindowInfo};
@@ -17,11 +17,13 @@ struct RecordingAdapter {
     request: Mutex<Option<ActionRequest>>,
 }
 
-impl PlatformAdapter for RecordingAdapter {
+impl ObservationOps for RecordingAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for RecordingAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -38,11 +40,15 @@ impl PlatformAdapter for RecordingAdapter {
     }
 }
 
+impl InputOps for RecordingAdapter {}
+
+impl SystemOps for RecordingAdapter {}
+
 struct AmbiguousAdapter {
     executed: AtomicU32,
 }
 
-impl PlatformAdapter for AmbiguousAdapter {
+impl ObservationOps for AmbiguousAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Err(
             AdapterError::ambiguous_target("2 candidates matched").with_details(
@@ -53,7 +59,9 @@ impl PlatformAdapter for AmbiguousAdapter {
             ),
         )
     }
+}
 
+impl ActionOps for AmbiguousAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -63,6 +71,10 @@ impl PlatformAdapter for AmbiguousAdapter {
         Ok(ActionResult::new("unexpected"))
     }
 }
+
+impl InputOps for AmbiguousAdapter {}
+
+impl SystemOps for AmbiguousAdapter {}
 
 #[test]
 fn execute_ref_action_preserves_action_and_policy() {
@@ -199,18 +211,9 @@ struct ScopedWaitAdapter {
     polled_app: Mutex<Option<String>>,
 }
 
-impl PlatformAdapter for ScopedWaitAdapter {
+impl ObservationOps for ScopedWaitAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
-    }
-
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        request: ActionRequest,
-    ) -> Result<ActionResult, AdapterError> {
-        *self.request.lock().unwrap() = Some(request);
-        Ok(ActionResult::new("ok"))
     }
 
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
@@ -245,6 +248,21 @@ impl PlatformAdapter for ScopedWaitAdapter {
         })
     }
 }
+
+impl ActionOps for ScopedWaitAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        request: ActionRequest,
+    ) -> Result<ActionResult, AdapterError> {
+        *self.request.lock().unwrap() = Some(request);
+        Ok(ActionResult::new("ok"))
+    }
+}
+
+impl InputOps for ScopedWaitAdapter {}
+
+impl SystemOps for ScopedWaitAdapter {}
 
 #[test]
 fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
@@ -286,17 +304,9 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
 
 struct MultiWindowAdapter;
 
-impl PlatformAdapter for MultiWindowAdapter {
+impl ObservationOps for MultiWindowAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
-    }
-
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-    ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("ok"))
     }
 
     fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
@@ -357,6 +367,20 @@ impl PlatformAdapter for MultiWindowAdapter {
         })
     }
 }
+
+impl ActionOps for MultiWindowAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+    ) -> Result<ActionResult, AdapterError> {
+        Ok(ActionResult::new("ok"))
+    }
+}
+
+impl InputOps for MultiWindowAdapter {}
+
+impl SystemOps for MultiWindowAdapter {}
 
 #[test]
 fn post_action_wait_polls_acted_on_window_not_focused_window() {

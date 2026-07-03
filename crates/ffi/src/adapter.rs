@@ -1,9 +1,14 @@
 use crate::convert::string::optional_adapter_string;
 use crate::error::{self, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_ptr, trap_panic_void};
-use agent_desktop_core::context::{CommandContext, validate_session_id};
-use agent_desktop_core::error::{AdapterError, AppError};
-use agent_desktop_core::{PermissionState, adapter::PlatformAdapter};
+use agent_desktop_core::adapter::PlatformAdapter;
+#[cfg(any(feature = "stub-adapter", test))]
+use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use agent_desktop_core::{
+    PermissionState,
+    context::{CommandContext, validate_session_id},
+    error::{AdapterError, AppError},
+};
 use std::ffi::c_char;
 
 pub struct AdAdapter {
@@ -22,7 +27,16 @@ pub struct AdAdapter {
 struct StubAdapter;
 
 #[cfg(feature = "stub-adapter")]
-impl PlatformAdapter for StubAdapter {}
+impl ObservationOps for StubAdapter {}
+
+#[cfg(feature = "stub-adapter")]
+impl ActionOps for StubAdapter {}
+
+#[cfg(feature = "stub-adapter")]
+impl InputOps for StubAdapter {}
+
+#[cfg(feature = "stub-adapter")]
+impl SystemOps for StubAdapter {}
 
 #[cfg(feature = "stub-adapter")]
 fn build_adapter() -> Box<dyn PlatformAdapter> {
@@ -209,7 +223,13 @@ mod tests {
 
     struct UnknownPermissionAdapter;
 
-    impl PlatformAdapter for UnknownPermissionAdapter {
+    impl ObservationOps for UnknownPermissionAdapter {}
+
+    impl ActionOps for UnknownPermissionAdapter {}
+
+    impl InputOps for UnknownPermissionAdapter {}
+
+    impl SystemOps for UnknownPermissionAdapter {
         fn permission_report(&self) -> agent_desktop_core::PermissionReport {
             agent_desktop_core::PermissionReport {
                 accessibility: PermissionState::Unknown,
@@ -233,7 +253,13 @@ mod tests {
 
     struct AmbiguousPermissionAdapter;
 
-    impl PlatformAdapter for AmbiguousPermissionAdapter {
+    impl ObservationOps for AmbiguousPermissionAdapter {}
+
+    impl ActionOps for AmbiguousPermissionAdapter {}
+
+    impl InputOps for AmbiguousPermissionAdapter {}
+
+    impl SystemOps for AmbiguousPermissionAdapter {
         fn permission_report(&self) -> agent_desktop_core::PermissionReport {
             agent_desktop_core::PermissionReport {
                 accessibility: PermissionState::Unknown,

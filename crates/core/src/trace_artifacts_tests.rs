@@ -2,7 +2,10 @@ use super::*;
 use crate::action::Action;
 use crate::action_request::ActionRequest;
 use crate::action_result::ActionResult;
-use crate::adapter::{ImageBuffer, ImageFormat, NativeHandle, PlatformAdapter, ScreenshotTarget};
+use crate::adapter::{
+    ActionOps, ImageBuffer, ImageFormat, InputOps, NativeHandle, ObservationOps, PlatformAdapter,
+    ScreenshotTarget, SystemOps,
+};
 use crate::context::CommandContext;
 use crate::error::AdapterError;
 use crate::ref_action::{ResolvedRefAction, execute_resolved};
@@ -56,11 +59,13 @@ pub(super) struct PngAdapter {
     target: Mutex<Option<ScreenshotTarget>>,
 }
 
-impl PlatformAdapter for PngAdapter {
+impl ObservationOps for PngAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for PngAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -68,7 +73,11 @@ impl PlatformAdapter for PngAdapter {
     ) -> Result<ActionResult, AdapterError> {
         Ok(ActionResult::new("ok"))
     }
+}
 
+impl InputOps for PngAdapter {}
+
+impl SystemOps for PngAdapter {
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         *self.target.lock().unwrap() = Some(target);
         Ok(ImageBuffer {
@@ -88,11 +97,13 @@ pub(super) fn png_adapter() -> PngAdapter {
 
 struct FailingScreenshotAdapter;
 
-impl PlatformAdapter for FailingScreenshotAdapter {
+impl ObservationOps for FailingScreenshotAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for FailingScreenshotAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -100,7 +111,11 @@ impl PlatformAdapter for FailingScreenshotAdapter {
     ) -> Result<ActionResult, AdapterError> {
         Ok(ActionResult::new("ok"))
     }
+}
 
+impl InputOps for FailingScreenshotAdapter {}
+
+impl SystemOps for FailingScreenshotAdapter {
     fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         Err(AdapterError::not_supported("screenshot"))
     }
@@ -110,11 +125,13 @@ struct FailingActionAdapter {
     screenshot_calls: AtomicU32,
 }
 
-impl PlatformAdapter for FailingActionAdapter {
+impl ObservationOps for FailingActionAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for FailingActionAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -122,7 +139,11 @@ impl PlatformAdapter for FailingActionAdapter {
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::internal("boom"))
     }
+}
 
+impl InputOps for FailingActionAdapter {}
+
+impl SystemOps for FailingActionAdapter {
     fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         self.screenshot_calls.fetch_add(1, Ordering::SeqCst);
         Ok(ImageBuffer {
@@ -136,11 +157,13 @@ impl PlatformAdapter for FailingActionAdapter {
 
 struct DefaultScreenshotAdapter;
 
-impl PlatformAdapter for DefaultScreenshotAdapter {
+impl ObservationOps for DefaultScreenshotAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for DefaultScreenshotAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -149,6 +172,10 @@ impl PlatformAdapter for DefaultScreenshotAdapter {
         Ok(ActionResult::new("ok"))
     }
 }
+
+impl InputOps for DefaultScreenshotAdapter {}
+
+impl SystemOps for DefaultScreenshotAdapter {}
 
 pub(super) fn run_ref_action(
     context: &CommandContext,

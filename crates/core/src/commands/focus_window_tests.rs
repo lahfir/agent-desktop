@@ -1,4 +1,5 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use std::sync::Mutex;
 
 struct FocusAdapter {
@@ -8,7 +9,7 @@ struct FocusAdapter {
     focused_window_supported: bool,
 }
 
-impl PlatformAdapter for FocusAdapter {
+impl ObservationOps for FocusAdapter {
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
         if filter.focused_only {
             Ok(self.focused_windows.lock().unwrap().clone())
@@ -16,7 +17,13 @@ impl PlatformAdapter for FocusAdapter {
             Ok(self.windows.clone())
         }
     }
+}
 
+impl ActionOps for FocusAdapter {}
+
+impl InputOps for FocusAdapter {}
+
+impl SystemOps for FocusAdapter {
     fn focus_window(&self, _win: &WindowInfo) -> Result<(), AdapterError> {
         Ok(())
     }

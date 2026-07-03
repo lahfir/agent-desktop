@@ -1,9 +1,16 @@
 use super::*;
 use crate::PermissionState;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 
 struct DeniedAdapter;
 
-impl PlatformAdapter for DeniedAdapter {
+impl ObservationOps for DeniedAdapter {}
+
+impl ActionOps for DeniedAdapter {}
+
+impl InputOps for DeniedAdapter {}
+
+impl SystemOps for DeniedAdapter {
     fn permission_report(&self) -> PermissionReport {
         PermissionReport {
             accessibility: PermissionState::Denied {

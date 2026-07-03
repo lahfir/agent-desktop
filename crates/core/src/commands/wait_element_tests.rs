@@ -2,25 +2,28 @@ use super::test_support::{
     PredicateAdapter, save_ref_in_session, snapshot_with_one_ref, wait_for_element_test,
 };
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::{NativeHandle, PlatformAdapter},
-    commands::wait_predicate,
-    element_state::ElementState,
-    error::AdapterError,
-    refs::RefEntry,
-    refs_test_support::HomeGuard,
+    adapter::NativeHandle, commands::wait_predicate, element_state::ElementState,
+    error::AdapterError, refs::RefEntry, refs_test_support::HomeGuard,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 
 struct NoopAdapter;
 
-impl PlatformAdapter for NoopAdapter {}
+impl ObservationOps for NoopAdapter {}
+
+impl ActionOps for NoopAdapter {}
+
+impl InputOps for NoopAdapter {}
+
+impl SystemOps for NoopAdapter {}
 
 struct LiveErrorPredicateAdapter {
     releases: AtomicU32,
 }
 
-impl PlatformAdapter for LiveErrorPredicateAdapter {
+impl ObservationOps for LiveErrorPredicateAdapter {
     fn resolve_element_strict_with_timeout(
         &self,
         _entry: &RefEntry,
@@ -32,12 +35,18 @@ impl PlatformAdapter for LiveErrorPredicateAdapter {
     fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
         Err(AdapterError::permission_denied())
     }
+}
 
+impl ActionOps for LiveErrorPredicateAdapter {
     fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
         self.releases.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 }
+
+impl InputOps for LiveErrorPredicateAdapter {}
+
+impl SystemOps for LiveErrorPredicateAdapter {}
 
 #[test]
 fn snapshot_pinned_missing_ref_is_invalid_args() {

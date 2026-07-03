@@ -1,10 +1,17 @@
 use super::*;
 use crate::cli_args::Surface;
-use agent_desktop_core::{PermissionReport, adapter::PlatformAdapter};
+use agent_desktop_core::PermissionReport;
+use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use clap::CommandFactory;
 
 struct NoopAdapter;
-impl PlatformAdapter for NoopAdapter {}
+impl ObservationOps for NoopAdapter {}
+
+impl ActionOps for NoopAdapter {}
+
+impl InputOps for NoopAdapter {}
+
+impl SystemOps for NoopAdapter {}
 
 fn item(command: &str, args: Value) -> BatchCommand {
     BatchCommand {

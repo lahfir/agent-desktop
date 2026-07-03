@@ -1,8 +1,9 @@
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     action::{Action, Direction},
     action_request::ActionRequest,
     action_result::ActionResult,
-    adapter::{NativeHandle, PlatformAdapter},
+    adapter::NativeHandle,
     commands::{
         check, clear, click, collapse, double_click, expand, focus, helpers::RefArgs, right_click,
         scroll, scroll_to, select, set_value, toggle, triple_click, type_text, uncheck,
@@ -54,11 +55,13 @@ impl RecordingAdapter {
     }
 }
 
-impl PlatformAdapter for RecordingAdapter {
+impl ObservationOps for RecordingAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+}
 
+impl ActionOps for RecordingAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -68,6 +71,10 @@ impl PlatformAdapter for RecordingAdapter {
         Ok(ActionResult::new("ok"))
     }
 }
+
+impl InputOps for RecordingAdapter {}
+
+impl SystemOps for RecordingAdapter {}
 
 fn snapshot_id() -> String {
     let mut refmap = RefMap::new();

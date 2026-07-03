@@ -5,7 +5,6 @@ mod command_policy;
 mod dispatch;
 
 use agent_desktop_core::{
-    adapter::PlatformAdapter,
     context::{CommandContext, WaitSelector},
     error::AppError,
     output::{ENVELOPE_VERSION, ErrorPayload, Response},
@@ -144,13 +143,14 @@ fn validate_wait_for_command(cmd_name: &str, wait: &WaitSelector) -> Result<(), 
 
 fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) {
     let adapter = build_adapter();
+    let adapter: &dyn agent_desktop_core::adapter::PlatformAdapter = &adapter;
     let report = adapter.permission_report();
     if let Err(err) = command_policy::preflight(&cmd, &report) {
         finish(cmd_name, Err(err));
         return;
     }
 
-    let result = dispatch::dispatch(cmd, &adapter, &report, context);
+    let result = dispatch::dispatch(cmd, adapter, &report, context);
     finish(cmd_name, result);
 }
 

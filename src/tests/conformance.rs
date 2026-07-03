@@ -1,7 +1,10 @@
+use agent_desktop_core::adapter::{
+    ActionOps, InputOps, ObservationOps, PlatformAdapter, SystemOps,
+};
 use agent_desktop_core::{
     action_request::ActionRequest,
     action_result::ActionResult,
-    adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
+    adapter::{LiveElement, NativeHandle, SnapshotSurface},
     capability,
     element_state::ElementState,
     error::{AdapterError, ErrorCode},
@@ -28,7 +31,7 @@ enum ResolveMode {
     Ambiguous,
 }
 
-impl PlatformAdapter for ContractAdapter {
+impl ObservationOps for ContractAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         self.resolve()
     }
@@ -64,7 +67,9 @@ impl PlatformAdapter for ContractAdapter {
     fn get_live_value(&self, _handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         Ok(self.live_value.clone())
     }
+}
 
+impl ActionOps for ContractAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -74,6 +79,10 @@ impl PlatformAdapter for ContractAdapter {
         Ok(ActionResult::new("click"))
     }
 }
+
+impl InputOps for ContractAdapter {}
+
+impl SystemOps for ContractAdapter {}
 
 impl ContractAdapter {
     fn new(resolve: ResolveMode, live_bounds: Option<Rect>) -> Self {
@@ -118,6 +127,32 @@ fn entry(bounds: Rect) -> RefEntry {
         path_is_absolute: true,
         path: Default::default(),
     }
+}
+
+#[test]
+fn platform_adapter_exposes_all_capability_methods() {
+    fn exercise(adapter: &dyn PlatformAdapter) {
+        let _ = adapter.list_windows(&agent_desktop_core::adapter::WindowFilter {
+            focused_only: false,
+            app: None,
+        });
+        let _ = adapter.list_apps();
+        let _ = adapter.permission_report();
+        let _ = adapter.get_clipboard();
+        let _ = adapter.execute_action(
+            &NativeHandle::null(),
+            ActionRequest::headless(agent_desktop_core::action::Action::Click),
+        );
+    }
+    exercise(&ContractAdapter::new(
+        ResolveMode::Ok,
+        Some(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+        }),
+    ));
 }
 
 #[test]

@@ -2,28 +2,36 @@ use super::{PressArgs, execute};
 use crate::action::KeyCombo;
 use crate::action_request::ActionRequest;
 use crate::action_result::ActionResult;
-use crate::adapter::{NativeHandle, PlatformAdapter};
+use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps};
 use crate::error::AdapterError;
 
 struct BlockingAdapter;
 
-impl PlatformAdapter for BlockingAdapter {
-    fn is_blocked_combo(&self, _combo: &KeyCombo) -> bool {
-        true
-    }
+impl ObservationOps for BlockingAdapter {}
 
+impl ActionOps for BlockingAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
     ) -> Result<ActionResult, AdapterError> {
         Ok(ActionResult::new("PressKey"))
+    }
+}
+
+impl InputOps for BlockingAdapter {}
+
+impl SystemOps for BlockingAdapter {
+    fn is_blocked_combo(&self, _combo: &KeyCombo) -> bool {
+        true
     }
 }
 
 struct AllowingAdapter;
 
-impl PlatformAdapter for AllowingAdapter {
+impl ObservationOps for AllowingAdapter {}
+
+impl ActionOps for AllowingAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
@@ -32,6 +40,10 @@ impl PlatformAdapter for AllowingAdapter {
         Ok(ActionResult::new("PressKey"))
     }
 }
+
+impl InputOps for AllowingAdapter {}
+
+impl SystemOps for AllowingAdapter {}
 
 fn args(combo: &str, force: bool) -> PressArgs {
     PressArgs {

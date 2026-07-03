@@ -1,6 +1,7 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::{NativeHandle, PlatformAdapter},
+    adapter::NativeHandle,
     capability,
     commands::wait_predicate,
     error::{AdapterError, ErrorCode},
@@ -15,7 +16,7 @@ use super::test_support::wait_for_element_test;
 
 struct AmbiguousResolveAdapter;
 
-impl PlatformAdapter for AmbiguousResolveAdapter {
+impl ObservationOps for AmbiguousResolveAdapter {
     fn resolve_element_strict_with_timeout(
         &self,
         _entry: &RefEntry,
@@ -25,11 +26,17 @@ impl PlatformAdapter for AmbiguousResolveAdapter {
     }
 }
 
+impl ActionOps for AmbiguousResolveAdapter {}
+
+impl InputOps for AmbiguousResolveAdapter {}
+
+impl SystemOps for AmbiguousResolveAdapter {}
+
 struct TransientResolveAdapter {
     errors: Mutex<Vec<ErrorCode>>,
 }
 
-impl PlatformAdapter for TransientResolveAdapter {
+impl ObservationOps for TransientResolveAdapter {
     fn resolve_element_strict_with_timeout(
         &self,
         _entry: &RefEntry,
@@ -42,9 +49,15 @@ impl PlatformAdapter for TransientResolveAdapter {
     }
 }
 
+impl ActionOps for TransientResolveAdapter {}
+
+impl InputOps for TransientResolveAdapter {}
+
+impl SystemOps for TransientResolveAdapter {}
+
 struct PermissionResolveAdapter;
 
-impl PlatformAdapter for PermissionResolveAdapter {
+impl ObservationOps for PermissionResolveAdapter {
     fn resolve_element_strict_with_timeout(
         &self,
         _entry: &RefEntry,
@@ -54,19 +67,31 @@ impl PlatformAdapter for PermissionResolveAdapter {
     }
 }
 
+impl ActionOps for PermissionResolveAdapter {}
+
+impl InputOps for PermissionResolveAdapter {}
+
+impl SystemOps for PermissionResolveAdapter {}
+
 struct StrictOnlyResolveAdapter;
 
-impl PlatformAdapter for StrictOnlyResolveAdapter {
+impl ObservationOps for StrictOnlyResolveAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 }
 
+impl ActionOps for StrictOnlyResolveAdapter {}
+
+impl InputOps for StrictOnlyResolveAdapter {}
+
+impl SystemOps for StrictOnlyResolveAdapter {}
+
 struct TimeoutCaptureAdapter {
     captured_ms: Mutex<Vec<u128>>,
 }
 
-impl PlatformAdapter for TimeoutCaptureAdapter {
+impl ObservationOps for TimeoutCaptureAdapter {
     fn resolve_element_strict_with_timeout(
         &self,
         _entry: &RefEntry,
@@ -76,6 +101,12 @@ impl PlatformAdapter for TimeoutCaptureAdapter {
         Ok(NativeHandle::null())
     }
 }
+
+impl ActionOps for TimeoutCaptureAdapter {}
+
+impl InputOps for TimeoutCaptureAdapter {}
+
+impl SystemOps for TimeoutCaptureAdapter {}
 
 fn snapshot_with_one_ref() -> String {
     let mut refmap = RefMap::new();

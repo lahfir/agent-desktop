@@ -1,10 +1,16 @@
 use super::*;
-use crate::adapter::PlatformAdapter;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::error::{AdapterError, ErrorCode};
 
 struct ProtectiveAdapter;
 
-impl PlatformAdapter for ProtectiveAdapter {
+impl ObservationOps for ProtectiveAdapter {}
+
+impl ActionOps for ProtectiveAdapter {}
+
+impl InputOps for ProtectiveAdapter {}
+
+impl SystemOps for ProtectiveAdapter {
     fn is_protected_process(&self, identifier: &str) -> bool {
         identifier.eq_ignore_ascii_case("CriticalThing")
     }
@@ -16,7 +22,13 @@ impl PlatformAdapter for ProtectiveAdapter {
 
 struct FailingAdapter;
 
-impl PlatformAdapter for FailingAdapter {
+impl ObservationOps for FailingAdapter {}
+
+impl ActionOps for FailingAdapter {}
+
+impl InputOps for FailingAdapter {}
+
+impl SystemOps for FailingAdapter {
     fn close_app(&self, _id: &str, _force: bool) -> Result<(), AdapterError> {
         Err(AdapterError::new(ErrorCode::AppNotFound, "no such app"))
     }
