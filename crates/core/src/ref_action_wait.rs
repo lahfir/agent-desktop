@@ -10,20 +10,44 @@ use crate::{
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
-fn ensure_process_responsive(
+/// Best-effort enrichment of a terminal (caller-visible) error with process
+/// liveness context. Runs exactly once, on the error `execute_with_auto_wait`
+/// is about to return — never on an internal auto-wait retry tick — and
+/// never converts a success into a failure: it only ever transforms an
+/// already-failed `Result`. Only `STALE_REF`/`APP_NOT_FOUND` are enriched
+/// (the codes that plausibly indicate a dead or hung target); a probe error
+/// (including `PLATFORM_NOT_SUPPORTED` on adapters without this capability)
+/// leaves the original error untouched.
+fn enrich_with_process_state(
     adapter: &dyn PlatformAdapter,
     entry: &RefEntry,
-) -> Result<(), AdapterError> {
-    let state = match adapter.process_state(entry.pid) {
-        Ok(state) => state,
-        Err(err) if err.code == ErrorCode::PlatformNotSupported => return Ok(()),
-        Err(err) => return Err(err),
+    err: AdapterError,
+) -> AdapterError {
+    if !matches!(err.code, ErrorCode::StaleRef | ErrorCode::AppNotFound) {
+        return err;
+    }
+    let Ok(state) = adapter.process_state(entry.pid) else {
+        return err;
     };
     if state == crate::process_state::ProcessState::Unresponsive {
         let app = entry.source_app.as_deref().unwrap_or("target application");
-        return Err(AdapterError::app_unresponsive(app));
+        return AdapterError::app_unresponsive(app);
     }
-    Ok(())
+    attach_process_state_detail(err, state)
+}
+
+fn attach_process_state_detail(
+    err: AdapterError,
+    state: crate::process_state::ProcessState,
+) -> AdapterError {
+    let mut details = err.details.clone().unwrap_or_else(|| json!({}));
+    match details.as_object_mut() {
+        Some(obj) => {
+            obj.insert("process_state".into(), json!(state.label()));
+        }
+        None => details = json!({ "process_state": state.label() }),
+    }
+    err.with_details(details)
 }
 
 fn trace_resolve_error(context: &CommandContext, ref_id: &str, err: &AdapterError) {
@@ -56,9 +80,9 @@ pub(crate) fn execute_with_auto_wait(
         ActionRequest,
     ) -> Result<ActionResult, crate::error::AppError>,
 ) -> Result<ActionResult, AdapterError> {
-    ensure_process_responsive(adapter, entry)?;
     let Some(budget_ms) = request.timeout_ms else {
-        return execute_single_shot(adapter, entry, ref_id, context, request, dispatch);
+        return execute_single_shot(adapter, entry, ref_id, context, request, dispatch)
+            .map_err(|err| enrich_with_process_state(adapter, entry, err));
     };
     execute_poll_loop(
         adapter,
@@ -69,6 +93,7 @@ pub(crate) fn execute_with_auto_wait(
         budget_from_ms(budget_ms),
         dispatch,
     )
+    .map_err(|err| enrich_with_process_state(adapter, entry, err))
 }
 
 fn execute_single_shot(
@@ -229,3 +254,7 @@ fn actionability_timeout(last_report: Option<Value>) -> AdapterError {
 #[cfg(test)]
 #[path = "ref_action_wait_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ref_action_wait_process_state_tests.rs"]
+mod process_state_tests;
