@@ -114,4 +114,13 @@ pub trait ObservationOps: Send + Sync {
     ) -> Result<Vec<NativeHandle>, AdapterError> {
         Err(AdapterError::not_supported("resolve_query"))
     }
+
+    fn hit_test(
+        &self,
+        handle: &NativeHandle,
+        point: crate::action::Point,
+    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
+        let _ = (handle, point);
+        Err(AdapterError::not_supported("hit_test"))
+    }
 }

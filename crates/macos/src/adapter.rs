@@ -98,6 +98,14 @@ impl ObservationOps for MacOSAdapter {
         crate::tree::query::resolve_query_impl(query, pid, scope)
     }
 
+    fn hit_test(
+        &self,
+        handle: &NativeHandle,
+        point: agent_desktop_core::action::Point,
+    ) -> Result<agent_desktop_core::hit_test::HitTestResult, AdapterError> {
+        crate::tree::hit_test::hit_test_impl(handle, point)
+    }
+
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
         #[cfg(target_os = "macos")]
         {

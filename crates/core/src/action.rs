@@ -56,6 +56,13 @@ impl Action {
         matches!(self, Self::Hover | Self::Drag(_))
     }
 
+    pub fn requires_hit_test(&self) -> bool {
+        matches!(
+            self,
+            Self::Click | Self::DoubleClick | Self::RightClick | Self::TripleClick | Self::Hover
+        )
+    }
+
     pub fn may_use_focus_fallback(&self) -> bool {
         matches!(self, Self::TypeText(_) | Self::PressKey(_))
     }

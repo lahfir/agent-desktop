@@ -22,7 +22,7 @@ pub fn check(
     entry: &RefEntry,
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
-    check_with_stability(entry.bounds_hash, entry, request)
+    check_with_stability(entry.bounds_hash, entry, request, None)
 }
 
 pub fn check_live(
@@ -40,7 +40,7 @@ pub fn check_live(
                 ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
             ) =>
         {
-            return check_with_stability(entry.bounds_hash, &observed, request);
+            return check_with_stability(entry.bounds_hash, &observed, request, None);
         }
         Err(err) => return Err(err),
     };
@@ -64,7 +64,12 @@ pub fn check_live(
     {
         observed.available_actions = actions;
     }
-    check_with_stability(entry.bounds_hash, &observed, request)
+    check_with_stability(
+        entry.bounds_hash,
+        &observed,
+        request,
+        Some((handle, adapter)),
+    )
 }
 
 fn live_element_is_stale(live: &crate::adapter::LiveElement) -> bool {
@@ -80,8 +85,9 @@ fn check_with_stability(
     expected_bounds_hash: Option<u64>,
     entry: &RefEntry,
     request: &ActionRequest,
+    hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
 ) -> Result<ActionabilityReport, AdapterError> {
-    let checks = vec![
+    let mut checks = vec![
         visibility_check(entry),
         stability_check(expected_bounds_hash, entry.bounds),
         enabled_check(entry),
@@ -89,6 +95,9 @@ fn check_with_stability(
         policy_check(request),
         editable_check(entry, &request.action),
     ];
+    if let Some((handle, adapter)) = hit_test {
+        checks.push(receives_events_check(entry, handle, adapter, request));
+    }
 
     let actionable = checks
         .iter()
@@ -192,6 +201,38 @@ fn editable_check(entry: &RefEntry, action: &Action) -> ActionabilityCheck {
         return pass("editable");
     }
     fail("editable", format!("role {} is not editable", entry.role))
+}
+
+fn receives_events_check(
+    entry: &RefEntry,
+    handle: &NativeHandle,
+    adapter: &dyn PlatformAdapter,
+    request: &ActionRequest,
+) -> ActionabilityCheck {
+    use crate::action::Point;
+    if !request.action.requires_hit_test() {
+        return pass("receives_events");
+    }
+    let Some(bounds) = entry.bounds else {
+        return unknown("receives_events", "bounds unavailable");
+    };
+    let point = Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    };
+    match adapter.hit_test(handle, point) {
+        Ok(result) if result.receives_events => pass("receives_events"),
+        Ok(_) => fail("receives_events", "element is occluded at its center"),
+        Err(err)
+            if matches!(
+                err.code,
+                ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
+            ) =>
+        {
+            unknown("receives_events", "hit test unavailable")
+        }
+        Err(_) => fail("receives_events", "hit test failed"),
+    }
 }
 
 fn failure_reasons(report: &ActionabilityReport) -> String {

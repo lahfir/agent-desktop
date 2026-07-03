@@ -8,6 +8,7 @@ pub mod capabilities;
 pub mod element;
 pub mod element_bounds;
 pub(crate) mod element_dedupe;
+pub mod hit_test;
 pub mod native_id;
 pub(crate) mod node_attrs;
 pub mod query;
