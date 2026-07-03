@@ -284,6 +284,23 @@ Low-level press/release for custom drag or hold interactions.
 | `--xy` | (required) | Coordinates as `x,y` |
 | `--button` | left | `left`, `right`, `middle` |
 
+### mouse-wheel
+```bash
+agent-desktop --headed mouse-wheel --x 500 --y 300
+agent-desktop --headed mouse-wheel --x 500 --y 300 --dy 240
+agent-desktop --headed mouse-wheel --x 500 --y 300 --dx -60 --dy 0
+agent-desktop --headed mouse-wheel --x 500 --y 300 --modifiers shift
+```
+Synthesizes a scroll-wheel event at absolute coordinates, distinct from `scroll <ref>`: `scroll` targets an element through AX scroll semantics, `mouse-wheel` posts a raw wheel event at a screen point (for custom scroll surfaces or canvases with no AX scroll action). Held modifiers are applied to the event, so `--modifiers shift` produces the horizontal-scroll chord some apps expect.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--x` | (required) | Absolute X coordinate |
+| `--y` | (required) | Absolute Y coordinate |
+| `--dy` | -120 | Vertical scroll delta |
+| `--dx` | 0 | Horizontal scroll delta |
+| `--modifiers` | | Held modifiers: `shift`, `cmd`, `ctrl`, `alt` (repeatable) |
+
 ## Choosing the Right Command
 
 | Goal | Preferred | Alternative |

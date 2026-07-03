@@ -114,6 +114,10 @@ agent-desktop find --app "Safari" --text "Sign In" --first
 agent-desktop find --app "App" --role checkbox --count
 agent-desktop find --app "App" --role button --nth 2
 agent-desktop find --app "App" --role button --limit 20
+agent-desktop find --app "App" --role button --name "OK" --exact
+agent-desktop find --app "App" --description "Closes the dialog"
+agent-desktop find --app "App" --native-id "submitButton"
+agent-desktop find --app "App" --state enabled --state focused=false
 ```
 
 | Flag | Description |
@@ -123,6 +127,10 @@ agent-desktop find --app "App" --role button --limit 20
 | `--name` | Accessible name or label |
 | `--value` | Current value |
 | `--text` | Fuzzy match across name, value, title, and description |
+| `--description` | Match by accessible description |
+| `--native-id` | Match by native automation id (`AXIdentifier`) |
+| `--exact` | Require exact (case-insensitive) matches for `--name`/`--description`/`--value` instead of fuzzy/substring matching |
+| `--state TOKEN[=BOOL]` | Filter by state token; repeatable. Bare `TOKEN` requires the state present, `TOKEN=true`/`TOKEN=false` asserts its value (e.g. `--state enabled --state focused=false`) |
 | `--first` | Return first match only |
 | `--last` | Return last match only |
 | `--nth N` | Return Nth match (0-indexed) |
@@ -209,17 +217,39 @@ Capture a PNG screenshot of an application window.
 agent-desktop screenshot --app "Finder"
 agent-desktop screenshot --app "Finder" output.png
 agent-desktop screenshot --window-id "w-1234" capture.png
+agent-desktop screenshot --screen 0 display.png
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
 | `--window-id` | Specific window ID |
+| `--screen` | Capture display by index instead of an app window (from `list-displays`; `0` = primary) |
 | (positional) | File path to save PNG (omit for base64 in JSON) |
 
 When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field.
 
 Screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
+
+## list-displays
+
+List connected displays with bounds and scale factor.
+
+```bash
+agent-desktop list-displays
+```
+
+Returns an array of `{ id, bounds: { x, y, width, height }, is_primary, scale }`, sorted primary-first. Use the array index (not `id`) with `screenshot --screen <index>` — `0` is always the primary display after sorting.
+
+**Output:**
+```json
+{
+  "data": [
+    { "id": "1", "bounds": { "x": 0, "y": 0, "width": 2560, "height": 1440 }, "is_primary": true, "scale": 2.0 },
+    { "id": "2", "bounds": { "x": 2560, "y": 0, "width": 1920, "height": 1080 }, "is_primary": false, "scale": 1.0 }
+  ]
+}
+```
 
 ## list-surfaces
 

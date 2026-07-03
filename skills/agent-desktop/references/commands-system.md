@@ -8,12 +8,21 @@ App lifecycle, window management, notifications, clipboard, wait, and system hea
 ```bash
 agent-desktop launch "System Settings"
 agent-desktop launch "com.apple.Safari" --timeout 10000
+agent-desktop launch "TextEdit" --arg /tmp/notes.txt
+agent-desktop launch "MyTool" --arg --flag --arg value --env KEY=VALUE --cwd /tmp
+agent-desktop launch "MyTool" --no-attach
 ```
 Launches an application by name or bundle ID and waits until its window is visible.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--timeout` | 30000 | Max wait time in ms for window to appear |
+| `--arg` | | Command-line argument passed to the launched app; repeatable, order preserved |
+| `--env` | | `KEY=VALUE` environment variable for the launched process; repeatable |
+| `--cwd` | | Working directory for the launched process |
+| `--no-attach` | false | Require a fresh launch instead of the default attach-if-running behavior |
+
+By default, `launch` attaches to an already-running instance of the app (returning its window) instead of failing. `--no-attach` changes both branches: if the app is already running, the command returns `ACTION_FAILED` naming the running pid instead of attaching; if it is not running, the command returns immediately after spawning the process without polling for a window (the response has empty `id`/`title`), which is useful for apps that legitimately have no window (menu-bar-only utilities, background agents).
 
 ### close-app
 ```bash
@@ -150,13 +159,39 @@ Blocks until a new notification appears (detects index-diff from a baseline capt
 ### clipboard-get
 ```bash
 agent-desktop clipboard-get
+agent-desktop clipboard-get --format auto
+agent-desktop clipboard-get --format image --out /tmp/clip.png
+agent-desktop clipboard-get --format file-urls
 ```
-Returns `{ "data": { "text": "clipboard contents" } }`.
+Reads a typed clipboard representation.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format` | text | Representation to read: `text`, `auto` (richest available: file references, then image, then text), `image`, `file-urls` |
+| `--out` | private temp file | Where to write image bytes when `--format image`/`auto` resolves to an image; defaults to a private file under the active session's directory, or `~/.agent-desktop/tmp` with no active session |
+
+**Output by format:**
+```json
+{ "data": { "type": "text", "text": "clipboard contents" } }
+{ "data": { "type": "file_urls", "file_urls": ["/Users/me/Documents/report.pdf"] } }
+{ "data": { "type": "image", "path": "/Users/me/.agent-desktop/sessions/<id>/clipboard/clipboard-...png", "width": 800, "height": 600 } }
+```
+When the pasteboard has nothing in the requested representation, the response is `{ "data": { "type": "<requested format>", "found": false } }` with no other payload fields.
 
 ### clipboard-set
 ```bash
 agent-desktop clipboard-set "Hello, world!"
+agent-desktop clipboard-set --image /tmp/screenshot.png
+agent-desktop clipboard-set --file-url /Users/me/Documents/report.pdf
+agent-desktop clipboard-set --file-url /tmp/a.txt --file-url /tmp/b.txt
 ```
+Writes typed content to the clipboard. `--file-url` (repeatable) and `--image` each take priority over the positional text argument when present; only one representation is written per call.
+
+| Flag | Description |
+|------|-------------|
+| (positional) | Text to write (ignored if `--image` or `--file-url` is given) |
+| `--image` | Path to a PNG file to write to the clipboard |
+| `--file-url` | File path to write as a file reference; repeatable. Every path must exist on disk or the command returns `INVALID_ARGS` |
 
 ### clipboard-clear
 ```bash
@@ -207,6 +242,30 @@ agent-desktop wait --menu-closed --app "Finder" --timeout 3000
 ```
 Blocks until the menu surface is dismissed.
 
+### wait (event)
+```bash
+agent-desktop wait --event window-opened --app "Finder" --timeout 10000
+agent-desktop wait --event window-closed --window-id "w-1234" --timeout 10000
+agent-desktop wait --event app-launched --app "Safari" --timeout 15000
+agent-desktop wait --event app-terminated --app "Safari" --timeout 15000
+agent-desktop wait --event focus-changed --timeout 10000
+agent-desktop wait --event surface-appeared --app "Finder" --timeout 5000
+agent-desktop wait --event window-opened --window "Untitled" --timeout 10000
+```
+Blocks until a desktop lifecycle signal is observed, detected by diffing a baseline captured at wait start against fresh reads — no need to know a new window's id or title up front. `--window-id`/`--window` are optional narrowing filters on top of `--event`, never a requirement by themselves (bare `--window` without `--event` instead selects the `wait (window)` mode above).
+
+| Token | Fires when |
+|-------|------------|
+| `window-opened` | A window not present in the baseline appears |
+| `window-closed` | A baseline window disappears |
+| `app-launched` | A process not present in the baseline starts |
+| `app-terminated` | A baseline process exits |
+| `focus-changed` | The OS-focused window differs from the baseline's |
+| `surface-appeared` | A menu/sheet/popover/alert surface count increases |
+| `surface-dismissed` | A menu/sheet/popover/alert surface count decreases |
+
+Transient errors (timeouts, element-not-found) are retried within the `--timeout` budget for both the baseline capture and polling; other errors fail immediately. Timeout errors include `baseline_counts` and, when a poll errored, `last_error`.
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | (positional) | | Milliseconds to pause |
@@ -216,12 +275,14 @@ Blocks until the menu surface is dismissed.
 | `--value` | | Expected text for `--predicate value` |
 | `--action` | click | Action checked by `--predicate actionable`: `click`, `type`, `set-value`, `clear` |
 | `--count` | | Expected match count for `--text` waits |
-| `--window` | | Window title to wait for |
+| `--window` | | Window title to wait for; with `--event`, narrows the event to that window's title instead of selecting a mode |
 | `--text` | | Text to wait for; with `--notification`, filters notification title/body |
 | `--menu` | false | Wait for menu surface to open |
 | `--menu-closed` | false | Wait for menu surface to close |
 | `--notification` | false | Wait for a new notification |
-| `--timeout` | 30000 | Timeout in ms (for element/window/text/menu waits) |
+| `--event` | | Desktop lifecycle signal to wait for: `window-opened`, `window-closed`, `app-launched`, `app-terminated`, `focus-changed`, `surface-appeared`, `surface-dismissed` |
+| `--window-id` | | Narrows `--event` to one window ID (window/focus events only) |
+| `--timeout` | 30000 | Timeout in ms (for element/window/text/menu/event waits) |
 | `--app` | | Scope the wait to a specific application |
 
 ## Batch

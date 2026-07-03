@@ -160,7 +160,7 @@ Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries i
 
 ### Additive Phase Model
 
-- **Phase 1:** Foundation + macOS MVP (56 commands, core engine, macOS adapter)
+- **Phase 1:** Foundation + macOS MVP (58 commands, core engine, macOS adapter)
 - **Phase 2:** Windows + Linux adapters, 10+ new commands — core untouched
 - **Phase 3:** MCP server mode via `--mcp` flag — wraps existing commands
 - **Phase 4:** Daemon, sessions, enterprise quality gates
@@ -192,7 +192,7 @@ Phases 2–4 add adapters, transports, and production readiness work. Nothing in
 PERM_DENIED, ELEMENT_NOT_FOUND, APP_NOT_FOUND, ACTION_FAILED,
 ACTION_NOT_SUPPORTED, STALE_REF, AMBIGUOUS_TARGET, WINDOW_NOT_FOUND,
 PLATFORM_NOT_SUPPORTED, TIMEOUT, INVALID_ARGS, NOTIFICATION_NOT_FOUND,
-SNAPSHOT_NOT_FOUND, POLICY_DENIED, INTERNAL
+SNAPSHOT_NOT_FOUND, POLICY_DENIED, APP_UNRESPONSIVE, INTERNAL
 ```
 
 ### Exit Codes
@@ -369,10 +369,10 @@ for the actionability preflight (`get_live_*`), and `is_protected_process`
 
 ## Commands
 
-56 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
+58 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
-All 56 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
+All 58 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
 same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
