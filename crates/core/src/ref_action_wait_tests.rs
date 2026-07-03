@@ -179,3 +179,93 @@ fn transient_ambiguity_is_recorded_in_result_details() {
         Some(&serde_json::json!(true))
     );
 }
+
+/// Regression for the double `check_live` bug: `execute_poll_loop` used to
+/// call `actionability::check_live` itself and then hand off to `dispatch`
+/// (`execute_resolved`), which runs its own internal `check_live` — two live
+/// reads per iteration instead of one. If a second call observed a
+/// transiently different state (as this adapter's second `get_live_element`
+/// call does), the failure propagated via a bare `?` that bypassed the
+/// retry/permanent classification entirely, so the action never retried it.
+/// With the fix there is exactly one `check_live` per iteration (inside
+/// `dispatch`), so this succeeds on the first attempt with a single live
+/// read. Reintroducing the loop-level check makes `get_live_element`'s
+/// second-call "disabled" state observed within the very first iteration,
+/// turning this `Ok` into an immediate `Err`.
+struct DoubleCheckAdapter {
+    live_calls: AtomicU32,
+}
+
+impl ObservationOps for DoubleCheckAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        _entry: &RefEntry,
+        _timeout: Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+    ) -> Result<crate::adapter::LiveElement, AdapterError> {
+        let call = self.live_calls.fetch_add(1, Ordering::SeqCst) + 1;
+        let states = if call == 1 {
+            vec![]
+        } else {
+            vec!["disabled".to_string()]
+        };
+        Ok(crate::adapter::LiveElement {
+            state: Some(crate::element_state::ElementState {
+                role: "button".into(),
+                states,
+                value: None,
+            }),
+            bounds: Some(crate::node::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }),
+            available_actions: Some(vec![capability::CLICK.into()]),
+        })
+    }
+}
+
+impl ActionOps for DoubleCheckAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
+        Ok(crate::action_result::ActionResult::new("click"))
+    }
+}
+
+impl InputOps for DoubleCheckAdapter {}
+
+impl SystemOps for DoubleCheckAdapter {}
+
+#[test]
+fn check_live_runs_exactly_once_per_iteration_not_twice() {
+    let adapter = DoubleCheckAdapter {
+        live_calls: AtomicU32::new(0),
+    };
+
+    let result = execute_with_auto_wait(
+        &adapter,
+        &entry(),
+        "@e1",
+        &CommandContext::default(),
+        request_with_timeout(5_000),
+        crate::ref_action::execute_resolved,
+    )
+    .unwrap();
+
+    assert_eq!(result.action, "click");
+    assert_eq!(adapter.live_calls.load(Ordering::SeqCst), 1);
+}

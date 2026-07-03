@@ -1,9 +1,9 @@
 use crate::{
     action::{MouseButton, MouseEvent, MouseEventKind},
     adapter::PlatformAdapter,
-    commands::point_resolve::{
-        PointResolveArgs, focus_for_physical_input, require_cursor_policy,
-        resolve_point_from_ref_or_xy_with_context,
+    commands::{
+        helpers::resolve_point_with_wait,
+        point_resolve::{focus_for_physical_input, require_cursor_policy},
     },
     context::CommandContext,
     error::AppError,
@@ -15,6 +15,7 @@ pub struct HoverArgs {
     pub snapshot_id: Option<String>,
     pub xy: Option<(f64, f64)>,
     pub duration_ms: Option<u64>,
+    pub timeout_ms: Option<u64>,
 }
 
 pub fn execute(
@@ -23,13 +24,12 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "hover")?;
-    let resolved = resolve_point_from_ref_or_xy_with_context(
-        PointResolveArgs {
-            ref_id: args.ref_id.as_deref(),
-            xy: args.xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide a ref (@e1) or --xy x,y",
-        },
+    let resolved = resolve_point_with_wait(
+        args.ref_id.as_deref(),
+        args.xy,
+        args.snapshot_id.as_deref(),
+        "Provide a ref (@e1) or --xy x,y",
+        args.timeout_ms,
         adapter,
         context,
     )?;

@@ -1,9 +1,9 @@
 use crate::{
     action::DragParams,
     adapter::PlatformAdapter,
-    commands::point_resolve::{
-        PointResolveArgs, focus_for_physical_input, require_cursor_policy,
-        resolve_point_from_ref_or_xy_with_context,
+    commands::{
+        helpers::resolve_point_with_wait,
+        point_resolve::{focus_for_physical_input, require_cursor_policy},
     },
     context::CommandContext,
     error::AppError,
@@ -18,6 +18,7 @@ pub struct DragArgs {
     pub snapshot_id: Option<String>,
     pub duration_ms: Option<u64>,
     pub drop_delay_ms: Option<u64>,
+    pub timeout_ms: Option<u64>,
 }
 
 pub fn execute(
@@ -26,23 +27,21 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "drag")?;
-    let from = resolve_point_from_ref_or_xy_with_context(
-        PointResolveArgs {
-            ref_id: args.from_ref.as_deref(),
-            xy: args.from_xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide --from <ref> or --from-xy x,y",
-        },
+    let from = resolve_point_with_wait(
+        args.from_ref.as_deref(),
+        args.from_xy,
+        args.snapshot_id.as_deref(),
+        "Provide --from <ref> or --from-xy x,y",
+        args.timeout_ms,
         adapter,
         context,
     )?;
-    let to = resolve_point_from_ref_or_xy_with_context(
-        PointResolveArgs {
-            ref_id: args.to_ref.as_deref(),
-            xy: args.to_xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide --to <ref> or --to-xy x,y",
-        },
+    let to = resolve_point_with_wait(
+        args.to_ref.as_deref(),
+        args.to_xy,
+        args.snapshot_id.as_deref(),
+        "Provide --to <ref> or --to-xy x,y",
+        args.timeout_ms,
         adapter,
         context,
     )?;

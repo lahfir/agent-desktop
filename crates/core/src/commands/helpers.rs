@@ -252,6 +252,57 @@ pub(crate) fn resolve_window_for_app(
     window_lookup::find_window_for_pid(pid, adapter)
 }
 
+/// Resolves a ref-or-xy point the same way [`point_resolve`] does, but retries
+/// transient resolve failures (`STALE_REF`, `AMBIGUOUS_TARGET`, `TIMEOUT`)
+/// within `timeout_ms` — the auto-wait budget for ref-addressed pointer
+/// commands (`hover`, `drag`) that resolve coordinates rather than dispatching
+/// through [`execute_ref_action_with_context`]. Coordinate-only input (no
+/// `ref_id`) and `timeout_ms: None` (`--timeout-ms 0`) both make exactly one
+/// attempt.
+pub(crate) fn resolve_point_with_wait<'a>(
+    ref_id: Option<&'a str>,
+    xy: Option<(f64, f64)>,
+    snapshot_id: Option<&'a str>,
+    missing_input_message: &'a str,
+    timeout_ms: Option<u64>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
+    use crate::commands::point_resolve::{
+        PointResolveArgs, resolve_point_from_ref_or_xy_with_context,
+    };
+
+    let attempt = || {
+        resolve_point_from_ref_or_xy_with_context(
+            PointResolveArgs {
+                ref_id,
+                xy,
+                snapshot_id,
+                missing_input_message,
+            },
+            adapter,
+            context,
+        )
+    };
+    let Some(budget_ms) = timeout_ms.filter(|_| ref_id.is_some()) else {
+        return attempt();
+    };
+    let deadline = std::time::Instant::now() + crate::ref_action_wait::budget_from_ms(budget_ms);
+    loop {
+        match attempt() {
+            Ok(point) => return Ok(point),
+            Err(err) => {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                let retryable = matches!(err.code(), "STALE_REF" | "AMBIGUOUS_TARGET" | "TIMEOUT");
+                if !retryable || remaining.is_zero() {
+                    return Err(err);
+                }
+                std::thread::sleep(crate::ref_action_wait::POLL_INTERVAL.min(remaining));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "helpers_test_support.rs"]
 mod test_support;

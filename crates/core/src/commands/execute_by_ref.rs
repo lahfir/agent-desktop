@@ -60,7 +60,7 @@ pub fn execute_with_timeout(
     let request = ActionRequest {
         action,
         policy: effective,
-        timeout_ms: None,
+        timeout_ms,
     };
     execute_ref_action_with_context(
         RefArgs {

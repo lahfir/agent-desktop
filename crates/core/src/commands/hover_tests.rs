@@ -3,13 +3,14 @@ use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     adapter::NativeHandle,
     capability,
-    error::AdapterError,
+    error::{AdapterError, ErrorCode},
     node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 struct HoverCaptureAdapter {
     moved_to: Mutex<Option<MouseEvent>>,
@@ -87,6 +88,7 @@ fn ref_args(snapshot_id: String) -> HoverArgs {
         snapshot_id: Some(snapshot_id),
         xy: None,
         duration_ms: None,
+        timeout_ms: None,
     }
 }
 
@@ -132,6 +134,7 @@ fn headed_xy_hover_never_steals_focus() {
             snapshot_id: None,
             xy: Some((5.0, 6.0)),
             duration_ms: None,
+            timeout_ms: None,
         },
         &adapter,
         &CommandContext::default().with_headed(true),
@@ -140,4 +143,97 @@ fn headed_xy_hover_never_steals_focus() {
 
     assert!(adapter.focused_pids.lock().unwrap().is_empty());
     assert!(value.get("focused").is_none());
+}
+
+struct StaleThenOkAdapter {
+    resolve_calls: AtomicU32,
+    fail_until: u32,
+}
+
+impl StaleThenOkAdapter {
+    fn new(fail_until: u32) -> Self {
+        Self {
+            resolve_calls: AtomicU32::new(0),
+            fail_until,
+        }
+    }
+}
+
+impl ObservationOps for StaleThenOkAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        let n = self.resolve_calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if n <= self.fail_until {
+            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable"));
+        }
+        Ok(NativeHandle::null())
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        Ok(Some(Rect {
+            x: 100.0,
+            y: 200.0,
+            width: 20.0,
+            height: 10.0,
+        }))
+    }
+}
+
+impl ActionOps for StaleThenOkAdapter {}
+
+impl InputOps for StaleThenOkAdapter {
+    fn mouse_event(&self, _event: MouseEvent) -> Result<(), AdapterError> {
+        Ok(())
+    }
+}
+
+impl SystemOps for StaleThenOkAdapter {}
+
+/// Regression for the F2 fix: `hover --ref` previously had no `--timeout-ms`
+/// at all, so a transient `STALE_REF` on the resolved ref failed the command
+/// outright. This proves the wired budget retries through the real
+/// `hover::execute` path.
+#[test]
+fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = ref_snapshot(42);
+    let adapter = StaleThenOkAdapter::new(2);
+
+    let value = execute(
+        HoverArgs {
+            ref_id: Some("@e1".into()),
+            snapshot_id: Some(snapshot_id),
+            xy: None,
+            duration_ms: None,
+            timeout_ms: Some(5_000),
+        },
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+
+    assert_eq!(value["hovered"], true);
+    assert!(adapter.resolve_calls.load(Ordering::SeqCst) >= 3);
+}
+
+#[test]
+fn timeout_none_makes_exactly_one_resolve_attempt() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = ref_snapshot(42);
+    let adapter = StaleThenOkAdapter::new(1);
+
+    let err = execute(
+        HoverArgs {
+            ref_id: Some("@e1".into()),
+            snapshot_id: Some(snapshot_id),
+            xy: None,
+            duration_ms: None,
+            timeout_ms: None,
+        },
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "STALE_REF");
+    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
 }

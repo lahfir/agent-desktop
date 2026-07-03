@@ -1,7 +1,6 @@
 use crate::{
     action_request::ActionRequest,
     action_result::ActionResult,
-    actionability,
     adapter::PlatformAdapter,
     context::CommandContext,
     error::{AdapterError, ErrorCode},
@@ -52,7 +51,7 @@ pub(crate) fn execute_with_auto_wait(
     ref_id: &str,
     context: &CommandContext,
     request: ActionRequest,
-    dispatch: impl FnOnce(
+    dispatch: impl Fn(
         crate::ref_action::ResolvedRefAction<'_>,
         ActionRequest,
     ) -> Result<ActionResult, crate::error::AppError>,
@@ -78,7 +77,7 @@ fn execute_single_shot(
     ref_id: &str,
     context: &CommandContext,
     request: ActionRequest,
-    dispatch: impl FnOnce(
+    dispatch: impl Fn(
         crate::ref_action::ResolvedRefAction<'_>,
         ActionRequest,
     ) -> Result<ActionResult, crate::error::AppError>,
@@ -108,7 +107,7 @@ fn execute_poll_loop(
     context: &CommandContext,
     request: ActionRequest,
     budget: Duration,
-    dispatch: impl FnOnce(
+    dispatch: impl Fn(
         crate::ref_action::ResolvedRefAction<'_>,
         ActionRequest,
     ) -> Result<ActionResult, crate::error::AppError>,
@@ -126,27 +125,25 @@ fn execute_poll_loop(
             Ok(handle) => {
                 let resolved = ResolvedElement::new(adapter, handle);
                 maybe_scroll_into_view(adapter, entry, resolved.handle(), &request);
-                match actionability::check_live(entry, resolved.handle(), adapter, &request) {
-                    Ok(_report) => {
-                        let mut result = dispatch(
-                            crate::ref_action::ResolvedRefAction {
-                                adapter,
-                                entry,
-                                handle: resolved.handle(),
-                                ref_id,
-                                context,
-                            },
-                            request.clone(),
-                        )
-                        .map_err(crate::ref_action::into_adapter_error)?;
+                match dispatch(
+                    crate::ref_action::ResolvedRefAction {
+                        adapter,
+                        entry,
+                        handle: resolved.handle(),
+                        ref_id,
+                        context,
+                    },
+                    request.clone(),
+                ) {
+                    Ok(mut result) => {
                         if saw_ambiguity {
                             result = result.with_details(json!({ "transient_ambiguity": true }));
                         }
                         return Ok(result);
                     }
                     Err(err) => {
-                        let code = err.code.clone();
-                        if is_permanent_error(&code) {
+                        let err = crate::ref_action::into_adapter_error(err);
+                        if is_permanent_error(&err.code) {
                             return Err(err);
                         }
                         last_report = err.details.clone();

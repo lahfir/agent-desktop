@@ -4,13 +4,14 @@ use crate::{
     action::DragParams,
     adapter::NativeHandle,
     capability,
-    error::AdapterError,
+    error::{AdapterError, ErrorCode},
     node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 struct DragCaptureAdapter {
     captured: Mutex<Option<DragParams>>,
@@ -66,6 +67,7 @@ fn xy_args(drop_delay_ms: Option<u64>) -> DragArgs {
         snapshot_id: None,
         duration_ms: None,
         drop_delay_ms,
+        timeout_ms: None,
     }
 }
 
@@ -143,6 +145,7 @@ fn cross_app_args(snapshot_id: String) -> DragArgs {
         snapshot_id: Some(snapshot_id),
         duration_ms: None,
         drop_delay_ms: None,
+        timeout_ms: None,
     }
 }
 
@@ -163,6 +166,7 @@ fn drag_resolves_ref_bounds_to_center_point() {
         snapshot_id: Some(snapshot_id),
         duration_ms: None,
         drop_delay_ms: Some(300),
+        timeout_ms: None,
     };
     execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 
@@ -218,4 +222,103 @@ fn headed_xy_drag_never_steals_focus() {
 
     assert!(adapter.focused_pids.lock().unwrap().is_empty());
     assert!(value.get("focused").is_none());
+}
+
+struct StaleThenOkAdapter {
+    resolve_calls: AtomicU32,
+    fail_until: u32,
+}
+
+impl StaleThenOkAdapter {
+    fn new(fail_until: u32) -> Self {
+        Self {
+            resolve_calls: AtomicU32::new(0),
+            fail_until,
+        }
+    }
+}
+
+impl ObservationOps for StaleThenOkAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        let n = self.resolve_calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if n <= self.fail_until {
+            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable"));
+        }
+        Ok(NativeHandle::null())
+    }
+
+    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+        Ok(Some(Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 40.0,
+            height: 60.0,
+        }))
+    }
+}
+
+impl ActionOps for StaleThenOkAdapter {}
+
+impl InputOps for StaleThenOkAdapter {
+    fn drag(&self, _params: DragParams) -> Result<(), AdapterError> {
+        Ok(())
+    }
+}
+
+impl SystemOps for StaleThenOkAdapter {}
+
+/// Regression for the F2 fix: `drag --from` previously had no `--timeout-ms`
+/// at all, so a transient `STALE_REF` on the resolved `from` ref failed the
+/// command outright. This proves the wired budget retries through the real
+/// `drag::execute` path.
+#[test]
+fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = cross_app_snapshot();
+    let adapter = StaleThenOkAdapter::new(2);
+
+    let value = execute(
+        DragArgs {
+            from_ref: Some("@e1".into()),
+            from_xy: None,
+            to_ref: Some("@e2".into()),
+            to_xy: None,
+            snapshot_id: Some(snapshot_id),
+            duration_ms: None,
+            drop_delay_ms: None,
+            timeout_ms: Some(5_000),
+        },
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+
+    assert_eq!(value["dragged"], true);
+    assert!(adapter.resolve_calls.load(Ordering::SeqCst) >= 3);
+}
+
+#[test]
+fn timeout_none_makes_exactly_one_resolve_attempt() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = cross_app_snapshot();
+    let adapter = StaleThenOkAdapter::new(1);
+
+    let err = execute(
+        DragArgs {
+            from_ref: Some("@e1".into()),
+            from_xy: None,
+            to_ref: Some("@e2".into()),
+            to_xy: None,
+            snapshot_id: Some(snapshot_id),
+            duration_ms: None,
+            drop_delay_ms: None,
+            timeout_ms: None,
+        },
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "STALE_REF");
+    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
 }

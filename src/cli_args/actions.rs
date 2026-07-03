@@ -17,6 +17,10 @@ fn default_scroll_direction() -> String {
     "down".to_string()
 }
 
+fn default_ref_timeout_ms() -> u64 {
+    5000
+}
+
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TypeArgs {
@@ -30,6 +34,9 @@ pub(crate) struct TypeArgs {
     pub snapshot: Option<String>,
     #[arg(value_name = "TEXT", allow_hyphen_values = true, help = "Text to type")]
     pub text: String,
+    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -49,6 +56,9 @@ pub(crate) struct SetValueArgs {
         help = "Value to set"
     )]
     pub value: String,
+    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -64,6 +74,9 @@ pub(crate) struct SelectArgs {
     pub snapshot: Option<String>,
     #[arg(value_name = "VALUE", help = "Option to select")]
     pub value: String,
+    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -87,6 +100,9 @@ pub(crate) struct ScrollArgs {
     #[arg(long, default_value = "3", help = "Number of scroll units")]
     #[serde(default = "default_scroll_amount")]
     pub amount: u32,
+    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -141,6 +157,9 @@ pub(crate) struct HoverArgs {
     pub xy: Option<String>,
     #[arg(long, help = "Hold hover position for N milliseconds")]
     pub duration: Option<u64>,
+    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -176,6 +195,9 @@ pub(crate) struct DragCliArgs {
         help = "Hold over the destination this many ms before releasing, so the drop target activates (macOS); default 500"
     )]
     pub drop_delay: Option<u64>,
+    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -215,3 +237,7 @@ pub(crate) struct MousePointArgs {
     #[serde(default = "default_mouse_button")]
     pub button: String,
 }
+
+#[cfg(test)]
+#[path = "actions_tests.rs"]
+mod tests;

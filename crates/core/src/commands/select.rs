@@ -11,6 +11,7 @@ pub struct SelectArgs {
     pub ref_id: String,
     pub snapshot_id: Option<String>,
     pub value: String,
+    pub timeout_ms: Option<u64>,
 }
 
 pub fn execute(
@@ -23,10 +24,14 @@ pub fn execute(
         RefArgs {
             ref_id: args.ref_id,
             snapshot_id: args.snapshot_id,
-            timeout_ms: None,
+            timeout_ms: args.timeout_ms,
         },
         adapter,
         request,
         context,
     )
 }
+
+#[cfg(test)]
+#[path = "select_tests.rs"]
+mod tests;
