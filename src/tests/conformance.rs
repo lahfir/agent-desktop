@@ -144,8 +144,16 @@ fn platform_adapter_exposes_all_capability_methods() {
         let _ = adapter.permission_report();
         let _ = adapter
             .get_clipboard_content(agent_desktop_core::clipboard_content::ClipboardFormat::Text);
+        let handle = adapter
+            .resolve_element_strict(&entry(Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            }))
+            .expect("ObservationOps::resolve_element_strict must be reachable through &dyn PlatformAdapter");
         let _ = adapter.execute_action(
-            &NativeHandle::null(),
+            &handle,
             ActionRequest::headless(agent_desktop_core::action::Action::Click),
         );
     }

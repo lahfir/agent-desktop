@@ -1,4 +1,4 @@
-use agent_desktop_core::{adapter::LiveElement, element_state::ElementState};
+use agent_desktop_core::{adapter::LiveElement, element_state::ElementState, node::Rect};
 
 pub(crate) fn read_post_state(
     el: &crate::tree::AXElement,
@@ -36,7 +36,7 @@ pub(crate) fn read_post_state(
 pub(crate) fn read_element_state(el: &crate::tree::AXElement) -> ElementState {
     let attrs = crate::tree::element::fetch_node_attrs(el);
     let role = normalized_role(attrs.role.as_deref());
-    element_state_from_attrs(el, attrs, role)
+    element_state_from_attrs(el, attrs, role, owning_window_bounds(el))
 }
 
 pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
@@ -44,7 +44,8 @@ pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
     let role = normalized_role(attrs.role.as_deref());
     let bounds = attrs.bounds;
     let has_scrollbars = attrs.has_scrollbars;
-    let state = element_state_from_attrs(el, attrs, role.clone());
+    let window_bounds = owning_window_bounds(el);
+    let state = element_state_from_attrs(el, attrs, role.clone(), window_bounds);
     LiveElement {
         state: Some(state),
         bounds,
@@ -54,6 +55,18 @@ pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
             has_scrollbars,
         )),
     }
+}
+
+/// Looks up the AX window that contains `el` via the `AXWindow` attribute
+/// (the same single-hop lookup `dispatch.rs`/`chain_steps.rs` use to raise a
+/// window) and reads its bounds, so post-action state reads can compute the
+/// `offscreen` token instead of always seeing `window_bounds: None`. Returns
+/// `None` when the element has no reachable window (e.g. a detached probe
+/// or a not-yet-mapped element) — offscreen simply stays unknown, same as
+/// today's behavior for those elements.
+fn owning_window_bounds(el: &crate::tree::AXElement) -> Option<Rect> {
+    let window = crate::tree::copy_element_attr(el, "AXWindow")?;
+    crate::tree::read_bounds(&window)
 }
 
 pub(crate) fn read_live_actions(el: &crate::tree::AXElement) -> Vec<String> {
@@ -66,11 +79,12 @@ fn element_state_from_attrs(
     el: &crate::tree::AXElement,
     attrs: crate::tree::NodeAttrs,
     role: String,
+    window_bounds: Option<Rect>,
 ) -> ElementState {
     let is_secure = attrs.role.as_deref() == Some("AXSecureTextField");
     let ctx = crate::tree::state_reader::StateReaderContext {
         focused: None,
-        window_bounds: None,
+        window_bounds,
         is_secure_text: is_secure,
     };
     let states = crate::tree::state_reader::states_from_element(el, &attrs, &role, &ctx);
@@ -87,3 +101,7 @@ fn normalized_role(ax_role: Option<&str>) -> String {
         .unwrap_or("unknown")
         .to_string()
 }
+
+#[cfg(test)]
+#[path = "post_state_tests.rs"]
+mod tests;

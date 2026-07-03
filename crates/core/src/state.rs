@@ -14,8 +14,20 @@ pub const INDETERMINATE: &str = "indeterminate";
 pub const PRESSED: &str = "pressed";
 pub const READONLY: &str = "readonly";
 pub const OFFSCREEN: &str = "offscreen";
+/// Vocabulary member with no macOS AX producer today (per U2's producer
+/// survey: no AX attribute maps cleanly to element-level validity). Reserved
+/// for adapters/platforms that can emit it; `assert_states_in_vocabulary`
+/// still accepts it so cross-platform consumers do not have to special-case
+/// macOS.
 pub const INVALID: &str = "invalid";
+/// Vocabulary member with no macOS AX producer today (per U2's producer
+/// survey: AX exposes selection on the selectable child, not a
+/// multi-select flag on the container). Reserved for adapters/platforms
+/// that can emit it.
 pub const MULTISELECTABLE: &str = "multiselectable";
+/// Vocabulary member with no macOS AX producer today (per U2's producer
+/// survey: no direct AX attribute for "has a popup"). Reserved for
+/// adapters/platforms that can emit it.
 pub const HASPOPUP: &str = "haspopup";
 
 pub const STATE_VOCABULARY: &[&str] = &[
@@ -78,56 +90,5 @@ impl VisibilityEvidence {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::node::Rect;
-
-    #[test]
-    fn vocabulary_contains_seventeen_tokens() {
-        assert_eq!(STATE_VOCABULARY.len(), 17);
-    }
-
-    #[test]
-    fn hidden_element_is_not_visible() {
-        let bounds = Some(Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 10.0,
-            height: 10.0,
-        });
-        assert!(!is_visible(bounds, &[HIDDEN.to_string()]));
-    }
-
-    #[test]
-    fn zero_sized_bounds_are_not_visible() {
-        let bounds = Some(Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 10.0,
-        });
-        assert!(!is_visible(bounds, &[]));
-    }
-
-    #[test]
-    fn offscreen_element_is_not_visible() {
-        let bounds = Some(Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 10.0,
-            height: 10.0,
-        });
-        assert!(!is_visible(bounds, &[OFFSCREEN.to_string()]));
-    }
-
-    #[test]
-    fn visible_element_with_live_evidence() {
-        let bounds = Some(Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 10.0,
-            height: 10.0,
-        });
-        assert!(is_visible(bounds, &[]));
-    }
-}
+#[path = "state_tests.rs"]
+mod tests;

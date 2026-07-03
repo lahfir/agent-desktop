@@ -2,12 +2,13 @@ use agent_desktop_core::{
     adapter::NativeHandle,
     error::AdapterError,
     locator::{self, LocatorQuery, NodeMatchContext},
+    node::Rect,
 };
 use core_foundation::base::{CFRetain, CFTypeRef};
 use rustc_hash::FxHashSet;
 
 use super::{
-    AXElement, copy_ax_array,
+    AXElement, NodeAttrs, copy_ax_array,
     element::{element_for_pid, fetch_node_attrs},
     native_id::meaningful_native_id,
     roles,
@@ -33,6 +34,7 @@ pub fn resolve_query_impl(
         DEFAULT_QUERY_DEPTH,
         &mut ancestors,
         &mut matches,
+        None,
     )?;
     Ok(matches)
 }
@@ -57,6 +59,7 @@ fn collect_matches(
     max_depth: u8,
     ancestors: &mut FxHashSet<usize>,
     matches: &mut Vec<NativeHandle>,
+    window_bounds: Option<Rect>,
 ) -> Result<(), AdapterError> {
     if depth > max_depth {
         return Ok(());
@@ -66,13 +69,33 @@ fn collect_matches(
         return Ok(());
     }
 
-    if element_matches(el, query, max_depth.saturating_sub(depth))? {
+    let attrs = fetch_node_attrs(el);
+    let role = roles::ax_role_to_str(attrs.role.as_deref().unwrap_or("")).to_string();
+
+    if element_matches(
+        el,
+        &attrs,
+        &role,
+        query,
+        window_bounds,
+        max_depth.saturating_sub(depth),
+    )? {
         matches.push(retained_handle(el.clone())?);
     }
 
+    let child_window_bounds = window_bounds_for_children(&attrs, window_bounds);
+
     if let Some(children) = copy_ax_array(el, kAXChildrenAttribute) {
         for child in &children {
-            collect_matches(child, query, depth + 1, max_depth, ancestors, matches)?;
+            collect_matches(
+                child,
+                query,
+                depth + 1,
+                max_depth,
+                ancestors,
+                matches,
+                child_window_bounds,
+            )?;
         }
     }
 
@@ -80,27 +103,41 @@ fn collect_matches(
     Ok(())
 }
 
+/// Mirrors `builder.rs`'s window-bounds inheritance: a node's own state is
+/// computed against the window bounds inherited from its ancestors, but its
+/// *children* see the current node's own bounds once that node is itself the
+/// window (`AXWindow`). Kept pure and file-local so it stays independently
+/// testable without an AX round trip.
+fn window_bounds_for_children(attrs: &NodeAttrs, inherited: Option<Rect>) -> Option<Rect> {
+    if attrs.role.as_deref() == Some("AXWindow") {
+        attrs.bounds.or(inherited)
+    } else {
+        inherited
+    }
+}
+
 fn element_matches(
     el: &AXElement,
+    attrs: &NodeAttrs,
+    role: &str,
     query: &LocatorQuery,
+    window_bounds: Option<Rect>,
     remaining_depth: u8,
 ) -> Result<bool, AdapterError> {
-    let attrs = fetch_node_attrs(el);
-    let role = roles::ax_role_to_str(attrs.role.as_deref().unwrap_or("")).to_string();
     let state_ctx = StateReaderContext {
         focused: None,
-        window_bounds: None,
+        window_bounds,
         is_secure_text: attrs.role.as_deref() == Some("AXSecureTextField"),
     };
-    let states = state_reader::states_from_element(el, &attrs, &role, &state_ctx);
+    let states = state_reader::states_from_element(el, attrs, role, &state_ctx);
     let children = if query.has.is_some() || query.has_not.is_some() {
-        build_child_nodes(el, remaining_depth)
+        build_child_nodes(el, remaining_depth, window_bounds)
     } else {
         Vec::new()
     };
     let native_id = meaningful_native_id(attrs.native_id.clone());
     let ctx = NodeMatchContext {
-        role: &role,
+        role,
         name: attrs.title.as_deref(),
         description: attrs.description.as_deref(),
         native_id: native_id.as_deref(),
@@ -114,30 +151,33 @@ fn element_matches(
 fn build_child_nodes(
     el: &AXElement,
     max_depth: u8,
+    window_bounds: Option<Rect>,
 ) -> Vec<agent_desktop_core::node::AccessibilityNode> {
     let Some(children) = copy_ax_array(el, kAXChildrenAttribute) else {
         return Vec::new();
     };
     children
         .iter()
-        .filter_map(|child| ax_node_shallow(child, max_depth.saturating_sub(1)))
+        .filter_map(|child| ax_node_shallow(child, max_depth.saturating_sub(1), window_bounds))
         .collect()
 }
 
 fn ax_node_shallow(
     el: &AXElement,
     remaining_depth: u8,
+    window_bounds: Option<Rect>,
 ) -> Option<agent_desktop_core::node::AccessibilityNode> {
     let attrs = fetch_node_attrs(el);
     let role = roles::ax_role_to_str(attrs.role.as_deref().unwrap_or("")).to_string();
     let state_ctx = StateReaderContext {
         focused: None,
-        window_bounds: None,
+        window_bounds,
         is_secure_text: false,
     };
     let states = state_reader::states_from_element(el, &attrs, &role, &state_ctx);
     let children = if remaining_depth > 0 {
-        build_child_nodes(el, remaining_depth)
+        let child_window_bounds = window_bounds_for_children(&attrs, window_bounds);
+        build_child_nodes(el, remaining_depth, child_window_bounds)
     } else {
         Vec::new()
     };
@@ -164,3 +204,7 @@ fn retained_handle(candidate: AXElement) -> Result<NativeHandle, AdapterError> {
     unsafe { CFRetain(candidate.0 as CFTypeRef) };
     Ok(unsafe { NativeHandle::from_ptr(candidate.0 as *const _) })
 }
+
+#[cfg(test)]
+#[path = "query_tests.rs"]
+mod tests;

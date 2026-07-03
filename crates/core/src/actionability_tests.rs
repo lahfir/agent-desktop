@@ -44,6 +44,13 @@ fn click_passes_when_target_is_enabled_visible_and_supported() {
 }
 
 #[test]
+fn states_are_enabled_reads_the_canonical_disabled_token() {
+    assert!(!states_are_enabled(&[crate::state::DISABLED.to_string()]));
+    assert!(states_are_enabled(&[]));
+    assert!(states_are_enabled(&[crate::state::FOCUSED.to_string()]));
+}
+
+#[test]
 fn disabled_entry_fails_before_action_dispatch() {
     let mut entry = entry();
     entry.states.push("disabled".into());

@@ -368,16 +368,5 @@ fn action_availability_makes_toggle_and_expand_applicable() {
     }
 }
 
-#[test]
-fn state_vocabulary_conformance_guard() {
-    for token in [
-        state::FOCUSED,
-        state::DISABLED,
-        state::CHECKED,
-        state::EXPANDED,
-        state::HIDDEN,
-        state::OFFSCREEN,
-    ] {
-        state::assert_states_in_vocabulary(&[token.to_string()]);
-    }
-}
+#[path = "is_check_vocabulary_tests.rs"]
+mod vocabulary_tests;

@@ -155,7 +155,7 @@ fn enabled_check(entry: &RefEntry) -> ActionabilityCheck {
 }
 
 pub fn states_are_enabled(states: &[String]) -> bool {
-    !states.iter().any(|state| state == "disabled")
+    !state::has_state(states, state::DISABLED)
 }
 
 pub fn bounds_are_visible(bounds: Option<Rect>) -> bool {
