@@ -18,8 +18,7 @@ mod imp {
         tree::{
             NodeAttrs,
             attributes::{
-                copy_ax_array, copy_bool_attr, copy_first_element_attr, copy_string_attr,
-                copy_value_typed,
+                copy_bool_attr, copy_first_element_attr, copy_string_attr, copy_value_typed,
             },
             ax_element::AXElement,
             ax_value,
@@ -240,27 +239,6 @@ mod imp {
         )
     }
 
-    pub fn resolve_element_name(el: &AXElement) -> Option<String> {
-        let ax_role = copy_string_attr(el, kAXRoleAttribute);
-        let title = copy_string_attr(el, kAXTitleAttribute);
-        let desc = copy_string_attr(el, kAXDescriptionAttribute);
-
-        let name = title.or(desc);
-        let name = if name.is_none() && ax_role.as_deref() == Some("AXStaticText") {
-            copy_string_attr(el, kAXValueAttribute).or(name)
-        } else {
-            name
-        };
-
-        name.or_else(|| {
-            let children = super::child_attributes(ax_role.as_deref())
-                .iter()
-                .find_map(|attr| copy_ax_array(el, attr).filter(|v| !v.is_empty()))
-                .unwrap_or_default();
-            crate::tree::builder::label_from_children(&children)
-        })
-    }
-
     pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
         for attr_name in child_attributes(ax_role) {
             let mut count: core_foundation_sys::base::CFIndex = 0;
@@ -291,13 +269,22 @@ mod imp {
         0
     }
 
-    pub fn resolve_element_name(_el: &AXElement) -> Option<String> {
-        None
-    }
-
     pub fn fetch_node_attrs(_el: &AXElement) -> NodeAttrs {
         NodeAttrs::default()
     }
 }
 
-pub use imp::{count_children, element_for_pid, fetch_node_attrs, resolve_element_name};
+pub use imp::{count_children, element_for_pid, fetch_node_attrs};
+
+/// The element's accessible name, reduced from adapter-supplied
+/// [`agent_desktop_core::accname::NameEvidence`] by core's precedence
+/// algorithm. This function is a thin caller-facing wrapper — it owns no
+/// fallback chain of its own; `name_evidence` module supplies raw evidence,
+/// `compute_name` decides precedence.
+pub fn resolve_element_name(el: &super::ax_element::AXElement) -> Option<String> {
+    agent_desktop_core::accname::compute_name(&super::name_evidence::name_evidence_impl(el))
+}
+
+#[cfg(test)]
+#[path = "element_tests.rs"]
+mod tests;
