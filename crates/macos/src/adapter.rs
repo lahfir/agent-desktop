@@ -334,17 +334,9 @@ impl SystemOps for MacOSAdapter {
 
     fn capture_signal_baseline(
         &self,
+        filter: &agent_desktop_core::signals::SignalFilter,
     ) -> Result<agent_desktop_core::signals::SignalBaseline, AdapterError> {
-        crate::system::signals::capture_signal_baseline_impl()
-    }
-
-    fn wait_for_signal(
-        &self,
-        baseline: &agent_desktop_core::signals::SignalBaseline,
-        signal: &agent_desktop_core::signals::DesktopSignal,
-        timeout_ms: u64,
-    ) -> Result<agent_desktop_core::signals::DesktopSignal, AdapterError> {
-        crate::system::signals::wait_for_signal_impl(baseline, signal, timeout_ms)
+        crate::system::signals::capture_signal_baseline_impl(filter)
     }
 
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError> {

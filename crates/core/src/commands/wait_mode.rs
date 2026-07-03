@@ -86,6 +86,10 @@ impl WaitMode {
     }
 }
 
+/// `--window` is dual-purposed: alone it selects `WaitMode::Window`, but
+/// alongside `--event` it narrows the event wait to a specific window title
+/// instead of choosing a second mode — so it is excluded from the
+/// exactly-one-mode count whenever `--event` is also present.
 pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
     if args.predicate.predicate.is_some() && args.mode.element.is_none() {
         return Err(AppError::invalid_input_with_suggestion(
@@ -108,7 +112,7 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
     let selected = [
         args.mode.ms.is_some(),
         args.mode.element.is_some(),
-        args.mode.window.is_some(),
+        args.mode.window.is_some() && args.mode.event.is_none(),
         args.mode.text.is_some() && !args.mode.notification,
         args.mode.menu,
         args.mode.menu_closed,
@@ -135,3 +139,7 @@ fn missing_wait_mode() -> AppError {
         "Provide a duration (ms), --menu, --notification, --event, --element <ref>, --window <title>, or --text <text>",
     )
 }
+
+#[cfg(test)]
+#[path = "wait_mode_tests.rs"]
+mod tests;

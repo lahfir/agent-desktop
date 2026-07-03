@@ -69,17 +69,17 @@ pub trait SystemOps: Send + Sync {
         vec![crate::adapter::SnapshotSurface::Window]
     }
 
-    fn capture_signal_baseline(&self) -> Result<crate::signals::SignalBaseline, AdapterError> {
-        Err(AdapterError::not_supported("capture_signal_baseline"))
-    }
-
-    fn wait_for_signal(
+    /// Captures a point-in-time [`crate::signals::SignalBaseline`] snapshot,
+    /// narrowed by `filter` when the caller already knows which app it cares
+    /// about. `wait --event` calls this once at wait-start and again on every
+    /// poll, then diffs the two snapshots with `crate::signals::diff_signals`
+    /// — the adapter never decides what changed, only what the desktop looks
+    /// like right now.
+    fn capture_signal_baseline(
         &self,
-        _baseline: &crate::signals::SignalBaseline,
-        _signal: &crate::signals::DesktopSignal,
-        _timeout_ms: u64,
-    ) -> Result<crate::signals::DesktopSignal, AdapterError> {
-        Err(AdapterError::not_supported("wait_for_signal"))
+        _filter: &crate::signals::SignalFilter,
+    ) -> Result<crate::signals::SignalBaseline, AdapterError> {
+        Err(AdapterError::not_supported("capture_signal_baseline"))
     }
 
     fn open_session(

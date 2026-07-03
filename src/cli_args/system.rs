@@ -162,7 +162,10 @@ pub(crate) struct WaitModeArgs {
     pub ms: Option<u64>,
     #[arg(long, help = "Block until this element ref appears in the tree")]
     pub element: Option<String>,
-    #[arg(long, help = "Block until a window with this title appears")]
+    #[arg(
+        long,
+        help = "Block until a window with this title appears; with --event, narrows the event wait to that window title instead of selecting a mode"
+    )]
     pub window: Option<String>,
     #[arg(
         long,
@@ -180,13 +183,13 @@ pub(crate) struct WaitModeArgs {
     pub notification: bool,
     #[arg(
         long,
-        help = "Block until a desktop lifecycle signal: app_activated, window_focused, window_closed"
+        help = "Block until a desktop lifecycle signal, detected by baseline diff without needing to know the id/title up front: window-opened, window-closed, app-launched, app-terminated, focus-changed, surface-appeared, surface-dismissed"
     )]
     pub event: Option<String>,
     #[arg(
         long,
         name = "window-id",
-        help = "Window ID for --event window_focused or window_closed"
+        help = "Optional: narrow --event window-opened/window-closed/focus-changed to one window ID"
     )]
     pub window_id: Option<String>,
 }
