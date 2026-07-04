@@ -29,7 +29,7 @@ pub fn capture_signal_baseline_impl(filter: &SignalFilter) -> Result<SignalBasel
         focused_only: false,
         app: filter.app.clone(),
     })?;
-    let apps = matching_apps(filter);
+    let apps = matching_apps(filter)?;
     let surfaces = surfaces_for_apps(filter, &apps);
     Ok(SignalBaseline {
         windows,
@@ -46,18 +46,18 @@ pub fn capture_signal_baseline_impl(
 }
 
 #[cfg(target_os = "macos")]
-fn matching_apps(filter: &SignalFilter) -> Vec<AppInfo> {
-    let all = crate::system::app_list::list_apps_impl().unwrap_or_default();
+fn matching_apps(filter: &SignalFilter) -> Result<Vec<AppInfo>, AdapterError> {
+    let all = crate::system::app_list::list_apps_impl()?;
     if let Some(name) = &filter.app {
-        return all
+        return Ok(all
             .into_iter()
             .filter(|app| app.name.eq_ignore_ascii_case(name))
-            .collect();
+            .collect());
     }
     if let Some(pid) = filter.pid {
-        return all.into_iter().filter(|app| app.pid == pid).collect();
+        return Ok(all.into_iter().filter(|app| app.pid == pid).collect());
     }
-    all
+    Ok(all)
 }
 
 /// Surfaces (sheets, alerts, popovers, open menus) are only inspected for

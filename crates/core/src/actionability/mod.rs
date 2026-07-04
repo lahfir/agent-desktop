@@ -34,37 +34,35 @@ pub fn check_live(
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
     let mut observed = entry.clone();
-    let live = match adapter.get_live_element(handle) {
-        Ok(live) => live,
+    match adapter.get_live_element(handle) {
+        Ok(live) => {
+            if live_element_is_stale(&live) {
+                return Err(AdapterError::new(
+                    ErrorCode::StaleRef,
+                    "Resolved element no longer exposes live accessibility state",
+                )
+                .with_suggestion(
+                    "Re-run a snapshot to obtain fresh refs, then retry with the new ref (CLI: snapshot; FFI: ad_snapshot then ad_execute_by_ref with the returned snapshot_id)",
+                ));
+            }
+            if let Some(state) = live.state {
+                observed.role = state.role;
+                observed.states = state.states;
+                observed.value = state.value.or(observed.value);
+            }
+            observed.bounds = live.bounds;
+            if let Some(actions) = live.available_actions
+                && !actions.is_empty()
+            {
+                observed.available_actions = actions;
+            }
+        }
         Err(err)
             if matches!(
                 err.code,
                 ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
-            ) =>
-        {
-            return check_with_stability(entry.bounds_hash, &observed, request, None);
-        }
+            ) => {}
         Err(err) => return Err(err),
-    };
-    if live_element_is_stale(&live) {
-        return Err(AdapterError::new(
-            ErrorCode::StaleRef,
-            "Resolved element no longer exposes live accessibility state",
-        )
-        .with_suggestion(
-            "Re-run a snapshot to obtain fresh refs, then retry with the new ref (CLI: snapshot; FFI: ad_snapshot then ad_execute_by_ref with the returned snapshot_id)",
-        ));
-    }
-    if let Some(state) = live.state {
-        observed.role = state.role;
-        observed.states = state.states;
-        observed.value = state.value.or(observed.value);
-    }
-    observed.bounds = live.bounds;
-    if let Some(actions) = live.available_actions
-        && !actions.is_empty()
-    {
-        observed.available_actions = actions;
     }
     check_with_stability(
         entry.bounds_hash,

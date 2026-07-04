@@ -37,7 +37,6 @@ pub mod refs_store;
 #[cfg(test)]
 mod refs_test_support;
 pub(crate) mod resolved_element;
-pub mod role;
 pub mod roles;
 pub mod screenshot_target;
 pub(crate) mod search_text;
@@ -74,6 +73,7 @@ pub use display_info::DisplayInfo;
 pub use element_state::ElementState;
 pub use error::{AdapterError, AppError, ErrorCode};
 pub use hit_test::HitTestResult;
+pub use image_buffer::parse_png_dimensions;
 pub use interaction_policy::InteractionPolicy;
 pub use node::{AccessibilityNode, AppInfo, Rect, WindowInfo};
 pub use notification::{NotificationFilter, NotificationInfo};

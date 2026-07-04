@@ -2,7 +2,7 @@ use crate::{
     adapter::PlatformAdapter,
     clipboard_content::ClipboardContent,
     error::AppError,
-    image_buffer::{ImageBuffer, ImageFormat},
+    image_buffer::{ImageBuffer, ImageFormat, parse_png_dimensions},
 };
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -28,7 +28,9 @@ fn build_content(args: ClipboardSetArgs) -> Result<ClipboardContent, AppError> {
     }
     if let Some(path) = args.image {
         let data = std::fs::read(&path)?;
-        let (width, height) = png_dimensions(&data);
+        let Some((width, height)) = parse_png_dimensions(&data) else {
+            return Err(AppError::invalid_input("--image file is not a valid PNG"));
+        };
         return Ok(ClipboardContent::Image(ImageBuffer {
             data,
             format: ImageFormat::Png,
@@ -58,15 +60,6 @@ fn validate_file_urls(urls: &[String]) -> Result<Vec<String>, AppError> {
         )));
     }
     Ok(urls.to_vec())
-}
-
-fn png_dimensions(data: &[u8]) -> (u32, u32) {
-    if data.len() < 24 {
-        return (0, 0);
-    }
-    let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-    let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
-    (w, h)
 }
 
 #[cfg(test)]

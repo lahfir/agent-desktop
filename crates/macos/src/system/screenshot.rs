@@ -1,6 +1,7 @@
 use agent_desktop_core::{
     adapter::{ImageBuffer, ImageFormat},
     error::{AdapterError, ErrorCode},
+    image_buffer::parse_png_dimensions,
 };
 
 #[cfg(target_os = "macos")]
@@ -116,7 +117,7 @@ mod imp {
     fn read_png(path: &Path) -> Result<ImageBuffer, AdapterError> {
         let data = std::fs::read(path)
             .map_err(|e| AdapterError::internal(format!("read screenshot: {e}")))?;
-        let (width, height) = png_dimensions(&data);
+        let (width, height) = parse_png_dimensions(&data).unwrap_or((0, 0));
         Ok(ImageBuffer {
             data,
             format: ImageFormat::Png,
@@ -150,15 +151,6 @@ mod imp {
             detail
         };
         AdapterError::internal("screencapture exited with error").with_platform_detail(detail)
-    }
-
-    fn png_dimensions(data: &[u8]) -> (u32, u32) {
-        if data.len() < 24 {
-            return (0, 0);
-        }
-        let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-        let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
-        (w, h)
     }
 
     fn find_cg_window_id_for_pid(pid: i32) -> Option<u32> {

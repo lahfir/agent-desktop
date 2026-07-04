@@ -1,5 +1,3 @@
-use crate::role::Role;
-
 /// Interactive roles that receive refs during snapshot allocation.
 ///
 /// Each entry must be produced by at least one platform adapter's native-to-canonical
@@ -41,7 +39,8 @@ pub fn normalize_role_query(role: &str) -> String {
 
 /// Returns true when `role` is in [`INTERACTIVE_ROLES`].
 pub fn is_interactive_role(role: &str) -> bool {
-    Role::parse(role).is_interactive()
+    let normalized = role.trim().to_ascii_lowercase();
+    INTERACTIVE_ROLES.contains(&normalized.as_str())
 }
 
 /// Returns true for roles whose checked/unchecked state can be queried and set.
@@ -63,6 +62,13 @@ pub fn is_mutable_value_role(role: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_interactive_role_matches_interactive_roles_list() {
+        for role in INTERACTIVE_ROLES {
+            assert!(is_interactive_role(role), "{role} should be interactive");
+        }
+    }
 
     #[test]
     fn interactive_roles_are_sorted_and_unique() {

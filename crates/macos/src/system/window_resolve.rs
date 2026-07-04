@@ -73,6 +73,18 @@ fn window_info_from_record(win: &WindowInfo, record: &WindowRecord) -> WindowInf
     }
 }
 
+/// Matches the CGWindow-verified `window_number` against the app's live
+/// `AXWindow` elements.
+///
+/// The CGWindow record was already verified (pid + title) by
+/// `locate_verified_record`, so a total bridge miss means
+/// `_AXUIElementGetWindow` transiently failed (busy/hung app, benign race),
+/// not that the window is gone. In that case, fall back to the AX window
+/// matching the verified title before reporting `WINDOW_NOT_FOUND` — but only
+/// when the title identifies exactly one live `AXWindow`. If zero or two-plus
+/// windows share that title, the correct target cannot be determined safely,
+/// so this returns `None` and lets the caller surface `WINDOW_NOT_FOUND`
+/// rather than risk acting on the wrong same-titled window.
 fn ax_window_element_for_number(
     pid: i32,
     window_number: i64,
@@ -88,16 +100,16 @@ fn ax_window_element_for_number(
             return Some(window.clone());
         }
     }
-    // The CGWindow record was already verified (pid + title) by
-    // locate_verified_record, so a total bridge miss means
-    // _AXUIElementGetWindow transiently failed (busy/hung app, benign race),
-    // not that the window is gone. Fall back to the AX window matching the
-    // verified title before reporting WINDOW_NOT_FOUND.
     let title = fallback_title?;
-    windows.into_iter().find(|window| {
+    let mut matches = windows.into_iter().filter(|window| {
         copy_string_attr(window, "AXRole").as_deref() == Some("AXWindow")
             && copy_string_attr(window, "AXTitle").as_deref() == Some(title)
-    })
+    });
+    let single_match = matches.next()?;
+    match matches.next() {
+        Some(_) => None,
+        None => Some(single_match),
+    }
 }
 
 /// Bridges an accessibility window element to its CoreGraphics window number

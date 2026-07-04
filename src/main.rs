@@ -23,6 +23,8 @@ use cli::{Cli, Commands};
 use cli_args::skills::SkillsAction;
 use std::io::{BufWriter, Write};
 
+const EXIT_STDOUT_WRITE_FAILURE: i32 = 74;
+
 const WAIT_SUPPORTED: &[&str] = &[
     "snapshot",
     "click",
@@ -55,10 +57,12 @@ fn main() {
             }
             let msg = e.to_string();
             let first_line = msg.lines().next().unwrap_or("parse error");
-            emit_response(&Response::err(
+            if let Err(write_err) = emit_response(&Response::err(
                 "unknown",
                 ErrorPayload::new("INVALID_ARGS", first_line),
-            ));
+            )) {
+                exit_after_emit_failure(write_err);
+            }
             std::process::exit(2);
         }
     };
@@ -165,20 +169,32 @@ fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) {
 fn finish(cmd_name: &str, result: Result<serde_json::Value, agent_desktop_core::error::AppError>) {
     match result {
         Ok(data) => {
-            emit_response(&Response::ok(cmd_name, data));
+            if let Err(write_err) = emit_response(&Response::ok(cmd_name, data)) {
+                exit_after_emit_failure(write_err);
+            }
             std::process::exit(0);
         }
         Err(e) => {
-            emit_response(&Response::err(
+            if let Err(write_err) = emit_response(&Response::err(
                 cmd_name,
                 agent_desktop_core::ErrorPayload::from_app_error(&e),
-            ));
+            )) {
+                exit_after_emit_failure(write_err);
+            }
             std::process::exit(1);
         }
     }
 }
 
-fn emit_response(response: &Response) {
+/// Reports a stdout write failure on stderr and terminates with a distinct
+/// non-zero exit code, so a broken pipe or full disk is never mistaken for a
+/// successful command outcome.
+fn exit_after_emit_failure(write_err: std::io::Error) -> ! {
+    eprintln!("agent-desktop: failed to write response to stdout: {write_err}");
+    std::process::exit(EXIT_STDOUT_WRITE_FAILURE);
+}
+
+fn emit_response(response: &Response) -> std::io::Result<()> {
     match serde_json::to_value(response) {
         Ok(value) => emit_json(&value),
         Err(err) => emit_json(&serde_json::json!({
@@ -193,14 +209,12 @@ fn emit_response(response: &Response) {
     }
 }
 
-fn emit_json(value: &serde_json::Value) {
+fn emit_json(value: &serde_json::Value) -> std::io::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = BufWriter::new(stdout.lock());
-    if serde_json::to_writer(&mut writer, value).is_err() {
-        return;
-    }
-    let _ = writer.write_all(b"\n");
-    let _ = writer.flush();
+    serde_json::to_writer(&mut writer, value).map_err(std::io::Error::other)?;
+    writer.write_all(b"\n")?;
+    writer.flush()
 }
 
 fn build_adapter() -> impl agent_desktop_core::adapter::PlatformAdapter {

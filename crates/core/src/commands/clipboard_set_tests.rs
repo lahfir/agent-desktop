@@ -126,6 +126,8 @@ fn image_flag_reads_bytes_and_dimensions_from_file() {
         std::process::id()
     ));
     let mut bytes = vec![0u8; 24];
+    bytes[0..8].copy_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    bytes[12..16].copy_from_slice(b"IHDR");
     bytes[16..20].copy_from_slice(&11u32.to_be_bytes());
     bytes[20..24].copy_from_slice(&8u32.to_be_bytes());
     std::fs::write(&path, &bytes).unwrap();

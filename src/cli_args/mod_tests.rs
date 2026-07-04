@@ -1,4 +1,77 @@
 use super::*;
+use agent_desktop_core::adapter::SnapshotSurface;
+use clap::ValueEnum;
+
+/// The exhaustive set of `SnapshotSurface` values the CLI's `Surface` enum is
+/// meant to expose. `SnapshotSurface` is `#[non_exhaustive]`, so a new variant
+/// added to it will not force `Surface::to_core`'s match arms (which match on
+/// the local `Surface`, not on `SnapshotSurface`) to change — this list is the
+/// independent tripwire that must be updated by hand alongside any new
+/// `Surface`/`to_core` arm.
+const EXPECTED_CORE_SURFACES: &[SnapshotSurface] = &[
+    SnapshotSurface::Window,
+    SnapshotSurface::Focused,
+    SnapshotSurface::Menu,
+    SnapshotSurface::Menubar,
+    SnapshotSurface::Sheet,
+    SnapshotSurface::Popover,
+    SnapshotSurface::Alert,
+];
+
+/// Keeps the CLI `Surface` enum and the hand-maintained `EXPECTED_CORE_SURFACES`
+/// tripwire in one-to-one correspondence: every `Surface` variant (enumerated
+/// via its `ValueEnum` derive, so this side stays exhaustive automatically) maps
+/// through `.to_core()` to a distinct `SnapshotSurface`, the tripwire lists each
+/// of those exactly once, and the two sets match. An inconsistent hand-edit — a
+/// `to_core` arm that collides with another, or the tripwire updated without a
+/// matching `Surface`/`to_core` arm (or the reverse) — fails here. The one gap it
+/// cannot close: because `SnapshotSurface` is `#[non_exhaustive]` with no
+/// reflection, a new core variant added with no CLI-side edit keeps both sides
+/// their current size and passes — the by-hand tripwire update is the only
+/// checkpoint for that case (see `EXPECTED_CORE_SURFACES`).
+#[test]
+fn surface_to_core_maps_one_to_one_onto_expected_core_surfaces() {
+    let cli_variants = Surface::value_variants();
+    assert_eq!(
+        cli_variants.len(),
+        EXPECTED_CORE_SURFACES.len(),
+        "Surface has {} variants but EXPECTED_CORE_SURFACES has {} — \
+         update EXPECTED_CORE_SURFACES (and Surface::to_core) to match",
+        cli_variants.len(),
+        EXPECTED_CORE_SURFACES.len()
+    );
+
+    for (i, a) in EXPECTED_CORE_SURFACES.iter().enumerate() {
+        for (j, b) in EXPECTED_CORE_SURFACES.iter().enumerate() {
+            assert!(
+                i == j || a != b,
+                "EXPECTED_CORE_SURFACES lists SnapshotSurface::{a:?} more than once — \
+                 each expected core surface must appear exactly once"
+            );
+        }
+    }
+
+    let mapped: Vec<SnapshotSurface> = cli_variants.iter().map(Surface::to_core).collect();
+    for (i, a) in mapped.iter().enumerate() {
+        for (j, b) in mapped.iter().enumerate() {
+            assert!(
+                i == j || a != b,
+                "Surface::{:?} and Surface::{:?} both map to the same \
+                 SnapshotSurface::{a:?} via to_core — mapping must be distinct",
+                cli_variants[i],
+                cli_variants[j]
+            );
+        }
+    }
+
+    for expected in EXPECTED_CORE_SURFACES {
+        assert!(
+            mapped.contains(expected),
+            "no Surface variant maps to SnapshotSurface::{expected:?} via to_core — \
+             a Surface arm is missing for this core surface"
+        );
+    }
+}
 
 /// God-object regression: `FindArgs` used to carry 14 flat fields; the
 /// match-criteria and result-shaping groups now live in

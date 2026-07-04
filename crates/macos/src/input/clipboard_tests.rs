@@ -28,6 +28,7 @@ impl Drop for RestoreGuard {
 fn fake_png(width: u32, height: u32) -> Vec<u8> {
     let mut bytes = vec![0u8; 24];
     bytes[0..8].copy_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    bytes[12..16].copy_from_slice(b"IHDR");
     bytes[16..20].copy_from_slice(&width.to_be_bytes());
     bytes[20..24].copy_from_slice(&height.to_be_bytes());
     bytes

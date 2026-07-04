@@ -1,3 +1,4 @@
+use agent_desktop_core::image_buffer::parse_png_dimensions;
 use core_foundation::base::TCFType;
 use core_foundation::string::CFString;
 use core_foundation::url::CFURL;
@@ -17,16 +18,11 @@ unsafe extern "C" {
     static NSPasteboardTypeFileURL: Id;
 }
 
-/// Reads the width/height stored in a PNG's `IHDR` chunk directly from the
-/// byte buffer, mirroring `macos::system::screenshot::png_dimensions` — no
-/// image-decoding dependency needed for two big-endian `u32` reads.
+/// Reads the width/height stored in a PNG's `IHDR` chunk via the shared core
+/// helper, defaulting to `(0, 0)` for read-path data that fails validation
+/// rather than rejecting an already-received clipboard payload.
 pub(crate) fn png_dimensions(data: &[u8]) -> (u32, u32) {
-    if data.len() < 24 {
-        return (0, 0);
-    }
-    let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-    let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
-    (w, h)
+    parse_png_dimensions(data).unwrap_or((0, 0))
 }
 
 pub(crate) fn read_image(pb: Id) -> Option<Vec<u8>> {

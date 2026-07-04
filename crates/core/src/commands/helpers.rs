@@ -34,6 +34,24 @@ pub(crate) fn resolve_ref_with_context<'a>(
     adapter: &'a dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
+    resolve_ref_within_deadline(ref_id, snapshot_id, None, adapter, context)
+}
+
+/// Single owner of ref resolution and its `ref.resolve.start/entry/ok/error`
+/// tracing. With `deadline: None` the strict resolve is uncapped (the
+/// `get`/`is`/single-shot pointer path); with `Some(deadline)` each resolve is
+/// capped to the remaining budget via
+/// [`crate::ref_action_wait::resolve_within_deadline`] so a ref-addressed
+/// pointer wait (`hover`, `drag`) cannot spend its whole budget on one slow
+/// attempt. Both modes emit identical telemetry, so budgeted and single-shot
+/// resolution trace the same way.
+fn resolve_ref_within_deadline<'a>(
+    ref_id: &str,
+    snapshot_id: Option<&str>,
+    deadline: Option<std::time::Instant>,
+    adapter: &'a dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
     validate_ref_id(ref_id)?;
     let store = RefStore::for_session(context.session_id())?;
     context.trace_lazy(
@@ -80,7 +98,7 @@ pub(crate) fn resolve_ref_with_context<'a>(
             "name": entry.name
         })
     })?;
-    let handle = adapter.resolve_element_strict(&entry).inspect_err(|err| {
+    let handle = resolve_handle_within_deadline(adapter, &entry, deadline).inspect_err(|err| {
         let _ = context.trace_lazy("ref.resolve.error", || {
             json!({
                 "ref": ref_id,
@@ -94,6 +112,26 @@ pub(crate) fn resolve_ref_with_context<'a>(
     tracing::debug!("resolve: {} resolved successfully", ref_id);
     context.trace_lazy("ref.resolve.ok", || json!({ "ref": ref_id }))?;
     Ok((entry, ResolvedElement::new(adapter, handle)))
+}
+
+/// Performs the strict resolve for [`resolve_ref_within_deadline`], capping the
+/// attempt to `deadline` when one is supplied and surfacing an exhausted budget
+/// as a `TIMEOUT`, or resolving uncapped when it is not.
+fn resolve_handle_within_deadline(
+    adapter: &dyn PlatformAdapter,
+    entry: &RefEntry,
+    deadline: Option<std::time::Instant>,
+) -> Result<crate::adapter::NativeHandle, crate::error::AdapterError> {
+    let Some(deadline) = deadline else {
+        return adapter.resolve_element_strict(entry);
+    };
+    match crate::ref_action_wait::resolve_within_deadline(adapter, entry, deadline) {
+        crate::ref_action_wait::ResolveAttemptOutcome::Resolved(handle) => Ok(handle),
+        crate::ref_action_wait::ResolveAttemptOutcome::Failed(err) => Err(err),
+        crate::ref_action_wait::ResolveAttemptOutcome::DeadlinePassed => Err(
+            crate::error::AdapterError::timeout("Target did not resolve within the wait budget"),
+        ),
+    }
 }
 
 pub(crate) fn resolve_app_pid(
@@ -254,13 +292,44 @@ pub(crate) fn resolve_window_for_app(
     window_lookup::find_window_for_pid(pid, adapter)
 }
 
+/// Resolves the ref underlying a wait-budgeted point resolution through the
+/// shared [`resolve_ref_within_deadline`] (so the capped pointer-wait path
+/// emits the same `ref.resolve.*` telemetry as every other ref resolution and
+/// each attempt is capped to what remains of `deadline`), then completes the
+/// same bounds/actionability steps [`point_resolve::resolve_point_from_ref_or_xy_with_context`]
+/// performs for its ref branch.
+fn resolve_point_from_ref_capped(
+    ref_id: &str,
+    snapshot_id: Option<&str>,
+    deadline: std::time::Instant,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
+    let (entry, resolved) =
+        resolve_ref_within_deadline(ref_id, snapshot_id, Some(deadline), adapter, context)?;
+    let bounds = adapter
+        .get_element_bounds(resolved.handle())?
+        .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
+    let point = crate::action::Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    };
+    crate::actionability::require_receives_events(resolved.handle(), point.clone(), adapter)?;
+    Ok(crate::commands::point_resolve::ResolvedPoint {
+        point,
+        pid: Some(entry.pid),
+    })
+}
+
 /// Resolves a ref-or-xy point the same way [`point_resolve`] does, but retries
 /// transient resolve failures (`STALE_REF`, `AMBIGUOUS_TARGET`, `TIMEOUT`)
 /// within `timeout_ms` — the auto-wait budget for ref-addressed pointer
 /// commands (`hover`, `drag`) that resolve coordinates rather than dispatching
 /// through [`execute_ref_action_with_context`]. Coordinate-only input (no
 /// `ref_id`) and `timeout_ms: None` (`--timeout-ms 0`) both make exactly one
-/// attempt.
+/// attempt. When a ref and a budget are both present, each retry's resolve is
+/// capped to the remaining budget via [`resolve_point_from_ref_capped`] so a
+/// single slow resolve cannot exhaust the whole wait window.
 pub(crate) fn resolve_point_with_wait<'a>(
     ref_id: Option<&'a str>,
     xy: Option<(f64, f64)>,
@@ -286,12 +355,12 @@ pub(crate) fn resolve_point_with_wait<'a>(
             context,
         )
     };
-    let Some(budget_ms) = timeout_ms.filter(|_| ref_id.is_some()) else {
+    let (Some(budget_ms), Some(ref_id)) = (timeout_ms, ref_id) else {
         return attempt();
     };
     let deadline = std::time::Instant::now() + crate::ref_action_wait::budget_from_ms(budget_ms);
     loop {
-        match attempt() {
+        match resolve_point_from_ref_capped(ref_id, snapshot_id, deadline, adapter, context) {
             Ok(point) => return Ok(point),
             Err(err) => {
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());

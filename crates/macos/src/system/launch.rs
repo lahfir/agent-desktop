@@ -17,6 +17,8 @@ pub fn launch_app_with_options_impl(
 
     const OPEN_TIMEOUT: Duration = Duration::from_secs(5);
 
+    validate_app_identifier(id)?;
+
     let filter = WindowFilter {
         focused_only: false,
         app: Some(id.to_string()),
@@ -92,13 +94,7 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
 
     const OPEN_TIMEOUT: Duration = Duration::from_secs(5);
 
-    if id.contains("..") || id.starts_with('/') {
-        return Err(AdapterError::new(
-            ErrorCode::InvalidArgs,
-            format!("Invalid app identifier: '{id}'"),
-        )
-        .with_suggestion("Use an app name like 'Safari' or bundle ID like 'com.apple.Safari'."));
-    }
+    validate_app_identifier(id)?;
 
     let filter = WindowFilter {
         focused_only: false,
@@ -142,6 +138,21 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
 #[cfg(not(target_os = "macos"))]
 pub fn launch_app_impl(_id: &str, _timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
     Err(AdapterError::not_supported("launch_app"))
+}
+
+/// Rejects app identifiers that look like filesystem traversal attempts
+/// (`..` segments or an absolute path) rather than a bare app name or
+/// bundle ID, so both launch entrypoints refuse the same inputs.
+#[cfg(target_os = "macos")]
+fn validate_app_identifier(id: &str) -> Result<(), AdapterError> {
+    if id.contains("..") || id.starts_with('/') {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            format!("Invalid app identifier: '{id}'"),
+        )
+        .with_suggestion("Use an app name like 'Safari' or bundle ID like 'com.apple.Safari'."));
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]

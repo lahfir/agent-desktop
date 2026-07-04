@@ -19,7 +19,7 @@ fn matching_apps_filters_by_name_case_insensitively() {
         app: Some("Definitely-Not-A-Real-App-xyz123".into()),
         pid: None,
     };
-    let apps = matching_apps(&filter);
+    let apps = matching_apps(&filter).expect("app enumeration must succeed on the test host");
     assert!(
         apps.is_empty(),
         "an app name that matches no running process must yield no apps"
