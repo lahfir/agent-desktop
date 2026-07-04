@@ -1,6 +1,6 @@
 use crate::{
     adapter::PlatformAdapter,
-    commands::{helpers::resolve_app_pid, query},
+    commands::query,
     context::CommandContext,
     error::AppError,
     locator::{IdentityPredicate, LocatorQuery, StatePredicate},
@@ -38,6 +38,7 @@ pub struct FindSelectionArgs {
 
 pub struct FindArgs {
     pub app: Option<String>,
+    pub window_id: Option<String>,
     pub filter: FindFilterArgs,
     pub states: Vec<StatePredicate>,
     pub selection: FindSelectionArgs,
@@ -51,16 +52,6 @@ pub fn execute(
     validate_find_mode(&args)?;
     let query = locator_query_from_args(&args)?;
     query.validate_states().map_err(AppError::Adapter)?;
-
-    if let Ok(pid) = resolve_app_pid(args.app.as_deref(), adapter) {
-        match adapter.resolve_query(&query, None, pid) {
-            Ok(handles) => {
-                return finish_from_live_handles(&args, &query, adapter, context, handles);
-            }
-            Err(err) if err.code == crate::error::ErrorCode::PlatformNotSupported => {}
-            Err(err) => return Err(AppError::Adapter(err)),
-        }
-    }
 
     execute_snapshot_search(&args, &query, adapter, context)
 }
@@ -108,58 +99,6 @@ fn locator_query_from_args(args: &FindArgs) -> Result<LocatorQuery, AppError> {
     })
 }
 
-fn finish_from_live_handles(
-    args: &FindArgs,
-    query: &LocatorQuery,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-    handles: Vec<crate::native_handle::NativeHandle>,
-) -> Result<Value, AppError> {
-    if args.selection.count {
-        return Ok(json!({ "count": handles.len() }));
-    }
-
-    let snapshot_result = snapshot::run_with_context(
-        adapter,
-        &crate::adapter::TreeOptions::default(),
-        args.app.as_deref(),
-        None,
-        context,
-    )?;
-    let mut snapshot_matches = Vec::new();
-    collect_snapshot_matches(
-        &snapshot_result.tree,
-        query,
-        &mut Vec::new(),
-        &mut snapshot_matches,
-        None,
-    );
-
-    let selected = select_live_indices(args, handles.len());
-    let matches: Vec<Value> = selected
-        .into_iter()
-        .filter_map(|index| materialize_match(snapshot_matches.get(index)))
-        .collect();
-
-    if args.selection.first || args.selection.last || args.selection.nth.is_some() {
-        return Ok(single_match_response(
-            matches.into_iter().next(),
-            query,
-            &snapshot_result.tree,
-        ));
-    }
-
-    let match_count = matches.len();
-    let mut response = json!({ "matches": matches });
-    attach_roles_present_hint(
-        &mut response,
-        match_count == 0,
-        query,
-        &snapshot_result.tree,
-    );
-    Ok(response)
-}
-
 fn execute_snapshot_search(
     args: &FindArgs,
     query: &LocatorQuery,
@@ -168,9 +107,20 @@ fn execute_snapshot_search(
 ) -> Result<Value, AppError> {
     let opts = crate::adapter::TreeOptions::default();
     let result = if args.selection.count {
-        snapshot::build(adapter, &opts, args.app.as_deref(), None)?
+        snapshot::build(
+            adapter,
+            &opts,
+            args.app.as_deref(),
+            args.window_id.as_deref(),
+        )?
     } else {
-        snapshot::run_with_context(adapter, &opts, args.app.as_deref(), None, context)?
+        snapshot::run_with_context(
+            adapter,
+            &opts,
+            args.app.as_deref(),
+            args.window_id.as_deref(),
+            context,
+        )?
     };
 
     if args.selection.count {
@@ -215,24 +165,6 @@ fn execute_snapshot_search(
     let mut response = json!({ "matches": matches });
     attach_roles_present_hint(&mut response, match_count == 0, query, &result.tree);
     Ok(response)
-}
-
-fn select_live_indices(args: &FindArgs, total: usize) -> Vec<usize> {
-    if args.selection.first {
-        return vec![0].into_iter().filter(|_| total > 0).collect();
-    }
-    if args.selection.last {
-        return total.checked_sub(1).into_iter().collect();
-    }
-    if let Some(n) = args.selection.nth {
-        return (n < total).then_some(n).into_iter().collect();
-    }
-    let limit = max_matches_for_args(args).unwrap_or(total);
-    (0..total.min(limit)).collect()
-}
-
-fn materialize_match(snapshot_match: Option<&Value>) -> Option<Value> {
-    snapshot_match.cloned()
 }
 
 fn attach_roles_present_hint(

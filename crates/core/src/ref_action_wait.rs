@@ -61,6 +61,10 @@ fn trace_resolve_error(context: &CommandContext, ref_id: &str, err: &AdapterErro
     });
 }
 
+fn trace_resolve_ok(context: &CommandContext, ref_id: &str) {
+    let _ = context.trace_lazy("ref.resolve.ok", || json!({ "ref": ref_id }));
+}
+
 pub(crate) const POLL_INTERVAL: Duration = Duration::from_millis(100);
 pub(crate) const RESOLVE_ATTEMPT: Duration = Duration::from_millis(750);
 const MAX_BUDGET_MS: u64 = 24 * 60 * 60 * 1000;
@@ -143,6 +147,7 @@ fn execute_single_shot(
         .adapter
         .resolve_element_strict(ctx.entry)
         .inspect_err(|err| trace_resolve_error(ctx.context, ctx.ref_id, err))?;
+    trace_resolve_ok(ctx.context, ctx.ref_id);
     let handle = ResolvedElement::new(ctx.adapter, handle);
     maybe_scroll_into_view(ctx.adapter, ctx.entry, handle.handle(), &request);
     dispatch(
@@ -176,6 +181,7 @@ fn execute_poll_loop(
                 return Err(actionability_timeout(last_report));
             }
             ResolveAttemptOutcome::Resolved(handle) => {
+                trace_resolve_ok(ctx.context, ctx.ref_id);
                 let resolved = ResolvedElement::new(ctx.adapter, handle);
                 maybe_scroll_into_view(ctx.adapter, ctx.entry, resolved.handle(), &request);
                 match dispatch(

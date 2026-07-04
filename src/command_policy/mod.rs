@@ -29,7 +29,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         | Commands::Wait(_)
         | Commands::ListNotifications(_) => Accessibility,
 
-        Commands::Screenshot(a) if a.app.is_some() || a.window_id.is_some() => {
+        Commands::Screenshot(a) if a.scope.app.is_some() || a.scope.window_id.is_some() => {
             AccessibilityAndScreenRecording
         }
         Commands::Screenshot(_) => ScreenRecording,

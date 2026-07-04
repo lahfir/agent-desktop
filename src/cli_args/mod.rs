@@ -49,17 +49,32 @@ impl Surface {
     }
 }
 
-#[derive(Parser, Debug, Deserialize)]
+/// Window-targeting scope shared by the read/capture commands that choose which
+/// window to operate on (`snapshot`, `find`, `screenshot`). Ref-based commands
+/// (`click`/`type`/`get`/`is`) deliberately omit it — a ref already carries its
+/// source window through its `RefEntry` — and keyboard input targets the focused
+/// window, so neither needs an explicit window selector.
+#[derive(Args, Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SnapshotArgs {
+pub(crate) struct WindowScope {
     #[arg(long, help = "Filter to application by name")]
+    #[serde(default)]
     pub app: Option<String>,
     #[arg(
         long,
         name = "window-id",
-        help = "Filter to window ID (from list-windows)"
+        help = "Scope to a single window ID (from list-windows)"
     )]
+    #[serde(default)]
     pub window_id: Option<String>,
+}
+
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SnapshotArgs {
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[arg(long, default_value = "10", help = "Maximum tree depth")]
     #[serde(default = "default_max_depth")]
     pub max_depth: u8,
@@ -172,8 +187,9 @@ pub(crate) struct FindSelectionArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FindArgs {
-    #[arg(long, help = "Filter to application by name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[command(flatten)]
     #[serde(flatten)]
     pub filter: FindFilterArgs,
@@ -192,14 +208,9 @@ pub(crate) struct FindArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ScreenshotArgs {
-    #[arg(long, help = "Filter to application by name")]
-    pub app: Option<String>,
-    #[arg(
-        long,
-        name = "window-id",
-        help = "Filter to window ID (from list-windows)"
-    )]
-    pub window_id: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[arg(
         long,
         help = "Capture display by index (from list-displays; 0 = primary)"

@@ -305,13 +305,19 @@ mod imp {
 
 pub use imp::{count_children, element_for_pid, fetch_node_attrs};
 
-/// The element's accessible name, reduced from adapter-supplied
-/// [`agent_desktop_core::accname::NameEvidence`] by core's precedence
-/// algorithm. This function is a thin caller-facing wrapper — it owns no
-/// fallback chain of its own; `name_evidence` module supplies raw evidence,
-/// `compute_name` decides precedence.
+/// The element's accessible name: its own title, else its description, else
+/// (for static text only) its value promoted to a name. This is the single
+/// source of truth every name consumer shares — the snapshot builder, strict
+/// ref re-resolution, hit-test occluder naming, and ambiguity classification —
+/// so a ref's stored name always matches what the resolver recomputes. The
+/// per-platform `name_evidence` supplier gathers the raw attributes; this
+/// reducer owns the precedence.
 pub fn resolve_element_name(el: &super::ax_element::AXElement) -> Option<String> {
-    agent_desktop_core::accname::compute_name(&super::name_evidence::name_evidence_impl(el))
+    let evidence = super::name_evidence::name_evidence_impl(el);
+    let non_empty = |text: Option<String>| text.filter(|value| !value.trim().is_empty());
+    non_empty(evidence.native_title)
+        .or_else(|| non_empty(evidence.description))
+        .or_else(|| non_empty(evidence.static_role_value))
 }
 
 #[cfg(test)]

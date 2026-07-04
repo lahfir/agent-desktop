@@ -132,6 +132,7 @@ fn default_limit_caps_materialized_matches() {
 fn limit_conflicts_with_single_result_modes_for_batch_too() {
     let err = validate_find_mode(&FindArgs {
         app: None,
+        window_id: None,
         filter: no_filter(),
         states: vec![],
         selection: FindSelectionArgs {
@@ -182,6 +183,7 @@ fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
 fn textarea_alias_resolves_to_textfield_query() {
     let query = query_from_args(&FindArgs {
         app: None,
+        window_id: None,
         filter: FindFilterArgs {
             role: Some("textarea".into()),
             ..no_filter()
@@ -202,6 +204,7 @@ fn textarea_alias_resolves_to_textfield_query() {
 fn unknown_role_passes_through_and_matches_nothing() {
     let query = query_from_args(&FindArgs {
         app: None,
+        window_id: None,
         filter: FindFilterArgs {
             role: Some("navbar".into()),
             ..no_filter()
@@ -228,6 +231,7 @@ fn empty_role_filtered_result_reports_roles_present_from_tree() {
 
     let query = query_from_args(&FindArgs {
         app: None,
+        window_id: None,
         filter: FindFilterArgs {
             role: Some("navbar".into()),
             ..no_filter()
@@ -250,6 +254,7 @@ fn roles_present_hint_is_omitted_when_a_match_is_found() {
     let root = role_node("textfield", Some("body"));
     let query = query_from_args(&FindArgs {
         app: None,
+        window_id: None,
         filter: FindFilterArgs {
             role: Some("textfield".into()),
             ..no_filter()

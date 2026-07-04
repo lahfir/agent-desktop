@@ -71,31 +71,12 @@ impl ObservationOps for MacOSAdapter {
         Ok(crate::tree::surfaces::list_surfaces_for_pid(pid))
     }
 
-    fn resolve_query(
-        &self,
-        query: &agent_desktop_core::locator::LocatorQuery,
-        scope: Option<&NativeHandle>,
-        pid: i32,
-    ) -> Result<Vec<NativeHandle>, AdapterError> {
-        crate::tree::query::resolve_query_impl(query, pid, scope)
-    }
-
     fn hit_test(
         &self,
         handle: &NativeHandle,
         point: agent_desktop_core::action::Point,
     ) -> Result<agent_desktop_core::hit_test::HitTestResult, AdapterError> {
         crate::tree::hit_test::hit_test_impl(handle, point)
-    }
-
-    fn get_live_name_evidence(
-        &self,
-        handle: &NativeHandle,
-    ) -> Result<agent_desktop_core::accname::NameEvidence, AdapterError> {
-        Ok(with_borrowed_ax_element(
-            handle,
-            crate::tree::name_evidence::name_evidence_impl,
-        ))
     }
 
     fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {

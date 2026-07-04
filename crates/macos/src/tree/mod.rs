@@ -12,7 +12,6 @@ pub mod hit_test;
 pub mod name_evidence;
 pub mod native_id;
 pub(crate) mod node_attrs;
-pub mod query;
 pub mod resolve;
 mod resolve_bounds;
 mod resolve_classify;

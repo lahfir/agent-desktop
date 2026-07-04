@@ -4,10 +4,10 @@ use agent_desktop_core::{
 };
 
 use crate::system::cg_window::WindowRecord;
-use crate::tree::{AXElement, copy_ax_array, copy_i64_attr, copy_string_attr, element_for_pid};
+use crate::tree::{AXElement, copy_ax_array, copy_string_attr, element_for_pid};
 
 #[cfg(target_os = "macos")]
-use accessibility_sys::kAXWindowsAttribute;
+use accessibility_sys::{AXUIElementRef, kAXWindowsAttribute};
 
 pub(crate) fn window_element_for_info(win: &WindowInfo) -> Result<AXElement, AdapterError> {
     if win.id.is_empty() {
@@ -79,11 +79,34 @@ fn ax_window_element_for_number(pid: i32, window_number: i64) -> Option<AXElemen
         if copy_string_attr(window, "AXRole").as_deref() != Some("AXWindow") {
             continue;
         }
-        if copy_i64_attr(window, "AXWindowNumber") == Some(window_number) {
+        if ax_window_id(window) == Some(window_number) {
             return Some(window.clone());
         }
     }
     None
+}
+
+/// Bridges an accessibility window element to its CoreGraphics window number
+/// via the private-but-stable `_AXUIElementGetWindow`, the same call every
+/// macOS window manager relies on. The `AXWindowNumber` attribute is not
+/// published by AppKit or SwiftUI windows, so this is the only reliable way to
+/// match an `AXUIElement` back to the `kCGWindowNumber` that `list-windows`
+/// reports.
+#[cfg(target_os = "macos")]
+fn ax_window_id(window: &AXElement) -> Option<i64> {
+    let mut window_id: u32 = 0;
+    let result = unsafe { _AXUIElementGetWindow(window.0, &mut window_id) };
+    (result == 0).then_some(i64::from(window_id))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn ax_window_id(_window: &AXElement) -> Option<i64> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn _AXUIElementGetWindow(element: AXUIElementRef, out: *mut u32) -> i32;
 }
 
 fn invalid_window_id(id: &str) -> AdapterError {

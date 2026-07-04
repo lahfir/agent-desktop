@@ -106,15 +106,6 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("get_element_bounds"))
     }
 
-    fn resolve_query(
-        &self,
-        _query: &crate::locator::LocatorQuery,
-        _scope: Option<&NativeHandle>,
-        _pid: i32,
-    ) -> Result<Vec<NativeHandle>, AdapterError> {
-        Err(AdapterError::not_supported("resolve_query"))
-    }
-
     fn hit_test(
         &self,
         handle: &NativeHandle,
@@ -122,12 +113,5 @@ pub trait ObservationOps: Send + Sync {
     ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
         let _ = (handle, point);
         Err(AdapterError::not_supported("hit_test"))
-    }
-
-    fn get_live_name_evidence(
-        &self,
-        _handle: &NativeHandle,
-    ) -> Result<crate::accname::NameEvidence, AdapterError> {
-        Err(AdapterError::not_supported("get_live_name_evidence"))
     }
 }

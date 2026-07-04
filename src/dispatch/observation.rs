@@ -16,8 +16,8 @@ pub(super) fn dispatch(
     match cmd {
         Commands::Snapshot(a) => snapshot::execute(
             snapshot::SnapshotArgs {
-                app: a.app,
-                window_id: a.window_id,
+                app: a.scope.app,
+                window_id: a.scope.window_id,
                 max_depth: a.max_depth,
                 include_bounds: a.include_bounds,
                 interactive_only: a.interactive_only,
@@ -39,7 +39,8 @@ pub(super) fn dispatch(
                 .collect::<Result<Vec<_>, _>>()?;
             find::execute(
                 find::FindArgs {
-                    app: a.app,
+                    app: a.scope.app,
+                    window_id: a.scope.window_id,
                     filter: find::FindFilterArgs {
                         role: a.filter.role,
                         name: a.filter.name,
@@ -65,8 +66,8 @@ pub(super) fn dispatch(
 
         Commands::Screenshot(a) => screenshot::execute(
             screenshot::ScreenshotArgs {
-                app: a.app,
-                window_id: a.window_id,
+                app: a.scope.app,
+                window_id: a.scope.window_id,
                 screen: a.screen,
                 output_path: a.output_path,
             },

@@ -1,6 +1,6 @@
 use super::*;
 use crate::cli::{Cli, Commands};
-use crate::cli_args::{RefArgs, ScreenshotArgs, SnapshotArgs};
+use crate::cli_args::{RefArgs, ScreenshotArgs, SnapshotArgs, WindowScope};
 use agent_desktop_core::{PermissionReport, PermissionState};
 use clap::CommandFactory;
 
@@ -85,8 +85,10 @@ fn command_name_is_covered(name: &str) -> bool {
 fn unknown_permission_does_not_mask_platform_errors() {
     let report = PermissionReport::default();
     let command = Commands::Screenshot(ScreenshotArgs {
-        app: None,
-        window_id: None,
+        scope: WindowScope {
+            app: None,
+            window_id: None,
+        },
         screen: None,
         output_path: None,
     });
@@ -104,8 +106,10 @@ fn screen_recording_denial_is_preflighted() {
         automation: PermissionState::NotRequired,
     };
     let command = Commands::Screenshot(ScreenshotArgs {
-        app: None,
-        window_id: None,
+        scope: WindowScope {
+            app: None,
+            window_id: None,
+        },
         screen: None,
         output_path: None,
     });
@@ -166,8 +170,10 @@ fn invalid_snapshot_root_is_rejected_before_permission_preflight() {
         automation: PermissionState::NotRequired,
     };
     let command = Commands::Snapshot(SnapshotArgs {
-        app: None,
-        window_id: None,
+        scope: WindowScope {
+            app: None,
+            window_id: None,
+        },
         max_depth: 10,
         include_bounds: false,
         interactive_only: false,
