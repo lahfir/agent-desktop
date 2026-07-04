@@ -78,19 +78,6 @@ mod imp {
         cf_type.downcast::<CFBoolean>().map(|b| b.into())
     }
 
-    pub fn copy_i64_attr(el: &AXElement, attr: &str) -> Option<i64> {
-        let cf_attr = CFString::new(attr);
-        let mut value: CFTypeRef = std::ptr::null_mut();
-        let err = unsafe {
-            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
-        };
-        if err != kAXErrorSuccess || value.is_null() {
-            return None;
-        }
-        let cf_type = unsafe { CFType::wrap_under_create_rule(value) };
-        cf_type.downcast::<CFNumber>().and_then(|n| n.to_i64())
-    }
-
     pub fn copy_ax_array(el: &AXElement, attr: &str) -> Option<Vec<AXElement>> {
         let cf_attr = CFString::new(attr);
         let mut value: CFTypeRef = std::ptr::null_mut();
@@ -202,9 +189,6 @@ mod imp {
         None
     }
 
-    pub fn copy_i64_attr(_el: &AXElement, _attr: &str) -> Option<i64> {
-        None
-    }
 
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
@@ -223,6 +207,6 @@ mod imp {
 
 pub(crate) use imp::{
     copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_element_attr,
-    copy_first_element_attr, copy_i64_attr, copy_string_attr, copy_value_typed,
+    copy_first_element_attr, copy_string_attr, copy_value_typed,
     set_messaging_timeout,
 };

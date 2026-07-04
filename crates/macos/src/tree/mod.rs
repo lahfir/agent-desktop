@@ -23,8 +23,7 @@ pub mod state_reader;
 pub mod surfaces;
 
 pub(crate) use attributes::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_i64_attr, copy_string_attr,
-    copy_value_typed,
+    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, copy_value_typed,
 };
 pub use ax_element::AXElement;
 pub use build_context::TreeBuildContext;

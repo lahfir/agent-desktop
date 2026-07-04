@@ -7,7 +7,7 @@ use crate::system::cg_window::WindowRecord;
 use crate::tree::{AXElement, copy_ax_array, copy_string_attr, element_for_pid};
 
 #[cfg(target_os = "macos")]
-use accessibility_sys::{AXUIElementRef, kAXWindowsAttribute};
+use accessibility_sys::{AXUIElementRef, kAXErrorSuccess, kAXWindowsAttribute};
 
 pub(crate) fn window_element_for_info(win: &WindowInfo) -> Result<AXElement, AdapterError> {
     if win.id.is_empty() {
@@ -22,8 +22,9 @@ pub(crate) fn resolve_window_strict(win: &WindowInfo) -> Result<WindowInfo, Adap
 }
 
 fn resolve_window_element_strict(win: &WindowInfo) -> Result<AXElement, AdapterError> {
-    let (window_number, _) = locate_verified_record(win)?;
-    ax_window_element_for_number(win.pid, window_number).ok_or_else(|| window_not_found(&win.id))
+    let (window_number, record) = locate_verified_record(win)?;
+    ax_window_element_for_number(win.pid, window_number, record.title.as_deref())
+        .ok_or_else(|| window_not_found(&win.id))
 }
 
 /// Single owner of the parse-id → find-record → verify-identity chain shared
@@ -72,7 +73,11 @@ fn window_info_from_record(win: &WindowInfo, record: &WindowRecord) -> WindowInf
     }
 }
 
-fn ax_window_element_for_number(pid: i32, window_number: i64) -> Option<AXElement> {
+fn ax_window_element_for_number(
+    pid: i32,
+    window_number: i64,
+    fallback_title: Option<&str>,
+) -> Option<AXElement> {
     let app = element_for_pid(pid);
     let windows = copy_ax_array(&app, kAXWindowsAttribute)?;
     for window in &windows {
@@ -83,7 +88,16 @@ fn ax_window_element_for_number(pid: i32, window_number: i64) -> Option<AXElemen
             return Some(window.clone());
         }
     }
-    None
+    // The CGWindow record was already verified (pid + title) by
+    // locate_verified_record, so a total bridge miss means
+    // _AXUIElementGetWindow transiently failed (busy/hung app, benign race),
+    // not that the window is gone. Fall back to the AX window matching the
+    // verified title before reporting WINDOW_NOT_FOUND.
+    let title = fallback_title?;
+    windows.into_iter().find(|window| {
+        copy_string_attr(window, "AXRole").as_deref() == Some("AXWindow")
+            && copy_string_attr(window, "AXTitle").as_deref() == Some(title)
+    })
 }
 
 /// Bridges an accessibility window element to its CoreGraphics window number
@@ -92,15 +106,19 @@ fn ax_window_element_for_number(pid: i32, window_number: i64) -> Option<AXElemen
 /// published by AppKit or SwiftUI windows, so this is the only reliable way to
 /// match an `AXUIElement` back to the `kCGWindowNumber` that `list-windows`
 /// reports.
+/// The one owner of the AX-element -> CGWindowID bridge, shared by
+/// [`ax_window_element_for_number`], `resolve_roots`'s source-window scoping,
+/// and `window_inventory`'s AX-fallback/focus paths, so `AXWindowNumber` (which
+/// AppKit/SwiftUI never publish) is not read anywhere.
 #[cfg(target_os = "macos")]
-fn ax_window_id(window: &AXElement) -> Option<i64> {
+pub(crate) fn ax_window_id(window: &AXElement) -> Option<i64> {
     let mut window_id: u32 = 0;
     let result = unsafe { _AXUIElementGetWindow(window.0, &mut window_id) };
-    (result == 0).then_some(i64::from(window_id))
+    (result == kAXErrorSuccess).then_some(i64::from(window_id))
 }
 
 #[cfg(not(target_os = "macos"))]
-fn ax_window_id(_window: &AXElement) -> Option<i64> {
+pub(crate) fn ax_window_id(_window: &AXElement) -> Option<i64> {
     None
 }
 

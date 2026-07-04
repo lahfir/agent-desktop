@@ -171,7 +171,7 @@ fn ax_window_for_app(app_info: &AppInfo) -> Option<WindowInfo> {
     }
     let title =
         crate::tree::copy_string_attr(&window, "AXTitle").unwrap_or_else(|| app_info.name.clone());
-    let window_number = crate::tree::copy_i64_attr(&window, "AXWindowNumber").unwrap_or(0);
+    let window_number = crate::system::window_resolve::ax_window_id(&window).unwrap_or(0);
     let is_focused = crate::tree::copy_bool_attr(&app, "AXFrontmost") == Some(true);
     Some(ax_window_info(app_info, title, window_number, is_focused))
 }
@@ -209,7 +209,7 @@ fn focused_window_identity(pid: i32) -> FocusedWindowIdentity {
     let window = focused_window_element(&app)?;
     Some((
         crate::tree::copy_string_attr(&window, "AXTitle"),
-        crate::tree::copy_i64_attr(&window, "AXWindowNumber"),
+        crate::system::window_resolve::ax_window_id(&window),
     ))
 }
 

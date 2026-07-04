@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::AXElement;
 use super::attributes::{
-    copy_ax_array, copy_element_attr, copy_i64_attr, copy_string_attr, set_messaging_timeout,
+    copy_ax_array, copy_element_attr, copy_string_attr, set_messaging_timeout,
 };
 use super::element::element_for_pid;
 use super::element_dedupe::ElementDedupe;
@@ -189,7 +189,7 @@ fn window_by_number(
     };
     for win in windows {
         prepare_for_read(win, deadline)?;
-        if copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number) {
+        if crate::system::window_resolve::ax_window_id(win) == Some(source_window_number) {
             return Ok(Some(win.clone()));
         }
     }
