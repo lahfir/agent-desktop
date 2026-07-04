@@ -50,6 +50,133 @@ mod tests {
         assert_eq!(json["ok"], true);
     }
 
+    /// Regression guard for the AX-to-CGWindowID bridge: every id that
+    /// `list-windows` reports must resolve back to a real accessibility window
+    /// in `snapshot`. U6 briefly keyed this match on the nonexistent
+    /// `AXWindowNumber` attribute, so `snapshot` returned `WINDOW_NOT_FOUND`
+    /// for every app while mock-adapter unit tests stayed green. The bridge
+    /// now uses `_AXUIElementGetWindow`; this fails closed if it regresses.
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn snapshot_resolves_a_window_id_reported_by_list_windows() {
+        let bin = agent_desktop_bin();
+        let list = Command::new(&bin)
+            .args(["list-windows", "--app", "Finder"])
+            .output()
+            .expect("failed to run agent-desktop");
+        let list_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&list.stdout)).unwrap();
+        let ids: Vec<String> = list_json["data"]
+            .as_array()
+            .map(|windows| {
+                windows
+                    .iter()
+                    .filter_map(|w| w["id"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if ids.is_empty() {
+            return;
+        }
+
+        let snap = Command::new(&bin)
+            .args(["snapshot", "--app", "Finder"])
+            .output()
+            .expect("failed to run agent-desktop");
+        let snap_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&snap.stdout)).unwrap();
+
+        assert_eq!(
+            snap_json["ok"], true,
+            "snapshot must resolve a live window, got error {}",
+            snap_json["error"]["code"]
+        );
+        let resolved = snap_json["data"]["window"]["id"].as_str().unwrap_or("");
+        assert!(
+            ids.iter().any(|id| id == resolved),
+            "snapshot window id {resolved:?} must be one reported by list-windows {ids:?}"
+        );
+    }
+
+    /// Regression guard for accessible-name consistency: an element found by
+    /// role reports an accessible name; searching that same role by that exact
+    /// name must return the same element. The name computation diverged across
+    /// the builder, live matcher, and strict resolver on this branch, so
+    /// `find --name` returned null even for the name the element itself
+    /// reported. Fails closed if those name paths drift apart again.
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn find_by_name_matches_the_element_that_reports_that_name() {
+        let bin = agent_desktop_bin();
+        let by_role = Command::new(&bin)
+            .args(["find", "--app", "Finder", "--role", "button", "--first"])
+            .output()
+            .expect("failed to run agent-desktop");
+        let role_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&by_role.stdout)).unwrap();
+        let matched = &role_json["data"]["match"];
+        let (Some(ref_id), Some(name)) = (matched["ref_id"].as_str(), matched["name"].as_str())
+        else {
+            return;
+        };
+        if name.is_empty() || name.starts_with("(unnamed") {
+            return;
+        }
+
+        let by_name = Command::new(&bin)
+            .args([
+                "find", "--app", "Finder", "--role", "button", "--name", name, "--first",
+            ])
+            .output()
+            .expect("failed to run agent-desktop");
+        let name_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&by_name.stdout)).unwrap();
+
+        assert_eq!(
+            name_json["data"]["match"]["ref_id"].as_str(),
+            Some(ref_id),
+            "find --name {name:?} must resolve the same element find --role reported with that \
+             name; got {}",
+            name_json["data"]["match"]
+        );
+    }
+
+    /// Regression guard for strict ref re-resolution: a ref just produced by
+    /// `find` must re-resolve through `get`. Ref identity re-derivation
+    /// recomputed a different accessible name than the one stored in the ref,
+    /// so freshly created refs returned STALE_REF. Fails closed if identity and
+    /// the stored name drift apart again.
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn a_ref_from_find_reresolves_through_get() {
+        let bin = agent_desktop_bin();
+        let found = Command::new(&bin)
+            .args(["find", "--app", "Finder", "--role", "button", "--first"])
+            .output()
+            .expect("failed to run agent-desktop");
+        let found_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&found.stdout)).unwrap();
+        let Some(ref_id) = found_json["data"]["match"]["ref_id"].as_str() else {
+            return;
+        };
+
+        let got = Command::new(&bin)
+            .args(["get", ref_id, "--property", "role"])
+            .output()
+            .expect("failed to run agent-desktop");
+        let got_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&got.stdout)).unwrap();
+
+        assert_eq!(
+            got_json["ok"], true,
+            "a ref from find must re-resolve through get, got error {}",
+            got_json["error"]["code"]
+        );
+    }
+
     #[test]
     fn version_command_outputs_json() {
         let bin = agent_desktop_bin();

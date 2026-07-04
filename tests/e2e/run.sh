@@ -184,9 +184,11 @@ def f(n):
     r=f(c)
     if r: return r
 print(f(d['data']['tree']) or '')" 2>/dev/null)"
-hv_b="$(read_value hover-status)"
 if [ -n "$hv_xy" ]; then
-    "$bin" --headed hover --xy "$hv_xy" >/dev/null 2>&1; sleep 0.5
+    "$bin" focus-window --app "$app" >/dev/null 2>&1
+    "$bin" --headed hover --xy "30,30" >/dev/null 2>&1; sleep 0.4
+    hv_b="$(read_value hover-status)"
+    "$bin" --headed hover --xy "$hv_xy" >/dev/null 2>&1; sleep 0.6
     hv_a="$(read_value hover-status)"
     assert "--headed hover triggers onHover" "$([ "$hv_a" = "hovered" ] && echo 1 || echo 0)" \
         "xy='$hv_xy' hover-status before='$hv_b' after='$hv_a'"
