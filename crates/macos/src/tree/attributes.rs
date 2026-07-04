@@ -189,7 +189,6 @@ mod imp {
         None
     }
 
-
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
     }
@@ -207,6 +206,5 @@ mod imp {
 
 pub(crate) use imp::{
     copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_element_attr,
-    copy_first_element_attr, copy_string_attr, copy_value_typed,
-    set_messaging_timeout,
+    copy_first_element_attr, copy_string_attr, copy_value_typed, set_messaging_timeout,
 };

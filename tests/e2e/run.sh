@@ -188,6 +188,8 @@ if [ -n "$hv_xy" ]; then
     "$bin" focus-window --app "$app" >/dev/null 2>&1
     "$bin" --headed hover --xy "30,30" >/dev/null 2>&1; sleep 0.4
     hv_b="$(read_value hover-status)"
+    assert "hover baseline clean before measured transition" "$([ "$hv_b" != "hovered" ] && echo 1 || echo 0)" \
+        "hover-status after reset-to-(30,30)='$hv_b'"
     "$bin" --headed hover --xy "$hv_xy" >/dev/null 2>&1; sleep 0.6
     hv_a="$(read_value hover-status)"
     assert "--headed hover triggers onHover" "$([ "$hv_a" = "hovered" ] && echo 1 || echo 0)" \

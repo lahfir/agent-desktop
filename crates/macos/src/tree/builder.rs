@@ -1,5 +1,5 @@
 use agent_desktop_core::capability;
-use agent_desktop_core::node::AccessibilityNode;
+use agent_desktop_core::node::{AccessibilityNode, Rect};
 use rustc_hash::FxHashSet;
 
 use super::AXElement;
@@ -190,11 +190,8 @@ pub fn build_subtree(
 
     let children_raw = copy_children(el, attrs.role.as_deref()).unwrap_or_default();
 
-    let child_window_bounds = if attrs.role.as_deref() == Some("AXWindow") {
-        attrs.bounds.or(context.window_bounds)
-    } else {
-        context.window_bounds
-    };
+    let child_window_bounds =
+        window_bounds_for_children(attrs.role.as_deref(), attrs.bounds, context.window_bounds);
     let child_context = context.child_context(child_window_bounds);
 
     let children = if is_promoted_item {
@@ -243,6 +240,18 @@ fn redact_secure_value(ax_role: Option<&str>, value: Option<String>) -> Option<S
         None
     } else {
         value
+    }
+}
+
+fn window_bounds_for_children(
+    role: Option<&str>,
+    own_bounds: Option<Rect>,
+    inherited: Option<Rect>,
+) -> Option<Rect> {
+    if role == Some("AXWindow") {
+        own_bounds.or(inherited)
+    } else {
+        inherited
     }
 }
 

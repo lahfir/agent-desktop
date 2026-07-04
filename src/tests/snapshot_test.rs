@@ -77,6 +77,10 @@ mod tests {
             })
             .unwrap_or_default();
         if ids.is_empty() {
+            eprintln!(
+                "SKIP snapshot_resolves_a_window_id_reported_by_list_windows: Finder has no \
+                 windows reported by list-windows"
+            );
             return;
         }
 
@@ -119,9 +123,17 @@ mod tests {
         let matched = &role_json["data"]["match"];
         let (Some(ref_id), Some(name)) = (matched["ref_id"].as_str(), matched["name"].as_str())
         else {
+            eprintln!(
+                "SKIP find_by_name_matches_the_element_that_reports_that_name: no button found \
+                 by role, or matched element had no ref_id/name"
+            );
             return;
         };
         if name.is_empty() || name.starts_with("(unnamed") {
+            eprintln!(
+                "SKIP find_by_name_matches_the_element_that_reports_that_name: matched button \
+                 has no usable name (got {name:?})"
+            );
             return;
         }
 
@@ -160,6 +172,10 @@ mod tests {
         let found_json: serde_json::Value =
             serde_json::from_str(&String::from_utf8_lossy(&found.stdout)).unwrap();
         let Some(ref_id) = found_json["data"]["match"]["ref_id"].as_str() else {
+            eprintln!(
+                "SKIP a_ref_from_find_reresolves_through_get: no button found by find --role \
+                 button --first"
+            );
             return;
         };
 

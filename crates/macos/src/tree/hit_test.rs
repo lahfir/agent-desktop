@@ -2,10 +2,10 @@
 mod imp {
     use crate::actions::ax_helpers;
     use crate::tree::{
-        AXElement, capabilities::same_element, element::ABSOLUTE_MAX_DEPTH, read_bounds,
-        resolve_element_name,
+        AXElement, capabilities::same_element, copy_string_attr, element::ABSOLUTE_MAX_DEPTH,
+        read_bounds, resolve_element_name,
     };
-    use accessibility_sys::{AXUIElementCopyElementAtPosition, kAXErrorSuccess};
+    use accessibility_sys::{AXUIElementCopyElementAtPosition, kAXErrorSuccess, kAXRoleAttribute};
     use agent_desktop_core::{
         action::Point, error::AdapterError, hit_test::HitTestResult, native_handle::NativeHandle,
     };
@@ -65,11 +65,18 @@ mod imp {
         match classify_relation(reaches_target, is_ancestor_of_target) {
             HitClassification::ReachesTarget => HitTestResult::ReachesTarget,
             HitClassification::AncestorOfTarget => HitTestResult::Unknown,
-            HitClassification::Unrelated => HitTestResult::InterceptedBy {
-                role: ax_helpers::element_role(hit),
-                name: resolve_element_name(hit),
-                bounds: read_bounds(hit),
-            },
+            HitClassification::Unrelated => intercepted_by(hit),
+        }
+    }
+
+    fn intercepted_by(hit: &AXElement) -> HitTestResult {
+        let ax_role = copy_string_attr(hit, kAXRoleAttribute);
+        let (role, promoted_label) =
+            crate::tree::roles::normalized_role_and_label(hit, ax_role.as_deref());
+        HitTestResult::InterceptedBy {
+            role: Some(role),
+            name: promoted_label.or_else(|| resolve_element_name(hit)),
+            bounds: read_bounds(hit),
         }
     }
 

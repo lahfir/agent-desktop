@@ -1,5 +1,10 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps, WindowFilter};
+use crate::context::CommandContext;
+use crate::error::AdapterError;
 use crate::locator::LocatorQuery;
+use crate::node::WindowInfo;
+use crate::refs_test_support::HomeGuard;
 
 fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
@@ -270,4 +275,109 @@ fn roles_present_hint_is_omitted_when_a_match_is_found() {
     attach_roles_present_hint(&mut response, is_empty, &query, &root);
 
     assert!(response.get("roles_present").is_none());
+}
+
+struct TwoWindowAdapter;
+
+impl ObservationOps for TwoWindowAdapter {
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Ok(vec![
+            WindowInfo {
+                id: "w-1".into(),
+                title: "First".into(),
+                app: "FixtureApp".into(),
+                pid: 101,
+                bounds: None,
+                is_focused: false,
+            },
+            WindowInfo {
+                id: "w-2".into(),
+                title: "Second".into(),
+                app: "FixtureApp".into(),
+                pid: 102,
+                bounds: None,
+                is_focused: false,
+            },
+        ])
+    }
+
+    fn get_tree(
+        &self,
+        win: &WindowInfo,
+        _opts: &crate::adapter::TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        let marker = if win.id == "w-2" {
+            "OnlyInWindowTwo"
+        } else {
+            "OnlyInWindowOne"
+        };
+        Ok(AccessibilityNode {
+            ref_id: None,
+            role: "window".into(),
+            name: Some(win.title.clone()),
+            value: None,
+            description: None,
+            native_id: None,
+            hint: None,
+            states: vec![],
+            available_actions: vec![],
+            bounds: None,
+            children_count: None,
+            children: vec![role_node("button", Some(marker))],
+        })
+    }
+}
+
+impl ActionOps for TwoWindowAdapter {}
+impl InputOps for TwoWindowAdapter {}
+impl SystemOps for TwoWindowAdapter {}
+
+fn find_args_scoped_to_window(window_id: &str) -> FindArgs {
+    FindArgs {
+        app: None,
+        window_id: Some(window_id.into()),
+        filter: FindFilterArgs {
+            name: Some("OnlyInWindowTwo".into()),
+            ..no_filter()
+        },
+        states: vec![],
+        selection: no_selection(),
+    }
+}
+
+#[test]
+fn find_scopes_matches_to_requested_window_id() {
+    let _guard = HomeGuard::new();
+    let context = CommandContext::default();
+
+    let from_window_two = execute(
+        find_args_scoped_to_window("w-2"),
+        &TwoWindowAdapter,
+        &context,
+    )
+    .expect("find scoped to w-2 should succeed");
+    let hits = from_window_two["matches"]
+        .as_array()
+        .expect("matches must be an array");
+    assert_eq!(
+        hits.len(),
+        1,
+        "window w-2's tree owns the only match, got: {from_window_two}"
+    );
+    assert_eq!(hits[0]["name"], "OnlyInWindowTwo");
+
+    let from_window_one = execute(
+        find_args_scoped_to_window("w-1"),
+        &TwoWindowAdapter,
+        &context,
+    )
+    .expect("find scoped to w-1 should succeed");
+    let misses = from_window_one["matches"]
+        .as_array()
+        .expect("matches must be an array");
+    assert!(
+        misses.is_empty(),
+        "window w-1 must not surface window w-2's element \
+         (window_id must not be ignored or swapped with app), got: {from_window_one}"
+    );
 }
