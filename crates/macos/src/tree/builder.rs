@@ -91,8 +91,8 @@ pub fn build_subtree(
             .unwrap_or("unknown")
             .to_string();
         let is_secure_text = is_secure_text_role(attrs.role.as_deref());
+        let name = accessible_name(el, &attrs);
         let value = redact_secure_value(attrs.role.as_deref(), attrs.value);
-        let name = attrs.title.or(attrs.description);
         let child_count = count_children(el, attrs.role.as_deref());
         let bounds = context.bounds_for(attrs.bounds);
         let mut states = Vec::new();
@@ -136,17 +136,11 @@ pub fn build_subtree(
         platform_available_actions(el, &role, attrs.has_scrollbars)
     };
 
-    let name = promoted_label.or_else(|| attrs.title.clone().or_else(|| attrs.description.clone()));
+    let name = promoted_label.or_else(|| accessible_name(el, &attrs));
     let description = if attrs.title.is_some() {
         attrs.description.clone()
     } else {
         None
-    };
-
-    let name = if name.is_none() && attrs.role.as_deref() == Some("AXStaticText") {
-        value.clone().or(name)
-    } else {
-        name
     };
 
     let state_ctx = super::state_reader::StateReaderContext {
@@ -177,7 +171,6 @@ pub fn build_subtree(
         } else {
             None
         };
-        let name = name.or_else(|| label_from_child_attrs(el, attrs.role.as_deref()));
         ancestors.remove(&ptr_key);
         return Some(AccessibilityNode {
             ref_id: None,
@@ -196,7 +189,6 @@ pub fn build_subtree(
     }
 
     let children_raw = copy_children(el, attrs.role.as_deref()).unwrap_or_default();
-    let name = name.or_else(|| label_from_children(&children_raw));
 
     let child_window_bounds = if attrs.role.as_deref() == Some("AXWindow") {
         attrs.bounds.or(context.window_bounds)
@@ -254,6 +246,50 @@ fn redact_secure_value(ax_role: Option<&str>, value: Option<String>) -> Option<S
     }
 }
 
+/// One-owner accessible-name reduction shared by the snapshot builder (which
+/// stores a ref's name) and `element::resolve_element_name` (which recomputes
+/// it during strict re-resolution), so a stored name always equals what the
+/// resolver recomputes. Precedence: the element's own title, then description,
+/// then a static-text value promoted to a name, then a label aggregated from
+/// descendant text — each trimmed and treated as absent when blank.
+#[cfg(target_os = "macos")]
+pub(crate) fn accessible_name(
+    el: &AXElement,
+    attrs: &super::node_attrs::NodeAttrs,
+) -> Option<String> {
+    let ax_role = attrs.role.as_deref();
+    let static_value = if ax_role == Some("AXStaticText") {
+        attrs.value.as_deref()
+    } else {
+        None
+    };
+    reduce_text_name(
+        attrs.title.as_deref(),
+        attrs.description.as_deref(),
+        static_value,
+    )
+    .or_else(|| label_from_children(&copy_children(el, ax_role).unwrap_or_default()))
+}
+
+/// The own-text portion of [`accessible_name`] (title -> description ->
+/// static-text value), factored out pure and platform-agnostic so the
+/// precedence and blank/whitespace handling are unit-testable without a live
+/// AX element.
+pub(crate) fn reduce_text_name(
+    title: Option<&str>,
+    description: Option<&str>,
+    static_value: Option<&str>,
+) -> Option<String> {
+    non_empty(title)
+        .or_else(|| non_empty(description))
+        .or_else(|| non_empty(static_value))
+}
+
+fn non_empty(text: Option<&str>) -> Option<String> {
+    text.filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+}
+
 pub fn label_from_children(children: &[AXElement]) -> Option<String> {
     #[cfg(target_os = "macos")]
     {
@@ -293,17 +329,6 @@ pub fn label_from_children(children: &[AXElement]) -> Option<String> {
         let _ = children;
         None
     }
-}
-
-#[cfg(target_os = "macos")]
-fn label_from_child_attrs(el: &AXElement, ax_role: Option<&str>) -> Option<String> {
-    for attr in child_attributes(ax_role) {
-        let children = copy_ax_array_prefix(el, attr, 5).unwrap_or_default();
-        if let Some(label) = label_from_children(&children) {
-            return Some(label);
-        }
-    }
-    None
 }
 
 #[cfg(target_os = "macos")]

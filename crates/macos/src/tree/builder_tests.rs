@@ -1,5 +1,5 @@
 use super::{
-    child_attributes, redact_secure_value, window_titles_are_exact_match,
+    child_attributes, redact_secure_value, reduce_text_name, window_titles_are_exact_match,
     window_titles_are_partial_match,
 };
 
@@ -51,4 +51,47 @@ fn window_title_matching_accepts_exact_and_truncated_titles() {
         "noy4/agent-desktop: Native desk...",
         "noy4/agent-desktop: Native desk"
     ));
+}
+
+#[test]
+fn reduce_text_name_prefers_title_then_description_then_value() {
+    assert_eq!(
+        reduce_text_name(Some("T"), Some("D"), Some("V")).as_deref(),
+        Some("T")
+    );
+    assert_eq!(
+        reduce_text_name(None, Some("D"), Some("V")).as_deref(),
+        Some("D")
+    );
+    assert_eq!(
+        reduce_text_name(None, None, Some("V")).as_deref(),
+        Some("V")
+    );
+    assert_eq!(reduce_text_name(None, None, None), None);
+}
+
+/// Guards the STALE_REF divergence class: a blank or whitespace-only title must
+/// fall through to the next rung so a stored ref name (computed by the builder
+/// through this same reducer) equals what strict re-resolution recomputes.
+#[test]
+fn reduce_text_name_treats_blank_and_whitespace_as_absent() {
+    assert_eq!(
+        reduce_text_name(Some(""), Some("D"), None).as_deref(),
+        Some("D")
+    );
+    assert_eq!(
+        reduce_text_name(Some("   "), Some("D"), None).as_deref(),
+        Some("D")
+    );
+    assert_eq!(
+        reduce_text_name(Some("\t "), None, Some("V")).as_deref(),
+        Some("V")
+    );
+    assert_eq!(reduce_text_name(Some("   "), Some("  "), Some(" ")), None);
+    // Real content with surrounding whitespace is preserved verbatim (matches
+    // how the builder stores it), so stored and recomputed names still agree.
+    assert_eq!(
+        reduce_text_name(Some("  Recents  "), None, None).as_deref(),
+        Some("  Recents  ")
+    );
 }

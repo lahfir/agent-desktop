@@ -1,4 +1,3 @@
-pub mod accname;
 pub mod action;
 pub mod action_request;
 pub mod action_result;
