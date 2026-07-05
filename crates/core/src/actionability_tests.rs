@@ -100,6 +100,34 @@ fn offscreen_state_fails_visibility_before_action_dispatch() {
 }
 
 #[test]
+fn hidden_entry_fails_visibility_even_when_bounds_are_none() {
+    let mut entry = entry();
+    entry.states.push(crate::state::HIDDEN.into());
+    entry.bounds = None;
+    entry.bounds_hash = None;
+
+    let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::ActionFailed);
+    assert!(err.message.contains("visible"));
+    assert!(err.message.contains("hidden"));
+}
+
+#[test]
+fn offscreen_entry_fails_visibility_even_when_bounds_are_none() {
+    let mut entry = entry();
+    entry.states.push(crate::state::OFFSCREEN.into());
+    entry.bounds = None;
+    entry.bounds_hash = None;
+
+    let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::ActionFailed);
+    assert!(err.message.contains("visible"));
+    assert!(err.message.contains("offscreen"));
+}
+
+#[test]
 fn text_input_requires_editable_target() {
     let err = check(
         &entry(),

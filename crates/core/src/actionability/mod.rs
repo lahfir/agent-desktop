@@ -117,15 +117,15 @@ fn check_with_stability(
 }
 
 fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
-    let Some(bounds) = entry.bounds else {
-        return unknown("visible", "bounds unavailable");
-    };
     if state::has_state(&entry.states, state::HIDDEN) {
         return fail("visible", "entry state contains hidden");
     }
     if state::has_state(&entry.states, state::OFFSCREEN) {
         return fail("visible", "entry state contains offscreen");
     }
+    let Some(bounds) = entry.bounds else {
+        return unknown("visible", "bounds unavailable");
+    };
     if !bounds_are_visible(Some(bounds)) {
         return fail("visible", "bounds are zero-sized");
     }

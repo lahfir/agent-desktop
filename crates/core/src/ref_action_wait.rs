@@ -226,6 +226,13 @@ fn execute_poll_loop(
                     trace_resolve_error(ctx.context, ctx.ref_id, &err);
                     return Err(err);
                 }
+                last_report = Some(json!({
+                    "resolve_error": {
+                        "code": code.as_str(),
+                        "message": err.message.clone(),
+                        "details": err.details.clone(),
+                    }
+                }));
                 sleep_poll_interval(deadline);
             }
         }

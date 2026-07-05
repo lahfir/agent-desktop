@@ -13,3 +13,7 @@ pub fn execute(args: MouseWheelArgs, adapter: &dyn PlatformAdapter) -> Result<Va
     adapter.mouse_wheel(args.x, args.y, args.dy, args.dx, &args.modifiers)?;
     Ok(json!({ "scrolled": true, "dy": args.dy, "dx": args.dx }))
 }
+
+#[cfg(test)]
+#[path = "mouse_wheel_tests.rs"]
+mod tests;
