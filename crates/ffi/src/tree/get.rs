@@ -36,7 +36,7 @@ use std::ptr;
 /// **Observe–act agents** that need `@e` refs and refmap persistence should
 /// call `ad_snapshot` instead. `ad_snapshot` runs the full snapshot pipeline
 /// (ref allocation, refmap write to disk, JSON envelope with
-/// `{"version":"2.0","ok":true,...}`) and is the correct starting point for
+/// `{"version":"2.1","ok":true,...}`) and is the correct starting point for
 /// any workflow that drives subsequent ref-based actions via
 /// `ad_execute_by_ref` (with an `AdAction`).
 ///

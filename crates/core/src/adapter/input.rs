@@ -4,6 +4,9 @@ use crate::{
     error::AdapterError,
 };
 
+/// `get_clipboard`/`set_clipboard` were removed pre-1.0 in favor of
+/// `get_clipboard_content`/`set_clipboard_content`; the C ABI
+/// (`ad_get_clipboard`/`ad_set_clipboard`) is unaffected.
 pub trait InputOps: Send + Sync {
     fn mouse_event(&self, _event: MouseEvent) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("mouse_event"))

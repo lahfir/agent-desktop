@@ -50,6 +50,11 @@ use std::ptr;
 /// accepts the action's own CLI base (so `TypeText` still uses
 /// `focus_fallback`). `Headed (2)` opts in to cursor-based fallbacks.
 ///
+/// Uses a fixed 5000ms auto-wait budget (`DEFAULT_ACTION_TIMEOUT_MS`) before
+/// the actionability preflight, matching the CLI default. Call
+/// `ad_execute_by_ref_timeout` with an explicit `timeout_ms` (0 = single-shot,
+/// no auto-wait) to control this.
+///
 /// On success `*out` is set to a NUL-terminated JSON envelope (command
 /// `"execute_by_ref"`); free with `ad_free_string`. On guard or decode
 /// failure (invalid args before the command runs) `*out` remains null.
@@ -268,7 +273,7 @@ pub unsafe extern "C" fn ad_execute_by_ref_timeout(
 /// to disk, and writes the JSON envelope into `*out`.
 ///
 /// The JSON shape matches `agent-desktop snapshot`:
-/// `{"version":"2.0","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
+/// `{"version":"2.1","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
 ///
 /// **`*out` ownership and error behaviour:**
 /// - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.

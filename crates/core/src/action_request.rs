@@ -65,4 +65,22 @@ mod tests {
         assert!(request.policy.allow_focus_steal);
         assert!(!request.policy.allow_cursor_move);
     }
+
+    /// Regression coverage: `ActionRequest.timeout_ms` must stay
+    /// `#[serde(default)]` so a legacy payload recorded before `timeout_ms`
+    /// existed (or any FFI/batch caller that omits the key) still
+    /// deserializes instead of erroring out.
+    #[test]
+    fn action_request_json_without_timeout_ms_key_deserializes_to_none() {
+        let request: ActionRequest = serde_json::from_value(serde_json::json!({
+            "action": "Click",
+            "policy": {
+                "allow_focus_steal": false,
+                "allow_cursor_move": false,
+            },
+        }))
+        .unwrap();
+
+        assert_eq!(request.timeout_ms, None);
+    }
 }

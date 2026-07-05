@@ -983,6 +983,11 @@ void ad_app_list_free(struct AdAppList *list);
  * accepts the action's own CLI base (so `TypeText` still uses
  * `focus_fallback`). `Headed (2)` opts in to cursor-based fallbacks.
  *
+ * Uses a fixed 5000ms auto-wait budget (`DEFAULT_ACTION_TIMEOUT_MS`) before
+ * the actionability preflight, matching the CLI default. Call
+ * `ad_execute_by_ref_timeout` with an explicit `timeout_ms` (0 = single-shot,
+ * no auto-wait) to control this.
+ *
  * On success `*out` is set to a NUL-terminated JSON envelope (command
  * `"execute_by_ref"`); free with `ad_free_string`. On guard or decode
  * failure (invalid args before the command runs) `*out` remains null.
@@ -1040,7 +1045,7 @@ AdResult ad_execute_by_ref_timeout(const struct AdAdapter *adapter,
  * to disk, and writes the JSON envelope into `*out`.
  *
  * The JSON shape matches `agent-desktop snapshot`:
- * `{"version":"2.0","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
+ * `{"version":"2.1","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
  *
  * **`*out` ownership and error behaviour:**
  * - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.
@@ -1745,7 +1750,7 @@ void ad_free_tree(struct AdNodeTree *tree);
  * **Observe–act agents** that need `@e` refs and refmap persistence should
  * call `ad_snapshot` instead. `ad_snapshot` runs the full snapshot pipeline
  * (ref allocation, refmap write to disk, JSON envelope with
- * `{"version":"2.0","ok":true,...}`) and is the correct starting point for
+ * `{"version":"2.1","ok":true,...}`) and is the correct starting point for
  * any workflow that drives subsequent ref-based actions via
  * `ad_execute_by_ref` (with an `AdAction`).
  *
@@ -1897,6 +1902,28 @@ _Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offs
 _Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
 _Static_assert(sizeof(AdRefEntry) == AD_REF_ENTRY_SIZE, "AdRefEntry ABI size changed");
 _Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
+_Static_assert(offsetof(AdRefEntry, pid) == 0, "AdRefEntry.pid offset changed");
+_Static_assert(offsetof(AdRefEntry, role) == 8, "AdRefEntry.role offset changed");
+_Static_assert(offsetof(AdRefEntry, name) == 16, "AdRefEntry.name offset changed");
+_Static_assert(offsetof(AdRefEntry, value) == 24, "AdRefEntry.value offset changed");
+_Static_assert(offsetof(AdRefEntry, description) == 32, "AdRefEntry.description offset changed");
+_Static_assert(offsetof(AdRefEntry, states) == 40, "AdRefEntry.states offset changed");
+_Static_assert(offsetof(AdRefEntry, state_count) == 48, "AdRefEntry.state_count offset changed");
+_Static_assert(offsetof(AdRefEntry, available_actions) == 56, "AdRefEntry.available_actions offset changed");
+_Static_assert(offsetof(AdRefEntry, available_action_count) == 64, "AdRefEntry.available_action_count offset changed");
+_Static_assert(offsetof(AdRefEntry, bounds) == 72, "AdRefEntry.bounds offset changed");
+_Static_assert(offsetof(AdRefEntry, has_bounds) == 104, "AdRefEntry.has_bounds offset changed");
+_Static_assert(offsetof(AdRefEntry, bounds_hash) == 112, "AdRefEntry.bounds_hash offset changed");
+_Static_assert(offsetof(AdRefEntry, has_bounds_hash) == 120, "AdRefEntry.has_bounds_hash offset changed");
+_Static_assert(offsetof(AdRefEntry, source_app) == 128, "AdRefEntry.source_app offset changed");
+_Static_assert(offsetof(AdRefEntry, source_window_id) == 136, "AdRefEntry.source_window_id offset changed");
+_Static_assert(offsetof(AdRefEntry, source_window_title) == 144, "AdRefEntry.source_window_title offset changed");
+_Static_assert(offsetof(AdRefEntry, source_surface) == 152, "AdRefEntry.source_surface offset changed");
+_Static_assert(offsetof(AdRefEntry, root_ref) == 160, "AdRefEntry.root_ref offset changed");
+_Static_assert(offsetof(AdRefEntry, path_is_absolute) == 168, "AdRefEntry.path_is_absolute offset changed");
+_Static_assert(offsetof(AdRefEntry, path) == 176, "AdRefEntry.path offset changed");
+_Static_assert(offsetof(AdRefEntry, path_count) == 184, "AdRefEntry.path_count offset changed");
+_Static_assert(offsetof(AdRefEntry, native_id) == 192, "AdRefEntry.native_id offset changed");
 _Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI size drift");
 _Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
 #endif /* __STDC_VERSION__ >= 201112L */

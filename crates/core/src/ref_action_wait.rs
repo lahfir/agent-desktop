@@ -249,6 +249,7 @@ fn is_permanent_error(code: &ErrorCode) -> bool {
             | ErrorCode::InvalidArgs
             | ErrorCode::PolicyDenied
             | ErrorCode::AppUnresponsive
+            | ErrorCode::Internal
     )
 }
 
@@ -267,11 +268,17 @@ fn maybe_scroll_into_view(
     if !request.action.requires_scroll_into_view() {
         return;
     }
-    let needs_scroll = crate::state::has_state(&ctx.entry.states, crate::state::OFFSCREEN)
-        || ctx
-            .entry
-            .bounds
-            .is_none_or(|bounds| bounds.width <= 0.0 || bounds.height <= 0.0);
+    let live_states = crate::adapter::optional_live_read(ctx.adapter.get_live_state(handle))
+        .ok()
+        .flatten()
+        .map(|state| state.states);
+    let states = live_states.as_ref().unwrap_or(&ctx.entry.states);
+    let live_bounds = crate::adapter::optional_live_read(ctx.adapter.get_element_bounds(handle))
+        .ok()
+        .flatten();
+    let bounds = live_bounds.or(ctx.entry.bounds);
+    let needs_scroll = crate::state::has_state(states, crate::state::OFFSCREEN)
+        || bounds.is_none_or(|bounds| bounds.width <= 0.0 || bounds.height <= 0.0);
     if !needs_scroll {
         return;
     }

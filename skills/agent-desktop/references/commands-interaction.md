@@ -59,7 +59,13 @@ All ref-based interaction commands accept `--snapshot <snapshot_id>`. Omit it fo
 
 Success responses for ref actions include a `steps` array when the activation chain recorded attempts: each entry is `{ "label": "AXPress", "outcome": "attempted" | "skipped" | "succeeded" }` in execution order, showing which activation path produced the result.
 
-When the actionability preflight blocks an action, the error envelope carries the full report in `error.details`: `{ "actionable": false, "checks": [ { "name": "...", "status": "...", "reason": "..." } ] }`. Check names are `visible`, `stable`, `enabled`, `supported_action`, `policy`, and `editable`; statuses are `pass`, `fail`, and `unknown`. Use the failing check's `reason` to pick recovery: `wait --element <ref> --predicate actionable`, a fresh snapshot, or `--headed` when a `policy` check failed and a physical gesture is intended.
+When the actionability preflight blocks an action, the error envelope carries the full report in `error.details`: `{ "actionable": false, "checks": [ { "name": "...", "status": "...", "reason": "..." } ] }`. Check names are `visible`, `stable`, `enabled`, `supported_action`, `policy`, `editable`, and `receives_events`; statuses are `pass`, `fail`, and `unknown`. The dispatch actions that activate an element (`click`, `double-click`, `right-click`, `triple-click`, `type`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `clear`, `focus`, `scroll`, `scroll-to`) run the `visible`/`stable`/`enabled`/`supported_action`/`policy`/`editable` battery; the four hit-test variants (`click`, `double-click`, `right-click`, `triple-click`) additionally run `receives_events`. `hover` and `drag` are different — they resolve a target point and run **only** the `receives_events` occlusion check, so their report's `checks` array holds that single entry (no `visible`/`enabled`/etc.). Use the failing check's `reason` to pick recovery: `wait --element <ref> --predicate actionable`, a fresh snapshot, or `--headed` when a `policy` check failed and a physical gesture is intended.
+
+**`receives_events` failures.** When a hit test at the target's center point lands on a different element, `receives_events` fails with `reason: "occluded by <role>"` and a structured `occluder` object on that check: `{ "role", "name", "bounds" }` (the element that actually received the hit, when it can be identified). The target's own bounds have not changed — something else is now on top of them. Recovery is to bring the target's window or element to the front (or dismiss whatever is covering it), then retry; blind-retrying without changing z-order will fail the same way again.
+
+Every ref-resolving action accepts `--timeout-ms` (default `5000`), but it budgets different things. For the dispatch actions (`click`, `double-click`, `triple-click`, `right-click`, `clear`, `focus`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll-to`, `type`, `set-value`, `select`, `scroll`) it is the actionability-wait budget: they poll roughly every 100ms until the target becomes actionable, then fail with `TIMEOUT` once the budget is exhausted. For `hover` and `drag` it budgets the ref-*resolution* retry instead — only `STALE_REF`/`AMBIGUOUS_TARGET`/`TIMEOUT` are retried within the budget; a `receives_events` occlusion failure on hover/drag is returned immediately as `ACTION_FAILED`, not polled to `TIMEOUT`.
+
+**Implicit scroll-into-view.** Before acting, every ref action other than `scroll`, `scroll-to`, `hover`, and `drag` automatically attempts to bring an offscreen or zero-bounds target into view (macOS: `AXScrollToVisible`) before dispatching the action. This is best-effort and silent — it has no separate error code, and a failed attempt does not block the action itself, it just proceeds without having scrolled. Use the standalone `scroll-to` command when you need an explicit, verifiable scroll instead of relying on this implicit step.
 
 ## Click Actions
 
@@ -174,6 +180,7 @@ agent-desktop scroll @e1 --direction right --amount 2
 |------|---------|-------------|
 | `--direction` | down | `up`, `down`, `left`, `right` |
 | `--amount` | 3 | Number of scroll units |
+| `--timeout-ms` | 5000 | Actionability wait budget in ms before failing with `TIMEOUT` |
 
 Uses AX scroll actions, scroll bars, and state-setting paths. If those are unavailable, the command returns a structured error instead of stealing focus or sending wheel events.
 
@@ -246,6 +253,7 @@ agent-desktop --headed drag --from @e1 --to @e5 --drop-delay 800
 | `--to-xy` | Destination coordinates as `x,y` |
 | `--duration` | Drag duration in milliseconds (movement from source to destination) |
 | `--drop-delay` | Milliseconds to hold over the destination before releasing; default 500 |
+| `--timeout-ms` | Actionability wait budget in ms before failing with `TIMEOUT`; default 5000 |
 
 Can mix ref and coordinate sources (e.g., `--from @e1 --to-xy 400,500`).
 
@@ -271,6 +279,7 @@ agent-desktop --headed mouse-click --xy 500,300 --count 2
 | `--xy` | (required) | Coordinates as `x,y` |
 | `--button` | left | `left`, `right`, `middle` |
 | `--count` | 1 | Number of clicks |
+| `--modifiers` | | Held modifiers: `shift`, `cmd`, `ctrl`, `alt` (repeatable); held during the click |
 
 ### mouse-down / mouse-up
 ```bash
@@ -283,6 +292,7 @@ Low-level press/release for custom drag or hold interactions.
 |------|---------|-------------|
 | `--xy` | (required) | Coordinates as `x,y` |
 | `--button` | left | `left`, `right`, `middle` |
+| `--modifiers` | | Held modifiers: `shift`, `cmd`, `ctrl`, `alt` (repeatable); held during the mouse event |
 
 ### mouse-wheel
 ```bash

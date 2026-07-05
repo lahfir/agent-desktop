@@ -5,34 +5,28 @@ use crate::{
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::NativeHandle,
-    error::{AdapterError, ErrorCode},
+    commands::stale_retry_test_support::StaleRetryCounter,
+    error::AdapterError,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
 };
-use std::sync::atomic::{AtomicU32, Ordering};
 
 struct StaleThenOkAdapter {
-    resolve_calls: AtomicU32,
-    fail_until: u32,
+    retry: StaleRetryCounter,
 }
 
 impl StaleThenOkAdapter {
     fn new(fail_until: u32) -> Self {
         Self {
-            resolve_calls: AtomicU32::new(0),
-            fail_until,
+            retry: StaleRetryCounter::new(fail_until),
         }
     }
 }
 
 impl ObservationOps for StaleThenOkAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        let n = self.resolve_calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if n <= self.fail_until {
-            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable"));
-        }
-        Ok(NativeHandle::null())
+        self.retry.attempt()
     }
 }
 
@@ -97,7 +91,7 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
     .unwrap();
 
     assert_eq!(value["action"], "scroll");
-    assert!(adapter.resolve_calls.load(Ordering::SeqCst) >= 3);
+    assert!(adapter.retry.calls() >= 3);
 }
 
 #[test]
@@ -120,5 +114,5 @@ fn timeout_none_makes_exactly_one_resolve_attempt() {
     .unwrap_err();
 
     assert_eq!(err.code(), "STALE_REF");
-    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.retry.calls(), 1);
 }

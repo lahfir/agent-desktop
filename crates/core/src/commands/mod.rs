@@ -74,3 +74,6 @@ pub(crate) mod wait_timeout;
 
 #[cfg(test)]
 mod ref_policy_tests;
+
+#[cfg(test)]
+mod stale_retry_test_support;

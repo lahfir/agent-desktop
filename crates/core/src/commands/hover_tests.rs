@@ -3,7 +3,8 @@ use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     adapter::NativeHandle,
     capability,
-    error::{AdapterError, ErrorCode},
+    commands::stale_retry_test_support::StaleRetryCounter,
+    error::AdapterError,
     hit_test::HitTestResult,
     node::Rect,
     refs::{RefEntry, RefMap},
@@ -11,7 +12,6 @@ use crate::{
     refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 struct HoverCaptureAdapter {
     moved_to: Mutex<Option<MouseEvent>>,
@@ -147,26 +147,20 @@ fn headed_xy_hover_never_steals_focus() {
 }
 
 struct StaleThenOkAdapter {
-    resolve_calls: AtomicU32,
-    fail_until: u32,
+    retry: StaleRetryCounter,
 }
 
 impl StaleThenOkAdapter {
     fn new(fail_until: u32) -> Self {
         Self {
-            resolve_calls: AtomicU32::new(0),
-            fail_until,
+            retry: StaleRetryCounter::new(fail_until),
         }
     }
 }
 
 impl ObservationOps for StaleThenOkAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        let n = self.resolve_calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if n <= self.fail_until {
-            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable"));
-        }
-        Ok(NativeHandle::null())
+        self.retry.attempt()
     }
 
     fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
@@ -213,7 +207,7 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
     .unwrap();
 
     assert_eq!(value["hovered"], true);
-    assert!(adapter.resolve_calls.load(Ordering::SeqCst) >= 3);
+    assert!(adapter.retry.calls() >= 3);
 }
 
 struct OccludedTargetAdapter {
@@ -302,5 +296,5 @@ fn timeout_none_makes_exactly_one_resolve_attempt() {
     .unwrap_err();
 
     assert_eq!(err.code(), "STALE_REF");
-    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.retry.calls(), 1);
 }

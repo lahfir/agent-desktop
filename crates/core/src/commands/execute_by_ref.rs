@@ -76,3 +76,7 @@ pub fn execute_with_timeout(
         context,
     )
 }
+
+#[cfg(test)]
+#[path = "execute_by_ref_tests.rs"]
+mod tests;
