@@ -3,7 +3,7 @@ use crate::{
     adapter::PlatformAdapter,
     commands::{
         helpers::resolve_point_with_wait,
-        point_resolve::{focus_for_physical_input, require_cursor_policy},
+        point_resolve::{PointResolveArgs, focus_for_physical_input, require_cursor_policy},
     },
     context::CommandContext,
     error::AppError,
@@ -25,10 +25,12 @@ pub fn execute(
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "hover")?;
     let resolved = resolve_point_with_wait(
-        args.ref_id.as_deref(),
-        args.xy,
-        args.snapshot_id.as_deref(),
-        "Provide a ref (@e1) or --xy x,y",
+        PointResolveArgs {
+            ref_id: args.ref_id.as_deref(),
+            xy: args.xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        },
         args.timeout_ms,
         adapter,
         context,

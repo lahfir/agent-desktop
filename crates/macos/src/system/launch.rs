@@ -148,8 +148,9 @@ fn validate_app_identifier(id: &str) -> Result<(), AdapterError> {
     if id.contains("..") || id.starts_with('/') {
         return Err(AdapterError::new(
             ErrorCode::InvalidArgs,
-            format!("Invalid app identifier: '{id}'"),
+            "Invalid app identifier: must be a bare app name or bundle ID, not a path",
         )
+        .with_details(serde_json::json!({ "app_name": id }))
         .with_suggestion("Use an app name like 'Safari' or bundle ID like 'com.apple.Safari'."));
     }
     Ok(())

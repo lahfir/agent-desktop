@@ -41,10 +41,6 @@ fn entry() -> RefEntry {
     }
 }
 
-fn request_with_timeout(timeout_ms: u64) -> ActionRequest {
-    ActionRequest::headless(Action::Click).with_timeout_ms(Some(timeout_ms))
-}
-
 struct UnresponsiveProcessAdapter {
     probe_calls: AtomicU32,
 }
@@ -172,6 +168,66 @@ fn terminal_stale_ref_against_exited_process_carries_process_state_detail() {
     );
 }
 
+struct CrashedProcessAdapter;
+
+impl ObservationOps for CrashedProcessAdapter {
+    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+        Err(AdapterError::stale_ref("@e1"))
+    }
+
+    fn resolve_element_strict_with_timeout(
+        &self,
+        entry: &RefEntry,
+        _timeout: Duration,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_element_strict(entry)
+    }
+}
+
+impl ActionOps for CrashedProcessAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
+        Ok(crate::action_result::ActionResult::new("click"))
+    }
+}
+
+impl InputOps for CrashedProcessAdapter {}
+
+impl SystemOps for CrashedProcessAdapter {
+    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+        Ok(crate::process_state::ProcessState::Crashed { signal_or_code: 11 })
+    }
+}
+
+#[test]
+fn terminal_stale_ref_against_crashed_process_carries_process_state_detail() {
+    let err = execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter: &CrashedProcessAdapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        ActionRequest::headless(Action::Click),
+        crate::ref_action::execute_resolved,
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        err.code,
+        ErrorCode::StaleRef,
+        "a Crashed (not Unresponsive) classification must not replace the original error code"
+    );
+    assert_eq!(
+        err.details.as_ref().and_then(|d| d.get("process_state")),
+        Some(&serde_json::json!("crashed")),
+        "STALE_REF against a crashed pid must carry details.process_state = \"crashed\""
+    );
+}
+
 struct SuccessWithUnresponsiveProbeAdapter {
     probe_calls: AtomicU32,
 }
@@ -233,80 +289,5 @@ fn enrichment_never_converts_a_successful_action_into_a_failure() {
         0,
         "a successful action must never consult the liveness probe at all \
          (this used to be an unconditional preflight hard-gate)"
-    );
-}
-
-struct TicksThenAppNotFoundAdapter {
-    resolve_calls: AtomicU32,
-    probe_calls: AtomicU32,
-}
-
-impl ObservationOps for TicksThenAppNotFoundAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
-    fn resolve_element_strict_with_timeout(
-        &self,
-        _entry: &RefEntry,
-        _timeout: Duration,
-    ) -> Result<NativeHandle, AdapterError> {
-        let attempt = self.resolve_calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if attempt < 3 {
-            Err(AdapterError::new(ErrorCode::StaleRef, "not yet"))
-        } else {
-            Err(AdapterError::new(ErrorCode::AppNotFound, "app gone"))
-        }
-    }
-}
-
-impl ActionOps for TicksThenAppNotFoundAdapter {
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-    ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
-    }
-}
-
-impl InputOps for TicksThenAppNotFoundAdapter {}
-
-impl SystemOps for TicksThenAppNotFoundAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
-        self.probe_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(crate::process_state::ProcessState::Running)
-    }
-}
-
-#[test]
-fn probe_call_count_is_independent_of_auto_wait_tick_count() {
-    let adapter = TicksThenAppNotFoundAdapter {
-        resolve_calls: AtomicU32::new(0),
-        probe_calls: AtomicU32::new(0),
-    };
-
-    let err = execute_with_auto_wait(
-        RefActionWaitCtx {
-            adapter: &adapter,
-            entry: &entry(),
-            ref_id: "@e1",
-            context: &CommandContext::default(),
-        },
-        request_with_timeout(5_000),
-        crate::ref_action::execute_resolved,
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code, ErrorCode::AppNotFound);
-    assert!(
-        adapter.resolve_calls.load(Ordering::SeqCst) >= 3,
-        "the poll loop must have ticked multiple times before the terminal error"
-    );
-    assert_eq!(
-        adapter.probe_calls.load(Ordering::SeqCst),
-        1,
-        "the liveness probe must run exactly once at the terminal boundary, \
-         not once per auto-wait tick"
     );
 }

@@ -3,7 +3,7 @@ use crate::{
     adapter::PlatformAdapter,
     commands::{
         helpers::resolve_point_with_wait,
-        point_resolve::{focus_for_physical_input, require_cursor_policy},
+        point_resolve::{PointResolveArgs, focus_for_physical_input, require_cursor_policy},
     },
     context::CommandContext,
     error::AppError,
@@ -28,19 +28,23 @@ pub fn execute(
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "drag")?;
     let from = resolve_point_with_wait(
-        args.from_ref.as_deref(),
-        args.from_xy,
-        args.snapshot_id.as_deref(),
-        "Provide --from <ref> or --from-xy x,y",
+        PointResolveArgs {
+            ref_id: args.from_ref.as_deref(),
+            xy: args.from_xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide --from <ref> or --from-xy x,y",
+        },
         args.timeout_ms,
         adapter,
         context,
     )?;
     let to = resolve_point_with_wait(
-        args.to_ref.as_deref(),
-        args.to_xy,
-        args.snapshot_id.as_deref(),
-        "Provide --to <ref> or --to-xy x,y",
+        PointResolveArgs {
+            ref_id: args.to_ref.as_deref(),
+            xy: args.to_xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide --to <ref> or --to-xy x,y",
+        },
         args.timeout_ms,
         adapter,
         context,

@@ -9,7 +9,7 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 56 commands across observation, interaction, keyboard/mouse, app lifecycle,
+  Covers 58 commands across observation, interaction, keyboard/mouse, app lifecycle,
   notifications (macOS), clipboard, wait, session lifecycle, and a `skills` command
   bundled docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
@@ -130,7 +130,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 
 `TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
-## Command Quick Reference (56 commands)
+## Command Quick Reference (58 commands)
 
 ### Observation
 ```

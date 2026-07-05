@@ -31,7 +31,11 @@ fn enrich_with_process_state(
     };
     if state == crate::process_state::ProcessState::Unresponsive {
         let app = entry.source_app.as_deref().unwrap_or("target application");
-        return AdapterError::app_unresponsive(app);
+        let unresponsive = AdapterError::app_unresponsive(app);
+        return match err.details {
+            Some(details) => unresponsive.with_details(details),
+            None => unresponsive,
+        };
     }
     attach_process_state_detail(err, state)
 }
@@ -149,7 +153,7 @@ fn execute_single_shot(
         .inspect_err(|err| trace_resolve_error(ctx.context, ctx.ref_id, err))?;
     trace_resolve_ok(ctx.context, ctx.ref_id);
     let handle = ResolvedElement::new(ctx.adapter, handle);
-    maybe_scroll_into_view(ctx.adapter, ctx.entry, handle.handle(), &request);
+    maybe_scroll_into_view(ctx, handle.handle(), &request);
     dispatch(
         crate::ref_action::ResolvedRefAction {
             adapter: ctx.adapter,
@@ -183,7 +187,7 @@ fn execute_poll_loop(
             ResolveAttemptOutcome::Resolved(handle) => {
                 trace_resolve_ok(ctx.context, ctx.ref_id);
                 let resolved = ResolvedElement::new(ctx.adapter, handle);
-                maybe_scroll_into_view(ctx.adapter, ctx.entry, resolved.handle(), &request);
+                maybe_scroll_into_view(ctx, resolved.handle(), &request);
                 match dispatch(
                     crate::ref_action::ResolvedRefAction {
                         adapter: ctx.adapter,
@@ -256,22 +260,30 @@ fn is_retryable_resolve_error(code: &ErrorCode) -> bool {
 }
 
 fn maybe_scroll_into_view(
-    adapter: &dyn PlatformAdapter,
-    entry: &RefEntry,
+    ctx: RefActionWaitCtx<'_>,
     handle: &crate::adapter::NativeHandle,
     request: &ActionRequest,
 ) {
     if !request.action.requires_scroll_into_view() {
         return;
     }
-    let needs_scroll = crate::state::has_state(&entry.states, crate::state::OFFSCREEN)
-        || entry
+    let needs_scroll = crate::state::has_state(&ctx.entry.states, crate::state::OFFSCREEN)
+        || ctx
+            .entry
             .bounds
             .is_none_or(|bounds| bounds.width <= 0.0 || bounds.height <= 0.0);
     if !needs_scroll {
         return;
     }
-    let _ = adapter.scroll_into_view(handle);
+    if let Err(err) = ctx.adapter.scroll_into_view(handle) {
+        let _ = ctx.context.trace_lazy("ref.scroll_into_view.error", || {
+            json!({
+                "ref": ctx.ref_id,
+                "code": err.code.as_str(),
+                "message": err.message.clone()
+            })
+        });
+    }
 }
 
 fn actionability_timeout(last_report: Option<Value>) -> AdapterError {
@@ -292,3 +304,7 @@ mod tests;
 #[cfg(test)]
 #[path = "ref_action_wait_process_state_tests.rs"]
 mod process_state_tests;
+
+#[cfg(test)]
+#[path = "ref_action_wait_app_not_found_tests.rs"]
+mod app_not_found_tests;

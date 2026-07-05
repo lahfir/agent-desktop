@@ -8,6 +8,7 @@ use crate::{
 };
 use serde_json::json;
 
+#[derive(Clone, Copy)]
 pub(crate) struct PointResolveArgs<'a> {
     pub ref_id: Option<&'a str>,
     pub xy: Option<(f64, f64)>,

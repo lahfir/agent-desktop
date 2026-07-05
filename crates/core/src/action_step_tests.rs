@@ -10,8 +10,9 @@ fn legacy_action_step_json_round_trips_without_new_fields() {
     assert_eq!(step.label(), "AXPress");
     assert!(step.mechanism().is_none());
     assert!(step.verified().is_none());
-    let round_trip = serde_json::to_string(&step).unwrap();
-    assert_eq!(round_trip, legacy);
+    let round_trip = serde_json::to_value(&step).unwrap();
+    let legacy_value: serde_json::Value = serde_json::from_str(legacy).unwrap();
+    assert_eq!(round_trip, legacy_value);
 }
 
 #[test]

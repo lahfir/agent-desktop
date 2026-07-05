@@ -66,6 +66,12 @@ impl SystemOps for RestoreWithoutWindowAdapter {
 }
 
 #[test]
+fn normalize_action_timeout_ms_treats_zero_as_disabled() {
+    assert_eq!(normalize_action_timeout_ms(0), None);
+    assert_eq!(normalize_action_timeout_ms(1), Some(1));
+}
+
+#[test]
 fn resolved_element_releases_handle_once_on_drop() {
     let _guard = HomeGuard::new();
     let mut refmap = RefMap::new();

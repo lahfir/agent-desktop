@@ -62,8 +62,8 @@ fn check_actionability_with_trace(
         "actionability.check.start",
         || json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
-    actionability::check_live(target.entry, target.handle, target.adapter, request).inspect_err(
-        |err| {
+    let report = actionability::check_live(target.entry, target.handle, target.adapter, request)
+        .inspect_err(|err| {
             let _ = target.context.trace_lazy("actionability.check.error", || {
                 json!({
                     "ref": target.ref_id,
@@ -73,12 +73,10 @@ fn check_actionability_with_trace(
                     "details": err.details.clone()
                 })
             });
-        },
-    )?;
-    target.context.trace_lazy(
-        "actionability.check.ok",
-        || json!({ "ref": target.ref_id, "action": request.action.name() }),
-    )?;
+        })?;
+    target.context.trace_lazy("actionability.check.ok", || {
+        json!({ "ref": target.ref_id, "action": request.action.name(), "report": json!(report) })
+    })?;
     Ok(())
 }
 

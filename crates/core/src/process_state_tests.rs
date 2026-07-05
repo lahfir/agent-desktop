@@ -25,6 +25,19 @@ fn exited_serializes_with_optional_code_field() {
 }
 
 #[test]
+fn crashed_round_trips_through_serde() {
+    let value =
+        serde_json::to_value(ProcessState::Crashed { signal_or_code: 11 }).expect("serializable");
+    assert_eq!(
+        value,
+        serde_json::json!({ "state": "crashed", "signal_or_code": 11 })
+    );
+
+    let round_tripped: ProcessState = serde_json::from_value(value).expect("deserializable");
+    assert_eq!(round_tripped, ProcessState::Crashed { signal_or_code: 11 });
+}
+
+#[test]
 fn running_and_unresponsive_serialize_as_tag_only() {
     assert_eq!(
         serde_json::to_value(ProcessState::Running).expect("serializable"),

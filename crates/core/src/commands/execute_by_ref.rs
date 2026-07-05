@@ -11,6 +11,17 @@ use serde_json::Value;
 
 pub const DEFAULT_ACTION_TIMEOUT_MS: u64 = 5000;
 
+/// Config struct bundling the caller-supplied inputs to `execute` /
+/// `execute_with_timeout`, keeping both functions within the 5-parameter
+/// limit (mirrors the `RefArgs`/`ActionRequest` config-struct pattern used
+/// elsewhere in this module).
+pub struct ExecuteByRefArgs<'a> {
+    pub ref_id: &'a str,
+    pub snapshot_id: Option<&'a str>,
+    pub action: Action,
+    pub caller_policy: InteractionPolicy,
+}
+
 /// Executes an action addressed by a snapshot ref through the canonical
 /// ref-action pipeline: `RefStore` load → `RefMap` lookup → strict element
 /// resolution → live actionability preflight → dispatch.
@@ -27,33 +38,25 @@ pub const DEFAULT_ACTION_TIMEOUT_MS: u64 = 5000;
 /// `Action::base_interaction_policy`, shared with `TypeText`) because a
 /// ref-targeted key press may need the target focused for keystrokes to land.
 pub fn execute(
-    ref_id: &str,
-    snapshot_id: Option<&str>,
-    action: Action,
-    caller_policy: InteractionPolicy,
+    args: ExecuteByRefArgs<'_>,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    execute_with_timeout(
+    execute_with_timeout(args, DEFAULT_ACTION_TIMEOUT_MS, adapter, context)
+}
+
+pub fn execute_with_timeout(
+    args: ExecuteByRefArgs<'_>,
+    timeout_ms: u64,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let ExecuteByRefArgs {
         ref_id,
         snapshot_id,
         action,
         caller_policy,
-        adapter,
-        context,
-        DEFAULT_ACTION_TIMEOUT_MS,
-    )
-}
-
-pub fn execute_with_timeout(
-    ref_id: &str,
-    snapshot_id: Option<&str>,
-    action: Action,
-    caller_policy: InteractionPolicy,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-    timeout_ms: u64,
-) -> Result<Value, AppError> {
+    } = args;
     let timeout_ms = normalize_action_timeout_ms(timeout_ms);
     let base = action.base_interaction_policy();
     let effective = base.join(caller_policy);

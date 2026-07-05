@@ -37,14 +37,12 @@ pub(crate) fn resolve_ref_with_context<'a>(
     resolve_ref_within_deadline(ref_id, snapshot_id, None, adapter, context)
 }
 
-/// Single owner of ref resolution and its `ref.resolve.start/entry/ok/error`
-/// tracing. With `deadline: None` the strict resolve is uncapped (the
-/// `get`/`is`/single-shot pointer path); with `Some(deadline)` each resolve is
-/// capped to the remaining budget via
-/// [`crate::ref_action_wait::resolve_within_deadline`] so a ref-addressed
-/// pointer wait (`hover`, `drag`) cannot spend its whole budget on one slow
-/// attempt. Both modes emit identical telemetry, so budgeted and single-shot
-/// resolution trace the same way.
+/// Resolves a ref to a live element handle, capping the strict resolve to
+/// `deadline` when supplied (the `hover`/`drag` wait path) or resolving
+/// uncapped otherwise (`get`/`is`). Delegates entry loading and its
+/// `ref.resolve.start/entry/error` tracing to [`load_ref_entry`], then adds
+/// handle resolution and the `ref.resolve.ok` event, so budgeted and
+/// single-shot resolution trace identically.
 fn resolve_ref_within_deadline<'a>(
     ref_id: &str,
     snapshot_id: Option<&str>,
@@ -52,52 +50,7 @@ fn resolve_ref_within_deadline<'a>(
     adapter: &'a dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
-    validate_ref_id(ref_id)?;
-    let store = RefStore::for_session(context.session_id())?;
-    context.trace_lazy(
-        "ref.resolve.start",
-        || json!({ "ref": ref_id, "snapshot_id": snapshot_id }),
-    )?;
-    let refmap = store.load(snapshot_id).inspect_err(|e| {
-        tracing::debug!("refmap load failed: {e}");
-        let _ = context.trace_lazy("ref.resolve.error", || {
-            json!({
-                "ref": ref_id,
-                "snapshot_id": snapshot_id,
-                "code": e.code(),
-                "message": e.to_string()
-            })
-        });
-    })?;
-    let entry = match refmap.get(ref_id) {
-        Some(entry) => entry.clone(),
-        None => {
-            context.trace_lazy("ref.resolve.error", || {
-                json!({
-                    "ref": ref_id,
-                    "snapshot_id": snapshot_id,
-                    "code": "STALE_REF",
-                    "message": "ref not found in current RefMap"
-                })
-            })?;
-            return Err(AppError::stale_ref(ref_id));
-        }
-    };
-    tracing::debug!(
-        "resolve: {} -> pid={} role={} name_chars={:?}",
-        ref_id,
-        entry.pid,
-        entry.role,
-        entry.name.as_deref().map(|name| name.chars().count())
-    );
-    context.trace_lazy("ref.resolve.entry", || {
-        json!({
-            "ref": ref_id,
-            "pid": entry.pid,
-            "role": entry.role,
-            "name": entry.name
-        })
-    })?;
+    let entry = load_ref_entry(ref_id, snapshot_id, context)?;
     let handle = resolve_handle_within_deadline(adapter, &entry, deadline).inspect_err(|err| {
         let _ = context.trace_lazy("ref.resolve.error", || {
             json!({
@@ -247,6 +200,13 @@ pub(crate) fn execute_ref_action_result_with_context(
     Ok((entry, result))
 }
 
+/// Shared owner of ref-entry loading and its `ref.resolve.start/entry/error`
+/// tracing, used by both the ref-action path
+/// ([`execute_ref_action_result_with_context`]) and, via
+/// [`resolve_ref_within_deadline`], the pointer/get/is resolve path, so a
+/// stale ref emits identical telemetry regardless of caller.
+/// [`resolve_ref_within_deadline`] builds handle resolution and the
+/// `ref.resolve.ok` event on top of the entry this returns.
 fn load_ref_entry(
     ref_id: &str,
     snapshot_id: Option<&str>,
@@ -254,11 +214,51 @@ fn load_ref_entry(
 ) -> Result<RefEntry, AppError> {
     validate_ref_id(ref_id)?;
     let store = RefStore::for_session(context.session_id())?;
-    let refmap = store.load(snapshot_id)?;
-    refmap
-        .get(ref_id)
-        .cloned()
-        .ok_or_else(|| AppError::stale_ref(ref_id))
+    context.trace_lazy(
+        "ref.resolve.start",
+        || json!({ "ref": ref_id, "snapshot_id": snapshot_id }),
+    )?;
+    let refmap = store.load(snapshot_id).inspect_err(|e| {
+        tracing::debug!("refmap load failed: {e}");
+        let _ = context.trace_lazy("ref.resolve.error", || {
+            json!({
+                "ref": ref_id,
+                "snapshot_id": snapshot_id,
+                "code": e.code(),
+                "message": e.to_string()
+            })
+        });
+    })?;
+    let entry = match refmap.get(ref_id) {
+        Some(entry) => entry.clone(),
+        None => {
+            context.trace_lazy("ref.resolve.error", || {
+                json!({
+                    "ref": ref_id,
+                    "snapshot_id": snapshot_id,
+                    "code": "STALE_REF",
+                    "message": "ref not found in current RefMap"
+                })
+            })?;
+            return Err(AppError::stale_ref(ref_id));
+        }
+    };
+    tracing::debug!(
+        "resolve: {} -> pid={} role={} name_chars={:?}",
+        ref_id,
+        entry.pid,
+        entry.role,
+        entry.name.as_deref().map(|name| name.chars().count())
+    );
+    context.trace_lazy("ref.resolve.entry", || {
+        json!({
+            "ref": ref_id,
+            "pid": entry.pid,
+            "role": entry.role,
+            "name": entry.name
+        })
+    })?;
+    Ok(entry)
 }
 
 pub(crate) fn window_op_command(
@@ -331,36 +331,20 @@ fn resolve_point_from_ref_capped(
 /// capped to the remaining budget via [`resolve_point_from_ref_capped`] so a
 /// single slow resolve cannot exhaust the whole wait window.
 pub(crate) fn resolve_point_with_wait<'a>(
-    ref_id: Option<&'a str>,
-    xy: Option<(f64, f64)>,
-    snapshot_id: Option<&'a str>,
-    missing_input_message: &'a str,
+    args: crate::commands::point_resolve::PointResolveArgs<'a>,
     timeout_ms: Option<u64>,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
-    use crate::commands::point_resolve::{
-        PointResolveArgs, resolve_point_from_ref_or_xy_with_context,
-    };
+    use crate::commands::point_resolve::resolve_point_from_ref_or_xy_with_context;
 
-    let attempt = || {
-        resolve_point_from_ref_or_xy_with_context(
-            PointResolveArgs {
-                ref_id,
-                xy,
-                snapshot_id,
-                missing_input_message,
-            },
-            adapter,
-            context,
-        )
-    };
-    let (Some(budget_ms), Some(ref_id)) = (timeout_ms, ref_id) else {
+    let attempt = || resolve_point_from_ref_or_xy_with_context(args, adapter, context);
+    let (Some(budget_ms), Some(ref_id)) = (timeout_ms, args.ref_id) else {
         return attempt();
     };
     let deadline = std::time::Instant::now() + crate::ref_action_wait::budget_from_ms(budget_ms);
     loop {
-        match resolve_point_from_ref_capped(ref_id, snapshot_id, deadline, adapter, context) {
+        match resolve_point_from_ref_capped(ref_id, args.snapshot_id, deadline, adapter, context) {
             Ok(point) => return Ok(point),
             Err(err) => {
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());

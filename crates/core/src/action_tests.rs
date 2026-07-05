@@ -168,6 +168,50 @@ fn requires_hit_test_covers_ref_targeted_pointer_actions() {
     }
 }
 
+#[test]
+fn requires_scroll_into_view_covers_all_actions() {
+    let scroll_into_view: &[Action] = &[
+        Action::Click,
+        Action::DoubleClick,
+        Action::RightClick,
+        Action::TripleClick,
+        Action::SetValue("v".into()),
+        Action::SetFocus,
+        Action::Expand,
+        Action::Collapse,
+        Action::Select("s".into()),
+        Action::Toggle,
+        Action::Check,
+        Action::Uncheck,
+        Action::PressKey(dummy_key()),
+        Action::KeyDown(dummy_key()),
+        Action::KeyUp(dummy_key()),
+        Action::TypeText("t".into()),
+        Action::Clear,
+    ];
+    for action in scroll_into_view {
+        assert!(
+            action.requires_scroll_into_view(),
+            "{} must require scroll-into-view before dispatch",
+            action.name()
+        );
+    }
+
+    let not_scroll_into_view: &[Action] = &[
+        Action::Scroll(Direction::Down, 1),
+        Action::ScrollTo,
+        Action::Hover,
+        Action::Drag(dummy_drag()),
+    ];
+    for action in not_scroll_into_view {
+        assert!(
+            !action.requires_scroll_into_view(),
+            "{} must not require scroll-into-view",
+            action.name()
+        );
+    }
+}
+
 /// F10 regression coverage: `MouseEvent.modifiers` must stay `#[serde(default)]`
 /// so a legacy payload recorded before modifiers existed (or any FFI/batch
 /// caller that omits the key) still deserializes instead of erroring out.

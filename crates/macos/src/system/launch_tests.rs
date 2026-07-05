@@ -79,6 +79,46 @@ fn launch_conflict_error_never_puts_the_raw_app_id_in_the_message() {
 }
 
 #[test]
+fn validate_app_identifier_rejects_parent_dir_traversal() {
+    let err = validate_app_identifier("../Evil").expect_err("must reject '..' traversal");
+
+    assert_eq!(err.code, ErrorCode::InvalidArgs);
+}
+
+#[test]
+fn validate_app_identifier_rejects_absolute_path() {
+    let err = validate_app_identifier("/abs/path").expect_err("must reject absolute path");
+
+    assert_eq!(err.code, ErrorCode::InvalidArgs);
+}
+
+#[test]
+fn validate_app_identifier_accepts_bare_app_name() {
+    assert!(validate_app_identifier("Safari").is_ok());
+}
+
+#[test]
+fn validate_app_identifier_accepts_bundle_id() {
+    assert!(validate_app_identifier("com.apple.Safari").is_ok());
+}
+
+#[test]
+fn validate_app_identifier_never_puts_the_raw_app_id_in_the_message() {
+    let marker = "../MARKER_APP_ID_9f31c4";
+    let err = validate_app_identifier(marker).expect_err("must reject '..' traversal");
+
+    assert!(
+        !err.message.contains(marker),
+        "raw app id leaked into a trace-reachable message: {}",
+        err.message
+    );
+    let details = err
+        .details
+        .expect("invalid app identifier error should carry the app id in details");
+    assert_eq!(details["app_name"], marker);
+}
+
+#[test]
 fn launch_no_window_error_never_puts_the_raw_app_id_in_the_message() {
     let marker = "MARKER_APP_ID_9f31c4";
     let err = launch_no_window_error(marker, 5000);
