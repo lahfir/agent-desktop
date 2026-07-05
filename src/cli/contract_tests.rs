@@ -11,6 +11,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "mod",
     "point_resolve",
     "query",
+    "stale_retry_test_support",
     "wait_element",
     "wait_latest_ref_cache",
     "wait_mode",
