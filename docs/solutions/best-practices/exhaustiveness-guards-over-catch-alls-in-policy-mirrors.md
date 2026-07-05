@@ -80,12 +80,12 @@ const POLICY_TESTED_COMMANDS: &[&str] = &[
 #[test]
 fn all_context_request_callers_are_policy_tested() {
     // scans crates/core/src/commands/*.rs (excluding *_tests) for files
-    // containing `context.request(` and fails, naming each stem, when one
+    // containing `context.request_base(` and fails, naming each stem, when one
     // is absent from POLICY_TESTED_COMMANDS
 }
 ```
 
-The universe is not hand-maintained: the test scans the filesystem for the call-site signature every ref-action command shares. A new command file that calls `context.request(` without a registered policy assertion fails CI with a message naming the stem and the required follow-up.
+The universe is not hand-maintained: the test scans the filesystem for the call-site signature every ref-action command shares. A new command file that calls `context.request_base(` without a registered policy assertion fails CI with a message naming the stem and the required follow-up.
 
 **Leg 3 — per-case value pins.**
 

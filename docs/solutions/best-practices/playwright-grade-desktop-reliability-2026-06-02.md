@@ -134,8 +134,11 @@ The reliable split is:
   details carry a `kind` discriminant: `"wait_timeout"` for wait-loop expiry
   (predicate, timeout_ms, last observed state) and `"chain_deadline"` for a
   chain step expiring mid-increment or mid-disclosure (observed value or
-  expanded state, plus a `mutated` flag) — agents key on `kind` before
-  inspecting other fields.
+  expanded state, plus a `mutated` flag), and `"actionability_timeout"` for
+  the ref-action auto-wait poll loop (click/type/set-value/etc.) exhausting
+  `--timeout-ms` while resolution or actionability keeps failing transiently
+  (carries an optional `report` field with the last actionability failure
+  detail) — agents key on `kind` before inspecting other fields.
 - For `wait --element` without `--snapshot`, refresh the latest-ref cache on a
   bounded cadence; for a fixed `--snapshot`, treat missing refs as invalid input
   instead of silently switching snapshots.
@@ -261,8 +264,20 @@ presentation bounds when needed:
 ```rust
 let identity_opts = opts.with_ref_identity_bounds();
 let tree = adapter.get_tree(&window, &identity_opts)?;
-let (tree, refmap) = allocate_refs(tree, opts)?;
-let tree = strip_ref_bounds_when_hidden(tree, opts);
+let mut refmap = RefMap::new();
+let config = RefAllocConfig {
+    include_bounds: opts.include_bounds,
+    interactive_only: opts.interactive_only,
+    compact: opts.compact,
+    pid: window.pid,
+    source_app: Some(window.app.as_str()),
+    source_window_id: Some(window.id.as_str()),
+    source_window_title: Some(window.title.as_str()),
+    source_surface: opts.surface,
+    root_ref_id: None,
+    path_prefix: &[],
+};
+let tree = ref_alloc::allocate_refs(tree, &mut refmap, &config);
 ```
 
 Ref action execution should keep the command-selected policy while centralizing
@@ -270,7 +285,8 @@ the strict ladder:
 
 ```rust
 let (entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
-check_actionability_with_trace(ref_id, &entry, handle.handle(), adapter, &request, context)?;
+let target = ResolvedRefAction { adapter, entry: &entry, handle: handle.handle(), ref_id, context };
+check_actionability_with_trace(&target, &request)?;
 let result = adapter.execute_action(handle.handle(), request)?;
 ```
 

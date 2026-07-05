@@ -53,7 +53,7 @@ The answer is **per-gesture and per-platform**, because a gesture is headless-ca
 ## Why This Matters
 
 - It keeps the **headless-first reliability guarantee** honest: the tool only claims a headless effect when the OS actually provides one, and fails closed otherwise.
-- It preserves **cross-platform extensibility**: the same 54-command surface works identically across macOS/Windows/Linux, and each adapter contributes whatever headless capability its platform has — without touching the command layer.
+- It preserves **cross-platform extensibility**: the same 58-command surface works identically across macOS/Windows/Linux, and each adapter contributes whatever headless capability its platform has — without touching the command layer.
 - It prevents the **vacuous-success trap**: assuming `ok:true` means the gesture happened, when an AX action succeeded at the API layer but the control ignored it.
 
 ## When to Apply
@@ -79,11 +79,19 @@ The macOS dispatch gates the physical path on the policy (so it is reachable onl
 
 ```rust
 // crates/macos/src/actions/chain_defs.rs
-pub(crate) fn double_click(el, _caps, policy) -> Result<(), AdapterError> {
+pub(crate) fn double_click(
+    el: &AXElement,
+    policy: InteractionPolicy,
+) -> Result<Vec<ActionStep>, AdapterError> {
     if ax_helpers::has_ax_action(el, "AXOpen") && ax_helpers::try_ax_action(el, "AXOpen") {
-        return Ok(());                       // headless AX path
+        return Ok(vec![
+            ActionStep::succeeded("AXOpen").with_mechanism(StepMechanism::SemanticApi), // headless AX path
+        ]);
     }
-    crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy) // gated; POLICY_DENIED headless
+    crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy)?; // gated; POLICY_DENIED headless
+    Ok(vec![
+        ActionStep::succeeded("CGClick").with_mechanism(StepMechanism::PhysicalSynthetic),
+    ])
 }
 ```
 

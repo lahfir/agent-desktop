@@ -92,12 +92,16 @@ a test that drives the real platform. Invest there, not in a more elaborate mock
 
 The `STALE_REF` regression was caused by three copies of "what is this element's
 name" drifting apart. An element's accessible name must be computed by a single
-canonical function (`crates/macos/src/tree/element.rs::resolve_element_name`)
-that the snapshot builder, the live matcher, and the strict ref resolver all
-call. A ref's stored name and the resolver's recomputed name must come from the
-same code, or freshly-created refs go stale. Any new consumer of an element's
-name or identity must call the canonical resolver — never re-read `AXTitle` (or
-any single attribute) itself.
+canonical reducer, `crates/macos/src/tree/builder.rs::accessible_name`
+(precedence: title → description → static-text value → aggregated child
+label), which the snapshot builder calls directly when it stores a ref's name.
+`crates/macos/src/tree/element.rs::resolve_element_name` is a thin
+AXElement-only wrapper (`accessible_name(el, &fetch_node_attrs(el))`) called by
+the strict ref resolver, the live matcher, and hit-test occluder naming. A
+ref's stored name and the resolver's recomputed name must come from the same
+reducer, or freshly-created refs go stale. Any new consumer of an element's
+name or identity must call the canonical reducer or its wrapper — never
+re-read `AXTitle` (or any single attribute) itself.
 
 ## Why This Matters
 
@@ -157,10 +161,17 @@ assert!(get(ref_id, property = "role")["ok"]);
 And the single-owner name computation the resolver, matcher, and builder share:
 
 ```rust
-// crates/macos/src/tree/element.rs — the one accessible-name owner.
+// crates/macos/src/tree/builder.rs — the one accessible-name reducer.
+pub(crate) fn accessible_name(el: &AXElement, attrs: &NodeAttrs) -> Option<String> {
+    // title, else description, else (static text only) value, else a label
+    // aggregated from descendant text.
+}
+
+// crates/macos/src/tree/element.rs — thin wrapper the strict resolver, live
+// matcher, and hit-test occluder naming call; the snapshot builder calls
+// accessible_name directly.
 pub fn resolve_element_name(el: &AXElement) -> Option<String> {
-    // AXTitle, else AXDescription, else (static text only) AXValue.
-    // Every name/identity consumer calls this; none re-reads AXTitle itself.
+    accessible_name(el, &fetch_node_attrs(el))
 }
 ```
 
