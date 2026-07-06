@@ -211,11 +211,18 @@ fn element_wait_actionable_type_fails_on_uneditable_role() {
     )
     .unwrap_err();
 
-    assert_eq!(err.code(), "TIMEOUT");
+    assert_eq!(err.code(), "ACTION_NOT_SUPPORTED");
     match err {
         AppError::Adapter(adapter_error) => {
             let details = adapter_error.details.unwrap();
-            assert_eq!(details["last_observed"]["actionable"], false);
+            assert_eq!(details["actionable"], false);
+            let editable = details["checks"]
+                .as_array()
+                .expect("a terminal actionability failure carries the check report")
+                .iter()
+                .find(|check| check["check"] == "editable")
+                .expect("the editable check is reported");
+            assert_eq!(editable["status"], "fail");
         }
         _ => panic!("expected adapter error"),
     }

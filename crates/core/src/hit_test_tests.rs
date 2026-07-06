@@ -90,7 +90,7 @@ fn run_receives_events_check(outcome: Result<HitTestResult, AdapterError>) -> Ac
     report
         .checks
         .into_iter()
-        .find(|check| check.name == "receives_events")
+        .find(|check| check.check == "receives_events")
         .expect("Click requires a receives_events check")
 }
 
@@ -151,7 +151,7 @@ fn intercepted_by_result_fails_and_carries_redactable_occluder() {
         .expect("details.checks is an array");
     let receives_events = checks
         .iter()
-        .find(|check| check["name"] == "receives_events")
+        .find(|check| check["check"] == "receives_events")
         .expect("receives_events check must be present when Click requires a hit test");
     assert_eq!(receives_events["status"], "fail");
     assert_eq!(receives_events["occluder"]["name"], "Save changes?");

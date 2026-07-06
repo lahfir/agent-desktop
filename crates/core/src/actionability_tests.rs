@@ -135,6 +135,7 @@ fn text_input_requires_editable_target() {
     )
     .unwrap_err();
 
+    assert_eq!(err.code, ErrorCode::ActionNotSupported);
     assert!(err.message.contains("editable"));
 }
 
@@ -142,6 +143,7 @@ fn text_input_requires_editable_target() {
 fn cursor_movement_requires_physical_policy() {
     let err = check(&entry(), &ActionRequest::headless(Action::Hover)).unwrap_err();
 
+    assert_eq!(err.code, ErrorCode::PolicyDenied);
     assert!(err.message.contains("policy"));
 }
 
@@ -157,6 +159,7 @@ fn headless_type_text_fails_policy_before_dispatch() {
     )
     .unwrap_err();
 
+    assert_eq!(err.code, ErrorCode::PolicyDenied);
     assert!(err.message.contains("policy"));
     assert!(err.message.contains("focus"));
 }
@@ -165,7 +168,7 @@ fn headless_type_text_fails_policy_before_dispatch() {
 fn right_click_requires_right_click_capability_before_dispatch() {
     let err = check(&entry(), &ActionRequest::headless(Action::RightClick)).unwrap_err();
 
-    assert_eq!(err.code, ErrorCode::ActionFailed);
+    assert_eq!(err.code, ErrorCode::ActionNotSupported);
     assert!(err.message.contains("supported_action"));
 }
 

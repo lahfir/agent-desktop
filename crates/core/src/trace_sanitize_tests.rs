@@ -56,3 +56,23 @@ fn trace_redaction_covers_nested_shapes_and_substring_keys() {
     assert!(value["action"]["password"].is_null());
     assert_eq!(value["action"]["counter"], 3);
 }
+
+#[test]
+fn trace_keeps_actionability_check_identifier_but_redacts_occluder_name() {
+    let value = sanitize_trace_value(json!({
+        "checks": [
+            { "check": "supported_action", "status": "fail", "reason": "Click is not available" },
+            {
+                "check": "receives_events",
+                "status": "fail",
+                "occluder": { "role": "AXSheet", "name": "Save changes?" }
+            }
+        ]
+    }));
+
+    assert_eq!(value["checks"][0]["check"], "supported_action");
+    assert_eq!(value["checks"][0]["reason"], "Click is not available");
+    assert_eq!(value["checks"][1]["check"], "receives_events");
+    assert_eq!(value["checks"][1]["occluder"]["role"], "AXSheet");
+    assert_eq!(value["checks"][1]["occluder"]["name"]["redacted"], true);
+}

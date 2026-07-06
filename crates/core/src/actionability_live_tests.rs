@@ -241,7 +241,7 @@ fn live_actionability_fails_when_action_disappears_after_snapshot() {
     )
     .unwrap_err();
 
-    assert_eq!(err.code, ErrorCode::ActionFailed);
+    assert_eq!(err.code, ErrorCode::ActionNotSupported);
     assert!(err.message.contains("supported_action"));
 }
 
@@ -271,7 +271,7 @@ fn live_actionability_allows_identity_resolved_bounds_change() {
     let stable = report
         .checks
         .iter()
-        .find(|check| check.name == "stable")
+        .find(|check| check.check == "stable")
         .unwrap();
     assert_eq!(stable.status, ActionabilityStatus::Unknown);
 }

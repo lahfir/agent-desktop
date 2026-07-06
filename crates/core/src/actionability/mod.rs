@@ -106,14 +106,18 @@ fn check_with_stability(
     if report.actionable {
         return Ok(report);
     }
+    let code = report.terminal_code().unwrap_or(ErrorCode::ActionFailed);
+    let suggestion = if code == ErrorCode::ActionFailed {
+        "Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended."
+    } else {
+        "Waiting will not help: this element cannot satisfy the action as targeted. Target an element that advertises the action (check available_actions in a fresh snapshot) or adjust the interaction policy (e.g. pass --headed)."
+    };
     Err(AdapterError::new(
-        ErrorCode::ActionFailed,
+        code,
         format!("Target is not actionable: {}", failure_reasons(&report)),
     )
     .with_details(json!(report))
-    .with_suggestion(
-        "Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended.",
-    ))
+    .with_suggestion(suggestion))
 }
 
 fn visibility_check(entry: &RefEntry) -> ActionabilityCheck {
@@ -177,18 +181,27 @@ fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> Actionab
         );
     }
     let expected = capability::for_action(&request.action).join(" or ");
-    fail("supported_action", format!("{expected} is not available"))
+    fail_terminal(
+        "supported_action",
+        format!("{expected} is not available"),
+        ErrorCode::ActionNotSupported,
+    )
 }
 
 fn policy_check(request: &ActionRequest) -> ActionabilityCheck {
     if request.action.requires_cursor_policy() && !request.policy.allow_cursor_move {
-        return fail(
+        return fail_terminal(
             "policy",
             "action requires cursor movement but policy denies it",
+            ErrorCode::PolicyDenied,
         );
     }
     if request.action.may_use_focus_fallback() && !request.policy.allow_focus_steal {
-        return fail("policy", "action requires focus but policy denies it");
+        return fail_terminal(
+            "policy",
+            "action requires focus but policy denies it",
+            ErrorCode::PolicyDenied,
+        );
     }
     pass("policy")
 }
@@ -206,7 +219,11 @@ fn editable_check(entry: &RefEntry, action: &Action) -> ActionabilityCheck {
     if capability::contains(&entry.available_actions, capability::SET_VALUE) {
         return pass("editable");
     }
-    fail("editable", format!("role {} is not editable", entry.role))
+    fail_terminal(
+        "editable",
+        format!("role {} is not editable", entry.role),
+        ErrorCode::ActionNotSupported,
+    )
 }
 
 fn receives_events_check(
@@ -274,7 +291,7 @@ fn failure_reasons(report: &ActionabilityReport) -> String {
         .filter(|check| matches!(check.status, ActionabilityStatus::Fail))
         .map(|check| {
             let reason = check.reason.as_deref().unwrap_or("failed");
-            format!("{} ({reason})", check.name)
+            format!("{} ({reason})", check.check)
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -284,30 +301,50 @@ fn may_use_fallback(action: &Action, request: &ActionRequest) -> bool {
     action.may_use_focus_fallback() && request.policy.allow_focus_steal
 }
 
-fn pass(name: &'static str) -> ActionabilityCheck {
+fn pass(check: &'static str) -> ActionabilityCheck {
     ActionabilityCheck {
-        name,
+        check,
         status: ActionabilityStatus::Pass,
         reason: None,
         occluder: None,
+        terminal_code: None,
     }
 }
 
-fn fail(name: &'static str, reason: impl Into<String>) -> ActionabilityCheck {
+fn fail(check: &'static str, reason: impl Into<String>) -> ActionabilityCheck {
     ActionabilityCheck {
-        name,
+        check,
         status: ActionabilityStatus::Fail,
         reason: Some(reason.into()),
         occluder: None,
+        terminal_code: None,
     }
 }
 
-fn unknown(name: &'static str, reason: impl Into<String>) -> ActionabilityCheck {
+/// A failure that waiting cannot heal — the element's role/action set or the
+/// interaction policy would have to change. Carries the permanent `code` the
+/// auto-wait poll loop surfaces immediately instead of retrying to the deadline.
+fn fail_terminal(
+    check: &'static str,
+    reason: impl Into<String>,
+    code: ErrorCode,
+) -> ActionabilityCheck {
     ActionabilityCheck {
-        name,
+        check,
+        status: ActionabilityStatus::Fail,
+        reason: Some(reason.into()),
+        occluder: None,
+        terminal_code: Some(code),
+    }
+}
+
+fn unknown(check: &'static str, reason: impl Into<String>) -> ActionabilityCheck {
+    ActionabilityCheck {
+        check,
         status: ActionabilityStatus::Unknown,
         reason: Some(reason.into()),
         occluder: None,
+        terminal_code: None,
     }
 }
 
@@ -321,10 +358,11 @@ fn occluded(
         None => "occluded by another element".to_string(),
     };
     ActionabilityCheck {
-        name: "receives_events",
+        check: "receives_events",
         status: ActionabilityStatus::Fail,
         reason: Some(reason),
         occluder: Some(Occluder { role, name, bounds }),
+        terminal_code: None,
     }
 }
 
