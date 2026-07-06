@@ -209,7 +209,9 @@ fn execute_poll_loop(
                         if is_permanent_error(&err.code) {
                             return Err(err);
                         }
-                        last_report = err.details.clone();
+                        if let Some(report) = err.details.clone() {
+                            last_report = Some(json!({ "phase": "dispatch", "report": report }));
+                        }
                         sleep_poll_interval(deadline);
                     }
                 }
@@ -227,11 +229,10 @@ fn execute_poll_loop(
                     return Err(err);
                 }
                 last_report = Some(json!({
-                    "resolve_error": {
-                        "code": code.as_str(),
-                        "message": err.message.clone(),
-                        "details": err.details.clone(),
-                    }
+                    "phase": "resolve",
+                    "code": code.as_str(),
+                    "message": err.message.clone(),
+                    "details": err.details.clone(),
                 }));
                 sleep_poll_interval(deadline);
             }
