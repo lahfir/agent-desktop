@@ -68,21 +68,24 @@ assert "headed drag delivers one source-tracked gesture" \
     "from=$drag_from to=$drag_to before=$drag_before after=$drag_after"
 
 note "Disclosure collapse and expand"
-require_target disclosure disclosure disclosure-section
-act_target "$disclosure" scroll-to >/dev/null 2>&1
+# SwiftUI DisclosureGroup does not expose expanded-state via AXValue; the honest
+# oracle is whether the disclosed child content appears/disappears in the tree.
+disclosed_present() {
+    local out
+    out="$("$bin" find --app "$app" --role statictext --name disclosed-content --first 2>/dev/null)"
+    [ "$(json_field "$out" ok)" = "True" ] && echo 1 || echo 0
+}
 require_target disclosure disclosure disclosure-section
 collapse_output="$(act_target "$disclosure" collapse 2>&1)"
 sleep 0.4
-require_target disclosure disclosure disclosure-section
-collapsed_value="$(json_field "$(get_target "$disclosure" --property value 2>&1)" data.value)"
+collapsed_hidden="$(disclosed_present)"
 require_target disclosure disclosure disclosure-section
 expand_output="$(act_target "$disclosure" expand 2>&1)"
 sleep 0.4
-require_target disclosure disclosure disclosure-section
-expanded_value="$(json_field "$(get_target "$disclosure" --property value 2>&1)" data.value)"
-assert "collapse establishes the false precondition" \
-    "$([ "$(json_field "$collapse_output" ok)" = "True" ] && [ "$collapsed_value" = "false" ] && echo 1 || echo 0)" \
-    "value=$collapsed_value error=$(json_field "$collapse_output" error.code)"
-assert "expand flips the disclosure from false to true" \
-    "$([ "$(json_field "$expand_output" ok)" = "True" ] && [ "$expanded_value" = "true" ] && echo 1 || echo 0)" \
-    "before=$collapsed_value after=$expanded_value error=$(json_field "$expand_output" error.code)"
+expanded_shown="$(disclosed_present)"
+assert "collapse hides the disclosed content" \
+    "$([ "$(json_field "$collapse_output" ok)" = "True" ] && [ "$collapsed_hidden" = "0" ] && echo 1 || echo 0)" \
+    "content_present=$collapsed_hidden error=$(json_field "$collapse_output" error.code)"
+assert "expand reveals the disclosed content" \
+    "$([ "$(json_field "$expand_output" ok)" = "True" ] && [ "$expanded_shown" = "1" ] && echo 1 || echo 0)" \
+    "content_present=$expanded_shown error=$(json_field "$expand_output" error.code)"

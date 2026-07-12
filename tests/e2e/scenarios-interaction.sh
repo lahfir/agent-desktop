@@ -59,8 +59,6 @@ interaction_suite() {
     verify "[$mode] set stepper value" stepper-status "$stepper" "$native_stepper" set-value "$stepper"
 
     require_target scroll_area scrollarea scroll-area
-    act_target "$scroll_area" scroll-to >/dev/null 2>&1
-    require_target scroll_area scrollarea scroll-area
     require_value scroll_before scroll-offset
     scroll_output="$(act_target "$scroll_area" scroll --direction "$direction" --amount 10 2>&1)"
     sleep 0.4
