@@ -4,13 +4,14 @@ pub(crate) const MAX_LABEL_ELEMENTS: usize = 5;
 
 pub(crate) fn complete_name_evidence_with_deadline(
     attrs: &crate::tree::NodeAttrs,
+    role: &str,
     children: &[AXElement],
     deadline: std::time::Instant,
     stats: &mut agent_desktop_core::LocatorStats,
     usage: &mut crate::tree::observation_usage::ObservationUsage,
 ) -> Result<(agent_desktop_core::NameEvidence, bool), agent_desktop_core::AdapterError> {
     let mut evidence = attrs.name_evidence.clone();
-    if !should_read_child_label(&evidence) {
+    if !should_read_child_label(role, &evidence) {
         return Ok((evidence, true));
     }
     let (label, complete) = label_from_children(children, deadline, stats, usage)?;
@@ -18,8 +19,12 @@ pub(crate) fn complete_name_evidence_with_deadline(
     Ok((evidence, complete))
 }
 
-fn should_read_child_label(evidence: &agent_desktop_core::NameEvidence) -> bool {
-    !has_name_without_child_content(evidence)
+fn should_read_child_label(role: &str, evidence: &agent_desktop_core::NameEvidence) -> bool {
+    names_from_child_content(role) && !has_name_without_child_content(evidence)
+}
+
+fn names_from_child_content(role: &str) -> bool {
+    agent_desktop_core::roles::INTERACTIVE_ROLES.contains(&role)
 }
 
 fn has_name_without_child_content(evidence: &agent_desktop_core::NameEvidence) -> bool {
@@ -282,14 +287,33 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(!should_read_child_label(&evidence));
+        assert!(!should_read_child_label("button", &evidence));
     }
 
     #[test]
     fn unnamed_elements_still_use_bounded_child_content_fallback() {
         assert!(should_read_child_label(
+            "button",
             &agent_desktop_core::NameEvidence::default()
         ));
+    }
+
+    #[test]
+    fn container_roles_never_derive_names_from_children() {
+        for role in [
+            "scrollarea",
+            "group",
+            "window",
+            "list",
+            "table",
+            "outline",
+            "toolbar",
+        ] {
+            assert!(
+                !should_read_child_label(role, &agent_desktop_core::NameEvidence::default()),
+                "container role {role} must not name itself from descendants"
+            );
+        }
     }
 
     #[test]
@@ -299,6 +323,6 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(!should_read_child_label(&evidence));
+        assert!(!should_read_child_label("button", &evidence));
     }
 }

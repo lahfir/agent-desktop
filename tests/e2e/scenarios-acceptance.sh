@@ -120,7 +120,7 @@ if [ -z "$open_sheet_ref" ] || [ -z "$open_sheet_snapshot" ]; then
     abort_suite "initial fixture snapshot omitted the open-sheet ref"
 fi
 open_sheet="${open_sheet_ref}"$'\t'"${open_sheet_snapshot}"
-act_target "$open_sheet" scroll-to >/dev/null 2>&1
+sheet_scroll_output="$(act_target "$open_sheet" scroll-to 2>&1)"
 batch_payload="$(python3 - "$(target_ref "$open_sheet")" "$(target_snapshot "$open_sheet")" <<'PY'
 import json, sys
 print(json.dumps([
@@ -137,6 +137,6 @@ assert "AE6 synchronous click reports the newly appeared unnamed surface" \
         [ "$(json_field "$surface_batch" data.results.0.ok)" = "True" ] && \
         [ "$(json_field "$surface_batch" data.results.1.ok)" = "True" ] && \
         [ "$surface_kind" = "surface_appeared" ] && echo 1 || echo 0)" \
-    "kind=$surface_kind surface=$surface_type app=$(json_field "$surface_batch" data.results.1.data.event.app)"
+    "kind=$surface_kind surface=$surface_type app=$(json_field "$surface_batch" data.results.1.data.event.app) scrollto_ok=$(json_field "$sheet_scroll_output" ok) scrollto_code=$(json_field "$sheet_scroll_output" error.code) batch_ok=$(json_field "$surface_batch" ok) r0_ok=$(json_field "$surface_batch" data.results.0.ok) r0_code=$(json_field "$surface_batch" data.results.0.error.code) r1_ok=$(json_field "$surface_batch" data.results.1.ok) r1_code=$(json_field "$surface_batch" data.results.1.error.code) batch_err=$(json_field "$surface_batch" error.code)"
 require_target cancel_sheet button cancel-sheet
 act_target "$cancel_sheet" click >/dev/null 2>&1

@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
 const SELECTOR_POLL_INTERVAL: Duration = Duration::from_millis(75);
+const DIAGNOSTIC_SNAPSHOT_BUDGET: Duration = Duration::from_millis(600);
 
 pub struct WaitSelectorInput {
     pub query_raw: String,
@@ -130,7 +131,7 @@ fn timeout_response(
 ) -> Result<Value, AppError> {
     if last_built.is_none() {
         let diagnostic_deadline =
-            crate::Deadline::after(SELECTOR_POLL_INTERVAL.as_millis() as u64)?;
+            crate::Deadline::after(DIAGNOSTIC_SNAPSHOT_BUDGET.as_millis() as u64)?;
         match snapshot::build(
             adapter,
             &input.opts,

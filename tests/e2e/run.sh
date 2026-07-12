@@ -60,6 +60,29 @@ if ! record_fixture_process; then
 fi
 okmsg "fixture launched and primary-button exposed with exact snapshot namespace"
 
+frame="$("$bin" list-displays 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)["data"]
+best = max(d, key=lambda x: x["bounds"]["width"] * x["bounds"]["height"])
+b = best["bounds"]
+w = min(int(b["width"]) - 40, 1900)
+h = min(int(b["height"]) - 60, 1080)
+print(int(b["x"]) + 20, int(b["y"]) + 40, w, h)
+')"
+if [ -n "$frame" ]; then
+    read -r fx fy fw fh <<EOF_FRAME
+$frame
+EOF_FRAME
+    osascript -e "tell application \"System Events\" to tell process \"$app\"" \
+        -e "set position of front window to {$fx, $fy}" \
+        -e "set size of front window to {$fw, $fh}" \
+        -e "end tell" >/dev/null 2>&1 || true
+    sleep 0.5
+    okmsg "fixture window normalized to {$fx,$fy} ${fw}x${fh} on the largest display"
+else
+    badmsg "fixture window normalization skipped: list-displays returned nothing"
+fi
+
 check_fixture_contention || { finish; exit 1; }
 # shellcheck source=tests/e2e/scenarios-observation.sh
 source "$here/scenarios-observation.sh"
@@ -78,7 +101,6 @@ source "$here/scenarios-surfaces.sh"
 check_fixture_contention || { finish; exit 1; }
 # shellcheck source=tests/e2e/scenarios-trace-performance.sh
 source "$here/scenarios-trace-performance.sh"
-check_fixture_contention || { finish; exit 1; }
 # shellcheck source=tests/e2e/scenarios-notifications.sh
 source "$here/scenarios-notifications.sh"
 

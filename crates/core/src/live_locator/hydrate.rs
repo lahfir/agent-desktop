@@ -260,7 +260,6 @@ fn has_deterministic_limit(stats: &super::LocatorStats) -> bool {
     limits.node_hits > 0
         || limits.edge_hits > 0
         || limits.child_hits > 0
-        || limits.child_label_hits > 0
         || limits.text_hits > 0
         || limits.depth_hits > 0
 }

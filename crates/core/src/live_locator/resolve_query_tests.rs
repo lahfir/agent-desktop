@@ -78,6 +78,12 @@ fn node_limit(_: usize) -> ObservedTree {
     observed_tree(false, stats)
 }
 
+fn child_label_cap(_: usize) -> ObservedTree {
+    let mut stats = LocatorStats::default();
+    stats.traversal.limits.child_label_hits = 1;
+    observed_tree(true, stats)
+}
+
 fn window() -> WindowInfo {
     WindowInfo {
         id: "w-1".into(),
@@ -185,6 +191,25 @@ fn persistent_cannot_complete_exhausts_one_deadline_with_last_evidence() {
         details["query_stats"]["reads"]["cannot_complete"],
         details["observation_attempts"]
     );
+}
+
+#[test]
+fn child_label_cap_alone_is_not_a_global_budget_failure() {
+    let adapter = CountingAdapter {
+        builds: AtomicUsize::new(0),
+        observe: Some(child_label_cap),
+    };
+
+    let resolution = resolve_query(
+        &adapter,
+        &LocatorQuery::default(),
+        ObservationRoot::Window(&window()),
+        &request(),
+    )
+    .expect("a per-node child-label cap must not fail a complete resolution");
+
+    assert_eq!(resolution.stats.traversal.limits.child_label_hits, 1);
+    assert_eq!(adapter.builds.load(Ordering::SeqCst), 1);
 }
 
 #[test]

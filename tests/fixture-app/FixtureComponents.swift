@@ -101,83 +101,6 @@ final class ZeroBoundsAXHost: NSView {
     override func accessibilityChildren() -> [Any]? { [zeroBoundsElement] }
 }
 
-struct NativeHoverProbe: NSViewRepresentable {
-    @Binding var status: String
-
-    func makeNSView(context: Context) -> NativeHoverView {
-        NativeHoverView { status = "hovered" }
-    }
-
-    func updateNSView(_ view: NativeHoverView, context: Context) {
-        view.onHover = { status = "hovered" }
-    }
-}
-
-final class NativeHoverView: NSView {
-    var onHover: () -> Void
-    private var tracking: NSTrackingArea?
-    private var cursorPoll: Timer?
-    private let label = NSTextField(labelWithString: "Hover Target")
-
-    init(onHover: @escaping () -> Void) {
-        self.onHover = onHover
-        super.init(frame: .zero)
-        label.setAccessibilityElement(false)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-        setAccessibilityElement(true)
-        setAccessibilityRole(.button)
-        setAccessibilityLabel("hover-target")
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override var intrinsicContentSize: NSSize { NSSize(width: 100, height: 28) }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(point) ? self : nil
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        cursorPoll?.invalidate()
-        window?.acceptsMouseMovedEvents = true
-        guard window != nil else { return }
-        cursorPoll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) {
-            [weak self] _ in self?.sampleCursor()
-        }
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let tracking { removeTrackingArea(tracking) }
-        let next = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        tracking = next
-        addTrackingArea(next)
-    }
-
-    override func mouseEntered(with event: NSEvent) { onHover() }
-
-    override func mouseMoved(with event: NSEvent) { onHover() }
-
-    private func sampleCursor() {
-        guard let window else { return }
-        let windowRect = convert(bounds, to: nil)
-        if window.convertToScreen(windowRect).contains(NSEvent.mouseLocation) { onHover() }
-    }
-
-    deinit { cursorPoll?.invalidate() }
-}
-
 final class DuplicateWindowController {
     static let shared = DuplicateWindowController()
 
@@ -192,6 +115,7 @@ final class DuplicateWindowController {
                 backing: .buffered,
                 defer: false
             )
+            window.isReleasedWhenClosed = false
             window.title = "Duplicate Window"
             window.identifier = NSUserInterfaceItemIdentifier("duplicate-window-\(index)")
             window.contentView = duplicateWindowBody(index: index)

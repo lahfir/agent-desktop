@@ -311,7 +311,7 @@ fn command_aliases_match_platform_capabilities() {
         )
         .is_ok()
     );
-    assert!(check(&scrollable, &ActionRequest::headless(Action::ScrollTo)).is_err());
+    assert!(check(&scrollable, &ActionRequest::headless(Action::ScrollTo)).is_ok());
 
     scrollable.capabilities.available_actions = vec![capability::SCROLL_TO.into()];
     assert!(

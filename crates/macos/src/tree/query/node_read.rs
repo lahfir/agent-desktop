@@ -105,6 +105,7 @@ pub(crate) fn read_node(
     let (name_evidence, child_label_complete) = if requirements.name || requirements.description {
         crate::tree::child_labels::complete_name_evidence_with_deadline(
             &attrs,
+            &role,
             &child_read.elements,
             deadline,
             stats,

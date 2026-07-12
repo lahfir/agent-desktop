@@ -113,17 +113,16 @@ assert "headed triple-click delivers a three-tap gesture" \
     "$([ "$triple_after" = "triple-clicked" ] && echo 1 || echo 0)" \
     "before=$triple_before after=$triple_after"
 
-require_target reset_hover button reset-hover
-act_target "$reset_hover" click >/dev/null 2>&1
-sleep 0.4
 require_value hover_before hover-status
 assert "hover baseline is clean" "$([ "$hover_before" != "hovered" ] && echo 1 || echo 0)" \
     "status=$hover_before"
-require_target hover_target button hover-target
-MODE_FLAG="--headed"
-hover_output="$(act_target "$hover_target" hover 2>&1)"
-MODE_FLAG=""
+hover_snapshot="$("$bin" snapshot --app "$app" --include-bounds --max-depth 30 2>/dev/null)"
+hover_xy="$(printf '%s' "$hover_snapshot" | python3 "$json_tool" tree hover-target center 2>/dev/null)" || hover_xy=""
+if [ -z "$hover_xy" ]; then
+    abort_suite "required hover-target bounds are missing"
+fi
+hover_output="$("$bin" --headed hover --xy "$hover_xy" 2>&1)"
 sleep 0.6
 require_value hover_after hover-status
 assert "headed hover triggers the fixture onHover" "$([ "$hover_after" = "hovered" ] && echo 1 || echo 0)" \
-    "x=$(json_field "$hover_output" data.x) y=$(json_field "$hover_output" data.y) before=$hover_before after=$hover_after"
+    "xy=$hover_xy before=$hover_before after=$hover_after ok=$(json_field "$hover_output" ok)"

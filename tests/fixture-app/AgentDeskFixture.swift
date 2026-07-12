@@ -25,12 +25,10 @@ struct ContentView: View {
     @State private var twinStatus = "idle"
     // text
     @State private var textValue = ""
-    @State private var textChangeCount = 0
     @State private var secureValue = ""
     @State private var multilineValue = "line one\nline two"
     // state controls
     @State private var toggleOn = false
-    @State private var toggleChangeCount = 0
     @State private var pickerChoice = "Alpha"
     @State private var radioChoice = "One"
     @State private var disclosureExpanded = false
@@ -62,14 +60,12 @@ struct ContentView: View {
                 Text("AgentDesk Fixture")
                     .font(.title2)
                     .accessibilityLabel("fixture-title")
-                ScrollCard()
                 row1
                 row2
                 row3
             }
             .padding(20)
         }
-        .accessibilityLabel("fixture-scroll-root")
         .frame(minWidth: 980, minHeight: 720)
         .sheet(isPresented: $showSheet) { sheetContent }
     }
@@ -94,6 +90,7 @@ struct ContentView: View {
         HStack(alignment: .top, spacing: 16) {
             dragCard
             surfacesCard
+            ScrollCard()
         }
     }
 
@@ -123,9 +120,11 @@ struct ContentView: View {
                 }
             StatusReadout(name: "right-status", value: rightStatus)
 
-            NativeHoverProbe(status: $hoverStatus)
-            Button("Reset Hover") { hoverStatus = "idle" }
-                .accessibilityLabel("reset-hover")
+            Text("Hover Target")
+                .padding(6)
+                .background(hoverStatus == "hovered" ? Color.yellow.opacity(0.4) : Color.clear)
+                .accessibilityLabel("hover-target")
+                .onHover { inside in if inside { hoverStatus = "hovered" } }
             StatusReadout(name: "hover-status", value: hoverStatus)
 
             /// Two controls sharing role and name. Each records a distinct
@@ -143,10 +142,7 @@ struct ContentView: View {
         Card(title: "Text Input") {
             TextField("Text Input", text: $textValue)
                 .accessibilityLabel("text-input")
-                .onChange(of: textValue) { _ in textChangeCount += 1 }
             StatusReadout(name: "text-echo", value: textValue)
-            StatusReadout(name: "text-content-status", value: textValue.isEmpty ? "empty" : textValue)
-            StatusReadout(name: "text-change-count", value: String(textChangeCount))
 
             SecureField("Secure Input", text: $secureValue)
                 .accessibilityLabel("secure-input")
@@ -165,11 +161,8 @@ struct ContentView: View {
 
     private var stateCard: some View {
         Card(title: "State Controls") {
-            Toggle("Toggle Box", isOn: $toggleOn)
-                .accessibilityLabel("toggle-box")
-                .onChange(of: toggleOn) { _ in toggleChangeCount += 1 }
+            Toggle("Toggle Box", isOn: $toggleOn).accessibilityLabel("toggle-box")
             StatusReadout(name: "toggle-status", value: toggleOn ? "on" : "off")
-            StatusReadout(name: "toggle-change-count", value: String(toggleChangeCount))
 
             // Native AppKit slider and stepper: unlike SwiftUI's, these expose a
             // working AX value/increment interface, so set-value can drive them.
