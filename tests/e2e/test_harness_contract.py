@@ -27,7 +27,7 @@ class HarnessContractTests(unittest.TestCase):
 
         self.assertEqual(len(exits), 1, exits)
         self.assertEqual(exits[0][0], "lib.sh")
-        self.assertEqual(len(abort_calls), 9, abort_calls)
+        self.assertEqual(len(abort_calls), 10, abort_calls)
         source = (E2E_ROOT / "lib.sh").read_text()
         abort = re.search(r"abort_suite\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL)
         self.assertIsNotNone(abort)
