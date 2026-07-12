@@ -59,13 +59,15 @@ interaction_suite() {
     verify "[$mode] set stepper value" stepper-status "$stepper" "$native_stepper" set-value "$stepper"
 
     require_target scroll_area scrollarea scroll-area
+    act_target "$scroll_area" scroll-to >/dev/null 2>&1
+    require_target scroll_area scrollarea scroll-area
     require_value scroll_before scroll-offset
-    act_target "$scroll_area" scroll --direction "$direction" --amount 10 >/dev/null 2>&1
+    scroll_output="$(act_target "$scroll_area" scroll --direction "$direction" --amount 10 2>&1)"
     sleep 0.4
     require_value scroll_after scroll-offset
     assert "[$mode] scroll moves content" \
         "$([ "$scroll_before" != "$scroll_after" ] && echo 1 || echo 0)" \
-        "before=$scroll_before after=$scroll_after direction=$direction"
+        "before=$scroll_before after=$scroll_after direction=$direction cmd_ok=$(json_field "$scroll_output" ok) cmd_err=$(json_field "$scroll_output" error.code) mechanism=$(json_field "$scroll_output" data.steps.0.mechanism)"
 }
 
 interaction_suite headless

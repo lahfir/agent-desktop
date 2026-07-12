@@ -96,11 +96,16 @@ pub(super) fn assemble_global_windows<S: OwnerSnapshotView>(
         Some(pid) => Some(read_frontmost(pid).map_err(frontmost_read_error)?),
         None => None,
     };
-    let focused_windows = matching_focus_windows(&records, frontmost_pid, focus_state.as_ref());
-    if frontmost_window_owner.is_some() && focused_windows.len() != 1 {
-        return Err(focus_join_error(frontmost_pid, focused_windows.len()));
-    }
-    let focused_window = focused_windows.first().copied();
+    let focused_window = match matching_focus_windows(&records, frontmost_pid, focus_state.as_ref())
+    {
+        FocusJoin::TitleAmbiguous => None,
+        FocusJoin::Windows(windows) => {
+            if frontmost_window_owner.is_some() && windows.len() != 1 {
+                return Err(focus_join_error(frontmost_pid, windows.len()));
+            }
+            windows.first().copied()
+        }
+    };
     records
         .into_iter()
         .filter_map(|record| {
@@ -210,32 +215,43 @@ fn unique_process_instances(records: &[WindowRecord]) -> Result<Vec<(i32, &str)>
     Ok(instances)
 }
 
+enum FocusJoin {
+    Windows(Vec<(i32, i64)>),
+    TitleAmbiguous,
+}
+
 fn matching_focus_windows(
     records: &[WindowRecord],
     frontmost_pid: Option<i32>,
     state: Option<&WindowAxState>,
-) -> Vec<(i32, i64)> {
+) -> FocusJoin {
     let Some(frontmost_pid) = frontmost_pid else {
-        return Vec::new();
+        return FocusJoin::Windows(Vec::new());
     };
     let Some((focused_title, focused_number)) = state.and_then(|state| state.focused.as_ref())
     else {
-        return Vec::new();
+        return FocusJoin::Windows(Vec::new());
     };
     if let Some(number) = focused_number {
-        return records
-            .iter()
-            .filter(|record| record.pid == frontmost_pid && record.window_number == *number)
-            .map(|record| (record.pid, record.window_number))
-            .collect();
+        return FocusJoin::Windows(
+            records
+                .iter()
+                .filter(|record| record.pid == frontmost_pid && record.window_number == *number)
+                .map(|record| (record.pid, record.window_number))
+                .collect(),
+        );
     }
-    records
+    let title_matches = records
         .iter()
         .filter(|record| {
             record.pid == frontmost_pid && focused_title.as_deref() == Some(record.display_title())
         })
         .map(|record| (record.pid, record.window_number))
-        .collect()
+        .collect::<Vec<_>>();
+    if title_matches.len() > 1 {
+        return FocusJoin::TitleAmbiguous;
+    }
+    FocusJoin::Windows(title_matches)
 }
 
 fn frontmost_read_error(error: AdapterError) -> AdapterError {

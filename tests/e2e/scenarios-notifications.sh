@@ -17,8 +17,7 @@ nc_title_b="$nc_prefix-beta"
 nc_body="agent-desktop e2e probe"
 nc_posted=""
 
-if osascript -e "display notification \"$nc_body\" with title \"$nc_title_a\"" >/dev/null 2>&1 \
-    && osascript -e "display notification \"$nc_body\" with title \"$nc_title_b\"" >/dev/null 2>&1; then
+if osascript -e "display notification \"$nc_body\" with title \"$nc_title_a\"" >/dev/null 2>&1; then
     nc_posted=1
 else
     badmsg "could not post fixture notifications via osascript (Automation permission?)"
@@ -61,9 +60,17 @@ if [ -n "$nc_posted" ]; then
         done
         assert "NT3 dismiss-notification removes the row (verified by re-list, not ok:true)" \
             "$([ -n "$nc_gone" ] && [ "$nc_dismiss_ok" = "True" ] && echo 1 || echo 0)" \
-            "ok=$nc_dismiss_ok error=$(json_field "$nc_dismiss" error.code) still_listed=$([ -z "$nc_gone" ] && echo yes || echo no)"
+            "ok=$nc_dismiss_ok error=$(json_field "$nc_dismiss" error.code) msg=$(json_field "$nc_dismiss" error.message) detail=$(json_field "$nc_dismiss" error.platform_detail) still_listed=$([ -z "$nc_gone" ] && echo yes || echo no)"
 
-        nc_list_b="$("$bin" list-notifications --text "$nc_title_b" 2>/dev/null)"
+        osascript -e "display notification \"$nc_body\" with title \"$nc_title_b\"" >/dev/null 2>&1
+        nc_list_b=""
+        for _ in $(seq 1 10); do
+            nc_list_b="$("$bin" list-notifications --text "$nc_title_b" 2>/dev/null)"
+            if [ "$(json_field "$nc_list_b" data.count)" = "1" ]; then
+                break
+            fi
+            sleep 0.5
+        done
         nc_app_b="$(json_field "$nc_list_b" data.notifications.0.app_name)"
         if [ -n "$nc_app_b" ]; then
             nc_sweep="$("$bin" --headed dismiss-all-notifications --app "$nc_app_b" 2>&1)"
@@ -84,4 +91,7 @@ if [ -n "$nc_posted" ]; then
             badmsg "NT4 skipped: second fixture notification never became observable"
         fi
     fi
+fi
+if [ -n "$nc_posted" ] && [ -z "$nc_found" ]; then
+    "$bin" --headed dismiss-all-notifications --app "Script Editor" >/dev/null 2>&1 || true
 fi

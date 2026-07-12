@@ -61,7 +61,7 @@ struct AsyncFixtureCard: View {
             }
             Button("Remove Row") { removableVisible = false }.accessibilityLabel("remove-row")
             Button("Reset Removable Row") { removableVisible = true }
-                .accessibilityLabel("reset-removable-row")
+                .accessibilityLabel("reset-removable")
         }
     }
 }

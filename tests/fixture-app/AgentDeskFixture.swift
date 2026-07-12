@@ -56,7 +56,7 @@ struct ContentView: View {
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("AgentDesk Fixture")
                     .font(.title2)
                     .accessibilityLabel("fixture-title")
@@ -64,14 +64,14 @@ struct ContentView: View {
                 row2
                 row3
             }
-            .padding(20)
+            .padding(10)
         }
         .frame(minWidth: 980, minHeight: 720)
         .sheet(isPresented: $showSheet) { sheetContent }
     }
 
     private var row1: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             clicksCard
             textCard
             stateCard
@@ -79,7 +79,7 @@ struct ContentView: View {
     }
 
     private var row2: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             choiceCard
             collectionsCard
             asyncCard
@@ -87,7 +87,7 @@ struct ContentView: View {
     }
 
     private var row3: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             dragCard
             surfacesCard
             ScrollCard()

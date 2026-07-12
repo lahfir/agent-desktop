@@ -103,7 +103,8 @@ target_snapshot() { printf '%s' "${1#*$'\t'}"; }
 find_target() {
     local role="$1" name="$2" output value
     for _ in $(seq 1 25); do
-        if output="$("$bin" find --app "$app" --role "$role" --name "$name" --first 2>/dev/null)"; then
+        output="$("$bin" find --app "$app" --role "$role" --name "$name" --first 2>/dev/null)"
+        if [ -n "$output" ]; then
             value="$(printf '%s' "$output" | python3 "$json_tool" target 2>/dev/null)"
             if [ -n "$value" ]; then
                 printf '%s' "$value"
@@ -112,6 +113,7 @@ find_target() {
         fi
         sleep 0.2
     done
+    printf 'find_target %s %s last output: %s\n' "$role" "$name" "$output" >&2
     return 1
 }
 

@@ -1,4 +1,5 @@
 note "Sheet surface discovery and interaction"
+"$bin" focus-window --app "$app" >/dev/null 2>&1
 require_value sheet_before sheet-status
 act_target "$open_sheet" scroll-to >/dev/null 2>&1
 act_target "$open_sheet" click >/dev/null 2>&1
@@ -18,6 +19,8 @@ assert "a ref found inside the sheet performs its action" \
 note "Context menu discovery and action"
 "$bin" focus-window --app "$app" >/dev/null 2>&1
 require_value context_before right-status
+require_target context_target button context-target
+act_target "$context_target" scroll-to >/dev/null 2>&1
 require_target context_target button context-target
 context_output="$(act_target "$context_target" right-click 2>&1)"
 sleep 0.5
@@ -43,6 +46,11 @@ assert "menu bar exposes the custom Fixture menu" \
 
 note "Source-tracked drag gesture"
 require_value drag_before drag-canvas-status
+drag_anchor="$(find_target_by_id group drag-canvas || find_target group drag-canvas || true)"
+if [ -n "$drag_anchor" ]; then
+    act_target "$drag_anchor" scroll-to >/dev/null 2>&1
+    sleep 0.3
+fi
 drag_snapshot="$("$bin" snapshot --app "$app" --include-bounds --max-depth 30 2>/dev/null)"
 drag_points="$(printf '%s' "$drag_snapshot" | python3 "$json_tool" tree drag-canvas drag 2>/dev/null)" || drag_points=""
 if [ -z "$drag_points" ]; then
@@ -60,6 +68,8 @@ assert "headed drag delivers one source-tracked gesture" \
     "from=$drag_from to=$drag_to before=$drag_before after=$drag_after"
 
 note "Disclosure collapse and expand"
+require_target disclosure disclosure disclosure-section
+act_target "$disclosure" scroll-to >/dev/null 2>&1
 require_target disclosure disclosure disclosure-section
 collapse_output="$(act_target "$disclosure" collapse 2>&1)"
 sleep 0.4

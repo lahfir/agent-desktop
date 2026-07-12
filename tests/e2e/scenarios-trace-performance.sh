@@ -48,7 +48,7 @@ fi
 assert "trace show includes command and snapshot events" "$trace_events" \
     "session=$trace_session"
 assert "trace screenshot artifacts have PNG magic" "$png_magic" \
-    "directory=$trace_dir/screens"
+    "directory=$trace_dir/screens exists=$([ -d "$trace_dir/screens" ] && echo yes || echo no) pngs=$(find "$trace_dir/screens" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
 
 trace_html="$(mktemp -t agentdesk-e2e-trace-export.XXXXXX.html)"
 cleanup_files+=("$trace_html")

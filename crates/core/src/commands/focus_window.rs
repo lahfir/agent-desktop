@@ -78,16 +78,20 @@ fn wait_for_focused_window_with_poll_interval(
     let deadline = parent_deadline.capped(Duration::from_millis(FOCUS_SETTLE_TIMEOUT_MS));
     let mut confirmations = 0;
     loop {
-        match observed_focused_window(adapter, app, deadline)? {
-            Some(window) if window.id == window_id => {
+        match observed_focused_window(adapter, app, deadline) {
+            Ok(Some(window)) if window.id == window_id => {
                 confirmations += 1;
                 if confirmations >= FOCUS_CONFIRMATIONS {
                     return Ok(window);
                 }
             }
-            _ => {
+            Ok(_) => {
                 confirmations = 0;
             }
+            Err(AppError::Adapter(error)) if error.permits_retry_by_default() => {
+                confirmations = 0;
+            }
+            Err(error) => return Err(error),
         }
 
         if deadline.is_expired() {

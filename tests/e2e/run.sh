@@ -66,8 +66,8 @@ d = json.load(sys.stdin)["data"]
 best = max(d, key=lambda x: x["bounds"]["width"] * x["bounds"]["height"])
 b = best["bounds"]
 w = min(int(b["width"]) - 40, 1900)
-h = min(int(b["height"]) - 60, 1080)
-print(int(b["x"]) + 20, int(b["y"]) + 40, w, h)
+h = min(int(b["height"]) - 34, 1080)
+print(int(b["x"]) + 20, int(b["y"]) + 28, w, h)
 ')"
 if [ -n "$frame" ]; then
     read -r fx fy fw fh <<EOF_FRAME

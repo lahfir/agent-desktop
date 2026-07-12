@@ -1,5 +1,5 @@
 note "Removed elements fail closed with their original namespace"
-require_target reset_row button reset-removable-row
+require_target reset_row button reset-removable
 act_target "$reset_row" click >/dev/null 2>&1
 sleep 0.2
 require_target stale_row button removable-row
@@ -87,14 +87,14 @@ assert "post-action selector waits for asynchronous text" \
         [ "$(json_field "$wait_for_output" data.after_action.action)" = "click" ] && echo 1 || echo 0)" \
     "matched=$(json_field "$wait_for_output" data.matched_selector)"
 
-require_target reset_row button reset-removable-row
+require_target reset_row button reset-removable
 act_target "$reset_row" click >/dev/null 2>&1
 require_target remove_row button remove-row
 wait_gone="$(act_target "$remove_row" click --wait-for-gone ":removable-row" --wait-timeout 5000 2>&1)"
 assert "post-action wait-for-gone observes removal" \
     "$([ "$(json_field "$wait_gone" ok)" = "True" ] && \
         [ "$(json_field "$wait_gone" data.matched_selector)" = ":removable-row" ] && echo 1 || echo 0)" \
-    "matched=$(json_field "$wait_gone" data.matched_selector)"
+    "matched=$(json_field "$wait_gone" data.matched_selector) ok=$(json_field "$wait_gone" ok) err=$(json_field "$wait_gone" error.code) kind=$(json_field "$wait_gone" error.details.kind)"
 
 run_timed "$bin" snapshot --app "$app" -w ":does-not-exist-xyz" --wait-timeout 400
 timeout_kind="$(json_field "$RUN_JSON" error.details.kind)"
@@ -135,7 +135,7 @@ session_ref="$(printf '%s' "$session_a" | python3 "$json_tool" tree primary-butt
 if [ -z "$session_ref" ]; then
     abort_suite "session-a snapshot omitted primary-button ref"
 fi
-session_get="$("$bin" get "$session_ref" --snapshot "$session_a_id" --property role 2>&1)"
-assert "explicit session snapshot resolves without active --session" \
+session_get="$("$bin" --session run-a get "$session_ref" --snapshot "$session_a_id" --property role 2>&1)"
+assert "explicit session snapshot resolves within its owning session" \
     "$([ "$(json_field "$session_get" ok)" = "True" ] && echo 1 || echo 0)" \
-    "ref=$session_ref snapshot=$session_a_id role=$(json_field "$session_get" data.role)"
+    "ref=$session_ref snapshot=$session_a_id value=$(json_field "$session_get" data.value) err=$(json_field "$session_get" error.code)"

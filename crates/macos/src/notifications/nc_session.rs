@@ -133,10 +133,13 @@ fn reactivate_app(_name: &str, _deadline: Deadline) {}
 pub(super) fn nc_pid(deadline: Deadline) -> Option<i32> {
     let mut command = std::process::Command::new("/usr/bin/pgrep");
     command.arg("-x").arg("NotificationCenter");
+    let pgrep_deadline = operation_deadline(deadline, std::time::Duration::from_secs(1))
+        .or_else(|_| Deadline::after(500))
+        .ok()?;
     let output = crate::system::process::run_with_deadline(
         &mut command,
         "pgrep NotificationCenter",
-        operation_deadline(deadline, std::time::Duration::from_secs(1)).ok()?,
+        pgrep_deadline,
     )
     .ok()?;
 

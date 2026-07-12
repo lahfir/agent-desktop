@@ -193,16 +193,30 @@ fn frontmost_ax_timeout_is_retryable_but_permission_denial_is_not_rewritten() {
 }
 
 #[test]
-fn missing_or_ambiguous_focus_join_fails_incomplete() {
+fn missing_focus_join_fails_incomplete() {
     let owners = owners(&[(10, 100.0)], Some(10));
-    let records = vec![record(10, 1, "Duplicate"), record(10, 2, "Duplicate")];
+    let records = vec![record(10, 1, "Solo")];
 
     let error = assemble_global_windows(records, &owners, false, |_| {
-        Ok(ax_state(Some((Some("Duplicate".into()), None))))
+        Ok(ax_state(Some((Some("Solo".into()), Some(99)))))
     })
     .unwrap_err();
 
     assert_eq!(error.details.unwrap()["kind"], "frontmost_window_join");
+}
+
+#[test]
+fn ambiguous_title_without_window_number_degrades_to_unconfirmed_focus() {
+    let owners = owners(&[(10, 100.0)], Some(10));
+    let records = vec![record(10, 1, "Duplicate"), record(10, 2, "Duplicate")];
+
+    let windows = assemble_global_windows(records, &owners, false, |_| {
+        Ok(ax_state(Some((Some("Duplicate".into()), None))))
+    })
+    .unwrap();
+
+    assert_eq!(windows.len(), 2);
+    assert!(windows.iter().all(|window| !window.state.is_focused));
 }
 
 #[test]
