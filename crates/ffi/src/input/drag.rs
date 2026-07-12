@@ -17,15 +17,17 @@ pub unsafe extern "C" fn ad_drag(
     params: *const AdDragParams,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(params, c"params is null");
-        let adapter = &*adapter;
         let p = &*params;
         let core_params = p.to_core();
-        match adapter.inner.drag(core_params) {
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
+        if let Err(error) = core_params.validate(lease.deadline()) {
+            error::set_last_error(&error);
+            return error::last_error_code();
+        }
+        match adapter.inner.drag(core_params, &lease) {
             Ok(()) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);

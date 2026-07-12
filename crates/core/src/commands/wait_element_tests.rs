@@ -4,10 +4,13 @@ use super::test_support::{
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::NativeHandle, commands::wait_predicate, element_state::ElementState,
-    error::AdapterError, refs::RefEntry, refs_test_support::HomeGuard,
+    AdapterError, adapter::NativeHandle, commands::wait_predicate, element_state::ElementState,
+    refs::RefEntry, refs_test_support::HomeGuard,
 };
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, Ordering},
+};
 
 struct NoopAdapter;
 
@@ -20,29 +23,36 @@ impl InputOps for NoopAdapter {}
 impl SystemOps for NoopAdapter {}
 
 struct LiveErrorPredicateAdapter {
-    releases: AtomicU32,
+    drops: Arc<AtomicU32>,
+}
+
+struct DropProbe(Arc<AtomicU32>);
+
+impl Drop for DropProbe {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 impl ObservationOps for LiveErrorPredicateAdapter {
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: std::time::Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
+        Ok(NativeHandle::new(DropProbe(Arc::clone(&self.drops))))
     }
 
-    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+    fn get_live_state(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
         Err(AdapterError::permission_denied())
     }
 }
 
-impl ActionOps for LiveErrorPredicateAdapter {
-    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
-        self.releases.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-}
+impl ActionOps for LiveErrorPredicateAdapter {}
 
 impl InputOps for LiveErrorPredicateAdapter {}
 
@@ -68,7 +78,7 @@ fn snapshot_pinned_missing_ref_is_invalid_args() {
 }
 
 #[test]
-fn element_wait_explicit_session_snapshot_without_session_context() {
+fn element_wait_explicit_session_snapshot_with_matching_session_context() {
     let _guard = HomeGuard::new();
     let snapshot_id = save_ref_in_session("agent-a", Vec::new());
     let adapter = PredicateAdapter {
@@ -76,6 +86,9 @@ fn element_wait_explicit_session_snapshot_without_session_context() {
             role: "button".into(),
             states: vec![],
             value: None,
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
         }),
         value: None,
         bounds: None,
@@ -87,7 +100,7 @@ fn element_wait_explicit_session_snapshot_without_session_context() {
         wait_predicate::ElementPredicate::Exists,
         50,
         &adapter,
-        &crate::context::CommandContext::default(),
+        &crate::context::CommandContext::new(Some("agent-a".into()), None, false).unwrap(),
     )
     .unwrap();
 
@@ -96,11 +109,11 @@ fn element_wait_explicit_session_snapshot_without_session_context() {
 }
 
 #[test]
-fn element_wait_propagates_live_read_errors_after_releasing_handle() {
+fn element_wait_propagates_live_read_errors_after_dropping_handle() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
     let adapter = LiveErrorPredicateAdapter {
-        releases: AtomicU32::new(0),
+        drops: Arc::new(AtomicU32::new(0)),
     };
 
     let err = wait_for_element_test(
@@ -114,7 +127,7 @@ fn element_wait_propagates_live_read_errors_after_releasing_handle() {
     .unwrap_err();
 
     assert_eq!(err.code(), "PERM_DENIED");
-    assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.drops.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -135,7 +148,7 @@ fn zero_timeout_returns_timeout_before_any_resolution_attempt() {
     let AppError::Adapter(adapter_err) = err else {
         panic!("expected adapter error");
     };
-    assert_eq!(adapter_err.code, crate::error::ErrorCode::Timeout);
+    assert_eq!(adapter_err.code, crate::ErrorCode::Timeout);
     let details = adapter_err.details.expect("timeout should carry details");
     assert!(details["last_observed"].is_null());
 }

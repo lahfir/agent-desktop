@@ -1,5 +1,5 @@
 use super::*;
-use crate::error::{AdapterError, ErrorCode};
+use crate::{AdapterError, ErrorCode};
 use serde_json::json;
 
 #[test]
@@ -22,61 +22,81 @@ fn app_error_payload_preserves_adapter_recovery_fields() {
     );
     assert_eq!(payload.details, Some(json!({ "check": "visible" })));
     assert_eq!(
-        payload.retry_command, None,
+        payload.recovery, None,
         "ACTION_FAILED must not carry a retry token"
     );
 }
 
 #[test]
-fn stale_ref_payload_carries_snapshot_retry_token() {
+fn stale_ref_payload_carries_snapshot_recovery() {
     let err = AppError::stale_ref("@e5");
     let payload = ErrorPayload::from_app_error(&err);
     assert_eq!(payload.code, "STALE_REF");
     assert_eq!(
-        payload.retry_command.as_deref(),
-        Some("snapshot;execute_by_ref"),
-        "STALE_REF must carry the canonical retry token"
+        payload
+            .recovery
+            .as_ref()
+            .map(|recovery| recovery.strategy.as_str()),
+        Some("refresh_snapshot_then_retry_original")
+    );
+    assert!(
+        payload
+            .recovery
+            .is_some_and(|recovery| recovery.requires_fresh_snapshot)
     );
 }
 
 #[test]
-fn snapshot_not_found_payload_carries_snapshot_retry_token() {
+fn snapshot_not_found_payload_carries_snapshot_recovery() {
     let err = AppError::Adapter(AdapterError::snapshot_not_found("snap-abc"));
     let payload = ErrorPayload::from_app_error(&err);
     assert_eq!(payload.code, "SNAPSHOT_NOT_FOUND");
     assert_eq!(
-        payload.retry_command.as_deref(),
-        Some("snapshot;execute_by_ref"),
-        "SNAPSHOT_NOT_FOUND must carry the canonical retry token"
+        payload
+            .recovery
+            .as_ref()
+            .map(|recovery| recovery.strategy.as_str()),
+        Some("refresh_snapshot_then_retry_original")
     );
 }
 
 #[test]
-fn policy_denied_payload_carries_escalate_policy_token() {
+fn policy_denied_payload_carries_policy_recovery() {
     let err = AppError::Adapter(AdapterError::policy_denied("blocked by policy"));
     let payload = ErrorPayload::from_app_error(&err);
     assert_eq!(payload.code, "POLICY_DENIED");
     assert_eq!(
-        payload.retry_command.as_deref(),
-        Some("escalate_policy"),
-        "POLICY_DENIED must carry the escalate_policy token, not a snapshot token"
+        payload
+            .recovery
+            .as_ref()
+            .map(|recovery| recovery.strategy.as_str()),
+        Some("request_explicit_policy_then_retry_original")
     );
 }
 
 #[test]
-fn app_unresponsive_payload_carries_a_recovery_token() {
+fn app_unresponsive_payload_carries_declarative_recovery() {
     let err = AppError::Adapter(AdapterError::app_unresponsive("Finder"));
     let payload = ErrorPayload::from_app_error(&err);
     assert_eq!(payload.code, "APP_UNRESPONSIVE");
     assert_eq!(
-        payload.retry_command.as_deref(),
-        Some("wait;execute_by_ref"),
-        "APP_UNRESPONSIVE must carry a sensible recovery token, not silently omit one"
+        payload
+            .recovery
+            .as_ref()
+            .map(|recovery| recovery.strategy.as_str()),
+        Some("inspect_state_then_retry_original")
+    );
+    assert_eq!(
+        payload
+            .recovery
+            .as_ref()
+            .and_then(|recovery| recovery.retry_after_ms),
+        Some(250)
     );
 }
 
 #[test]
-fn retry_command_absent_for_non_retryable_errors() {
+fn recovery_absent_for_non_retryable_errors() {
     for err in [
         AppError::Adapter(AdapterError::new(ErrorCode::InvalidArgs, "bad input")),
         AppError::Adapter(AdapterError::not_supported("method_x")),
@@ -84,7 +104,7 @@ fn retry_command_absent_for_non_retryable_errors() {
     ] {
         let payload = ErrorPayload::from_app_error(&err);
         assert!(
-            payload.retry_command.is_none(),
+            payload.recovery.is_none(),
             "non-retryable error {} must not carry a retry token",
             payload.code
         );
@@ -160,8 +180,8 @@ fn err_response_omits_optional_error_subfields_when_absent() {
         "absent suggestion must be omitted from JSON"
     );
     assert!(
-        !error.contains_key("retry_command"),
-        "absent retry_command must be omitted from JSON"
+        !error.contains_key("recovery"),
+        "absent recovery must be omitted from JSON"
     );
     assert!(
         !error.contains_key("platform_detail"),

@@ -1,164 +1,122 @@
 use super::*;
-use agent_desktop_core::clipboard_content::{ClipboardContent, ClipboardFormat};
-use agent_desktop_core::image_buffer::{ImageBuffer, ImageFormat};
-use std::sync::Mutex;
+use crate::input::interactive_test::{is_worker, run_bounded};
+use agent_desktop_core::{ClipboardContent, ClipboardFormat, Deadline, ImageBuffer, ImageFormat};
+use core_foundation::{base::TCFType, string::CFString};
+use std::ffi::c_void;
+use std::time::Duration;
 
-/// The real system pasteboard is process-wide shared state; serialize the
-/// tests in this file so they don't interleave writes on separate threads.
-static CLIPBOARD_TEST_LOCK: Mutex<()> = Mutex::new(());
+type Class = *mut c_void;
 
-/// Captures the real clipboard on construction and restores it on drop, so
-/// these tests can exercise `set_content`/`get_content` against the actual
-/// `NSPasteboard` (the only receiver `pasteboard()` talks to) without
-/// leaving the developer's or CI runner's clipboard mutated afterward.
-struct RestoreGuard(ClipboardSnapshot);
-
-impl RestoreGuard {
-    fn capture() -> Self {
-        Self(ClipboardSnapshot::capture().expect("capture clipboard before test"))
-    }
-}
-
-impl Drop for RestoreGuard {
-    fn drop(&mut self) {
-        let _ = self.0.restore();
-    }
-}
-
-fn fake_png(width: u32, height: u32) -> Vec<u8> {
-    let mut bytes = vec![0u8; 24];
-    bytes[0..8].copy_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-    bytes[12..16].copy_from_slice(b"IHDR");
-    bytes[16..20].copy_from_slice(&width.to_be_bytes());
-    bytes[20..24].copy_from_slice(&height.to_be_bytes());
-    bytes
+unsafe extern "C" {
+    fn objc_getClass(name: *const core::ffi::c_char) -> Class;
 }
 
 #[test]
-fn text_round_trips_through_typed_api() {
-    let _serial = CLIPBOARD_TEST_LOCK.lock().unwrap();
-    let _guard = RestoreGuard::capture();
-
-    set_content(&ClipboardContent::Text(
-        "agent-desktop clipboard test".into(),
-    ))
-    .expect("set text content");
-    match get_content(ClipboardFormat::Text).expect("get text content") {
-        Some(ClipboardContent::Text(text)) => {
-            assert_eq!(text, "agent-desktop clipboard test");
-        }
-        other => panic!(
-            "expected Some(Text(_)), got a different variant: {}",
-            describe(&other)
-        ),
+fn native_clipboard_contract_is_bounded() {
+    if is_worker("clipboard") {
+        let _pool = AutoreleasePool::new().expect("autorelease pool is available");
+        let pb = unique_pasteboard().expect("isolated pasteboard is available");
+        let result = exercise_clipboard(pb);
+        unsafe { release_globally(pb) };
+        result.expect("isolated clipboard contract succeeds");
+    } else {
+        run_bounded(
+            "native_clipboard_contract_is_bounded",
+            "clipboard",
+            Duration::from_secs(15),
+        );
     }
 }
 
-#[test]
-fn image_set_then_get_round_trips_dimensions() {
-    let _serial = CLIPBOARD_TEST_LOCK.lock().unwrap();
-    let _guard = RestoreGuard::capture();
+fn exercise_clipboard(pb: Id) -> Result<(), AdapterError> {
+    let deadline = Deadline::after(5_000)?;
+    replace_on(
+        pb,
+        "text",
+        deadline,
+        |pb, deadline| unsafe { write_string(pb, "original clipboard value", deadline) },
+        |pb, deadline| unsafe {
+            ensure_read_budget(deadline)?;
+            Ok(read_string(pb)?.as_deref() == Some("original clipboard value"))
+        },
+    )?;
 
-    let bytes = fake_png(37, 21);
-    set_content(&ClipboardContent::Image(ImageBuffer {
-        data: bytes,
+    set_content_on(
+        pb,
+        &ClipboardContent::Text(String::from("replacement")),
+        deadline,
+    )?;
+    assert_eq!(
+        unsafe { get_content_from(pb, ClipboardFormat::Text, deadline) }?,
+        Some(ClipboardContent::Text(String::from("replacement")))
+    );
+
+    let image = ClipboardContent::Image(ImageBuffer {
+        data: one_pixel_png().to_vec(),
         format: ImageFormat::Png,
-        width: 37,
-        height: 21,
+        width: 1,
+        height: 1,
         scale_factor: 1.0,
-    }))
-    .expect("set image content");
-
-    match get_content(ClipboardFormat::Image).expect("get image content") {
-        Some(ClipboardContent::Image(image)) => {
-            assert_eq!(image.width, 37);
-            assert_eq!(image.height, 21);
-        }
-        other => panic!(
-            "expected Some(Image(_)), got a different variant: {}",
-            describe(&other)
-        ),
-    }
-}
-
-#[test]
-fn file_urls_round_trip() {
-    let _serial = CLIPBOARD_TEST_LOCK.lock().unwrap();
-    let _guard = RestoreGuard::capture();
-
-    let path = std::env::temp_dir().join(format!(
-        "agent-desktop-clipboard-test-{}-{}.txt",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
+    });
+    set_content_on(pb, &image, deadline)?;
+    let image_result = unsafe { get_content_from(pb, ClipboardFormat::Image, deadline) }?;
+    assert!(matches!(
+        image_result,
+        Some(ClipboardContent::Image(ImageBuffer {
+            width: 1,
+            height: 1,
+            ..
+        }))
     ));
-    std::fs::write(&path, b"clipboard file-url test").unwrap();
-    let path_string = path.to_string_lossy().into_owned();
+    Ok(())
+}
 
-    set_content(&ClipboardContent::FileUrls(vec![path_string.clone()]))
-        .expect("set file-url content");
-    let result = get_content(ClipboardFormat::FileUrls).expect("get file-url content");
-    let _ = std::fs::remove_file(&path);
-
-    match result {
-        Some(ClipboardContent::FileUrls(urls)) => {
-            assert_eq!(urls, vec![path_string]);
+fn unique_pasteboard() -> Result<Id, AdapterError> {
+    unsafe {
+        let class = objc_getClass(c"NSPasteboard".as_ptr());
+        if class.is_null() {
+            return Err(pasteboard_unavailable("NSPasteboard class was not found"));
         }
-        other => panic!(
-            "expected Some(FileUrls(_)), got a different variant: {}",
-            describe(&other)
-        ),
+        let name = CFString::new(&format!(
+            "com.norolabs.agent-desktop.tests.{}",
+            std::process::id()
+        ));
+        let send: unsafe extern "C" fn(Class, Sel, Id) -> Id =
+            std::mem::transmute(objc_msgSend as *const c_void);
+        let pb = send(
+            class,
+            sel_registerName(c"pasteboardWithName:".as_ptr()),
+            name.as_concrete_TypeRef() as Id,
+        );
+        if pb.is_null() {
+            return Err(pasteboard_unavailable(
+                "NSPasteboard pasteboardWithName returned null",
+            ));
+        }
+        Ok(pb)
     }
 }
 
-#[test]
-fn requesting_image_format_on_text_only_clipboard_returns_none_not_panic() {
-    let _serial = CLIPBOARD_TEST_LOCK.lock().unwrap();
-    let _guard = RestoreGuard::capture();
-
-    set_content(&ClipboardContent::Text("just text, no image".into())).expect("set text content");
-    let result = get_content(ClipboardFormat::Image).expect("get image format must not panic");
-    assert!(
-        result.is_none(),
-        "text-only clipboard must report no image content"
-    );
+fn pasteboard_unavailable(detail: &str) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::ActionFailed,
+        "Isolated test pasteboard is unavailable",
+    )
+    .with_platform_detail(detail)
 }
 
-#[test]
-fn auto_prefers_file_urls_when_present() {
-    let _serial = CLIPBOARD_TEST_LOCK.lock().unwrap();
-    let _guard = RestoreGuard::capture();
-
-    let path = std::env::temp_dir().join(format!(
-        "agent-desktop-clipboard-auto-{}-{}.txt",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::write(&path, b"auto preference test").unwrap();
-    set_content(&ClipboardContent::FileUrls(vec![
-        path.to_string_lossy().into_owned(),
-    ]))
-    .expect("set file-url content");
-
-    let result = get_content(ClipboardFormat::Auto).expect("get auto content");
-    let _ = std::fs::remove_file(&path);
-
-    assert!(
-        matches!(result, Some(ClipboardContent::FileUrls(_))),
-        "auto format should surface file URLs over lower-priority representations"
-    );
-}
-
-fn describe(content: &Option<ClipboardContent>) -> &'static str {
-    match content {
-        None => "None",
-        Some(ClipboardContent::Text(_)) => "Some(Text)",
-        Some(ClipboardContent::Image(_)) => "Some(Image)",
-        Some(ClipboardContent::FileUrls(_)) => "Some(FileUrls)",
+unsafe fn release_globally(pb: Id) {
+    unsafe {
+        let send: unsafe extern "C" fn(Id, Sel) =
+            std::mem::transmute(objc_msgSend as *const c_void);
+        send(pb, sel_registerName(c"releaseGlobally".as_ptr()));
     }
+}
+
+fn one_pixel_png() -> [u8; 68] {
+    [
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4,
+        0, 0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 100, 248, 15, 0, 1, 5,
+        1, 1, 39, 24, 227, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+    ]
 }

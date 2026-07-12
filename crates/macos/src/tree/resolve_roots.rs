@@ -1,14 +1,9 @@
-use agent_desktop_core::{adapter::SnapshotSurface, error::AdapterError, refs::RefEntry};
-use std::time::Instant;
+use agent_desktop_core::{AdapterError, RefEntry, adapter::SnapshotSurface};
 
 use super::AXElement;
-use super::attributes::{
-    copy_ax_array, copy_element_attr, copy_string_attr, set_messaging_timeout,
-};
 use super::element::element_for_pid;
 use super::element_dedupe::ElementDedupe;
-use super::resolve_deadline::{ensure_before_deadline, remaining_before_deadline};
-use super::resolve_identity::bounded_window_fallback_allowed;
+use super::resolve_read_context::ResolveReadContext;
 
 #[cfg(target_os = "macos")]
 pub(super) struct CandidateRoots {
@@ -17,237 +12,377 @@ pub(super) struct CandidateRoots {
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn path_candidate_roots(
+pub(super) fn candidate_roots(
     entry: &RefEntry,
-    deadline: Instant,
+    context: &mut ResolveReadContext,
 ) -> Result<CandidateRoots, AdapterError> {
-    if entry.bounds_hash.is_some() {
-        return candidate_roots(entry, deadline);
+    let deadline = context.deadline;
+    crate::tree::locator_deadline::remaining(deadline)?;
+    let pid = crate::system::process_identity::to_pid_t(entry.process.pid)?;
+    let application = element_for_pid(pid);
+    if entry.source.source_surface != SnapshotSurface::Window {
+        verify_source_application(&application, entry, context)?;
+        return source_surface_scoped_roots(entry, deadline);
     }
-    let roots: Vec<_> = scoped_surface_root(entry, deadline)?.into_iter().collect();
+    if source_window_scope_required(entry) && entry.source.source_window_id.is_some() {
+        return source_window_scoped_roots(&application, entry, context);
+    }
+    verify_source_application(&application, entry, context)?;
+    if source_window_scope_required(entry) {
+        return source_window_scoped_roots(&application, entry, context);
+    }
+
+    let mut roots = Vec::new();
+    let mut dedupe = ElementDedupe;
+    let windows = read_root_array(&application, "AXWindows", context)?;
+    if windows.as_ref().is_some_and(|windows| !windows.is_empty()) {
+        add_array(&mut roots, &mut dedupe, windows);
+    } else {
+        add_optional_element(
+            &mut roots,
+            &mut dedupe,
+            super::resolve_ax_read::read_element(&application, "AXFocusedWindow", deadline)?,
+        );
+        add_optional_element(
+            &mut roots,
+            &mut dedupe,
+            super::resolve_ax_read::read_element(&application, "AXMainWindow", deadline)?,
+        );
+    }
+    add_array(
+        &mut roots,
+        &mut dedupe,
+        read_root_array(&application, "AXMenus", context)?,
+    );
+    add_array(
+        &mut roots,
+        &mut dedupe,
+        read_root_array(&application, "AXChildren", context)?,
+    );
+    crate::tree::locator_deadline::remaining(deadline)?;
     Ok(CandidateRoots {
-        scope_verified: source_window_scope_required(entry) && !roots.is_empty(),
         roots,
+        scope_verified: false,
     })
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn candidate_roots(
+fn source_surface_scoped_roots(
     entry: &RefEntry,
-    deadline: Instant,
+    deadline: std::time::Instant,
 ) -> Result<CandidateRoots, AdapterError> {
-    if source_window_scope_required(entry) {
-        return source_window_scoped_roots(entry, deadline);
-    }
-
-    let root = element_for_pid(entry.pid);
-    prepare_for_read(&root, deadline)?;
-    let mut roots = Vec::new();
-    let mut dedupe = ElementDedupe;
-    let windows = copy_ax_array(&root, "AXWindows").unwrap_or_default();
-    if let Some(window) = exact_source_window_from_windows(&windows, entry, deadline)? {
-        dedupe.push(&mut roots, window);
-    }
-    prepare_for_read(&root, deadline)?;
-    if let Some(focused) = copy_element_attr(&root, "AXFocusedWindow") {
-        dedupe.push(&mut roots, focused);
-    }
-    prepare_for_read(&root, deadline)?;
-    if let Some(main) = copy_element_attr(&root, "AXMainWindow") {
-        dedupe.push(&mut roots, main);
-    }
-    for window in windows {
-        dedupe.push(&mut roots, window);
-    }
-    ensure_before_deadline(deadline)?;
-    if let Some(menubar) = crate::tree::menubar_for_pid(entry.pid) {
-        dedupe.push(&mut roots, menubar);
-    }
-    ensure_before_deadline(deadline)?;
-    if let Some(menu) = crate::tree::menu_element_for_pid(entry.pid) {
-        dedupe.push(&mut roots, menu);
-    }
-    if roots.is_empty() {
-        roots.push(root);
-    }
+    let pid = crate::system::process_identity::to_pid_t(entry.process.pid)?;
+    let root = match entry.source.source_surface {
+        SnapshotSurface::Focused => super::surfaces::focused_surface_for_pid(pid, deadline)?,
+        SnapshotSurface::Menu => super::surfaces::menu_element_for_pid(pid, deadline)?,
+        SnapshotSurface::Menubar => super::surfaces::menubar_for_pid(pid, deadline)?,
+        SnapshotSurface::Sheet => super::surfaces::sheet_for_pid(pid, deadline)?,
+        SnapshotSurface::Popover => super::surfaces::popover_for_pid(pid, deadline)?,
+        SnapshotSurface::Alert => super::surfaces::alert_for_pid(pid, deadline)?,
+        SnapshotSurface::Window => None,
+        _ => None,
+    };
+    let Some(root) = root else {
+        return Err(
+            AdapterError::element_not_found("saved source surface").with_details(
+                serde_json::json!({
+                    "kind": "source_surface_absent",
+                    "surface": entry.source.source_surface.as_str(),
+                    "complete": true,
+                    "retryable": true,
+                }),
+            ),
+        );
+    };
     Ok(CandidateRoots {
-        roots,
-        scope_verified: false,
+        roots: vec![root],
+        scope_verified: true,
     })
 }
 
 #[cfg(target_os = "macos")]
 fn source_window_scoped_roots(
+    application: &AXElement,
     entry: &RefEntry,
-    deadline: Instant,
+    context: &mut ResolveReadContext,
 ) -> Result<CandidateRoots, AdapterError> {
-    let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
-        return Ok(CandidateRoots {
-            roots: Vec::new(),
-            scope_verified: false,
-        });
-    };
-    if let Some(window) = window_by_number(&windows, source_window_number(entry), deadline)? {
-        return Ok(CandidateRoots {
-            roots: vec![window],
-            scope_verified: true,
-        });
-    }
-    if let Some(window) = window_by_title(&windows, entry.source_window_title.as_deref(), deadline)?
-    {
-        return Ok(CandidateRoots {
-            roots: vec![window],
-            scope_verified: false,
-        });
-    }
-    if bounded_window_fallback_allowed(entry) {
-        let roots = fallback_replacement_window_roots(&windows, deadline)?;
-        if !roots.is_empty() {
-            return Ok(CandidateRoots {
-                roots,
-                scope_verified: false,
-            });
+    let deadline = context.deadline;
+    if let Some(id) = entry.source.source_window_id.as_deref() {
+        if source_window_number(entry).is_none() {
+            return Err(
+                AdapterError::element_not_found("saved source window").with_details(
+                    serde_json::json!({
+                        "kind": "source_window_identity_invalid",
+                        "source_window_id": id,
+                        "complete": true,
+                        "retryable": false,
+                    }),
+                ),
+            );
         }
+        crate::system::window_resolve::verify_window_identity_until(
+            id,
+            crate::system::process_identity::to_pid_t(entry.process.pid)?,
+            entry.source.source_app.as_deref(),
+            entry.process.process_instance.as_deref(),
+            entry.source.source_window_title.as_deref(),
+            entry.source.source_window_bounds_hash,
+            deadline,
+        )?;
     }
+    let windows = read_root_array(application, "AXWindows", context)?.unwrap_or_default();
+    let window = if entry.source.source_window_id.is_some() {
+        window_by_number(&windows, entry, context)?
+    } else {
+        window_by_title(
+            &windows,
+            entry.source.source_window_title.as_deref(),
+            context,
+        )?
+    };
+    let scope_verified =
+        source_scope_verified(entry.source.source_window_id.as_deref(), window.is_some());
     Ok(CandidateRoots {
-        roots: Vec::new(),
-        scope_verified: false,
+        scope_verified,
+        roots: window.into_iter().collect(),
     })
 }
 
-#[cfg(target_os = "macos")]
-fn scoped_surface_root(
-    entry: &RefEntry,
-    deadline: Instant,
-) -> Result<Option<AXElement>, AdapterError> {
-    ensure_before_deadline(deadline)?;
-    let root = match entry.source_surface {
-        SnapshotSurface::Window if source_window_scope_required(entry) => {
-            exact_source_window_number_root(entry, deadline)?
-        }
-        SnapshotSurface::Window => exact_source_window_root(entry, deadline)?,
-        SnapshotSurface::Focused => crate::tree::focused_surface_for_pid(entry.pid),
-        SnapshotSurface::Menu => crate::tree::menu_element_for_pid(entry.pid),
-        SnapshotSurface::Menubar => crate::tree::menubar_for_pid(entry.pid),
-        SnapshotSurface::Sheet => crate::tree::sheet_for_pid(entry.pid),
-        SnapshotSurface::Popover => crate::tree::popover_for_pid(entry.pid),
-        SnapshotSurface::Alert => crate::tree::alert_for_pid(entry.pid),
-        _ => return Err(AdapterError::not_supported("snapshot surface")),
-    };
-    Ok(root)
-}
-
-#[cfg(target_os = "macos")]
-fn exact_source_window_number_root(
-    entry: &RefEntry,
-    deadline: Instant,
-) -> Result<Option<AXElement>, AdapterError> {
-    let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
-        return Ok(None);
-    };
-    window_by_number(&windows, source_window_number(entry), deadline)
-}
-
-#[cfg(target_os = "macos")]
-fn exact_source_window_root(
-    entry: &RefEntry,
-    deadline: Instant,
-) -> Result<Option<AXElement>, AdapterError> {
-    let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
-        return Ok(None);
-    };
-    exact_source_window_from_windows(&windows, entry, deadline)
-}
-
-#[cfg(target_os = "macos")]
-fn exact_source_window_from_windows(
-    windows: &[AXElement],
-    entry: &RefEntry,
-    deadline: Instant,
-) -> Result<Option<AXElement>, AdapterError> {
-    if let Some(window) = window_by_number(windows, source_window_number(entry), deadline)? {
-        return Ok(Some(window));
-    }
-    window_by_title(windows, entry.source_window_title.as_deref(), deadline)
-}
-
-#[cfg(target_os = "macos")]
-fn windows_for_pid(pid: i32, deadline: Instant) -> Result<Option<Vec<AXElement>>, AdapterError> {
-    let root = element_for_pid(pid);
-    prepare_for_read(&root, deadline)?;
-    Ok(copy_ax_array(&root, "AXWindows"))
+pub(super) fn source_scope_verified(source_window_id: Option<&str>, matched: bool) -> bool {
+    source_window_id.is_some() && matched
 }
 
 #[cfg(target_os = "macos")]
 fn window_by_number(
     windows: &[AXElement],
-    source_window_number: Option<i64>,
-    deadline: Instant,
+    entry: &RefEntry,
+    context: &mut ResolveReadContext,
 ) -> Result<Option<AXElement>, AdapterError> {
-    let Some(source_window_number) = source_window_number else {
+    let deadline = context.deadline;
+    let Some(source_window_number) = source_window_number(entry) else {
         return Ok(None);
     };
-    for win in windows {
-        prepare_for_read(win, deadline)?;
-        if crate::system::window_resolve::ax_window_id(win) == Some(source_window_number) {
-            return Ok(Some(win.clone()));
+    let mut bridge_unavailable = None;
+    let mut found = None;
+    let mut match_count = 0_usize;
+    for window in windows {
+        crate::tree::locator_deadline::remaining(deadline)?;
+        match crate::system::window_resolve::ax_window_id_with_deadline(window, deadline) {
+            Ok(Some(actual)) if actual == source_window_number => {
+                match_count += 1;
+                if found.is_none() {
+                    found = Some(window.clone());
+                }
+            }
+            Ok(_) => {}
+            Err(error) if crate::system::window_bridge::is_unavailable(&error) => {
+                bridge_unavailable = Some(error);
+                break;
+            }
+            Err(error) => return Err(error),
         }
     }
-    Ok(None)
+    if let Some(error) = bridge_unavailable {
+        return Err(error);
+    }
+    require_unique_window_number_match(match_count, source_window_number)?;
+    found
+        .map(Some)
+        .ok_or_else(|| window_bridge_miss_error(entry))
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn require_unique_window_number_match(
+    match_count: usize,
+    window_number: i64,
+) -> Result<(), AdapterError> {
+    if match_count > 1 {
+        return Err(AdapterError::ambiguous_target(format!(
+            "Multiple AX windows matched verified CoreGraphics window w-{window_number}"
+        ))
+        .with_details(serde_json::json!({
+            "kind": "source_window_number_ambiguous",
+            "source_window_id": format!("w-{window_number}"),
+            "candidate_count": match_count,
+        })));
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
 fn window_by_title(
     windows: &[AXElement],
     source_window_title: Option<&str>,
-    deadline: Instant,
+    context: &mut ResolveReadContext,
 ) -> Result<Option<AXElement>, AdapterError> {
-    let Some(source_window_title) = source_window_title else {
+    let Some(source_window_title) = source_window_title.filter(|title| !title.is_empty()) else {
         return Ok(None);
     };
     let mut found = None;
-    for win in windows {
-        prepare_for_read(win, deadline)?;
-        if copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title) {
-            if found.is_some() {
-                return Ok(None);
-            }
-            found = Some(win.clone());
+    for window in windows {
+        crate::tree::locator_deadline::remaining(context.deadline)?;
+        if super::resolve_ax_read::read_string_with_usage(
+            window,
+            "AXTitle",
+            context.deadline,
+            &mut context.usage,
+        )?
+        .as_deref()
+            != Some(source_window_title)
+        {
+            continue;
         }
+        if found.is_some() {
+            return Err(AdapterError::ambiguous_target(format!(
+                "Multiple windows matched the saved title '{source_window_title}'"
+            ))
+            .with_details(serde_json::json!({
+                "kind": "source_window_title_ambiguous",
+                "title": source_window_title,
+                "candidate_count_at_least": 2,
+            })));
+        }
+        found = Some(window.clone());
     }
     Ok(found)
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn fallback_replacement_window_roots(
-    windows: &[AXElement],
-    deadline: Instant,
-) -> Result<Vec<AXElement>, AdapterError> {
-    let mut roots = Vec::new();
-    let mut dedupe = ElementDedupe;
-    for win in windows {
-        prepare_for_read(win, deadline)?;
-        dedupe.push(&mut roots, win.clone());
+fn window_bridge_miss_error(entry: &RefEntry) -> AdapterError {
+    AdapterError::new(
+        agent_desktop_core::ErrorCode::AppUnresponsive,
+        "The verified CoreGraphics window could not be matched to one live AXWindow",
+    )
+    .with_suggestion("Retry after the application finishes updating its accessibility windows")
+    .with_details(serde_json::json!({
+        "kind": "resolution_window_bridge_miss",
+        "source_window_id": entry.source.source_window_id,
+        "complete": false,
+        "retryable": true,
+    }))
+}
+
+#[cfg(target_os = "macos")]
+fn verify_source_application(
+    application: &AXElement,
+    entry: &RefEntry,
+    context: &mut ResolveReadContext,
+) -> Result<(), AdapterError> {
+    let Some(expected) = entry
+        .source
+        .source_app
+        .as_deref()
+        .filter(|name| !name.is_empty())
+    else {
+        return Ok(());
+    };
+    let actual = super::resolve_ax_read::read_string_with_usage(
+        application,
+        "AXTitle",
+        context.deadline,
+        &mut context.usage,
+    )?;
+    if actual
+        .as_deref()
+        .is_some_and(|actual| actual.eq_ignore_ascii_case(expected))
+    {
+        return Ok(());
     }
-    Ok(roots)
+    Err(
+        AdapterError::element_not_found("source application").with_details(serde_json::json!({
+            "kind": "source_process_identity",
+            "pid": entry.process.pid,
+            "expected_app": expected,
+            "actual_app": actual,
+            "complete": true,
+            "retryable": false,
+        })),
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn add_optional_element(
+    roots: &mut Vec<AXElement>,
+    dedupe: &mut ElementDedupe,
+    element: Option<AXElement>,
+) {
+    if let Some(element) = element {
+        dedupe.push(roots, element);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn add_array(
+    roots: &mut Vec<AXElement>,
+    dedupe: &mut ElementDedupe,
+    elements: Option<Vec<AXElement>>,
+) {
+    for element in elements.unwrap_or_default() {
+        dedupe.push(roots, element);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn read_root_array(
+    element: &AXElement,
+    attribute: &str,
+    context: &mut ResolveReadContext,
+) -> Result<Option<Vec<AXElement>>, AdapterError> {
+    let max_elements = context.usage.child_capacity();
+    let read = super::query::child_read::read_attribute_children(
+        element,
+        attribute,
+        max_elements,
+        context.deadline,
+    );
+    context.stats.reads.child_reads += read.status.attempts;
+    context.stats.reads.cannot_complete += read.status.cannot_complete;
+    context.stats.reads.native_read_failures += read.status.native_read_failures;
+    context.stats.reads.deadline_exhausted += u64::from(read.status.deadline_exhausted);
+    context.stats.traversal.limits.child_count_changes += u64::from(read.status.count_changed);
+    context
+        .usage
+        .note_child_demand(read.total_count, &mut context.stats);
+    context.usage.claim_edges(read.elements.len());
+    if read.status.api_disabled {
+        return Err(AdapterError::permission_denied());
+    }
+    if read.status.invalid_element || !read.complete || read.truncated() {
+        return Err(AdapterError::new(
+            agent_desktop_core::ErrorCode::AppUnresponsive,
+            format!("Strict resolution could not read {attribute} completely"),
+        )
+        .with_details(serde_json::json!({
+            "kind": "resolution_root_array_incomplete",
+            "attribute": attribute,
+            "complete": false,
+            "total_count": read.total_count,
+            "loaded_count": read.elements.len(),
+            "count_changed": read.status.count_changed,
+            "retryable": true,
+        })));
+    }
+    Ok((read.total_count > 0).then_some(read.elements))
 }
 
 #[cfg(target_os = "macos")]
 pub(super) fn source_window_scope_required(entry: &RefEntry) -> bool {
-    matches!(entry.source_surface, SnapshotSurface::Window) && source_window_number(entry).is_some()
+    matches!(entry.source.source_surface, SnapshotSurface::Window)
+        && (entry.source.source_window_id.is_some()
+            || entry
+                .source
+                .source_window_title
+                .as_deref()
+                .is_some_and(|title| !title.is_empty()))
 }
 
 pub(super) fn source_window_number(entry: &RefEntry) -> Option<i64> {
-    entry
+    let number = entry
+        .source
         .source_window_id
         .as_deref()?
         .strip_prefix("w-")?
         .parse()
-        .ok()
-}
-
-#[cfg(target_os = "macos")]
-fn prepare_for_read(element: &AXElement, deadline: Instant) -> Result<(), AdapterError> {
-    set_messaging_timeout(element, remaining_before_deadline(deadline)?);
-    Ok(())
+        .ok()?;
+    (number > 0).then_some(number)
 }

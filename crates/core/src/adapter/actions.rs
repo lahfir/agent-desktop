@@ -1,5 +1,5 @@
 use crate::{
-    action_request::ActionRequest, action_result::ActionResult, error::AdapterError,
+    AdapterError, InteractionLease, action_request::ActionRequest, action_result::ActionResult,
     native_handle::NativeHandle,
 };
 
@@ -8,20 +8,17 @@ pub trait ActionOps: Send + Sync {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::not_supported("execute_action"))
     }
 
-    /// Releases a platform handle that an implementation took ownership of during resolve.
-    /// Adapter methods that receive `&NativeHandle` borrow it only; they must not consume
-    /// or release it. The default no-op is correct for adapters whose handles are owned
-    /// or freed elsewhere.
-    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
-        Ok(())
-    }
-
-    fn scroll_into_view(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
-        let _ = handle;
+    fn scroll_into_view(
+        &self,
+        handle: &NativeHandle,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        let _ = (handle, lease);
         Err(AdapterError::not_supported("scroll_into_view"))
     }
 }

@@ -1,4 +1,4 @@
-use crate::node::Rect;
+use crate::Rect;
 use serde::{Deserialize, Serialize};
 
 /// Classifies whether a hit-tested point reaches the intended target. A hit

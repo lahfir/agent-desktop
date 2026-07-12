@@ -1,5 +1,5 @@
 use crate::types::point::AdPoint;
-use agent_desktop_core::action::{DragParams as CoreDragParams, Point as CorePoint};
+use agent_desktop_core::{DragParams as CoreDragParams, Point as CorePoint};
 
 /// Caller-allocated drag parameters. Callers must zero-initialize the whole
 /// struct before setting fields so unset numeric fields read as the `0`

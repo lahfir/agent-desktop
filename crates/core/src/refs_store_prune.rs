@@ -1,5 +1,5 @@
 use super::{MAX_SAVED_SNAPSHOTS, RefStore, STALE_TMP_MAX_AGE};
-use crate::error::AppError;
+use crate::AppError;
 use crate::refs::validate_snapshot_id;
 
 impl RefStore {

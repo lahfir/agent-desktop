@@ -1,9 +1,7 @@
 use agent_desktop_core::{
-    adapter::PlatformAdapter,
+    PlatformAdapter, RefEntry, RefMap, RefStore,
     commands::{click, helpers::RefArgs, wait},
     context::CommandContext,
-    refs::{RefEntry, RefMap},
-    refs_store::RefStore,
 };
 use std::sync::{Mutex, MutexGuard};
 
@@ -41,7 +39,7 @@ pub fn run_wait_element_command_with_predicate(
     context: &CommandContext,
     predicate: WaitPredicate<'_>,
 ) -> Result<serde_json::Value, agent_desktop_core::AppError> {
-    with_saved_entry(entry, context, |_| {
+    with_saved_entry(entry, context, |snapshot_id| {
         wait::execute(
             wait::WaitArgs {
                 mode: wait::WaitModeArgs {
@@ -56,13 +54,13 @@ pub fn run_wait_element_command_with_predicate(
                     window_id: None,
                 },
                 predicate: wait::WaitPredicateArgs {
-                    snapshot_id: None,
+                    snapshot_id: Some(snapshot_id),
                     predicate: Some(predicate.name.into()),
                     value: predicate.value.map(String::from),
                     action: predicate.action.map(String::from),
                     count: None,
                 },
-                timeout_ms: 100,
+                timeout_ms: 250,
                 app: None,
             },
             adapter,
@@ -104,7 +102,7 @@ fn with_saved_entry<T>(
 ) -> Result<T, agent_desktop_core::AppError> {
     let _home = TestHome::new();
     let mut refmap = RefMap::new();
-    refmap.allocate(entry);
+    refmap.try_allocate(entry)?;
     let snapshot_id = RefStore::for_session(context.session_id())?.save_new_snapshot(&refmap)?;
     run(snapshot_id)
 }

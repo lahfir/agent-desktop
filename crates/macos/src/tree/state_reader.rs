@@ -1,7 +1,6 @@
-use agent_desktop_core::node::Rect;
+use agent_desktop_core::Rect;
 use agent_desktop_core::state;
 
-use super::attributes::copy_bool_attr;
 use super::{AXElement, NodeAttrs};
 
 pub(crate) struct StateReaderContext<'a> {
@@ -20,7 +19,7 @@ pub(crate) fn states_from_element(
     if ctx
         .focused
         .is_some_and(|focused| super::capabilities::same_element(el, focused))
-        || attrs.states.focused == Some(true)
+        || attrs.states.control.focused == Some(true)
     {
         states.push(state::FOCUSED.into());
     }
@@ -30,7 +29,7 @@ pub(crate) fn states_from_element(
     if ctx.is_secure_text {
         states.push(state::SECURE.into());
     }
-    if is_expanded(el, attrs) {
+    if is_expanded(attrs) {
         states.push(state::EXPANDED.into());
     }
     if super::roles::is_toggleable_role(role) {
@@ -40,25 +39,25 @@ pub(crate) fn states_from_element(
             states.push(state::INDETERMINATE.into());
         }
     }
-    if attrs.states.selected == Some(true) {
+    if attrs.states.control.selected == Some(true) {
         states.push(state::SELECTED.into());
     }
-    if attrs.states.hidden == Some(true) {
+    if attrs.states.semantic.hidden == Some(true) {
         states.push(state::HIDDEN.into());
     }
-    if attrs.states.busy == Some(true) {
+    if attrs.states.semantic.busy == Some(true) {
         states.push(state::BUSY.into());
     }
-    if attrs.states.modal == Some(true) {
+    if attrs.states.semantic.modal == Some(true) {
         states.push(state::MODAL.into());
     }
-    if attrs.states.required == Some(true) {
+    if attrs.states.semantic.required == Some(true) {
         states.push(state::REQUIRED.into());
     }
     if role == "button" && value_is_checked(attrs.value.as_deref()) {
         states.push(state::PRESSED.into());
     }
-    if attrs.states.readonly == Some(true) {
+    if attrs.states.control.readonly == Some(true) {
         states.push(state::READONLY.into());
     }
     if is_offscreen(attrs.bounds, ctx.window_bounds) {
@@ -67,20 +66,12 @@ pub(crate) fn states_from_element(
     states
 }
 
-fn is_expanded(el: &AXElement, attrs: &NodeAttrs) -> bool {
-    if attrs
+fn is_expanded(attrs: &NodeAttrs) -> bool {
+    attrs
         .states
+        .control
         .expanded
-        .or(attrs.states.disclosing)
-        .unwrap_or(false)
-    {
-        return true;
-    }
-    if attrs.states.expanded.is_some() || attrs.states.disclosing.is_some() {
-        return false;
-    }
-    copy_bool_attr(el, "AXExpanded")
-        .or_else(|| copy_bool_attr(el, "AXDisclosing"))
+        .or(attrs.states.control.disclosing)
         .unwrap_or(false)
 }
 

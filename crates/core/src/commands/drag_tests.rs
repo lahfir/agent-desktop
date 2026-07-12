@@ -1,22 +1,22 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    action::DragParams,
+    AdapterError, DragParams, Rect,
     adapter::NativeHandle,
     capability,
     commands::stale_retry_test_support::StaleRetryCounter,
-    error::AdapterError,
     hit_test::HitTestResult,
-    node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 struct DragCaptureAdapter {
     captured: Mutex<Option<DragParams>>,
-    focused_pids: Mutex<Vec<i32>>,
+    focused_pids: Mutex<Vec<crate::ProcessId>>,
+    resolve_calls: AtomicU32,
 }
 
 impl DragCaptureAdapter {
@@ -24,16 +24,26 @@ impl DragCaptureAdapter {
         Self {
             captured: Mutex::new(None),
             focused_pids: Mutex::new(Vec::new()),
+            resolve_calls: AtomicU32::new(0),
         }
     }
 }
 
 impl ObservationOps for DragCaptureAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        self.resolve_calls.fetch_add(1, Ordering::SeqCst);
         Ok(NativeHandle::null())
     }
 
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
         Ok(Some(Rect {
             x: 10.0,
             y: 20.0,
@@ -41,20 +51,47 @@ impl ObservationOps for DragCaptureAdapter {
             height: 60.0,
         }))
     }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<HitTestResult, AdapterError> {
+        Ok(HitTestResult::ReachesTarget)
+    }
 }
 
 impl ActionOps for DragCaptureAdapter {}
 
 impl InputOps for DragCaptureAdapter {
-    fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
+    fn drag(
+        &self,
+        params: DragParams,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
         *self.captured.lock().unwrap() = Some(params);
         Ok(())
     }
 }
 
 impl SystemOps for DragCaptureAdapter {
-    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
-        self.focused_pids.lock().unwrap().push(pid);
+    crate::adapter::guarded_interaction_lease!();
+
+    fn resolve_window_strict(
+        &self,
+        window: &crate::WindowInfo,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::WindowInfo, AdapterError> {
+        Ok(window.clone())
+    }
+
+    fn focus_window(
+        &self,
+        window: &crate::WindowInfo,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        self.focused_pids.lock().unwrap().push(window.pid);
         Ok(())
     }
 }
@@ -107,25 +144,39 @@ fn drop_delay_omitted_uses_adapter_default_and_no_response_field() {
     assert_eq!(captured.drop_delay_ms, None);
 }
 
-fn ref_entry(pid: i32) -> RefEntry {
+fn ref_entry(pid: u32) -> RefEntry {
     RefEntry {
-        pid,
-        role: "button".into(),
-        name: Some("Item".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(pid),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Item".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: Some(format!("App {pid}")),
+            source_window_id: Some(format!("w-{pid}")),
+            source_window_title: Some(format!("Window {pid}")),
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -207,6 +258,7 @@ fn headed_ref_drag_focuses_only_the_from_app_once() {
     .unwrap();
 
     assert_eq!(*adapter.focused_pids.lock().unwrap(), vec![1]);
+    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 6);
     assert_eq!(value["focused"], true);
 }
 
@@ -225,161 +277,5 @@ fn headed_xy_drag_never_steals_focus() {
     assert!(value.get("focused").is_none());
 }
 
-struct StaleThenOkAdapter {
-    retry: StaleRetryCounter,
-}
-
-impl StaleThenOkAdapter {
-    fn new(fail_until: u32) -> Self {
-        Self {
-            retry: StaleRetryCounter::new(fail_until),
-        }
-    }
-}
-
-impl ObservationOps for StaleThenOkAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        self.retry.attempt()
-    }
-
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
-        Ok(Some(Rect {
-            x: 10.0,
-            y: 20.0,
-            width: 40.0,
-            height: 60.0,
-        }))
-    }
-}
-
-impl ActionOps for StaleThenOkAdapter {}
-
-impl InputOps for StaleThenOkAdapter {
-    fn drag(&self, _params: DragParams) -> Result<(), AdapterError> {
-        Ok(())
-    }
-}
-
-impl SystemOps for StaleThenOkAdapter {}
-
-/// Regression for the F2 fix: `drag --from` previously had no `--timeout-ms`
-/// at all, so a transient `STALE_REF` on the resolved `from` ref failed the
-/// command outright. This proves the wired budget retries through the real
-/// `drag::execute` path.
-#[test]
-fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = cross_app_snapshot();
-    let adapter = StaleThenOkAdapter::new(2);
-
-    let value = execute(
-        DragArgs {
-            from_ref: Some("@e1".into()),
-            from_xy: None,
-            to_ref: Some("@e2".into()),
-            to_xy: None,
-            snapshot_id: Some(snapshot_id),
-            duration_ms: None,
-            drop_delay_ms: None,
-            timeout_ms: Some(5_000),
-        },
-        &adapter,
-        &CommandContext::default().with_headed(true),
-    )
-    .unwrap();
-
-    assert_eq!(value["dragged"], true);
-    assert!(adapter.retry.calls() >= 3);
-}
-
-struct OccludedFromAdapter {
-    captured: Mutex<Option<DragParams>>,
-}
-
-impl ObservationOps for OccludedFromAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
-        Ok(Some(Rect {
-            x: 10.0,
-            y: 20.0,
-            width: 40.0,
-            height: 60.0,
-        }))
-    }
-
-    fn hit_test(
-        &self,
-        _handle: &NativeHandle,
-        _point: crate::action::Point,
-    ) -> Result<HitTestResult, AdapterError> {
-        Ok(HitTestResult::InterceptedBy {
-            role: Some("AXSheet".into()),
-            name: Some("Save changes?".into()),
-            bounds: None,
-        })
-    }
-}
-
-impl ActionOps for OccludedFromAdapter {}
-
-impl InputOps for OccludedFromAdapter {
-    fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
-        *self.captured.lock().unwrap() = Some(params);
-        Ok(())
-    }
-}
-
-impl SystemOps for OccludedFromAdapter {}
-
-/// F27 regression: `drag --from <ref>` previously resolved bounds to a point
-/// and dispatched without ever consulting `hit_test`, so a `from` ref
-/// occluded by a modal sheet was dragged blind. This proves the preflight
-/// now fails before `adapter.drag` is ever called.
-#[test]
-fn drag_from_occluded_ref_fails_preflight_before_dispatch() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = cross_app_snapshot();
-    let adapter = OccludedFromAdapter {
-        captured: Mutex::new(None),
-    };
-
-    let err = execute(
-        cross_app_args(snapshot_id),
-        &adapter,
-        &CommandContext::default().with_headed(true),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "ACTION_FAILED");
-    assert!(err.to_string().contains("AXSheet"));
-    assert!(adapter.captured.lock().unwrap().is_none());
-}
-
-#[test]
-fn timeout_none_makes_exactly_one_resolve_attempt() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = cross_app_snapshot();
-    let adapter = StaleThenOkAdapter::new(1);
-
-    let err = execute(
-        DragArgs {
-            from_ref: Some("@e1".into()),
-            from_xy: None,
-            to_ref: Some("@e2".into()),
-            to_xy: None,
-            snapshot_id: Some(snapshot_id),
-            duration_ms: None,
-            drop_delay_ms: None,
-            timeout_ms: None,
-        },
-        &adapter,
-        &CommandContext::default().with_headed(true),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "STALE_REF");
-    assert_eq!(adapter.retry.calls(), 1);
-}
+#[path = "drag_retry_tests.rs"]
+mod retry_tests;

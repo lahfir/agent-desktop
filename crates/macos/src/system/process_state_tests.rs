@@ -7,8 +7,9 @@ fn dead_pid_classifies_exited_without_consulting_probe() {
     let probe_calls = Cell::new(0);
     let state = classify(false, || {
         probe_calls.set(probe_calls.get() + 1);
-        AxProbeResult::Responsive
-    });
+        Ok(AxProbeResult::Responsive)
+    })
+    .unwrap();
     assert_eq!(state, ProcessState::Exited { code: None });
     assert_eq!(
         probe_calls.get(),
@@ -24,11 +25,12 @@ fn single_transient_cannot_complete_does_not_classify_unresponsive() {
         let n = calls.get() + 1;
         calls.set(n);
         if n == 1 {
-            AxProbeResult::CannotComplete
+            Ok(AxProbeResult::CannotComplete)
         } else {
-            AxProbeResult::Responsive
+            Ok(AxProbeResult::Responsive)
         }
-    });
+    })
+    .unwrap();
     assert_eq!(
         state,
         ProcessState::Running,
@@ -42,8 +44,9 @@ fn two_consecutive_cannot_complete_classifies_unresponsive() {
     let calls = Cell::new(0);
     let state = classify(true, || {
         calls.set(calls.get() + 1);
-        AxProbeResult::CannotComplete
-    });
+        Ok(AxProbeResult::CannotComplete)
+    })
+    .unwrap();
     assert_eq!(state, ProcessState::Unresponsive);
     assert_eq!(
         calls.get(),
@@ -57,8 +60,9 @@ fn immediately_responsive_pid_classifies_running_with_one_probe() {
     let calls = Cell::new(0);
     let state = classify(true, || {
         calls.set(calls.get() + 1);
-        AxProbeResult::Responsive
-    });
+        Ok(AxProbeResult::Responsive)
+    })
+    .unwrap();
     assert_eq!(state, ProcessState::Running);
     assert_eq!(calls.get(), 1);
 }
@@ -70,7 +74,10 @@ fn exited_child_process_is_classified_exited_with_no_code() {
         .arg("hi")
         .spawn()
         .expect("spawn /bin/echo");
-    let pid = child.id() as i32;
+    let pid = i32::try_from(child.id()).expect("child pid fits macOS pid_t");
+    let instance = crate::system::process_identity::token_for_pid(pid)
+        .expect("capture child process identity")
+        .expect("child remains live before wait");
     child.wait().expect("wait for exit");
     for _ in 0..50 {
         if !pid_is_alive(pid) {
@@ -79,7 +86,14 @@ fn exited_child_process_is_classified_exited_with_no_code() {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
 
-    let state = process_state_impl(pid).expect("process_state_impl should not error");
+    let state = process_state_impl(
+        agent_desktop_core::ProcessIdentity {
+            pid: agent_desktop_core::ProcessId::try_from(pid).unwrap(),
+            instance,
+        },
+        agent_desktop_core::Deadline::after(1_000).unwrap(),
+    )
+    .expect("process_state_impl should not error");
     assert_eq!(state, ProcessState::Exited { code: None });
 }
 
@@ -93,5 +107,6 @@ fn nonpositive_pid_is_never_alive() {
 #[cfg(target_os = "macos")]
 #[test]
 fn currently_running_pid_is_alive() {
-    assert!(pid_is_alive(std::process::id() as i32));
+    let pid = i32::try_from(std::process::id()).expect("test pid fits macOS pid_t");
+    assert!(pid_is_alive(pid));
 }

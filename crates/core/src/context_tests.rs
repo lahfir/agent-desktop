@@ -236,7 +236,6 @@ fn trace_on_session_writes_segment_without_explicit_trace_flag() {
     let manifest = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
@@ -258,7 +257,6 @@ fn no_trace_session_still_namespaces_snapshots() {
     let manifest = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: false,
         ..Default::default()
     })
     .unwrap();
@@ -274,7 +272,6 @@ fn explicit_trace_overrides_session_sink() {
     let manifest = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
@@ -305,14 +302,12 @@ fn batch_item_session_override_uses_its_own_segment_dir() {
     let parent_session = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
     let child_session = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: true,
         ..Default::default()
     })
     .unwrap();
@@ -345,14 +340,12 @@ fn strict_parent_allows_no_trace_batch_override() {
     let traced = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: true,
         ..Default::default()
     })
     .unwrap();
     let untraced = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: true,
         ..Default::default()
     })
     .unwrap();

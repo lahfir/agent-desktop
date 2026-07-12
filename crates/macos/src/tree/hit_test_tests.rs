@@ -1,4 +1,10 @@
-use super::imp::{HitClassification, classify_relation};
+use super::imp::{
+    HitClassification, ax_point, classify_relation, ends_clipping_walk, needs_application_retry,
+    remember_ancestor,
+};
+use crate::tree::AXElement;
+use accessibility_sys::AXUIElementCreateSystemWide;
+use agent_desktop_core::Point;
 
 #[test]
 fn self_hit_reaches_target() {
@@ -30,4 +36,40 @@ fn unrelated_hit_is_neither_target_nor_ancestor() {
         classify_relation(false, false),
         HitClassification::Unrelated
     );
+}
+
+#[test]
+fn target_ancestor_hit_retries_in_application_scope() {
+    assert!(needs_application_retry(HitClassification::AncestorOfTarget));
+    assert!(!needs_application_retry(HitClassification::ReachesTarget));
+    assert!(!needs_application_retry(HitClassification::Unrelated));
+}
+
+#[test]
+fn external_display_point_stays_in_global_top_left_coordinates() {
+    assert_eq!(
+        ax_point(&Point {
+            x: 2065.0,
+            y: 636.0,
+        }),
+        (2065.0, 636.0)
+    );
+}
+
+#[test]
+fn application_root_completes_the_clipping_walk_without_a_parent() {
+    assert!(ends_clipping_walk(Some("AXApplication")));
+    assert!(!ends_clipping_walk(Some("AXGroup")));
+    assert!(!ends_clipping_walk(None));
+}
+
+#[test]
+fn ancestor_walk_retains_handles_and_detects_the_same_element() {
+    let system = AXElement(unsafe { AXUIElementCreateSystemWide() });
+    let equivalent = AXElement(unsafe { AXUIElementCreateSystemWide() });
+    let mut visited = Vec::new();
+
+    assert!(remember_ancestor(&mut visited, &system));
+    assert!(!remember_ancestor(&mut visited, &equivalent));
+    assert_eq!(visited.len(), 1);
 }

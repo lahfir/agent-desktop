@@ -1,46 +1,110 @@
-use crate::{adapter::SnapshotSurface, refs::RefEntry, roles::is_mutable_value_role};
+use crate::{
+    IdentityMatch,
+    live_locator::{IdentifierEvidence, LocatorField},
+    refs::RefEntry,
+    roles::is_mutable_value_role,
+};
 
-/// Returns true when a saved ref has stable text identity beyond role/path/bounds.
 pub fn has_meaningful_identity(entry: &RefEntry) -> bool {
-    meaningful_text(entry.native_id.as_deref()).is_some()
-        || stable_name(
-            entry.role.as_str(),
-            entry.name.as_deref(),
-            entry.value.as_deref(),
-        )
-        .is_some()
-        || stable_value(entry.role.as_str(), entry.value.as_deref()).is_some()
-        || meaningful_text(entry.description.as_deref()).is_some()
+    entry
+        .identity
+        .native_id
+        .as_ref()
+        .is_some_and(|identifier| meaningful_text(Some(&identifier.value)).is_some())
+        || has_stable_text_identity(entry)
 }
 
-/// Compares saved ref identity against live text without treating mutable
-/// control values as stable identity.
-pub fn identity_matches(
+pub fn has_stable_text_identity(entry: &RefEntry) -> bool {
+    stable_name(
+        entry.identity.role.as_str(),
+        entry.identity.name.as_deref(),
+        entry.identity.value.as_deref(),
+    )
+    .is_some()
+        || stable_value(
+            entry.identity.role.as_str(),
+            entry.identity.value.as_deref(),
+        )
+        .is_some()
+        || meaningful_text(entry.identity.description.as_deref()).is_some()
+}
+
+pub fn identity_match(
+    entry: &RefEntry,
+    actual_name: &LocatorField<String>,
+    actual_value: &LocatorField<String>,
+    actual_description: &LocatorField<String>,
+    actual_identifiers: &IdentifierEvidence,
+) -> IdentityMatch {
+    if let Some(expected) = entry.identity.native_id.as_ref() {
+        let Some(expected_value) = meaningful_text(Some(&expected.value)) else {
+            return IdentityMatch::Unknown;
+        };
+        if actual_identifiers
+            .identifiers()
+            .iter()
+            .any(|actual| actual.kind == expected.kind && actual.value == expected_value)
+        {
+            return IdentityMatch::Match;
+        }
+        if !actual_identifiers.is_complete() {
+            return IdentityMatch::Unknown;
+        }
+        return IdentityMatch::NoMatch;
+    }
+
+    stable_text_match(entry, actual_name, actual_value, actual_description)
+}
+
+#[cfg(test)]
+pub(crate) fn identity_matches(
     entry: &RefEntry,
     actual_name: Option<&str>,
     actual_value: Option<&str>,
     actual_description: Option<&str>,
     actual_native_id: Option<&str>,
 ) -> bool {
-    match (
-        meaningful_text(entry.native_id.as_deref()),
-        meaningful_text(actual_native_id),
-    ) {
-        (Some(expected), Some(actual)) => return actual == expected,
-        (Some(_), None) => return false,
-        (None, _) => {}
-    }
-
-    let expected_name = stable_name(
-        entry.role.as_str(),
-        entry.name.as_deref(),
-        entry.value.as_deref(),
+    let actual_name = option_field(actual_name);
+    let actual_value = option_field(actual_value);
+    let actual_description = option_field(actual_description);
+    let identifiers = IdentifierEvidence::typed(
+        actual_native_id
+            .into_iter()
+            .map(|value| crate::ElementIdentifier {
+                kind: crate::IdentifierKind::AxIdentifier,
+                value: value.to_string(),
+            }),
+        actual_native_id.map(|_| 0),
+        true,
     );
-    let expected_value = stable_value(entry.role.as_str(), entry.value.as_deref());
-    let expected_description = meaningful_text(entry.description.as_deref());
-    let actual_name = stable_name(entry.role.as_str(), actual_name, actual_value);
-    let actual_value = stable_value(entry.role.as_str(), actual_value);
-    let actual_description = meaningful_text(actual_description);
+    identity_match(
+        entry,
+        &actual_name,
+        &actual_value,
+        &actual_description,
+        &identifiers,
+    ) == IdentityMatch::Match
+}
+
+fn stable_text_match(
+    entry: &RefEntry,
+    actual_name: &LocatorField<String>,
+    actual_value: &LocatorField<String>,
+    actual_description: &LocatorField<String>,
+) -> IdentityMatch {
+    let expected_name = stable_name(
+        entry.identity.role.as_str(),
+        entry.identity.name.as_deref(),
+        entry.identity.value.as_deref(),
+    );
+    let expected_value = stable_value(
+        entry.identity.role.as_str(),
+        entry.identity.value.as_deref(),
+    );
+    let expected_description = meaningful_text(entry.identity.description.as_deref());
+    let actual_name = stable_name_field(entry.identity.role.as_str(), actual_name, actual_value);
+    let actual_value = stable_value_field(entry.identity.role.as_str(), actual_value);
+    let actual_description = meaningful_field(actual_description);
 
     if let Some(expected) = expected_name {
         return match_primary_identity(expected, actual_name, actual_value);
@@ -51,38 +115,97 @@ pub fn identity_matches(
     if let Some(expected) = expected_description {
         return match_primary_identity(expected, actual_description, actual_name);
     }
-
-    if is_mutable_value_role(entry.role.as_str()) {
-        return true;
+    if is_mutable_value_role(entry.identity.role.as_str()) {
+        return IdentityMatch::Unknown;
     }
-
-    actual_name.is_none() && actual_value.is_none() && actual_description.is_none()
-}
-
-/// Allows a platform adapter to search replacement windows only when the saved
-/// ref has enough non-text evidence for the shared classifier to fail closed.
-/// A saved source-window title disables this fallback unless a platform first
-/// finds that title uniquely; otherwise the old titled window is considered gone.
-pub fn bounded_window_fallback_allowed(entry: &RefEntry) -> bool {
-    matches!(entry.source_surface, SnapshotSurface::Window)
-        && entry.source_window_id.is_some()
-        && entry.source_window_title.is_none()
-        && entry.bounds_hash.is_some()
+    empty_identity_match([actual_name, actual_value, actual_description])
 }
 
 fn match_primary_identity(
     expected: &str,
-    actual_primary: Option<&str>,
-    actual_fallback: Option<&str>,
-) -> bool {
+    actual_primary: LocatorField<&str>,
+    actual_fallback: LocatorField<&str>,
+) -> IdentityMatch {
     match actual_primary {
-        Some(actual) => actual == expected,
-        None => actual_fallback == Some(expected),
+        LocatorField::Known(actual) => equality_match(expected, actual),
+        LocatorField::Unknown => IdentityMatch::Unknown,
+        LocatorField::Absent => match actual_fallback {
+            LocatorField::Known(actual) => equality_match(expected, actual),
+            LocatorField::Unknown => IdentityMatch::Unknown,
+            LocatorField::Absent => IdentityMatch::NoMatch,
+        },
+    }
+}
+
+fn equality_match(expected: &str, actual: &str) -> IdentityMatch {
+    if actual == expected {
+        IdentityMatch::Match
+    } else {
+        IdentityMatch::NoMatch
+    }
+}
+
+fn empty_identity_match(fields: [LocatorField<&str>; 3]) -> IdentityMatch {
+    if fields.iter().any(LocatorField::is_unknown) {
+        return IdentityMatch::Unknown;
+    }
+    if fields
+        .iter()
+        .any(|field| matches!(field, LocatorField::Known(_)))
+    {
+        IdentityMatch::NoMatch
+    } else {
+        IdentityMatch::Unknown
+    }
+}
+
+#[cfg(test)]
+fn option_field(value: Option<&str>) -> LocatorField<String> {
+    value
+        .map(str::to_string)
+        .map(LocatorField::Known)
+        .unwrap_or(LocatorField::Absent)
+}
+
+fn meaningful_field(field: &LocatorField<String>) -> LocatorField<&str> {
+    match field {
+        LocatorField::Known(value) => meaningful_text(Some(value.as_str()))
+            .map(LocatorField::Known)
+            .unwrap_or(LocatorField::Absent),
+        LocatorField::Absent => LocatorField::Absent,
+        LocatorField::Unknown => LocatorField::Unknown,
+    }
+}
+
+fn stable_name_field<'a>(
+    role: &str,
+    name: &'a LocatorField<String>,
+    value: &LocatorField<String>,
+) -> LocatorField<&'a str> {
+    let name = meaningful_field(name);
+    if !is_mutable_value_role(role) {
+        return name;
+    }
+    let LocatorField::Known(name) = name else {
+        return name;
+    };
+    match meaningful_field(value) {
+        LocatorField::Known(value) if value_matches_name(Some(value), name) => LocatorField::Absent,
+        LocatorField::Known(_) | LocatorField::Absent => LocatorField::Known(name),
+        LocatorField::Unknown => LocatorField::Unknown,
+    }
+}
+
+fn stable_value_field<'a>(role: &str, value: &'a LocatorField<String>) -> LocatorField<&'a str> {
+    if is_mutable_value_role(role) {
+        LocatorField::Absent
+    } else {
+        meaningful_field(value)
     }
 }
 
 fn meaningful_text(value: Option<&str>) -> Option<&str> {
-    value.filter(|text| !text.is_empty())
+    value.filter(|text| !text.trim().is_empty())
 }
 
 fn stable_name<'a>(role: &str, name: Option<&'a str>, value: Option<&str>) -> Option<&'a str> {

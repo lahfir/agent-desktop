@@ -75,6 +75,8 @@ skills-lock.json
 docs/*
 !docs/architecture.excalidraw
 !docs/architecture.png
+!docs/faq.md
+!docs/json-output.md
 !docs/phases.md
 !docs/solutions/
 !docs/solutions/**
@@ -85,3 +87,5 @@ rust_out
 
 # trace export artifacts must never land in the repo tree
 trace-*.html
+__pycache__/
+*.py[cod]

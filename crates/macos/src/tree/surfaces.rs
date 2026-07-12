@@ -1,328 +1,269 @@
-use super::AXElement;
-use super::attributes::{copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr};
-use super::element::element_for_pid;
-use agent_desktop_core::node::SurfaceInfo;
+use super::{AXElement, element::element_for_pid, surface_read};
+use agent_desktop_core::{AdapterError, ErrorCode};
+use std::time::Instant;
+
+const MAX_SURFACE_NODES: usize = 2_048;
 
 #[cfg(target_os = "macos")]
-mod imp {
-    use super::*;
+pub(crate) fn focused_surface_for_pid(
+    pid: i32,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let app = element_for_pid(pid);
+    surface_read::element(&app, "AXFocusedWindow", deadline)
+}
 
-    fn focused_window_element(pid: i32) -> Option<AXElement> {
-        let app = element_for_pid(pid);
-        copy_element_attr(&app, "AXFocusedWindow")
-    }
-
-    fn open_menubar_menu(pid: i32) -> Option<AXElement> {
-        let app = element_for_pid(pid);
-        let app_children = copy_ax_array(&app, "AXChildren")?;
-        let menubar = app_children
-            .into_iter()
-            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenuBar"))?;
-        let items = copy_ax_array(&menubar, "AXChildren")?;
-        for item in &items {
-            if copy_string_attr(item, "AXRole").as_deref() != Some("AXMenuBarItem") {
-                continue;
-            }
-            if !copy_bool_attr(item, "AXSelected").unwrap_or(false) {
-                continue;
-            }
-            if let Some(children) = copy_ax_array(item, "AXChildren") {
-                return children
-                    .into_iter()
-                    .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu"));
-            }
+#[cfg(target_os = "macos")]
+pub(crate) fn menubar_for_pid(
+    pid: i32,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let app = element_for_pid(pid);
+    for child in surface_read::elements(&app, "AXChildren", deadline)? {
+        if has_role(&child, "AXMenuBar", deadline)? {
+            return Ok(Some(child));
         }
-        None
     }
+    Ok(None)
+}
 
-    fn context_menu_from_app(pid: i32) -> Option<AXElement> {
-        let app = element_for_pid(pid);
-        if let Some(menu) =
-            copy_ax_array(&app, "AXMenus").and_then(|menus| menus.into_iter().find(is_menu))
+#[cfg(target_os = "macos")]
+pub(crate) fn menu_element_for_pid(
+    pid: i32,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    if let Some(menu) = open_menubar_menu(pid, deadline)? {
+        return Ok(Some(menu));
+    }
+    context_menu_from_app(pid, deadline)
+}
+
+#[cfg(target_os = "macos")]
+fn open_menubar_menu(pid: i32, deadline: Instant) -> Result<Option<AXElement>, AdapterError> {
+    let Some(menubar) = menubar_for_pid(pid, deadline)? else {
+        return Ok(None);
+    };
+    for item in surface_read::elements(&menubar, "AXChildren", deadline)? {
+        if !has_role(&item, "AXMenuBarItem", deadline)?
+            || surface_read::boolean(&item, "AXSelected", deadline)? != Some(true)
         {
-            return Some(menu);
+            continue;
         }
-        if let Some(focused) = copy_element_attr(&app, "AXFocusedUIElement") {
-            if let Some(menu) = find_menu_descendant(&focused, 0) {
-                return Some(menu);
+        for child in surface_read::elements(&item, "AXChildren", deadline)? {
+            if has_role(&child, "AXMenu", deadline)? {
+                return Ok(Some(child));
             }
         }
-        let children = copy_ax_array(&app, "AXChildren")?;
-        for child in children {
-            if let Some(menu) = find_menu_descendant(&child, 0) {
-                return Some(menu);
-            }
+    }
+    Ok(None)
+}
+
+#[cfg(target_os = "macos")]
+fn context_menu_from_app(pid: i32, deadline: Instant) -> Result<Option<AXElement>, AdapterError> {
+    let app = element_for_pid(pid);
+    for menu in surface_read::elements(&app, "AXMenus", deadline)? {
+        if displayed_menu(&menu, deadline)? {
+            return Ok(Some(menu));
         }
-        None
     }
-
-    fn is_menu(el: &AXElement) -> bool {
-        copy_string_attr(el, "AXRole").as_deref() == Some("AXMenu")
-            && copy_bool_attr(el, "AXVisible").unwrap_or(true)
+    if let Some(focused) = surface_read::element(&app, "AXFocusedUIElement", deadline)?
+        && let Some(menu) = find_menu_descendant(focused, deadline)?
+    {
+        return Ok(Some(menu));
     }
+    for child in surface_read::elements(&app, "AXChildren", deadline)? {
+        if let Some(menu) = find_menu_descendant(child, deadline)? {
+            return Ok(Some(menu));
+        }
+    }
+    Ok(None)
+}
 
-    /// Searches for a *displayed* menu under `el`. The menu bar is skipped:
-    /// every `AXMenuBarItem` carries a latent `AXMenu` child that exists even
-    /// when the dropdown is closed, so descending into the menu bar would make
-    /// `is_menu_open` permanently true for any app with a menu bar. Open
-    /// menu-bar dropdowns are detected separately by `open_menubar_menu` via
-    /// the `AXSelected` gate.
-    fn find_menu_descendant(el: &AXElement, depth: usize) -> Option<AXElement> {
+#[cfg(target_os = "macos")]
+fn find_menu_descendant(
+    root: AXElement,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let mut stack = vec![(root, 0_u8)];
+    let mut visited = 0_usize;
+    while let Some((element, depth)) = stack.pop() {
+        surface_read::ensure_before_deadline(deadline)?;
+        visited += 1;
+        if visited > MAX_SURFACE_NODES {
+            return Err(surface_limit_error());
+        }
         if depth > 8 {
-            return None;
+            continue;
         }
-        if copy_string_attr(el, "AXRole").as_deref() == Some("AXMenuBar") {
-            return None;
+        let role = surface_read::string(&element, "AXRole", deadline)?;
+        if role.as_deref() == Some("AXMenuBar") {
+            continue;
         }
-        if is_menu(el) {
-            return Some(el.clone());
-        }
-        for child in copy_ax_array(el, "AXChildren").unwrap_or_default() {
-            if let Some(menu) = find_menu_descendant(&child, depth + 1) {
-                return Some(menu);
-            }
-        }
-        None
-    }
-
-    pub fn menu_element_for_pid(pid: i32) -> Option<AXElement> {
-        open_menubar_menu(pid).or_else(|| context_menu_from_app(pid))
-    }
-
-    pub fn menubar_for_pid(pid: i32) -> Option<AXElement> {
-        let app = element_for_pid(pid);
-        let app_children = copy_ax_array(&app, "AXChildren")?;
-        app_children
-            .into_iter()
-            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenuBar"))
-    }
-
-    pub fn focused_surface_for_pid(pid: i32) -> Option<AXElement> {
-        focused_window_element(pid)
-    }
-
-    /// Returns the focused window or its first child whose role or subrole matches `target`.
-    ///
-    /// The focused window itself may be the target (e.g. Electron sheets).
-    fn first_child_with_role_or_subrole(pid: i32, target: &str) -> Option<AXElement> {
-        let win = focused_window_element(pid)?;
-        if copy_string_attr(&win, "AXRole").as_deref() == Some(target)
-            || copy_string_attr(&win, "AXSubrole").as_deref() == Some(target)
+        if role.as_deref() == Some("AXMenu")
+            && surface_read::boolean(&element, "AXVisible", deadline)? != Some(false)
         {
-            return Some(win);
+            return Ok(Some(element));
         }
-        let children = copy_ax_array(&win, "AXChildren")?;
-        children.into_iter().find(|child| {
-            copy_string_attr(child, "AXSubrole").as_deref() == Some(target)
-                || copy_string_attr(child, "AXRole").as_deref() == Some(target)
-        })
+        stack.extend(
+            surface_read::elements(&element, "AXChildren", deadline)?
+                .into_iter()
+                .rev()
+                .map(|child| (child, depth.saturating_add(1))),
+        );
     }
+    Ok(None)
+}
 
-    pub fn sheet_for_pid(pid: i32) -> Option<AXElement> {
-        first_child_with_role_or_subrole(pid, "AXSheet")
+#[cfg(target_os = "macos")]
+fn displayed_menu(element: &AXElement, deadline: Instant) -> Result<bool, AdapterError> {
+    Ok(has_role(element, "AXMenu", deadline)?
+        && surface_read::boolean(element, "AXVisible", deadline)? != Some(false))
+}
+
+#[cfg(target_os = "macos")]
+fn has_role(element: &AXElement, expected: &str, deadline: Instant) -> Result<bool, AdapterError> {
+    Ok(surface_read::string(element, "AXRole", deadline)?.as_deref() == Some(expected))
+}
+
+#[cfg(target_os = "macos")]
+fn first_child_with_role_or_subrole(
+    pid: i32,
+    target: &str,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let Some(window) = focused_surface_for_pid(pid, deadline)? else {
+        return Ok(None);
+    };
+    if role_or_subrole_matches(&window, target, deadline)? {
+        return Ok(Some(window));
     }
-
-    pub fn popover_for_pid(pid: i32) -> Option<AXElement> {
-        first_child_with_role_or_subrole(pid, "AXPopover")
-    }
-
-    pub fn alert_for_pid(pid: i32) -> Option<AXElement> {
-        if let Some(win) = focused_window_element(pid) {
-            let children = copy_ax_array(&win, "AXChildren").unwrap_or_default();
-            if let Some(found) = children.into_iter().find(|child| {
-                let subrole = copy_string_attr(child, "AXSubrole");
-                matches!(
-                    subrole.as_deref(),
-                    Some("AXDialog") | Some("AXAlert") | Some("AXSheet")
-                )
-            }) {
-                return Some(found);
-            }
+    for child in surface_read::elements(&window, "AXChildren", deadline)? {
+        if role_or_subrole_matches(&child, target, deadline)? {
+            return Ok(Some(child));
         }
+    }
+    Ok(None)
+}
 
-        let app = element_for_pid(pid);
-        let windows = copy_ax_array(&app, "AXWindows")?;
-        for win in &windows {
-            let role = copy_string_attr(win, "AXRole");
-            let subrole = copy_string_attr(win, "AXSubrole");
-            if matches!(
-                subrole.as_deref(),
-                Some("AXDialog") | Some("AXAlert") | Some("AXSheet")
-            ) || matches!(role.as_deref(), Some("AXSheet"))
-            {
-                return Some(win.clone());
-            }
-            let children = copy_ax_array(win, "AXChildren").unwrap_or_default();
-            if let Some(found) = children.into_iter().find(|child| {
-                let sr = copy_string_attr(child, "AXSubrole");
-                matches!(
-                    sr.as_deref(),
-                    Some("AXDialog") | Some("AXAlert") | Some("AXSheet")
-                )
-            }) {
-                return Some(found);
-            }
+#[cfg(target_os = "macos")]
+fn role_or_subrole_matches(
+    element: &AXElement,
+    target: &str,
+    deadline: Instant,
+) -> Result<bool, AdapterError> {
+    if surface_read::string(element, "AXRole", deadline)?.as_deref() == Some(target) {
+        return Ok(true);
+    }
+    Ok(surface_read::string(element, "AXSubrole", deadline)?.as_deref() == Some(target))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn sheet_for_pid(
+    pid: i32,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    first_child_with_role_or_subrole(pid, "AXSheet", deadline)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn popover_for_pid(
+    pid: i32,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    first_child_with_role_or_subrole(pid, "AXPopover", deadline)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn alert_for_pid(
+    pid: i32,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let app = element_for_pid(pid);
+    let mut windows = surface_read::elements(&app, "AXWindows", deadline)?;
+    if let Some(focused) = focused_surface_for_pid(pid, deadline)? {
+        windows.insert(0, focused);
+    }
+    for window in windows {
+        if is_alert(&window, deadline)? {
+            return Ok(Some(window));
         }
-        None
-    }
-
-    pub fn is_menu_open(pid: i32) -> bool {
-        open_menubar_menu(pid).is_some() || context_menu_from_app(pid).is_some()
-    }
-
-    /// Lists open UI surfaces for the app. The focused window itself counts when its role/subrole matches (e.g. Electron sheets).
-    pub fn list_surfaces_for_pid(pid: i32) -> Vec<SurfaceInfo> {
-        let mut surfaces = Vec::new();
-        let app = element_for_pid(pid);
-
-        if let Some(app_children) = copy_ax_array(&app, "AXChildren") {
-            for ch in &app_children {
-                match copy_string_attr(ch, "AXRole").as_deref() {
-                    Some("AXMenuBar") => {
-                        if let Some(items) = copy_ax_array(ch, "AXChildren") {
-                            for item in &items {
-                                if copy_string_attr(item, "AXRole").as_deref()
-                                    != Some("AXMenuBarItem")
-                                {
-                                    continue;
-                                }
-                                if !copy_bool_attr(item, "AXSelected").unwrap_or(false) {
-                                    continue;
-                                }
-                                let title = copy_string_attr(item, "AXTitle");
-                                if let Some(menu_children) = copy_ax_array(item, "AXChildren") {
-                                    for menu in &menu_children {
-                                        if copy_string_attr(menu, "AXRole").as_deref()
-                                            == Some("AXMenu")
-                                        {
-                                            let item_count =
-                                                copy_ax_array(menu, "AXChildren").map(|v| v.len());
-                                            surfaces.push(SurfaceInfo {
-                                                kind: "menu".into(),
-                                                title: title.clone(),
-                                                item_count,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Some("AXMenu") => {
-                        let title = copy_string_attr(ch, "AXTitle")
-                            .or_else(|| copy_string_attr(ch, "AXDescription"));
-                        let item_count = copy_ax_array(ch, "AXChildren").map(|v| v.len());
-                        surfaces.push(SurfaceInfo {
-                            kind: "context_menu".into(),
-                            title,
-                            item_count,
-                        });
-                    }
-                    _ => {}
-                }
+        for child in surface_read::elements(&window, "AXChildren", deadline)? {
+            if is_alert(&child, deadline)? {
+                return Ok(Some(child));
             }
         }
-
-        if let Some(focused) = copy_element_attr(&app, "AXFocusedUIElement") {
-            if let Some(children) = copy_ax_array(&focused, "AXChildren") {
-                for ch in &children {
-                    if copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu") {
-                        let title = copy_string_attr(ch, "AXTitle")
-                            .or_else(|| copy_string_attr(ch, "AXDescription"));
-                        let item_count = copy_ax_array(ch, "AXChildren").map(|v| v.len());
-                        surfaces.push(SurfaceInfo {
-                            kind: "context_menu".into(),
-                            title,
-                            item_count,
-                        });
-                    }
-                }
-            }
-        }
-
-        if let Some(win) = focused_window_element(pid) {
-            let win_role = copy_string_attr(&win, "AXRole");
-            let win_subrole = copy_string_attr(&win, "AXSubrole");
-            let win_kind = match win_subrole.as_deref() {
-                Some("AXSheet") => Some("sheet"),
-                Some("AXPopover") => Some("popover"),
-                Some("AXDialog") | Some("AXAlert") => Some("alert"),
-                _ => match win_role.as_deref() {
-                    Some("AXSheet") => Some("sheet"),
-                    Some("AXPopover") => Some("popover"),
-                    _ => None,
-                },
-            };
-            if let Some(kind) = win_kind {
-                let title = copy_string_attr(&win, "AXTitle")
-                    .or_else(|| copy_string_attr(&win, "AXDescription"));
-                surfaces.push(SurfaceInfo {
-                    kind: kind.into(),
-                    title,
-                    item_count: None,
-                });
-            }
-
-            if let Some(children) = copy_ax_array(&win, "AXChildren") {
-                for child in &children {
-                    let role = copy_string_attr(child, "AXRole");
-                    let subrole = copy_string_attr(child, "AXSubrole");
-                    let kind = match subrole.as_deref() {
-                        Some("AXSheet") => "sheet",
-                        Some("AXPopover") => "popover",
-                        Some("AXDialog") | Some("AXAlert") => "alert",
-                        _ => match role.as_deref() {
-                            Some("AXSheet") => "sheet",
-                            Some("AXPopover") => "popover",
-                            _ => continue,
-                        },
-                    };
-                    let title = copy_string_attr(child, "AXTitle")
-                        .or_else(|| copy_string_attr(child, "AXDescription"));
-                    surfaces.push(SurfaceInfo {
-                        kind: kind.into(),
-                        title,
-                        item_count: None,
-                    });
-                }
-            }
-        }
-
-        surfaces
     }
+    Ok(None)
+}
+
+#[cfg(target_os = "macos")]
+fn is_alert(element: &AXElement, deadline: Instant) -> Result<bool, AdapterError> {
+    let role = surface_read::string(element, "AXRole", deadline)?;
+    let subrole = surface_read::string(element, "AXSubrole", deadline)?;
+    Ok(matches!(role.as_deref(), Some("AXSheet"))
+        || matches!(
+            subrole.as_deref(),
+            Some("AXDialog") | Some("AXAlert") | Some("AXSheet")
+        ))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn is_menu_open(pid: i32, deadline: Instant) -> Result<bool, AdapterError> {
+    Ok(menu_element_for_pid(pid, deadline)?.is_some())
+}
+
+fn surface_limit_error() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Accessibility surface search exceeded its node budget",
+    )
+    .with_details(serde_json::json!({
+        "kind": "surface_search_limit",
+        "limit": MAX_SURFACE_NODES,
+        "complete": false,
+    }))
+    .with_suggestion("Retry with the target application in a more stable UI state")
 }
 
 #[cfg(not(target_os = "macos"))]
-mod imp {
-    use super::*;
-
-    pub fn menu_element_for_pid(_pid: i32) -> Option<AXElement> {
-        None
-    }
-    pub fn menubar_for_pid(_pid: i32) -> Option<AXElement> {
-        None
-    }
-    pub fn focused_surface_for_pid(_pid: i32) -> Option<AXElement> {
-        None
-    }
-    pub fn sheet_for_pid(_pid: i32) -> Option<AXElement> {
-        None
-    }
-    pub fn popover_for_pid(_pid: i32) -> Option<AXElement> {
-        None
-    }
-    pub fn alert_for_pid(_pid: i32) -> Option<AXElement> {
-        None
-    }
-    pub fn is_menu_open(_pid: i32) -> bool {
-        false
-    }
-    pub fn list_surfaces_for_pid(_pid: i32) -> Vec<SurfaceInfo> {
-        Vec::new()
-    }
+macro_rules! unsupported_surface {
+    ($name:ident) => {
+        pub(crate) fn $name(
+            _pid: i32,
+            _deadline: Instant,
+        ) -> Result<Option<AXElement>, AdapterError> {
+            Ok(None)
+        }
+    };
 }
 
-pub use imp::{
-    alert_for_pid, focused_surface_for_pid, is_menu_open, list_surfaces_for_pid,
-    menu_element_for_pid, menubar_for_pid, popover_for_pid, sheet_for_pid,
-};
+#[cfg(not(target_os = "macos"))]
+unsupported_surface!(focused_surface_for_pid);
+#[cfg(not(target_os = "macos"))]
+unsupported_surface!(menubar_for_pid);
+#[cfg(not(target_os = "macos"))]
+unsupported_surface!(menu_element_for_pid);
+#[cfg(not(target_os = "macos"))]
+unsupported_surface!(sheet_for_pid);
+#[cfg(not(target_os = "macos"))]
+unsupported_surface!(popover_for_pid);
+#[cfg(not(target_os = "macos"))]
+unsupported_surface!(alert_for_pid);
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn is_menu_open(_pid: i32, _deadline: Instant) -> Result<bool, AdapterError> {
+    Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn surface_node_limit_is_explicitly_incomplete() {
+        let error = surface_limit_error();
+
+        assert_eq!(error.code, ErrorCode::AppUnresponsive);
+        assert_eq!(error.details.expect("limit details")["complete"], false);
+    }
+}

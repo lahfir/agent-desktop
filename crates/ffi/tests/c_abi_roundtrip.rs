@@ -6,23 +6,16 @@
 ///   Sets a temp HOME (empty refmap), calls `ad_execute_by_ref`, and asserts
 ///   that the returned envelope has `ok:false` with both `error.code` (string)
 ///   and `error.message` (string), and that `command` equals `"execute_by_ref"`.
-///   On macOS the main-thread guard fires before the command path is reached
-///   (libtest runs bodies off the main thread), returning `ErrInternal` with a
-///   null `*out` — that path is tolerated.
-///
 /// - `snapshot_execute_by_ref_live_roundtrip` — marked `#[ignore]`.
 ///   The full observe→act loop (real `ad_snapshot` → `@e` ref →
-///   `ad_execute_by_ref` against a live app) cannot run under the default
-///   libtest harness on macOS: libtest schedules test bodies on worker threads,
-///   and the AX/main-thread guard blocks every AX call made off the main
-///   thread.  CI proof of the full loop is tracked as the deferred
-///   external-consumer smoke harness (Python ctypes) — plan unit U9 / Phase B.
+///   `ad_execute_by_ref` against a live app) requires Accessibility permission,
+///   a stable target app, and an interactive macOS runner. CI proof is tracked
+///   by the external-consumer smoke harness.
 ///   To run the roundtrip manually:
 ///   ```text
 ///   cargo test -p agent-desktop-ffi --tests c_abi_roundtrip \
 ///       snapshot_execute_by_ref_live_roundtrip -- --ignored
 ///   ```
-///   Run from a process that owns the main thread (e.g. the E2E harness).
 ///   AX accessibility permission must be granted and a target app must be open.
 mod common;
 
@@ -71,14 +64,11 @@ impl Drop for TestHome {
 /// Verifies the error-envelope contract at the C boundary when no refmap exists.
 ///
 /// Sets a temp HOME so the refmap store is empty. Calls `ad_execute_by_ref`
-/// with a well-formed `@e1` ref. On macOS the main-thread guard fires first
-/// (libtest runs off the main thread), returning `ErrInternal` with `out`
-/// remaining null — that is tolerated. When the command path does execute
-/// (non-macOS or future main-thread execution), the envelope must have
+/// with a well-formed qualified ref. The envelope must have
 /// `ok:false` and carry both `error.code` (string) and `error.message`
 /// (string) — the latter guaranteed by the CLAUDE.md error contract — proving
 /// the unified error-envelope contract holds at the ABI boundary.  The exact
-/// `error.code` value is not pinned: an empty refmap with an `@e1` ref may
+/// `error.code` value is not pinned: an empty refmap may
 /// surface either `SNAPSHOT_NOT_FOUND` or `STALE_REF` depending on the load
 /// path; pinning either would make this test flaky.
 #[test]
@@ -86,7 +76,7 @@ fn stale_ref_returns_ok_false_error_envelope() {
     let _home = TestHome::new();
 
     with_adapter_raw(|adapter| unsafe {
-        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let ref_id = std::ffi::CString::new("@smissing:e1").unwrap();
         let action = default_action();
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
 
@@ -105,14 +95,7 @@ fn stale_ref_returns_ok_false_error_envelope() {
             "must return a valid AdResult (<=0), got {rc_i32}"
         );
 
-        if out.is_null() {
-            assert_eq!(
-                rc,
-                AdResult::ErrInternal,
-                "null *out is only expected when ErrInternal (main-thread guard on macOS), got {rc:?}"
-            );
-            return;
-        }
+        assert!(!out.is_null(), "command failure must return an envelope");
 
         let s = CStr::from_ptr(out).to_string_lossy();
         let val: serde_json::Value = serde_json::from_str(&s).expect("response must be valid JSON");
@@ -152,28 +135,23 @@ fn stale_ref_returns_ok_false_error_envelope() {
 ///
 /// This test is `#[ignore]` by design and must remain so in headless CI.
 ///
-/// **Why ignored**: libtest schedules test bodies on worker threads.  On macOS
-/// every AX API call (including `ad_snapshot` and `ad_execute_by_ref`) must
-/// originate on the main thread; the AX guard returns `ErrInternal` immediately
-/// when called off it.  There is no libtest API to pin a test to the main
-/// thread, so the full observe→act loop cannot be verified inside a libtest
-/// integration test on macOS.
+/// **Why ignored**: the test needs Accessibility permission, a live interactive
+/// app, and exclusive control over mutable UI state. Those conditions are not
+/// available on generic headless CI.
 ///
 /// **Deferred CI proof**: the full-loop proof — real `ad_snapshot` producing
 /// `@e` refs consumed by `ad_execute_by_ref` against a live app at the C
 /// boundary — is tracked as plan unit U9 / Phase B: an external-consumer smoke
-/// harness (Python ctypes) that runs in the E2E environment where the process
-/// itself owns the main thread.
+/// harness (Python ctypes) that runs in the macOS E2E environment.
 ///
 /// **Manual execution** (requires AX permission + a running target app):
 /// ```text
 /// cargo test -p agent-desktop-ffi --tests c_abi_roundtrip \
 ///     snapshot_execute_by_ref_live_roundtrip -- --ignored
 /// ```
-/// Run from a process that owns the main thread (e.g. the E2E harness).  Do
-/// NOT un-ignore this test — it will fail in any headless CI that uses libtest.
+/// Do not un-ignore this test on generic CI.
 #[test]
-#[ignore = "requires AX permission, a live app, and main-thread execution — run via E2E harness"]
+#[ignore = "requires AX permission, a live app, and exclusive interactive UI control"]
 fn snapshot_execute_by_ref_live_roundtrip() {
     let _home = TestHome::new();
 
@@ -251,7 +229,7 @@ fn search_refs(val: &serde_json::Value) -> Option<String> {
         serde_json::Value::Object(map) => {
             if let Some(r) = map.get("ref") {
                 if let Some(s) = r.as_str() {
-                    if s.starts_with("@e") {
+                    if s.starts_with("@e") || (s.starts_with("@s") && s.contains(":e")) {
                         return Some(s.to_owned());
                     }
                 }

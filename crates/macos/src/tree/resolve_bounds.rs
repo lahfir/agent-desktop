@@ -1,85 +1,38 @@
-use agent_desktop_core::{node::Rect, refs::RefEntry};
+use agent_desktop_core::{Rect, RefEntry};
 
 use super::AXElement;
 
-pub(super) fn bounds_match(el: &AXElement, entry: &RefEntry) -> bool {
-    match entry.bounds_hash {
-        Some(expected) => {
-            let actual = crate::tree::read_bounds(el).map(|b| b.bounds_hash());
-            actual.map(|h| h == expected).unwrap_or(false)
-        }
-        None => true,
-    }
-}
-
-pub(super) fn should_prune_by_bounds(el: &AXElement, entry: &RefEntry, depth: u8) -> bool {
-    if depth == 0 || entry.bounds.is_none() || entry.bounds_hash.is_none() {
-        return false;
-    }
-    let Some(candidate) = crate::tree::read_bounds(el) else {
-        return false;
+#[cfg(target_os = "macos")]
+pub(super) fn bounds_match_with_deadline(
+    element: &AXElement,
+    entry: &RefEntry,
+    deadline: std::time::Instant,
+) -> Result<bool, agent_desktop_core::AdapterError> {
+    let Some(expected) = entry.geometry.bounds_hash else {
+        return Ok(true);
     };
-    let Some(target) = entry.bounds.as_ref() else {
-        return false;
-    };
-    !rects_overlap(&candidate, target)
+    Ok(read_bounds_with_deadline(element, deadline)?
+        .map(|actual| actual.bounds_hash() == Some(expected))
+        .unwrap_or(false))
 }
 
-fn rects_overlap(candidate: &Rect, target: &Rect) -> bool {
-    let candidate_right = candidate.x + candidate.width;
-    let candidate_bottom = candidate.y + candidate.height;
-    let target_right = target.x + target.width;
-    let target_bottom = target.y + target.height;
-    candidate.x <= target_right
-        && candidate_right >= target.x
-        && candidate.y <= target_bottom
-        && candidate_bottom >= target.y
-}
-
-#[cfg(test)]
-mod tests {
-    use agent_desktop_core::node::Rect;
-
-    use super::rects_overlap;
-
-    fn r(x: f64, y: f64, w: f64, h: f64) -> Rect {
-        Rect {
-            x,
-            y,
-            width: w,
-            height: h,
-        }
+#[cfg(target_os = "macos")]
+fn read_bounds_with_deadline(
+    element: &AXElement,
+    deadline: std::time::Instant,
+) -> Result<Option<Rect>, agent_desktop_core::AdapterError> {
+    #[cfg(test)]
+    if element.0.is_null() {
+        return Ok(None);
     }
-
-    #[test]
-    fn overlapping_rects_intersect() {
-        assert!(rects_overlap(
-            &r(0.0, 0.0, 10.0, 10.0),
-            &r(5.0, 5.0, 10.0, 10.0)
-        ));
-    }
-
-    #[test]
-    fn touching_edge_rects_are_considered_overlapping() {
-        assert!(rects_overlap(
-            &r(0.0, 0.0, 10.0, 10.0),
-            &r(10.0, 0.0, 10.0, 10.0)
-        ));
-    }
-
-    #[test]
-    fn non_overlapping_rects_do_not_intersect() {
-        assert!(!rects_overlap(
-            &r(0.0, 0.0, 5.0, 5.0),
-            &r(10.0, 10.0, 5.0, 5.0)
-        ));
-    }
-
-    #[test]
-    fn contained_rect_is_always_overlapping() {
-        assert!(rects_overlap(
-            &r(2.0, 2.0, 3.0, 3.0),
-            &r(0.0, 0.0, 10.0, 10.0)
-        ));
-    }
+    let position = super::resolve_ax_read::read_point(
+        element,
+        accessibility_sys::kAXPositionAttribute,
+        deadline,
+    )?;
+    let size =
+        super::resolve_ax_read::read_size(element, accessibility_sys::kAXSizeAttribute, deadline)?;
+    Ok(position
+        .zip(size)
+        .and_then(|(position, size)| crate::tree::element_bounds::rect_from_parts(position, size)))
 }

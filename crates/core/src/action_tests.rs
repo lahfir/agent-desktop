@@ -1,5 +1,8 @@
-use super::*;
-use crate::interaction_policy::InteractionPolicy;
+use super::Action;
+use crate::{
+    Direction, DragParams, KeyCombo, Modifier, MouseButton, MouseEvent, MouseEventKind, Point,
+    interaction_policy::InteractionPolicy,
+};
 
 fn dummy_key() -> KeyCombo {
     KeyCombo {
@@ -26,7 +29,7 @@ fn action_names_do_not_include_payloads() {
         (
             Action::PressKey(KeyCombo {
                 key: "A".into(),
-                modifiers: vec![Modifier::Cmd],
+                modifiers: vec![Modifier::Meta],
             }),
             "press",
         ),
@@ -69,20 +72,20 @@ fn pure_ax_actions_base_policy_is_headless() {
 
 #[test]
 fn press_key_and_type_text_base_policy_is_focus_fallback() {
-    let focus = InteractionPolicy::focus_fallback();
+    let focus_fallback = InteractionPolicy::focus_fallback();
     assert_eq!(
         Action::PressKey(KeyCombo {
             key: "a".into(),
-            modifiers: vec![Modifier::Cmd],
+            modifiers: vec![Modifier::Meta],
         })
         .base_interaction_policy(),
-        focus,
-        "PressKey must request focus_fallback to land in the right field"
+        focus_fallback,
+        "PressKey must permit the focus fallback needed to target keystrokes"
     );
     assert_eq!(
         Action::TypeText("hello".into()).base_interaction_policy(),
-        focus,
-        "TypeText must request focus_fallback"
+        focus_fallback,
+        "TypeText must permit the focus fallback needed by physical typing"
     );
 }
 
@@ -176,18 +179,16 @@ fn requires_scroll_into_view_covers_all_actions() {
         Action::RightClick,
         Action::TripleClick,
         Action::SetValue("v".into()),
-        Action::SetFocus,
         Action::Expand,
         Action::Collapse,
         Action::Select("s".into()),
         Action::Toggle,
         Action::Check,
         Action::Uncheck,
-        Action::PressKey(dummy_key()),
-        Action::KeyDown(dummy_key()),
-        Action::KeyUp(dummy_key()),
         Action::TypeText("t".into()),
         Action::Clear,
+        Action::Hover,
+        Action::Drag(dummy_drag()),
     ];
     for action in scroll_into_view {
         assert!(
@@ -200,8 +201,10 @@ fn requires_scroll_into_view_covers_all_actions() {
     let not_scroll_into_view: &[Action] = &[
         Action::Scroll(Direction::Down, 1),
         Action::ScrollTo,
-        Action::Hover,
-        Action::Drag(dummy_drag()),
+        Action::SetFocus,
+        Action::PressKey(dummy_key()),
+        Action::KeyDown(dummy_key()),
+        Action::KeyUp(dummy_key()),
     ];
     for action in not_scroll_into_view {
         assert!(
@@ -233,7 +236,7 @@ fn mouse_event_json_with_modifiers_round_trips() {
         kind: MouseEventKind::Click { count: 2 },
         point: Point { x: 1.0, y: 2.0 },
         button: MouseButton::Left,
-        modifiers: vec![Modifier::Cmd, Modifier::Shift],
+        modifiers: vec![Modifier::Meta, Modifier::Shift],
     };
 
     let json = serde_json::to_value(&event).unwrap();
@@ -241,6 +244,37 @@ fn mouse_event_json_with_modifiers_round_trips() {
 
     assert_eq!(
         round_tripped.modifiers,
-        vec![Modifier::Cmd, Modifier::Shift]
+        vec![Modifier::Meta, Modifier::Shift]
     );
+}
+
+#[test]
+fn modifier_meta_serializes_semantically_and_accepts_legacy_cmd() {
+    assert_eq!(serde_json::to_string(&Modifier::Meta).unwrap(), "\"Meta\"");
+    assert_eq!(
+        serde_json::from_str::<Modifier>("\"Cmd\"").unwrap(),
+        Modifier::Meta
+    );
+}
+
+#[test]
+fn wheel_event_round_trips_platform_neutral_line_deltas() {
+    let event = MouseEvent {
+        kind: MouseEventKind::Wheel {
+            delta_x: -2.0,
+            delta_y: 3.0,
+        },
+        point: Point { x: 50.0, y: 60.0 },
+        button: MouseButton::Left,
+        modifiers: vec![Modifier::Shift],
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    let decoded: MouseEvent = serde_json::from_value(json).unwrap();
+    assert!(matches!(
+        decoded.kind,
+        MouseEventKind::Wheel {
+            delta_x: -2.0,
+            delta_y: 3.0
+        }
+    ));
 }

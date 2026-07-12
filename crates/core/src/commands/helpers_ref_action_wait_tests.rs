@@ -1,33 +1,83 @@
 use super::test_support::entry;
 use super::*;
+use crate::AdapterError;
 use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps, WindowFilter};
 use crate::context::WaitSelector;
-use crate::error::AdapterError;
-use crate::node::{AccessibilityNode, WindowInfo};
 use crate::refs::RefMap;
 use crate::refs_test_support::HomeGuard;
+use crate::{AccessibilityNode, WindowInfo};
 use crate::{action::Action, action_result::ActionResult};
-use std::sync::Mutex;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
+
+struct LeaseGuard(Arc<AtomicBool>);
+
+impl Drop for LeaseGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
 
 struct ScopedWaitAdapter {
     request: Mutex<Option<ActionRequest>>,
     polled_app: Mutex<Option<String>>,
+    lease_held: Arc<AtomicBool>,
 }
 
 impl ObservationOps for ScopedWaitAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn observe_tree(
+        &self,
+        root: crate::live_locator::ObservationRoot<'_>,
+        _request: &crate::live_locator::ObservationRequest,
+    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        if !self.lease_held.load(Ordering::SeqCst) {
+            return Err(AdapterError::internal(
+                "post-action wait escaped the interaction lease",
+            ));
+        }
+        crate::adapter::observed_tree(
+            &root,
+            AccessibilityNode {
+                ref_id: None,
+                role: "window".into(),
+                identity: crate::NodeIdentity {
+                    name: Some("Saved!".into()),
+                    ..Default::default()
+                },
+                presentation: Default::default(),
+                children_count: None,
+                children: vec![],
+            },
+        )
+    }
+
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+    fn list_windows(
+        &self,
+        filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         *self.polled_app.lock().unwrap() = filter.app.clone();
         Ok(vec![WindowInfo {
             id: "w-1".into(),
             title: "Doc".into(),
             app: filter.app.clone().unwrap_or_else(|| "TargetApp".into()),
-            pid: 1,
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
             bounds: None,
-            is_focused: true,
+            state: crate::WindowState {
+                is_focused: true,
+                ..Default::default()
+            },
         }])
     }
 
@@ -35,22 +85,22 @@ impl ObservationOps for ScopedWaitAdapter {
         &self,
         _win: &WindowInfo,
         _opts: &crate::adapter::TreeOptions,
+        _deadline: crate::Deadline,
     ) -> Result<AccessibilityNode, AdapterError> {
         Ok(AccessibilityNode {
             ref_id: None,
             role: "window".into(),
-            name: Some("Saved!".into()),
-            value: None,
-            description: None,
-            native_id: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
+            identity: crate::NodeIdentity {
+                name: Some("Saved!".into()),
+                ..Default::default()
+            },
+            presentation: Default::default(),
             children_count: None,
             children: vec![],
         })
     }
+
+    crate::adapter::complete_live_observation!("button", "OK", [crate::capability::CLICK]);
 }
 
 impl ActionOps for ScopedWaitAdapter {
@@ -58,27 +108,39 @@ impl ActionOps for ScopedWaitAdapter {
         &self,
         _handle: &NativeHandle,
         request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         *self.request.lock().unwrap() = Some(request);
-        Ok(ActionResult::new("ok"))
+        Ok(ActionResult::delivered_unverified("ok"))
     }
 }
 
 impl InputOps for ScopedWaitAdapter {}
 
-impl SystemOps for ScopedWaitAdapter {}
+impl SystemOps for ScopedWaitAdapter {
+    fn acquire_interaction_lease(
+        &self,
+        deadline: crate::Deadline,
+    ) -> Result<crate::InteractionLease, AdapterError> {
+        self.lease_held
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| AdapterError::internal("test lease already held"))?;
+        crate::InteractionLease::guarded(deadline, LeaseGuard(Arc::clone(&self.lease_held)))
+    }
+}
 
 #[test]
 fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
     let _guard = HomeGuard::new();
     let mut refmap = RefMap::new();
     let mut entry = entry();
-    entry.source_app = Some("TargetApp".into());
+    entry.source.source_app = Some("TargetApp".into());
     refmap.allocate(entry);
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
     let adapter = ScopedWaitAdapter {
         request: Mutex::new(None),
         polled_app: Mutex::new(None),
+        lease_held: Arc::new(AtomicBool::new(false)),
     };
     let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
         query_raw: ":saved!".into(),
@@ -103,6 +165,7 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
         adapter.polled_app.lock().unwrap().as_deref(),
         Some("TargetApp")
     );
+    assert!(!adapter.lease_held.load(Ordering::SeqCst));
     assert_eq!(value["after_action"]["action"], "ok");
     assert_eq!(value["matched_selector"], ":saved!");
 }
@@ -110,27 +173,81 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
 struct MultiWindowAdapter;
 
 impl ObservationOps for MultiWindowAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn observe_tree(
+        &self,
+        root: crate::live_locator::ObservationRoot<'_>,
+        _request: &crate::live_locator::ObservationRequest,
+    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        let crate::live_locator::ObservationRoot::Window(window) = root else {
+            return Err(AdapterError::internal("expected window root"));
+        };
+        let children = (window.id == "w-target")
+            .then(|| AccessibilityNode {
+                ref_id: None,
+                role: "button".into(),
+                identity: crate::NodeIdentity {
+                    name: Some("Saved!".into()),
+                    ..Default::default()
+                },
+                presentation: Default::default(),
+                children_count: None,
+                children: vec![],
+            })
+            .into_iter()
+            .collect();
+        crate::adapter::observed_tree(
+            &crate::live_locator::ObservationRoot::Window(window),
+            AccessibilityNode {
+                ref_id: None,
+                role: "window".into(),
+                identity: crate::NodeIdentity {
+                    name: Some(window.title.clone()),
+                    ..Default::default()
+                },
+                presentation: Default::default(),
+                children_count: None,
+                children,
+            },
+        )
+    }
+
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![
             WindowInfo {
                 id: "w-other".into(),
                 title: "Other".into(),
                 app: "App".into(),
-                pid: 1,
+                pid: crate::ProcessId::new(1),
+                process_instance: Some("test-instance".into()),
                 bounds: None,
-                is_focused: true,
+                state: crate::WindowState {
+                    is_focused: true,
+                    ..Default::default()
+                },
             },
             WindowInfo {
                 id: "w-target".into(),
                 title: "Target".into(),
                 app: "App".into(),
-                pid: 1,
+                pid: crate::ProcessId::new(1),
+                process_instance: Some("test-instance".into()),
                 bounds: None,
-                is_focused: false,
+                state: crate::WindowState {
+                    is_focused: false,
+                    ..Default::default()
+                },
             },
         ])
     }
@@ -139,19 +256,17 @@ impl ObservationOps for MultiWindowAdapter {
         &self,
         win: &WindowInfo,
         _opts: &crate::adapter::TreeOptions,
+        _deadline: crate::Deadline,
     ) -> Result<AccessibilityNode, AdapterError> {
         let children = if win.id == "w-target" {
             vec![AccessibilityNode {
                 ref_id: None,
                 role: "button".into(),
-                name: Some("Saved!".into()),
-                value: None,
-                description: None,
-                native_id: None,
-                hint: None,
-                states: vec![],
-                available_actions: vec![],
-                bounds: None,
+                identity: crate::NodeIdentity {
+                    name: Some("Saved!".into()),
+                    ..Default::default()
+                },
+                presentation: Default::default(),
                 children_count: None,
                 children: vec![],
             }]
@@ -161,18 +276,17 @@ impl ObservationOps for MultiWindowAdapter {
         Ok(AccessibilityNode {
             ref_id: None,
             role: "window".into(),
-            name: Some(win.title.clone()),
-            value: None,
-            description: None,
-            native_id: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
+            identity: crate::NodeIdentity {
+                name: Some(win.title.clone()),
+                ..Default::default()
+            },
+            presentation: Default::default(),
             children_count: None,
             children,
         })
     }
+
+    crate::adapter::complete_live_observation!("button", "OK", [crate::capability::CLICK]);
 }
 
 impl ActionOps for MultiWindowAdapter {
@@ -180,22 +294,25 @@ impl ActionOps for MultiWindowAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("ok"))
+        Ok(ActionResult::delivered_unverified("ok"))
     }
 }
 
 impl InputOps for MultiWindowAdapter {}
 
-impl SystemOps for MultiWindowAdapter {}
+impl SystemOps for MultiWindowAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 #[test]
 fn post_action_wait_polls_acted_on_window_not_focused_window() {
     let _guard = HomeGuard::new();
     let mut refmap = RefMap::new();
     let mut entry = entry();
-    entry.source_app = Some("App".into());
-    entry.source_window_id = Some("w-target".into());
+    entry.source.source_app = Some("App".into());
+    entry.source.source_window_id = Some("w-target".into());
     refmap.allocate(entry);
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
     let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
@@ -220,70 +337,5 @@ fn post_action_wait_polls_acted_on_window_not_focused_window() {
     assert_eq!(value["window"]["id"], "w-target");
 }
 
-#[test]
-fn post_action_wait_without_flag_returns_action_only() {
-    let _guard = HomeGuard::new();
-    let mut refmap = RefMap::new();
-    refmap.allocate(entry());
-    let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-    let adapter = ScopedWaitAdapter {
-        request: Mutex::new(None),
-        polled_app: Mutex::new(None),
-    };
-    let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
-        timeout_ms: None,
-    };
-
-    let value = execute_ref_action_with_context(
-        args,
-        &adapter,
-        ActionRequest::headless(Action::Click),
-        &CommandContext::default(),
-    )
-    .unwrap();
-
-    assert_eq!(value["action"], "ok");
-    assert!(value.get("after_action").is_none());
-}
-
-#[test]
-fn post_action_wait_timeout_embeds_action_result_in_details() {
-    let _guard = HomeGuard::new();
-    let mut refmap = RefMap::new();
-    let mut entry = entry();
-    entry.source_app = Some("TargetApp".into());
-    refmap.allocate(entry);
-    let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-    let adapter = ScopedWaitAdapter {
-        request: Mutex::new(None),
-        polled_app: Mutex::new(None),
-    };
-    let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
-        query_raw: ":never-appears".into(),
-        gone: false,
-        timeout_ms: 50,
-    }));
-    let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
-        timeout_ms: None,
-    };
-
-    let err = execute_ref_action_with_context(
-        args,
-        &adapter,
-        ActionRequest::headless(Action::Click),
-        &context,
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "TIMEOUT");
-    let details = match err {
-        crate::error::AppError::Adapter(adapter_err) => adapter_err.details.expect("details"),
-        other => panic!("expected adapter timeout, got {other:?}"),
-    };
-    assert_eq!(details["kind"], "wait_timeout");
-    assert_eq!(details["after_action"]["action"], "ok");
-}
+#[path = "helpers_ref_action_wait_result_tests.rs"]
+mod result_tests;

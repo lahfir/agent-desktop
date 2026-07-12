@@ -1,40 +1,62 @@
 use super::*;
 use crate::tree::AXElement;
 use crate::tree::resolve_classify::classify_candidates;
-use crate::tree::resolve_identity::bounded_window_fallback_allowed;
-use crate::tree::resolve_roots::{fallback_replacement_window_roots, source_window_number};
-use crate::tree::resolve_search::should_stop_collecting;
-use agent_desktop_core::adapter::SnapshotSurface;
+use crate::tree::resolve_roots::{
+    require_unique_window_number_match, source_scope_verified, source_window_number,
+    source_window_scope_required,
+};
+use crate::tree::resolve_search::{
+    find_entry_by_path, incomplete_traversal_error, match_native_or_text_identity,
+    native_identifier_reused_by_different_role, walk_finite_path,
+};
+use agent_desktop_core::{
+    RefCapabilities, RefEntryIdentity, RefGeometry, RefProcess, RefScope, RefSource,
+    adapter::SnapshotSurface,
+};
 
-fn entry(
+pub(super) fn entry(
     bounds_hash: Option<u64>,
     source_window_id: Option<&str>,
     source_window_title: Option<&str>,
     root_ref: Option<&str>,
 ) -> RefEntry {
     RefEntry {
-        pid: 1,
-        role: "cell".into(),
-        name: Some("Investors".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash,
-        available_actions: vec![],
-        source_app: None,
-        source_window_id: source_window_id.map(String::from),
-        source_window_title: source_window_title.map(String::from),
-        source_surface: SnapshotSurface::Window,
-        root_ref: root_ref.map(String::from),
-        path_is_absolute: false,
-        path: smallvec::smallvec![0, 1],
+        process: RefProcess {
+            pid: agent_desktop_core::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: RefEntryIdentity {
+            role: "cell".into(),
+            name: Some("Investors".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: RefGeometry {
+            bounds: None,
+            bounds_hash,
+        },
+        capabilities: RefCapabilities {
+            states: vec![],
+            available_actions: vec![],
+        },
+        source: RefSource {
+            source_app: None,
+            source_window_id: source_window_id.map(String::from),
+            source_window_title: source_window_title.map(String::from),
+            source_window_bounds_hash: None,
+            source_surface: SnapshotSurface::Window,
+        },
+        scope: RefScope {
+            root_ref: root_ref.map(String::from),
+            path_is_absolute: false,
+            path: smallvec::smallvec![0, 1],
+        },
     }
 }
 
 #[test]
-fn path_fast_path_accepts_bounds_or_source_window_identity() {
+fn path_fast_path_requires_a_hard_window_scope() {
     assert!(!can_use_path_fast_path(&entry(None, None, None, None)));
     assert!(can_use_path_fast_path(&entry(
         None,
@@ -42,92 +64,69 @@ fn path_fast_path_accepts_bounds_or_source_window_identity() {
         None,
         None
     )));
-    assert!(!can_use_path_fast_path(&entry(
+    assert!(can_use_path_fast_path(&entry(
         None,
         None,
         Some("Documents"),
         None
     )));
-    assert!(can_use_path_fast_path(&entry(Some(42), None, None, None)));
+    let mut menu = entry(Some(42), Some("w-10"), None, None);
+    menu.source.source_surface = SnapshotSurface::Menu;
+    assert!(can_use_path_fast_path(&menu));
+}
+
+#[test]
+fn locator_anchor_path_requires_scope_and_identity_or_geometry() {
+    let mut unscoped = entry(Some(42), None, None, None);
+    assert!(!can_use_locator_anchor_path(&unscoped));
+
+    unscoped.source.source_window_id = Some("w-10".into());
+    assert!(can_use_locator_anchor_path(&unscoped));
+
+    unscoped.geometry.bounds_hash = None;
+    unscoped.identity.name = None;
+    assert!(!can_use_locator_anchor_path(&unscoped));
+}
+
+#[test]
+fn drill_down_path_must_be_absolute() {
     assert!(!can_use_path_fast_path(&entry(
         Some(42),
         Some("w-10"),
-        Some("Documents"),
+        None,
         Some("@e1")
     )));
-    let mut absolute_drill = entry(Some(42), Some("w-10"), Some("Documents"), Some("@e1"));
-    absolute_drill.path_is_absolute = true;
-    assert!(can_use_path_fast_path(&absolute_drill));
+    let mut absolute = entry(Some(42), Some("w-10"), None, Some("@e1"));
+    absolute.scope.path_is_absolute = true;
+    assert!(can_use_path_fast_path(&absolute));
 }
 
 #[test]
-fn no_bounds_source_window_refs_require_scoped_path_resolution() {
-    assert!(!requires_scoped_path_resolution(&entry(
-        None, None, None, None
-    )));
-    assert!(requires_scoped_path_resolution(&entry(
-        None,
-        Some("w-10"),
-        None,
-        None
-    )));
-    assert!(!requires_scoped_path_resolution(&entry(
-        None,
-        None,
-        Some("Documents"),
-        None
-    )));
-    assert!(!requires_scoped_path_resolution(&entry(
-        Some(42),
-        Some("w-10"),
-        Some("Documents"),
-        None
-    )));
-    assert!(!requires_scoped_path_resolution(&entry(
-        None,
-        Some("w-10"),
-        Some("Documents"),
-        Some("@e1")
-    )));
-    let mut absolute_drill = entry(None, Some("w-10"), Some("Documents"), Some("@e1"));
-    absolute_drill.path_is_absolute = true;
-    assert!(requires_scoped_path_resolution(&absolute_drill));
-}
-
-#[test]
-fn scoped_path_retry_fails_closed_when_scope_is_unresolved() {
-    let no_bounds_entry = entry(None, Some("w-10"), Some("Freeform"), None);
-
-    assert!(requires_scoped_path_resolution(&no_bounds_entry));
-    assert!(requires_scoped_path_resolution(&description_entry()));
-    assert!(!requires_scoped_path_resolution(&entry(
-        Some(42),
-        Some("w-10"),
-        Some("Freeform"),
-        None
-    )));
-}
-
-#[test]
-fn scoped_path_retry_fails_closed_for_blank_identity_without_bounds() {
-    let mut blank = entry(None, Some("w-10"), Some("Freeform"), None);
-    blank.name = None;
-
-    assert!(requires_scoped_path_resolution(&blank));
-}
-
-#[test]
-fn broad_search_requires_bounds_or_meaningful_identity() {
+fn broad_search_requires_bounds_or_stable_identity() {
     let mut blank = entry(None, None, None, None);
-    blank.name = None;
+    blank.identity.name = None;
 
     assert!(!can_use_broad_search(&blank));
-    assert!(can_use_broad_search(&description_entry()));
-    assert!(can_use_broad_search(&entry(Some(42), None, None, None)));
+    blank.identity.native_id = Some(agent_desktop_core::ElementIdentifier {
+        kind: agent_desktop_core::IdentifierKind::AxDomIdentifier,
+        value: "dom-id".into(),
+    });
+    assert!(can_use_broad_search(&blank));
+    blank.identity.native_id = None;
+    blank.identity.description = Some("Insert Text Box".into());
+    assert!(can_use_broad_search(&blank));
 }
 
 #[test]
-fn source_window_number_parses_window_ids_only() {
+fn source_window_scope_rejects_malformed_ids_instead_of_broadening() {
+    let malformed = entry(Some(42), Some("not-a-window"), None, None);
+
+    assert!(source_window_scope_required(&malformed));
+    assert_eq!(source_window_number(&malformed), None);
+}
+
+#[test]
+fn source_window_number_parses_only_canonical_ids() {
     assert_eq!(
         source_window_number(&entry(None, Some("w-42"), None, None)),
         Some(42)
@@ -137,178 +136,251 @@ fn source_window_number_parses_window_ids_only() {
         None
     );
     assert_eq!(
-        source_window_number(&entry(None, Some("w-bad"), None, None)),
+        source_window_number(&entry(None, Some("w-0"), None, None)),
+        None
+    );
+    assert_eq!(
+        source_window_number(&entry(None, Some("w--1"), None, None)),
         None
     );
 }
 
 #[test]
-fn only_element_not_found_is_retryable_resolution_error() {
-    assert!(is_retryable_resolution_error(
+fn duplicate_ax_window_bridge_matches_are_ambiguous() {
+    let error = require_unique_window_number_match(2, 42).unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::AmbiguousTarget);
+    assert_eq!(error.details.unwrap()["candidate_count"], 2);
+}
+
+#[test]
+fn mutable_title_scope_never_claims_exact_verification() {
+    assert!(!source_scope_verified(None, true));
+    assert!(!source_scope_verified(Some("w-42"), false));
+    assert!(source_scope_verified(Some("w-42"), true));
+}
+
+#[test]
+fn strict_resolution_requires_the_exact_process_instance() {
+    let pid = i32::try_from(std::process::id()).expect("test pid fits macOS pid_t");
+    let token = crate::system::process_identity::token_for_pid(pid)
+        .unwrap()
+        .expect("current process identity");
+    let mut stored = entry(None, None, None, None);
+    stored.process.pid = agent_desktop_core::ProcessId::try_from(pid).unwrap();
+    stored.process.process_instance = Some(token.clone());
+
+    assert!(verify_process_instance(&stored).is_ok());
+
+    stored.process.process_instance = None;
+    assert_eq!(
+        verify_process_instance(&stored).unwrap_err().code,
+        ErrorCode::StaleRef
+    );
+
+    stored.process.process_instance = Some(token);
+    stored.process.pid = agent_desktop_core::ProcessId::try_from(i32::MAX).unwrap();
+    assert_eq!(
+        verify_process_instance(&stored).unwrap_err().code,
+        ErrorCode::StaleRef
+    );
+}
+
+#[test]
+fn only_explicitly_retryable_incomplete_errors_retry() {
+    let retryable = incomplete_traversal_error("children", 3);
+    assert!(is_retryable_resolution_error(&retryable));
+    assert!(!is_retryable_resolution_error(
         &AdapterError::element_not_found("element")
     ));
     assert!(!is_retryable_resolution_error(
-        &AdapterError::ambiguous_target("2 candidates matched")
+        &AdapterError::permission_denied()
     ));
-    assert!(!is_retryable_resolution_error(&AdapterError::new(
-        ErrorCode::Timeout,
-        "resolution timed out"
-    )));
 }
 
 #[test]
-fn expired_deadline_fails_before_path_resolution_reads() {
-    let err = match find_entry_by_path(
+fn cannot_complete_retry_can_recover_before_one_deadline() {
+    let attempts = std::cell::Cell::new(0);
+    let deadline = Instant::now() + Duration::from_millis(250);
+
+    let result = retry_incomplete_until(deadline, || {
+        attempts.set(attempts.get() + 1);
+        if attempts.get() == 1 {
+            Err(incomplete_traversal_error("children", 1))
+        } else {
+            Ok(7_u8)
+        }
+    });
+
+    assert_eq!(result.unwrap(), 7);
+    assert_eq!(attempts.get(), 2);
+}
+
+#[test]
+fn incomplete_traversal_is_never_element_not_found() {
+    let error = incomplete_traversal_error("depth_limit", 50);
+
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(error.details.unwrap()["complete"], false);
+}
+
+#[test]
+fn expired_deadline_fails_before_path_reads() {
+    let mut context = ResolveReadContext::new(Instant::now());
+    let error = find_entry_by_path(
         &[],
-        &entry(Some(42), Some("w-42"), Some("Documents"), None),
-        false,
-        std::time::Instant::now(),
-    ) {
-        Ok(_) => panic!("expected timeout"),
-        Err(err) => err,
-    };
-
-    assert_eq!(err.code, ErrorCode::Timeout);
-}
-
-#[test]
-fn ambiguous_candidate_classification_reports_structured_details() {
-    let err = match classify_candidates(
-        vec![
-            AXElement(std::ptr::null_mut()),
-            AXElement(std::ptr::null_mut()),
-        ],
-        &entry(None, Some("w-42"), Some("Documents"), None),
+        &entry(Some(42), Some("w-42"), None, None),
         true,
-    ) {
-        Ok(_) => panic!("expected ambiguous target"),
-        Err(err) => err,
-    };
-
-    assert_eq!(err.code, ErrorCode::AmbiguousTarget);
-    assert!(!err.message.contains("Investors"));
-    assert!(err.message.contains("name_chars=9"));
-    let details = err.details.unwrap();
-    assert_eq!(details["candidate_count"], 2);
-    assert_eq!(details["role"], "cell");
-    assert_eq!(details["source_window_id"], "w-42");
-}
-
-#[test]
-fn multiple_identity_candidates_without_bounds_match_are_stale_not_ambiguous() {
-    let err = match classify_candidates(
-        vec![
-            AXElement(std::ptr::null_mut()),
-            AXElement(std::ptr::null_mut()),
-        ],
-        &entry(Some(42), Some("w-42"), Some("Documents"), None),
-        true,
-    ) {
-        Ok(_) => panic!("expected stale moved target"),
-        Err(err) => err,
-    };
-
-    assert_eq!(err.code, ErrorCode::ElementNotFound);
-}
-
-#[test]
-fn single_meaningful_identity_candidate_resolves_after_bounds_change() {
-    let _handle = classify_candidates(
-        vec![AXElement(std::ptr::null_mut())],
-        &entry(None, Some("w-42"), Some("Documents"), None),
-        true,
+        &mut context,
     )
-    .expect("unique identity should resolve within the verified source window");
+    .err()
+    .expect("expired path resolution must fail");
+
+    assert_eq!(error.code, ErrorCode::Timeout);
 }
 
 #[test]
-fn cross_window_replacement_without_verified_source_window_fails_closed() {
-    let err = match classify_candidates(
+fn finite_path_walk_allows_reused_native_handle_identity() {
+    let calls = std::cell::Cell::new(0);
+    let result = walk_finite_path(7_u8, &[0, 0, 0], |handle, _| {
+        calls.set(calls.get() + 1);
+        Ok(Some(handle))
+    })
+    .unwrap();
+
+    assert_eq!(result, Some(7));
+    assert_eq!(calls.get(), 3);
+}
+
+#[test]
+fn preserved_native_path_replays_nested_target_in_one_read_per_level() {
+    let reads = std::cell::RefCell::new(Vec::new());
+    let result = walk_finite_path(0_u8, &[2, 0], |parent, index| {
+        reads.borrow_mut().push(index);
+        Ok(match (parent, index) {
+            (0, 2) => Some(20),
+            (20, 0) => Some(99),
+            _ => None,
+        })
+    })
+    .unwrap();
+
+    assert_eq!(result, Some(99));
+    assert_eq!(reads.into_inner(), [2, 0]);
+}
+
+#[test]
+fn ambiguity_reports_bounded_candidate_summaries() {
+    let candidates = (0..11).map(|_| AXElement(std::ptr::null_mut())).collect();
+    let error = classify_candidates(
+        candidates,
+        &entry(None, Some("w-42"), None, None),
+        true,
+        Instant::now() + Duration::from_secs(1),
+    )
+    .err()
+    .expect("duplicate candidates must be ambiguous");
+
+    assert_eq!(error.code, ErrorCode::AmbiguousTarget);
+    let details = error.details.unwrap();
+    assert_eq!(details["candidate_count"], 11);
+    assert_eq!(details["candidate_summaries_truncated"], true);
+    assert_eq!(details["candidates"].as_array().unwrap().len(), 10);
+}
+
+#[test]
+fn unique_scoped_candidate_resolves_even_after_bounds_move() {
+    let handle = classify_candidates(
         vec![AXElement(std::ptr::null_mut())],
-        &entry(None, Some("w-42"), Some("Documents"), None),
-        false,
-    ) {
-        Ok(_) => panic!("expected stale candidate to fail closed"),
-        Err(err) => err,
+        &entry(Some(42), Some("w-42"), None, None),
+        true,
+        Instant::now() + Duration::from_secs(1),
+    );
+
+    assert!(handle.is_ok());
+}
+
+#[test]
+fn scoped_role_only_candidate_does_not_bypass_bounds_verification() {
+    let mut weak = entry(None, Some("w-42"), None, None);
+    weak.identity.name = None;
+
+    let error = classify_candidates(
+        vec![AXElement(std::ptr::null_mut())],
+        &weak,
+        true,
+        Instant::now() + Duration::from_secs(1),
+    )
+    .err()
+    .expect("window scope alone must not identify a role-only candidate");
+
+    assert_eq!(error.code, ErrorCode::ElementNotFound);
+}
+
+#[test]
+fn authoritatively_absent_native_identifier_is_a_definitive_mismatch() {
+    use agent_desktop_core::{
+        IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence,
     };
 
-    assert_eq!(err.code, ErrorCode::ElementNotFound);
-}
-
-#[test]
-fn non_window_identity_candidate_without_bounds_fails_closed() {
-    let mut menu_entry = entry(None, None, None, None);
-    menu_entry.source_surface = SnapshotSurface::Menu;
-
-    let err = match classify_candidates(vec![AXElement(std::ptr::null_mut())], &menu_entry, false) {
-        Ok(_) => panic!("expected stale candidate to fail closed"),
-        Err(err) => err,
+    let mut stored = entry(Some(42), Some("w-42"), None, None);
+    stored.identity.native_id = Some(agent_desktop_core::ElementIdentifier {
+        kind: agent_desktop_core::IdentifierKind::AxIdentifier,
+        value: "stable-id".into(),
+    });
+    let live = LocatorEvidence {
+        role: LocatorField::Known(stored.identity.role.clone()),
+        name: LocatorField::Known("Investors".into()),
+        description: LocatorField::Absent,
+        value: LocatorField::Absent,
+        identifiers: IdentifierEvidence::absent(),
+        states: LocatorField::Absent,
+        ref_evidence: LocatorRefEvidence {
+            bounds: LocatorField::Absent,
+            available_actions: LocatorField::Absent,
+        },
     };
 
-    assert_eq!(err.code, ErrorCode::ElementNotFound);
+    assert_eq!(
+        match_native_or_text_identity(&stored, &live),
+        agent_desktop_core::IdentityMatch::NoMatch
+    );
 }
 
 #[test]
-fn bounded_window_fallback_requires_untitled_window_ref_with_bounds_hash() {
-    assert!(bounded_window_fallback_allowed(&entry(
-        Some(42),
-        Some("w-10"),
-        None,
-        None
-    )));
-    assert!(!bounded_window_fallback_allowed(&entry(
-        Some(42),
-        Some("w-10"),
-        Some("Stale Title"),
-        None
-    )));
-    assert!(!bounded_window_fallback_allowed(&entry(
-        None,
-        Some("w-10"),
-        Some("Documents"),
-        None
-    )));
-    let mut menu_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
-    menu_entry.source_surface = SnapshotSurface::Menu;
-    assert!(!bounded_window_fallback_allowed(&menu_entry));
-}
-
-#[test]
-fn bounds_hash_keeps_collecting_to_disambiguate_identity_matches() {
-    assert!(!should_stop_collecting(
-        2,
-        &entry(Some(42), None, None, None)
-    ));
-    assert!(should_stop_collecting(2, &entry(None, None, None, None)));
-}
-
-#[test]
-fn bounded_window_fallback_propagates_expired_deadline() {
-    let err = match fallback_replacement_window_roots(
-        &[AXElement(std::ptr::null_mut())],
-        std::time::Instant::now() - std::time::Duration::from_millis(1),
-    ) {
-        Ok(_) => panic!("expected timeout"),
-        Err(err) => err,
+fn native_identifier_reuse_by_a_different_role_is_definitively_stale() {
+    use agent_desktop_core::{
+        ElementIdentifier, IdentifierEvidence, IdentifierKind, LocatorEvidence, LocatorField,
+        LocatorRefEvidence,
     };
 
-    assert_eq!(err.code, ErrorCode::Timeout);
+    let mut stored = entry(None, Some("w-42"), None, None);
+    let identifier = ElementIdentifier {
+        kind: IdentifierKind::AxDomIdentifier,
+        value: "compose".into(),
+    };
+    stored.identity.native_id = Some(identifier.clone());
+    let live = LocatorEvidence {
+        role: LocatorField::Known("textfield".into()),
+        name: LocatorField::Absent,
+        description: LocatorField::Absent,
+        value: LocatorField::Absent,
+        identifiers: IdentifierEvidence::typed([identifier], Some(0), true),
+        states: LocatorField::Absent,
+        ref_evidence: LocatorRefEvidence {
+            bounds: LocatorField::Absent,
+            available_actions: LocatorField::Absent,
+        },
+    };
+
+    assert!(native_identifier_reused_by_different_role(&stored, &live));
 }
 
 #[test]
-fn bounded_window_fallback_must_not_stop_after_first_match() {
-    let mut bounded_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
-    bounded_entry.role = "textfield".into();
-    bounded_entry.name = Some("00:01".into());
-    bounded_entry.value = Some("00:01".into());
+fn complete_absence_remains_retryable_for_renderer_detach_and_reattach() {
+    let cause = AdapterError::element_not_found("element");
+    let error = stale_ref_error(&entry(None, Some("w-42"), None, None), &cause);
 
-    assert!(!should_stop_collecting(2, &bounded_entry));
-}
-
-fn description_entry() -> RefEntry {
-    let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
-    entry.role = "button".into();
-    entry.name = None;
-    entry.description = Some("Insert Text Box".into());
-    entry
+    assert_eq!(error.code, ErrorCode::StaleRef);
+    assert_eq!(error.details.unwrap()["retryable"], true);
 }

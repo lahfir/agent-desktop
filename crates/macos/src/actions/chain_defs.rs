@@ -1,93 +1,45 @@
-use agent_desktop_core::error::AdapterError;
+use agent_desktop_core::AdapterError;
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
     use crate::actions::{
-        ax_helpers,
-        chain::{ChainDef, ChainStep},
-        chain_disclosure_steps, chain_menu_steps, chain_steps,
+        chain::ChainDef, chain::ChainStep, chain_disclosure_steps, chain_menu_steps,
     };
     use crate::tree::AXElement;
-    use agent_desktop_core::{
-        action::MouseButton, action_step::ActionStep, interaction_policy::InteractionPolicy,
-        step_mechanism::StepMechanism,
-    };
+    use agent_desktop_core::{ActionStep, Deadline, MouseButton, StepMechanism};
 
     pub(crate) static CLICK_CHAIN: ChainDef = ChainDef {
-        pre_scroll: true,
         steps: &[
-            ChainStep::Custom {
-                label: "verified_press",
-                func: chain_steps::do_verified_press,
-            },
-            ChainStep::Action("AXConfirm"),
-            ChainStep::Action("AXOpen"),
-            ChainStep::Action("AXPick"),
-            ChainStep::Custom {
-                label: "show_alternate_ui",
-                func: chain_steps::try_show_alternate_ui,
-            },
-            ChainStep::Custom {
-                label: "containing_item_select",
-                func: chain_steps::try_select_containing_item,
-            },
-            ChainStep::SetBool {
-                attr: "AXSelected",
-                value: true,
-            },
-            ChainStep::Custom {
-                label: "parent_row_select",
-                func: chain_steps::try_parent_row_select,
-            },
-            ChainStep::Custom {
-                label: "value_relay",
-                func: chain_steps::try_value_relay,
-            },
-            ChainStep::Custom {
-                label: "select_via_parent",
-                func: chain_steps::try_select_via_parent,
-            },
-            ChainStep::ChildActions {
-                actions: &["AXPress", "AXConfirm", "AXOpen"],
-                limit: 3,
-            },
-            ChainStep::Custom {
-                label: "custom_actions",
-                func: chain_steps::try_custom_actions,
-            },
-            ChainStep::AncestorActions {
-                actions: &["AXPress", "AXConfirm"],
-                limit: 2,
-            },
+            ChainStep::Action("AXPress"),
             ChainStep::CGClick {
                 button: MouseButton::Left,
                 count: 1,
             },
         ],
-        suggestion: "Element may not be interactable. Try 'mouse-click --xy X,Y'.",
+        suggestion: "Target an element that advertises Click or use an explicit point click.",
+        continue_after_unverified_delivery: false,
     };
 
     pub(crate) static RIGHT_CLICK_CHAIN: ChainDef = ChainDef {
-        pre_scroll: false,
         steps: &[
-            ChainStep::Custom {
+            ChainStep::CustomWithDeadline {
                 label: "show_menu",
                 func: chain_menu_steps::show_menu,
             },
-            ChainStep::Custom {
+            ChainStep::CustomWithDeadline {
                 label: "select_then_show_menu",
                 func: chain_menu_steps::select_then_show_menu,
             },
-            ChainStep::Custom {
+            ChainStep::CustomWithDeadline {
                 label: "selected_items_menu",
                 func: chain_menu_steps::select_then_selected_items_menu,
             },
-            ChainStep::Custom {
+            ChainStep::CustomWithDeadline {
                 label: "child_show_menu",
                 func: chain_menu_steps::show_menu_on_children,
             },
-            ChainStep::Custom {
+            ChainStep::CustomWithDeadline {
                 label: "ancestor_show_menu",
                 func: chain_menu_steps::show_menu_on_ancestors,
             },
@@ -97,118 +49,99 @@ mod imp {
             },
         ],
         suggestion: "Try 'mouse-click --button right --xy X,Y'.",
+        continue_after_unverified_delivery: false,
     };
 
-    /// Every step is verified against the element's disclosed state: a bare
-    /// `AXExpand`/`AXSetAttributeValue` can return success without changing the
-    /// control (SwiftUI disclosures do this), so an unverified action must not
-    /// count as success. `expand_verified` tries the semantic action, then a
-    /// press, and only reports success when the state actually flipped.
     pub(crate) static EXPAND_CHAIN: ChainDef = ChainDef {
-        pre_scroll: false,
         steps: &[ChainStep::CustomWithDeadline {
             label: "expand_verified",
             func: chain_disclosure_steps::press_to_expand,
         }],
-        suggestion: "This control cannot be expanded via accessibility; try a physical 'click' on its disclosure triangle.",
+        suggestion: "Target a control with a readable expandable state.",
+        continue_after_unverified_delivery: false,
     };
 
     pub(crate) static COLLAPSE_CHAIN: ChainDef = ChainDef {
-        pre_scroll: false,
         steps: &[ChainStep::CustomWithDeadline {
             label: "collapse_verified",
             func: chain_disclosure_steps::press_to_collapse,
         }],
-        suggestion: "This control cannot be collapsed via accessibility; try a physical 'click' on its disclosure triangle.",
+        suggestion: "Target a control with a readable expandable state.",
+        continue_after_unverified_delivery: false,
     };
 
-    const VALUE_STEPS: &[ChainStep] = &[
-        ChainStep::SetDynamic { attr: "AXValue" },
-        ChainStep::FocusThenSetDynamic { attr: "AXValue" },
-        ChainStep::IncrementToDynamic,
-    ];
-
     pub(crate) static SET_VALUE_CHAIN: ChainDef = ChainDef {
-        pre_scroll: false,
-        steps: VALUE_STEPS,
-        suggestion: "Try 'clear' then 'type', or check element is a text field.",
+        steps: &[
+            ChainStep::SetDynamic { attr: "AXValue" },
+            ChainStep::IncrementToDynamic,
+        ],
+        suggestion: "Target an element with a settable value or native increment/decrement actions.",
+        continue_after_unverified_delivery: true,
     };
 
     pub(crate) static CLEAR_CHAIN: ChainDef = ChainDef {
-        pre_scroll: false,
         steps: &[
             ChainStep::SetDynamic { attr: "AXValue" },
-            ChainStep::FocusThenSetDynamic { attr: "AXValue" },
             ChainStep::FocusThenClearByKeyboard,
         ],
-        suggestion: "Try 'press cmd+a' then 'press delete'.",
+        suggestion: "Target an editable control or allow the verified keyboard fallback.",
+        continue_after_unverified_delivery: true,
     };
 
     pub(crate) static FOCUS_CHAIN: ChainDef = ChainDef {
-        pre_scroll: false,
-        steps: &[
-            ChainStep::SetBool {
-                attr: "AXFocused",
-                value: true,
-            },
-            ChainStep::Action("AXRaise"),
-            ChainStep::Action("AXPress"),
-            ChainStep::SetBool {
-                attr: "AXSelected",
-                value: true,
-            },
-            ChainStep::CGClick {
-                button: MouseButton::Left,
-                count: 1,
-            },
-        ],
-        suggestion: "Try 'click' to focus the element instead.",
+        steps: &[ChainStep::SetBool {
+            attr: "AXFocused",
+            value: true,
+        }],
+        suggestion: "Target an element whose AXFocused attribute is settable.",
+        continue_after_unverified_delivery: false,
     };
 
     pub(crate) static SCROLL_TO_CHAIN: ChainDef = ChainDef {
-        pre_scroll: false,
-        steps: &[
-            ChainStep::Action("AXScrollToVisible"),
-            ChainStep::Custom {
-                label: "visible_in_scroll_context",
-                func: chain_steps::element_is_visible_in_scroll_context,
-            },
-        ],
-        suggestion: "Element may not be in a scrollable container.",
+        steps: &[ChainStep::CustomWithDeadline {
+            label: "scroll_to_visible_verified",
+            func: crate::actions::scroll_into_view::scroll_into_view_outcome,
+        }],
+        suggestion: "Target an element that advertises AXScrollToVisible.",
+        continue_after_unverified_delivery: false,
     };
 
-    /// Only treats AXOpen as a real double-click when the element actually
-    /// advertises it: `AXUIElementPerformAction` returns success for an
-    /// unsupported action on some controls, which would make double-click claim
-    /// success while doing nothing. Elements without AXOpen (e.g. a button that
-    /// only fires on a true mouse double-click) require the physical path, which
-    /// fails closed under the headless policy.
     pub(crate) fn double_click(
-        el: &AXElement,
-        policy: InteractionPolicy,
+        element: &AXElement,
+        request: &agent_desktop_core::ActionRequest,
+        deadline: Deadline,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        if ax_helpers::has_ax_action(el, "AXOpen") && ax_helpers::try_ax_action(el, "AXOpen") {
-            return Ok(vec![
-                ActionStep::succeeded("AXOpen").with_mechanism(StepMechanism::SemanticApi),
-            ]);
-        }
-        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy)?;
-        Ok(vec![
-            ActionStep::succeeded("CGClick").with_mechanism(StepMechanism::PhysicalSynthetic),
-        ])
+        physical_multi_click(element, 2, request, deadline)
     }
 
-    /// Triple-click has no AX semantic equivalent on macOS and is therefore
-    /// unconditionally physical: it always requires cursor-move + focus-steal
-    /// policy. Callers that gate on `allow_cursor_move` will receive a
-    /// `PolicyDenied` error from `click_via_bounds` rather than a silent no-op.
     pub(crate) fn triple_click(
-        el: &AXElement,
-        policy: InteractionPolicy,
+        element: &AXElement,
+        request: &agent_desktop_core::ActionRequest,
+        deadline: Deadline,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 3, policy)?;
+        physical_multi_click(element, 3, request, deadline)
+    }
+
+    fn physical_multi_click(
+        element: &AXElement,
+        count: u32,
+        request: &agent_desktop_core::ActionRequest,
+        deadline: Deadline,
+    ) -> Result<Vec<ActionStep>, AdapterError> {
+        crate::actions::physical_click::click_via_bounds(
+            element,
+            crate::actions::physical_click::PhysicalClick {
+                button: MouseButton::Left,
+                count,
+                verified_point: request.verified_point().cloned(),
+            },
+            request.policy,
+            deadline,
+        )?;
         Ok(vec![
-            ActionStep::succeeded("CGClick").with_mechanism(StepMechanism::PhysicalSynthetic),
+            ActionStep::succeeded("CGClick")
+                .with_mechanism(StepMechanism::PhysicalSynthetic)
+                .with_verified(false),
         ])
     }
 }

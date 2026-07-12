@@ -69,9 +69,12 @@ return Err(AdapterError::new(
 ));
 ```
 
-Fixed sites (commit `b35eea9`): `crates/core/src/commands/wait_timeout.rs` (window/text/selector builders), `crates/macos/src/actions/extras.rs` (`select_value` list arm, `wait_for_value`, `option_not_found`), `crates/macos/src/actions/ax_helpers.rs` (`number_cf_from_str`). Regression guard: `wait_text_timeout_message_omits_raw_text_from_trace_segment` asserts a unique marker passed as `wait --text` never appears in the written segment.
+The regression guard `wait_text_timeout_message_omits_raw_text_from_trace_segment`
+asserts that a unique marker passed as `wait --text` never appears in the
+written trace segment. Keep that test focused on the observable privacy
+contract, not a historical list of implementation sites.
 
 ## Related
 
-- `docs/solutions/best-practices/playwright-grade-desktop-reliability-2026-06-02.md` — the broad tracing/reliability contract; its redaction guidance is refined by this convention (key-name redaction does not cover free-text `message` content).
+- [Playwright-grade desktop reliability contract](../best-practices/playwright-grade-desktop-reliability-2026-06-02.md) — the broad tracing/reliability contract; this convention refines its redaction guidance.
 - `crates/core/src/trace_sanitize.rs` — the `SENSITIVE_KEYS` allowlist this convention works around.

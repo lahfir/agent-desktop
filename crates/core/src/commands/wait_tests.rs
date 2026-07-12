@@ -2,10 +2,8 @@ use super::test_support::wait_args;
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
+    AdapterError, ErrorCode, NotificationFilter, NotificationInfo, WindowInfo,
     adapter::WindowFilter,
-    error::{AdapterError, ErrorCode},
-    node::WindowInfo,
-    notification::{NotificationFilter, NotificationInfo},
 };
 
 struct NoopAdapter;
@@ -30,6 +28,7 @@ impl SystemOps for NotificationErrorAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _deadline: crate::Deadline,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         Err(AdapterError::new(
             ErrorCode::PlatformNotSupported,
@@ -62,6 +61,7 @@ impl SystemOps for FlakyNotificationAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _deadline: crate::Deadline,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         self.responses
             .lock()
@@ -95,7 +95,11 @@ fn notification_wait_args(timeout_ms: u64) -> WaitArgs {
 struct WindowErrorAdapter;
 
 impl ObservationOps for WindowErrorAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::permission_denied())
     }
 }
@@ -178,6 +182,21 @@ fn notification_wait_times_out_with_last_error_after_transient_failures() {
     assert_eq!(adapter_err.code, ErrorCode::Timeout);
     let details = adapter_err.details.expect("timeout should carry details");
     assert_eq!(details["last_error"]["code"], "TIMEOUT");
+}
+
+#[test]
+fn expired_notification_wait_does_not_start_an_adapter_read() {
+    let adapter = FlakyNotificationAdapter::with_responses(vec![Ok(Vec::new())]);
+
+    let error = execute(
+        notification_wait_args(0),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code(), "TIMEOUT");
+    assert_eq!(adapter.responses.lock().unwrap().len(), 1);
 }
 
 #[test]

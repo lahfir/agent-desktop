@@ -1,6 +1,6 @@
 use crate::convert::window::free_window_info_fields;
 use crate::ffi_try::trap_panic_void;
-use crate::types::AdWindowInfo;
+use crate::types::{AdExactWindowInfo, AdWindowInfo};
 
 /// Releases the heap-allocated string fields (`id`, `title`, `app_name`)
 /// inside a single `AdWindowInfo` previously written by `ad_launch_app`
@@ -23,5 +23,18 @@ pub unsafe extern "C" fn ad_release_window_fields(win: *mut AdWindowInfo) {
             return;
         }
         free_window_info_fields(&mut *win);
+    })
+}
+
+/// Releases every owned string inside one exact window value.
+///
+/// # Safety
+/// `win` must be null or point to a value written by `ad_launch_app_exact`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_release_exact_window_fields(win: *mut AdExactWindowInfo) {
+    trap_panic_void(|| unsafe {
+        if let Some(window) = win.as_mut() {
+            crate::convert::window::free_exact_window_info_fields(window);
+        }
     })
 }

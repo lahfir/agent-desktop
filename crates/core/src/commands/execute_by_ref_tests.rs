@@ -1,11 +1,10 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    action::{Action, KeyCombo},
+    Action, AdapterError, ErrorCode, KeyCombo,
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::NativeHandle,
-    error::{AdapterError, ErrorCode},
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
@@ -15,24 +14,44 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 fn snapshot_with_ref(role: &str, available_actions: &[&str]) -> String {
     let mut refmap = RefMap::new();
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     refmap.allocate(RefEntry {
-        pid: 1,
-        role: role.into(),
-        name: Some("Target".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: available_actions.iter().map(|a| (*a).to_string()).collect(),
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: role.into(),
+            name: Some("Target".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: available_actions.iter().map(|a| (*a).to_string()).collect(),
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
 }
@@ -52,13 +71,28 @@ impl StaleThenOkAdapter {
 }
 
 impl ObservationOps for StaleThenOkAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         let n = self.resolve_calls.fetch_add(1, Ordering::SeqCst) + 1;
         if n <= self.fail_until {
-            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable"));
+            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable")
+                .with_details(serde_json::json!({ "retryable": true })));
         }
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "Target",
+        [
+            crate::capability::CLICK,
+            crate::capability::PRESS_KEY,
+            crate::capability::SET_VALUE
+        ]
+    );
 }
 
 impl ActionOps for StaleThenOkAdapter {
@@ -66,13 +100,16 @@ impl ActionOps for StaleThenOkAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("click"))
+        Ok(ActionResult::delivered_unverified("click"))
     }
 }
 
 impl InputOps for StaleThenOkAdapter {}
-impl SystemOps for StaleThenOkAdapter {}
+impl SystemOps for StaleThenOkAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 struct PolicyCaptureAdapter {
     captured: Mutex<Option<ActionRequest>>,
@@ -87,9 +124,23 @@ impl PolicyCaptureAdapter {
 }
 
 impl ObservationOps for PolicyCaptureAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "Target",
+        [
+            crate::capability::CLICK,
+            crate::capability::PRESS_KEY,
+            crate::capability::SET_VALUE
+        ]
+    );
 }
 
 impl ActionOps for PolicyCaptureAdapter {
@@ -97,15 +148,18 @@ impl ActionOps for PolicyCaptureAdapter {
         &self,
         _handle: &NativeHandle,
         request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         let name = request.action.name().to_string();
         *self.captured.lock().unwrap() = Some(request);
-        Ok(ActionResult::new(name))
+        Ok(ActionResult::delivered_unverified(name))
     }
 }
 
 impl InputOps for PolicyCaptureAdapter {}
-impl SystemOps for PolicyCaptureAdapter {}
+impl SystemOps for PolicyCaptureAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 #[test]
 fn default_action_timeout_ms_is_five_seconds() {
@@ -120,7 +174,7 @@ fn default_action_timeout_ms_is_five_seconds() {
 #[test]
 fn execute_forwards_default_timeout_and_retries_transient_stale_ref() {
     let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_ref("button", &["Click"]);
+    let snapshot_id = snapshot_with_ref("textfield", &["Click"]);
     let adapter = StaleThenOkAdapter::new(2);
 
     let value = execute(
@@ -146,7 +200,7 @@ fn execute_forwards_default_timeout_and_retries_transient_stale_ref() {
 #[test]
 fn execute_with_timeout_zero_normalizes_to_single_attempt() {
     let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_ref("button", &["Click"]);
+    let snapshot_id = snapshot_with_ref("textfield", &["Click"]);
     let adapter = StaleThenOkAdapter::new(1);
 
     let err = execute_with_timeout(
@@ -166,13 +220,8 @@ fn execute_with_timeout_zero_normalizes_to_single_attempt() {
     assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
 }
 
-/// The effective policy is a join, not a passthrough of `caller_policy`: a
-/// caller supplying `headless` for an action whose CLI base is
-/// `focus_fallback` (here `PressKey`) must still end up with
-/// `allow_focus_steal = true`, because the join can only elevate the caller
-/// above the action's base, never downgrade below it.
 #[test]
-fn effective_policy_never_drops_below_action_base() {
+fn caller_cannot_downgrade_press_key_below_focus_fallback() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_ref("textfield", &["PressKey"]);
     let adapter = PolicyCaptureAdapter::new();
@@ -198,21 +247,17 @@ fn effective_policy_never_drops_below_action_base() {
     assert!(!policy.allow_cursor_move);
 }
 
-/// Symmetric case: a caller-supplied policy more permissive than the action's
-/// base must be honored, not clamped back down to the base. `Click`'s base is
-/// `headless` (both flags false); a caller passing `headed` must see both
-/// flags come through as `true` on the dispatched request.
 #[test]
 fn effective_policy_honors_caller_policy_above_action_base() {
     let _guard = HomeGuard::new();
-    let snapshot_id = snapshot_with_ref("button", &["Click"]);
+    let snapshot_id = snapshot_with_ref("textfield", &["SetValue"]);
     let adapter = PolicyCaptureAdapter::new();
 
     execute(
         ExecuteByRefArgs {
             ref_id: "@e1",
             snapshot_id: Some(&snapshot_id),
-            action: Action::Click,
+            action: Action::SetValue("value".into()),
             caller_policy: InteractionPolicy::headed(),
         },
         &adapter,

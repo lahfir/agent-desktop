@@ -1,40 +1,53 @@
 use super::*;
 use crate::{
+    AdapterError, AppInfo, ErrorCode,
     action::Action,
     adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps},
     capability,
-    error::{AdapterError, ErrorCode},
 };
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
 
 /// F23 follow-up: covers the `APP_NOT_FOUND` branch of terminal process-state
 /// enrichment, split out of `ref_action_wait_process_state_tests.rs` to keep
 /// both files under the repo's 400 LOC hard limit.
 fn entry() -> RefEntry {
     RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: Some(crate::node::Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 10.0,
-            height: 10.0,
-        }),
-        bounds_hash: Some(1),
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::snapshot_surface::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Run".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(crate::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }),
+            bounds_hash: Some(1),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: Some("Original".into()),
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::snapshot_surface::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -48,18 +61,15 @@ struct TicksThenAppNotFoundAdapter {
 }
 
 impl ObservationOps for TicksThenAppNotFoundAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         let attempt = self.resolve_calls.fetch_add(1, Ordering::SeqCst) + 1;
         if attempt < 3 {
-            Err(AdapterError::new(ErrorCode::StaleRef, "not yet"))
+            Err(AdapterError::new(ErrorCode::StaleRef, "not yet")
+                .with_details(serde_json::json!({ "retryable": true })))
         } else {
             Err(AdapterError::new(ErrorCode::AppNotFound, "app gone"))
         }
@@ -71,15 +81,24 @@ impl ActionOps for TicksThenAppNotFoundAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for TicksThenAppNotFoundAdapter {}
 
 impl SystemOps for TicksThenAppNotFoundAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         self.probe_calls.fetch_add(1, Ordering::SeqCst);
         Ok(crate::process_state::ProcessState::Running)
     }
@@ -88,16 +107,12 @@ impl SystemOps for TicksThenAppNotFoundAdapter {
 struct AppNotFoundExitedProcessAdapter;
 
 impl ObservationOps for AppNotFoundExitedProcessAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::new(ErrorCode::AppNotFound, "app gone"))
-    }
-
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
-        entry: &RefEntry,
-        _timeout: Duration,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(AdapterError::new(ErrorCode::AppNotFound, "app gone"))
     }
 }
 
@@ -106,15 +121,24 @@ impl ActionOps for AppNotFoundExitedProcessAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for AppNotFoundExitedProcessAdapter {}
 
 impl SystemOps for AppNotFoundExitedProcessAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         Ok(crate::process_state::ProcessState::Exited { code: None })
     }
 }
@@ -129,7 +153,7 @@ fn terminal_app_not_found_against_exited_process_carries_process_state_detail() 
             context: &CommandContext::default(),
         },
         ActionRequest::headless(Action::Click),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap_err();
 
@@ -150,16 +174,21 @@ struct AppNotFoundUnresponsiveProcessAdapter {
 }
 
 impl ObservationOps for AppNotFoundUnresponsiveProcessAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::new(ErrorCode::AppNotFound, "app gone"))
+    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+        Ok(vec![AppInfo {
+            name: "Original".into(),
+            pid: crate::ProcessId::new(1),
+            bundle_id: None,
+            process_instance: Some("test-instance".into()),
+        }])
     }
 
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
-        entry: &RefEntry,
-        _timeout: Duration,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(AdapterError::new(ErrorCode::AppNotFound, "app gone"))
     }
 }
 
@@ -168,15 +197,24 @@ impl ActionOps for AppNotFoundUnresponsiveProcessAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for AppNotFoundUnresponsiveProcessAdapter {}
 
 impl SystemOps for AppNotFoundUnresponsiveProcessAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         self.probe_calls.fetch_add(1, Ordering::SeqCst);
         Ok(crate::process_state::ProcessState::Unresponsive)
     }
@@ -196,7 +234,7 @@ fn terminal_app_not_found_against_unresponsive_process_surfaces_app_unresponsive
             context: &CommandContext::default(),
         },
         ActionRequest::headless(Action::Click),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap_err();
 
@@ -231,7 +269,7 @@ fn probe_call_count_is_independent_of_auto_wait_tick_count() {
             context: &CommandContext::default(),
         },
         request_with_timeout(5_000),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap_err();
 

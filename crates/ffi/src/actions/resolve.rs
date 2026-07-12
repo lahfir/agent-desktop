@@ -3,15 +3,22 @@ use crate::convert::string::optional_adapter_string;
 use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
-use crate::types::{AdNativeHandle, AdRefEntry};
-use agent_desktop_core::refs::RefEntry as CoreRefEntry;
-use std::mem::ManuallyDrop;
+use crate::types::{AdExactRefEntry, AdIdentifierKind, AdNativeHandle, AdRefEntry};
+use agent_desktop_core::{
+    AdapterError, ElementIdentifier, ErrorCode, Rect, RefCapabilities, RefEntry as CoreRefEntry,
+    RefEntryIdentity, RefGeometry, RefProcess, RefScope, RefSource,
+};
+
+const MAX_REF_FIELD_BYTES: usize = 65_536;
+const MAX_REF_TOKEN_BYTES: usize = 256;
 
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
 /// `entry` must be a non-null pointer to a valid `AdRefEntry`.
 /// `out` must be a non-null pointer to an `AdNativeHandle` to write the result into.
+///
+/// This legacy entrypoint lacks exact identity evidence and fails closed. Use ad_resolve_element_exact.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_resolve_element(
     adapter: *const AdAdapter,
@@ -23,7 +30,6 @@ pub unsafe extern "C" fn ad_resolve_element(
         (*out).ptr = std::ptr::null();
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(entry, c"entry is null");
-        let adapter = &*adapter;
         let entry = &*entry;
         let core_entry = match core_ref_entry_from_ffi(entry) {
             Ok(entry) => entry,
@@ -32,40 +38,149 @@ pub unsafe extern "C" fn ad_resolve_element(
                 return error::last_error_code();
             }
         };
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
-        match adapter.inner.resolve_element_strict(&core_entry) {
-            Ok(handle) => {
-                let handle = ManuallyDrop::new(handle);
-                (*out).ptr = handle.as_raw();
-                AdResult::Ok
-            }
-            Err(e) => {
-                error::set_last_error(&e);
-                error::last_error_code()
-            }
-        }
+        resolve_core_entry(adapter, &core_entry, out)
     })
 }
 
+/// Resolves an element using process-generation and typed native-id evidence.
+///
+/// # Safety
+///
+/// `adapter` and `entry` must be live and valid; `out` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_resolve_element_exact(
+    adapter: *const AdAdapter,
+    entry: *const AdExactRefEntry,
+    out: *mut AdNativeHandle,
+) -> AdResult {
+    trap_panic(|| unsafe {
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        (*out).ptr = std::ptr::null();
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        crate::pointer_guard::guard_non_null!(entry, c"entry is null");
+        let core_entry = match core_ref_entry_from_exact(&*entry) {
+            Ok(entry) => entry,
+            Err(error) => {
+                error::set_last_error(&error);
+                return error::last_error_code();
+            }
+        };
+        resolve_core_entry(adapter, &core_entry, out)
+    })
+}
+
+unsafe fn resolve_core_entry(
+    adapter: *const AdAdapter,
+    entry: &CoreRefEntry,
+    out: *mut AdNativeHandle,
+) -> AdResult {
+    let adapter_id = adapter.addr();
+    let adapter = crate::adapter::acquire_adapter!(adapter);
+    let process = match process_identity(entry) {
+        Ok(process) => process,
+        Err(error) => {
+            error::set_last_error(&error);
+            return error::last_error_code();
+        }
+    };
+    let deadline = crate::operation::operation_deadline!();
+    match adapter.inner.resolve_element_strict(entry, deadline) {
+        Ok(handle) => {
+            match crate::actions::native_handle::into_ffi_handle(adapter_id, handle, process) {
+                Ok(token) => {
+                    unsafe { (*out).ptr = token };
+                    AdResult::Ok
+                }
+                Err(error) => {
+                    error::set_last_error(&error);
+                    error::last_error_code()
+                }
+            }
+        }
+        Err(error) => {
+            error::set_last_error(&error);
+            error::last_error_code()
+        }
+    }
+}
+
 pub(crate) unsafe fn core_ref_entry_from_ffi(
+    _entry: &AdRefEntry,
+) -> Result<CoreRefEntry, AdapterError> {
+    Err(AdapterError::new(
+        ErrorCode::InvalidArgs,
+        "legacy AdRefEntry lacks process-generation and typed identifier evidence; use AdExactRefEntry",
+    ))
+}
+
+pub(crate) unsafe fn core_ref_entry_from_exact(
+    exact: &AdExactRefEntry,
+) -> Result<CoreRefEntry, AdapterError> {
+    if exact.version != crate::types::exact_ref_entry::AD_EXACT_REF_ENTRY_VERSION
+        || exact.size as usize != crate::types::exact_ref_entry::AD_EXACT_REF_ENTRY_SIZE
+    {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "AdExactRefEntry version or size does not match this library",
+        ));
+    }
+    let process_instance = unsafe { optional_string(exact.process_instance, "process_instance") }?
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            AdapterError::new(ErrorCode::InvalidArgs, "process_instance is null or empty")
+        })?;
+    let native_id =
+        match unsafe { optional_string(exact.entry.identity.native_id, "identity.native_id") }? {
+            Some(value) if value.trim().is_empty() => {
+                return Err(AdapterError::new(
+                    ErrorCode::InvalidArgs,
+                    "identity.native_id is empty",
+                ));
+            }
+            Some(value) => {
+                let kind = AdIdentifierKind::from_c(exact.identifier_kind).ok_or_else(|| {
+                    AdapterError::new(
+                        ErrorCode::InvalidArgs,
+                        "identity.identifier_kind has an invalid discriminant",
+                    )
+                })?;
+                Some(ElementIdentifier {
+                    kind: kind.to_core(),
+                    value,
+                })
+            }
+            None => None,
+        };
+    unsafe { decode_core_ref_entry(&exact.entry, process_instance, native_id) }
+}
+
+unsafe fn decode_core_ref_entry(
     entry: &AdRefEntry,
-) -> Result<CoreRefEntry, agent_desktop_core::error::AdapterError> {
-    let role = unsafe { optional_string(entry.role, "role") }?.ok_or_else(|| {
-        agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
-            "role is null",
-        )
-    })?;
-    let name = unsafe { optional_string(entry.name, "name") }?;
-    let value = unsafe { optional_string(entry.value, "value") }?;
-    let description = unsafe { optional_string(entry.description, "description") }?;
-    let native_id = unsafe { optional_string(entry.native_id, "native_id") }?;
+    process_instance: String,
+    native_id: Option<ElementIdentifier>,
+) -> Result<CoreRefEntry, AdapterError> {
+    if entry.process.pid == 0 {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "identity.pid must be positive",
+        ));
+    }
+    let role = unsafe { optional_string(entry.identity.role, "identity.role") }?
+        .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "role is null"))?;
+    if !agent_desktop_core::Role::is_canonical(&role) || role == "unknown" {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "identity.role is not canonical",
+        ));
+    }
+    let name = unsafe { optional_string(entry.identity.name, "identity.name") }?;
+    let value = unsafe { optional_string(entry.identity.value, "identity.value") }?;
+    let description =
+        unsafe { optional_string(entry.identity.description, "identity.description") }?;
     let states = unsafe {
         string_array(
-            entry.states,
-            entry.state_count,
+            entry.capabilities.states.items,
+            entry.capabilities.states.count,
             "states",
             "AD_MAX_REF_STATES",
             crate::types::ref_entry::AD_MAX_REF_STATES,
@@ -73,58 +188,141 @@ pub(crate) unsafe fn core_ref_entry_from_ffi(
     }?;
     let available_actions = unsafe {
         string_array(
-            entry.available_actions,
-            entry.available_action_count,
+            entry.capabilities.available_actions.items,
+            entry.capabilities.available_actions.count,
             "available_actions",
             "AD_MAX_REF_ACTIONS",
             crate::types::ref_entry::AD_MAX_REF_ACTIONS,
         )
     }?;
-    let bounds = if entry.has_bounds {
-        Some(agent_desktop_core::node::Rect {
-            x: entry.bounds.x,
-            y: entry.bounds.y,
-            width: entry.bounds.width,
-            height: entry.bounds.height,
-        })
+    let bounds = if entry.geometry.has_bounds {
+        Some(
+            Rect {
+                x: entry.geometry.bounds.x,
+                y: entry.geometry.bounds.y,
+                width: entry.geometry.bounds.width,
+                height: entry.geometry.bounds.height,
+            }
+            .validate()?,
+        )
     } else {
         None
     };
-    let bounds_hash = if entry.has_bounds_hash {
-        Some(entry.bounds_hash)
+    let supplied_bounds_hash = if entry.geometry.has_bounds_hash {
+        Some(entry.geometry.bounds_hash)
     } else {
         None
     };
-    let source_surface = snapshot_surface_from_c(entry.source_surface, "source_surface")?;
-    let path = unsafe { ref_path(entry.path, entry.path_count)? };
+    let derived_bounds_hash = bounds.and_then(|value| value.bounds_hash());
+    let source_surface = snapshot_surface_from_c(entry.source.surface, "source.surface")?;
+    let path = unsafe { ref_path(entry.scope.path, entry.scope.path_count)? };
+    if let (Some(supplied), Some(derived)) = (supplied_bounds_hash, derived_bounds_hash)
+        && supplied != derived
+    {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "geometry.bounds_hash does not match geometry.bounds",
+        ));
+    }
+    let bounds_hash = supplied_bounds_hash.or(derived_bounds_hash);
+    let source_app = unsafe { optional_string(entry.source.app, "source.app") }?;
+    let source_window_id = unsafe { optional_string(entry.source.window_id, "source.window_id") }?;
+    let source_window_title =
+        unsafe { optional_string(entry.source.window_title, "source.window_title") }?;
+    let source_window_bounds_hash = entry
+        .source
+        .has_window_bounds_hash
+        .then_some(entry.source.window_bounds_hash);
+    let root_ref = unsafe { optional_string(entry.scope.root_ref, "scope.root_ref") }?;
+    for field in [
+        Some(role.as_str()),
+        Some(process_instance.as_str()),
+        name.as_deref(),
+        value.as_deref(),
+        description.as_deref(),
+        native_id
+            .as_ref()
+            .map(|identifier| identifier.value.as_str()),
+        source_app.as_deref(),
+        source_window_id.as_deref(),
+        source_window_title.as_deref(),
+        root_ref.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if field.len() > MAX_REF_FIELD_BYTES {
+            return Err(AdapterError::new(
+                ErrorCode::InvalidArgs,
+                "ref identity evidence exceeds the field limit",
+            ));
+        }
+    }
+    if states
+        .iter()
+        .chain(available_actions.iter())
+        .any(|value| value.len() > MAX_REF_TOKEN_BYTES)
+    {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "ref state or action evidence exceeds the token limit",
+        ));
+    }
 
     Ok(CoreRefEntry {
-        pid: entry.pid,
-        role,
-        name,
-        value,
-        description,
-        native_id,
-        states,
-        bounds,
-        bounds_hash,
-        available_actions,
-        source_app: unsafe { optional_string(entry.source_app, "source_app") }?,
-        source_window_id: unsafe { optional_string(entry.source_window_id, "source_window_id") }?,
-        source_window_title: unsafe {
-            optional_string(entry.source_window_title, "source_window_title")
-        }?,
-        source_surface,
-        root_ref: unsafe { optional_string(entry.root_ref, "root_ref") }?,
-        path_is_absolute: entry.path_is_absolute,
-        path,
+        process: RefProcess {
+            pid: agent_desktop_core::ProcessId::new(entry.process.pid),
+            process_instance: Some(process_instance),
+        },
+        identity: RefEntryIdentity {
+            role,
+            name,
+            value,
+            description,
+            native_id,
+        },
+        geometry: RefGeometry {
+            bounds,
+            bounds_hash,
+        },
+        capabilities: RefCapabilities {
+            states,
+            available_actions,
+        },
+        source: RefSource {
+            source_app,
+            source_window_id,
+            source_window_title,
+            source_window_bounds_hash,
+            source_surface,
+        },
+        scope: RefScope {
+            root_ref,
+            path_is_absolute: entry.scope.path_is_absolute,
+            path,
+        },
     })
+}
+
+fn process_identity(
+    entry: &CoreRefEntry,
+) -> Result<agent_desktop_core::ProcessIdentity, AdapterError> {
+    let instance = entry.process.process_instance.clone().ok_or_else(|| {
+        AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "process_instance is required for a native handle",
+        )
+    })?;
+    Ok(agent_desktop_core::ProcessIdentity::new(
+        entry.process.pid,
+        instance,
+    ))
 }
 
 unsafe fn optional_string(
     ptr: *const std::os::raw::c_char,
     field: &str,
-) -> Result<Option<String>, agent_desktop_core::error::AdapterError> {
+) -> Result<Option<String>, AdapterError> {
     optional_adapter_string(ptr, field)
 }
 
@@ -134,16 +332,16 @@ fn check_array_len(
     field: &str,
     constant: &str,
     max: usize,
-) -> Result<(), agent_desktop_core::error::AdapterError> {
+) -> Result<(), AdapterError> {
     if len > max {
-        return Err(agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
             format!("{field} count {len} exceeds {constant} ({max})"),
         ));
     }
     if is_null {
-        return Err(agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
             format!("{field} count is nonzero but pointer is null"),
         ));
     }
@@ -156,7 +354,7 @@ unsafe fn string_array(
     field: &str,
     constant: &str,
     max: usize,
-) -> Result<Vec<String>, agent_desktop_core::error::AdapterError> {
+) -> Result<Vec<String>, AdapterError> {
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -168,10 +366,7 @@ unsafe fn string_array(
         .map(|(index, item)| {
             let element = format!("{field}[{index}]");
             unsafe { optional_string(*item, &element) }?.ok_or_else(|| {
-                agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    format!("{element} is null"),
-                )
+                AdapterError::new(ErrorCode::InvalidArgs, format!("{element} is null"))
             })
         })
         .collect()
@@ -180,7 +375,7 @@ unsafe fn string_array(
 unsafe fn ref_path(
     ptr: *const u32,
     len: usize,
-) -> Result<smallvec::SmallVec<[usize; 8]>, agent_desktop_core::error::AdapterError> {
+) -> Result<smallvec::SmallVec<[usize; 8]>, AdapterError> {
     if len == 0 {
         return Ok(smallvec::SmallVec::new());
     }

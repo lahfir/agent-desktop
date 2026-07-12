@@ -49,14 +49,26 @@ fn committed_header_compiles_with_every_public_enum_constant() {
 #include <stddef.h>
 #include "agent_desktop.h"
 
+static void log_callback(int32_t level, const char *message) {
+    (void)level;
+    (void)message;
+}
+
 int main(void) {
     (void)AD_ACTION_KIND_CLICK;
     (void)AD_DIRECTION_UP;
+    (void)AD_DELIVERY_DISPOSITION_DELIVERED_VERIFIED;
+    (void)AD_FIND_SELECTION_KIND_STRICT;
+    (void)AD_IDENTIFIER_KIND_AX_IDENTIFIER;
+    (void)AD_MODIFIER_META;
     (void)AD_MODIFIER_CMD;
     (void)AD_MOUSE_BUTTON_LEFT;
     (void)AD_MOUSE_EVENT_KIND_MOVE;
+    (void)AD_POLICY_KIND_HEADLESS;
+    (void)AD_RETRY_DISPOSITION_SAFE;
     (void)AD_SCREENSHOT_KIND_FULL_SCREEN;
     (void)AD_SNAPSHOT_SURFACE_WINDOW;
+    (void)AD_STEP_MECHANISM_SEMANTIC_API;
     (void)AD_WINDOW_OP_KIND_RESIZE;
     (void)AD_IMAGE_FORMAT_PNG;
     (void)AD_RESULT_OK;
@@ -66,17 +78,46 @@ int main(void) {
     _Static_assert(AD_ACTION_RESULT_SIZE == sizeof(AdActionResult), "AdActionResult size macro drifted");
     _Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
     _Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
+    _Static_assert(offsetof(AdActionResult, details_json) == 40, "AdActionResult.details_json offset changed");
+    _Static_assert(offsetof(AdActionResult, disposition) == 48, "AdActionResult.disposition offset changed");
+    _Static_assert(AD_DELIVERY_SEMANTICS_SIZE == sizeof(AdDeliverySemantics), "AdDeliverySemantics size macro drifted");
     _Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
     _Static_assert(offsetof(AdActionStep, mechanism) == 16, "AdActionStep.mechanism offset changed");
     _Static_assert(offsetof(AdActionStep, has_mechanism) == 20, "AdActionStep.has_mechanism offset changed");
     _Static_assert(offsetof(AdActionStep, verified) == 21, "AdActionStep.verified offset changed");
     _Static_assert(offsetof(AdActionStep, has_verified) == 22, "AdActionStep.has_verified offset changed");
     _Static_assert(AD_ELEMENT_STATE_SIZE == sizeof(AdElementState), "AdElementState size macro drifted");
+    _Static_assert(AD_DISPLAY_INFO_SIZE == sizeof(AdDisplayInfo), "AdDisplayInfo size macro drifted");
+    _Static_assert(offsetof(AdDisplayInfo, id) == 8, "AdDisplayInfo.id offset changed");
+    _Static_assert(offsetof(AdDisplayInfo, scale) == 56, "AdDisplayInfo.scale offset changed");
+    _Static_assert(_Generic(((AdAppInfo){0}).pid, uint32_t: 1, default: 0), "AdAppInfo.pid must be uint32_t");
+    _Static_assert(_Generic(((AdWindowInfo){0}).pid, uint32_t: 1, default: 0), "AdWindowInfo.pid must be uint32_t");
+    _Static_assert(_Generic(((AdRefProcess){0}).pid, uint32_t: 1, default: 0), "AdRefProcess.pid must be uint32_t");
+    _Static_assert(_Generic(((AdScreenshotTarget){0}).pid, uint32_t: 1, default: 0), "AdScreenshotTarget.pid must be uint32_t");
+    AdResult (*list_surfaces)(const struct AdAdapter *, uint32_t, struct AdSurfaceList **) = ad_list_surfaces;
+    AdResult (*list_surfaces_exact)(const struct AdAdapter *, uint32_t, struct AdExactSurfaceList **) = ad_list_surfaces_exact;
+    AdResult (*list_displays)(const struct AdAdapter *, struct AdDisplayList **) = ad_list_displays;
+    AdResult callback_result = ad_set_log_callback(log_callback);
+    AdResult clear_callback_result = ad_set_log_callback(NULL);
+    (void)list_surfaces;
+    (void)list_surfaces_exact;
+    (void)list_displays;
+    (void)callback_result;
+    (void)clear_callback_result;
     (void)ad_action_step_size;
     (void)ad_ref_entry_size;
+    (void)ad_exact_ref_entry_size;
+    (void)ad_exact_surface_info_size;
+    (void)ad_exact_window_info_size;
+    (void)ad_display_info_size;
     (void)ad_last_error_details;
+    (void)ad_last_error_delivery_semantics;
     _Static_assert(AD_REF_ENTRY_SIZE == sizeof(AdRefEntry), "AdRefEntry size macro drifted");
     _Static_assert(AD_REF_ENTRY_SIZE == 200, "AdRefEntry ABI size changed");
+    _Static_assert(AD_EXACT_REF_ENTRY_SIZE == sizeof(AdExactRefEntry), "AdExactRefEntry size macro drifted");
+    _Static_assert(AD_EXACT_REF_ENTRY_SIZE == 224, "AdExactRefEntry ABI size changed");
+    _Static_assert(AD_EXACT_SURFACE_INFO_SIZE == sizeof(AdExactSurfaceInfo), "AdExactSurfaceInfo size macro drifted");
+    _Static_assert(AD_EXACT_WINDOW_INFO_SIZE == sizeof(AdExactWindowInfo), "AdExactWindowInfo size macro drifted");
     return 0;
 }
 "#;
@@ -84,6 +125,8 @@ int main(void) {
 
     let include = header_include_dir();
     let status = Command::new(cc)
+        .arg("-std=c11")
+        .arg("-pedantic-errors")
         .arg("-Wall")
         .arg("-Werror")
         .arg("-I")

@@ -1,7 +1,7 @@
 use crate::convert::rect::rect_to_c;
-use crate::convert::string::{free_c_string, string_to_c_lossy};
-use crate::types::{AdRect, AdWindowInfo};
-use agent_desktop_core::node::WindowInfo;
+use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
+use crate::types::{AdExactWindowInfo, AdRect, AdWindowInfo};
+use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo};
 use std::os::raw::c_char;
 use std::ptr;
 
@@ -22,11 +22,58 @@ pub(crate) fn window_info_to_c(w: &WindowInfo) -> AdWindowInfo {
         id: string_to_c_lossy(&w.id),
         title: string_to_c_lossy(&w.title),
         app_name: string_to_c_lossy(&w.app),
-        pid: w.pid,
+        pid: w.pid.get(),
         bounds,
         has_bounds,
-        is_focused: w.is_focused,
+        is_focused: w.state.is_focused,
     }
+}
+
+pub(crate) fn exact_window_info_to_c(w: &WindowInfo) -> AdExactWindowInfo {
+    AdExactWindowInfo {
+        version: crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_VERSION,
+        size: crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_SIZE as u32,
+        window: window_info_to_c(w),
+        process_instance: opt_string_to_c(w.process_instance.as_deref()),
+    }
+}
+
+pub(crate) fn validate_exact_window_info(window: &WindowInfo) -> Result<(), AdapterError> {
+    if window.pid.get() == 0 {
+        return Err(AdapterError::new(
+            ErrorCode::Internal,
+            "Exact window pid is not positive",
+        ));
+    }
+    if window.id.is_empty() {
+        return Err(AdapterError::new(
+            ErrorCode::Internal,
+            "Exact window id is empty",
+        ));
+    }
+    let process_instance = window
+        .process_instance
+        .as_deref()
+        .filter(|identity| !identity.is_empty())
+        .ok_or_else(|| {
+            AdapterError::new(
+                ErrorCode::Internal,
+                "Exact window lacks process-generation evidence",
+            )
+        })?;
+    crate::resource::validate_output_string(&window.id, "Window id")?;
+    crate::resource::validate_output_string(&window.title, "Window title")?;
+    crate::resource::validate_output_string(&window.app, "Window app")?;
+    crate::resource::validate_output_string(process_instance, "Window process instance")?;
+    if let Some(bounds) = window.bounds {
+        bounds.validate().map_err(|error| {
+            AdapterError::new(
+                ErrorCode::Internal,
+                format!("Exact window has invalid bounds: {}", error.message),
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub(crate) unsafe fn free_window_info_fields(w: &mut AdWindowInfo) {
@@ -40,11 +87,19 @@ pub(crate) unsafe fn free_window_info_fields(w: &mut AdWindowInfo) {
     }
 }
 
+pub(crate) unsafe fn free_exact_window_info_fields(w: &mut AdExactWindowInfo) {
+    unsafe {
+        free_window_info_fields(&mut w.window);
+        free_c_string(w.process_instance as *mut c_char);
+        w.process_instance = ptr::null();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::convert::string::c_to_string;
-    use agent_desktop_core::node::Rect;
+    use agent_desktop_core::Rect;
 
     #[test]
     fn test_window_info_roundtrip() {
@@ -52,14 +107,19 @@ mod tests {
             id: "w-123".into(),
             title: "Documents".into(),
             app: "Finder".into(),
-            pid: 42,
+            pid: agent_desktop_core::ProcessId::new(42),
+            process_instance: Some("42:100".into()),
             bounds: Some(Rect {
                 x: 10.0,
                 y: 20.0,
                 width: 800.0,
                 height: 600.0,
             }),
-            is_focused: true,
+            state: agent_desktop_core::WindowState {
+                is_focused: true,
+                minimized: None,
+                visible: None,
+            },
         };
         let c = window_info_to_c(&w);
         assert_eq!(unsafe { c_to_string(c.id) }.as_deref(), Some("w-123"));
@@ -85,9 +145,10 @@ mod tests {
             id: "w-7".into(),
             title: "Untitled".into(),
             app: "TextEdit".into(),
-            pid: 99,
+            pid: agent_desktop_core::ProcessId::new(99),
+            process_instance: Some("99:200".into()),
             bounds: None,
-            is_focused: false,
+            state: agent_desktop_core::WindowState::default(),
         };
         let c = window_info_to_c(&w);
         assert!(
@@ -101,5 +162,44 @@ mod tests {
         assert_eq!(c.bounds.height, 0.0);
         let mut c = c;
         unsafe { free_window_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn exact_window_info_carries_owned_process_generation() {
+        let window = WindowInfo {
+            id: "w-9".into(),
+            title: "Main".into(),
+            app: "Fixture".into(),
+            pid: agent_desktop_core::ProcessId::new(9),
+            process_instance: Some("9:123".into()),
+            bounds: None,
+            state: agent_desktop_core::WindowState::default(),
+        };
+        let mut exact = exact_window_info_to_c(&window);
+
+        assert_eq!(
+            unsafe { c_to_string(exact.process_instance) }.as_deref(),
+            Some("9:123")
+        );
+        unsafe { free_exact_window_info_fields(&mut exact) };
+        assert!(exact.process_instance.is_null());
+    }
+
+    #[test]
+    fn exact_window_validation_rejects_missing_process_generation() {
+        let window = WindowInfo {
+            id: "w-9".into(),
+            title: "Main".into(),
+            app: "Fixture".into(),
+            pid: agent_desktop_core::ProcessId::new(9),
+            process_instance: None,
+            bounds: None,
+            state: agent_desktop_core::WindowState::default(),
+        };
+
+        let error = validate_exact_window_info(&window).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::Internal);
+        assert!(error.message.contains("process-generation"));
     }
 }

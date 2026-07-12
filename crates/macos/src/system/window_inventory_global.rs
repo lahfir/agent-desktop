@@ -1,0 +1,314 @@
+use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::time::Instant;
+
+use crate::system::{cg_window::WindowRecord, window_ax_state::WindowAxState};
+
+impl OwnerSnapshotView for crate::system::workspace_apps::WindowOwnerSnapshot {
+    fn eligible_pids(&self) -> FxHashSet<i32> {
+        crate::system::workspace_apps::WindowOwnerSnapshot::eligible_pids(self)
+    }
+
+    fn generation(&self, pid: i32) -> Option<OwnerGeneration> {
+        self.owner(pid).map(|owner| match owner.launch_time {
+            Some(launch_time) => OwnerGeneration::LaunchTime(launch_time),
+            None => OwnerGeneration::LiveProcess,
+        })
+    }
+
+    fn frontmost_pid(&self) -> Option<i32> {
+        self.frontmost().map(|owner| owner.pid)
+    }
+
+    fn same_generation(&self, other: &Self) -> bool {
+        crate::system::workspace_apps::WindowOwnerSnapshot::same_generation(self, other)
+    }
+}
+
+pub(super) trait OwnerSnapshotView {
+    fn eligible_pids(&self) -> FxHashSet<i32>;
+    fn generation(&self, pid: i32) -> Option<OwnerGeneration>;
+    fn frontmost_pid(&self) -> Option<i32>;
+    fn same_generation(&self, other: &Self) -> bool;
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum OwnerGeneration {
+    LaunchTime(f64),
+    LiveProcess,
+}
+
+pub(crate) fn list_windows_until(
+    focused_only: bool,
+    deadline: Instant,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    stabilize_global_with(deadline, || capture_global_once(focused_only, deadline))
+}
+
+fn capture_global_once(
+    focused_only: bool,
+    deadline: Instant,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    capture_global_with(
+        focused_only,
+        || crate::system::workspace_apps::window_owner_snapshot_until(deadline),
+        |eligible_pids| {
+            crate::system::cg_window::window_records_until(
+                deadline,
+                crate::system::cg_window::WindowRecordScope::Pids(eligible_pids),
+            )
+        },
+        |pid| crate::system::window_ax_state::read_frontmost_until(pid, deadline),
+    )
+}
+
+fn capture_global_with<S: OwnerSnapshotView>(
+    focused_only: bool,
+    mut capture_owners: impl FnMut() -> Result<S, AdapterError>,
+    mut capture_records: impl FnMut(&FxHashSet<i32>) -> Result<Vec<WindowRecord>, AdapterError>,
+    mut read_frontmost: impl FnMut(i32) -> Result<WindowAxState, AdapterError>,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    let before = capture_owners()?;
+    let eligible_pids = OwnerSnapshotView::eligible_pids(&before);
+    let records = capture_records(&eligible_pids)?;
+    let assembled =
+        assemble_global_windows(records.clone(), &before, focused_only, &mut read_frontmost);
+    let after = capture_owners()?;
+    validate_snapshot_pair(&before, &after, &records)?;
+    assembled
+}
+
+pub(super) fn assemble_global_windows<S: OwnerSnapshotView>(
+    records: Vec<WindowRecord>,
+    owners: &S,
+    focused_only: bool,
+    mut read_frontmost: impl FnMut(i32) -> Result<WindowAxState, AdapterError>,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    let records = records
+        .into_iter()
+        .filter(|record| record.window_number > 0)
+        .collect::<Vec<_>>();
+    validate_record_generations(&records, owners)?;
+    let frontmost_pid = owners.frontmost_pid();
+    let frontmost_window_owner =
+        frontmost_pid.filter(|pid| records.iter().any(|record| record.pid == *pid));
+    let focus_state = match frontmost_window_owner {
+        Some(pid) => Some(read_frontmost(pid).map_err(frontmost_read_error)?),
+        None => None,
+    };
+    let focused_windows = matching_focus_windows(&records, frontmost_pid, focus_state.as_ref());
+    if frontmost_window_owner.is_some() && focused_windows.len() != 1 {
+        return Err(focus_join_error(frontmost_pid, focused_windows.len()));
+    }
+    let focused_window = focused_windows.first().copied();
+    records
+        .into_iter()
+        .filter_map(|record| {
+            let is_focused = Some((record.pid, record.window_number)) == focused_window;
+            if focused_only && !is_focused {
+                return None;
+            }
+            let minimized = if Some(record.pid) == frontmost_pid {
+                focus_state
+                    .as_ref()
+                    .and_then(|state| state.minimized_by_id.get(&record.window_number).copied())
+            } else {
+                None
+            };
+            Some(record.into_window_info(is_focused, minimized))
+        })
+        .collect::<Result<Vec<_>, _>>()
+}
+
+pub(super) fn validate_snapshot_pair<S: OwnerSnapshotView>(
+    before: &S,
+    after: &S,
+    records: &[WindowRecord],
+) -> Result<(), AdapterError> {
+    if !before.same_generation(after) {
+        return Err(owner_churn_error(None, "appkit_snapshot_changed"));
+    }
+    validate_record_generations(records, after)
+}
+
+pub(super) fn stabilize_global_with(
+    deadline: Instant,
+    mut capture: impl FnMut() -> Result<Vec<WindowInfo>, AdapterError>,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    let mut attempts = 0_u64;
+    let mut last_error = None;
+    loop {
+        if Instant::now() >= deadline {
+            return Err(global_timeout(attempts, last_error.as_ref()));
+        }
+        attempts += 1;
+        match capture() {
+            Ok(windows) => return Ok(windows),
+            Err(error) if retryable_global_error(&error) => {
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error),
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if !remaining.is_zero() {
+            std::thread::sleep(remaining.min(std::time::Duration::from_millis(5)));
+        }
+    }
+}
+
+fn validate_record_generations<S: OwnerSnapshotView>(
+    records: &[WindowRecord],
+    owners: &S,
+) -> Result<(), AdapterError> {
+    for (pid, instance) in unique_process_instances(records)? {
+        let generation = owners
+            .generation(pid)
+            .ok_or_else(|| owner_churn_error(Some(pid), "owner_not_eligible"))?;
+        let matches = match generation {
+            OwnerGeneration::LaunchTime(launch_time) => {
+                crate::system::process_identity::instance_matches_launch_time(
+                    pid,
+                    instance,
+                    launch_time,
+                )?
+            }
+            OwnerGeneration::LiveProcess => {
+                crate::system::process_identity::matches_instance(pid, instance)?
+            }
+        };
+        if !matches {
+            return Err(owner_churn_error(Some(pid), "process_generation_changed"));
+        }
+    }
+    Ok(())
+}
+
+fn unique_process_instances(records: &[WindowRecord]) -> Result<Vec<(i32, &str)>, AdapterError> {
+    let mut instances = FxHashMap::default();
+    for record in records {
+        let instance = record
+            .process_instance
+            .as_deref()
+            .filter(|instance| !instance.is_empty())
+            .ok_or_else(|| owner_churn_error(Some(record.pid), "process_instance_missing"))?;
+        match instances.entry(record.pid) {
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                if *entry.get() != instance {
+                    return Err(owner_churn_error(
+                        Some(record.pid),
+                        "process_instance_conflict",
+                    ));
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(instance);
+            }
+        }
+    }
+    let mut instances = instances.into_iter().collect::<Vec<_>>();
+    instances.sort_unstable_by_key(|(pid, _)| *pid);
+    Ok(instances)
+}
+
+fn matching_focus_windows(
+    records: &[WindowRecord],
+    frontmost_pid: Option<i32>,
+    state: Option<&WindowAxState>,
+) -> Vec<(i32, i64)> {
+    let Some(frontmost_pid) = frontmost_pid else {
+        return Vec::new();
+    };
+    let Some((focused_title, focused_number)) = state.and_then(|state| state.focused.as_ref())
+    else {
+        return Vec::new();
+    };
+    if let Some(number) = focused_number {
+        return records
+            .iter()
+            .filter(|record| record.pid == frontmost_pid && record.window_number == *number)
+            .map(|record| (record.pid, record.window_number))
+            .collect();
+    }
+    records
+        .iter()
+        .filter(|record| {
+            record.pid == frontmost_pid && focused_title.as_deref() == Some(record.display_title())
+        })
+        .map(|record| (record.pid, record.window_number))
+        .collect()
+}
+
+fn frontmost_read_error(error: AdapterError) -> AdapterError {
+    if !matches!(
+        error.code,
+        ErrorCode::Timeout | ErrorCode::AppUnresponsive | ErrorCode::ElementNotFound
+    ) {
+        return error;
+    }
+    let source_kind = error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("kind"))
+        .cloned();
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Authoritative frontmost window accessibility read was incomplete",
+    )
+    .with_details(serde_json::json!({
+        "kind": "frontmost_window_ax_incomplete",
+        "source_code": error.code.as_str(),
+        "source_kind": source_kind,
+        "complete": false,
+        "retryable": true,
+    }))
+}
+
+fn focus_join_error(pid: Option<i32>, match_count: usize) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Authoritative frontmost app did not join to one exact window",
+    )
+    .with_details(serde_json::json!({
+        "kind": "frontmost_window_join",
+        "pid": pid,
+        "match_count": match_count,
+        "complete": false,
+        "retryable": true,
+    }))
+}
+
+fn owner_churn_error(pid: Option<i32>, phase: &str) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Window owner identity changed during global inventory",
+    )
+    .with_details(serde_json::json!({
+        "kind": "global_window_owner_churn",
+        "pid": pid,
+        "phase": phase,
+        "complete": false,
+        "retryable": true,
+    }))
+}
+
+fn retryable_global_error(error: &AdapterError) -> bool {
+    error.code == ErrorCode::AppUnresponsive && error.is_explicitly_retryable()
+}
+
+fn global_timeout(attempts: u64, last_error: Option<&AdapterError>) -> AdapterError {
+    AdapterError::timeout("Global application window inventory did not stabilize before deadline")
+        .with_details(serde_json::json!({
+            "kind": "global_window_inventory_unstable",
+            "attempts": attempts,
+            "last_code": last_error.map(|error| error.code.as_str()),
+            "last_kind": last_error
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("kind")),
+            "complete": false,
+            "retryable": true,
+        }))
+}
+
+#[cfg(test)]
+#[path = "window_inventory_global_tests.rs"]
+mod tests;

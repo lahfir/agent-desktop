@@ -18,7 +18,9 @@ pub(crate) fn trap_panic<F>(body: F) -> AdResult
 where
     F: FnOnce() -> AdResult,
 {
-    match catch_unwind(AssertUnwindSafe(body)) {
+    match catch_unwind(AssertUnwindSafe(|| {
+        crate::log_callback::with_dispatch(body)
+    })) {
         Ok(result) => result,
         Err(_) => {
             set_last_error_static(AdResult::ErrInternal, PANIC_MESSAGE);
@@ -33,7 +35,9 @@ pub(crate) fn trap_panic_ptr<T, F>(body: F) -> *mut T
 where
     F: FnOnce() -> *mut T,
 {
-    match catch_unwind(AssertUnwindSafe(body)) {
+    match catch_unwind(AssertUnwindSafe(|| {
+        crate::log_callback::with_dispatch(body)
+    })) {
         Ok(ptr) => ptr,
         Err(_) => {
             set_last_error_static(AdResult::ErrInternal, PANIC_MESSAGE);
@@ -48,7 +52,9 @@ pub(crate) fn trap_panic_const_ptr<T, F>(body: F) -> *const T
 where
     F: FnOnce() -> *const T,
 {
-    match catch_unwind(AssertUnwindSafe(body)) {
+    match catch_unwind(AssertUnwindSafe(|| {
+        crate::log_callback::with_dispatch(body)
+    })) {
         Ok(ptr) => ptr,
         Err(_) => {
             set_last_error_static(AdResult::ErrInternal, PANIC_MESSAGE);
@@ -65,7 +71,11 @@ pub(crate) fn trap_panic_void<F>(body: F)
 where
     F: FnOnce(),
 {
-    if catch_unwind(AssertUnwindSafe(body)).is_err() {
+    if catch_unwind(AssertUnwindSafe(|| {
+        crate::log_callback::with_dispatch(body)
+    }))
+    .is_err()
+    {
         set_last_error_static(AdResult::ErrInternal, PANIC_MESSAGE);
     }
 }
@@ -115,5 +125,13 @@ mod tests {
     #[test]
     fn test_void_panic_is_swallowed() {
         trap_panic_void(|| panic!("boom"));
+    }
+
+    #[test]
+    fn panic_handler_survives_reentrant_last_error_borrow() {
+        let result = crate::error::with_last_error_mutably_borrowed(|| {
+            trap_panic(|| -> AdResult { panic!("reentrant") })
+        });
+        assert_eq!(result, AdResult::ErrInternal);
     }
 }

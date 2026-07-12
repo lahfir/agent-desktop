@@ -11,7 +11,7 @@ A structured representation of an application's user interface exposed by the op
 An observation of an accessibility tree at a point in time, persisted with the element refs allocated from that observation.
 
 ### Snapshot ID
-A compact identifier for one persisted snapshot. Explicit snapshot IDs are direct handles; callers do not need the original session when they pass the ID.
+A compact identifier for one persisted snapshot. Lookup is confined to the selected session namespace, so an ID created in a session is not a cross-session handle.
 
 ### Surface
 A scoped UI layer that can be observed separately from the whole window, such as an open menu, sheet, popover, alert, or focused area.
@@ -24,7 +24,7 @@ A snapshot operation that starts from an existing ref to observe that element's 
 ### Ref
 A short element identifier assigned by agent-desktop to an actionable or drillable node in a snapshot.
 
-Refs are deterministic inside one snapshot but are not stable across UI changes. Callers either pass the snapshot ID that produced the ref or intentionally use the session's latest snapshot pointer.
+Refs are deterministic inside one snapshot but are not stable across UI changes. Snapshot and find output qualify each ref with its snapshot ID. Legacy bare refs require the producing snapshot ID as a separate argument.
 
 ### RefMap
 The persisted mapping from refs to the identity evidence needed to re-identify elements later.
@@ -47,9 +47,9 @@ Strict ref resolution rejects missing, stale, and ambiguous matches instead of g
 ### Session
 An on-disk container under `~/.agent-desktop/sessions/<id>/` that owns snapshot refmaps, an optional trace directory, and a `session.json` manifest.
 
-`session start` writes the manifest (`trace: on` unless `--no-trace`), pre-creates `trace/` when tracing is on, and sets `~/.agent-desktop/current_session`. Activating a session (via pointer, `AGENT_DESKTOP_SESSION`, or `--session`) relocates the latest-snapshot namespace as well as the trace sink. Bare `--session <id>` without a manifest remains snapshot-namespace-only for backward compatibility.
+`session start` writes the manifest (`trace: on` unless `--no-trace`) and pre-creates `trace/` when tracing is on. It returns the new ID but does not activate it for later processes. Explicit `--session` takes precedence over `AGENT_DESKTOP_SESSION`; with neither, commands use the global, non-session namespace. Bare `--session <id>` without a manifest remains snapshot-namespace-only for backward compatibility.
 
-Use sessions when callers intentionally omit `--snapshot` and want a shared latest observation — typically after `session start` for a coordinated run. Explicit snapshot IDs remain the deterministic path for pinned actions and can be resolved without also passing the session.
+Use sessions when callers want a coordinated snapshot namespace and trace sink. Every lookup is confined to its selected namespace, so a snapshot created under a session requires that same `--session` or `AGENT_DESKTOP_SESSION` scope later. Qualified refs remain the deterministic path for pinned actions inside that namespace.
 
 ### Session Manifest
 The `session.json` file describing one session: id, optional name, created/ended timestamps, and `trace: on|off`.
@@ -112,4 +112,4 @@ The requirement that language bindings using refs follow the same strict resolut
 
 ## Relationships
 
-A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected directly by snapshot ID. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch, and the action chain executes that dispatch under its own deadline with the interaction policy gating its physical steps. FFI ref-action parity keeps that same relationship true for language bindings.
+A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected by ID within that same namespace. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch, and the action chain executes that dispatch under its own deadline with the interaction policy gating its physical steps. FFI ref-action parity keeps that same relationship true for language bindings.

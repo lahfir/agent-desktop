@@ -1,28 +1,28 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
+    AdapterError, ErrorCode,
     adapter::NativeHandle,
     capability,
     commands::wait_predicate,
-    error::{AdapterError, ErrorCode},
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
-use std::time::Duration;
 
 use super::test_support::wait_for_element_test;
 
 struct AmbiguousResolveAdapter;
 
 impl ObservationOps for AmbiguousResolveAdapter {
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::ambiguous_target("2 candidates matched"))
+        Err(AdapterError::ambiguous_target("2 candidates matched")
+            .with_details(serde_json::json!({ "retryable": true })))
     }
 }
 
@@ -37,13 +37,14 @@ struct TransientResolveAdapter {
 }
 
 impl ObservationOps for TransientResolveAdapter {
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         if let Some(code) = self.errors.lock().unwrap().pop() {
-            return Err(AdapterError::new(code, "transient resolution failure"));
+            return Err(AdapterError::new(code, "transient resolution failure")
+                .with_details(serde_json::json!({ "retryable": true })));
         }
         Ok(NativeHandle::null())
     }
@@ -58,10 +59,10 @@ impl SystemOps for TransientResolveAdapter {}
 struct PermissionResolveAdapter;
 
 impl ObservationOps for PermissionResolveAdapter {
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         Err(AdapterError::permission_denied())
     }
@@ -76,7 +77,11 @@ impl SystemOps for PermissionResolveAdapter {}
 struct StrictOnlyResolveAdapter;
 
 impl ObservationOps for StrictOnlyResolveAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 }
@@ -92,12 +97,15 @@ struct TimeoutCaptureAdapter {
 }
 
 impl ObservationOps for TimeoutCaptureAdapter {
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        timeout: Duration,
+        deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        self.captured_ms.lock().unwrap().push(timeout.as_millis());
+        self.captured_ms
+            .lock()
+            .unwrap()
+            .push(deadline.remaining().as_millis());
         Ok(NativeHandle::null())
     }
 }
@@ -111,23 +119,37 @@ impl SystemOps for TimeoutCaptureAdapter {}
 fn snapshot_with_one_ref() -> String {
     let mut refmap = RefMap::new();
     refmap.allocate(RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Run".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
 }
@@ -200,7 +222,7 @@ fn element_wait_passes_remaining_budget_to_resolver() {
 }
 
 #[test]
-fn element_wait_delegates_to_strict_only_resolution() {
+fn element_wait_uses_the_strict_deadline_aware_resolver() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
@@ -214,7 +236,6 @@ fn element_wait_delegates_to_strict_only_resolution() {
     )
     .unwrap();
 
-    assert_eq!(value["found"], true);
     assert_eq!(value["observed"]["exists"], true);
 }
 

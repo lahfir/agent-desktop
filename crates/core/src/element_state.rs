@@ -7,4 +7,10 @@ pub struct ElementState {
     pub states: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub hidden: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub offscreen: Option<bool>,
 }

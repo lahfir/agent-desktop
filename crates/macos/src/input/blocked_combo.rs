@@ -1,4 +1,4 @@
-use agent_desktop_core::action::{KeyCombo, Modifier};
+use agent_desktop_core::{KeyCombo, Modifier};
 
 const BLOCKED: &[&str] = &[
     "cmd+q",
@@ -25,7 +25,7 @@ fn combo_to_string(combo: &KeyCombo) -> String {
 
 fn modifier_name(modifier: &Modifier) -> &'static str {
     match modifier {
-        Modifier::Cmd => "cmd",
+        Modifier::Meta => "cmd",
         Modifier::Ctrl => "ctrl",
         Modifier::Alt => "alt",
         Modifier::Shift => "shift",

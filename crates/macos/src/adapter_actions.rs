@@ -1,36 +1,32 @@
 use agent_desktop_core::{
+    Action, ActionResult, ActionStep, AdapterError, InteractionLease, StepMechanism,
     action_request::ActionRequest,
-    action_result::ActionResult,
     adapter::{ActionOps, NativeHandle},
-    error::AdapterError,
 };
 
-use crate::adapter::{MacOSAdapter, with_borrowed_ax_element};
+use crate::adapter::{MacOSAdapter, ax_element};
 
 impl ActionOps for MacOSAdapter {
     fn execute_action(
         &self,
         handle: &NativeHandle,
         request: ActionRequest,
+        lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        execute_action_impl(handle, request)
+        if handle.is_null() {
+            return execute_global_action(request, lease);
+        }
+        execute_action_impl(handle, request, lease)
     }
 
-    fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
-        let raw = handle.as_raw();
-        if raw.is_null() {
-            return Ok(());
-        }
-        unsafe {
-            core_foundation::base::CFRelease(raw as core_foundation::base::CFTypeRef);
-        }
-        Ok(())
-    }
-
-    fn scroll_into_view(&self, handle: &NativeHandle) -> Result<(), AdapterError> {
-        with_borrowed_ax_element(
-            handle,
-            crate::actions::scroll_into_view::scroll_into_view_impl,
+    fn scroll_into_view(
+        &self,
+        handle: &NativeHandle,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::actions::scroll_into_view::scroll_into_view_impl(
+            ax_element(handle)?,
+            lease.deadline(),
         )
     }
 }
@@ -38,6 +34,24 @@ impl ActionOps for MacOSAdapter {
 fn execute_action_impl(
     handle: &NativeHandle,
     request: ActionRequest,
+    lease: &InteractionLease,
 ) -> Result<ActionResult, AdapterError> {
-    with_borrowed_ax_element(handle, |el| crate::actions::perform_action(el, &request))
+    crate::actions::perform_action(ax_element(handle)?, &request, lease.deadline())
+}
+
+fn execute_global_action(
+    request: ActionRequest,
+    lease: &InteractionLease,
+) -> Result<ActionResult, AdapterError> {
+    let Action::PressKey(combo) = request.action else {
+        return Err(AdapterError::not_supported("global element action"));
+    };
+    crate::input::keyboard::synthesize_key(&combo, None, lease.deadline())?;
+    Ok(
+        ActionResult::delivered_unverified("press_key").with_steps(vec![
+            ActionStep::succeeded("CGEventPost")
+                .with_mechanism(StepMechanism::PhysicalSynthetic)
+                .with_verified(false),
+        ]),
+    )
 }

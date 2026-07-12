@@ -1,15 +1,25 @@
 use super::*;
+
+fn resolve_test_point(
+    args: PointResolveArgs<'_>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<ResolvedPoint, AppError> {
+    let deadline = crate::Deadline::standard().unwrap();
+    let lease = crate::InteractionLease::guarded(deadline, ()).unwrap();
+    resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, &lease)
+}
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
+    ErrorCode, Rect,
     adapter::NativeHandle,
     capability,
-    error::ErrorCode,
     hit_test::HitTestResult,
-    node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
 };
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[test]
 fn physical_input_requires_headed_context() {
@@ -31,11 +41,19 @@ struct HitTestOutcomeAdapter {
 }
 
 impl ObservationOps for HitTestOutcomeAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
         Ok(Some(Rect {
             x: 100.0,
             y: 200.0,
@@ -48,6 +66,7 @@ impl ObservationOps for HitTestOutcomeAdapter {
         &self,
         _handle: &NativeHandle,
         _point: Point,
+        _deadline: crate::Deadline,
     ) -> Result<HitTestResult, AdapterError> {
         self.outcome.clone()
     }
@@ -57,27 +76,41 @@ impl ActionOps for HitTestOutcomeAdapter {}
 impl InputOps for HitTestOutcomeAdapter {}
 impl SystemOps for HitTestOutcomeAdapter {}
 
-fn ref_snapshot(pid: i32) -> String {
+fn ref_snapshot(pid: u32) -> String {
     let store = RefStore::new().unwrap();
     let mut refmap = RefMap::new();
     refmap.allocate(RefEntry {
-        pid,
-        role: "button".into(),
-        name: Some("Target".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(pid),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Target".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     store.save_new_snapshot(&refmap).unwrap()
 }
@@ -88,6 +121,7 @@ fn ref_args(snapshot_id: &str) -> PointResolveArgs<'_> {
         xy: None,
         snapshot_id: Some(snapshot_id),
         missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        focus_before_resolve: false,
     }
 }
 
@@ -107,11 +141,7 @@ fn intercepted_by_blocks_ref_targeted_point_resolution() {
         }),
     };
 
-    let result = resolve_point_from_ref_or_xy_with_context(
-        ref_args(&snapshot_id),
-        &adapter,
-        &CommandContext::default(),
-    );
+    let result = resolve_test_point(ref_args(&snapshot_id), &adapter, &CommandContext::default());
     let err = match result {
         Ok(_) => panic!("occluded ref target must not resolve to a point"),
         Err(err) => err,
@@ -130,38 +160,32 @@ fn reaches_target_allows_ref_targeted_point_resolution() {
         outcome: Ok(HitTestResult::ReachesTarget),
     };
 
-    let resolved = resolve_point_from_ref_or_xy_with_context(
-        ref_args(&snapshot_id),
-        &adapter,
-        &CommandContext::default(),
-    )
-    .unwrap();
+    let resolved =
+        resolve_test_point(ref_args(&snapshot_id), &adapter, &CommandContext::default()).unwrap();
 
     assert_eq!(resolved.point.x, 110.0);
     assert_eq!(resolved.point.y, 205.0);
 }
 
 #[test]
-fn unknown_hit_test_result_does_not_block_ref_targeted_resolution() {
+fn unknown_hit_test_result_fails_closed_for_ref_targeted_resolution() {
     let _guard = HomeGuard::new();
     let snapshot_id = ref_snapshot(42);
     let adapter = HitTestOutcomeAdapter {
         outcome: Ok(HitTestResult::Unknown),
     };
 
-    resolve_point_from_ref_or_xy_with_context(
-        ref_args(&snapshot_id),
-        &adapter,
-        &CommandContext::default(),
-    )
-    .unwrap();
+    let err = match resolve_test_point(ref_args(&snapshot_id), &adapter, &CommandContext::default())
+    {
+        Ok(_) => panic!("inconclusive hit-test evidence must fail closed"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code(), "ACTION_FAILED");
 }
 
-/// A hit-test probe error must never be treated as occlusion (the reliability
-/// learning's evidence rule) — resolution proceeds exactly as if hit-testing
-/// were unavailable.
 #[test]
-fn hit_test_probe_error_does_not_block_ref_targeted_resolution() {
+fn hit_test_probe_error_is_preserved_for_ref_targeted_resolution() {
     let _guard = HomeGuard::new();
     let snapshot_id = ref_snapshot(42);
     let adapter = HitTestOutcomeAdapter {
@@ -170,12 +194,13 @@ fn hit_test_probe_error_does_not_block_ref_targeted_resolution() {
         )),
     };
 
-    resolve_point_from_ref_or_xy_with_context(
-        ref_args(&snapshot_id),
-        &adapter,
-        &CommandContext::default(),
-    )
-    .unwrap();
+    let err = match resolve_test_point(ref_args(&snapshot_id), &adapter, &CommandContext::default())
+    {
+        Ok(_) => panic!("failed hit-test evidence must fail closed"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code(), "INTERNAL");
 }
 
 /// Raw `--xy` input stays raw by design (KTD4): no ref means no occlusion
@@ -190,12 +215,13 @@ fn raw_xy_input_never_calls_hit_test() {
         }),
     };
 
-    let resolved = resolve_point_from_ref_or_xy_with_context(
+    let resolved = resolve_test_point(
         PointResolveArgs {
             ref_id: None,
             xy: Some((5.0, 6.0)),
             snapshot_id: None,
             missing_input_message: "Provide a ref (@e1) or --xy x,y",
+            focus_before_resolve: false,
         },
         &adapter,
         &CommandContext::default(),
@@ -203,4 +229,141 @@ fn raw_xy_input_never_calls_hit_test() {
     .unwrap();
 
     assert_eq!((resolved.point.x, resolved.point.y), (5.0, 6.0));
+}
+
+fn focus_ref_entry() -> RefEntry {
+    RefEntry {
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(42),
+            process_instance: Some("instance-42".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Target".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: Some("Fixture".into()),
+            source_window_id: Some("w-42".into()),
+            source_window_title: Some("Fixture".into()),
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
+    }
+}
+
+struct FocusFailureAdapter {
+    resolve_error: Option<AdapterError>,
+    focus_error: Option<AdapterError>,
+    focus_calls: AtomicU32,
+}
+
+impl ObservationOps for FocusFailureAdapter {}
+impl ActionOps for FocusFailureAdapter {}
+impl InputOps for FocusFailureAdapter {}
+
+impl SystemOps for FocusFailureAdapter {
+    fn resolve_window_strict(
+        &self,
+        window: &crate::WindowInfo,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::WindowInfo, AdapterError> {
+        match &self.resolve_error {
+            Some(error) => Err(error.clone()),
+            None => Ok(window.clone()),
+        }
+    }
+
+    fn focus_window(
+        &self,
+        _window: &crate::WindowInfo,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        self.focus_calls.fetch_add(1, Ordering::SeqCst);
+        match &self.focus_error {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
+    }
+}
+
+fn focus_test_lease() -> crate::InteractionLease {
+    crate::InteractionLease::guarded(crate::Deadline::standard().unwrap(), ()).unwrap()
+}
+
+#[test]
+fn transient_window_resolution_failure_degrades_to_unfocused_input() {
+    let adapter = FocusFailureAdapter {
+        resolve_error: Some(AdapterError::app_unresponsive("Fixture")),
+        focus_error: None,
+        focus_calls: AtomicU32::new(0),
+    };
+
+    let focused = focus_for_physical_input(
+        Some(&focus_ref_entry()),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+        &focus_test_lease(),
+    )
+    .unwrap();
+
+    assert!(!focused);
+    assert_eq!(adapter.focus_calls.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn transient_focus_failure_degrades_to_unfocused_input() {
+    let adapter = FocusFailureAdapter {
+        resolve_error: None,
+        focus_error: Some(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "window could not be raised",
+        )),
+        focus_calls: AtomicU32::new(0),
+    };
+
+    let focused = focus_for_physical_input(
+        Some(&focus_ref_entry()),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+        &focus_test_lease(),
+    )
+    .unwrap();
+
+    assert!(!focused);
+    assert_eq!(adapter.focus_calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn permission_failure_during_focus_is_preserved() {
+    let adapter = FocusFailureAdapter {
+        resolve_error: None,
+        focus_error: Some(AdapterError::permission_denied()),
+        focus_calls: AtomicU32::new(0),
+    };
+
+    let err = focus_for_physical_input(
+        Some(&focus_ref_entry()),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+        &focus_test_lease(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "PERM_DENIED");
 }

@@ -1,6 +1,8 @@
 use clap::{Args, Parser};
 use serde::Deserialize;
 
+use super::WindowScope;
+
 fn default_launch_timeout() -> u64 {
     30000
 }
@@ -38,7 +40,7 @@ pub(crate) struct LaunchArgs {
     pub cwd: Option<std::path::PathBuf>,
     #[arg(
         long = "no-attach",
-        help = "Launch without waiting for a window to appear"
+        help = "Require a fresh instance; fail if the app is already running"
     )]
     #[serde(default)]
     pub no_attach: bool,
@@ -85,8 +87,9 @@ pub(crate) struct FocusWindowArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ResizeWindowCliArgs {
-    #[arg(long, help = "Application name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[arg(long, help = "New window width in pixels")]
     pub width: f64,
     #[arg(long, help = "New window height in pixels")]
@@ -96,8 +99,9 @@ pub(crate) struct ResizeWindowCliArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MoveWindowCliArgs {
-    #[arg(long, help = "Application name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[arg(long, help = "New window X position")]
     pub x: f64,
     #[arg(long, help = "New window Y position")]
@@ -107,8 +111,9 @@ pub(crate) struct MoveWindowCliArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AppRefArgs {
-    #[arg(long, help = "Application name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -237,7 +242,7 @@ pub(crate) struct WaitPredicateArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID for --element waits; omit to use active session latest"
+        help = "Snapshot ID required when --element is a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -272,14 +277,6 @@ pub(crate) struct PermissionsArgs {
     #[arg(long, help = "Trigger the system accessibility permission dialog")]
     #[serde(default)]
     pub request: bool,
-}
-
-#[derive(Parser, Debug)]
-pub(crate) struct BatchArgs {
-    #[arg(value_name = "JSON", help = "JSON array of {command, args} objects")]
-    pub commands_json: String,
-    #[arg(long, help = "Halt the batch on the first failed command")]
-    pub stop_on_error: bool,
 }
 
 #[cfg(test)]

@@ -1,12 +1,11 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
+    AdapterError, Rect,
     adapter::NativeHandle,
     capability,
     commands::stale_retry_test_support::StaleRetryCounter,
-    error::AdapterError,
     hit_test::HitTestResult,
-    node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
@@ -15,7 +14,7 @@ use std::sync::Mutex;
 
 struct HoverCaptureAdapter {
     moved_to: Mutex<Option<MouseEvent>>,
-    focused_pids: Mutex<Vec<i32>>,
+    focused_pids: Mutex<Vec<crate::ProcessId>>,
 }
 
 impl HoverCaptureAdapter {
@@ -28,11 +27,19 @@ impl HoverCaptureAdapter {
 }
 
 impl ObservationOps for HoverCaptureAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
         Ok(Some(Rect {
             x: 100.0,
             y: 200.0,
@@ -40,45 +47,86 @@ impl ObservationOps for HoverCaptureAdapter {
             height: 10.0,
         }))
     }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<HitTestResult, AdapterError> {
+        Ok(HitTestResult::ReachesTarget)
+    }
 }
 
 impl ActionOps for HoverCaptureAdapter {}
 
 impl InputOps for HoverCaptureAdapter {
-    fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
+    fn mouse_event(
+        &self,
+        event: MouseEvent,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
         *self.moved_to.lock().unwrap() = Some(event);
         Ok(())
     }
 }
 
 impl SystemOps for HoverCaptureAdapter {
-    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
-        self.focused_pids.lock().unwrap().push(pid);
+    crate::adapter::guarded_interaction_lease!();
+
+    fn resolve_window_strict(
+        &self,
+        window: &crate::WindowInfo,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::WindowInfo, AdapterError> {
+        Ok(window.clone())
+    }
+
+    fn focus_window(
+        &self,
+        window: &crate::WindowInfo,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        self.focused_pids.lock().unwrap().push(window.pid);
         Ok(())
     }
 }
 
-fn ref_snapshot(pid: i32) -> String {
+fn ref_snapshot(pid: u32) -> String {
     let store = RefStore::new().unwrap();
     let mut refmap = RefMap::new();
     refmap.allocate(RefEntry {
-        pid,
-        role: "button".into(),
-        name: Some("Target".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(pid),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Target".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: Some(format!("App {pid}")),
+            source_window_id: Some(format!("w-{pid}")),
+            source_window_title: Some(format!("Window {pid}")),
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     store.save_new_snapshot(&refmap).unwrap()
 }
@@ -159,11 +207,19 @@ impl StaleThenOkAdapter {
 }
 
 impl ObservationOps for StaleThenOkAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         self.retry.attempt()
     }
 
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
         Ok(Some(Rect {
             x: 100.0,
             y: 200.0,
@@ -171,17 +227,48 @@ impl ObservationOps for StaleThenOkAdapter {
             height: 10.0,
         }))
     }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<HitTestResult, AdapterError> {
+        Ok(HitTestResult::ReachesTarget)
+    }
 }
 
 impl ActionOps for StaleThenOkAdapter {}
 
 impl InputOps for StaleThenOkAdapter {
-    fn mouse_event(&self, _event: MouseEvent) -> Result<(), AdapterError> {
+    fn mouse_event(
+        &self,
+        _event: MouseEvent,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
         Ok(())
     }
 }
 
-impl SystemOps for StaleThenOkAdapter {}
+impl SystemOps for StaleThenOkAdapter {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn resolve_window_strict(
+        &self,
+        window: &crate::WindowInfo,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::WindowInfo, AdapterError> {
+        Ok(window.clone())
+    }
+
+    fn focus_window(
+        &self,
+        _window: &crate::WindowInfo,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        Ok(())
+    }
+}
 
 /// Regression for the F2 fix: `hover --ref` previously had no `--timeout-ms`
 /// at all, so a transient `STALE_REF` on the resolved ref failed the command
@@ -210,91 +297,5 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
     assert!(adapter.retry.calls() >= 3);
 }
 
-struct OccludedTargetAdapter {
-    moved_to: Mutex<Option<MouseEvent>>,
-}
-
-impl ObservationOps for OccludedTargetAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
-        Ok(Some(Rect {
-            x: 100.0,
-            y: 200.0,
-            width: 20.0,
-            height: 10.0,
-        }))
-    }
-
-    fn hit_test(
-        &self,
-        _handle: &NativeHandle,
-        _point: crate::action::Point,
-    ) -> Result<HitTestResult, AdapterError> {
-        Ok(HitTestResult::InterceptedBy {
-            role: Some("AXSheet".into()),
-            name: Some("Save changes?".into()),
-            bounds: None,
-        })
-    }
-}
-
-impl ActionOps for OccludedTargetAdapter {}
-
-impl InputOps for OccludedTargetAdapter {
-    fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
-        *self.moved_to.lock().unwrap() = Some(event);
-        Ok(())
-    }
-}
-
-impl SystemOps for OccludedTargetAdapter {}
-
-/// F27 regression: `hover --ref` previously resolved the ref's bounds to a
-/// point and dispatched the mouse move without ever consulting `hit_test`,
-/// so an occluded target (e.g. a modal sheet over it) was hovered blind.
-/// This proves the preflight now fails before any mouse event is sent.
-#[test]
-fn hover_on_occluded_ref_fails_preflight_before_dispatch() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = ref_snapshot(42);
-    let adapter = OccludedTargetAdapter {
-        moved_to: Mutex::new(None),
-    };
-
-    let err = execute(
-        ref_args(snapshot_id),
-        &adapter,
-        &CommandContext::default().with_headed(true),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "ACTION_FAILED");
-    assert!(err.to_string().contains("AXSheet"));
-    assert!(adapter.moved_to.lock().unwrap().is_none());
-}
-
-#[test]
-fn timeout_none_makes_exactly_one_resolve_attempt() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = ref_snapshot(42);
-    let adapter = StaleThenOkAdapter::new(1);
-
-    let err = execute(
-        HoverArgs {
-            ref_id: Some("@e1".into()),
-            snapshot_id: Some(snapshot_id),
-            xy: None,
-            duration_ms: None,
-            timeout_ms: None,
-        },
-        &adapter,
-        &CommandContext::default().with_headed(true),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "STALE_REF");
-    assert_eq!(adapter.retry.calls(), 1);
-}
+#[path = "hover_preflight_tests.rs"]
+mod preflight_tests;

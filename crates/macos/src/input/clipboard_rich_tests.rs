@@ -1,23 +1,16 @@
+use super::super::clipboard_file_urls::file_url_to_path;
 use super::*;
 
-fn fake_png(width: u32, height: u32) -> Vec<u8> {
-    let mut bytes = vec![0u8; 24];
-    bytes[0..8].copy_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-    bytes[12..16].copy_from_slice(b"IHDR");
-    bytes[16..20].copy_from_slice(&width.to_be_bytes());
-    bytes[20..24].copy_from_slice(&height.to_be_bytes());
-    bytes
+#[test]
+fn complete_png_reports_verified_dimensions() {
+    let (_, dimensions) = prepare_image(&one_pixel_png()).unwrap();
+
+    assert_eq!(dimensions, (1, 1));
 }
 
 #[test]
-fn png_dimensions_reads_ihdr_width_and_height() {
-    let bytes = fake_png(640, 480);
-    assert_eq!(png_dimensions(&bytes), (640, 480));
-}
-
-#[test]
-fn png_dimensions_of_undersized_buffer_is_zero_not_panic() {
-    assert_eq!(png_dimensions(&[1, 2, 3]), (0, 0));
+fn undersized_png_is_rejected_without_panicking() {
+    assert!(prepare_image(&[1, 2, 3]).is_err());
 }
 
 #[test]
@@ -37,4 +30,59 @@ fn file_url_to_path_decodes_percent_escaped_spaces() {
 #[test]
 fn file_url_to_path_rejects_non_file_scheme() {
     assert!(file_url_to_path("https://example.com/a.txt").is_none());
+}
+
+#[test]
+fn non_png_image_payload_is_rejected_before_native_decode() {
+    let error = prepare_image(b"II*\0unbounded-tiff").expect_err("TIFF is unsupported");
+
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+}
+
+#[test]
+fn valid_png_is_passed_through_without_decode_or_reencode() {
+    let png = one_pixel_png();
+    let (prepared, dimensions) = prepare_image(&png).unwrap();
+
+    assert!(matches!(prepared, std::borrow::Cow::Borrowed(_)));
+    assert_eq!(prepared.as_ref(), png);
+    assert_eq!(dimensions, (1, 1));
+}
+
+#[test]
+fn file_url_validation_is_all_or_nothing() {
+    let paths = vec!["/tmp/good".to_string(), String::new()];
+
+    assert!(prepare_file_urls(&paths).is_err());
+}
+
+#[test]
+fn file_urls_reject_remote_hosts_and_relative_paths() {
+    assert!(file_url_to_path("file://server/share/note.txt").is_none());
+    assert!(prepare_file_urls(&["relative/note.txt".into()]).is_err());
+}
+
+#[test]
+fn file_urls_reject_embedded_nul() {
+    assert!(file_url_to_path("file:///tmp/a%00b").is_none());
+    assert!(prepare_file_urls(&["/tmp/a\0b".into()]).is_err());
+}
+
+#[test]
+fn oversized_dimensions_are_rejected_from_the_header() {
+    let mut png = one_pixel_png();
+    png[16..20].copy_from_slice(&100_000_u32.to_be_bytes());
+    png[20..24].copy_from_slice(&100_000_u32.to_be_bytes());
+
+    let error = prepare_image(&png).expect_err("pixel bomb metadata must be rejected");
+
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+}
+
+fn one_pixel_png() -> [u8; 68] {
+    [
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4,
+        0, 0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 100, 248, 15, 0, 1, 5,
+        1, 1, 39, 24, 227, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+    ]
 }

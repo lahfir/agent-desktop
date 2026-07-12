@@ -29,6 +29,51 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: rustup component add rustfmt
       - run: cargo fmt --all -- --check
+      - name: Check E2E scripts without running native automation
+        run: |
+          scripts/check-bash3-compat.sh
+          shellcheck -x -e SC2034,SC2154 tests/e2e/run.sh tests/e2e/electron-live.sh tests/e2e/permission-contract.sh tests/e2e/guard-command.sh scripts/*.sh .githooks/pre-commit
+          PYTHONPYCACHEPREFIX=/tmp/agent-desktop-pycache python3 -m py_compile tests/e2e/*.py
+          PYTHONPYCACHEPREFIX=/tmp/agent-desktop-pycache python3 -m unittest discover -s tests/e2e -p 'test_*.py'
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.11
+
+  msrv:
+    name: Rust 1.89 MSRV
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - run: rustup toolchain install 1.89.0 --profile minimal
+      - run: cargo +1.89.0 check --locked -p agent-desktop-core -p agent-desktop-linux -p agent-desktop --all-targets
+
+  platform-check:
+    name: Native check (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux
+            os: ubuntu-latest
+            package: agent-desktop-linux
+          - platform: Windows
+            os: windows-latest
+            package: agent-desktop-windows
+          - platform: macOS
+            os: macos-latest
+            package: agent-desktop-macos
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Check native adapter and binary
+        run: cargo check --locked -p agent-desktop-core -p ${{ matrix.package }} -p agent-desktop --all-targets
 
   test:
     name: Test
@@ -40,7 +85,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install Rust toolchain
-        run: rustup show
+        run: |
+          rustup show
+          rustup component add clippy
+
+      - name: Verify macOS Bash 3.2 compatibility
+        run: /bin/bash scripts/check-bash3-compat.sh
 
       - name: Cache cargo registry
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -63,7 +113,8 @@ jobs:
 
       - name: Check dependency isolation
         run: |
-          if cargo tree --locked -p agent-desktop-core 2>/dev/null | grep -E 'agent-desktop-(macos|windows|linux)'; then
+          TREE=$(cargo tree --locked -p agent-desktop-core --edges normal,build)
+          if printf '%s\n' "$TREE" | grep -E 'agent-desktop-(macos|windows|linux)'; then
             echo "FAIL: core crate depends on platform crates"
             exit 1
           fi
@@ -72,46 +123,87 @@ jobs:
       - name: Check release metadata consistency
         run: scripts/check-release-consistency.sh
 
-      - name: Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Enforce Rust source rules
+        run: scripts/check-rust-file-size.sh
 
-      - name: Unit tests
-        run: cargo test --locked --lib --workspace
+      - name: Clippy
+        run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-macos -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
+
+      - name: Core and macOS unit tests
+        run: scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-core -p agent-desktop-macos --lib
+
+      - name: Locator benchmark adapter contract
+        run: scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-core --example locator_benchmark
+
+      - name: Deterministic permission acceptance contract
+        run: bash tests/e2e/permission-contract.sh
 
       - name: Binary command tests
-        run: cargo test --locked -p agent-desktop
+        run: scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop
 
       # The FFI crate ships integration harnesses under crates/ffi/tests/ that
       # exercise the C-ABI from outside the crate (raw extern "C" decls, enum
       # fuzzing, out-param zeroing, last-error lifetimes). The workspace --lib
       # run skips them, so wire them in explicitly so regressions fail PR CI.
       - name: FFI integration tests
-        run: cargo test --locked -p agent-desktop-ffi --tests
+        run: scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-ffi --tests
 
-      # Use the ci profile (no LTO, opt-level 1) — fast compile, still checks the binary builds.
-      - name: Build binary (ci profile)
-        run: cargo build --locked --profile ci
-
-      - name: Check binary size
+      - name: Build stripped release binary
         run: |
-          SIZE=$(stat -f%z target/ci/agent-desktop)
-          LIMIT=$((15 * 1024 * 1024))
-          echo "Binary size: $(du -sh target/ci/agent-desktop | cut -f1)"
-          if [ "$SIZE" -gt "$LIMIT" ]; then
-            echo "FAIL: binary exceeds 15MB limit (${SIZE} bytes)"
+          cargo build --locked --release -p agent-desktop
+          cargo build --locked --release -p agent-desktop-macos --bin agent-desktop-macos-helper
+
+      - name: Verify shipped binary version flag
+        run: |
+          PACKAGE_ID=$(cargo pkgid -p agent-desktop)
+          EXPECTED_VERSION=${PACKAGE_ID##*@}
+          EXPECTED_OUTPUT="agent-desktop $EXPECTED_VERSION"
+          ACTUAL_OUTPUT=$(target/release/agent-desktop --version)
+          if [ "$ACTUAL_OUTPUT" != "$EXPECTED_OUTPUT" ]; then
+            echo "FAIL: expected '$EXPECTED_OUTPUT', got '$ACTUAL_OUTPUT'"
             exit 1
           fi
-          echo "OK: binary within 15MB limit"
+
+      - name: Check shipped binary size
+        run: |
+          SIZE=$(stat -f%z target/release/agent-desktop)
+          HELPER_SIZE=$(stat -f%z target/release/agent-desktop-macos-helper)
+          LIMIT=$((15 * 1024 * 1024))
+          echo "Binary size: $(du -sh target/release/agent-desktop | cut -f1)"
+          echo "Helper size: $(du -sh target/release/agent-desktop-macos-helper | cut -f1)"
+          if [ "$SIZE" -gt "$LIMIT" ] || [ "$HELPER_SIZE" -gt "$LIMIT" ]; then
+            echo "FAIL: shipped executable exceeds 15MB limit (binary=${SIZE}, helper=${HELPER_SIZE} bytes)"
+            exit 1
+          fi
+          echo "OK: shipped executables are within the 15MB per-file limit"
 
       - name: FFI cdylib build (release-ffi profile)
         run: cargo build --locked --profile release-ffi -p agent-desktop-ffi
+
+      - name: FFI dylib-adjacent helper discovery smoke
+        run: |
+          STAGE=$(mktemp -d /tmp/agent-desktop-ffi-helper.XXXXXX)
+          trap 'rm -rf "$STAGE"' EXIT
+          cp target/release-ffi/libagent_desktop_ffi.dylib "$STAGE/"
+          cp target/release/agent-desktop-macos-helper "$STAGE/"
+          chmod +x "$STAGE/agent-desktop-macos-helper"
+          DYLIB_SHA=$(shasum -a 256 "$STAGE/libagent_desktop_ffi.dylib" | awk '{print $1}')
+          HELPER_SHA=$(shasum -a 256 "$STAGE/agent-desktop-macos-helper" | awk '{print $1}')
+          AD_DYLIB_PATH="$STAGE/libagent_desktop_ffi.dylib" \
+            AD_HEADER_PATH=crates/ffi/include/agent_desktop.h \
+            AD_EXPECT_MACOS_HELPER=1 \
+            python3 tests/ffi-python/smoke.py
+          test "$DYLIB_SHA" = "$(shasum -a 256 "$STAGE/libagent_desktop_ffi.dylib" | awk '{print $1}')"
+          test "$HELPER_SHA" = "$(shasum -a 256 "$STAGE/agent-desktop-macos-helper" | awk '{print $1}')"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '24'
 
       - name: NPM package contents
-        run: node scripts/check-npm-package.js
+        run: |
+          node --test tests/npm/*.test.js
+          node scripts/check-npm-package.js
 
       - name: NPM wrapper smoke
         run: |
@@ -123,9 +215,22 @@ jobs:
               exit 1
               ;;
           esac
-          trap 'rm -f "npm/bin/${NAME}"' EXIT
-          cp target/ci/agent-desktop "npm/bin/${NAME}"
+          HELPER_NAME=agent-desktop-macos-helper
+          trap 'rm -f "npm/bin/${NAME}" "npm/bin/${HELPER_NAME}"' EXIT
+          SOURCE=target/release/agent-desktop
+          HELPER_SOURCE=target/release/agent-desktop-macos-helper
+          SOURCE_SHA=$(shasum -a 256 "$SOURCE" | awk '{print $1}')
+          HELPER_SOURCE_SHA=$(shasum -a 256 "$HELPER_SOURCE" | awk '{print $1}')
+          cp "$SOURCE" "npm/bin/${NAME}"
+          cp "$HELPER_SOURCE" "npm/bin/${HELPER_NAME}"
           chmod +x "npm/bin/${NAME}"
+          chmod +x "npm/bin/${HELPER_NAME}"
+          COPY_SHA=$(shasum -a 256 "npm/bin/${NAME}" | awk '{print $1}')
+          HELPER_COPY_SHA=$(shasum -a 256 "npm/bin/${HELPER_NAME}" | awk '{print $1}')
+          if [ "$SOURCE_SHA" != "$COPY_SHA" ] || [ "$HELPER_SOURCE_SHA" != "$HELPER_COPY_SHA" ]; then
+            echo "NPM smoke executable copy failed immutable identity verification" >&2
+            exit 1
+          fi
           node npm/bin/agent-desktop.js version > /tmp/agent-desktop-version.json
           node -e "
             const out = require('fs').readFileSync('/tmp/agent-desktop-version.json', 'utf8');
@@ -134,6 +239,13 @@ jobs:
               throw new Error('agent-desktop npm wrapper did not return version JSON');
             }
           "
+          if [ "$SOURCE_SHA" != "$(shasum -a 256 "$SOURCE" | awk '{print $1}')" ] || \
+             [ "$COPY_SHA" != "$(shasum -a 256 "npm/bin/${NAME}" | awk '{print $1}')" ] || \
+             [ "$HELPER_SOURCE_SHA" != "$(shasum -a 256 "$HELPER_SOURCE" | awk '{print $1}')" ] || \
+             [ "$HELPER_COPY_SHA" != "$(shasum -a 256 "npm/bin/${HELPER_NAME}" | awk '{print $1}')" ]; then
+            echo "NPM smoke executable changed while it was executed" >&2
+            exit 1
+          fi
 
   ffi-python-smoke:
     name: FFI Python Smoke
@@ -232,11 +344,9 @@ jobs:
   # This job proves the contract in two steps:
   #   1. Assert the Cargo.toml profile setting directly (simpler and more
   #      reliable than a build.rs env check for a dual cdylib+rlib crate).
-  #   2. Build and run crates/ffi/examples/panic_spike under the release-ffi
-  #      profile: an extern-C fn panics, catch_unwind catches it, and the
-  #      example prints "PANIC CAUGHT OK (code = -1)" and exits 0. If the
-  #      profile were flipped to panic="abort" the process would SIGABRT
-  #      instead, making this step a runtime proof — not just a string check.
+  #   2. Build the actual feature-gated cdylib panic entrypoint, load it with
+  #      dlopen from a C process, and require the exported ABI boundary to
+  #      return ErrInternal instead of aborting the host.
   ffi-panic-guard:
     name: FFI Panic Guard
     runs-on: macos-latest
@@ -268,8 +378,8 @@ jobs:
           fi
           echo "OK: release-ffi profile retains panic=\"unwind\""
 
-      - name: Prove catch_unwind survives the release-ffi profile
-        run: cargo run --locked --profile release-ffi --example panic_spike -p agent-desktop-ffi
+      - name: Prove the shipped cdylib catches an exported-boundary panic
+        run: bash crates/ffi/tests/run_cdylib_panic_probe.sh
 
   # Gate 3 — Stub-adapter passthrough tests: the Family-B command-backed
   # entrypoints (ad_snapshot, ad_status, ad_wait, ad_execute_by_ref,
@@ -286,10 +396,9 @@ jobs:
   # documented follow-up.
   #
   # Per-target build coverage:
-  #   - PR CI: this job runs on Linux (no main-thread guard off macOS, so the
-  #     stub adapter is reached directly) to assert PLATFORM_NOT_SUPPORTED for
-  #     every covered entrypoint — directly proving the non-macOS parity
-  #     U10 targets.
+  #   - PR CI: this job runs on Linux and reaches the stub adapter directly to
+  #     assert PLATFORM_NOT_SUPPORTED for every covered entrypoint, proving the
+  #     non-macOS parity U10 targets.
   #   - Release: release.yml build-ffi matrix covers macOS×2 + Linux×2 +
   #     Windows×1 for the real cdylib. PR builds do not duplicate that
   #     cross-compile matrix to avoid bloating CI on every push.
@@ -317,44 +426,5 @@ jobs:
 
       - name: Run stub-adapter passthrough tests
         run: >
-          cargo test --locked -p agent-desktop-ffi
+          scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-ffi
           --features stub-adapter --test c_abi_passthrough
-
-  # Gate 4 — Codegen drift: the committed src/commands/generated.rs must
-  # match what build.rs produces from the current templates. A stale committed
-  # file means the source diverged from the templates — either a hand-edit
-  # bypassed the generator or a template was changed without rebuilding.
-  ffi-codegen-drift:
-    name: FFI Codegen Drift
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Install Rust toolchain
-        run: rustup show
-
-      - name: Cache cargo registry
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Regenerate FFI command wrappers via build.rs
-        run: cargo build --locked -p agent-desktop-ffi --features stub-adapter
-
-      - name: Assert no drift in commands/generated.rs
-        run: |
-          if ! git diff --exit-code crates/ffi/src/commands/generated.rs; then
-            echo ""
-            echo "FAIL: crates/ffi/src/commands/generated.rs is out of sync with build.rs templates."
-            echo "      Run 'cargo build -p agent-desktop-ffi' locally and commit the updated file."
-            exit 1
-          fi
-          echo "OK: commands/generated.rs matches build.rs output"

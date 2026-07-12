@@ -2,16 +2,19 @@ use clap::{Args, Parser, ValueEnum};
 use serde::Deserialize;
 
 pub(crate) mod actions;
+pub(crate) mod batch;
+pub(crate) mod drag;
+pub(crate) mod drag_target;
 pub(crate) mod mouse_wheel;
 pub(crate) mod notifications;
 pub(crate) mod session;
 pub(crate) mod skills;
+mod snapshot;
+pub(crate) mod snapshot_tree;
 pub(crate) mod system;
 pub(crate) mod trace;
 
-fn default_max_depth() -> u8 {
-    10
-}
+pub(crate) use snapshot::SnapshotArgs;
 
 fn default_get_property() -> String {
     "text".to_string()
@@ -32,6 +35,18 @@ pub(crate) enum Surface {
     Sheet,
     Popover,
     Alert,
+    Desktop,
+    Taskbar,
+    SystemTray,
+    QuickSettings,
+    NotificationCenter,
+    Toolbar,
+    Dock,
+    Spotlight,
+    MenuBarExtras,
+    SystemTrayOverflow,
+    StartMenu,
+    ActionCenter,
 }
 
 impl Surface {
@@ -45,6 +60,18 @@ impl Surface {
             Self::Sheet => SnapshotSurface::Sheet,
             Self::Popover => SnapshotSurface::Popover,
             Self::Alert => SnapshotSurface::Alert,
+            Self::Desktop => SnapshotSurface::Desktop,
+            Self::Taskbar => SnapshotSurface::Taskbar,
+            Self::SystemTray => SnapshotSurface::SystemTray,
+            Self::QuickSettings => SnapshotSurface::QuickSettings,
+            Self::NotificationCenter => SnapshotSurface::NotificationCenter,
+            Self::Toolbar => SnapshotSurface::Toolbar,
+            Self::Dock => SnapshotSurface::Dock,
+            Self::Spotlight => SnapshotSurface::Spotlight,
+            Self::MenuBarExtras => SnapshotSurface::MenuBarExtras,
+            Self::SystemTrayOverflow => SnapshotSurface::SystemTrayOverflow,
+            Self::StartMenu => SnapshotSurface::StartMenu,
+            Self::ActionCenter => SnapshotSurface::ActionCenter,
         }
     }
 }
@@ -67,51 +94,6 @@ pub(crate) struct WindowScope {
     )]
     #[serde(default)]
     pub window_id: Option<String>,
-}
-
-#[derive(Parser, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SnapshotArgs {
-    #[command(flatten)]
-    #[serde(flatten)]
-    pub scope: WindowScope,
-    #[arg(long, default_value = "10", help = "Maximum tree depth")]
-    #[serde(default = "default_max_depth")]
-    pub max_depth: u8,
-    #[arg(long, help = "Include element bounds (x, y, width, height)")]
-    #[serde(default)]
-    pub include_bounds: bool,
-    #[arg(long, short = 'i', help = "Include interactive elements only")]
-    #[serde(default)]
-    pub interactive_only: bool,
-    #[arg(
-        long,
-        help = "Collapse single-child unnamed nodes to reduce tree depth"
-    )]
-    #[serde(default)]
-    pub compact: bool,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = Surface::Window,
-        help = "Surface to snapshot"
-    )]
-    #[serde(default)]
-    pub surface: Surface,
-    #[arg(
-        long,
-        help = "Shallow overview with children_count on truncated containers"
-    )]
-    #[serde(default)]
-    pub skeleton: bool,
-    #[arg(long, help = "Start traversal from this ref instead of window root")]
-    pub root: Option<String>,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID to use when resolving --root"
-    )]
-    pub snapshot: Option<String>,
 }
 
 /// Match-criteria fields, grouped out of [`FindArgs`] to keep it under the
@@ -223,12 +205,15 @@ pub(crate) struct ScreenshotArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct GetArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -243,12 +228,15 @@ pub(crate) struct GetArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IsArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -263,16 +251,23 @@ pub(crate) struct IsArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RefArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long = "snapshot",
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     #[serde(rename = "snapshot", alias = "snapshot_id")]
     pub snapshot_id: Option<String>,
-    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[arg(
+        long = "timeout-ms",
+        default_value_t = 5000,
+        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
+    )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
 }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::node::Rect;
+use crate::Rect;
 
 #[test]
 fn vocabulary_contains_seventeen_tokens() {

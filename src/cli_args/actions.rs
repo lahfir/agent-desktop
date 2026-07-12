@@ -24,17 +24,24 @@ fn default_ref_timeout_ms() -> u64 {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TypeArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(value_name = "TEXT", allow_hyphen_values = true, help = "Text to type")]
     pub text: String,
-    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[arg(
+        long = "timeout-ms",
+        default_value_t = 5000,
+        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
+    )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
 }
@@ -42,12 +49,15 @@ pub(crate) struct TypeArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SetValueArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -56,7 +66,11 @@ pub(crate) struct SetValueArgs {
         help = "Value to set"
     )]
     pub value: String,
-    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[arg(
+        long = "timeout-ms",
+        default_value_t = 5000,
+        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
+    )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
 }
@@ -64,17 +78,24 @@ pub(crate) struct SetValueArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SelectArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(value_name = "VALUE", help = "Option to select")]
     pub value: String,
-    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[arg(
+        long = "timeout-ms",
+        default_value_t = 5000,
+        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
+    )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
 }
@@ -82,12 +103,15 @@ pub(crate) struct SelectArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ScrollArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -100,7 +124,11 @@ pub(crate) struct ScrollArgs {
     #[arg(long, default_value = "3", help = "Number of scroll units")]
     #[serde(default = "default_scroll_amount")]
     pub amount: u32,
-    #[arg(long = "timeout-ms", default_value_t = 5000)]
+    #[arg(
+        long = "timeout-ms",
+        default_value_t = 5000,
+        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
+    )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
 }
@@ -128,7 +156,7 @@ pub(crate) struct PressArgs {
 pub(crate) struct KeyComboArgs {
     #[arg(
         value_name = "COMBO",
-        help = "Key or modifier to hold/release: shift, cmd, ctrl ..."
+        help = "Key or modifier to hold/release: shift, meta, ctrl ... (cmd is accepted)"
     )]
     pub combo: String,
     #[arg(
@@ -150,52 +178,21 @@ pub(crate) struct HoverArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
     pub xy: Option<String>,
-    #[arg(long, help = "Hold hover position for N milliseconds")]
-    pub duration: Option<u64>,
-    #[arg(long = "timeout-ms", default_value_t = 5000)]
-    #[serde(default = "default_ref_timeout_ms")]
-    pub timeout_ms: u64,
-}
-
-#[derive(Parser, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DragCliArgs {
-    #[arg(long, help = "Source element ref; requires --headed")]
-    pub from: Option<String>,
     #[arg(
         long,
-        name = "from-xy",
-        help = "Source coordinates as x,y; requires --headed"
+        help = "Reserved for compatibility; positive values are rejected in stateless mode (run hover, then `wait <ms>` instead)"
     )]
-    pub from_xy: Option<String>,
-    #[arg(long, help = "Destination element ref; requires --headed")]
-    pub to: Option<String>,
-    #[arg(
-        long,
-        name = "to-xy",
-        help = "Destination coordinates as x,y; requires --headed"
-    )]
-    pub to_xy: Option<String>,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
-    )]
-    pub snapshot: Option<String>,
-    #[arg(long, help = "Drag duration in milliseconds")]
     pub duration: Option<u64>,
     #[arg(
-        long = "drop-delay",
-        value_name = "MS",
-        help = "Hold over the destination this many ms before releasing, so the drop target activates (macOS); default 500"
+        long = "timeout-ms",
+        default_value_t = 5000,
+        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
     )]
-    pub drop_delay: Option<u64>,
-    #[arg(long = "timeout-ms", default_value_t = 5000)]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
 }
@@ -225,7 +222,7 @@ pub(crate) struct MouseClickArgs {
     #[arg(
         long,
         value_name = "MODIFIER",
-        help = "Held modifiers: shift, cmd, ctrl, alt (repeatable)"
+        help = "Held modifiers: shift, meta, ctrl, alt (repeatable; cmd is accepted)"
     )]
     #[serde(default)]
     pub modifiers: Vec<String>,
@@ -246,7 +243,7 @@ pub(crate) struct MousePointArgs {
     #[arg(
         long,
         value_name = "MODIFIER",
-        help = "Held modifiers: shift, cmd, ctrl, alt (repeatable)"
+        help = "Held modifiers: shift, meta, ctrl, alt (repeatable; cmd is accepted)"
     )]
     #[serde(default)]
     pub modifiers: Vec<String>,

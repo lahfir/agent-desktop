@@ -16,6 +16,18 @@ const EXPECTED_CORE_SURFACES: &[SnapshotSurface] = &[
     SnapshotSurface::Sheet,
     SnapshotSurface::Popover,
     SnapshotSurface::Alert,
+    SnapshotSurface::Desktop,
+    SnapshotSurface::Taskbar,
+    SnapshotSurface::SystemTray,
+    SnapshotSurface::QuickSettings,
+    SnapshotSurface::NotificationCenter,
+    SnapshotSurface::Toolbar,
+    SnapshotSurface::Dock,
+    SnapshotSurface::Spotlight,
+    SnapshotSurface::MenuBarExtras,
+    SnapshotSurface::SystemTrayOverflow,
+    SnapshotSurface::StartMenu,
+    SnapshotSurface::ActionCenter,
 ];
 
 /// Keeps the CLI `Surface` enum and the hand-maintained `EXPECTED_CORE_SURFACES`
@@ -170,7 +182,7 @@ fn snapshot_args_batch_json_flat_scope_deserializes_into_scope_group() {
 
     assert_eq!(args.scope.app.as_deref(), Some("Finder"));
     assert_eq!(args.scope.window_id.as_deref(), Some("w-2"));
-    assert_eq!(args.max_depth, 10);
+    assert_eq!(args.tree.max_depth, 10);
 }
 
 /// `SnapshotArgs` inherits `WindowScope`'s `deny_unknown_fields`; a typo'd

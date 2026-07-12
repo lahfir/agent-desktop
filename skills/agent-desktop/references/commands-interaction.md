@@ -7,7 +7,7 @@ Commands for modifying UI state — clicking, typing, selecting, scrolling, and 
 Ref-based actions run in two modes, Playwright-style:
 
 - **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the AX path cannot perform the action it fails closed rather than reaching for OS input synthesis. (`type` is the one exception: its base tier may focus the target field — required for reliable typing — but still never moves the cursor.)
-- **`--headed`.** A global flag (`agent-desktop --headed click @e5`) that upgrades every ref action to permit focus stealing **and** cursor movement, unlocking the physical click/double-click/scroll/keypress fallbacks in the action chain. The AX path is still tried first, so `--headed` never regresses elements that work headlessly — it only adds fallbacks for elements that need a real gesture (e.g. a gesture-only button with no `AXOpen`).
+- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that upgrades every ref action to permit focus stealing **and** cursor movement, unlocking the physical click/double-click/scroll/keypress fallbacks in the action chain. The AX path is still tried first, so `--headed` never regresses elements that work headlessly — it only adds fallbacks for elements that need a real gesture (e.g. a gesture-only button with no `AXOpen`).
 
 Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) are physical by nature. Cursor-moving commands (`hover`, `drag`, `mouse-*`) require `--headed`; keyboard commands are explicit low-level input.
 
@@ -19,8 +19,8 @@ Three global flags poll the accessibility tree until a compact selector matches 
 
 ```bash
 agent-desktop snapshot --app Finder -w "button:OK"
-agent-desktop click @e5 -w ":Saved!"
-agent-desktop click @e5 --wait-for-gone "progressindicator" --wait-timeout 5000
+agent-desktop click @s8f3k2p9:e5 -w ":Saved!"
+agent-desktop click @s8f3k2p9:e5 --wait-for-gone "progressindicator" --wait-timeout 5000
 ```
 
 | Flag | Short | Default | Meaning |
@@ -55,7 +55,7 @@ The command surface is platform-agnostic: every ref action builds an `Action` an
 | `drag` / drop | no | dragging *is* a cursor press-move-release; no general AX drag. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD) |
 | menu bar (`--surface menubar`) | enumerate/open | the app menu bar is readable and openable; SwiftUI `CommandMenu` items accept AXPress but do not route to their action closure (a SwiftUI limitation, like its Slider) — native AppKit menu items fire. `.contextMenu` item selection works. |
 
-All ref-based interaction commands accept `--snapshot <snapshot_id>`. Omit it for the active session's latest saved snapshot, or pass the `snapshot_id` returned by `snapshot` to keep scripts pinned to the exact ref map they observed. Explicit snapshot IDs do not require also passing `--session`. After `session start`, implicit latest resolves inside the new session; snapshots taken before the boundary need explicit `--snapshot <old-id>`.
+All ref-based interaction commands accept `--snapshot <snapshot_id>`. Snapshot and find output already return qualified refs (`@<snapshot_id>:eN`), which embed the exact snapshot and need no separate flag. Legacy bare `@eN` input requires `--snapshot`; when a session owns that snapshot, the command also needs the same `--session` or `AGENT_DESKTOP_SESSION` scope. Lookup never searches another session namespace.
 
 Success responses for ref actions include a `steps` array when the activation chain recorded attempts: each entry is `{ "label": "AXPress", "outcome": "attempted" | "skipped" | "succeeded" }` in execution order, showing which activation path produced the result.
 
@@ -63,7 +63,7 @@ When the actionability preflight blocks an action, the error envelope carries th
 
 **`receives_events` failures.** When a hit test at the target's center point lands on a different element, `receives_events` fails with `reason: "occluded by <role>"` and a structured `occluder` object on that check: `{ "role", "name", "bounds" }` (the element that actually received the hit, when it can be identified). The target's own bounds have not changed — something else is now on top of them. Recovery is to bring the target's window or element to the front (or dismiss whatever is covering it), then retry; blind-retrying without changing z-order will fail the same way again.
 
-Every ref-resolving action accepts `--timeout-ms` (default `5000`), but it budgets different things. For the dispatch actions (`click`, `double-click`, `triple-click`, `right-click`, `clear`, `focus`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll-to`, `type`, `set-value`, `select`, `scroll`) it is the actionability-wait budget: they poll roughly every 100ms until the target becomes actionable, then fail with `TIMEOUT` once the budget is exhausted — unless the block is a terminal check (`supported_action`/`policy`/`editable`), which fails fast on the first attempt with `ACTION_NOT_SUPPORTED`/`POLICY_DENIED` rather than waiting out the budget. For `hover` and `drag` it budgets the ref-*resolution* retry instead — only `STALE_REF`/`AMBIGUOUS_TARGET`/`TIMEOUT` are retried within the budget; a `receives_events` occlusion failure on hover/drag is returned immediately as `ACTION_FAILED`, not polled to `TIMEOUT`.
+Every ref-resolving action accepts `--timeout-ms` (default `5000`), but it budgets different things. For the dispatch actions (`click`, `double-click`, `triple-click`, `right-click`, `clear`, `focus`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll-to`, `type`, `set-value`, `select`, `scroll`) it is the actionability-wait budget: they poll roughly every 100ms until the target becomes actionable, then fail with `TIMEOUT` once the budget is exhausted — unless the block is a terminal check (`supported_action`/`policy`/`editable`), which fails fast on the first attempt with `ACTION_NOT_SUPPORTED`/`POLICY_DENIED` rather than waiting out the budget. For `hover` and `drag`, the same budget covers ref resolution plus the `receives_events` check. Transient misses, app-unresponsive reads, and occlusion are polled until recovery or `TIMEOUT`; terminal errors are returned immediately with their original code.
 
 **Implicit scroll-into-view.** Before acting, every ref action other than `scroll`, `scroll-to`, `hover`, and `drag` automatically attempts to bring an offscreen or zero-bounds target into view (macOS: `AXScrollToVisible`) before dispatching the action. This is best-effort and silent — it has no separate error code, and a failed attempt does not block the action itself, it just proceeds without having scrolled. Use the standalone `scroll-to` command when you need an explicit, verifiable scroll instead of relying on this implicit step.
 
@@ -73,26 +73,26 @@ Click commands use semantic AX activation first. In the default headless mode, c
 
 ### click
 ```bash
-agent-desktop click @e5
+agent-desktop click @s8f3k2p9:e5
 agent-desktop click @e5 --snapshot <snapshot_id>
 ```
 Primary activation. Tries verified AXPress > AXConfirm > AXOpen > AXPick > child activation > selection/value relays > custom actions > ancestor activation. Focus-stealing and coordinate fallback steps are not used by the default ref command path.
 
 ### double-click
 ```bash
-agent-desktop double-click @e3
+agent-desktop double-click @s8f3k2p9:e3
 ```
-Tries AXOpen (headless). When the element advertises no `AXOpen`, the headless command fails closed with `POLICY_DENIED`; pass `--headed` to perform a real double-click (`agent-desktop --headed double-click @e3`), or use `agent-desktop --headed mouse-click --xy X,Y --count 2` for a raw coordinate double-click.
+Tries AXOpen (headless). When the element advertises no `AXOpen`, the headless command fails closed with `POLICY_DENIED`; pass `--headed` to perform a real double-click (`agent-desktop --headed double-click @s8f3k2p9:e3`), or use `agent-desktop --headed mouse-click --xy X,Y --count 2` for a raw coordinate double-click.
 
 ### triple-click
 ```bash
-agent-desktop triple-click @e2
+agent-desktop triple-click @s8f3k2p9:e2
 ```
-Triple-click requires cursor/focus side effects and is blocked in headless mode; pass `--headed` (`agent-desktop --headed triple-click @e2`), or use `agent-desktop --headed mouse-click --xy X,Y --count 3` for a raw coordinate triple-click.
+Triple-click requires cursor/focus side effects and is blocked in headless mode; pass `--headed` (`agent-desktop --headed triple-click @s8f3k2p9:e2`), or use `agent-desktop --headed mouse-click --xy X,Y --count 3` for a raw coordinate triple-click.
 
 ### right-click
 ```bash
-agent-desktop right-click @e5
+agent-desktop right-click @s8f3k2p9:e5
 ```
 Performs a semantic right-click/context-menu action and includes `menu` plus `menu_snapshot_id` when a menu surface can be verified. If the right-click action succeeds but menu probing fails, the command still returns the action result with `menu_probe.ok: false` so callers do not retry and double-open context menus. Combo boxes and menu buttons expose menu-opening actions for their primary dropdown; use `select` for those controls, not `right-click`. Focus-stealing and coordinate right-click fallback are blocked in headless mode; pass `--headed` to allow them.
 
@@ -100,8 +100,8 @@ Performs a semantic right-click/context-menu action and includes `menu` plus `me
 
 ### type
 ```bash
-agent-desktop type @e2 "hello@example.com"
-agent-desktop type @e2 "multi line\ntext"
+agent-desktop type @s8f3k2p9:e2 "hello@example.com"
+agent-desktop type @s8f3k2p9:e2 "multi line\ntext"
 ```
 `type` uses the focus-fallback policy floor: it may focus the target field because typing requires focus, but it never moves the cursor. If the field cannot be updated and the focused-insert path is unavailable, it returns a structured error. Pass `--headed` to unlock physical keyboard synthesis and pasteboard-based insertion for fields that ignore AX value writes (common in web/Electron inputs).
 
@@ -109,19 +109,19 @@ Under focus-fallback or `--headed`, non-ASCII text on macOS may be briefly place
 
 ### set-value
 ```bash
-agent-desktop set-value @e2 "new value"
+agent-desktop set-value @s8f3k2p9:e2 "new value"
 ```
 Sets the value directly via the AX value attribute. Faster than `type` but may not trigger all UI callbacks. Use for text fields, text areas, and sliders.
 
 ### clear
 ```bash
-agent-desktop clear @e2
+agent-desktop clear @s8f3k2p9:e2
 ```
-Clears the element's value to an empty string. Equivalent to `set-value @e2 ""`.
+Clears the element's value to an empty string. Equivalent to `set-value @s8f3k2p9:e2 ""`.
 
 ### focus
 ```bash
-agent-desktop focus @e2
+agent-desktop focus @s8f3k2p9:e2
 ```
 Sets keyboard focus on the element without clicking it.
 This is an explicit focus-changing command. It uses accessibility focus and does not move the cursor.
@@ -130,25 +130,25 @@ This is an explicit focus-changing command. It uses accessibility focus and does
 
 ### select
 ```bash
-agent-desktop select @e4 "Option B"
+agent-desktop select @s8f3k2p9:e4 "Option B"
 ```
 Selects an option in a list, dropdown, or combobox by display text. For menu-backed controls it opens the AX menu, presses the matching menu item, and verifies `AXValue` when the control exposes it. It returns a structured error when the matching item is missing or the exposed value does not change.
 
 ### toggle
 ```bash
-agent-desktop toggle @e6
+agent-desktop toggle @s8f3k2p9:e6
 ```
 Toggles a checkbox or switch to the opposite state.
 
 ### check
 ```bash
-agent-desktop check @e6
+agent-desktop check @s8f3k2p9:e6
 ```
 Sets a checkbox or switch to the checked/on state. Idempotent — does nothing if already checked.
 
 ### uncheck
 ```bash
-agent-desktop uncheck @e6
+agent-desktop uncheck @s8f3k2p9:e6
 ```
 Sets a checkbox or switch to the unchecked/off state. Idempotent.
 
@@ -156,13 +156,13 @@ Sets a checkbox or switch to the unchecked/off state. Idempotent.
 
 ### expand
 ```bash
-agent-desktop expand @e7
+agent-desktop expand @s8f3k2p9:e7
 ```
 Expands a disclosure triangle, tree item, or accordion.
 
 ### collapse
 ```bash
-agent-desktop collapse @e7
+agent-desktop collapse @s8f3k2p9:e7
 ```
 Collapses an expanded disclosure/tree item.
 
@@ -170,10 +170,10 @@ Collapses an expanded disclosure/tree item.
 
 ### scroll
 ```bash
-agent-desktop scroll @e1 --direction down --amount 3
-agent-desktop scroll @e1 --direction up --amount 5
-agent-desktop scroll @e1 --direction left --amount 2
-agent-desktop scroll @e1 --direction right --amount 2
+agent-desktop scroll @s8f3k2p9:e1 --direction down --amount 3
+agent-desktop scroll @s8f3k2p9:e1 --direction up --amount 5
+agent-desktop scroll @s8f3k2p9:e1 --direction left --amount 2
+agent-desktop scroll @s8f3k2p9:e1 --direction right --amount 2
 ```
 
 | Flag | Default | Description |
@@ -186,7 +186,7 @@ Uses AX scroll actions, scroll bars, and state-setting paths. If those are unava
 
 ### scroll-to
 ```bash
-agent-desktop scroll-to @e8
+agent-desktop scroll-to @s8f3k2p9:e8
 ```
 Scrolls the element into the visible area of its scroll container.
 
@@ -228,21 +228,20 @@ Releases a held key or modifier. The blocked-combo guard (same set as `press`) a
 
 ### hover
 ```bash
-agent-desktop --headed hover @e5
+agent-desktop --headed hover @s8f3k2p9:e5
 agent-desktop --headed hover --xy 500,300
-agent-desktop --headed hover @e5 --duration 2000
 ```
-Moves cursor to element center or absolute coordinates. Optional `--duration` holds position for N ms.
+Moves cursor to element center or absolute coordinates. A positive `--duration` is rejected because a stateless process cannot guarantee cursor ownership during a dwell; run hover without it, then use `wait <ms>` for an explicit pause.
 This is an explicit cursor-moving command.
 
 With `--headed`, a ref-addressed hover ensures the target app is frontmost before moving the cursor (raising it if needed, best-effort), and the response includes `"focused": true` when that frontmost state was confirmed. The field is only ever present as `true`: absence means focus was never attempted (headless default, or `--xy` input — the caller owns the target there) or the best-effort raise could not be confirmed.
 
 ### drag
 ```bash
-agent-desktop --headed drag --from @e1 --to @e5
+agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5
 agent-desktop --headed drag --from-xy 100,200 --to-xy 400,500
-agent-desktop --headed drag --from @e1 --to-xy 400,500 --duration 500
-agent-desktop --headed drag --from @e1 --to @e5 --drop-delay 800
+agent-desktop --headed drag --from @s8f3k2p9:e1 --to-xy 400,500 --duration 500
+agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5 --drop-delay 800
 ```
 
 | Flag | Description |
@@ -255,7 +254,7 @@ agent-desktop --headed drag --from @e1 --to @e5 --drop-delay 800
 | `--drop-delay` | Milliseconds to hold over the destination before releasing; default 500 |
 | `--timeout-ms` | Actionability wait budget in ms before failing with `TIMEOUT`; default 5000 |
 
-Can mix ref and coordinate sources (e.g., `--from @e1 --to-xy 400,500`).
+Can mix ref and coordinate sources (e.g., `--from @s8f3k2p9:e1 --to-xy 400,500`).
 
 With `--headed`, a ref-addressed `--from` ensures the source app is frontmost before the mouse-down (the destination app is never pre-focused — raising it could cover the source point), and the response includes `"focused": true` when that frontmost state was confirmed. The field is only ever present as `true`: absence means focus was never attempted (headless default, or coordinate-only drags) or the best-effort raise could not be confirmed. For cross-app two-ref drags, ensure the destination window is visible (not fully occluded) before dragging — only the source app is raised.
 
@@ -279,7 +278,7 @@ agent-desktop --headed mouse-click --xy 500,300 --count 2
 | `--xy` | (required) | Coordinates as `x,y` |
 | `--button` | left | `left`, `right`, `middle` |
 | `--count` | 1 | Number of clicks |
-| `--modifiers` | | Held modifiers: `shift`, `cmd`, `ctrl`, `alt` (repeatable); held during the click |
+| `--modifiers` | | Held modifiers: `shift`, `meta`, `ctrl`, `alt` (repeatable; `cmd`/`command` aliases are accepted); held during the click |
 
 ### mouse-down / mouse-up
 ```bash
@@ -292,24 +291,24 @@ Low-level press/release for custom drag or hold interactions.
 |------|---------|-------------|
 | `--xy` | (required) | Coordinates as `x,y` |
 | `--button` | left | `left`, `right`, `middle` |
-| `--modifiers` | | Held modifiers: `shift`, `cmd`, `ctrl`, `alt` (repeatable); held during the mouse event |
+| `--modifiers` | | Held modifiers: `shift`, `meta`, `ctrl`, `alt` (repeatable; `cmd`/`command` aliases are accepted); held during the mouse event |
 
 ### mouse-wheel
 ```bash
 agent-desktop --headed mouse-wheel --x 500 --y 300
-agent-desktop --headed mouse-wheel --x 500 --y 300 --dy 240
-agent-desktop --headed mouse-wheel --x 500 --y 300 --dx -60 --dy 0
+agent-desktop --headed mouse-wheel --x 500 --y 300 --dy -3
+agent-desktop --headed mouse-wheel --x 500 --y 300 --dx -2 --dy 0
 agent-desktop --headed mouse-wheel --x 500 --y 300 --modifiers shift
 ```
-Synthesizes a scroll-wheel event at absolute coordinates, distinct from `scroll <ref>`: `scroll` targets an element through AX scroll semantics, `mouse-wheel` posts a raw wheel event at a screen point (for custom scroll surfaces or canvases with no AX scroll action). Held modifiers are applied to the event, so `--modifiers shift` produces the horizontal-scroll chord some apps expect.
+Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`. This is distinct from `scroll <ref>`: `scroll` targets an element through AX scroll semantics, while `mouse-wheel` posts a raw wheel event at a screen point (for custom scroll surfaces or canvases with no AX scroll action). Held modifiers are applied to the event, so `--modifiers shift` produces the horizontal-scroll chord some apps expect.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--x` | (required) | Absolute X coordinate |
 | `--y` | (required) | Absolute Y coordinate |
-| `--dy` | -120 | Vertical scroll delta |
-| `--dx` | 0 | Horizontal scroll delta |
-| `--modifiers` | | Held modifiers: `shift`, `cmd`, `ctrl`, `alt` (repeatable) |
+| `--dy` | -3 | Vertical wheel lines; positive is up, negative is down |
+| `--dx` | 0 | Horizontal wheel lines; positive is left, negative is right |
+| `--modifiers` | | Held modifiers: `shift`, `meta`, `ctrl`, `alt` (repeatable; `cmd`/`command` aliases are accepted) |
 
 ## Choosing the Right Command
 

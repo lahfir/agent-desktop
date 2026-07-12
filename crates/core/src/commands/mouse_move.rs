@@ -1,9 +1,6 @@
 use crate::{
-    action::{MouseButton, MouseEvent, MouseEventKind, Point},
-    adapter::PlatformAdapter,
-    commands::point_resolve::require_cursor_policy,
-    context::CommandContext,
-    error::AppError,
+    AppError, MouseButton, MouseEvent, MouseEventKind, Point, adapter::PlatformAdapter,
+    commands::point_resolve::require_cursor_policy, context::CommandContext,
 };
 use serde_json::{Value, json};
 
@@ -18,14 +15,20 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "mouse-move")?;
-    adapter.mouse_event(MouseEvent {
-        kind: MouseEventKind::Move,
-        point: Point {
-            x: args.x,
-            y: args.y,
+    let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
+    let point = Point {
+        x: args.x,
+        y: args.y,
+    };
+    point.validate()?;
+    adapter.mouse_event(
+        MouseEvent {
+            kind: MouseEventKind::Move,
+            point,
+            button: MouseButton::Left,
+            modifiers: Vec::new(),
         },
-        button: MouseButton::Left,
-        modifiers: Vec::new(),
-    })?;
+        &lease,
+    )?;
     Ok(json!({ "moved": true, "x": args.x, "y": args.y }))
 }

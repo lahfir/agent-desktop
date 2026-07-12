@@ -1,4 +1,4 @@
-use crate::{adapter::PlatformAdapter, error::AppError, search_text};
+use crate::{AppError, adapter::PlatformAdapter, search_text};
 use serde_json::{Value, json};
 
 pub struct ListAppsArgs {
@@ -6,7 +6,7 @@ pub struct ListAppsArgs {
 }
 
 pub fn execute(args: ListAppsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let mut apps = adapter.list_apps()?;
+    let mut apps = adapter.list_apps(crate::Deadline::standard()?)?;
     if let Some(app) = args.app {
         let needle = search_text::normalize(&app);
         apps.retain(|candidate| search_text::contains(&candidate.name, &needle));

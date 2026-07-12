@@ -1,7 +1,4 @@
-use crate::{
-    adapter::NativeHandle,
-    error::{AdapterError, ErrorCode},
-};
+use crate::{AdapterError, ErrorCode, adapter::NativeHandle};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub(crate) struct StaleRetryCounter {
@@ -20,7 +17,8 @@ impl StaleRetryCounter {
     pub(crate) fn attempt(&self) -> Result<NativeHandle, AdapterError> {
         let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
         if n <= self.fail_until {
-            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable"));
+            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet resolvable")
+                .with_details(serde_json::json!({ "retryable": true })));
         }
         Ok(NativeHandle::null())
     }

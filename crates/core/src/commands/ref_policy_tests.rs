@@ -1,6 +1,6 @@
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    action::{Action, Direction},
+    Action, AdapterError, Direction,
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::NativeHandle,
@@ -9,7 +9,6 @@ use crate::{
         scroll, scroll_to, select, set_value, toggle, triple_click, type_text, uncheck,
     },
     context::CommandContext,
-    error::AdapterError,
     interaction_policy::InteractionPolicy,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
@@ -28,6 +27,7 @@ const POLICY_TESTED_COMMANDS: &[&str] = &[
     "double_click",
     "expand",
     "focus",
+    "press",
     "right_click",
     "scroll",
     "scroll_to",
@@ -56,9 +56,31 @@ impl RecordingAdapter {
 }
 
 impl ObservationOps for RecordingAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "Target",
+        [
+            crate::capability::CLICK,
+            crate::capability::RIGHT_CLICK,
+            crate::capability::SET_VALUE,
+            crate::capability::SET_FOCUS,
+            crate::capability::EXPAND,
+            crate::capability::COLLAPSE,
+            crate::capability::SELECT,
+            crate::capability::TOGGLE,
+            crate::capability::SCROLL,
+            crate::capability::SCROLL_TO,
+            crate::capability::TYPE_TEXT,
+        ]
+    );
 }
 
 impl ActionOps for RecordingAdapter {
@@ -66,52 +88,76 @@ impl ActionOps for RecordingAdapter {
         &self,
         _handle: &NativeHandle,
         request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         self.requests.lock().unwrap().push(request);
-        Ok(ActionResult::new("ok"))
+        Ok(ActionResult::delivered_unverified("ok"))
     }
 }
 
 impl InputOps for RecordingAdapter {}
 
-impl SystemOps for RecordingAdapter {}
+impl SystemOps for RecordingAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 fn snapshot_id() -> String {
     let mut refmap = RefMap::new();
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     refmap.allocate(RefEntry {
-        pid: 1,
-        role: "textfield".into(),
-        name: Some("Target".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![
-            "Check".into(),
-            "Clear".into(),
-            "Click".into(),
-            "Collapse".into(),
-            "DoubleClick".into(),
-            "Expand".into(),
-            "RightClick".into(),
-            "ScrollTo".into(),
-            "Select".into(),
-            "SetFocus".into(),
-            "SetValue".into(),
-            "Toggle".into(),
-            "TripleClick".into(),
-            "TypeText".into(),
-            "Uncheck".into(),
-        ],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "textfield".into(),
+            name: Some("Target".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![
+                "Check".into(),
+                "Clear".into(),
+                "Click".into(),
+                "Collapse".into(),
+                "DoubleClick".into(),
+                "Expand".into(),
+                "RightClick".into(),
+                "Scroll".into(),
+                "ScrollTo".into(),
+                "Select".into(),
+                "SetFocus".into(),
+                "SetValue".into(),
+                "Toggle".into(),
+                "TripleClick".into(),
+                "TypeText".into(),
+                "Uncheck".into(),
+            ],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
 }
@@ -129,15 +175,19 @@ fn assert_headless(request: &ActionRequest) {
 }
 
 #[test]
-fn default_ref_commands_are_headless() {
+fn default_ref_commands_use_least_permissive_supported_policy() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_id();
     let adapter = RecordingAdapter::new();
     let context = CommandContext::default();
 
     click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
-    double_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
-    triple_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    let double_click_error =
+        double_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap_err();
+    assert_eq!(double_click_error.code(), "POLICY_DENIED");
+    let triple_click_error =
+        triple_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap_err();
+    assert_eq!(triple_click_error.code(), "POLICY_DENIED");
     let before_right_click = adapter.requests.lock().unwrap().len();
     let _ = right_click::execute(ref_args(&snapshot_id), &adapter, &context);
     assert_eq!(
@@ -222,7 +272,7 @@ fn focus_command_is_explicit_headless_policy() {
 }
 
 #[test]
-fn headed_context_upgrades_every_ref_command_to_headed() {
+fn headed_context_preserves_physical_fallback_only_when_semantic_delivery_is_unavailable() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_id();
     let adapter = RecordingAdapter::new();
@@ -287,10 +337,14 @@ fn headed_context_upgrades_every_ref_command_to_headed() {
     .unwrap();
 
     for request in adapter.requests.lock().unwrap().iter() {
+        let expected = if matches!(request.action, Action::Click | Action::RightClick) {
+            InteractionPolicy::headless()
+        } else {
+            InteractionPolicy::headed()
+        };
         assert_eq!(
-            request.policy,
-            InteractionPolicy::headed(),
-            "{:?} must be headed under --headed",
+            request.policy, expected,
+            "unexpected policy for {:?}",
             request.action
         );
     }

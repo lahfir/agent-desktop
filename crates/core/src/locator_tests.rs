@@ -1,5 +1,5 @@
 use super::*;
-use crate::{node::AccessibilityNode, search_text, state};
+use crate::{AccessibilityNode, search_text, state};
 
 fn node(
     role: &str,
@@ -10,14 +10,15 @@ fn node(
     AccessibilityNode {
         ref_id: None,
         role: role.into(),
-        name: name.map(String::from),
-        value: value.map(String::from),
-        description: None,
-        native_id: None,
-        hint: None,
-        states: states.into_iter().map(String::from).collect(),
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: name.map(String::from),
+            value: value.map(String::from),
+            ..Default::default()
+        },
+        presentation: crate::NodePresentation {
+            states: states.into_iter().map(String::from).collect(),
+            ..Default::default()
+        },
         children_count: None,
         children: vec![],
     }
@@ -79,7 +80,10 @@ fn state_predicate_filters_checked() {
 #[test]
 fn native_id_exact_match() {
     let mut target = node("button", Some("X"), None, vec![]);
-    target.native_id = Some("submit-btn".into());
+    target.identity.native_id = Some(crate::ElementIdentifier {
+        kind: crate::IdentifierKind::AxIdentifier,
+        value: "submit-btn".into(),
+    });
     let query = LocatorQuery {
         identity: IdentityPredicate {
             native_id: Some("submit-btn".into()),
@@ -109,6 +113,45 @@ fn has_subquery_matches_descendant() {
 }
 
 #[test]
+fn has_subquery_matches_deep_descendant() {
+    let mut root = node("group", None, None, vec![]);
+    let mut wrapper = node("group", None, None, vec![]);
+    wrapper
+        .children
+        .push(node("statictext", Some("Hello"), None, vec![]));
+    root.children.push(wrapper);
+    let query = LocatorQuery {
+        containment: ContainmentPredicate {
+            has: Some(Box::new(LocatorQuery {
+                has_text: Some(search_text::normalize("hello")),
+                ..LocatorQuery::default()
+            })),
+            ..ContainmentPredicate::default()
+        },
+        ..LocatorQuery::default()
+    };
+    assert!(accessibility_node_matches(&root, &query));
+}
+
+#[test]
+fn has_text_matches_deep_descendant_text() {
+    let mut root = node("group", Some("Settings"), None, vec![]);
+    let mut wrapper = node("group", None, None, vec![]);
+    wrapper.children.push(node(
+        "statictext",
+        Some("Workspace notifications"),
+        None,
+        vec![],
+    ));
+    root.children.push(wrapper);
+    let query = LocatorQuery {
+        has_text: Some(search_text::normalize("notifications")),
+        ..LocatorQuery::default()
+    };
+    assert!(accessibility_node_matches(&root, &query));
+}
+
+#[test]
 fn invalid_state_token_rejected() {
     let query = LocatorQuery {
         states: vec![StatePredicate {
@@ -125,6 +168,35 @@ fn has_not_excludes_subtree_match() {
     let mut root = node("group", None, None, vec![]);
     root.children
         .push(node("button", Some("Delete"), None, vec![]));
+    let query = LocatorQuery {
+        identity: IdentityPredicate {
+            role: Some("group".into()),
+            ..IdentityPredicate::default()
+        },
+        containment: ContainmentPredicate {
+            has_not: Some(Box::new(LocatorQuery {
+                identity: IdentityPredicate {
+                    role: Some("button".into()),
+                    name: Some(search_text::normalize("delete")),
+                    ..IdentityPredicate::default()
+                },
+                ..LocatorQuery::default()
+            })),
+            ..ContainmentPredicate::default()
+        },
+        ..LocatorQuery::default()
+    };
+    assert!(!accessibility_node_matches(&root, &query));
+}
+
+#[test]
+fn has_not_excludes_deep_subtree_match() {
+    let mut root = node("group", None, None, vec![]);
+    let mut wrapper = node("group", None, None, vec![]);
+    wrapper
+        .children
+        .push(node("button", Some("Delete"), None, vec![]));
+    root.children.push(wrapper);
     let query = LocatorQuery {
         identity: IdentityPredicate {
             role: Some("group".into()),

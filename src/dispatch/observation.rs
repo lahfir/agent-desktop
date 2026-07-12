@@ -1,104 +1,120 @@
 use agent_desktop_core::{
-    commands::{find, get, is_check, screenshot, snapshot},
+    AppError,
+    adapter::PlatformAdapter,
+    commands::{
+        find as find_command, get as get_command, is_check as is_command,
+        screenshot as screenshot_command, snapshot as snapshot_command,
+    },
     context::CommandContext,
-    error::{AppError, ErrorCode},
 };
 use serde_json::Value;
 
-use crate::cli::Commands;
+use crate::cli_args::{FindArgs, GetArgs, IsArgs, ScreenshotArgs, SnapshotArgs};
 use crate::dispatch::parse::{parse_get_property, parse_is_property};
 
-pub(super) fn dispatch(
-    cmd: Commands,
-    adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
+pub(super) fn snapshot(
+    args: SnapshotArgs,
+    adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    match cmd {
-        Commands::Snapshot(a) => snapshot::execute(
-            snapshot::SnapshotArgs {
-                app: a.scope.app,
-                window_id: a.scope.window_id,
-                max_depth: a.max_depth,
-                include_bounds: a.include_bounds,
-                interactive_only: a.interactive_only,
-                compact: a.compact,
-                surface: a.surface.to_core(),
-                skeleton: a.skeleton,
-                root_ref: a.root,
-                snapshot_id: a.snapshot,
+    snapshot_command::execute(
+        snapshot_command::SnapshotArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+            max_depth: args.tree.max_depth,
+            include_bounds: args.tree.include_bounds,
+            interactive_only: args.tree.interactive_only,
+            compact: args.tree.compact,
+            surface: args.surface.to_core(),
+            skeleton: args.tree.skeleton,
+            root_ref: args.root,
+            snapshot_id: args.snapshot,
+        },
+        adapter,
+        context,
+    )
+}
+
+pub(super) fn find(
+    args: FindArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let states = args
+        .states
+        .iter()
+        .map(|raw| find_command::parse_state_flag(raw))
+        .collect::<Result<Vec<_>, _>>()?;
+    find_command::execute(
+        find_command::FindArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+            filter: find_command::FindFilterArgs {
+                role: args.filter.role,
+                name: args.filter.name,
+                description: args.filter.description,
+                native_id: args.filter.native_id,
+                value: args.filter.value,
+                text: args.filter.text,
+                exact: args.filter.exact,
             },
-            adapter,
-            context,
-        ),
-
-        Commands::Find(a) => {
-            let states = a
-                .states
-                .iter()
-                .map(|raw| find::parse_state_flag(raw))
-                .collect::<Result<Vec<_>, _>>()?;
-            find::execute(
-                find::FindArgs {
-                    app: a.scope.app,
-                    window_id: a.scope.window_id,
-                    filter: find::FindFilterArgs {
-                        role: a.filter.role,
-                        name: a.filter.name,
-                        description: a.filter.description,
-                        native_id: a.filter.native_id,
-                        value: a.filter.value,
-                        text: a.filter.text,
-                        exact: a.filter.exact,
-                    },
-                    states,
-                    selection: find::FindSelectionArgs {
-                        count: a.selection.count,
-                        first: a.selection.first,
-                        last: a.selection.last,
-                        nth: a.selection.nth,
-                        limit: a.selection.limit,
-                    },
-                },
-                adapter,
-                context,
-            )
-        }
-
-        Commands::Screenshot(a) => screenshot::execute(
-            screenshot::ScreenshotArgs {
-                app: a.scope.app,
-                window_id: a.scope.window_id,
-                screen: a.screen,
-                output_path: a.output_path,
+            states,
+            selection: find_command::FindSelectionArgs {
+                count: args.selection.count,
+                first: args.selection.first,
+                last: args.selection.last,
+                nth: args.selection.nth,
+                limit: args.selection.limit,
             },
-            adapter,
-        ),
+        },
+        adapter,
+        context,
+    )
+}
 
-        Commands::Get(a) => get::execute(
-            get::GetArgs {
-                ref_id: a.ref_id,
-                snapshot_id: a.snapshot,
-                property: parse_get_property(&a.property)?,
-            },
-            adapter,
-            context,
-        ),
+pub(super) fn screenshot(
+    args: ScreenshotArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    screenshot_command::execute(
+        screenshot_command::ScreenshotArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+            screen: args.screen,
+            output_path: args.output_path,
+        },
+        adapter,
+    )
+}
 
-        Commands::Is(a) => is_check::execute(
-            is_check::IsArgs {
-                ref_id: a.ref_id,
-                snapshot_id: a.snapshot,
-                property: parse_is_property(&a.property)?,
-            },
-            adapter,
-            context,
-        ),
+pub(super) fn get(
+    args: GetArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    get_command::execute(
+        get_command::GetArgs {
+            ref_id: args.ref_id,
+            snapshot_id: args.snapshot,
+            property: parse_get_property(&args.property)?,
+        },
+        adapter,
+        context,
+    )
+}
 
-        _ => Err(AppError::Adapter(
-            agent_desktop_core::error::AdapterError::new(
-                ErrorCode::InvalidArgs,
-                "observation::dispatch received a non-observation command",
-            ),
-        )),
-    }
+pub(super) fn is(
+    args: IsArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    is_command::execute(
+        is_command::IsArgs {
+            ref_id: args.ref_id,
+            snapshot_id: args.snapshot,
+            property: parse_is_property(&args.property)?,
+        },
+        adapter,
+        context,
+    )
 }

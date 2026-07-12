@@ -1,71 +1,130 @@
-use agent_desktop_core::{adapter::NativeHandle, error::AdapterError, refs::RefEntry};
+use agent_desktop_core::{
+    AdapterError, EvidenceRequirements, IdentityMatch, RefEntry,
+    adapter::NativeHandle,
+    ref_identity::{has_stable_text_identity, identity_match},
+};
 use rustc_hash::FxHashSet;
-use std::time::Instant;
 
 use super::AXElement;
-#[cfg(target_os = "macos")]
-use super::attributes::{copy_ax_array, copy_string_attr, set_messaging_timeout};
-#[cfg(target_os = "macos")]
-use super::element::{child_attributes, resolve_element_name};
 use super::element_dedupe::ElementDedupe;
-use super::resolve_bounds::should_prune_by_bounds;
-#[cfg(target_os = "macos")]
 use super::resolve_classify::classify_candidates;
-#[cfg(target_os = "macos")]
-use super::resolve_deadline::{ensure_before_deadline, remaining_before_deadline};
-use super::resolve_identity::has_meaningful_identity;
-#[cfg(target_os = "macos")]
-use super::resolve_identity::identity_matches;
+pub(super) use super::resolve_errors::incomplete_traversal as incomplete_traversal_error;
+use super::resolve_errors::{
+    identity_unknown as identity_unknown_error,
+    native_identifier_role_reuse as native_identifier_role_reuse_error,
+};
+use super::resolve_read_context::ResolveReadContext;
 
 #[cfg(target_os = "macos")]
 pub(super) fn find_entry_by_path(
     roots: &[AXElement],
     entry: &RefEntry,
     source_window_verified: bool,
-    deadline: Instant,
+    read_context: &mut ResolveReadContext,
 ) -> Result<NativeHandle, AdapterError> {
-    if entry.path.is_empty() {
-        return Err(AdapterError::element_not_found("element"));
-    }
-    ensure_before_deadline(deadline)?;
-
+    crate::tree::locator_deadline::remaining(read_context.deadline)?;
     let mut matches = Vec::new();
     let mut dedupe = ElementDedupe;
+    let mut incomplete = None;
     for root in roots {
-        ensure_before_deadline(deadline)?;
+        crate::tree::locator_deadline::remaining(read_context.deadline)?;
+        let Some(candidate) = element_at_path(root, &entry.scope.path, read_context)? else {
+            continue;
+        };
+        let identity = candidate_identity(&candidate, entry, read_context)?;
+        match identity {
+            IdentityMatch::Match => {
+                dedupe.push(&mut matches, candidate);
+            }
+            IdentityMatch::Unknown => {
+                incomplete.get_or_insert_with(|| identity_unknown_error(entry));
+            }
+            IdentityMatch::NoMatch => {}
+        }
         if should_stop_collecting(matches.len(), entry) {
             break;
         }
-        let Some(candidate) = element_at_path(root, &entry.path, deadline)? else {
-            continue;
-        };
-        if element_matches_entry(&candidate, entry) {
-            dedupe.push(&mut matches, candidate);
-        }
     }
-
-    classify_candidates(matches, entry, source_window_verified)
+    if should_stop_collecting(matches.len(), entry) {
+        return classify_candidates(
+            matches,
+            entry,
+            source_window_verified,
+            read_context.deadline,
+        );
+    }
+    if let Some(error) = incomplete {
+        return Err(error);
+    }
+    classify_candidates(
+        matches,
+        entry,
+        source_window_verified,
+        read_context.deadline,
+    )
 }
 
 #[cfg(target_os = "macos")]
 fn element_at_path(
     root: &AXElement,
     path: &[usize],
-    deadline: Instant,
+    context: &mut ResolveReadContext,
 ) -> Result<Option<AXElement>, AdapterError> {
-    let mut current = root.clone();
-    let mut seen = FxHashSet::default();
-    for idx in path {
-        ensure_before_deadline(deadline)?;
-        set_messaging_timeout(&current, remaining_before_deadline(deadline)?);
-        let ax_role = copy_string_attr(&current, accessibility_sys::kAXRoleAttribute);
-        let children = resolve_children(&current, ax_role.as_deref(), deadline, &mut seen)?;
-        let Some(child) = children.get(*idx) else {
+    walk_finite_path(root.clone(), path, |current, index| {
+        crate::tree::locator_deadline::remaining(context.deadline)?;
+        if !context.usage.claim_node() {
+            context.stats.traversal.limits.node_hits += 1;
+            return Err(incomplete_traversal_error("path_node_budget", 0));
+        }
+        context.stats.reads.attribute_batches += 1;
+        context.stats.reads.attributes_requested += 1;
+        let role = super::resolve_ax_read::read_string(&current, "AXRole", context.deadline)?;
+        let mut read = crate::tree::query::child_read::read_child_at(
+            &current,
+            role.as_deref(),
+            index,
+            context.deadline,
+        );
+        record_path_child_read(&read, context);
+        crate::tree::locator_deadline::remaining(context.deadline)?;
+        if read.status.api_disabled {
+            return Err(AdapterError::permission_denied());
+        }
+        if !read.complete {
+            return Err(incomplete_traversal_error("path_children", 0));
+        }
+        context
+            .usage
+            .claim_edges(usize::from(!read.elements.is_empty()));
+        Ok(read.elements.pop())
+    })
+}
+
+pub(super) fn walk_finite_path<T>(
+    mut current: T,
+    path: &[usize],
+    mut read_child: impl FnMut(T, usize) -> Result<Option<T>, AdapterError>,
+) -> Result<Option<T>, AdapterError> {
+    for index in path {
+        let Some(child) = read_child(current, *index)? else {
             return Ok(None);
         };
-        current = child.clone();
+        current = child;
     }
     Ok(Some(current))
+}
+
+#[cfg(target_os = "macos")]
+fn record_path_child_read(
+    read: &crate::tree::query::child_read::ChildRead,
+    context: &mut ResolveReadContext,
+) {
+    context.stats.reads.child_reads += read.status.attempts;
+    context.stats.reads.cannot_complete += read.status.cannot_complete;
+    context.stats.reads.native_read_failures += read.status.native_read_failures;
+    context.stats.reads.deadline_exhausted += u64::from(read.status.deadline_exhausted);
+    context.stats.traversal.limits.child_count_changes += u64::from(read.status.count_changed);
+    context.stats.traversal.limits.child_hits += u64::from(read.status.cursor_stalled);
 }
 
 #[cfg(target_os = "macos")]
@@ -74,28 +133,49 @@ pub(super) fn find_entry_in_roots(
     entry: &RefEntry,
     resolve_depth: u8,
     source_window_verified: bool,
-    deadline: Instant,
+    read_context: &mut ResolveReadContext,
 ) -> Result<NativeHandle, AdapterError> {
     let mut matches = Vec::new();
     let mut seen_matches = ElementDedupe;
-    let mut child_scratch = FxHashSet::default();
+    let mut incomplete = None;
+    let mut identifier_role_reuse = false;
     for root in roots {
         if should_stop_collecting(matches.len(), entry) {
             break;
         }
-        let mut visited = FxHashSet::default();
+        let mut ancestors = FxHashSet::default();
         let mut context = CollectContext {
             entry,
             max_depth: resolve_depth,
-            ancestors: &mut visited,
+            ancestors: &mut ancestors,
             seen_matches: &mut seen_matches,
             matches: &mut matches,
-            child_scratch: &mut child_scratch,
-            deadline,
+            incomplete: &mut incomplete,
+            identifier_role_reuse: &mut identifier_role_reuse,
+            read_context,
         };
         collect_elements_recursive(root, 0, &mut context)?;
     }
-    classify_candidates(matches, entry, source_window_verified)
+    if should_stop_collecting(matches.len(), entry) {
+        return classify_candidates(
+            matches,
+            entry,
+            source_window_verified,
+            read_context.deadline,
+        );
+    }
+    if let Some(error) = incomplete {
+        return Err(error);
+    }
+    if identifier_role_reuse && matches.is_empty() {
+        return Err(native_identifier_role_reuse_error(entry));
+    }
+    classify_candidates(
+        matches,
+        entry,
+        source_window_verified,
+        read_context.deadline,
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -105,112 +185,203 @@ struct CollectContext<'a> {
     ancestors: &'a mut FxHashSet<usize>,
     seen_matches: &'a mut ElementDedupe,
     matches: &'a mut Vec<AXElement>,
-    child_scratch: &'a mut FxHashSet<usize>,
-    deadline: Instant,
+    incomplete: &'a mut Option<AdapterError>,
+    identifier_role_reuse: &'a mut bool,
+    read_context: &'a mut ResolveReadContext,
 }
 
 #[cfg(target_os = "macos")]
 fn collect_elements_recursive(
-    el: &AXElement,
+    element: &AXElement,
     depth: u8,
     context: &mut CollectContext<'_>,
 ) -> Result<(), AdapterError> {
-    use accessibility_sys::kAXRoleAttribute;
-
     if should_stop_collecting(context.matches.len(), context.entry) {
         return Ok(());
     }
-    ensure_before_deadline(context.deadline)?;
-
-    let ptr_key = el.0 as usize;
-    if !context.ancestors.insert(ptr_key) {
+    crate::tree::locator_deadline::remaining(context.read_context.deadline)?;
+    let pointer = element.0 as usize;
+    if !context.ancestors.insert(pointer) {
         return Ok(());
     }
 
-    let ax_role = copy_string_attr(el, kAXRoleAttribute);
-    let (normalized, promoted_label) =
-        crate::tree::roles::normalized_role_and_label(el, ax_role.as_deref());
-
-    if normalized == context.entry.role
-        && element_identity_matches(el, context.entry, promoted_label)
-        && context.seen_matches.push_clone(context.matches, el)
-        && should_stop_collecting(context.matches.len(), context.entry)
-    {
-        context.ancestors.remove(&ptr_key);
+    let read = read_node(
+        element,
+        identity_requirements(context.entry),
+        context.read_context,
+    )?;
+    if read.invalid_element {
+        mark_incomplete(
+            context,
+            incomplete_traversal_error("invalid_element", depth),
+        );
+        context.ancestors.remove(&pointer);
         return Ok(());
     }
 
-    if depth < context.max_depth && !should_prune_for_resolution(el, context.entry, depth) {
-        let children = resolve_children(
-            el,
-            ax_role.as_deref(),
-            context.deadline,
-            context.child_scratch,
-        )?;
-        for child in &children {
-            collect_elements_recursive(child, depth + 1, context)?;
+    if native_identifier_reused_by_different_role(context.entry, &read.evidence) {
+        *context.identifier_role_reuse = true;
+    }
+
+    match read.evidence.role.known() {
+        Some(role) => {
+            if role == &context.entry.identity.role {
+                match match_native_or_text_identity(context.entry, &read.evidence) {
+                    IdentityMatch::Match => {
+                        context.seen_matches.push_clone(context.matches, element);
+                    }
+                    IdentityMatch::Unknown => {
+                        if provisional_geometry_candidate(context.entry) {
+                            context.seen_matches.push_clone(context.matches, element);
+                        } else {
+                            mark_incomplete(context, identity_unknown_error(context.entry));
+                        }
+                    }
+                    IdentityMatch::NoMatch => {}
+                }
+            }
+        }
+        None if read.evidence.role.is_unknown() => {
+            mark_incomplete(context, incomplete_traversal_error("role", depth));
+        }
+        None => {}
+    }
+
+    if depth >= context.max_depth {
+        if !read.child_read.elements.is_empty()
+            || !read.child_read.complete
+            || read.child_read.truncated()
+        {
+            mark_incomplete(context, incomplete_traversal_error("depth_limit", depth));
+        }
+    } else {
+        if !read.child_read.complete || read.child_read.truncated() {
+            mark_incomplete(context, incomplete_traversal_error("children", depth));
+        }
+        for child in &read.child_read.elements {
+            collect_elements_recursive(child, depth.saturating_add(1), context)?;
+            if should_stop_collecting(context.matches.len(), context.entry) {
+                break;
+            }
         }
     }
 
-    context.ancestors.remove(&ptr_key);
+    context.ancestors.remove(&pointer);
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
-fn element_matches_entry(el: &AXElement, entry: &RefEntry) -> bool {
-    let ax_role = copy_string_attr(el, accessibility_sys::kAXRoleAttribute);
-    let (normalized, promoted_label) =
-        crate::tree::roles::normalized_role_and_label(el, ax_role.as_deref());
-    normalized == entry.role && element_identity_matches(el, entry, promoted_label)
-}
-
-pub(super) fn should_stop_collecting(match_count: usize, entry: &RefEntry) -> bool {
-    match_count > 1 && entry.bounds_hash.is_none()
-}
-
-fn should_prune_for_resolution(el: &AXElement, entry: &RefEntry, depth: u8) -> bool {
-    !has_meaningful_identity(entry) && should_prune_by_bounds(el, entry, depth)
-}
-
-#[cfg(target_os = "macos")]
-fn element_identity_matches(
-    el: &AXElement,
+fn candidate_identity(
+    element: &AXElement,
     entry: &RefEntry,
-    promoted_label: Option<String>,
-) -> bool {
-    let elem_name = promoted_label.or_else(|| resolve_element_name(el));
-    let elem_value = crate::tree::copy_value_typed(el);
-    let elem_description = copy_string_attr(el, accessibility_sys::kAXDescriptionAttribute);
-    let elem_native_id =
-        super::native_id::meaningful_native_id(copy_string_attr(el, "AXIdentifier"));
-    identity_matches(
+    context: &mut ResolveReadContext,
+) -> Result<IdentityMatch, AdapterError> {
+    let read = read_node(element, identity_requirements(entry), context)?;
+    if read.invalid_element {
+        return Ok(IdentityMatch::Unknown);
+    }
+    let matched = match read.evidence.role.known() {
+        Some(role) if role == &entry.identity.role => {
+            let identity = match_native_or_text_identity(entry, &read.evidence);
+            if identity == IdentityMatch::Unknown && provisional_geometry_candidate(entry) {
+                IdentityMatch::Match
+            } else {
+                identity
+            }
+        }
+        Some(_) => IdentityMatch::NoMatch,
+        None if read.evidence.role.is_unknown() => IdentityMatch::Unknown,
+        None => IdentityMatch::NoMatch,
+    };
+    Ok(matched)
+}
+
+pub(super) fn match_native_or_text_identity(
+    entry: &RefEntry,
+    evidence: &agent_desktop_core::LocatorEvidence,
+) -> IdentityMatch {
+    identity_match(
         entry,
-        elem_name.as_deref(),
-        elem_value.as_deref(),
-        elem_description.as_deref(),
-        elem_native_id.as_deref(),
+        &evidence.name,
+        &evidence.value,
+        &evidence.description,
+        &evidence.identifiers,
     )
 }
 
+pub(super) fn native_identifier_reused_by_different_role(
+    entry: &RefEntry,
+    evidence: &agent_desktop_core::LocatorEvidence,
+) -> bool {
+    let Some(expected) = entry.identity.native_id.as_ref() else {
+        return false;
+    };
+    evidence
+        .role
+        .known()
+        .is_some_and(|role| role != &entry.identity.role)
+        && evidence.identifiers.is_complete()
+        && evidence
+            .identifiers
+            .identifiers()
+            .iter()
+            .any(|identifier| identifier == expected)
+}
+
+fn provisional_geometry_candidate(entry: &RefEntry) -> bool {
+    entry.geometry.bounds_hash.is_some()
+        && !agent_desktop_core::ref_identity::has_meaningful_identity(entry)
+}
+
 #[cfg(target_os = "macos")]
-fn resolve_children(
-    el: &AXElement,
-    ax_role: Option<&str>,
-    deadline: Instant,
-    seen: &mut FxHashSet<usize>,
-) -> Result<Vec<AXElement>, AdapterError> {
-    seen.clear();
-    set_messaging_timeout(el, remaining_before_deadline(deadline)?);
-    let mut result = Vec::new();
-    for attr in child_attributes(ax_role) {
-        ensure_before_deadline(deadline)?;
-        if let Some(children) = copy_ax_array(el, attr) {
-            for child in children {
-                if seen.insert(child.0 as usize) {
-                    result.push(child);
-                }
-            }
-        }
+fn read_node(
+    element: &AXElement,
+    requirements: EvidenceRequirements,
+    context: &mut ResolveReadContext,
+) -> Result<crate::tree::query::node_read::NodeRead, AdapterError> {
+    if !context.usage.claim_node() {
+        context.stats.traversal.limits.node_hits += 1;
+        return Err(incomplete_traversal_error("node_budget", 0));
     }
-    Ok(result)
+    let child_plan =
+        crate::tree::query::child_read_plan::ChildReadPlan::load(context.usage.child_capacity());
+    let read = crate::tree::query::node_read::read_node(
+        element,
+        crate::tree::query::node_read_context::NodeReadContext {
+            tree: &crate::tree::TreeBuildContext::empty(false),
+            stats: &mut context.stats,
+            usage: &mut context.usage,
+            requirements,
+            deadline: context.deadline,
+            child_plan,
+        },
+    )?;
+    context
+        .usage
+        .note_child_demand(read.child_read.total_count, &mut context.stats);
+    context.usage.claim_edges(read.child_read.elements.len());
+    Ok(read)
+}
+
+fn identity_requirements(entry: &RefEntry) -> EvidenceRequirements {
+    let semantic_text = has_stable_text_identity(entry) || entry.identity.role == "cell";
+    EvidenceRequirements {
+        role: true,
+        name: semantic_text,
+        description: semantic_text,
+        value: semantic_text,
+        identifiers: entry.identity.native_id.is_some(),
+        states: false,
+        ref_evidence: Default::default(),
+    }
+}
+
+pub(super) fn should_stop_collecting(match_count: usize, entry: &RefEntry) -> bool {
+    match_count > 1 && entry.geometry.bounds_hash.is_none()
+}
+
+fn mark_incomplete(context: &mut CollectContext<'_>, error: AdapterError) {
+    if context.incomplete.is_none() {
+        *context.incomplete = Some(error);
+    }
 }

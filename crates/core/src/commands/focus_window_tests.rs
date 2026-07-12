@@ -10,7 +10,11 @@ struct FocusAdapter {
 }
 
 impl ObservationOps for FocusAdapter {
-    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+    fn list_windows(
+        &self,
+        filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         if filter.focused_only {
             Ok(self.focused_windows.lock().unwrap().clone())
         } else {
@@ -24,11 +28,20 @@ impl ActionOps for FocusAdapter {}
 impl InputOps for FocusAdapter {}
 
 impl SystemOps for FocusAdapter {
-    fn focus_window(&self, _win: &WindowInfo) -> Result<(), AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn focus_window(
+        &self,
+        _win: &WindowInfo,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
         Ok(())
     }
 
-    fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {
+    fn focused_window(
+        &self,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<WindowInfo>, AdapterError> {
         *self.focused_window_calls.lock().unwrap() += 1;
         if !self.focused_window_supported {
             return Err(AdapterError::not_supported("focused_window"));
@@ -47,9 +60,13 @@ fn window(id: &str, focused: bool) -> WindowInfo {
         id: id.into(),
         title: "Main".into(),
         app: "TextEdit".into(),
-        pid: 42,
+        pid: crate::ProcessId::new(42),
+        process_instance: Some("test-instance".into()),
         bounds: None,
-        is_focused: focused,
+        state: crate::WindowState {
+            is_focused: focused,
+            ..Default::default()
+        },
     }
 }
 
@@ -140,9 +157,14 @@ fn focus_confirmation_resets_after_transient_wrong_window() {
         focused_window_supported: true,
     };
 
-    let value =
-        wait_for_focused_window_with_poll_interval(&adapter, &target.id, None, Duration::ZERO)
-            .unwrap();
+    let value = wait_for_focused_window_with_poll_interval(
+        &adapter,
+        &target.id,
+        None,
+        Duration::ZERO,
+        crate::Deadline::standard().unwrap(),
+    )
+    .unwrap();
 
     assert_eq!(value.id, "w1");
     assert_eq!(*adapter.focused_window_calls.lock().unwrap(), 4);

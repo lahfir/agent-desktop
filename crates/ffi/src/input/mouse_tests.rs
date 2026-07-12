@@ -60,7 +60,7 @@ fn modifiers_from_c_empty_when_count_zero() {
 #[test]
 fn modifiers_from_c_maps_all_four_discriminants_in_order() {
     let raw: [i32; 4] = [
-        AdModifier::Cmd as i32,
+        AdModifier::Meta as i32,
         AdModifier::Ctrl as i32,
         AdModifier::Alt as i32,
         AdModifier::Shift as i32,
@@ -69,7 +69,7 @@ fn modifiers_from_c_maps_all_four_discriminants_in_order() {
     assert_eq!(
         result,
         vec![
-            CoreModifier::Cmd,
+            CoreModifier::Meta,
             CoreModifier::Ctrl,
             CoreModifier::Alt,
             CoreModifier::Shift,
@@ -97,6 +97,24 @@ fn modifiers_from_c_rejects_invalid_discriminant() {
     assert!(result.is_err());
 }
 
+#[test]
+fn wheel_modifier_mask_maps_all_documented_bits() {
+    assert_eq!(
+        modifiers_from_mask(0b1111).unwrap(),
+        vec![
+            CoreModifier::Meta,
+            CoreModifier::Ctrl,
+            CoreModifier::Alt,
+            CoreModifier::Shift,
+        ]
+    );
+}
+
+#[test]
+fn wheel_modifier_mask_rejects_unknown_bits() {
+    assert!(modifiers_from_mask(0b1_0000).is_err());
+}
+
 /// The core regression check: `build_mouse_event` must carry whatever
 /// modifiers it was given through unchanged, not silently drop them the way
 /// this function's predecessor did.
@@ -108,10 +126,10 @@ fn build_mouse_event_carries_requested_modifiers_through_unchanged() {
         button: AdMouseButton::Left as i32,
         click_count: 1,
     };
-    let core_event = build_mouse_event(&ev, vec![CoreModifier::Cmd, CoreModifier::Shift]).unwrap();
+    let core_event = build_mouse_event(&ev, vec![CoreModifier::Meta, CoreModifier::Shift]).unwrap();
     assert_eq!(
         core_event.modifiers,
-        vec![CoreModifier::Cmd, CoreModifier::Shift]
+        vec![CoreModifier::Meta, CoreModifier::Shift]
     );
 }
 
@@ -123,5 +141,29 @@ fn build_mouse_event_rejects_invalid_button_discriminant() {
         button: -5,
         click_count: 1,
     };
+    assert!(build_mouse_event(&ev, Vec::new()).is_err());
+}
+
+#[test]
+fn build_mouse_event_rejects_zero_click_count() {
+    let ev = AdMouseEvent {
+        kind: AdMouseEventKind::Click as i32,
+        point: AdPoint { x: 1.0, y: 2.0 },
+        button: AdMouseButton::Left as i32,
+        click_count: 0,
+    };
+
+    assert!(build_mouse_event(&ev, Vec::new()).is_err());
+}
+
+#[test]
+fn build_mouse_event_rejects_excessive_click_count() {
+    let ev = AdMouseEvent {
+        kind: AdMouseEventKind::Click as i32,
+        point: AdPoint { x: 1.0, y: 2.0 },
+        button: AdMouseButton::Left as i32,
+        click_count: agent_desktop_core::MAX_MOUSE_CLICK_COUNT + 1,
+    };
+
     assert!(build_mouse_event(&ev, Vec::new()).is_err());
 }

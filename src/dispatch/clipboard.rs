@@ -1,46 +1,47 @@
 use agent_desktop_core::{
+    AppError,
+    adapter::PlatformAdapter,
     commands::{clipboard_clear, clipboard_get, clipboard_set},
     context::CommandContext,
-    error::{AppError, ErrorCode},
 };
 use serde_json::Value;
 
-use crate::cli::Commands;
+use crate::cli_args::system::{ClipboardGetArgs, ClipboardSetArgs};
 use crate::dispatch::parse::parse_clipboard_format;
 
-pub(super) fn dispatch(
-    cmd: Commands,
-    adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
+pub(super) fn get(
+    args: ClipboardGetArgs,
+    adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    match cmd {
-        Commands::ClipboardGet(a) => clipboard_get::execute(
-            clipboard_get::ClipboardGetArgs {
-                format: a
-                    .format
-                    .as_deref()
-                    .map(parse_clipboard_format)
-                    .transpose()?,
-                out: a.out,
-            },
-            adapter,
-            context,
-        ),
-        Commands::ClipboardSet(a) => clipboard_set::execute(
-            clipboard_set::ClipboardSetArgs {
-                text: a.text,
-                image: a.image,
-                file_urls: a.file_url,
-            },
-            adapter,
-        ),
-        Commands::ClipboardClear => clipboard_clear::execute(adapter),
+    clipboard_get::execute(
+        clipboard_get::ClipboardGetArgs {
+            format: args
+                .format
+                .as_deref()
+                .map(parse_clipboard_format)
+                .transpose()?,
+            out: args.out,
+        },
+        adapter,
+        context,
+    )
+}
 
-        _ => Err(AppError::Adapter(
-            agent_desktop_core::error::AdapterError::new(
-                ErrorCode::InvalidArgs,
-                "clipboard::dispatch received a non-clipboard command",
-            ),
-        )),
-    }
+pub(super) fn set(
+    args: ClipboardSetArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    clipboard_set::execute(
+        clipboard_set::ClipboardSetArgs {
+            text: args.text,
+            image: args.image,
+            file_urls: args.file_url,
+        },
+        adapter,
+    )
+}
+
+pub(super) fn clear(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    clipboard_clear::execute(adapter)
 }

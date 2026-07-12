@@ -1,0 +1,238 @@
+use agent_desktop_core::{
+    AdapterError, AppError, Deadline, DeliverySemantics, ErrorCode, PermissionReport,
+    SignalBaseline, SignalFilter, adapter::PlatformAdapter, context::CommandContext,
+};
+use serde_json::{Value, json};
+
+use crate::{cli::Commands, cli_args::batch::BatchArgs};
+
+use super::{
+    bounded_json::serialized_size,
+    preparation::{MAX_BATCH_ENTRIES, MAX_BATCH_JSON_BYTES, PreparedCommand, prepare},
+    result_entry::{MAX_BATCH_OUTPUT_BYTES, bounded_entry, not_started_entry},
+};
+
+pub(super) fn execute(
+    args: BatchArgs,
+    adapter: &dyn PlatformAdapter,
+    permission_report: &PermissionReport,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let deadline = Deadline::after(args.timeout_ms)
+        .map_err(|error| error.with_disposition(DeliverySemantics::not_delivered()))?;
+    let mut commands = prepare(&args.commands_json, permission_report, context)?;
+    let total = commands.len();
+    let mut results = Vec::with_capacity(total);
+    let mut results_bytes = 0;
+    let mut completed = 0;
+    let mut pending_baseline: Option<Result<SignalBaseline, AdapterError>> = None;
+    let mut stopped = None;
+
+    for index in 0..total {
+        if deadline.is_expired() {
+            let error = batch_timeout(index, &commands[index].name, args.timeout_ms);
+            push_small_entry(
+                &mut results,
+                &mut results_bytes,
+                not_started_entry(index, &commands[index].name, "deadline", error),
+            );
+            stopped = Some(json!({ "reason": "deadline", "index": index }));
+            break;
+        }
+
+        let current_baseline = pending_baseline.take();
+        pending_baseline = match commands.get(index + 1).and_then(event_filter) {
+            Some(filter) => match adapter.capture_signal_baseline(&filter, deadline) {
+                Ok(baseline) => Some(Ok(baseline)),
+                Err(error) => {
+                    let wait_index = index + 1;
+                    let wait_command = &commands[wait_index].name;
+                    let error = baseline_error(
+                        index,
+                        &commands[index].name,
+                        wait_index,
+                        wait_command,
+                        error,
+                    );
+                    push_small_entry(
+                        &mut results,
+                        &mut results_bytes,
+                        not_started_entry(
+                            index,
+                            &commands[index].name,
+                            "pre_action_baseline_failed",
+                            error,
+                        ),
+                    );
+                    stopped = Some(json!({
+                        "reason": "pre_action_baseline_failed",
+                        "blocked_index": index,
+                        "blocked_command": commands[index].name,
+                        "wait_index": wait_index,
+                        "wait_command": wait_command,
+                    }));
+                    break;
+                }
+            },
+            None => None,
+        };
+
+        cap_timeout(&mut commands[index].command, deadline.remaining_ms());
+        let item_context = commands[index]
+            .context
+            .clone()
+            .with_event_baseline(current_baseline);
+        let command = std::mem::replace(&mut commands[index].command, Commands::Version);
+        let result = crate::dispatch::dispatch(command, adapter, permission_report, &item_context);
+        let failed = result.is_err();
+        let (entry, oversized) = bounded_entry(index, &commands[index].name, result, results_bytes);
+        completed += 1;
+        push_small_entry(&mut results, &mut results_bytes, entry);
+
+        if oversized {
+            stopped = Some(json!({ "reason": "output_limit", "index": index }));
+            break;
+        }
+        if failed && args.stop_on_error {
+            stopped = Some(json!({ "reason": "stop_on_error", "index": index }));
+            break;
+        }
+        if deadline.is_expired() && index + 1 < total {
+            stopped = Some(json!({ "reason": "deadline", "after_index": index }));
+            break;
+        }
+    }
+
+    let mut body = json!({
+        "results": results,
+        "semantics": {
+            "atomic": false,
+            "order": "sequential",
+            "batch_retries": false,
+            "command_retry_contracts": "preserved",
+            "successful_action_disposition": "data.disposition",
+            "error_disposition": "error.disposition",
+        },
+        "total_entries": total,
+        "completed_entries": completed,
+        "not_started_entries": total.saturating_sub(completed),
+        "timeout_ms": args.timeout_ms,
+        "elapsed_ms": deadline.elapsed().as_millis(),
+        "limits": {
+            "max_entries": MAX_BATCH_ENTRIES,
+            "max_input_bytes": MAX_BATCH_JSON_BYTES,
+            "max_output_bytes": MAX_BATCH_OUTPUT_BYTES,
+        }
+    });
+    if let Some(stopped) = stopped {
+        body["stopped"] = stopped;
+    }
+    if serialized_size(&body) > MAX_BATCH_OUTPUT_BYTES {
+        let disposition = if completed == 0 {
+            DeliverySemantics::not_delivered()
+        } else {
+            DeliverySemantics::uncertain()
+        };
+        return Err(AdapterError::new(
+            ErrorCode::Internal,
+            "Batch response exceeded its output contract after final serialization",
+        )
+        .with_details(json!({
+            "kind": "batch_output_limit",
+            "completed_entries": completed,
+            "max_output_bytes": MAX_BATCH_OUTPUT_BYTES,
+        }))
+        .with_disposition(disposition)
+        .into());
+    }
+    Ok(body)
+}
+
+fn event_filter(command: &PreparedCommand) -> Option<SignalFilter> {
+    match &command.command {
+        Commands::Wait(args) if args.event.event.is_some() => Some(SignalFilter {
+            app: args.app.clone(),
+            process: None,
+        }),
+        _ => None,
+    }
+}
+
+fn cap_timeout(command: &mut Commands, remaining_ms: u64) {
+    match command {
+        Commands::Click(args)
+        | Commands::DoubleClick(args)
+        | Commands::TripleClick(args)
+        | Commands::RightClick(args)
+        | Commands::Clear(args)
+        | Commands::Focus(args)
+        | Commands::Toggle(args)
+        | Commands::Check(args)
+        | Commands::Uncheck(args)
+        | Commands::Expand(args)
+        | Commands::Collapse(args)
+        | Commands::ScrollTo(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
+        Commands::Type(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
+        Commands::SetValue(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
+        Commands::Select(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
+        Commands::Scroll(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
+        Commands::Hover(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
+        Commands::Drag(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
+        Commands::Launch(args) => args.timeout = args.timeout.min(remaining_ms),
+        Commands::Wait(args) => {
+            args.timeout = args.timeout.min(remaining_ms);
+            if let Some(ms) = args.mode.ms.as_mut() {
+                *ms = (*ms).min(remaining_ms);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn baseline_error(
+    blocked_index: usize,
+    blocked_command: &str,
+    wait_index: usize,
+    wait_command: &str,
+    mut source: AdapterError,
+) -> AppError {
+    let cause_details = source.details.take();
+    source.message = format!(
+        "Batch entry {blocked_index} ('{blocked_command}') was not started because the baseline for following wait entry {wait_index} ('{wait_command}') failed: {}",
+        source.message
+    );
+    let mut details = json!({
+        "kind": "pre_action_baseline_failed",
+        "blocked_index": blocked_index,
+        "blocked_command": blocked_command,
+        "wait_index": wait_index,
+        "wait_command": wait_command,
+    });
+    if let Some(cause_details) = cause_details {
+        details["cause_details"] = cause_details;
+    }
+    source.details = Some(details);
+    source.disposition = DeliverySemantics::not_delivered();
+    source.into()
+}
+
+fn batch_timeout(index: usize, command: &str, timeout_ms: u64) -> AppError {
+    AdapterError::timeout("Batch deadline elapsed before the entry started")
+        .with_details(json!({
+            "kind": "batch_deadline",
+            "batch_index": index,
+            "batch_command": command,
+            "timeout_ms": timeout_ms,
+        }))
+        .with_disposition(DeliverySemantics::not_delivered())
+        .into()
+}
+
+fn push_small_entry(results: &mut Vec<Value>, used: &mut usize, entry: Value) {
+    *used = used.saturating_add(serialized_size(&entry).saturating_add(1));
+    results.push(entry);
+}
+
+#[cfg(test)]
+#[path = "execution_tests.rs"]
+mod tests;

@@ -1,118 +1,101 @@
 #[cfg(target_os = "macos")]
 mod imp {
-    use crate::actions::ax_helpers;
+    use crate::actions::chain_delivery::DeliveryOutcome;
     use crate::tree::AXElement;
-    use agent_desktop_core::error::AdapterError;
+    use agent_desktop_core::{AdapterError, Deadline};
+    use std::time::{Duration, Instant};
 
-    /// Expands a disclosure that toggles via press (no settable `AXExpanded`).
-    /// Idempotent: a no-op when already expanded; otherwise presses and
-    /// confirms the disclosed state flipped.
     pub(crate) fn press_to_expand(
-        el: &AXElement,
-        chain_deadline: Option<std::time::Instant>,
-    ) -> Result<bool, AdapterError> {
-        press_toggle_disclosure(el, true, chain_deadline)
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        set_disclosure(element, true, deadline)
     }
 
-    /// Collapses a press-toggled disclosure, mirroring [`press_to_expand`].
     pub(crate) fn press_to_collapse(
-        el: &AXElement,
-        chain_deadline: Option<std::time::Instant>,
-    ) -> Result<bool, AdapterError> {
-        press_toggle_disclosure(el, false, chain_deadline)
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        set_disclosure(element, false, deadline)
     }
 
-    /// Tries the semantic action / settable attribute, then a press. Each is
-    /// confirmed against the disclosed state; an action that succeeds at the AX
-    /// layer but does not move the control is not counted. A settle wait that
-    /// was truncated by the chain deadline is a hard TIMEOUT (mirroring the
-    /// increment path): the press may still land after the truncated wait, so
-    /// reporting a plain step failure would mask a possible mutation as
-    /// ACTION_FAILED.
-    fn press_toggle_disclosure(
-        el: &AXElement,
-        want_expanded: bool,
-        chain_deadline: Option<std::time::Instant>,
-    ) -> Result<bool, AdapterError> {
-        if disclosed_state(el) == Some(want_expanded) {
-            return Ok(true);
-        }
-        let action = if want_expanded {
-            "AXExpand"
-        } else {
-            "AXCollapse"
+    fn set_disclosure(
+        element: &AXElement,
+        expanded: bool,
+        deadline: Deadline,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        let Some(current) = disclosed_state(element, deadline)? else {
+            return Ok(DeliveryOutcome::NotDelivered);
         };
-        if ax_helpers::has_ax_action(el, action) {
-            let _ = ax_helpers::try_ax_action_retried_or_err(el, action)?;
-            if disclosure_settled(el, want_expanded, chain_deadline)? {
-                return Ok(true);
+        if current == expanded {
+            return Ok(DeliveryOutcome::SatisfiedNoDelivery);
+        }
+        let action = if expanded { "AXExpand" } else { "AXCollapse" };
+        prepare(element, deadline)?;
+        if crate::actions::ax_helpers::try_ax_action_or_err(element, action, deadline)? {
+            return verify_disclosure(element, expanded, deadline).map_err(after_delivery);
+        }
+        prepare(element, deadline)?;
+        if crate::actions::ax_helpers::is_attr_settable(element, "AXExpanded", deadline)? {
+            prepare(element, deadline)?;
+            if crate::actions::ax_helpers::set_ax_bool_or_err(
+                element,
+                "AXExpanded",
+                expanded,
+                deadline,
+            )? {
+                return verify_disclosure(element, expanded, deadline).map_err(after_delivery);
             }
         }
-        if ax_helpers::is_attr_settable(el, "AXExpanded") {
-            let _ = ax_helpers::set_ax_bool_or_err(el, "AXExpanded", want_expanded)?;
-            if disclosure_settled(el, want_expanded, chain_deadline)? {
-                return Ok(true);
-            }
+        prepare(element, deadline)?;
+        if crate::actions::ax_helpers::try_ax_action_or_err(element, "AXPress", deadline)? {
+            return verify_disclosure(element, expanded, deadline).map_err(after_delivery);
         }
-        if ax_helpers::has_ax_action(el, "AXPress")
-            && ax_helpers::try_ax_action_retried_or_err(el, "AXPress")?
-            && disclosure_settled(el, want_expanded, chain_deadline)?
-        {
-            return Ok(true);
-        }
-        Ok(false)
+        Ok(DeliveryOutcome::NotDelivered)
     }
 
-    /// Polls for the disclosed state instead of a fixed settle sleep: fast UIs
-    /// confirm on the first read, while animated disclosures get up to the
-    /// settle budget. The budget is capped to the chain's remaining deadline;
-    /// an exit forced by that cap (rather than the full budget elapsing) is
-    /// reported as `DeadlineExpired`, never as a plain failure. At least one
-    /// state read always happens, even with the deadline already past.
-    fn disclosure_settled(
-        el: &AXElement,
-        want_expanded: bool,
-        chain_deadline: Option<std::time::Instant>,
-    ) -> Result<bool, AdapterError> {
-        use std::time::{Duration, Instant};
-
-        const POLL_INTERVAL: Duration = Duration::from_millis(20);
-        const SETTLE_BUDGET: Duration = Duration::from_millis(200);
-
-        let budget_end = Instant::now() + SETTLE_BUDGET;
-        let deadline = chain_deadline.map_or(budget_end, |dl| dl.min(budget_end));
-        let truncated = deadline < budget_end;
+    fn verify_disclosure(
+        element: &AXElement,
+        expanded: bool,
+        deadline: Deadline,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        let local_end = Instant::now() + Duration::from_millis(200);
         loop {
-            if disclosed_state(el) == Some(want_expanded) {
-                return Ok(true);
+            if disclosed_state(element, deadline)? == Some(expanded) {
+                return Ok(DeliveryOutcome::DeliveredVerified);
             }
-            let now = Instant::now();
-            if now >= deadline {
-                return if truncated {
-                    Err(crate::actions::chain_verify::disclosure_deadline_error(
-                        want_expanded,
-                        disclosed_state(el),
-                    ))
-                } else {
-                    Ok(false)
-                };
+            if deadline.is_expired() {
+                return Err(deadline.timeout_error().with_details(serde_json::json!({
+                    "verification": "expanded_state_not_observed",
+                })));
             }
-            std::thread::sleep(POLL_INTERVAL.min(deadline - now));
+            if Instant::now() >= local_end {
+                return Ok(DeliveryOutcome::DeliveredUnverified);
+            }
+            let pause = deadline.remaining_slice(Duration::from_millis(20))?;
+            std::thread::sleep(pause.min(Duration::from_millis(20)));
         }
     }
 
-    fn disclosed_state(el: &AXElement) -> Option<bool> {
-        crate::tree::copy_bool_attr(el, "AXExpanded")
-            .or_else(|| crate::tree::copy_bool_attr(el, "AXDisclosing"))
-            .or_else(|| value_as_bool(el))
+    fn disclosed_state(
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<Option<bool>, AdapterError> {
+        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+        if let Some(value) = crate::tree::surface_read::boolean(element, "AXExpanded", instant)? {
+            return Ok(Some(value));
+        }
+        crate::tree::surface_read::boolean(element, "AXDisclosing", instant)
     }
 
-    fn value_as_bool(el: &AXElement) -> Option<bool> {
-        match crate::tree::copy_value_typed(el).as_deref() {
-            Some("1" | "true" | "True") => Some(true),
-            Some("0" | "false" | "False") => Some(false),
-            _ => None,
-        }
+    fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
+        crate::tree::attributes::set_messaging_timeout(element, deadline)
+    }
+
+    fn after_delivery(error: AdapterError) -> AdapterError {
+        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        delivery.mark_delivered();
+        delivery.annotate(error)
     }
 }
 

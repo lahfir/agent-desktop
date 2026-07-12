@@ -3,43 +3,38 @@ use crate::types::{AdNode, AdNodeTree};
 use std::os::raw::c_char;
 use std::ptr;
 
-const MAX_NODE_STATE_STRINGS_TO_FREE: usize = 1024;
-const MAX_TREE_NODES_TO_FREE: usize = 1_000_000;
-
 unsafe fn free_c_string_array(arr: *mut *mut c_char) {
     unsafe {
-        if arr.is_null() {
-            return;
-        }
-        let mut len = 0;
-        while len < MAX_NODE_STATE_STRINGS_TO_FREE && !(*arr.add(len)).is_null() {
-            free_c_string(*arr.add(len));
-            len += 1;
-        }
-        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+        let Some(len) = crate::resource::take_allocation(
+            crate::resource::AllocationKind::TreeStateStrings,
             arr,
-            len + 1,
-        )));
+        ) else {
+            return;
+        };
+        for index in 0..len {
+            free_c_string(*arr.add(index));
+        }
+        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(arr, len)));
     }
 }
 
 unsafe fn free_node_fields(node: &mut AdNode) {
     unsafe {
-        free_c_string(node.ref_id as *mut c_char);
-        free_c_string(node.role as *mut c_char);
-        free_c_string(node.name as *mut c_char);
-        free_c_string(node.value as *mut c_char);
-        free_c_string(node.description as *mut c_char);
-        free_c_string(node.hint as *mut c_char);
-        free_c_string_array(node.states);
-        node.ref_id = ptr::null();
-        node.role = ptr::null();
-        node.name = ptr::null();
-        node.value = ptr::null();
-        node.description = ptr::null();
-        node.hint = ptr::null();
-        node.states = ptr::null_mut();
-        node.state_count = 0;
+        free_c_string(node.content.ref_id as *mut c_char);
+        free_c_string(node.content.role as *mut c_char);
+        free_c_string(node.content.name as *mut c_char);
+        free_c_string(node.content.value as *mut c_char);
+        free_c_string(node.content.description as *mut c_char);
+        free_c_string(node.content.hint as *mut c_char);
+        free_c_string_array(node.presentation.states);
+        node.content.ref_id = ptr::null();
+        node.content.role = ptr::null();
+        node.content.name = ptr::null();
+        node.content.value = ptr::null();
+        node.content.description = ptr::null();
+        node.content.hint = ptr::null();
+        node.presentation.states = ptr::null_mut();
+        node.presentation.state_count = 0;
     }
 }
 
@@ -56,33 +51,30 @@ pub unsafe extern "C" fn ad_free_tree(tree: *mut AdNodeTree) {
         if tree.nodes.is_null() {
             return;
         }
-        let node_count = sentinel_node_count(tree.nodes);
+        let Some(node_count) = crate::resource::take_allocation(
+            crate::resource::AllocationKind::TreeNodes,
+            tree.nodes,
+        ) else {
+            tree.nodes = ptr::null_mut();
+            tree.count = 0;
+            return;
+        };
         let nodes = std::slice::from_raw_parts_mut(tree.nodes, node_count);
         for node in nodes.iter_mut() {
             free_node_fields(node);
         }
         drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-            tree.nodes,
-            node_count + 1,
+            tree.nodes, node_count,
         )));
         tree.nodes = ptr::null_mut();
         tree.count = 0;
     })
 }
 
-unsafe fn sentinel_node_count(nodes: *mut AdNode) -> usize {
-    unsafe {
-        let mut count = 0;
-        while count < MAX_TREE_NODES_TO_FREE && !(*nodes.add(count)).role.is_null() {
-            count += 1;
-        }
-        count
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{AdNodeContent, AdNodePresentation, AdNodeRelation};
 
     #[test]
     fn test_free_null_tree_is_noop() {
@@ -98,8 +90,13 @@ mod tests {
     }
 
     fn tree_with_node(node: AdNode) -> AdNodeTree {
-        let mut nodes = vec![node, sentinel_node()].into_boxed_slice();
+        let mut nodes = vec![node].into_boxed_slice();
         let raw = nodes.as_mut_ptr();
+        crate::resource::register_allocation(
+            crate::resource::AllocationKind::TreeNodes,
+            raw,
+            nodes.len(),
+        );
         std::mem::forget(nodes);
         AdNodeTree {
             nodes: raw,
@@ -109,79 +106,61 @@ mod tests {
 
     fn node_with_states(states: &[&str], state_count: u32) -> AdNode {
         AdNode {
-            ref_id: ptr::null(),
-            role: crate::convert::string::string_to_c_lossy("button"),
-            name: ptr::null(),
-            value: ptr::null(),
-            description: ptr::null(),
-            hint: ptr::null(),
-            states: state_array(states),
-            state_count,
-            bounds: crate::types::AdRect {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
+            content: AdNodeContent {
+                ref_id: ptr::null(),
+                role: crate::convert::string::string_to_c_lossy("button"),
+                name: ptr::null(),
+                value: ptr::null(),
+                description: ptr::null(),
+                hint: ptr::null(),
             },
-            has_bounds: false,
-            parent_index: -1,
-            child_start: 0,
-            child_count: 0,
-        }
-    }
-
-    fn sentinel_node() -> AdNode {
-        AdNode {
-            ref_id: ptr::null(),
-            role: ptr::null(),
-            name: ptr::null(),
-            value: ptr::null(),
-            description: ptr::null(),
-            hint: ptr::null(),
-            states: ptr::null_mut(),
-            state_count: 0,
-            bounds: crate::types::AdRect {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
+            presentation: AdNodePresentation {
+                states: state_array(states),
+                bounds: crate::types::AdRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                },
+                state_count,
+                has_bounds: false,
             },
-            has_bounds: false,
-            parent_index: -1,
-            child_start: 0,
-            child_count: 0,
+            relation: AdNodeRelation {
+                parent_index: -1,
+                child_start: 0,
+                child_count: 0,
+            },
         }
     }
 
     fn state_array(states: &[&str]) -> *mut *mut c_char {
-        let mut ptrs: Vec<*mut c_char> = states
+        let ptrs: Vec<*mut c_char> = states
             .iter()
             .map(|state| crate::convert::string::string_to_c_lossy(state))
             .collect();
-        ptrs.push(ptr::null_mut());
+        let len = ptrs.len();
         let mut boxed = ptrs.into_boxed_slice();
         let raw = boxed.as_mut_ptr();
         std::mem::forget(boxed);
+        crate::resource::register_allocation(
+            crate::resource::AllocationKind::TreeStateStrings,
+            raw,
+            len,
+        );
         raw
     }
 
     #[test]
     fn free_tree_ignores_mutated_tree_count() {
-        let root = agent_desktop_core::node::AccessibilityNode {
+        let root = agent_desktop_core::AccessibilityNode {
             ref_id: None,
             role: "button".into(),
-            name: None,
-            value: None,
-            description: None,
-            native_id: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
+            identity: agent_desktop_core::NodeIdentity::default(),
+            presentation: agent_desktop_core::NodePresentation::default(),
             children: vec![],
             children_count: None,
         };
-        let mut tree = crate::tree::flatten::flatten_tree(&root);
+        let mut tree = crate::tree::flatten::flatten_tree(&root).unwrap();
         tree.count = u32::MAX;
         unsafe { ad_free_tree(&mut tree) };
 

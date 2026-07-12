@@ -1,18 +1,18 @@
+#[cfg(test)]
+use crate::AccessibilityNode;
+#[cfg(test)]
+use crate::commands::query;
 use crate::{
-    adapter::PlatformAdapter,
-    commands::query,
-    context::CommandContext,
-    error::AppError,
-    locator::{IdentityPredicate, LocatorQuery, StatePredicate},
-    node::AccessibilityNode,
-    roles, search_text, snapshot,
+    AppError, IdentityPredicate, LocatorQuery, StatePredicate, adapter::PlatformAdapter,
+    context::CommandContext, search_text,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
+#[cfg(test)]
 use std::collections::BTreeSet;
 
 const DEFAULT_LIMIT: usize = 50;
-
-pub use query::FindQuery;
 
 /// Match-criteria fields: how a candidate element is identified. Grouped out
 /// of [`FindArgs`] to keep it under the repo's field-count limit.
@@ -53,7 +53,7 @@ pub fn execute(
     let query = locator_query_from_args(&args)?;
     query.validate_states().map_err(AppError::Adapter)?;
 
-    execute_snapshot_search(&args, &query, adapter, context)
+    live::execute(&args, &query, adapter, context)
 }
 
 pub fn parse_state_flag(raw: &str) -> Result<StatePredicate, AppError> {
@@ -82,7 +82,7 @@ pub fn parse_state_flag(raw: &str) -> Result<StatePredicate, AppError> {
 fn locator_query_from_args(args: &FindArgs) -> Result<LocatorQuery, AppError> {
     Ok(LocatorQuery {
         identity: IdentityPredicate {
-            role: args.filter.role.as_deref().map(roles::normalize_role_query),
+            role: args.filter.role.clone(),
             name: args.filter.name.as_deref().map(search_text::normalize),
             description: args
                 .filter
@@ -99,74 +99,7 @@ fn locator_query_from_args(args: &FindArgs) -> Result<LocatorQuery, AppError> {
     })
 }
 
-fn execute_snapshot_search(
-    args: &FindArgs,
-    query: &LocatorQuery,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-) -> Result<Value, AppError> {
-    let opts = crate::adapter::TreeOptions::default();
-    let result = if args.selection.count {
-        snapshot::build(
-            adapter,
-            &opts,
-            args.app.as_deref(),
-            args.window_id.as_deref(),
-        )?
-    } else {
-        snapshot::run_with_context(
-            adapter,
-            &opts,
-            args.app.as_deref(),
-            args.window_id.as_deref(),
-            context,
-        )?
-    };
-
-    if args.selection.count {
-        return Ok(json!({ "count": count_matches(&result.tree, query) }));
-    }
-
-    let mut matches = Vec::new();
-    let max_matches = max_matches_for_args(args);
-    collect_snapshot_matches(
-        &result.tree,
-        query,
-        &mut Vec::new(),
-        &mut matches,
-        max_matches,
-    );
-
-    if args.selection.first {
-        return Ok(single_match_response(
-            matches.into_iter().next(),
-            query,
-            &result.tree,
-        ));
-    }
-
-    if args.selection.last {
-        return Ok(single_match_response(
-            matches.into_iter().last(),
-            query,
-            &result.tree,
-        ));
-    }
-
-    if let Some(n) = args.selection.nth {
-        return Ok(single_match_response(
-            matches.into_iter().nth(n),
-            query,
-            &result.tree,
-        ));
-    }
-
-    let match_count = matches.len();
-    let mut response = json!({ "matches": matches });
-    attach_roles_present_hint(&mut response, match_count == 0, query, &result.tree);
-    Ok(response)
-}
-
+#[cfg(test)]
 fn attach_roles_present_hint(
     response: &mut Value,
     is_empty: bool,
@@ -186,6 +119,7 @@ fn attach_roles_present_hint(
     }
 }
 
+#[cfg(test)]
 fn single_match_response(
     found: Option<Value>,
     query: &LocatorQuery,
@@ -197,26 +131,11 @@ fn single_match_response(
     response
 }
 
+#[cfg(test)]
 fn collect_roles(node: &AccessibilityNode, roles: &mut BTreeSet<String>) {
     roles.insert(node.role.clone());
     for child in &node.children {
         collect_roles(child, roles);
-    }
-}
-
-fn max_matches_for_args(args: &FindArgs) -> Option<usize> {
-    if args.selection.count || args.selection.last {
-        return None;
-    }
-    if args.selection.first {
-        return Some(1);
-    }
-    if let Some(n) = args.selection.nth {
-        return Some(n.saturating_add(1));
-    }
-    match args.selection.limit.unwrap_or(DEFAULT_LIMIT) {
-        0 => None,
-        limit => Some(limit),
     }
 }
 
@@ -239,6 +158,7 @@ fn validate_find_mode(args: &FindArgs) -> Result<(), AppError> {
     Ok(())
 }
 
+#[cfg(test)]
 fn collect_snapshot_matches(
     node: &AccessibilityNode,
     query: &LocatorQuery,
@@ -252,18 +172,19 @@ fn collect_snapshot_matches(
     if query::node_matches(node, query) {
         let interactive = node.ref_id.is_some();
         let display_name = node
+            .identity
             .name
             .as_deref()
-            .or(node.value.as_deref())
-            .or(node.description.as_deref())
+            .or(node.identity.value.as_deref())
+            .or(node.identity.description.as_deref())
             .map(String::from)
             .unwrap_or_else(|| format!("(unnamed {})", node.role));
         matches.push(json!({
             "ref_id": node.ref_id,
             "role": node.role,
             "name": display_name,
-            "value": node.value,
-            "states": node.states,
+            "value": node.identity.value,
+            "states": node.presentation.states,
             "interactive": interactive,
             "path": path.clone()
         }));
@@ -273,9 +194,10 @@ fn collect_snapshot_matches(
     }
 
     let label = node
+        .identity
         .name
         .as_deref()
-        .or(node.value.as_deref())
+        .or(node.identity.value.as_deref())
         .map(|label| format!("{}:{label}", node.role))
         .unwrap_or_else(|| node.role.clone());
     path.push(label);
@@ -291,6 +213,7 @@ fn collect_snapshot_matches(
     false
 }
 
+#[cfg(test)]
 fn count_matches(node: &AccessibilityNode, query: &LocatorQuery) -> usize {
     usize::from(query::node_matches(node, query))
         + node
@@ -300,6 +223,13 @@ fn count_matches(node: &AccessibilityNode, query: &LocatorQuery) -> usize {
             .sum::<usize>()
 }
 
+#[path = "find_live.rs"]
+mod live;
+
 #[cfg(test)]
 #[path = "find_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "find_live_tests.rs"]
+mod live_tests;

@@ -102,7 +102,7 @@ Phase 1 is the load-bearing phase. It establishes the shared command path, trait
 | P1-O2 | Platform adapter trait | Trait compiles with mock adapter; macOS adapter satisfies all trait methods |
 | P1-O3 | Ref-based interaction | `click @e3` successfully invokes AXPress on the resolved element |
 | P1-O4 | Context efficiency | Typical Finder snapshot < 500 tokens (measured via tiktoken) |
-| P1-O5 | Typed JSON contract | Output envelope carries `version: "2.0"`. **Partial**: dedicated standalone JSON-Schema files were never delivered — deferred to later quality gates. |
+| P1-O5 | Typed JSON contract | Output envelope carries `version: "2.1"`. **Partial**: dedicated standalone JSON-Schema files were never delivered — deferred to later quality gates. |
 | P1-O6 | Permission detection | Permission report covers Accessibility, Screen Recording, and Automation with recovery suggestions |
 | P1-O7 | Command extensibility | Adding a new command follows the current shared path: `commands/{name}.rs` + `commands/mod.rs` + `src/cli_args/` + `src/cli/mod.rs` + `src/dispatch/mod.rs` + `src/command_policy/mod.rs` |
 | P1-O8 | 54 working commands | All commands pass integration tests |
@@ -165,7 +165,7 @@ pub trait PlatformAdapter: Send + Sync {
     fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError>;
     fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
     fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
-    fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError>;
+    fn list_surfaces(&self, pid: ProcessId) -> Result<Vec<SurfaceInfo>, AdapterError>;
 
     // Interaction
     fn execute_action(&self, handle: &NativeHandle, request: ActionRequest) -> Result<ActionResult, AdapterError>;
@@ -181,7 +181,7 @@ pub trait PlatformAdapter: Send + Sync {
     fn permission_report(&self) -> PermissionReport;
     fn request_permissions(&self) -> PermissionReport;
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError>;
-    fn focus_app(&self, pid: i32) -> Result<(), AdapterError>;
+    fn focus_app(&self, pid: ProcessId) -> Result<(), AdapterError>;
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError>;
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError>;
     fn is_protected_process(&self, identifier: &str) -> bool;
@@ -205,7 +205,7 @@ pub trait PlatformAdapter: Send + Sync {
     fn get_live_actions(&self, handle: &NativeHandle) -> Result<Option<Vec<String>>, AdapterError>;
     fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError>;
     fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError>;
-    fn wait_for_menu(&self, pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError>;
+    fn wait_for_menu(&self, pid: ProcessId, open: bool, timeout_ms: u64) -> Result<(), AdapterError>;
 }
 ```
 
@@ -213,6 +213,7 @@ pub trait PlatformAdapter: Send + Sync {
 
 - `Action` — closed core enum whose platform dispatch arms must stay exhaustive. Current variants: Click, DoubleClick, TripleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Check, Uncheck, Scroll(Direction, Amount), ScrollTo, PressKey(KeyCombo), KeyDown(KeyCombo), KeyUp(KeyCombo), TypeText(String), Clear, Hover, Drag(DragParams)
 - `ActionRequest` — `{ action, policy }`; default policy forbids focus stealing and cursor movement
+- `ProcessId` — transparent `u32` process identifier shared by core, every adapter, JSON, and the C ABI. Platform adapters perform checked conversion only at native boundaries such as macOS `pid_t`; core never narrows a Windows `DWORD` process ID to a signed integer
 - `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`
 - `MouseEvent`, `DragParams`, `KeyCombo` — dedicated types (not unified under an `InputEvent` enum)
 - `WindowOp` — Resize{w,h}, Move{x,y}, Minimize, Maximize, Restore, Close
@@ -296,7 +297,7 @@ crates/macos/src/
 - Probe once per CLI process into `PermissionReport`
 - Accessibility: `AXIsProcessTrusted()` / `AXIsProcessTrustedWithOptions(prompt: true)`
 - Screen Recording: platform screen-capture preflight/request path
-- Automation: currently `{ "state": "not_required" }` because the shipped command set does not use Apple Events; future Apple Event paths must report a real granted/denied probe
+- Automation: probed against System Events without prompting for `permissions` / `status`; `permissions --request` may prompt via the platform request path
 - `status`, `permissions`, preflight, and `batch` share the same report; `permissions --request` invokes the request path
 
 **Notification management:**
@@ -389,12 +390,12 @@ The `wait` command has been extended with notification and menu support:
 
 ### JSON Output Contract
 
-All commands produce a response envelope with `version: "2.0"`. Standalone schema files are still deferred; the current contract is enforced by Rust serde types, CLI conformance tests, and documented examples.
+All commands produce a response envelope with `version: "2.1"`. Standalone schema files are still deferred; the current contract is enforced by Rust serde types, CLI conformance tests, and documented examples.
 
 Success:
 ```json
 {
-  "version": "2.0",
+  "version": "2.1",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -409,7 +410,7 @@ Success:
 Error:
 ```json
 {
-  "version": "2.0",
+  "version": "2.1",
   "ok": false,
   "command": "click",
   "error": {
@@ -686,16 +687,16 @@ Cross-platform core extensions (new, landed alongside Windows):
 
 | ID | Objective | Metric |
 |----|-----------|--------|
-| P2-O8 | `AccessibilityNode` stable-selector fields | Nodes may carry `identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` (all `Option<String>` / `Vec<String>` with `skip_serializing_if`). Populated where the platform/app exposes stable selectors: Windows UIA `AutomationId` / `LocalizedControlType` / `HelpText`; macOS `kAXIdentifierAttribute` / `kAXSubroleAttribute` / `kAXRoleDescriptionAttribute` / `kAXPlaceholderValueAttribute` / `kAXDOMIdentifierAttribute` / `kAXDOMClassListAttribute`. Resolver prefers stable selectors when present and falls back to the existing fingerprint; tests require known controls with explicit IDs to preserve them across re-drills, not every real-app node |
+| P2-O8 | Stable-selector expansion | `AccessibilityNode.native_id` remains the portable stable-ID field. Platform adapters preserve their strongest developer ID there (Windows UIA `AutomationId`, macOS `AXIdentifier` or `AXDOMIdentifier`, Linux AT-SPI `accessible-id`), while live locator traversal may retain both native IDs internally for strict matching. Phase 2 may add separately named `subrole`, `role_description`, `placeholder`, and `dom_classes` evidence without renaming or duplicating `native_id`. Resolver tests require controls with explicit IDs to survive re-drills; controls without one continue through the fingerprint fallback |
 | P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Phase 2 plan §Headless-First Invariant and Unit 12), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch_element` is an adapter method, **not** an `Action` variant (plan §KD8 + origin brainstorm §D8). Each has a macOS AX API mapping (all AX calls on main thread per plan §KD9), a Windows UIA pattern mapping, a new CLI subcommand, FFI conversion coverage where applicable, and exhaustive platform-dispatch tests in the same change. |
-| P2-O10 | `ErrorCode` expansion | Add `PermissionRevoked` (distinct from `PermDenied` — TCC yanked mid-session), `ResourceExhausted` (refmap >1 MB, tree node-count cap), `AxMessagingTimeout` (AX-specific timeout separate from orchestration `Timeout`), `AutomationPermissionDenied` (macOS `osascript` grant). Tri-state permission probe at startup distinguishes "never granted" from "revoked" |
+| P2-O10 | `ErrorCode` expansion | Consider `PermissionRevoked` (distinct from `PermDenied` — TCC yanked mid-session) and `ResourceExhausted` (refmap >1 MB, tree node-count cap). AX messaging exhaustion remains `TIMEOUT`; a failed read-only liveness probe upgrades it to `APP_UNRESPONSIVE`. Optional future transports must map authorization failures to `PERM_DENIED` with structured platform details rather than introducing transport-specific public codes |
 | P2-O11 | Event-subscription primitive (push, not poll) | New trait method `watch_element(handle, events: &[EventKind], timeout_ms: u64) -> Result<Vec<ElementEvent>>`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource` (no more polling in `system/wait.rs`). Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. New `wait --event value-changed --ref @e5 --timeout 3000` CLI flag. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals |
 | P2-O12 | Text range primitives | Read caret, read selection, select a range by offsets, read text at range, insert at caret. macOS: `kAXSelectedTextRangeAttribute` (settable), `AXStringForRangeParameterizedAttribute`, `AXBoundsForRangeParameterizedAttribute`, `AXRangeForLineParameterizedAttribute`, `AXValueCreate(kAXValueCFRangeType, …)`. Windows: `TextPattern.GetSelection`, `TextPattern.DocumentRange`, `TextRange.Select`, `TextRange.Move`, `TextRange.GetText`, `TextRange.GetBoundingRectangles`. Commands: `text get-selection`, `text select-range <ref> <start> <len>`, `text insert-at-caret <ref> <string>`, `text at-offset <ref> <start> <len>` |
 | P2-O13 | Modern per-window screenshot APIs | macOS: replace `/usr/sbin/screencapture` subprocess with `SCScreenshotManager.captureImage(contentFilter:config:)` filtered to a specific `CGWindowID` from `SCShareableContent.windows`. Windows: `Windows.Graphics.Capture` via `GraphicsCaptureItem.CreateFromWindowHandle(HWND)` + `Direct3D11CaptureFramePool` when supported by the OS/session. No subprocess on the modern path, explicit fallback to legacy capture when unavailable, and permission/support failures map to structured `PERM_DENIED` / `PLATFORM_NOT_SUPPORTED` with `platform_detail` |
-| P2-O14 | Toolbar and missing surfaces | Both platforms add `SnapshotSurface::Toolbar`. macOS additionally adds `Spotlight` (pid of `/System/Library/CoreServices/Spotlight.app`), `Dock` (pid of `/System/Library/CoreServices/Dock.app`), and `MenuBarExtras` (enumerates `SystemUIServer`, `ControlCenter`, and per-app `AXExtrasMenuBar`). Windows adds structured shell surfaces for `Taskbar`, `SystemTray`, `SystemTrayOverflow`, `StartMenu`, `ActionCenter`, and `QuickSettings` where the current Windows build/session exposes them |
+| P2-O14 | Toolbar and missing surfaces | Implement the core-predeclared surface vocabulary without changing core: `Toolbar` on both platforms; `Spotlight`, `Dock`, and `MenuBarExtras` on macOS; `Taskbar`, `SystemTray`, `SystemTrayOverflow`, `StartMenu`, `ActionCenter`, and `QuickSettings` on Windows where the current build/session exposes them. `NotificationCenter` remains the portable notification surface while `ActionCenter` names the distinct Windows shell entry point |
 | P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override |
 | P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks the compile-time `CommandDescriptor` registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry and the same descriptor metadata can feed JSON Schema / MCP generation in Phase 4. Marshaling helpers stay in `crates/ffi/src/convert/` — these are per-type, not per-command. In the same migration: backfill `ad_snapshot` (full refmap pipeline), `ad_execute_by_ref(adapter, "@e5", action, out)`, `ad_wait(…)`, `ad_version`, `ad_abi_version() -> u32` with `AD_ABI_VERSION_MAJOR` cbindgen `[defines]` export, `ad_status`, `ad_set_log_callback(fn(level, msg))` installing a `tracing_subscriber` layer so dlopen consumers see debug output |
-| P2-O17 | Screen Recording / Automation permission detection | macOS Phase 1 already exposes `PermissionReport { accessibility, screen_recording, automation }`. Phase 2 decides whether a distinct `AutomationPermissionDenied` code is still needed once Apple Event automation paths exist |
+| P2-O17 | Screen Recording / Automation permission detection | macOS Phase 1 exposes `PermissionReport { accessibility, screen_recording, automation }`. The current native AppKit and Accessibility implementation sends no Apple Events, so `automation` is truthfully `NotRequired`; Accessibility and Screen Recording retain explicit preflight states |
 | P2-O18 | Windows shell surface coverage | Add explicit shell coverage for Start menu/search, taskbar, system tray/overflow, Action Center/notification center, Quick Settings, multi-monitor/DPI, virtual desktop detection, UAC/elevated targets, RDP/locked-session behavior, and Explorer-specific file destinations. New commands are added only where a ref-based `snapshot --surface …` loop cannot expose the surface first; Windows-only behavior still routes through core command files and adapter trait defaults |
 
 ### Cross-Platform Trait Extensions
@@ -723,7 +724,7 @@ impl PlatformAdapter for … {
     //  native modern API; a `Legacy` fallback preserves the Phase 1 subprocess path.)
 
     // P2-O14 — new surfaces
-    fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> // extended kinds
+    fn list_surfaces(&self, pid: ProcessId) -> Result<Vec<SurfaceInfo>, AdapterError> // extended kinds
 }
 ```
 
@@ -740,7 +741,7 @@ New supporting types (land in `crates/core/src/`):
 
 | Capability | macOS API | Windows API | Linux API (Phase 3) |
 |------------|-----------|-------------|----------------------|
-| Stable `identifier` | `kAXIdentifierAttribute` | UIA `AutomationId` | AT-SPI2 `accessible-id` + GTK `gtk-id` |
+| Stable `native_id` | `kAXIdentifierAttribute` / `AXDOMIdentifier` | UIA `AutomationId` | AT-SPI2 `accessible-id` + GTK `gtk-id` |
 | `subrole` | `kAXSubroleAttribute` | UIA `LocalizedControlType` + pattern-based heuristic | AT-SPI2 `role-name` + `state-set` |
 | `role_description` | `kAXRoleDescriptionAttribute` | UIA `LocalizedControlType` | AT-SPI2 `role-description` |
 | `placeholder` | `kAXPlaceholderValueAttribute` | UIA `HelpText` + `IsTextEditPatternAvailable` placeholder | AT-SPI2 `description` + HTML `placeholder` via `object-attributes` |
@@ -759,7 +760,7 @@ New supporting types (land in `crates/core/src/`):
 | `Cancel` | `AXPerformAction(kAXCancelAction)` | UIA `WindowPattern.Close` on dialog or `InvokePattern` on cancel button | AT-SPI2 `Action.DoAction("cancel")` or synthesize Escape |
 | `DeliverFiles(Vec<PathBuf>)` | 4-tier headless fallback: (1) app-native URL scheme, (2) `NSWorkspace.open(urls:withApplicationAt:configuration:)` with `activates: false`, (3) `NSPasteboard.public.file-url` + `CGEventPostToPid(cmd+v)`, (4) `osascript open`. NEVER `NSDraggingSession` (not headless-compatible — Phase 2 plan Unit 12 research) | App/shell delivery first: app URI handlers, `ShellExecuteEx`, `IFileOperation` for filesystem destinations, and `CF_HDROP` clipboard paste where accepted. `IDataObject + DoDragDrop` is policy-gated fallback/spike only | Portal/native file-transfer path where available; XDND is Phase 3 research, not default |
 | Screen Recording permission | `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` | No macOS-style TCC field. Use `GraphicsCaptureSession::IsSupported` / capture API failures to report `not_required`, `unknown`, `PERM_DENIED`, or `PLATFORM_NOT_SUPPORTED` with `platform_detail` | PipeWire portal permission dialog |
-| Automation permission | `AEDeterminePermissionToAutomateTarget` | N/A (no equivalent restriction) | N/A |
+| Automation permission | `NotRequired` while the adapter uses native AppKit and Accessibility APIs without Apple Events | N/A (no equivalent restriction) | N/A |
 
 ### Windows Adapter Implementation
 
@@ -972,7 +973,7 @@ screencapturekit = "1.5"
 - All error codes produce identical JSON envelope format
 
 **Cross-platform extension tests (P2-O8 through O17):**
-- Stable-selector fields: known interactive controls emit `identifier` on both platforms when the app exposes one (UIA `AutomationId` on Windows, `AXIdentifier` on macOS); controls without stable IDs omit the field and still resolve through the fingerprint fallback
+- Stable-selector fields: known interactive controls emit `native_id` on both platforms when the app exposes one (UIA `AutomationId` on Windows, `AXIdentifier` or `AXDOMIdentifier` on macOS); controls without stable IDs omit the field and still resolve through the fingerprint fallback
 - Event subscription: `watch --event value-changed --ref @e3 --timeout 2000` receives an event within 500 ms of a programmatic value change on both platforms
 - Text ranges: `text select-range @e1 5 10` + `text get-selection @e1` round-trips to `{start:5, length:10}` on both platforms for a multi-line text editor (TextEdit / Notepad)
 - Text insert-at-caret: `text insert-at-caret @e1 "hello"` produces matching `value` on both platforms with the caret advanced correctly
@@ -980,7 +981,7 @@ screencapturekit = "1.5"
 - Toolbar surface: `snapshot --surface toolbar` on Safari (macOS) and Edge (Windows) returns the toolbar's children with refs
 - Electron deep-tree: VS Code snapshot with `--force-electron-a11y` exposes ≥100 refs at default depth on both platforms
 - Screen Recording permission: on a macOS runner without Screen Recording, `screenshot --window` returns `PermDenied` with the Screen Recording suggestion (distinct from AX denial)
-- Automation permission: on a macOS runner without Automation for a target app, `close-app` returns `AutomationPermissionDenied` rather than squeezing into `ActionFailed`
+- Automation permission: `permissions` reports `NotRequired`, and fixture-app `close-app` uses native `NSRunningApplication` termination without requesting Apple Event authorization
 
 **FFI parity tests (P2-O16):**
 - `ad_abi_version()` returns a packed `u32` matching the Cargo version; consumer built against 0.2.0 refuses to load 0.3.0
@@ -1041,7 +1042,7 @@ Skill docs are part of the release surface and must stay in sync with command be
 
 **Status: Planned**
 
-Phase 3 completes the three-platform story. The Linux adapter implements the original adapter surface **plus** every cross-platform extension landed in Phase 2 (event subscriptions, text ranges, modern screenshot, stable-selector fields, Toolbar surface, new Action variants, new ErrorCode variants). Each has a canonical AT-SPI2 / D-Bus / Wayland-portal implementation. Core engine, trait contract, command-registry, CLI dispatch, FFI wrappers, and MCP transport are all untouched — per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, Phase 3 is **pure `PlatformAdapter` trait implementation code**, nothing else. No new command files, no CLI dispatch changes, no FFI wrappers, no MCP tool registrations.
+Phase 3 completes the three-platform story. The Linux adapter implements the original adapter surface **plus** every cross-platform extension landed in Phase 2 (event subscriptions, text ranges, modern screenshot, stable-selector fields, the predeclared toolbar and shell-surface vocabulary, new Action variants, new ErrorCode variants). Each has a canonical AT-SPI2 / D-Bus / Wayland-portal implementation. Core engine, trait contract, command-registry, CLI dispatch, FFI wrappers, and MCP transport are all untouched — per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, Phase 3 is **pure `PlatformAdapter` trait implementation code**, nothing else. No new command files, no CLI dispatch changes, no FFI wrappers, no MCP tool registrations.
 
 ### Objectives
 
@@ -1061,7 +1062,7 @@ Cross-platform extensions (Linux implementations of Phase 2 primitives):
 
 | ID | Objective | Metric |
 |----|-----------|--------|
-| P3-O8 | Stable-selector fields on Linux | `AccessibilityNode.identifier` populated from AT-SPI2 `accessible-id` attribute (standard since AT-SPI 2.18) with GTK `gtk-id` / Qt `objectName` fallback; `dom_id` / `dom_classes` populated from AT-SPI2 `object-attributes` HTML keys (`id`, `class`) on `WebKitGTK` / `Chromium-Content` embeds |
+| P3-O8 | Stable-selector fields on Linux | `AccessibilityNode.native_id` populated from AT-SPI2 `accessible-id` (standard since AT-SPI 2.18) with GTK `gtk-id` / Qt `objectName` fallback; `dom_classes` may be populated from AT-SPI2 `object-attributes` HTML keys on `WebKitGTK` / `Chromium-Content` embeds |
 | P3-O9 | AT-SPI2 event subscriptions (P2-O11 parity) | `watch_element` implemented via `zbus::Proxy::receive_signal` on AT-SPI2 signals: `org.a11y.atspi.Event.Object.PropertyChange`, `ChildrenChanged`, `StateChanged:focused`, `Window:Create`, `Window:Destroy`. Same `wait --event` CLI shape as macOS/Windows. Replaces polling in `crates/linux/src/system/wait.rs` before it's even written |
 | P3-O10 | AT-SPI2 Text interface (P2-O12 parity) | Text range primitives via `org.a11y.atspi.Text` D-Bus methods: `GetText(start, end)`, `GetCaretOffset`, `SetCaretOffset`, `GetNSelections`, `GetSelection(n)`, `AddSelection(start, end)`, `RemoveSelection(n)`. `InsertAtCaret` uses `org.a11y.atspi.EditableText.InsertText(position, text, length)` |
 | P3-O11 | PipeWire modern screenshot (P2-O13 parity) | `screenshot --window <id>` via `org.freedesktop.portal.ScreenCast` (Wayland) + `org.freedesktop.portal.RemoteDesktop` for capture permission flow. XDG desktop portal handles the user consent dialog exactly like `SCScreenshotManager` does on macOS. X11 fallback uses `XGetImage` for the lowest-permission path |
@@ -2006,7 +2007,7 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | R5 | Rust a11y crate maintenance stalls | Low | High | Pin versions, maintain patches. `atspi` backed by Odilia project. Fork-ready. |
 | R6 | MCP spec changes break compat | Low | Medium | Pin `rmcp` version. Monitor spec under Linux Foundation governance. |
 | R7 | Tree traversal too slow (>5s) | Medium | Medium | Depth limiting via `--max-depth`. Focused-window-only. Cached subtrees in Phase 5 daemon. Progressive skeleton traversal (`--skeleton` + `--root`) reduces token consumption 78-96% for dense apps. |
-| R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. Progressive skeleton traversal with scoped invalidation provides a stable drill-down workflow for navigating complex UIs. **Phase 2**: stable-selector fields (`identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` via `StableSelectors` flatten) + identifier-preferred resolver drop `STALE_REF` rate on Electron / localized apps. |
+| R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. Progressive skeleton traversal with scoped invalidation provides a stable drill-down workflow for navigating complex UIs. Stable `native_id` evidence plus internally preserved `AXIdentifier` and `AXDOMIdentifier` reduce stale-resolution failures on Electron and localized apps; later platforms map their native automation IDs into the same contract. |
 | R9 | Headless operation requirement | High | Critical | Phase 1 introduced `ActionRequest`/`InteractionPolicy`, default no focus steal/cursor movement, and explicit physical/headed policy paths. Phase 2 must preserve the same contract for Windows/Linux. |
 | R10 | Command registry link-GC | Medium | High | Research Topic B confirmed `inventory`/`linkme` are unreliable across linkers for cdylib consumers. Resolved by pure `build.rs` filesystem enumeration — zero linker magic. |
 | R11 | Skeleton traversal cross-platform | Low | High | Core is already platform-agnostic (`crates/core/src/snapshot_ref.rs`); Windows needs ~50 LOC glue (`ControlViewWalker` + `FindAll(TreeScope_Children, TrueCondition)` + fresh `UICacheRequest` per drill-down). Research Topic 4 confirmed `ElementFromHandle(hwnd)` is headless-safe. |

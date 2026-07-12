@@ -1,12 +1,12 @@
 use crate::{
-    action::{MouseButton, MouseEvent, MouseEventKind},
+    AppError, MouseButton, MouseEvent, MouseEventKind,
     adapter::PlatformAdapter,
     commands::{
-        helpers::resolve_point_with_wait,
-        point_resolve::{PointResolveArgs, focus_for_physical_input, require_cursor_policy},
+        helpers::{apply_post_action_wait, validate_post_action_wait},
+        point_resolve::{PointResolveArgs, require_cursor_policy},
+        pointer_action::{ensure_point_deadline, point_deadline, resolve_point_with_deadline},
     },
     context::CommandContext,
-    error::AppError,
 };
 use serde_json::{Value, json};
 
@@ -23,33 +23,56 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if args.duration_ms.is_some_and(|duration| duration > 0) {
+        return Err(AppError::invalid_input_with_suggestion(
+            "Hover duration is unavailable because a stateless process cannot guarantee cursor ownership during a dwell",
+            "Run hover without --duration, then use `wait <ms>` for an explicit post-hover pause.",
+        ));
+    }
     require_cursor_policy(context, "hover")?;
-    let resolved = resolve_point_with_wait(
+    validate_post_action_wait(context)?;
+    let deadline = point_deadline(args.timeout_ms)?;
+    let lease = adapter.acquire_interaction_lease(deadline)?;
+    let resolved = resolve_point_with_deadline(
         PointResolveArgs {
             ref_id: args.ref_id.as_deref(),
             xy: args.xy,
             snapshot_id: args.snapshot_id.as_deref(),
             missing_input_message: "Provide a ref (@e1) or --xy x,y",
+            focus_before_resolve: true,
         },
-        args.timeout_ms,
+        deadline,
+        &lease,
         adapter,
         context,
     )?;
-    let focused = focus_for_physical_input(resolved.pid, adapter, context)?;
-    adapter.mouse_event(MouseEvent {
-        kind: MouseEventKind::Move,
-        point: resolved.point.clone(),
-        button: MouseButton::Left,
-        modifiers: Vec::new(),
-    })?;
-    if let Some(ms) = args.duration_ms {
-        std::thread::sleep(std::time::Duration::from_millis(ms));
-    }
+    ensure_point_deadline(
+        deadline,
+        Some(json!({
+            "status": "actionable",
+            "point": { "x": resolved.point.x, "y": resolved.point.y }
+        })),
+    )?;
+    adapter.mouse_event(
+        MouseEvent {
+            kind: MouseEventKind::Move,
+            point: resolved.point.clone(),
+            button: MouseButton::Left,
+            modifiers: Vec::new(),
+        },
+        &lease,
+    )?;
     let mut response = json!({ "hovered": true, "x": resolved.point.x, "y": resolved.point.y });
-    if focused {
+    if resolved.focused {
         response["focused"] = json!(true);
     }
-    Ok(response)
+    apply_post_action_wait(
+        response,
+        resolved.source_entry.as_ref(),
+        adapter,
+        context,
+        &lease,
+    )
 }
 
 #[cfg(test)]

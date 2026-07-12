@@ -1,35 +1,67 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::error::{AdapterError, ErrorCode};
+use crate::{AdapterError, ErrorCode};
 
 struct ProtectiveAdapter;
 
-impl ObservationOps for ProtectiveAdapter {}
+impl ObservationOps for ProtectiveAdapter {
+    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<crate::AppInfo>, AdapterError> {
+        Ok(vec![crate::AppInfo {
+            name: "TextEdit".into(),
+            pid: crate::ProcessId::new(42),
+            bundle_id: Some("com.apple.TextEdit".into()),
+            process_instance: Some("textedit-instance".into()),
+        }])
+    }
+}
 
 impl ActionOps for ProtectiveAdapter {}
 
 impl InputOps for ProtectiveAdapter {}
 
 impl SystemOps for ProtectiveAdapter {
+    crate::adapter::guarded_interaction_lease!();
+
     fn is_protected_process(&self, identifier: &str) -> bool {
         identifier.eq_ignore_ascii_case("CriticalThing")
     }
 
-    fn close_app(&self, _id: &str, _force: bool) -> Result<(), crate::error::AdapterError> {
+    fn close_app(
+        &self,
+        _app: &crate::AppInfo,
+        _force: bool,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), crate::AdapterError> {
         Ok(())
     }
 }
 
 struct FailingAdapter;
 
-impl ObservationOps for FailingAdapter {}
+impl ObservationOps for FailingAdapter {
+    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<crate::AppInfo>, AdapterError> {
+        Ok(vec![crate::AppInfo {
+            name: "Ghost".into(),
+            pid: crate::ProcessId::new(77),
+            bundle_id: None,
+            process_instance: Some("ghost-instance".into()),
+        }])
+    }
+}
 
 impl ActionOps for FailingAdapter {}
 
 impl InputOps for FailingAdapter {}
 
 impl SystemOps for FailingAdapter {
-    fn close_app(&self, _id: &str, _force: bool) -> Result<(), AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn close_app(
+        &self,
+        _app: &crate::AppInfo,
+        _force: bool,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::new(ErrorCode::AppNotFound, "no such app"))
     }
 }
@@ -57,7 +89,7 @@ fn close_app_blocks_adapter_protected_process() {
 }
 
 #[test]
-fn graceful_close_reports_request_without_claiming_termination() {
+fn graceful_close_reports_verified_termination() {
     let value = execute(
         CloseAppArgs {
             app: "TextEdit".into(),
@@ -70,10 +102,7 @@ fn graceful_close_reports_request_without_claiming_termination() {
     assert_eq!(value["app"], "TextEdit");
     assert_eq!(value["method"], "graceful");
     assert_eq!(value["requested"], true);
-    assert_eq!(
-        value["closed"], false,
-        "graceful close must not claim a termination it cannot confirm"
-    );
+    assert_eq!(value["closed"], true);
 }
 
 #[test]
@@ -81,7 +110,7 @@ fn close_app_propagates_adapter_errors() {
     let err = execute(
         CloseAppArgs {
             app: "Ghost".into(),
-            force: true,
+            force: false,
         },
         &FailingAdapter,
     )

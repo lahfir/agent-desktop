@@ -1,61 +1,80 @@
 use super::*;
 use crate::{
+    AdapterError, AppInfo, ErrorCode,
     action::Action,
     adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps},
     capability,
-    error::{AdapterError, ErrorCode},
 };
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
 
-/// F23: `ensure_process_responsive` used to be an unconditional preflight
-/// hard-gate that queried process liveness before every ref action, even
-/// ones that would otherwise succeed, and turned a genuinely-Unresponsive
-/// classification straight into the terminal error regardless of whether
-/// the action itself failed. These tests cover the replacement contract:
-/// terminal-only, best-effort enrichment that never touches a success.
 fn entry() -> RefEntry {
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: Some(crate::node::Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 10.0,
-            height: 10.0,
-        }),
-        bounds_hash: Some(1),
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::snapshot_surface::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Run".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: Some("Original".into()),
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::snapshot_surface::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
 struct UnresponsiveProcessAdapter {
     probe_calls: AtomicU32,
+    inventory_calls: AtomicU32,
 }
 
 impl ObservationOps for UnresponsiveProcessAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::stale_ref("@e1"))
+    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+        self.inventory_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(vec![app("Original")])
     }
 
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
-        entry: &RefEntry,
-        _timeout: Duration,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(AdapterError::stale_ref("@e1"))
+    }
+}
+
+fn app(name: &str) -> AppInfo {
+    AppInfo {
+        name: name.into(),
+        pid: crate::ProcessId::new(1),
+        bundle_id: None,
+        process_instance: Some("test-instance".into()),
     }
 }
 
@@ -64,15 +83,24 @@ impl ActionOps for UnresponsiveProcessAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for UnresponsiveProcessAdapter {}
 
 impl SystemOps for UnresponsiveProcessAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         self.probe_calls.fetch_add(1, Ordering::SeqCst);
         Ok(crate::process_state::ProcessState::Unresponsive)
     }
@@ -82,6 +110,7 @@ impl SystemOps for UnresponsiveProcessAdapter {
 fn terminal_stale_ref_against_unresponsive_process_surfaces_app_unresponsive() {
     let adapter = UnresponsiveProcessAdapter {
         probe_calls: AtomicU32::new(0),
+        inventory_calls: AtomicU32::new(0),
     };
 
     let err = execute_with_auto_wait(
@@ -92,35 +121,98 @@ fn terminal_stale_ref_against_unresponsive_process_surfaces_app_unresponsive() {
             context: &CommandContext::default(),
         },
         ActionRequest::headless(Action::Click),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap_err();
 
     assert_eq!(err.code, ErrorCode::AppUnresponsive);
-    assert!(
-        err.suggestion.is_some(),
-        "APP_UNRESPONSIVE must carry a recovery suggestion"
+    assert!(err.suggestion.is_some());
+    assert_eq!(
+        err.details.as_ref().and_then(|v| v["retryable"].as_bool()),
+        Some(false)
     );
+    assert_eq!(
+        err.details.as_ref().and_then(|v| v["kind"].as_str()),
+        Some("app_unresponsive")
+    );
+    assert!(!err.permits_retry_by_default());
     assert_eq!(
         adapter.probe_calls.load(Ordering::SeqCst),
         1,
         "the liveness probe must run exactly once when building the terminal error"
     );
+    assert_eq!(adapter.inventory_calls.load(Ordering::SeqCst), 1);
+}
+
+struct RecycledPidAdapter {
+    probe_calls: AtomicU32,
+    inventory_calls: AtomicU32,
+}
+
+impl ObservationOps for RecycledPidAdapter {
+    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+        self.inventory_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(vec![app("Replacement")])
+    }
+
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Err(AdapterError::stale_ref("@e1"))
+    }
+}
+
+impl ActionOps for RecycledPidAdapter {}
+impl InputOps for RecycledPidAdapter {}
+
+impl SystemOps for RecycledPidAdapter {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
+        self.probe_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(crate::process_state::ProcessState::Unresponsive)
+    }
+}
+
+#[test]
+fn recycled_pid_never_upgrades_stale_ref_to_app_unresponsive() {
+    let adapter = RecycledPidAdapter {
+        probe_calls: AtomicU32::new(0),
+        inventory_calls: AtomicU32::new(0),
+    };
+
+    let err = execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        ActionRequest::headless(Action::Click),
+        crate::ref_action::dispatch_resolved,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::StaleRef);
+    assert_eq!(adapter.probe_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.inventory_calls.load(Ordering::SeqCst), 1);
 }
 
 struct ExitedProcessAdapter;
 
 impl ObservationOps for ExitedProcessAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::stale_ref("@e1"))
-    }
-
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
-        entry: &RefEntry,
-        _timeout: Duration,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(AdapterError::stale_ref("@e1"))
     }
 }
 
@@ -129,15 +221,24 @@ impl ActionOps for ExitedProcessAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for ExitedProcessAdapter {}
 
 impl SystemOps for ExitedProcessAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         Ok(crate::process_state::ProcessState::Exited { code: None })
     }
 }
@@ -152,7 +253,7 @@ fn terminal_stale_ref_against_exited_process_carries_process_state_detail() {
             context: &CommandContext::default(),
         },
         ActionRequest::headless(Action::Click),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap_err();
 
@@ -171,16 +272,12 @@ fn terminal_stale_ref_against_exited_process_carries_process_state_detail() {
 struct CrashedProcessAdapter;
 
 impl ObservationOps for CrashedProcessAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::stale_ref("@e1"))
-    }
-
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
-        entry: &RefEntry,
-        _timeout: Duration,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
+        Err(AdapterError::stale_ref("@e1"))
     }
 }
 
@@ -189,15 +286,24 @@ impl ActionOps for CrashedProcessAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for CrashedProcessAdapter {}
 
 impl SystemOps for CrashedProcessAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         Ok(crate::process_state::ProcessState::Crashed { signal_or_code: 11 })
     }
 }
@@ -212,7 +318,7 @@ fn terminal_stale_ref_against_crashed_process_carries_process_state_detail() {
             context: &CommandContext::default(),
         },
         ActionRequest::headless(Action::Click),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap_err();
 
@@ -233,17 +339,15 @@ struct SuccessWithUnresponsiveProbeAdapter {
 }
 
 impl ObservationOps for SuccessWithUnresponsiveProbeAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn resolve_element_strict_with_timeout(
-        &self,
-        entry: &RefEntry,
-        _timeout: Duration,
-    ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
-    }
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
 }
 
 impl ActionOps for SuccessWithUnresponsiveProbeAdapter {
@@ -251,15 +355,24 @@ impl ActionOps for SuccessWithUnresponsiveProbeAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for SuccessWithUnresponsiveProbeAdapter {}
 
 impl SystemOps for SuccessWithUnresponsiveProbeAdapter {
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         self.probe_calls.fetch_add(1, Ordering::SeqCst);
         Ok(crate::process_state::ProcessState::Unresponsive)
     }
@@ -279,15 +392,9 @@ fn enrichment_never_converts_a_successful_action_into_a_failure() {
             context: &CommandContext::default(),
         },
         ActionRequest::headless(Action::Click),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap();
-
     assert_eq!(result.action, "click");
-    assert_eq!(
-        adapter.probe_calls.load(Ordering::SeqCst),
-        0,
-        "a successful action must never consult the liveness probe at all \
-         (this used to be an unconditional preflight hard-gate)"
-    );
+    assert_eq!(adapter.probe_calls.load(Ordering::SeqCst), 0);
 }

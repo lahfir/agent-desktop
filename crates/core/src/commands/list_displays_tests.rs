@@ -1,9 +1,8 @@
 use crate::{
+    AdapterError, Rect,
     adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
     commands::list_displays,
     display_info::DisplayInfo,
-    error::AdapterError,
-    node::Rect,
 };
 
 struct DisplayAdapter {
@@ -15,7 +14,7 @@ impl ActionOps for DisplayAdapter {}
 impl InputOps for DisplayAdapter {}
 
 impl SystemOps for DisplayAdapter {
-    fn list_displays(&self) -> Result<Vec<DisplayInfo>, AdapterError> {
+    fn list_displays(&self, _deadline: crate::Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         Ok(self.displays.clone())
     }
 }

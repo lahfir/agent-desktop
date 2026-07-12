@@ -2,11 +2,11 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
 
-use agent_desktop_core::error::{AdapterError, ErrorCode};
+use agent_desktop_core::{AdapterError, ErrorCode};
 
 pub(crate) fn string_to_c(s: &str) -> *mut c_char {
     match CString::new(s) {
-        Ok(cs) => cs.into_raw(),
+        Ok(cs) => into_registered_c_string(cs),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -25,24 +25,32 @@ pub(crate) fn string_to_c_lossy(s: &str) -> *mut c_char {
         .map(|c| if c == '\0' { '\u{FFFD}' } else { c })
         .collect();
     match CString::new(cleaned) {
-        Ok(cs) => cs.into_raw(),
+        Ok(cs) => into_registered_c_string(cs),
         Err(_) => ptr::null_mut(),
     }
 }
 
 pub(crate) fn opt_string_to_c(s: Option<&str>) -> *mut c_char {
     match s {
-        Some(s) => string_to_c(s),
+        Some(s) => string_to_c_lossy(s),
         None => ptr::null_mut(),
     }
 }
 
 pub(crate) unsafe fn free_c_string(ptr: *mut c_char) {
     unsafe {
-        if !ptr.is_null() {
+        if crate::resource::take_allocation(crate::resource::AllocationKind::CString, ptr)
+            == Some(1)
+        {
             drop(CString::from_raw(ptr));
         }
     }
+}
+
+fn into_registered_c_string(value: CString) -> *mut c_char {
+    let ptr = value.into_raw();
+    crate::resource::register_allocation(crate::resource::AllocationKind::CString, ptr, 1);
+    ptr
 }
 
 /// Maximum byte length (excluding the NUL terminator) accepted for any
@@ -137,8 +145,8 @@ macro_rules! decode_optional_filter {
         match $crate::convert::string::try_c_to_string($ptr) {
             Ok(value) => value,
             Err(err) => {
-                $crate::error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                $crate::error::set_last_error(&agent_desktop_core::AdapterError::new(
+                    agent_desktop_core::ErrorCode::InvalidArgs,
                     err.describe($label),
                 ));
                 return $crate::error::AdResult::ErrInvalidArgs;
@@ -171,8 +179,36 @@ mod tests {
     }
 
     #[test]
+    fn optional_string_with_interior_nul_stays_present() {
+        let c = opt_string_to_c(Some("before\0after"));
+        assert!(!c.is_null());
+        assert_eq!(
+            unsafe { c_to_string(c) }.as_deref(),
+            Some("before\u{FFFD}after")
+        );
+        unsafe { free_c_string(c) };
+    }
+
+    #[test]
     fn test_free_null_is_noop() {
         unsafe { free_c_string(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn free_rejects_unowned_and_double_freed_pointers() {
+        let foreign = CString::new("foreign").unwrap().into_raw();
+        unsafe { free_c_string(foreign) };
+        assert_eq!(
+            unsafe { std::ffi::CStr::from_ptr(foreign) }.to_bytes(),
+            b"foreign"
+        );
+        unsafe { drop(CString::from_raw(foreign)) };
+
+        let owned = string_to_c("owned");
+        unsafe {
+            free_c_string(owned);
+            free_c_string(owned);
+        }
     }
 
     #[test]
@@ -280,7 +316,7 @@ mod tests {
     #[test]
     fn required_adapter_string_null_ptr_returns_err_naming_the_field() {
         let err = required_adapter_string(ptr::null(), "app_name").unwrap_err();
-        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::InvalidArgs);
+        assert_eq!(err.code, agent_desktop_core::ErrorCode::InvalidArgs);
         assert_eq!(err.message, "app_name is null");
     }
 
@@ -288,7 +324,7 @@ mod tests {
     fn optional_adapter_string_invalid_utf8_returns_err_naming_the_field() {
         let bad: [u8; 3] = [0xFF, 0xFE, 0x00];
         let err = optional_adapter_string(bad.as_ptr() as *const c_char, "role").unwrap_err();
-        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::InvalidArgs);
+        assert_eq!(err.code, agent_desktop_core::ErrorCode::InvalidArgs);
         assert_eq!(err.message, "role is not valid UTF-8");
     }
 }

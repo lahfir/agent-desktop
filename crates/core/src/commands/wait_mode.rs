@@ -1,6 +1,6 @@
 use crate::{
+    AppError,
     commands::{wait::WaitArgs, wait_predicate},
-    error::AppError,
     refs::validate_ref_id,
 };
 
@@ -109,6 +109,7 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
             "Use --text <text> --count <expected> without --notification, or remove --count.",
         ));
     }
+    validate_event_filters(args)?;
     let selected = [
         args.mode.ms.is_some(),
         args.mode.element.is_some(),
@@ -132,6 +133,37 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
         "wait accepts exactly one mode",
         "Use one of: ms, --element, --window, --text, --menu, --menu-closed, --notification, or --event.",
     ))
+}
+
+fn validate_event_filters(args: &WaitArgs) -> Result<(), AppError> {
+    let Some(token) = args.mode.event.as_deref() else {
+        return Ok(());
+    };
+    let event = crate::commands::wait_event::parse_event_kind(token)?;
+    let has_window_filter = args.mode.window.is_some() || args.mode.window_id.is_some();
+    let supports_window_filter = matches!(
+        &event,
+        crate::EventKind::WindowOpened
+            | crate::EventKind::WindowClosed
+            | crate::EventKind::FocusChangedWindow
+    );
+    if has_window_filter && !supports_window_filter {
+        return Err(AppError::invalid_input_with_suggestion(
+            format!("--event {token} does not carry window identity"),
+            "Remove --window and --window-id, or choose a window lifecycle event.",
+        ));
+    }
+    let is_surface = matches!(
+        &event,
+        crate::EventKind::SurfaceAppeared { .. } | crate::EventKind::SurfaceDismissed { .. }
+    );
+    if is_surface && args.app.is_none() {
+        return Err(AppError::invalid_input_with_suggestion(
+            format!("--event {token} requires --app"),
+            "Add --app <name> so the adapter can inspect that application's surfaces.",
+        ));
+    }
+    Ok(())
 }
 
 fn missing_wait_mode() -> AppError {

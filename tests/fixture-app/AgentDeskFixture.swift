@@ -25,10 +25,12 @@ struct ContentView: View {
     @State private var twinStatus = "idle"
     // text
     @State private var textValue = ""
+    @State private var textChangeCount = 0
     @State private var secureValue = ""
     @State private var multilineValue = "line one\nline two"
     // state controls
     @State private var toggleOn = false
+    @State private var toggleChangeCount = 0
     @State private var pickerChoice = "Alpha"
     @State private var radioChoice = "One"
     @State private var disclosureExpanded = false
@@ -38,6 +40,7 @@ struct ContentView: View {
     // async / dynamic
     @State private var delayedEnabled = false
     @State private var delayedText = "waiting"
+    @State private var delayedActionCount = 0
     @State private var removableVisible = true
     @State private var appearedText = ""
     // drag
@@ -59,12 +62,14 @@ struct ContentView: View {
                 Text("AgentDesk Fixture")
                     .font(.title2)
                     .accessibilityLabel("fixture-title")
+                ScrollCard()
                 row1
                 row2
                 row3
             }
             .padding(20)
         }
+        .accessibilityLabel("fixture-scroll-root")
         .frame(minWidth: 980, minHeight: 720)
         .sheet(isPresented: $showSheet) { sheetContent }
     }
@@ -89,7 +94,6 @@ struct ContentView: View {
         HStack(alignment: .top, spacing: 16) {
             dragCard
             surfacesCard
-            ScrollCard()
         }
     }
 
@@ -119,11 +123,9 @@ struct ContentView: View {
                 }
             StatusReadout(name: "right-status", value: rightStatus)
 
-            Text("Hover Target")
-                .padding(6)
-                .background(hoverStatus == "hovered" ? Color.yellow.opacity(0.4) : Color.clear)
-                .accessibilityLabel("hover-target")
-                .onHover { inside in if inside { hoverStatus = "hovered" } }
+            NativeHoverProbe(status: $hoverStatus)
+            Button("Reset Hover") { hoverStatus = "idle" }
+                .accessibilityLabel("reset-hover")
             StatusReadout(name: "hover-status", value: hoverStatus)
 
             /// Two controls sharing role and name. Each records a distinct
@@ -141,7 +143,10 @@ struct ContentView: View {
         Card(title: "Text Input") {
             TextField("Text Input", text: $textValue)
                 .accessibilityLabel("text-input")
+                .onChange(of: textValue) { _ in textChangeCount += 1 }
             StatusReadout(name: "text-echo", value: textValue)
+            StatusReadout(name: "text-content-status", value: textValue.isEmpty ? "empty" : textValue)
+            StatusReadout(name: "text-change-count", value: String(textChangeCount))
 
             SecureField("Secure Input", text: $secureValue)
                 .accessibilityLabel("secure-input")
@@ -160,8 +165,11 @@ struct ContentView: View {
 
     private var stateCard: some View {
         Card(title: "State Controls") {
-            Toggle("Toggle Box", isOn: $toggleOn).accessibilityLabel("toggle-box")
+            Toggle("Toggle Box", isOn: $toggleOn)
+                .accessibilityLabel("toggle-box")
+                .onChange(of: toggleOn) { _ in toggleChangeCount += 1 }
             StatusReadout(name: "toggle-status", value: toggleOn ? "on" : "off")
+            StatusReadout(name: "toggle-change-count", value: String(toggleChangeCount))
 
             // Native AppKit slider and stepper: unlike SwiftUI's, these expose a
             // working AX value/increment interface, so set-value can drive them.
@@ -190,6 +198,7 @@ struct ContentView: View {
                 Text("Gamma").tag("Gamma")
             }
             .accessibilityLabel("option-picker")
+            .accessibilityIdentifier("option-picker")
             StatusReadout(name: "picker-status", value: pickerChoice)
 
             Picker("Radio Group", selection: $radioChoice) {
@@ -235,32 +244,13 @@ struct ContentView: View {
     // MARK: async / dynamic
 
     private var asyncCard: some View {
-        Card(title: "Async & Dynamic") {
-            Button("Enable Later") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    delayedEnabled = true
-                    delayedText = "ready"
-                }
-            }
-            .accessibilityLabel("enable-later")
-            Button("Delayed Button") { }
-                .disabled(!delayedEnabled)
-                .accessibilityLabel("delayed-button")
-            StatusReadout(name: "delayed-text", value: delayedText)
-
-            Button("Appear Later") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { appearedText = "appeared-text" }
-            }
-            .accessibilityLabel("appear-later")
-            if !appearedText.isEmpty {
-                Text(appearedText).accessibilityLabel("appeared-text")
-            }
-
-            if removableVisible {
-                Button("Removable Row") { }.accessibilityLabel("removable-row")
-            }
-            Button("Remove Row") { removableVisible = false }.accessibilityLabel("remove-row")
-        }
+        AsyncFixtureCard(
+            delayedEnabled: $delayedEnabled,
+            delayedText: $delayedText,
+            delayedActionCount: $delayedActionCount,
+            appearedText: $appearedText,
+            removableVisible: $removableVisible
+        )
     }
 
     // MARK: drag (interactive row + non-interactive image)
@@ -364,11 +354,21 @@ struct AgentDeskFixtureApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var isBackgroundFixture: Bool {
+        ProcessInfo.processInfo.environment["AGENT_DESKTOP_FIXTURE_NO_ACTIVATE"] == "1"
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        if isBackgroundFixture {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if isBackgroundFixture {
+            return
+        }
         NSApp.setActivationPolicy(.regular)
-        // Bring the window up without forcibly stealing focus from other apps:
-        // the E2E harness drives focus explicitly via focus-window, and an
-        // unconditional steal could mask headless-policy focus violations.
         NSApp.activate(ignoringOtherApps: false)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

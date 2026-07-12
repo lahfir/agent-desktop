@@ -117,6 +117,27 @@ fn test_set_and_get_error() {
 }
 
 #[test]
+fn last_error_preserves_delivery_and_retry_semantics() {
+    let err = AdapterError::timeout("clipboard helper timed out")
+        .with_disposition(DeliverySemantics::uncertain());
+    set_last_error(&err);
+    let mut semantics = AdDeliverySemantics::unknown();
+
+    assert_eq!(
+        unsafe { ad_last_error_delivery_semantics(&mut semantics) },
+        AdResult::Ok
+    );
+    assert_eq!(
+        semantics.delivery,
+        crate::types::AdDeliveryDisposition::DeliveryUncertain as i32
+    );
+    assert_eq!(
+        semantics.retry,
+        crate::types::AdRetryDisposition::Unsafe as i32
+    );
+}
+
+#[test]
 fn test_set_and_get_structured_details() {
     let err = AdapterError::new(ErrorCode::AmbiguousTarget, "ambiguous").with_details(
         serde_json::json!({

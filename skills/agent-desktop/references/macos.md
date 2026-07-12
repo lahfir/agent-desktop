@@ -22,9 +22,9 @@ The report contains:
 |-------|---------|
 | `accessibility` | Required for accessibility tree reads and most commands |
 | `screen_recording` | Required for screenshots |
-| `automation` | Reserved for future Apple Event automation paths; `{ "state": "not_required" }` for the current macOS command set |
+| `automation` | Apple Event Automation permission for System Events; plain `permissions` checks without prompting, `permissions --request` may prompt |
 
-Each field is an object: `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording, and `not_required` for Automation.
+Each field is an object: `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation may report `unknown` when macOS would need to prompt or System Events could not be probed.
 
 **To grant manually:**
 1. Open System Settings > Privacy & Security > Accessibility

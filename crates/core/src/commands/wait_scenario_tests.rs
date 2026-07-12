@@ -1,19 +1,48 @@
 use super::test_support::wait_args;
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::{adapter::WindowFilter, error::AdapterError, node::WindowInfo};
+use crate::{AdapterError, WindowInfo, adapter::WindowFilter};
 
 struct TextlessTreeAdapter;
 
 impl ObservationOps for TextlessTreeAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+    fn observe_tree(
+        &self,
+        root: crate::live_locator::ObservationRoot<'_>,
+        _request: &crate::live_locator::ObservationRequest,
+    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        crate::adapter::observed_tree(
+            &root,
+            crate::AccessibilityNode {
+                ref_id: None,
+                role: "window".into(),
+                identity: crate::NodeIdentity {
+                    name: Some("Doc".into()),
+                    ..Default::default()
+                },
+                presentation: Default::default(),
+                children_count: None,
+                children: vec![],
+            },
+        )
+    }
+
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![WindowInfo {
             id: "w-1".into(),
             title: "Doc".into(),
             app: "TestApp".into(),
-            pid: 1,
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
             bounds: None,
-            is_focused: true,
+            state: crate::WindowState {
+                is_focused: true,
+                ..Default::default()
+            },
         }])
     }
 
@@ -21,18 +50,16 @@ impl ObservationOps for TextlessTreeAdapter {
         &self,
         _win: &WindowInfo,
         _opts: &crate::adapter::TreeOptions,
-    ) -> Result<crate::node::AccessibilityNode, AdapterError> {
-        Ok(crate::node::AccessibilityNode {
+        _deadline: crate::Deadline,
+    ) -> Result<crate::AccessibilityNode, AdapterError> {
+        Ok(crate::AccessibilityNode {
             ref_id: None,
             role: "window".into(),
-            name: Some("Doc".into()),
-            value: None,
-            description: None,
-            native_id: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
+            identity: crate::NodeIdentity {
+                name: Some("Doc".into()),
+                ..Default::default()
+            },
+            presentation: Default::default(),
             children_count: None,
             children: vec![],
         })
@@ -76,11 +103,12 @@ struct MenuWaitAdapter {
 }
 
 impl ObservationOps for MenuWaitAdapter {
-    fn list_apps(&self) -> Result<Vec<crate::node::AppInfo>, AdapterError> {
-        Ok(vec![crate::node::AppInfo {
+    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<crate::AppInfo>, AdapterError> {
+        Ok(vec![crate::AppInfo {
             name: "MenuApp".into(),
-            pid: 42,
+            pid: crate::ProcessId::new(42),
             bundle_id: None,
+            process_instance: Some("test-instance".into()),
         }])
     }
 }
@@ -90,7 +118,14 @@ impl ActionOps for MenuWaitAdapter {}
 impl InputOps for MenuWaitAdapter {}
 
 impl SystemOps for MenuWaitAdapter {
-    fn wait_for_menu(&self, _pid: i32, open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
+    fn wait_for_menu(
+        &self,
+        process: crate::ProcessIdentity,
+        open: bool,
+        _deadline: crate::Deadline,
+    ) -> Result<(), AdapterError> {
+        assert_eq!(process.pid, 42);
+        assert_eq!(process.instance, "test-instance");
         *self.open_seen.lock().unwrap() = Some(open);
         Ok(())
     }

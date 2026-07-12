@@ -18,11 +18,7 @@ fn enum_fuzz_invalid_discriminant_rejected() {
         };
         let mut out: AdActionResult = std::mem::zeroed();
         let rc = ad_execute_action(adapter, &handle, &action, &mut out);
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "arbitrary enum bit pattern must be rejected, got {:?}",
-            rc
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
     });
 }
 
@@ -41,10 +37,7 @@ fn invalid_policy_discriminant_rejected_without_ub() {
             AdPolicyKind::Headed as i32 + 1,
             &mut out,
         );
-        assert!(matches!(
-            rc,
-            AdResult::ErrInvalidArgs | AdResult::ErrInternal
-        ));
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
     });
 }
 
@@ -57,19 +50,16 @@ fn execute_action_rejects_null_handle_ptr() {
         };
         let mut out: AdActionResult = std::mem::zeroed();
         let rc = ad_execute_action(adapter, &handle, &action, &mut out);
-        assert!(matches!(
-            rc,
-            AdResult::ErrInvalidArgs | AdResult::ErrInternal
-        ));
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
     });
 }
 
 #[test]
-fn execute_ref_action_uses_strict_resolution_before_dispatch() {
+fn legacy_ref_action_fails_closed_without_exact_identity() {
     with_adapter(|adapter| unsafe {
         let role = std::ffi::CString::new("button").unwrap();
         let mut entry = default_ref_entry();
-        entry.role = role.as_ptr();
+        entry.identity.role = role.as_ptr();
         let action = default_action();
         let mut out: AdActionResult = std::mem::zeroed();
 
@@ -81,15 +71,12 @@ fn execute_ref_action_uses_strict_resolution_before_dispatch() {
             &mut out,
         );
 
-        assert!(matches!(
-            rc,
-            AdResult::ErrStaleRef | AdResult::ErrElementNotFound | AdResult::ErrInternal
-        ));
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
     });
 }
 
 #[test]
-fn execute_action_policy_requires_main_thread_on_macos() {
+fn execute_action_policy_rejects_null_adapter_on_worker_thread() {
     let rc = std::thread::spawn(|| unsafe {
         let action = default_action();
         let handle = AdNativeHandle {
@@ -107,16 +94,11 @@ fn execute_action_policy_requires_main_thread_on_macos() {
     .join()
     .unwrap();
 
-    #[cfg(target_os = "macos")]
-    assert_eq!(rc, AdResult::ErrInternal);
-    #[cfg(not(target_os = "macos"))]
     assert_eq!(rc, AdResult::ErrInvalidArgs);
 }
 
-/// Verifies that `ad_execute_ref_action_with_policy` uses the adapter's session
-/// context rather than a default one. The observable contract is that resolution
-/// fails (stale ref) identically whether a session id is present or absent —
-/// the session id is wired into trace emission, not into the error path.
+/// Session context must not weaken the legacy ref entry's fail-closed identity
+/// check.
 #[test]
 fn execute_ref_action_with_session_adapter_wires_context() {
     unsafe {
@@ -126,7 +108,7 @@ fn execute_ref_action_with_session_adapter_wires_context() {
 
         let role = CString::new("button").unwrap();
         let mut entry = default_ref_entry();
-        entry.role = role.as_ptr();
+        entry.identity.role = role.as_ptr();
         let action = default_action();
         let mut out: AdActionResult = std::mem::zeroed();
 
@@ -138,21 +120,14 @@ fn execute_ref_action_with_session_adapter_wires_context() {
             &mut out,
         );
 
-        assert!(
-            matches!(
-                rc,
-                AdResult::ErrStaleRef | AdResult::ErrElementNotFound | AdResult::ErrInternal
-            ),
-            "session adapter must still reject unresolvable entry, got {:?}",
-            rc
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
 
         ad_adapter_destroy(adapter);
     }
 }
 
 #[test]
-fn free_action_result_releases_non_empty_steps_array() {
+fn free_action_result_never_scans_an_unowned_steps_array() {
     let mut steps = vec![
         AdActionStep {
             label: CString::new("AXScrollToVisible").unwrap().into_raw(),
@@ -183,12 +158,19 @@ fn free_action_result_releases_non_empty_steps_array() {
         },
     ]
     .into_boxed_slice();
+    let steps_ptr = steps.as_mut_ptr();
+    let action_ptr = CString::new("click").unwrap().into_raw();
     let mut result = AdActionResult {
-        action: CString::new("click").unwrap().into_raw(),
+        action: action_ptr,
         ref_id: std::ptr::null(),
         post_state: std::ptr::null_mut(),
         steps: steps.as_mut_ptr(),
         step_count: 2,
+        details_json: std::ptr::null(),
+        disposition: agent_desktop_ffi::AdDeliverySemantics {
+            delivery: agent_desktop_ffi::AdDeliveryDisposition::Unknown as i32,
+            retry: agent_desktop_ffi::AdRetryDisposition::Unknown as i32,
+        },
     };
     std::mem::forget(steps);
 
@@ -197,4 +179,14 @@ fn free_action_result_releases_non_empty_steps_array() {
     assert!(result.action.is_null());
     assert!(result.steps.is_null());
     assert_eq!(result.step_count, 0);
+    assert!(result.details_json.is_null());
+
+    let mut steps = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(steps_ptr, 3)) };
+    for step in steps.iter_mut().take(2) {
+        unsafe {
+            drop(CString::from_raw(step.label as *mut _));
+            drop(CString::from_raw(step.outcome as *mut _));
+        }
+    }
+    unsafe { drop(CString::from_raw(action_ptr)) };
 }

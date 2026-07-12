@@ -1,4 +1,4 @@
-use agent_desktop_core::error::AdapterError;
+use agent_desktop_core::{AdapterError, Deadline, KeyCombo};
 
 pub(crate) fn close_session<T>(
     session: NcSession,
@@ -19,20 +19,22 @@ pub(crate) struct NcSession {
     was_already_open: bool,
     previous_app: Option<String>,
     closed: bool,
+    deadline: Deadline,
 }
 
 impl NcSession {
-    pub(crate) fn open() -> Result<Self, AdapterError> {
-        let previous_app = frontmost_app();
-        let was_already_open = is_nc_open();
+    pub(crate) fn open(deadline: Deadline) -> Result<Self, AdapterError> {
+        let previous_app = frontmost_app(deadline);
+        let was_already_open = is_nc_open(deadline);
         if !was_already_open {
-            open_nc()?;
-            wait_for_nc_ready()?;
+            open_nc(deadline)?;
+            wait_for_nc_ready(deadline)?;
         }
         Ok(Self {
             was_already_open,
             previous_app,
             closed: false,
+            deadline,
         })
     }
 
@@ -40,10 +42,10 @@ impl NcSession {
         let close_result = if self.was_already_open {
             Ok(())
         } else {
-            close_nc()
+            close_nc(self.deadline)
         };
         if let Some(ref app) = self.previous_app {
-            reactivate_app(app);
+            reactivate_app(app, self.deadline);
         }
         self.closed = true;
         close_result
@@ -56,27 +58,27 @@ impl Drop for NcSession {
             return;
         }
         if !self.was_already_open {
-            if let Err(e) = close_nc() {
+            if let Err(e) = close_nc(self.deadline) {
                 tracing::warn!("Failed to close NC in Drop: {e}");
             }
         }
         if let Some(ref app) = self.previous_app {
-            reactivate_app(app);
+            reactivate_app(app, self.deadline);
         }
     }
 }
 
 #[cfg(target_os = "macos")]
-fn frontmost_app() -> Option<String> {
+fn frontmost_app(deadline: Deadline) -> Option<String> {
     let mut command = std::process::Command::new("/usr/bin/osascript");
     command.args([
         "-e",
         "tell application \"System Events\" to get name of first application process whose frontmost is true",
     ]);
-    let output = crate::system::process::run_with_timeout(
+    let output = crate::system::process::run_with_deadline(
         &mut command,
         "frontmost-app osascript",
-        std::time::Duration::from_secs(2),
+        operation_deadline(deadline, std::time::Duration::from_secs(2)).ok()?,
     )
     .ok()?;
     if output.status.success() {
@@ -88,19 +90,20 @@ fn frontmost_app() -> Option<String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn frontmost_app() -> Option<String> {
+fn frontmost_app(_deadline: Deadline) -> Option<String> {
     None
 }
 
 #[cfg(target_os = "macos")]
-fn reactivate_app(name: &str) {
+fn reactivate_app(name: &str, deadline: Deadline) {
     let script = format!("tell application {} to activate", applescript_string(name));
     let mut command = std::process::Command::new("/usr/bin/osascript");
     command.arg("-e").arg(script);
-    if let Err(e) = crate::system::process::run_with_timeout(
+    if let Err(e) = crate::system::process::run_with_deadline(
         &mut command,
         "reactivate-app osascript",
-        std::time::Duration::from_secs(1),
+        operation_deadline(deadline, std::time::Duration::from_secs(1))
+            .unwrap_or_else(|_| std::time::Instant::now()),
     ) {
         tracing::warn!("reactivate_app osascript failed for app {:?}: {e}", name);
     }
@@ -124,16 +127,16 @@ fn applescript_string(value: &str) -> String {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn reactivate_app(_name: &str) {}
+fn reactivate_app(_name: &str, _deadline: Deadline) {}
 
 #[cfg(target_os = "macos")]
-pub(super) fn nc_pid() -> Option<i32> {
+pub(super) fn nc_pid(deadline: Deadline) -> Option<i32> {
     let mut command = std::process::Command::new("/usr/bin/pgrep");
     command.arg("-x").arg("NotificationCenter");
-    let output = crate::system::process::run_with_timeout(
+    let output = crate::system::process::run_with_deadline(
         &mut command,
         "pgrep NotificationCenter",
-        std::time::Duration::from_secs(1),
+        operation_deadline(deadline, std::time::Duration::from_secs(1)).ok()?,
     )
     .ok()?;
 
@@ -145,55 +148,55 @@ pub(super) fn nc_pid() -> Option<i32> {
 }
 
 #[cfg(target_os = "macos")]
-fn is_nc_open() -> bool {
-    use crate::tree::{copy_ax_array, element_for_pid};
+fn is_nc_open(deadline: Deadline) -> bool {
+    use crate::tree::element_for_pid;
 
-    let pid = match nc_pid() {
+    let pid = match nc_pid(deadline) {
         Some(p) => p,
         None => return false,
     };
     let app = element_for_pid(pid);
-    let windows = copy_ax_array(&app, "AXWindows").unwrap_or_default();
+    let windows = crate::notifications::read::children_for_attribute(&app, "AXWindows", deadline)
+        .unwrap_or_default();
     !windows.is_empty()
 }
 
 #[cfg(not(target_os = "macos"))]
-fn is_nc_open() -> bool {
+fn is_nc_open(_deadline: Deadline) -> bool {
     false
 }
 
 #[cfg(target_os = "macos")]
-fn open_nc() -> Result<(), AdapterError> {
+fn open_nc(deadline: Deadline) -> Result<(), AdapterError> {
     let script = r#"tell application "System Events" to tell its application process "ControlCenter"
         click (first menu bar item of menu bar 1 whose description is "Clock")
     end tell"#;
 
     let mut command = std::process::Command::new("/usr/bin/osascript");
     command.arg("-e").arg(script);
-    crate::system::process::run_with_timeout(
+    crate::system::process::run_with_deadline(
         &mut command,
         "osascript open-nc",
-        std::time::Duration::from_secs(2),
+        operation_deadline(deadline, std::time::Duration::from_secs(2))?,
     )?;
     std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]
-fn open_nc() -> Result<(), AdapterError> {
+fn open_nc(_deadline: Deadline) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("open_nc"))
 }
 
 #[cfg(target_os = "macos")]
-fn close_nc() -> Result<(), AdapterError> {
+fn close_nc(deadline: Deadline) -> Result<(), AdapterError> {
     use crate::input::keyboard;
-    use agent_desktop_core::action::KeyCombo;
 
     let combo = KeyCombo {
         key: "escape".into(),
         modifiers: vec![],
     };
-    keyboard::synthesize_key(&combo)?;
+    keyboard::synthesize_key(&combo, None, deadline)?;
     std::thread::sleep(std::time::Duration::from_millis(300));
     Ok(())
 }
@@ -220,29 +223,42 @@ mod tests {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn close_nc() -> Result<(), AdapterError> {
+fn close_nc(_deadline: Deadline) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("close_nc"))
 }
 
 #[cfg(target_os = "macos")]
-fn wait_for_nc_ready() -> Result<(), AdapterError> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+fn wait_for_nc_ready(deadline: Deadline) -> Result<(), AdapterError> {
     let poll = std::time::Duration::from_millis(50);
 
     loop {
-        if is_nc_open() {
+        if is_nc_open(deadline) {
             return Ok(());
         }
-        if std::time::Instant::now() > deadline {
+        if deadline.is_expired() {
             return Err(AdapterError::timeout(
-                "Notification Center did not open within 2 seconds",
+                "Notification Center did not open within the operation deadline",
             ));
         }
-        std::thread::sleep(poll);
+        std::thread::sleep(poll.min(deadline.remaining()));
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn wait_for_nc_ready() -> Result<(), AdapterError> {
+fn wait_for_nc_ready(_deadline: Deadline) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("wait_for_nc_ready"))
+}
+
+fn operation_deadline(
+    deadline: Deadline,
+    maximum: std::time::Duration,
+) -> Result<std::time::Instant, AdapterError> {
+    let remaining = deadline.remaining();
+    if remaining.is_zero() {
+        Err(deadline.timeout_error())
+    } else {
+        std::time::Instant::now()
+            .checked_add(remaining.min(maximum))
+            .ok_or_else(|| AdapterError::timeout("Notification subprocess deadline overflowed"))
+    }
 }

@@ -2,6 +2,10 @@
 
 Patterns for using agent-desktop effectively in multi-step desktop automation tasks.
 
+Snapshot output uses qualified refs such as `@s8f3k2p9:e3`. Examples that pair
+a legacy bare ref with `--snapshot <snapshot_id>` intentionally demonstrate the
+still-supported compatibility form; never use a bare ref without that flag.
+
 ## First-Time Setup
 
 Before any automation, verify permissions:
@@ -17,12 +21,13 @@ For screenshots, also grant Screen Recording. `permissions` reports `accessibili
 
 ## Pattern: Session-Scoped Tracing (Default for Multi-Step Runs)
 
-Start one session per agent run so tracing and the latest-snapshot namespace follow automatically — no `--trace` on every command.
+Start one session per agent run, then explicitly select its ID so tracing and the latest-snapshot namespace follow consistently — no `--trace` on every command.
 
 ```bash
-# 1. Start once — creates manifest (trace: on), pointer, and trace/ directory
+# 1. Start once — creates manifest (trace: on) and trace/ directory
 agent-desktop session start --name "invoice-bot"
-# Note session_id from data.session_id (also written to ~/.agent-desktop/current_session)
+# Note session_id from data.session_id, then export it for later processes
+export AGENT_DESKTOP_SESSION=<session_id>
 
 # 2. Observe-act loop — segments land under sessions/<id>/trace/<pid>-*.jsonl
 agent-desktop snapshot --app "Preview" -i --compact
@@ -30,11 +35,11 @@ agent-desktop click @e3 --snapshot <snapshot_id>
 agent-desktop status   # confirms session_id + tracing: true
 
 # 3. End and reclaim when finished
-agent-desktop session end
+agent-desktop session end "$AGENT_DESKTOP_SESSION"
 agent-desktop session gc
 ```
 
-**Concurrent independent agents:** set `AGENT_DESKTOP_SESSION=<id>` in each process instead of sharing the global pointer. Each agent still uses the `snapshot_id` from its own `snapshot` call when sharing a session id.
+**Concurrent independent agents:** set `AGENT_DESKTOP_SESSION=<id>` in each process. Each agent should use qualified refs from its own snapshot when sharing a session ID.
 
 **Namespace without tracing:** `session start --no-trace` or bare `--session legacy-id` (no manifest) — snapshots namespaced, no JSONL files.
 
@@ -127,7 +132,7 @@ agent-desktop snapshot --app "TextEdit" --surface sheet -i
 
 ```bash
 # 1. Right-click the target element. Success means a menu surface was verified.
-agent-desktop right-click @e3
+agent-desktop right-click @s8f3k2p9:e3
 
 # 2. Use the returned menu tree, or snapshot the menu surface if you need a fresh read.
 agent-desktop snapshot --app "Finder" --surface menu -i
@@ -186,22 +191,22 @@ agent-desktop click @e14 --snapshot <snapshot_id>
 
 ```bash
 # For sequential form filling without needing refs for each field:
-agent-desktop focus @e1          # Explicit focus change
-agent-desktop type @e1 "value1"
+agent-desktop focus @s8f3k2p9:e1          # Explicit focus change
+agent-desktop type @s8f3k2p9:e1 "value1"
 agent-desktop press tab
 # Now in next field — type directly since focus moved
 agent-desktop press tab          # Skip a field
-agent-desktop type @e3 "value3"  # Or snapshot again to get new refs
+agent-desktop type @s8f3k2p9:e3 "value3"  # Or snapshot again to get new refs
 ```
 
 ## Pattern: Copy Text from Element
 
 ```bash
 # Option A: Read directly via accessibility
-agent-desktop get @e5 --property value
+agent-desktop get @s8f3k2p9:e5 --property value
 
 # Option B: Copy via keyboard
-agent-desktop focus @e5
+agent-desktop focus @s8f3k2p9:e5
 agent-desktop press cmd+a
 agent-desktop press cmd+c
 agent-desktop clipboard-get
@@ -211,13 +216,13 @@ agent-desktop clipboard-get
 
 ```bash
 # Between elements (by ref)
-agent-desktop --headed drag --from @e3 --to @e8
+agent-desktop --headed drag --from @s8f3k2p9:e3 --to @s8f3k2p9:e8
 
 # Between coordinates
 agent-desktop --headed drag --from-xy 100,200 --to-xy 500,400
 
 # Mixed: element to coordinates
-agent-desktop --headed drag --from @e3 --to-xy 500,400 --duration 500
+agent-desktop --headed drag --from @s8f3k2p9:e3 --to-xy 500,400 --duration 500
 ```
 
 ## Pattern: Wait for Async UI
@@ -269,13 +274,13 @@ agent-desktop snapshot --app "Finder" --window-id "w-5678" -i
 
 ```bash
 # Check if already in desired state
-agent-desktop is @e6 --property checked
+agent-desktop is @s8f3k2p9:e6 --property checked
 # If result is false, then check it
-agent-desktop check @e6
+agent-desktop check @s8f3k2p9:e6
 
 # Or use check/uncheck directly (they're idempotent)
-agent-desktop check @e6    # No-op if already checked
-agent-desktop uncheck @e6  # No-op if already unchecked
+agent-desktop check @s8f3k2p9:e6    # No-op if already checked
+agent-desktop uncheck @s8f3k2p9:e6  # No-op if already unchecked
 ```
 
 ## Pattern: Batch Operations

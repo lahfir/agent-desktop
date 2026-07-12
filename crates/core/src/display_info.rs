@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::node::Rect;
+use crate::Rect;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DisplayInfo {

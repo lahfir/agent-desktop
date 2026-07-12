@@ -1,15 +1,22 @@
-use super::{Modifier, create_event, event_flags};
-use core_graphics::event::{CGEventFlags, CGEventType, CGMouseButton};
+use super::{Modifier, approach_point, event_flags, standalone_state_error, wheel_lines_to_i32};
+use core_graphics::event::CGEventFlags;
 use core_graphics::geometry::CGPoint;
 
-/// F10 regression: `synthesize_mouse` previously never read `event.modifiers`
-/// at all, so a chorded `mouse-click --modifiers cmd` was a silent no-op —
-/// the receiving app saw a plain click. These pin the modifier -> CGEventFlags
-/// bit mapping that `synthesize_mouse` and `synthesize_scroll_at` both rely on.
+#[test]
+fn standalone_mouse_state_is_rejected_without_emission() {
+    let error = standalone_state_error();
+
+    assert_eq!(
+        error.code,
+        agent_desktop_core::ErrorCode::ActionNotSupported
+    );
+    assert_eq!(error.details.unwrap()["raw_input_emitted"], false);
+}
+
 #[test]
 fn event_flags_maps_cmd_to_command_bit() {
     assert_eq!(
-        event_flags(&[Modifier::Cmd]),
+        event_flags(&[Modifier::Meta]),
         CGEventFlags::CGEventFlagCommand
     );
 }
@@ -40,7 +47,7 @@ fn event_flags_maps_ctrl_to_control_bit() {
 
 #[test]
 fn event_flags_combines_multiple_modifiers_via_bitwise_or() {
-    let combined = event_flags(&[Modifier::Cmd, Modifier::Shift]);
+    let combined = event_flags(&[Modifier::Meta, Modifier::Shift]);
     assert_eq!(
         combined,
         CGEventFlags::CGEventFlagCommand | CGEventFlags::CGEventFlagShift
@@ -55,49 +62,61 @@ fn event_flags_empty_slice_yields_no_flags() {
     assert_eq!(event_flags(&[]), CGEventFlags::empty());
 }
 
-/// Exercises the real `create_event` path `synthesize_mouse`/`synthesize_click`
-/// dispatch through, not a standalone copy of the mapping. If the
-/// `event.set_flags(flags)` call were dropped from `create_event_with_source`,
-/// the returned event would carry whatever the ambient/default flags are
-/// instead of the requested chord, and this assertion would fail.
 #[test]
-fn create_event_carries_requested_modifier_flags() {
-    let flags = event_flags(&[Modifier::Cmd, Modifier::Ctrl]);
-    let event = create_event(
-        CGEventType::LeftMouseDown,
-        CGPoint::new(0.0, 0.0),
-        CGMouseButton::Left,
-        flags,
-    )
-    .expect("CGEvent construction must not require Accessibility permission");
-
-    assert_eq!(event.get_flags(), flags);
+fn wheel_line_conversion_preserves_direction_and_small_nonzero_input() {
+    assert_eq!(wheel_lines_to_i32(-3.0).unwrap(), -3);
+    assert_eq!(wheel_lines_to_i32(2.6).unwrap(), 3);
+    assert_eq!(wheel_lines_to_i32(0.1).unwrap(), 1);
+    assert_eq!(wheel_lines_to_i32(-0.1).unwrap(), -1);
 }
 
-/// The "restore after" guarantee: a chorded event followed by a plain one
-/// must not leak the chord onto the later event. Because every call computes
-/// its flags fresh from its own `modifiers` slice and applies them
-/// unconditionally (rather than only when non-empty), there is no shared
-/// state through which a prior call's flags could survive into the next.
 #[test]
-fn create_event_after_chorded_call_carries_no_stale_flags_for_unmodified_click() {
-    let chorded_flags = event_flags(&[Modifier::Cmd, Modifier::Shift, Modifier::Alt]);
-    let _chorded = create_event(
-        CGEventType::LeftMouseDown,
-        CGPoint::new(0.0, 0.0),
-        CGMouseButton::Left,
-        chorded_flags,
-    )
-    .unwrap();
+fn wheel_line_conversion_rejects_non_finite_input() {
+    assert!(wheel_lines_to_i32(f64::NAN).is_err());
+    assert!(wheel_lines_to_i32(f64::INFINITY).is_err());
+}
 
-    let plain_flags = event_flags(&[]);
-    let plain = create_event(
-        CGEventType::LeftMouseUp,
-        CGPoint::new(0.0, 0.0),
-        CGMouseButton::Left,
-        plain_flags,
-    )
-    .unwrap();
+#[test]
+fn hover_approach_moves_one_point_before_the_exact_destination() {
+    let approach = approach_point(CGPoint::new(2065.0, 636.0));
 
-    assert_eq!(plain.get_flags(), CGEventFlags::empty());
+    assert_eq!(approach.x, 2064.0);
+    assert_eq!(approach.y, 636.0);
+}
+
+#[cfg(feature = "interactive-tests")]
+#[test]
+fn native_cg_event_contract_is_bounded() {
+    use super::create_event;
+    use crate::input::interactive_test::{is_worker, run_bounded};
+    use core_graphics::event::{CGEventType, CGMouseButton};
+    use core_graphics::geometry::CGPoint;
+    use std::time::Duration;
+
+    if is_worker("mouse") {
+        let flags = event_flags(&[Modifier::Meta, Modifier::Ctrl]);
+        let event = create_event(
+            CGEventType::LeftMouseDown,
+            CGPoint::new(0.0, 0.0),
+            CGMouseButton::Left,
+            flags,
+        )
+        .expect("CGEvent construction succeeds");
+        assert_eq!(event.get_flags(), flags);
+
+        let plain = create_event(
+            CGEventType::LeftMouseUp,
+            CGPoint::new(0.0, 0.0),
+            CGMouseButton::Left,
+            event_flags(&[]),
+        )
+        .expect("second CGEvent construction succeeds");
+        assert_eq!(plain.get_flags(), CGEventFlags::empty());
+    } else {
+        run_bounded(
+            "native_cg_event_contract_is_bounded",
+            "mouse",
+            Duration::from_secs(5),
+        );
+    }
 }

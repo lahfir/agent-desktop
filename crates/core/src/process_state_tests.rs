@@ -15,10 +15,7 @@ fn label_reports_short_lowercase_tag_per_variant() {
 #[test]
 fn exited_serializes_with_optional_code_field() {
     let value = serde_json::to_value(ProcessState::Exited { code: None }).expect("serializable");
-    assert_eq!(
-        value,
-        serde_json::json!({ "state": "exited", "code": null })
-    );
+    assert_eq!(value, serde_json::json!({ "state": "exited" }));
 
     let value = serde_json::to_value(ProcessState::Exited { code: Some(9) }).expect("serializable");
     assert_eq!(value, serde_json::json!({ "state": "exited", "code": 9 }));

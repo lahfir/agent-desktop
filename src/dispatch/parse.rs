@@ -1,11 +1,9 @@
 use agent_desktop_core::{
-    action::{Direction, Modifier, MouseButton},
-    clipboard_content::ClipboardFormat,
+    AppError, ClipboardFormat, Direction, Modifier, MouseButton,
     commands::{get, is_check},
-    error::AppError,
     launch_options::LaunchOptions,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub(crate) fn parse_get_property(s: &str) -> Result<get::GetProperty, AppError> {
     match s {
@@ -15,9 +13,9 @@ pub(crate) fn parse_get_property(s: &str) -> Result<get::GetProperty, AppError> 
         "bounds" => Ok(get::GetProperty::Bounds),
         "role" => Ok(get::GetProperty::Role),
         "states" => Ok(get::GetProperty::States),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown property '{other}'. Valid: text, value, title, bounds, role, states"
-        ))),
+        _ => Err(AppError::invalid_input(
+            "Unknown property. Valid: text, value, title, bounds, role, states",
+        )),
     }
 }
 
@@ -28,9 +26,9 @@ pub(crate) fn parse_is_property(s: &str) -> Result<is_check::IsProperty, AppErro
         "checked" => Ok(is_check::IsProperty::Checked),
         "focused" => Ok(is_check::IsProperty::Focused),
         "expanded" => Ok(is_check::IsProperty::Expanded),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown property '{other}'. Valid: visible, enabled, checked, focused, expanded"
-        ))),
+        _ => Err(AppError::invalid_input(
+            "Unknown property. Valid: visible, enabled, checked, focused, expanded",
+        )),
     }
 }
 
@@ -40,9 +38,9 @@ pub(crate) fn parse_direction(s: &str) -> Result<Direction, AppError> {
         "down" => Ok(Direction::Down),
         "left" => Ok(Direction::Left),
         "right" => Ok(Direction::Right),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown direction '{other}'. Valid: up, down, left, right"
-        ))),
+        _ => Err(AppError::invalid_input(
+            "Unknown direction. Valid: up, down, left, right",
+        )),
     }
 }
 
@@ -51,27 +49,34 @@ pub(crate) fn parse_mouse_button(s: &str) -> Result<MouseButton, AppError> {
         "left" => Ok(MouseButton::Left),
         "right" => Ok(MouseButton::Right),
         "middle" => Ok(MouseButton::Middle),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown button '{other}'. Valid: left, right, middle"
-        ))),
+        _ => Err(AppError::invalid_input(
+            "Unknown button. Valid: left, right, middle",
+        )),
     }
 }
 
 pub(crate) fn parse_xy(s: &str) -> Result<(f64, f64), AppError> {
-    let parts: Vec<&str> = s.split(',').collect();
-    if parts.len() != 2 {
-        return Err(AppError::invalid_input(format!(
-            "Invalid coordinates '{s}'. Expected format: x,y (e.g., 500,300)"
-        )));
+    let (x_raw, y_raw) = s.split_once(',').ok_or_else(|| {
+        AppError::invalid_input("Invalid coordinates. Expected format: x,y (e.g., 500,300)")
+    })?;
+    if y_raw.contains(',') {
+        return Err(AppError::invalid_input(
+            "Invalid coordinates. Expected exactly one comma",
+        ));
     }
-    let x: f64 = parts[0]
+    let x: f64 = x_raw
         .trim()
         .parse()
-        .map_err(|_| AppError::invalid_input(format!("Invalid x coordinate: '{}'", parts[0])))?;
-    let y: f64 = parts[1]
+        .map_err(|_| AppError::invalid_input("Invalid x coordinate"))?;
+    let y: f64 = y_raw
         .trim()
         .parse()
-        .map_err(|_| AppError::invalid_input(format!("Invalid y coordinate: '{}'", parts[1])))?;
+        .map_err(|_| AppError::invalid_input("Invalid y coordinate"))?;
+    if !x.is_finite() || !y.is_finite() {
+        return Err(AppError::invalid_input(
+            "Coordinates must be finite numbers",
+        ));
+    }
     Ok((x, y))
 }
 
@@ -88,25 +93,35 @@ pub(crate) fn parse_clipboard_format(s: &str) -> Result<ClipboardFormat, AppErro
         "text" | "plain_text" | "plaintext" => Ok(ClipboardFormat::Text),
         "image" | "png" => Ok(ClipboardFormat::Image),
         "file-urls" | "file_urls" | "fileurls" => Ok(ClipboardFormat::FileUrls),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown clipboard format '{other}'. Valid: auto, text, image, file-urls"
-        ))),
+        _ => Err(AppError::invalid_input(
+            "Unknown clipboard format. Valid: auto, text, image, file-urls",
+        )),
     }
 }
 
 pub(crate) fn parse_modifiers(values: &[String]) -> Result<Vec<Modifier>, AppError> {
-    values.iter().map(|value| parse_modifier(value)).collect()
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        let modifier = parse_modifier(value)?;
+        if parsed.contains(&modifier) {
+            return Err(AppError::invalid_input(
+                "Each mouse modifier may be supplied only once",
+            ));
+        }
+        parsed.push(modifier);
+    }
+    Ok(parsed)
 }
 
 pub(crate) fn parse_modifier(s: &str) -> Result<Modifier, AppError> {
     match s.to_ascii_lowercase().as_str() {
         "shift" => Ok(Modifier::Shift),
-        "cmd" | "command" | "meta" => Ok(Modifier::Cmd),
+        "meta" | "cmd" | "command" => Ok(Modifier::Meta),
         "ctrl" | "control" => Ok(Modifier::Ctrl),
         "alt" | "option" => Ok(Modifier::Alt),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown modifier '{other}'. Valid: shift, cmd, ctrl, alt"
-        ))),
+        _ => Err(AppError::invalid_input(
+            "Unknown modifier. Valid: shift, meta, ctrl, alt (cmd/command aliases are accepted)",
+        )),
     }
 }
 
@@ -114,18 +129,29 @@ pub(crate) fn build_launch_options(
     args: &[String],
     env: &[String],
     cwd: Option<std::path::PathBuf>,
+    timeout_ms: u64,
     no_attach: bool,
 ) -> Result<LaunchOptions, AppError> {
-    let mut env_map = HashMap::new();
+    if let Some(index) = args.iter().position(|argument| argument.contains('\0')) {
+        return Err(AppError::invalid_input(format!(
+            "Invalid --arg entry #{index}: argument contains a NUL byte"
+        )));
+    }
+    let mut env_map = BTreeMap::new();
     for (idx, pair) in env.iter().enumerate() {
         let (key, value) = parse_env_pair(pair, idx)?;
-        env_map.insert(key, value);
+        if env_map.insert(key, value).is_some() {
+            return Err(AppError::invalid_input(format!(
+                "Duplicate --env key at entry #{idx}"
+            )));
+        }
     }
     Ok(LaunchOptions {
         args: args.to_vec(),
         env: env_map,
         cwd,
-        attach: !no_attach,
+        timeout_ms,
+        attach_if_running: !no_attach,
     })
 }
 
@@ -133,9 +159,19 @@ fn parse_env_pair(pair: &str, idx: usize) -> Result<(String, String), AppError> 
     let (key, value) = pair.split_once('=').ok_or_else(|| {
         AppError::invalid_input(format!("Invalid --env entry #{idx}: expected KEY=VALUE"))
     })?;
-    if key.is_empty() {
+    if key.is_empty()
+        || !key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        || key.as_bytes()[0].is_ascii_digit()
+    {
         return Err(AppError::invalid_input(format!(
-            "Invalid --env entry #{idx}: KEY must not be empty"
+            "Invalid --env entry #{idx}: KEY must be a portable environment identifier"
+        )));
+    }
+    if value.contains('\0') {
+        return Err(AppError::invalid_input(format!(
+            "Invalid --env entry #{idx}: VALUE contains a NUL byte"
         )));
     }
     Ok((key.to_string(), value.to_string()))

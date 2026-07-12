@@ -28,10 +28,6 @@ impl InteractionPolicy {
         }
     }
 
-    /// Returns the least-restrictive policy that satisfies both `self` and
-    /// `other`. Used by FFI callers that supply an explicit caller policy: the
-    /// result is always at least as permissive as the action's CLI base, and
-    /// at least as permissive as what the caller requested.
     pub fn join(self, other: InteractionPolicy) -> InteractionPolicy {
         InteractionPolicy {
             allow_focus_steal: self.allow_focus_steal || other.allow_focus_steal,

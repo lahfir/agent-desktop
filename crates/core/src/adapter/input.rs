@@ -1,26 +1,34 @@
 use crate::{
-    action::{DragParams, KeyCombo, MouseEvent},
-    clipboard_content::{ClipboardContent, ClipboardFormat},
-    error::AdapterError,
+    AdapterError, ClipboardContent, ClipboardFormat, Deadline, DragParams, InteractionLease,
+    KeyCombo, MouseEvent,
 };
 
 /// `get_clipboard`/`set_clipboard` were removed pre-1.0 in favor of
 /// `get_clipboard_content`/`set_clipboard_content`; the C ABI
 /// (`ad_get_clipboard`/`ad_set_clipboard`) is unaffected.
 pub trait InputOps: Send + Sync {
-    fn mouse_event(&self, _event: MouseEvent) -> Result<(), AdapterError> {
+    fn mouse_event(
+        &self,
+        _event: MouseEvent,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("mouse_event"))
     }
 
-    fn key_event(&self, _combo: &KeyCombo, _down: bool) -> Result<(), AdapterError> {
+    fn key_event(
+        &self,
+        _combo: &KeyCombo,
+        _down: bool,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("key_event"))
     }
 
-    fn drag(&self, _params: DragParams) -> Result<(), AdapterError> {
+    fn drag(&self, _params: DragParams, _lease: &InteractionLease) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("drag"))
     }
 
-    fn clear_clipboard(&self) -> Result<(), AdapterError> {
+    fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("clear_clipboard"))
     }
 
@@ -32,23 +40,17 @@ pub trait InputOps: Send + Sync {
     fn get_clipboard_content(
         &self,
         _format: ClipboardFormat,
+        _deadline: Deadline,
     ) -> Result<Option<ClipboardContent>, AdapterError> {
         Err(AdapterError::not_supported("get_clipboard_content"))
     }
 
-    fn set_clipboard_content(&self, _content: &ClipboardContent) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("set_clipboard_content"))
-    }
-
-    fn mouse_wheel(
+    fn set_clipboard_content(
         &self,
-        _x: f64,
-        _y: f64,
-        _dy: i32,
-        _dx: i32,
-        _modifiers: &[crate::action::Modifier],
+        _content: &ClipboardContent,
+        _lease: &InteractionLease,
     ) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("mouse_wheel"))
+        Err(AdapterError::not_supported("set_clipboard_content"))
     }
 }
 

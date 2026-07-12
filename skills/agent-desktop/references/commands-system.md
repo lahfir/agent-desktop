@@ -22,7 +22,7 @@ Launches an application by name or bundle ID and waits until its window is visib
 | `--cwd` | | Working directory for the launched process |
 | `--no-attach` | false | Require a fresh launch instead of the default attach-if-running behavior |
 
-By default, `launch` attaches to an already-running instance of the app (returning its window) instead of failing. `--no-attach` changes both branches: if the app is already running, the command returns `ACTION_FAILED` naming the running pid instead of attaching; if it is not running, the command returns immediately after spawning the process without polling for a window (the response has empty `id`/`title`), which is useful for apps that legitimately have no window (menu-bar-only utilities, background agents).
+By default, `launch` attaches to an already-running instance and returns its visible window. `--no-attach` rejects an already-running app with `ACTION_FAILED`; otherwise it starts a fresh instance and still waits for a real visible window. Windowless, menu-bar-only, or background apps return `WINDOW_NOT_FOUND` rather than a fabricated empty window response; use `list-apps` to observe those processes.
 
 ### close-app
 ```bash
@@ -61,27 +61,32 @@ Brings a window to the front and confirms the OS reports that same window as foc
 ### resize-window
 ```bash
 agent-desktop resize-window --app "TextEdit" --width 800 --height 600
+agent-desktop resize-window --window-id w-4521 --width 800 --height 600
 ```
 
 ### move-window
 ```bash
 agent-desktop move-window --app "TextEdit" --x 0 --y 0
+agent-desktop move-window --window-id w-4521 --x 0 --y 0
 ```
 
 ### minimize
 ```bash
 agent-desktop minimize --app "TextEdit"
+agent-desktop minimize --window-id w-4521
 ```
 
 ### maximize
 ```bash
 agent-desktop maximize --app "TextEdit"
+agent-desktop maximize --window-id w-4521
 ```
 Zooms the window to fill the screen.
 
 ### restore
 ```bash
 agent-desktop restore --app "TextEdit"
+agent-desktop restore --window-id w-4521
 ```
 Restores a minimized or maximized window to its previous size.
 
@@ -209,9 +214,9 @@ Pauses for N milliseconds. Use between actions that need time to settle.
 ### wait (element)
 ```bash
 agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 --app "App"
-agent-desktop wait --element @e5 --predicate actionable --timeout 5000
-agent-desktop wait --element @e5 --predicate actionable --action type --timeout 5000
-agent-desktop wait --element @e5 --predicate value --value "Done" --timeout 5000
+agent-desktop wait --element @s8f3k2p9:e5 --predicate actionable --timeout 5000
+agent-desktop wait --element @s8f3k2p9:e5 --predicate actionable --action type --timeout 5000
+agent-desktop wait --element @s8f3k2p9:e5 --predicate value --value "Done" --timeout 5000
 ```
 Blocks until the element ref appears in the accessibility tree. Useful after triggering UI changes.
 When `--snapshot` is omitted, the command polls the caller's latest session refmap and refreshes it on the built-in debounce. When `--snapshot` is passed, it resolves that pinned refmap directly. Element resolution is capped by the remaining `--timeout`, and timeout errors include the last observed predicate/actionability state.
@@ -319,7 +324,7 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 **Per-entry failure shape:**
 ```json
 {
-  "version": "2.0",
+  "version": "2.1",
   "ok": false,
   "command": "click",
   "error": {
@@ -342,25 +347,22 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 
 ## Session lifecycle
 
-Sessions are on-disk containers under `~/.agent-desktop/sessions/<id>/` with a `session.json` manifest, snapshot refmaps, and (when tracing is on) a `trace/` directory. **`session start` is the only command that writes `~/.agent-desktop/current_session`.**
+Sessions are on-disk containers under `~/.agent-desktop/sessions/<id>/` with a `session.json` manifest, snapshot refmaps, and (when tracing is on) a `trace/` directory. Session selection is explicit; `session start` returns an ID but does not activate it for later processes.
 
 ### session start
 ```bash
 agent-desktop session start
 agent-desktop session start --name "nightly-run"
 agent-desktop session start --no-trace          # Namespace only — no automatic JSONL
-agent-desktop session start --force             # Override pointer even if it references a live session
 ```
-Creates the session directory, pre-creates `trace/` (when tracing is on), writes `session.json` (`trace: on` unless `--no-trace`), sets the current-session pointer, and prints `{ "session_id", "name", "trace", "created_at" }`.
-
-Refuses to clobber a pointer that still references a **live** session unless `--force`. Live means an active `refstore.lock` holder or recent writes under `trace/`.
+Creates the session directory, pre-creates `trace/` (when tracing is on), writes `session.json` (`trace: on` unless `--no-trace`), and prints `{ "session_id", "name", "trace", "created_at" }`. Pass that ID through global `--session` or `AGENT_DESKTOP_SESSION` on later commands.
 
 ### session end
 ```bash
-agent-desktop session end
 agent-desktop session end run-1719763200123-0
+agent-desktop --session run-1719763200123-0 session end
 ```
-Seals the manifest with `ended_at` and clears the pointer when it still points at this session.
+Seals the manifest with `ended_at`. The ID is required either as the positional argument, global `--session`, or `AGENT_DESKTOP_SESSION`.
 
 ### session list
 ```bash
@@ -374,15 +376,16 @@ agent-desktop session gc
 agent-desktop session gc --ended
 agent-desktop session gc --older-than 3600
 ```
-Removes ended sessions that are not live and not pointer-referenced. Never reaps a session with a live lock holder or recent `trace/` activity. Refuses symlinked session directories.
+Removes ended sessions that are not live. Never reaps a session with a live lock holder or recent `trace/` activity. Refuses symlinked session directories.
 
 ### Activation (all commands)
 
 | Source | Precedence |
 |--------|------------|
 | `--session <id>` | Highest |
-| `AGENT_DESKTOP_SESSION` env var | Middle |
-| `~/.agent-desktop/current_session` | Lowest (set only by `session start`) |
+| `AGENT_DESKTOP_SESSION` env var | Fallback |
+
+With neither source, commands use the global, non-session namespace. There is no current-session pointer fallback.
 
 Trace-on requires a manifest with `trace: on` from `session start`. Bare `--session` or FFI `ad_adapter_create_with_session` without that manifest selects the snapshot namespace only.
 
@@ -454,7 +457,7 @@ When `session_id` resolves to a session with a readable manifest, the response a
 agent-desktop permissions
 agent-desktop permissions --request
 ```
-Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording, and `not_required` for Automation because shipped commands use Accessibility, Screen Recording for screenshots, and explicit keyboard/mouse input rather than Apple Events. Use `--request` to invoke the platform request path.
+Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation is probed against System Events without prompting; `{ "state": "unknown" }` means macOS would need to prompt or the target could not be probed. Use `--request` to invoke the platform request path.
 
 `status`, `permissions`, command preflight, and `batch` share one permission probe per process. `permissions --request` is the only path that intentionally asks the platform to prompt again.
 

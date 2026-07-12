@@ -1,8 +1,4 @@
-use crate::{
-    action::{KeyCombo, Modifier},
-    adapter::PlatformAdapter,
-    error::{AdapterError, AppError},
-};
+use crate::{AdapterError, AppError, KeyCombo, Modifier, adapter::PlatformAdapter};
 
 /// Refuses `combo` when the platform adapter reports it as dangerous, unless
 /// the caller forced it. Whether a combo is dangerous is the adapter's
@@ -39,7 +35,7 @@ pub fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
 
     for &part in &parts[..parts.len() - 1] {
         let modifier = match part {
-            "cmd" | "command" => Modifier::Cmd,
+            "meta" | "cmd" | "command" => Modifier::Meta,
             "ctrl" | "control" => Modifier::Ctrl,
             "alt" | "option" => Modifier::Alt,
             "shift" => Modifier::Shift,

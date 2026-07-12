@@ -1,54 +1,37 @@
 use super::*;
-use agent_desktop_core::PermissionState;
 
 #[test]
-fn automation_probe_maps_granted() {
-    assert_eq!(map_automation_probe(0, true), PermissionState::Granted);
+fn expired_permission_deadline_fails_without_native_calls() {
+    let error = report(Deadline::after(0).unwrap()).unwrap_err();
+
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
 }
 
 #[test]
-fn automation_probe_maps_denied_when_not_permitted() {
-    assert_eq!(
-        map_automation_probe(-1743, false),
-        PermissionState::Denied {
-            suggestion: AUTOMATION_SUGGESTION.into(),
-        }
-    );
+fn automation_is_not_required_without_apple_events_fallbacks() {
+    assert_eq!(automation_report_state(), PermissionState::NotRequired);
 }
 
 #[test]
-fn automation_probe_maps_denied_when_allowed_flag_false() {
-    assert_eq!(
-        map_automation_probe(0, false),
-        PermissionState::Denied {
-            suggestion: AUTOMATION_SUGGESTION.into(),
-        }
-    );
-}
+fn post_helper_preflight_is_the_authoritative_permission_state() {
+    let mut requested = Vec::new();
+    let report = request_report_with(
+        Deadline::after(1_000).unwrap(),
+        |operation, _| {
+            requested.push(operation);
+            Ok(false)
+        },
+        |_| {
+            Ok(PermissionReport {
+                accessibility: PermissionState::Granted,
+                screen_recording: PermissionState::Granted,
+                automation: PermissionState::NotRequired,
+            })
+        },
+    )
+    .unwrap();
 
-#[test]
-fn automation_probe_maps_unknown_when_system_events_not_running() {
-    assert_eq!(map_automation_probe(-600, false), PermissionState::Unknown);
-}
-
-#[test]
-fn automation_probe_maps_unknown_when_consent_not_yet_determined() {
-    assert_eq!(map_automation_probe(-1744, false), PermissionState::Unknown);
-}
-
-#[test]
-fn automation_probe_maps_unknown_for_unrecognized_status() {
-    assert_eq!(map_automation_probe(-50, false), PermissionState::Unknown);
-}
-
-#[test]
-fn permission_report_never_marks_automation_not_required() {
-    let report = report();
-    assert_ne!(report.automation, PermissionState::NotRequired);
-}
-
-#[test]
-fn request_report_never_marks_automation_not_required() {
-    let report = request_report();
-    assert_ne!(report.automation, PermissionState::NotRequired);
+    assert_eq!(requested.len(), 2);
+    assert_eq!(report.accessibility, PermissionState::Granted);
+    assert_eq!(report.screen_recording, PermissionState::Granted);
 }

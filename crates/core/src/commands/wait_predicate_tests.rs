@@ -4,31 +4,99 @@ use super::test_support::{
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::NativeHandle, commands::wait_predicate, element_state::ElementState,
-    error::AdapterError, refs::RefEntry, refs_test_support::HomeGuard,
+    AdapterError, adapter::NativeHandle, commands::wait_predicate, element_state::ElementState,
+    refs::RefEntry, refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
+
+fn live_bounds() -> Option<crate::Rect> {
+    Some(crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    })
+}
 
 struct FlippingPredicateAdapter {
     states: Mutex<Vec<Vec<String>>>,
 }
 
 impl ObservationOps for FlippingPredicateAdapter {
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: std::time::Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::LiveElement, AdapterError> {
+        let states = self.states.lock().unwrap().pop().unwrap_or_default();
+        Ok(crate::LiveElement {
+            identity: crate::adapter::live_identity("Run"),
+            state: ElementState {
+                role: "button".into(),
+                states,
+                value: None,
+                enabled: Some(true),
+                hidden: Some(false),
+                offscreen: Some(false),
+            },
+            states_complete: true,
+            bounds: live_bounds(),
+            available_actions: vec![crate::capability::CLICK.into()],
+        })
+    }
+
+    fn get_live_state(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
         let states = self.states.lock().unwrap().pop().unwrap_or_default();
         Ok(Some(ElementState {
             role: "button".into(),
             states,
             value: None,
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
         }))
+    }
+
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<crate::Rect>, AdapterError> {
+        Ok(Some(crate::Rect {
+            x: 1.0,
+            y: 1.0,
+            width: 20.0,
+            height: 20.0,
+        }))
+    }
+
+    fn get_live_actions(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        Ok(Some(vec![crate::capability::CLICK.into()]))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
+        Ok(crate::hit_test::HitTestResult::ReachesTarget)
     }
 }
 
@@ -47,9 +115,12 @@ fn element_wait_enabled_predicate_uses_live_state() {
             role: "button".into(),
             states: vec![],
             value: None,
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
         }),
         value: None,
-        bounds: None,
+        bounds: live_bounds(),
     };
 
     let value = wait_for_element_test(
@@ -73,7 +144,7 @@ fn element_wait_value_predicate_matches_live_value_without_leaking_it() {
     let adapter = PredicateAdapter {
         state: None,
         value: Some("ready".into()),
-        bounds: None,
+        bounds: live_bounds(),
     };
 
     let value = wait_for_element_test(
@@ -101,9 +172,12 @@ fn element_wait_timeout_reports_last_actionability_observation() {
             role: "button".into(),
             states: vec!["disabled".into()],
             value: None,
+            enabled: Some(false),
+            hidden: Some(false),
+            offscreen: Some(false),
         }),
         value: None,
-        bounds: None,
+        bounds: live_bounds(),
     };
 
     let err = wait_for_element_test(
@@ -138,9 +212,12 @@ fn element_wait_actionable_uses_live_state() {
             role: "button".into(),
             states: vec![],
             value: None,
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
         }),
         value: None,
-        bounds: None,
+        bounds: live_bounds(),
     };
 
     let value = wait_for_element_test(
@@ -149,7 +226,7 @@ fn element_wait_actionable_uses_live_state() {
         wait_predicate::ElementPredicate::Actionable(
             crate::action_request::ActionRequest::headless(crate::action::Action::Click),
         ),
-        50,
+        500,
         &adapter,
         &crate::context::CommandContext::default(),
     )
@@ -192,9 +269,12 @@ fn element_wait_actionable_type_fails_on_uneditable_role() {
             role: "button".into(),
             states: vec![],
             value: None,
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
         }),
         value: None,
-        bounds: None,
+        bounds: live_bounds(),
     };
 
     let err = wait_for_element_test(

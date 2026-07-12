@@ -1,231 +1,183 @@
 use agent_desktop_core::{
-    action::{Action, MouseButton, MouseEvent, MouseEventKind, Point},
-    action_request::ActionRequest,
-    action_result::ActionResult,
-    element_state::ElementState,
-    error::{AdapterError, ErrorCode},
-    interaction_policy::InteractionPolicy,
+    Action, ActionResult, ActionStep, AdapterError, Deadline, ElementState, ErrorCode,
+    StepMechanism, action_request::ActionRequest, action_step_outcome::ActionStepOutcome,
 };
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
     use crate::actions::{
-        ax_helpers,
-        chain::{ChainContext, execute_chain},
-        chain_defs, discovery, toggle_state,
+        chain::{ChainContext, ChainDef, execute_chain},
+        chain_defs, toggle_state,
     };
     use crate::tree::AXElement;
-
-    pub(crate) fn click_via_bounds(
-        el: &AXElement,
-        button: MouseButton,
-        count: u32,
-        policy: InteractionPolicy,
-    ) -> Result<(), AdapterError> {
-        if !policy.allow_cursor_move || !policy.allow_focus_steal {
-            return Err(AdapterError::policy_denied_for_policy(
-                "Physical click fallback is disabled by the current interaction policy",
-                policy,
-            ));
-        }
-        if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
-            crate::system::app_ops::focus_best_effort(pid);
-        }
-        if let Some(window) = crate::tree::copy_element_attr(el, "AXWindow") {
-            crate::system::window_ops::raise_window(&window);
-        }
-        let bounds = crate::tree::read_bounds(el).ok_or_else(|| {
-            AdapterError::new(ErrorCode::ActionFailed, "Element has no readable bounds")
-                .with_suggestion("AX action failed and CGEvent fallback unavailable")
-        })?;
-        if bounds.width <= 0.0 || bounds.height <= 0.0 {
-            return Err(
-                AdapterError::new(ErrorCode::ActionFailed, "Element has zero-size bounds")
-                    .with_suggestion("Element may be hidden or off-screen. Try 'scroll-to' first."),
-            );
-        }
-        let center = Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        };
-        tracing::debug!(
-            ?button,
-            count,
-            x = center.x,
-            y = center.y,
-            "AX action failed, falling back to CGEvent click"
-        );
-        crate::input::mouse::synthesize_mouse(MouseEvent {
-            kind: MouseEventKind::Click { count },
-            point: center,
-            button,
-            modifiers: Vec::new(),
-        })
-    }
 
     pub(crate) fn perform_action(
         el: &AXElement,
         request: &ActionRequest,
+        deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
+        let budget = ChainContext {
+            dynamic_value: None,
+            verified_point: request.verified_point(),
+            deadline,
+        };
+        crate::tree::attributes::set_messaging_timeout(el, deadline)?;
+        budget.ensure_budget()?;
         let action = &request.action;
         let label = action.name();
         let mut steps = Vec::new();
         tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: None,
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::CLICK_CHAIN,
-                    &ctx,
-                    request.policy,
+                    None,
+                    request,
+                    deadline,
                 )?);
             }
 
             Action::DoubleClick => {
-                steps.extend(chain_defs::double_click(el, request.policy)?);
+                steps.extend(chain_defs::double_click(el, request, deadline)?);
             }
 
             Action::RightClick => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: None,
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::RIGHT_CLICK_CHAIN,
-                    &ctx,
-                    request.policy,
+                    None,
+                    request,
+                    deadline,
                 )?);
             }
 
             Action::Toggle => {
-                toggle_state::toggle(el, request.policy)?;
+                steps.extend(toggle_state::toggle(el, request.policy, deadline)?);
             }
 
             Action::SetValue(val) => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: Some(val.as_str()),
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::SET_VALUE_CHAIN,
-                    &ctx,
-                    request.policy,
+                    Some(val),
+                    request,
+                    deadline,
                 )?);
             }
 
             Action::SetFocus => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: None,
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::FOCUS_CHAIN,
-                    &ctx,
-                    request.policy,
+                    None,
+                    request,
+                    deadline,
                 )?);
             }
 
             Action::TypeText(text) => {
-                crate::actions::type_text::execute_type(el, text.as_str(), request.policy)?;
+                steps.push(crate::actions::type_text::execute_type(
+                    el,
+                    text.as_str(),
+                    request.policy,
+                    deadline,
+                )?);
             }
 
             Action::PressKey(combo) => {
-                crate::input::keyboard::synthesize_key(combo)?;
+                crate::actions::physical_keyboard::press(el, combo, request.policy, deadline)?;
+                steps.push(
+                    ActionStep::succeeded("PressKey")
+                        .with_mechanism(StepMechanism::PhysicalSynthetic)
+                        .with_verified(false),
+                );
             }
 
             Action::Expand => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: None,
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::EXPAND_CHAIN,
-                    &ctx,
-                    request.policy,
+                    None,
+                    request,
+                    deadline,
                 )?);
             }
 
             Action::Collapse => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: None,
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::COLLAPSE_CHAIN,
-                    &ctx,
-                    request.policy,
+                    None,
+                    request,
+                    deadline,
                 )?);
             }
 
             Action::Select(value) => {
-                crate::actions::extras::select_value(el, value.as_str())?;
+                let verified = crate::actions::extras::select_value(el, value.as_str(), deadline)?;
+                steps.push(
+                    ActionStep::succeeded("Select")
+                        .with_mechanism(StepMechanism::SemanticApi)
+                        .with_verified(verified),
+                );
             }
 
             Action::Scroll(direction, amount) => {
-                crate::actions::scroll::ax_scroll(el, direction, *amount, request.policy)?;
+                let (mechanism, verified) = crate::actions::scroll::ax_scroll(
+                    el,
+                    direction,
+                    *amount,
+                    request.policy,
+                    deadline,
+                )?;
+                steps.push(
+                    ActionStep::succeeded("Scroll")
+                        .with_mechanism(mechanism)
+                        .with_verified(verified),
+                );
             }
 
             Action::Check => {
-                toggle_state::check_uncheck(el, true, request.policy)?;
+                steps.extend(toggle_state::check_uncheck(
+                    el,
+                    true,
+                    request.policy,
+                    deadline,
+                )?);
             }
 
             Action::Uncheck => {
-                toggle_state::check_uncheck(el, false, request.policy)?;
+                steps.extend(toggle_state::check_uncheck(
+                    el,
+                    false,
+                    request.policy,
+                    deadline,
+                )?);
             }
 
             Action::TripleClick => {
-                steps.extend(chain_defs::triple_click(el, request.policy)?);
+                steps.extend(chain_defs::triple_click(el, request, deadline)?);
             }
 
             Action::ScrollTo => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: None,
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::SCROLL_TO_CHAIN,
-                    &ctx,
-                    request.policy,
+                    None,
+                    request,
+                    deadline,
                 )?);
             }
 
             Action::Clear => {
-                let caps = discovery::discover(el);
-                let ctx = ChainContext {
-                    dynamic_value: Some(""),
-                    deadline: None,
-                };
-                steps.extend(execute_chain(
+                steps.extend(run_chain(
                     el,
-                    &caps,
                     &chain_defs::CLEAR_CHAIN,
-                    &ctx,
-                    request.policy,
+                    Some(""),
+                    request,
+                    deadline,
                 )?);
             }
 
@@ -241,12 +193,60 @@ mod imp {
             }
         }
 
-        let mut result = ActionResult::new(label).with_steps(steps);
-        if let Some(state) = crate::actions::post_state::read_post_state(el, action) {
-            verify_post_state(action, &state)?;
+        if !delivery_occurred(&steps) {
+            return Ok(ActionResult::satisfied_without_delivery(label).with_steps(steps));
+        }
+        let verified = delivery_was_verified(&steps);
+        let mut result = ActionResult::delivered_unverified(label).with_steps(steps);
+        if verified {
+            result = result.with_verified_delivery();
+        }
+        if !deadline.is_expired()
+            && let Some(state) = crate::actions::post_state::read_post_state(el, action, deadline)
+                .map_err(after_delivery)?
+        {
+            verify_post_state(action, &state).map_err(after_delivery)?;
             result = result.with_state(state);
         }
         Ok(result)
+    }
+
+    fn run_chain(
+        element: &AXElement,
+        definition: &ChainDef,
+        dynamic_value: Option<&str>,
+        request: &ActionRequest,
+        deadline: Deadline,
+    ) -> Result<Vec<ActionStep>, AdapterError> {
+        execute_chain(
+            element,
+            definition,
+            &ChainContext {
+                dynamic_value,
+                verified_point: request.verified_point(),
+                deadline,
+            },
+            request.policy,
+        )
+    }
+
+    fn delivery_was_verified(steps: &[ActionStep]) -> bool {
+        let delivered = steps
+            .iter()
+            .filter(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
+            .filter_map(ActionStep::verified)
+            .collect::<Vec<_>>();
+        !delivered.is_empty() && delivered.into_iter().all(|verified| verified)
+    }
+
+    fn delivery_occurred(steps: &[ActionStep]) -> bool {
+        steps
+            .iter()
+            .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
+    }
+
+    fn after_delivery(error: AdapterError) -> AdapterError {
+        error.with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified())
     }
 
     fn verify_post_state(action: &Action, state: &ElementState) -> Result<(), AdapterError> {
@@ -265,17 +265,6 @@ mod imp {
         Ok(())
     }
 
-    pub(crate) fn ax_press_or_fail(el: &AXElement, context: &str) -> Result<(), AdapterError> {
-        if !ax_helpers::ax_press(el) {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                format!("{context}: AXPress failed"),
-            )
-            .with_suggestion("Element may not be pressable. Try 'click' instead."));
-        }
-        Ok(())
-    }
-
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -289,6 +278,9 @@ mod imp {
                     role: "textfield".into(),
                     states: vec![],
                     value: Some("still here".into()),
+                    enabled: None,
+                    hidden: None,
+                    offscreen: None,
                 },
             )
             .unwrap_err();
@@ -304,9 +296,33 @@ mod imp {
                     role: "textfield".into(),
                     states: vec![],
                     value: Some(String::new()),
+                    enabled: None,
+                    hidden: None,
+                    offscreen: None,
                 },
             )
             .unwrap();
+        }
+
+        #[test]
+        fn result_delivery_is_derived_from_verified_steps() {
+            let verified = ActionStep::succeeded("AXValue")
+                .with_mechanism(StepMechanism::SemanticApi)
+                .with_verified(true);
+            let unverified = ActionStep::succeeded("AXPress")
+                .with_mechanism(StepMechanism::SemanticApi)
+                .with_verified(false);
+
+            assert!(delivery_was_verified(&[verified]));
+            assert!(!delivery_was_verified(&[unverified]));
+        }
+
+        #[test]
+        fn skipped_verified_step_does_not_claim_delivery() {
+            let skipped = ActionStep::skipped("AlreadyInState").with_verified(true);
+
+            assert!(!delivery_occurred(std::slice::from_ref(&skipped)));
+            assert!(!delivery_was_verified(&[skipped]));
         }
     }
 }
@@ -319,12 +335,10 @@ mod imp {
     pub fn perform_action(
         _el: &AXElement,
         _request: &ActionRequest,
+        _deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::not_supported("perform_action"))
     }
 }
 
 pub(crate) use imp::perform_action;
-
-#[cfg(target_os = "macos")]
-pub(crate) use imp::{ax_press_or_fail, click_via_bounds};

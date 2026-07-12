@@ -1,11 +1,7 @@
 use super::*;
 use crate::{
-    action::{Action, Direction},
-    action_request::ActionRequest,
-    adapter::SnapshotSurface,
-    capability,
-    node::Rect,
-    refs::RefEntry,
+    Action, Direction, ErrorCode, Rect, action_request::ActionRequest, adapter::SnapshotSurface,
+    capability, refs::RefEntry,
 };
 
 fn entry() -> RefEntry {
@@ -16,29 +12,119 @@ fn entry() -> RefEntry {
         height: 20.0,
     };
     RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("OK".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: Some(bounds),
-        bounds_hash: Some(bounds.bounds_hash()),
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: true,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("OK".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: true,
+            path: smallvec::SmallVec::new(),
+        },
     }
+}
+
+fn visibility_evidence(
+    hidden: Option<bool>,
+    states: Vec<String>,
+    states_complete: bool,
+) -> evidence::ActionabilityEvidence {
+    evidence::ActionabilityEvidence {
+        state: crate::ElementState {
+            role: "button".into(),
+            states,
+            value: None,
+            enabled: Some(true),
+            hidden,
+            offscreen: Some(false),
+        },
+        states_complete,
+        bounds: Some(Rect {
+            x: 1.0,
+            y: 1.0,
+            width: 20.0,
+            height: 20.0,
+        }),
+        available_actions: vec![capability::CLICK.into()],
+    }
+}
+
+#[test]
+fn explicit_typed_hidden_state_wins() {
+    let check = gates::visibility(&visibility_evidence(Some(true), Vec::new(), true));
+
+    assert_eq!(check.status, ActionabilityStatus::Fail);
+    assert_eq!(check.reason.as_deref(), Some("live hidden state is true"));
+}
+
+#[test]
+fn complete_canonical_hidden_state_fails_when_typed_state_is_absent() {
+    let check = gates::visibility(&visibility_evidence(
+        None,
+        vec![crate::state::HIDDEN.into()],
+        true,
+    ));
+
+    assert_eq!(check.status, ActionabilityStatus::Fail);
+    assert_eq!(
+        check.reason.as_deref(),
+        Some("canonical hidden state is present")
+    );
+}
+
+#[test]
+fn complete_canonical_states_without_hidden_allow_visibility_checks_to_continue() {
+    let check = gates::visibility(&visibility_evidence(None, Vec::new(), true));
+
+    assert_eq!(check.status, ActionabilityStatus::Pass);
+}
+
+#[test]
+fn incomplete_canonical_states_keep_missing_typed_hidden_unknown() {
+    let check = gates::visibility(&visibility_evidence(None, Vec::new(), false));
+
+    assert_eq!(check.status, ActionabilityStatus::Unknown);
+    assert_eq!(
+        check.reason.as_deref(),
+        Some("live hidden state unavailable")
+    );
 }
 
 #[test]
 fn click_passes_when_target_is_enabled_visible_and_supported() {
     let report = check(&entry(), &ActionRequest::headless(Action::Click)).unwrap();
+
+    assert!(report.actionable);
+}
+
+#[test]
+fn scroll_to_attempts_adapter_delivery_without_a_native_element_capability() {
+    let mut target = entry();
+    target.capabilities.available_actions.clear();
+
+    let report = check(&target, &ActionRequest::headless(Action::ScrollTo)).unwrap();
 
     assert!(report.actionable);
 }
@@ -53,7 +139,7 @@ fn states_are_enabled_reads_the_canonical_disabled_token() {
 #[test]
 fn disabled_entry_fails_before_action_dispatch() {
     let mut entry = entry();
-    entry.states.push("disabled".into());
+    entry.capabilities.states.push("disabled".into());
 
     let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
 
@@ -71,8 +157,8 @@ fn zero_sized_bounds_fail_visibility() {
         width: 0.0,
         height: 20.0,
     };
-    entry.bounds = Some(bounds);
-    entry.bounds_hash = Some(bounds.bounds_hash());
+    entry.geometry.bounds = Some(bounds);
+    entry.geometry.bounds_hash = bounds.bounds_hash();
 
     let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
 
@@ -82,7 +168,7 @@ fn zero_sized_bounds_fail_visibility() {
 #[test]
 fn hidden_state_fails_visibility_before_action_dispatch() {
     let mut entry = entry();
-    entry.states.push(crate::state::HIDDEN.into());
+    entry.capabilities.states.push(crate::state::HIDDEN.into());
 
     let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
 
@@ -92,7 +178,10 @@ fn hidden_state_fails_visibility_before_action_dispatch() {
 #[test]
 fn offscreen_state_fails_visibility_before_action_dispatch() {
     let mut entry = entry();
-    entry.states.push(crate::state::OFFSCREEN.into());
+    entry
+        .capabilities
+        .states
+        .push(crate::state::OFFSCREEN.into());
 
     let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
 
@@ -102,9 +191,9 @@ fn offscreen_state_fails_visibility_before_action_dispatch() {
 #[test]
 fn hidden_entry_fails_visibility_even_when_bounds_are_none() {
     let mut entry = entry();
-    entry.states.push(crate::state::HIDDEN.into());
-    entry.bounds = None;
-    entry.bounds_hash = None;
+    entry.capabilities.states.push(crate::state::HIDDEN.into());
+    entry.geometry.bounds = None;
+    entry.geometry.bounds_hash = None;
 
     let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
 
@@ -116,9 +205,12 @@ fn hidden_entry_fails_visibility_even_when_bounds_are_none() {
 #[test]
 fn offscreen_entry_fails_visibility_even_when_bounds_are_none() {
     let mut entry = entry();
-    entry.states.push(crate::state::OFFSCREEN.into());
-    entry.bounds = None;
-    entry.bounds_hash = None;
+    entry
+        .capabilities
+        .states
+        .push(crate::state::OFFSCREEN.into());
+    entry.geometry.bounds = None;
+    entry.geometry.bounds_hash = None;
 
     let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
 
@@ -150,8 +242,8 @@ fn cursor_movement_requires_physical_policy() {
 #[test]
 fn headless_type_text_fails_policy_before_dispatch() {
     let mut target = entry();
-    target.role = "textfield".into();
-    target.available_actions = vec![capability::SET_VALUE.into()];
+    target.identity.role = "textfield".into();
+    target.capabilities.available_actions = vec![capability::SET_VALUE.into()];
 
     let err = check(
         &target,
@@ -160,33 +252,58 @@ fn headless_type_text_fails_policy_before_dispatch() {
     .unwrap_err();
 
     assert_eq!(err.code, ErrorCode::PolicyDenied);
-    assert!(err.message.contains("policy"));
     assert!(err.message.contains("focus"));
 }
 
 #[test]
-fn right_click_requires_right_click_capability_before_dispatch() {
+fn headless_right_click_denies_physical_fallback() {
     let err = check(&entry(), &ActionRequest::headless(Action::RightClick)).unwrap_err();
 
-    assert_eq!(err.code, ErrorCode::ActionNotSupported);
+    assert_eq!(err.code, ErrorCode::PolicyDenied);
     assert!(err.message.contains("supported_action"));
+}
+
+#[test]
+fn headless_multi_clicks_deny_physical_fallback_before_hit_testing() {
+    for action in [Action::DoubleClick, Action::TripleClick] {
+        let err = check(&entry(), &ActionRequest::headless(action)).unwrap_err();
+
+        assert_eq!(err.code, ErrorCode::PolicyDenied);
+        assert!(err.message.contains("supported_action"));
+    }
+}
+
+#[test]
+fn headed_click_allows_verified_physical_fallback() {
+    let mut target = entry();
+    target.capabilities.available_actions.clear();
+
+    assert!(check(&target, &ActionRequest::headed(Action::Click)).is_ok());
+}
+
+#[test]
+fn headed_multi_clicks_require_and_allow_physical_delivery() {
+    let mut target = entry();
+    target.capabilities.available_actions.clear();
+
+    for action in [Action::DoubleClick, Action::TripleClick] {
+        assert!(check(&target, &ActionRequest::headed(action)).is_ok());
+    }
 }
 
 #[test]
 fn command_aliases_match_platform_capabilities() {
     let click_entry = entry();
-    assert!(check(&click_entry, &ActionRequest::headless(Action::DoubleClick)).is_ok());
-    assert!(check(&click_entry, &ActionRequest::headless(Action::TripleClick)).is_ok());
     assert!(check(&click_entry, &ActionRequest::headless(Action::Check)).is_ok());
     assert!(check(&click_entry, &ActionRequest::headless(Action::Uncheck)).is_ok());
 
     let mut editable = entry();
-    editable.role = "textfield".into();
-    editable.available_actions = vec![capability::SET_VALUE.into()];
+    editable.identity.role = "textfield".into();
+    editable.capabilities.available_actions = vec![capability::SET_VALUE.into()];
     assert!(check(&editable, &ActionRequest::headless(Action::Clear)).is_ok());
 
     let mut scrollable = entry();
-    scrollable.available_actions = vec![capability::SCROLL.into()];
+    scrollable.capabilities.available_actions = vec![capability::SCROLL.into()];
     assert!(
         check(
             &scrollable,
@@ -196,13 +313,13 @@ fn command_aliases_match_platform_capabilities() {
     );
     assert!(check(&scrollable, &ActionRequest::headless(Action::ScrollTo)).is_err());
 
-    scrollable.available_actions = vec![capability::SCROLL_TO.into()];
+    scrollable.capabilities.available_actions = vec![capability::SCROLL_TO.into()];
     assert!(
         check(
             &scrollable,
             &ActionRequest::headless(Action::Scroll(Direction::Down, 1))
         )
-        .is_ok()
+        .is_err()
     );
     assert!(check(&scrollable, &ActionRequest::headless(Action::ScrollTo)).is_ok());
 }

@@ -1,138 +1,179 @@
 use agent_desktop_core::{
+    AppError,
+    adapter::PlatformAdapter,
     commands::{
-        drag, helpers, hover, key_down, key_up, mouse_click, mouse_down, mouse_move, mouse_up,
-        mouse_wheel, press,
+        drag as drag_command, helpers, hover as hover_command, key_down as key_down_command,
+        key_up as key_up_command, mouse_click as mouse_click_command,
+        mouse_down as mouse_down_command, mouse_move as mouse_move_command,
+        mouse_up as mouse_up_command, mouse_wheel as mouse_wheel_command, press as press_command,
     },
     context::CommandContext,
-    error::{AppError, ErrorCode},
 };
 use serde_json::Value;
 
-use crate::cli::Commands;
+use crate::cli_args::{
+    actions::{HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs, PressArgs},
+    drag::DragCliArgs,
+    mouse_wheel::MouseWheelArgs,
+};
 use crate::dispatch::parse::{parse_modifiers, parse_mouse_button, parse_xy, parse_xy_opt};
 
-pub(super) fn dispatch(
-    cmd: Commands,
-    adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
+pub(super) fn press(
+    args: PressArgs,
+    adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    match cmd {
-        Commands::Press(a) => press::execute(
-            press::PressArgs {
-                combo: a.combo,
-                app: a.app,
-                force: a.force,
-            },
-            adapter,
-        ),
+    press_command::execute(
+        press_command::PressArgs {
+            combo: args.combo,
+            app: args.app,
+            force: args.force,
+        },
+        adapter,
+        context,
+    )
+}
 
-        Commands::KeyDown(a) => key_down::execute(
-            key_down::KeyDownArgs {
-                combo: a.combo,
-                force: a.force,
-            },
-            adapter,
-        ),
+pub(super) fn key_down(
+    args: KeyComboArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    key_down_command::execute(
+        key_down_command::KeyDownArgs {
+            combo: args.combo,
+            force: args.force,
+        },
+        adapter,
+    )
+}
 
-        Commands::KeyUp(a) => key_up::execute(
-            key_up::KeyUpArgs {
-                combo: a.combo,
-                force: a.force,
-            },
-            adapter,
-        ),
+pub(super) fn key_up(args: KeyComboArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    key_up_command::execute(
+        key_up_command::KeyUpArgs {
+            combo: args.combo,
+            force: args.force,
+        },
+        adapter,
+    )
+}
 
-        Commands::Hover(a) => hover::execute(
-            hover::HoverArgs {
-                ref_id: a.ref_id,
-                snapshot_id: a.snapshot,
-                xy: parse_xy_opt(a.xy.as_deref())?,
-                duration_ms: a.duration,
-                timeout_ms: helpers::normalize_action_timeout_ms(a.timeout_ms),
-            },
-            adapter,
-            context,
-        ),
+pub(super) fn hover(
+    args: HoverArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    hover_command::execute(
+        hover_command::HoverArgs {
+            ref_id: args.ref_id,
+            snapshot_id: args.snapshot,
+            xy: parse_xy_opt(args.xy.as_deref())?,
+            duration_ms: args.duration,
+            timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
+        },
+        adapter,
+        context,
+    )
+}
 
-        Commands::Drag(a) => drag::execute(
-            drag::DragArgs {
-                from_ref: a.from,
-                from_xy: parse_xy_opt(a.from_xy.as_deref())?,
-                to_ref: a.to,
-                to_xy: parse_xy_opt(a.to_xy.as_deref())?,
-                snapshot_id: a.snapshot,
-                duration_ms: a.duration,
-                drop_delay_ms: a.drop_delay,
-                timeout_ms: helpers::normalize_action_timeout_ms(a.timeout_ms),
-            },
-            adapter,
-            context,
-        ),
+pub(super) fn drag(
+    args: DragCliArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    drag_command::execute(
+        drag_command::DragArgs {
+            from_ref: args.target.from,
+            from_xy: parse_xy_opt(args.target.from_xy.as_deref())?,
+            to_ref: args.target.to,
+            to_xy: parse_xy_opt(args.target.to_xy.as_deref())?,
+            snapshot_id: args.snapshot,
+            duration_ms: args.duration,
+            drop_delay_ms: args.drop_delay,
+            timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
+        },
+        adapter,
+        context,
+    )
+}
 
-        Commands::MouseMove(a) => {
-            let (x, y) = parse_xy(&a.xy)?;
-            mouse_move::execute(mouse_move::MouseMoveArgs { x, y }, adapter, context)
-        }
+pub(super) fn mouse_move(
+    args: MouseMoveArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (x, y) = parse_xy(&args.xy)?;
+    mouse_move_command::execute(mouse_move_command::MouseMoveArgs { x, y }, adapter, context)
+}
 
-        Commands::MouseClick(a) => {
-            let (x, y) = parse_xy(&a.xy)?;
-            mouse_click::execute(
-                mouse_click::MouseClickArgs {
-                    x,
-                    y,
-                    button: parse_mouse_button(&a.button)?,
-                    count: a.count,
-                    modifiers: parse_modifiers(&a.modifiers)?,
-                },
-                adapter,
-                context,
-            )
-        }
+pub(super) fn mouse_click(
+    args: MouseClickArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (x, y) = parse_xy(&args.xy)?;
+    mouse_click_command::execute(
+        mouse_click_command::MouseClickArgs {
+            x,
+            y,
+            button: parse_mouse_button(&args.button)?,
+            count: args.count,
+            modifiers: parse_modifiers(&args.modifiers)?,
+        },
+        adapter,
+        context,
+    )
+}
 
-        Commands::MouseDown(a) => {
-            let (x, y) = parse_xy(&a.xy)?;
-            mouse_down::execute(
-                mouse_down::MouseDownArgs {
-                    x,
-                    y,
-                    button: parse_mouse_button(&a.button)?,
-                    modifiers: parse_modifiers(&a.modifiers)?,
-                },
-                adapter,
-                context,
-            )
-        }
+pub(super) fn mouse_down(
+    args: MousePointArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (x, y) = parse_xy(&args.xy)?;
+    mouse_down_command::execute(
+        mouse_down_command::MouseDownArgs {
+            x,
+            y,
+            button: parse_mouse_button(&args.button)?,
+            modifiers: parse_modifiers(&args.modifiers)?,
+        },
+        adapter,
+        context,
+    )
+}
 
-        Commands::MouseUp(a) => {
-            let (x, y) = parse_xy(&a.xy)?;
-            mouse_up::execute(
-                mouse_up::MouseUpArgs {
-                    x,
-                    y,
-                    button: parse_mouse_button(&a.button)?,
-                    modifiers: parse_modifiers(&a.modifiers)?,
-                },
-                adapter,
-                context,
-            )
-        }
+pub(super) fn mouse_up(
+    args: MousePointArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let (x, y) = parse_xy(&args.xy)?;
+    mouse_up_command::execute(
+        mouse_up_command::MouseUpArgs {
+            x,
+            y,
+            button: parse_mouse_button(&args.button)?,
+            modifiers: parse_modifiers(&args.modifiers)?,
+        },
+        adapter,
+        context,
+    )
+}
 
-        Commands::MouseWheel(a) => mouse_wheel::execute(
-            mouse_wheel::MouseWheelArgs {
-                x: a.x,
-                y: a.y,
-                dy: a.dy,
-                dx: a.dx,
-                modifiers: parse_modifiers(&a.modifiers)?,
-            },
-            adapter,
-        ),
-
-        _ => Err(AppError::Adapter(
-            agent_desktop_core::error::AdapterError::new(
-                ErrorCode::InvalidArgs,
-                "keyboard_mouse::dispatch received a non-keyboard/mouse command",
-            ),
-        )),
-    }
+pub(super) fn mouse_wheel(
+    args: MouseWheelArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    mouse_wheel_command::execute(
+        mouse_wheel_command::MouseWheelArgs {
+            x: args.x,
+            y: args.y,
+            dy: args.dy,
+            dx: args.dx,
+            modifiers: parse_modifiers(&args.modifiers)?,
+        },
+        adapter,
+        context,
+    )
 }

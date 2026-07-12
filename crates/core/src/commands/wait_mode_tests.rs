@@ -82,3 +82,35 @@ fn from_args_threads_window_title_into_event_mode() {
         _ => panic!("expected WaitMode::Event, got a different mode"),
     }
 }
+
+#[test]
+fn app_event_rejects_window_filter_immediately() {
+    let result = validate_wait_mode(&args(WaitModeArgs {
+        event: Some("app-launched".into()),
+        window_id: Some("w-1".into()),
+        ..mode()
+    }));
+
+    assert_eq!(result.unwrap_err().code(), "INVALID_ARGS");
+}
+
+#[test]
+fn surface_event_requires_app_scope() {
+    let result = validate_wait_mode(&args(WaitModeArgs {
+        event: Some("surface-appeared".into()),
+        ..mode()
+    }));
+
+    assert_eq!(result.unwrap_err().code(), "INVALID_ARGS");
+}
+
+#[test]
+fn surface_event_accepts_app_scope() {
+    let mut request = args(WaitModeArgs {
+        event: Some("surface-dismissed".into()),
+        ..mode()
+    });
+    request.app = Some("TextEdit".into());
+
+    assert!(validate_wait_mode(&request).is_ok());
+}

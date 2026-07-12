@@ -1,4 +1,4 @@
-use agent_desktop_core::error::AdapterError;
+use agent_desktop_core::AdapterError;
 use agent_desktop_core::process_state::ProcessState;
 
 /// Result of one AX responsiveness read, decoupled from the raw AXError so
@@ -13,32 +13,57 @@ pub(crate) enum AxProbeResult {
 /// Kept free of any platform API so the retry threshold (one transient
 /// `CannotComplete` must not classify `Unresponsive`; two consecutive must)
 /// is unit-testable on every host, not just macOS with a live AX tree.
-pub(crate) fn classify(pid_alive: bool, mut probe: impl FnMut() -> AxProbeResult) -> ProcessState {
+pub(crate) fn classify(
+    pid_alive: bool,
+    mut probe: impl FnMut() -> Result<AxProbeResult, AdapterError>,
+) -> Result<ProcessState, AdapterError> {
     if !pid_alive {
-        return ProcessState::Exited { code: None };
+        return Ok(ProcessState::Exited { code: None });
     }
-    match probe() {
+    Ok(match probe()? {
         AxProbeResult::Responsive => ProcessState::Running,
-        AxProbeResult::CannotComplete => match probe() {
+        AxProbeResult::CannotComplete => match probe()? {
             AxProbeResult::Responsive => ProcessState::Running,
             AxProbeResult::CannotComplete => ProcessState::Unresponsive,
         },
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn process_state_impl(
+    process: agent_desktop_core::ProcessIdentity,
+    deadline: agent_desktop_core::Deadline,
+) -> Result<ProcessState, AdapterError> {
+    use crate::tree::element_for_pid;
+
+    let pid = crate::system::process_identity::to_pid_t(process.pid)?;
+    if !crate::system::process_identity::matches_instance(pid, &process.instance)? {
+        return Ok(ProcessState::Exited { code: None });
+    }
+    let app = element_for_pid(pid);
+    let state = classify(true, || {
+        prepare_probe(&app, deadline)?;
+        Ok(ax_probe(&app, deadline))
+    })?;
+    if crate::system::process_identity::matches_instance(pid, &process.instance)? {
+        Ok(state)
+    } else {
+        Ok(ProcessState::Exited { code: None })
     }
 }
 
 #[cfg(target_os = "macos")]
-pub fn process_state_impl(pid: i32) -> Result<ProcessState, AdapterError> {
-    use crate::tree::element_for_pid;
-
-    Ok(classify(pid_is_alive(pid), || {
-        ax_probe(&element_for_pid(pid))
-    }))
+fn prepare_probe(
+    app: &crate::tree::AXElement,
+    deadline: agent_desktop_core::Deadline,
+) -> Result<(), AdapterError> {
+    crate::tree::attributes::set_messaging_timeout(app, deadline)
 }
 
 /// `kill(pid, 0)`-style liveness check: signal 0 sends no actual signal, the
 /// kernel only validates the target exists and is reachable. Mirrors the
 /// convention already used by `system::force_close::signal_result`.
-#[cfg(target_os = "macos")]
+#[cfg(all(test, target_os = "macos"))]
 fn pid_is_alive(pid: i32) -> bool {
     const POSIX_ESRCH: i32 = 3;
 
@@ -55,12 +80,10 @@ fn pid_is_alive(pid: i32) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn ax_probe(app: &crate::tree::AXElement) -> AxProbeResult {
-    use accessibility_sys::{
-        AXUIElementCopyAttributeValue, kAXErrorCannotComplete, kAXErrorSuccess, kAXRoleAttribute,
-    };
+fn ax_probe(app: &crate::tree::AXElement, deadline: agent_desktop_core::Deadline) -> AxProbeResult {
+    use accessibility_sys::{kAXErrorCannotComplete, kAXErrorSuccess, kAXRoleAttribute};
     use core_foundation::{
-        base::{CFType, CFTypeRef, TCFType},
+        base::{CFType, TCFType},
         string::CFString,
     };
 
@@ -68,9 +91,8 @@ fn ax_probe(app: &crate::tree::AXElement) -> AxProbeResult {
         return AxProbeResult::Responsive;
     }
     let cf_attr = CFString::new(kAXRoleAttribute);
-    let mut value: CFTypeRef = std::ptr::null_mut();
-    let err =
-        unsafe { AXUIElementCopyAttributeValue(app.0, cf_attr.as_concrete_TypeRef(), &mut value) };
+    let (err, value) =
+        crate::tree::ax_ipc::copy_attribute_value(app, cf_attr.as_concrete_TypeRef(), deadline);
     if err == kAXErrorCannotComplete {
         return AxProbeResult::CannotComplete;
     }
@@ -81,7 +103,10 @@ fn ax_probe(app: &crate::tree::AXElement) -> AxProbeResult {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn process_state_impl(_pid: i32) -> Result<ProcessState, AdapterError> {
+pub(crate) fn process_state_impl(
+    _process: agent_desktop_core::ProcessIdentity,
+    _deadline: agent_desktop_core::Deadline,
+) -> Result<ProcessState, AdapterError> {
     Err(AdapterError::not_supported("process_state"))
 }
 

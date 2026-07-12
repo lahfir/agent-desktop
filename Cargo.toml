@@ -1,10 +1,11 @@
 [workspace]
-members  = ["crates/core", "crates/macos", "crates/windows", "crates/linux", "crates/ffi", "src"]
+members         = ["crates/core", "crates/macos", "crates/windows", "crates/linux", "crates/ffi", "src"]
+default-members = ["crates/core", "crates/macos", "crates/windows", "crates/linux", "src"]
 resolver = "2"
 
 [workspace.package]
 edition      = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 license      = "Apache-2.0"
 version      = "0.4.7" # x-release-please-version
 
@@ -20,6 +21,7 @@ rustc-hash         = "2.1"
 libc               = "0.2"
 smallvec           = { version = "1.13", features = ["serde", "union"] }
 agent-desktop-core = { path = "crates/core" }
+windows-sys        = { version = "0.61.2" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"

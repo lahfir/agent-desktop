@@ -1,7 +1,5 @@
 use agent_desktop_core::{
-    PermissionReport,
-    error::{AdapterError, AppError, ErrorCode},
-    refs::validate_ref_id,
+    AdapterError, AppError, DeliverySemantics, ErrorCode, PermissionReport, refs::validate_ref_id,
 };
 
 use crate::cli::Commands;
@@ -88,7 +86,8 @@ pub(crate) fn preflight(cmd: &Commands, report: &PermissionReport) -> Result<(),
             report
                 .accessibility_suggestion()
                 .unwrap_or("Grant Accessibility permission and retry"),
-        );
+        )
+        .with_disposition(DeliverySemantics::not_delivered());
         return Err(AppError::Adapter(err));
     }
     if requires_screen_recording(permission) && report.screen_recording_denied() {
@@ -100,10 +99,19 @@ pub(crate) fn preflight(cmd: &Commands, report: &PermissionReport) -> Result<(),
             report
                 .screen_recording_suggestion()
                 .unwrap_or("Grant Screen Recording permission and retry"),
-        );
+        )
+        .with_disposition(DeliverySemantics::not_delivered());
         return Err(AppError::Adapter(err));
     }
     Ok(())
+}
+
+pub(crate) fn requires_permission_report(cmd: &Commands) -> bool {
+    policy_for(cmd) != PermissionNeed::None
+        || matches!(
+            cmd,
+            Commands::Status | Commands::Permissions(_) | Commands::Batch(_)
+        )
 }
 
 fn validate_args(cmd: &Commands) -> Result<(), AppError> {
@@ -150,10 +158,10 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
             }
         }
         Commands::Drag(args) => {
-            if let Some(ref_id) = &args.from {
+            if let Some(ref_id) = &args.target.from {
                 validate_ref_id(ref_id)?;
             }
-            if let Some(ref_id) = &args.to {
+            if let Some(ref_id) = &args.target.to {
                 validate_ref_id(ref_id)?;
             }
         }
@@ -161,6 +169,22 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
             if let Some(ref_id) = &args.mode.element {
                 validate_ref_id(ref_id)?;
             }
+        }
+        Commands::DismissNotification(args)
+            if args.expected_app.as_deref().is_none_or(str::is_empty)
+                && args.expected_title.as_deref().is_none_or(str::is_empty) =>
+        {
+            return Err(AppError::invalid_input(
+                "dismiss-notification requires --expected-app or --expected-title",
+            ));
+        }
+        Commands::NotificationAction(args)
+            if args.expected_app.as_deref().is_none_or(str::is_empty)
+                && args.expected_title.as_deref().is_none_or(str::is_empty) =>
+        {
+            return Err(AppError::invalid_input(
+                "notification-action requires --expected-app or --expected-title",
+            ));
         }
         Commands::Find(_)
         | Commands::Screenshot(_)

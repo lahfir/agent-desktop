@@ -1,4 +1,4 @@
-pub fn ax_role_to_str(ax_role: &str) -> &'static str {
+pub(crate) fn ax_role_to_str(ax_role: &str) -> &'static str {
     match ax_role {
         "AXApplication" => "application",
         "AXButton" => "button",
@@ -9,24 +9,30 @@ pub fn ax_role_to_str(ax_role: &str) -> &'static str {
         "AXLink" => "link",
         "AXMenuItem" | "AXMenuBarItem" => "menuitem",
         "AXRadioButton" => "radiobutton",
-        "AXTab" | "AXTabGroup" => "tab",
-        "AXSlider" | "AXValueIndicator" => "slider",
+        "AXTab" => "tab",
+        "AXTabGroup" => "tablist",
+        "AXSlider" => "slider",
+        "AXValueIndicator" => "handle",
         "AXComboBox" | "AXPopUpButton" => "combobox",
-        "AXOutlineRow" | "AXRow" => "treeitem",
+        "AXOutlineRow" => "treeitem",
+        "AXRow" => "row",
         "AXCell" => "cell",
         "AXColumn" => "column",
         "AXWindow" => "window",
         "AXSheet" => "sheet",
         "AXDialog" => "dialog",
-        "AXGroup" | "AXGenericElement" => "group",
+        "AXGroup" | "AXGenericElement" | "AXSplitGroup" => "group",
+        "AXRadioGroup" => "radiogroup",
         "AXToolbar" => "toolbar",
         "AXStaticText" => "statictext",
         "AXImage" => "image",
         "AXTable" => "table",
         "AXList" => "list",
         "AXOutline" => "outline",
-        "AXScrollArea" | "AXScrollBar" => "scrollarea",
-        "AXSplitter" | "AXSplitGroup" => "splitter",
+        "AXScrollArea" => "scrollarea",
+        "AXScrollBar" => "scrollbar",
+        "AXSplitter" => "splitter",
+        "AXSeparator" => "separator",
         "AXMenu" | "AXMenuBar" => "menu",
         "AXIncrementor" | "AXStepper" => "incrementor",
         "AXDisclosureTriangle" => "disclosure",
@@ -48,53 +54,63 @@ pub fn ax_role_to_str(ax_role: &str) -> &'static str {
         "AXLayoutArea" | "AXLayoutItem" => "layoutitem",
         "AXLevelIndicator" => "levelindicator",
         "AXRelevanceIndicator" => "relevanceindicator",
+        "AXDocument" => "document",
+        "AXHeading" => "heading",
+        "AXParagraph" => "paragraph",
+        "AXStatus" => "status",
+        "AXToolTip" => "tooltip",
         _ => "unknown",
     }
 }
 
-pub fn normalized_role_and_label(
-    el: &crate::tree::AXElement,
-    ax_role: Option<&str>,
-) -> (String, Option<String>) {
-    let promoted_label = promoted_item_label(ax_role, el);
-    let role = if promoted_label.is_some() {
-        "cell"
-    } else {
-        ax_role.map(ax_role_to_str).unwrap_or("unknown")
-    };
-    (role.to_string(), promoted_label)
+pub(crate) fn ax_role_and_subrole_to_str(ax_role: &str, ax_subrole: Option<&str>) -> &'static str {
+    match ax_subrole {
+        Some("AXApplicationAlert") => "alert",
+        Some("AXApplicationAlertDialog") => "alertdialog",
+        Some("AXApplicationDialog") => "dialog",
+        Some("AXApplicationLog") => "log",
+        Some("AXApplicationMarquee") => "marquee",
+        Some("AXApplicationStatus") => "status",
+        Some("AXApplicationTimer") => "timer",
+        Some("AXDocumentArticle") => "article",
+        Some("AXDocumentMath") => "math",
+        Some("AXDocumentNote") => "note",
+        Some("AXDocumentRegion") => "region",
+        Some("AXLandmarkBanner") => "banner",
+        Some("AXLandmarkComplementary") => "complementary",
+        Some("AXLandmarkContentInfo") => "contentinfo",
+        Some("AXLandmarkForm") => "form",
+        Some("AXLandmarkMain") => "main",
+        Some("AXLandmarkNavigation") => "navigation",
+        Some("AXLandmarkSearch") => "search",
+        Some("AXDefinition") => "definition",
+        Some("AXTerm") => "term",
+        Some("AXTabPanel") => "tabpanel",
+        Some("AXUserInterfaceTooltip") => "tooltip",
+        Some("AXToggleButton") => match ax_role_to_str(ax_role) {
+            primary @ ("checkbox" | "switch" | "radiobutton") => primary,
+            _ => "button",
+        },
+        Some("AXOutlineRow") => "treeitem",
+        Some("AXTableRow") => "row",
+        Some("AXSecureTextField" | "AXSearchField") => "textfield",
+        Some("AXDialog" | "AXSystemDialog") => "dialog",
+        Some(
+            "AXCloseButton" | "AXMinimizeButton" | "AXZoomButton" | "AXToolbarButton"
+            | "AXFullScreenButton" | "AXSortButton",
+        ) => "button",
+        Some("AXToggle" | "AXSwitch") => "switch",
+        Some("AXContentList" | "AXDefinitionList" | "AXDescriptionList") => "list",
+        Some("AXSeparatorDockItem") => "separator",
+        _ => ax_role_to_str(ax_role),
+    }
 }
 
-pub fn promoted_item_label(ax_role: Option<&str>, el: &crate::tree::AXElement) -> Option<String> {
-    if ax_role != Some("AXGroup") {
-        return None;
-    }
-    let children = crate::tree::element::child_attributes(ax_role)
-        .iter()
-        .find_map(|attr| {
-            crate::tree::copy_ax_array(el, attr).filter(|children| !children.is_empty())
-        })
-        .unwrap_or_default();
-    let has_icon = children
-        .iter()
-        .any(|child| crate::tree::copy_string_attr(child, "AXRole").as_deref() == Some("AXImage"));
-    if !has_icon {
-        return None;
-    }
-    children.iter().find_map(|child| {
-        if crate::tree::copy_string_attr(child, "AXRole").as_deref() == Some("AXTextField") {
-            crate::tree::copy_string_attr(child, "AXValue").filter(|value| !value.is_empty())
-        } else {
-            None
-        }
-    })
-}
-
-pub use agent_desktop_core::roles::is_toggleable_role;
+pub(crate) use agent_desktop_core::roles::is_toggleable_role;
 
 #[cfg(test)]
 mod tests {
-    use super::ax_role_to_str;
+    use super::{ax_role_and_subrole_to_str, ax_role_to_str};
 
     #[test]
     fn interactive_ax_roles_map_to_exact_normalized_roles() {
@@ -121,9 +137,6 @@ mod tests {
         assert_eq!(ax_role_to_str("AXToggle"), "switch");
 
         assert_eq!(ax_role_to_str("AXOutlineRow"), "treeitem");
-        assert_eq!(ax_role_to_str("AXRow"), "treeitem");
-
-        assert_eq!(ax_role_to_str("AXScrollBar"), "scrollarea");
     }
 
     #[test]
@@ -131,5 +144,167 @@ mod tests {
         assert_eq!(ax_role_to_str("AXCustomWidget"), "unknown");
         assert_eq!(ax_role_to_str(""), "unknown");
         assert_eq!(ax_role_to_str("button"), "unknown");
+    }
+
+    #[test]
+    fn every_emitted_role_is_in_the_core_vocabulary() {
+        for native in [
+            "AXApplication",
+            "AXButton",
+            "AXTextField",
+            "AXCheckBox",
+            "AXSwitch",
+            "AXLink",
+            "AXMenuItem",
+            "AXRadioButton",
+            "AXTab",
+            "AXTabGroup",
+            "AXSlider",
+            "AXValueIndicator",
+            "AXComboBox",
+            "AXOutlineRow",
+            "AXRow",
+            "AXCell",
+            "AXColumn",
+            "AXWindow",
+            "AXSheet",
+            "AXDialog",
+            "AXGroup",
+            "AXToolbar",
+            "AXStaticText",
+            "AXImage",
+            "AXTable",
+            "AXList",
+            "AXOutline",
+            "AXScrollArea",
+            "AXScrollBar",
+            "AXSplitter",
+            "AXSplitGroup",
+            "AXSeparator",
+            "AXMenu",
+            "AXIncrementor",
+            "AXDisclosureTriangle",
+            "AXProgressIndicator",
+            "AXColorWell",
+            "AXWebArea",
+            "AXBrowser",
+            "AXGrid",
+            "AXHandle",
+            "AXPopover",
+            "AXDockItem",
+            "AXRuler",
+            "AXRulerMarker",
+            "AXTimeField",
+            "AXDateField",
+            "AXHelpTag",
+            "AXMatte",
+            "AXDrawer",
+            "AXLayoutArea",
+            "AXLevelIndicator",
+            "AXRelevanceIndicator",
+            "AXDocument",
+            "AXHeading",
+            "AXParagraph",
+            "AXStatus",
+            "AXToolTip",
+        ] {
+            assert!(
+                agent_desktop_core::roles::is_canonical_role(ax_role_to_str(native)),
+                "{native} emitted a noncanonical role"
+            );
+        }
+    }
+
+    #[test]
+    fn container_and_control_roles_do_not_collapse_into_interactive_siblings() {
+        assert_eq!(ax_role_to_str("AXTabGroup"), "tablist");
+        assert_eq!(ax_role_to_str("AXTab"), "tab");
+        assert_eq!(ax_role_to_str("AXRow"), "row");
+        assert_eq!(ax_role_to_str("AXOutlineRow"), "treeitem");
+        assert_eq!(ax_role_to_str("AXValueIndicator"), "handle");
+        assert_eq!(ax_role_to_str("AXSlider"), "slider");
+        assert_eq!(ax_role_to_str("AXScrollBar"), "scrollbar");
+        assert_eq!(ax_role_to_str("AXScrollArea"), "scrollarea");
+        assert_eq!(ax_role_to_str("AXSplitGroup"), "group");
+        assert_eq!(ax_role_to_str("AXSplitter"), "splitter");
+    }
+
+    #[test]
+    fn subroles_preserve_semantics_hidden_by_generic_native_roles() {
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXRow", Some("AXOutlineRow")),
+            "treeitem"
+        );
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXRow", Some("AXTableRow")),
+            "row"
+        );
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXWindow", Some("AXDialog")),
+            "dialog"
+        );
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXTextField", Some("AXSecureTextField")),
+            "textfield"
+        );
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXDockItem", Some("AXSeparatorDockItem")),
+            "separator"
+        );
+    }
+
+    #[test]
+    fn button_subrole_does_not_erase_a_primary_checkbox_role() {
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXCheckBox", Some("AXToggleButton")),
+            "checkbox"
+        );
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXButton", Some("AXToggleButton")),
+            "button"
+        );
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXSwitch", Some("AXToggleButton")),
+            "switch"
+        );
+        assert_eq!(
+            ax_role_and_subrole_to_str("AXRadioButton", Some("AXToggleButton")),
+            "radiobutton"
+        );
+    }
+
+    #[test]
+    fn chromium_subroles_preserve_web_semantics_hidden_by_ax_group() {
+        let mappings = [
+            ("AXApplicationAlert", "alert"),
+            ("AXApplicationAlertDialog", "alertdialog"),
+            ("AXApplicationDialog", "dialog"),
+            ("AXApplicationLog", "log"),
+            ("AXApplicationMarquee", "marquee"),
+            ("AXApplicationStatus", "status"),
+            ("AXApplicationTimer", "timer"),
+            ("AXDocumentArticle", "article"),
+            ("AXDocumentMath", "math"),
+            ("AXDocumentNote", "note"),
+            ("AXDocumentRegion", "region"),
+            ("AXLandmarkBanner", "banner"),
+            ("AXLandmarkComplementary", "complementary"),
+            ("AXLandmarkContentInfo", "contentinfo"),
+            ("AXLandmarkForm", "form"),
+            ("AXLandmarkMain", "main"),
+            ("AXLandmarkNavigation", "navigation"),
+            ("AXLandmarkSearch", "search"),
+            ("AXDefinition", "definition"),
+            ("AXTerm", "term"),
+            ("AXTabPanel", "tabpanel"),
+            ("AXUserInterfaceTooltip", "tooltip"),
+            ("AXToggleButton", "button"),
+        ];
+
+        for (subrole, expected) in mappings {
+            let mapped = ax_role_and_subrole_to_str("AXGroup", Some(subrole));
+            assert_eq!(mapped, expected, "unexpected mapping for {subrole}");
+            assert!(agent_desktop_core::roles::is_canonical_role(mapped));
+        }
     }
 }

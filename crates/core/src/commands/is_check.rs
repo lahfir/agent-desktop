@@ -1,9 +1,9 @@
 use crate::{
+    AppError,
     adapter::{PlatformAdapter, optional_live_read},
     commands::helpers::resolve_ref_with_context,
     context::CommandContext,
     element_state::ElementState,
-    error::AppError,
     refs::RefEntry,
     state::{self, CHECKED, DISABLED, EXPANDED, FOCUSED, VisibilityEvidence},
 };
@@ -39,14 +39,15 @@ pub fn execute(
         IsProperty::Expanded => "expanded",
     };
 
-    let live_state = optional_live_read(adapter.get_live_state(handle.handle()))?;
+    let deadline = crate::Deadline::standard()?;
+    let live_state = optional_live_read(adapter.get_live_state(&handle, deadline))?;
     let state = live_state
         .clone()
         .unwrap_or_else(|| state_from_ref_entry(&entry));
     let states_from_live = live_state.is_some();
-    let live_bounds = optional_live_read(adapter.get_element_bounds(handle.handle()))?;
+    let live_bounds = optional_live_read(adapter.get_element_bounds(&handle, deadline))?;
     let visibility = VisibilityEvidence {
-        bounds: live_bounds.or(entry.bounds),
+        bounds: live_bounds.or(entry.geometry.bounds),
         states: state.states.clone(),
         bounds_from_live: live_bounds.is_some(),
         states_from_live,
@@ -56,18 +57,18 @@ pub fn execute(
         IsProperty::Visible => visibility.applicable(),
         IsProperty::Enabled | IsProperty::Focused => true,
         IsProperty::Checked => {
-            crate::roles::is_toggleable_role(&entry.role)
+            crate::roles::is_toggleable_role(&entry.identity.role)
                 || state::has_state(&state.states, CHECKED)
                 || crate::capability::contains_any(
-                    &entry.available_actions,
+                    &entry.capabilities.available_actions,
                     crate::capability::CHECKED_APPLICABILITY,
                 )
         }
         IsProperty::Expanded => {
-            crate::roles::is_expandable_role(&entry.role)
+            crate::roles::is_expandable_role(&entry.identity.role)
                 || state::has_state(&state.states, EXPANDED)
                 || crate::capability::contains_any(
-                    &entry.available_actions,
+                    &entry.capabilities.available_actions,
                     crate::capability::EXPANDED_APPLICABILITY,
                 )
         }
@@ -88,9 +89,12 @@ pub fn execute(
 
 fn state_from_ref_entry(entry: &RefEntry) -> ElementState {
     ElementState {
-        role: entry.role.clone(),
-        states: entry.states.clone(),
-        value: entry.value.clone(),
+        role: entry.identity.role.clone(),
+        states: entry.capabilities.states.clone(),
+        value: entry.identity.value.clone(),
+        enabled: None,
+        hidden: None,
+        offscreen: None,
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::Point;
 use crate::action::Action;
 use crate::interaction_policy::InteractionPolicy;
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,10 @@ pub struct ActionRequest {
     pub policy: InteractionPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
+    #[serde(skip)]
+    pub(crate) verified_point: Option<Point>,
+    #[serde(skip)]
+    pub(crate) expected_process: Option<crate::ProcessIdentity>,
 }
 
 impl ActionRequest {
@@ -16,6 +21,8 @@ impl ActionRequest {
             action,
             policy: InteractionPolicy::headless(),
             timeout_ms: None,
+            verified_point: None,
+            expected_process: None,
         }
     }
 
@@ -24,6 +31,8 @@ impl ActionRequest {
             action,
             policy: InteractionPolicy::focus_fallback(),
             timeout_ms: None,
+            verified_point: None,
+            expected_process: None,
         }
     }
 
@@ -32,6 +41,8 @@ impl ActionRequest {
             action,
             policy: InteractionPolicy::headed(),
             timeout_ms: None,
+            verified_point: None,
+            expected_process: None,
         }
     }
 
@@ -39,12 +50,30 @@ impl ActionRequest {
         self.timeout_ms = timeout_ms;
         self
     }
+
+    pub(crate) fn with_verified_point(mut self, point: Option<Point>) -> Self {
+        self.verified_point = point;
+        self
+    }
+
+    pub fn with_expected_process(mut self, process: crate::ProcessIdentity) -> Self {
+        self.expected_process = Some(process);
+        self
+    }
+
+    pub fn verified_point(&self) -> Option<&Point> {
+        self.verified_point.as_ref()
+    }
+
+    pub fn expected_process(&self) -> Option<&crate::ProcessIdentity> {
+        self.expected_process.as_ref()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Action, Direction};
+    use crate::{Action, Direction};
 
     #[test]
     fn default_policy_is_headless() {
@@ -82,5 +111,28 @@ mod tests {
         .unwrap();
 
         assert_eq!(request.timeout_ms, None);
+    }
+
+    #[test]
+    fn positive_timeout_round_trips_through_the_wire_contract() {
+        let request = ActionRequest::headless(Action::Click).with_timeout_ms(Some(5_000));
+        let json = serde_json::to_value(&request).unwrap();
+
+        assert_eq!(json["timeout_ms"], 5_000);
+        let decoded: ActionRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(decoded.timeout_ms, Some(5_000));
+    }
+
+    #[test]
+    fn execution_identity_is_runtime_only() {
+        let request = ActionRequest::headless(Action::Click)
+            .with_expected_process(crate::ProcessIdentity::new(42, "generation-1"));
+
+        assert_eq!(
+            request.expected_process(),
+            Some(&crate::ProcessIdentity::new(42, "generation-1"))
+        );
+        let json = serde_json::to_value(request).unwrap();
+        assert!(json.get("expected_process").is_none());
     }
 }

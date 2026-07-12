@@ -1,4 +1,4 @@
-use crate::node::Rect;
+use crate::Rect;
 
 pub const FOCUSED: &str = "focused";
 pub const DISABLED: &str = "disabled";

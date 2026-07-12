@@ -1,8 +1,6 @@
 use crate::{
-    adapter::PlatformAdapter,
-    clipboard_content::ClipboardContent,
-    error::AppError,
-    image_buffer::{ImageBuffer, ImageFormat, parse_png_dimensions},
+    AppError, ClipboardContent, ImageBuffer, ImageFormat, adapter::PlatformAdapter,
+    parse_png_dimensions,
 };
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -16,7 +14,8 @@ pub struct ClipboardSetArgs {
 pub fn execute(args: ClipboardSetArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     let content = build_content(args)?;
     let format = content.format();
-    adapter.set_clipboard_content(&content)?;
+    let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
+    adapter.set_clipboard_content(&content, &lease)?;
     Ok(json!({ "ok": true, "type": format.as_str() }))
 }
 
@@ -27,7 +26,9 @@ fn build_content(args: ClipboardSetArgs) -> Result<ClipboardContent, AppError> {
         )?));
     }
     if let Some(path) = args.image {
-        let data = std::fs::read(&path)?;
+        let data =
+            crate::private_file::read_regular_bounded(&path, crate::MAX_PNG_INPUT_BYTES as u64)
+                .map_err(image_read_error)?;
         let Some((width, height)) = parse_png_dimensions(&data) else {
             return Err(AppError::invalid_input("--image file is not a valid PNG"));
         };
@@ -40,6 +41,21 @@ fn build_content(args: ClipboardSetArgs) -> Result<ClipboardContent, AppError> {
         }));
     }
     Ok(ClipboardContent::Text(args.text.unwrap_or_default()))
+}
+
+fn image_read_error(error: std::io::Error) -> AppError {
+    if matches!(
+        error.kind(),
+        std::io::ErrorKind::InvalidData
+            | std::io::ErrorKind::NotFound
+            | std::io::ErrorKind::PermissionDenied
+    ) {
+        return AppError::invalid_input(format!(
+            "--image must be a local regular PNG no larger than {} MiB",
+            crate::MAX_PNG_INPUT_BYTES / (1024 * 1024)
+        ));
+    }
+    AppError::Io(error)
 }
 
 /// Reports missing `--file-url` entries by count and index only — the

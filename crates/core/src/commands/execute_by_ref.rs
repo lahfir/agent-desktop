@@ -1,10 +1,10 @@
 use crate::{
+    AppError,
     action::Action,
     action_request::ActionRequest,
     adapter::PlatformAdapter,
     commands::helpers::{RefArgs, execute_ref_action_with_context, normalize_action_timeout_ms},
     context::CommandContext,
-    error::AppError,
     interaction_policy::InteractionPolicy,
 };
 use serde_json::Value;
@@ -26,8 +26,9 @@ pub struct ExecuteByRefArgs<'a> {
 /// ref-action pipeline: `RefStore` load → `RefMap` lookup → strict element
 /// resolution → live actionability preflight → dispatch.
 ///
-/// `snapshot_id` follows CLI `--snapshot` semantics: `None` pins to the
-/// latest snapshot for the session; `Some(id)` pins to that specific snapshot.
+/// A qualified `ref_id` embeds its snapshot and accepts `snapshot_id: None`.
+/// A legacy bare `@eN` ref requires `Some(id)`. When both are supplied, the
+/// explicit ID must match the qualified ref.
 ///
 /// The effective `InteractionPolicy` is the join of `caller_policy` and the
 /// action's CLI base policy, ensuring the result is always at least as
@@ -64,6 +65,8 @@ pub fn execute_with_timeout(
         action,
         policy: effective,
         timeout_ms,
+        verified_point: None,
+        expected_process: None,
     };
     execute_ref_action_with_context(
         RefArgs {

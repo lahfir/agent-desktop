@@ -1,0 +1,79 @@
+use super::*;
+
+#[test]
+fn successful_process_returns_output() {
+    let mut command = Command::new("/bin/echo");
+    command.arg("ok");
+    let output = run_with_timeout(&mut command, "echo", Duration::from_secs(1)).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "ok");
+}
+
+#[test]
+fn slow_process_is_killed_within_the_absolute_deadline() {
+    let mut command = Command::new("/bin/sleep");
+    command.arg("1");
+    let started = Instant::now();
+    let error = run_with_timeout(&mut command, "sleep", Duration::from_millis(300))
+        .expect_err("slow process must time out");
+
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert!(started.elapsed() < Duration::from_millis(350));
+}
+
+#[test]
+fn descendant_holding_stdout_is_killed_with_its_process_group() {
+    let mut command = Command::new("/bin/sh");
+    command.args(["-c", "sleep 60 >&1 & exit 0"]);
+    let started = Instant::now();
+    let error = run_with_timeout(&mut command, "pipe-holder", Duration::from_millis(300))
+        .expect_err("inherited pipe must not outlive the deadline");
+
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert!(started.elapsed() < Duration::from_millis(350));
+}
+
+#[test]
+fn injected_group_kill_failure_is_reported_without_blocking_wait() {
+    let mut command = Command::new("/bin/sleep");
+    command.arg("60");
+    configure_process_group(&mut command);
+    let mut child = command.spawn().unwrap();
+    let process_group = i32::try_from(child.id()).expect("child pid fits macOS pid_t");
+    let deadline = Instant::now() + Duration::from_millis(30);
+    let failures = terminate_process_group_with(&mut child, process_group, deadline, |_, _| {
+        Err("injected failure".into())
+    });
+    let _ = child.kill();
+
+    assert!(
+        failures
+            .iter()
+            .any(|failure| failure.contains("injected failure"))
+    );
+}
+
+#[test]
+fn oversized_output_is_capped_with_stderr_context() {
+    let mut command = Command::new("/bin/sh");
+    command.args(["-c", "echo diagnostic-marker >&2; yes X | head -c 9000000"]);
+    let error = run_with_timeout(&mut command, "oversized", Duration::from_secs(5))
+        .expect_err("oversized output must fail");
+
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert!(
+        error.details.unwrap()["stderr_tail"]
+            .as_str()
+            .is_some_and(|tail| tail.contains("diagnostic-marker"))
+    );
+}
+
+#[test]
+fn output_context_keeps_latest_bytes() {
+    let mut tail = vec![b'a'; OUTPUT_CONTEXT_BYTES];
+    append_tail(&mut tail, b"final diagnostic");
+
+    assert_eq!(tail.len(), OUTPUT_CONTEXT_BYTES);
+    assert!(tail.ends_with(b"final diagnostic"));
+}

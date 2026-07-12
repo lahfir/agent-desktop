@@ -1,12 +1,12 @@
 use crate::{
-    action::DragParams,
+    AppError, DragParams,
     adapter::PlatformAdapter,
     commands::{
-        helpers::resolve_point_with_wait,
-        point_resolve::{PointResolveArgs, focus_for_physical_input, require_cursor_policy},
+        helpers::{apply_post_action_wait, validate_post_action_wait},
+        point_resolve::{PointResolveArgs, require_cursor_policy},
+        pointer_action::{ensure_point_deadline, point_deadline, resolve_point_with_deadline},
     },
     context::CommandContext,
-    error::AppError,
 };
 use serde_json::{Value, json};
 
@@ -27,36 +27,51 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "drag")?;
-    let from = resolve_point_with_wait(
+    validate_post_action_wait(context)?;
+    let deadline = point_deadline(args.timeout_ms)?;
+    let lease = adapter.acquire_interaction_lease(deadline)?;
+    let from_args = PointResolveArgs {
+        ref_id: args.from_ref.as_deref(),
+        xy: args.from_xy,
+        snapshot_id: args.snapshot_id.as_deref(),
+        missing_input_message: "Provide --from <ref> or --from-xy x,y",
+        focus_before_resolve: true,
+    };
+    let to_args = PointResolveArgs {
+        ref_id: args.to_ref.as_deref(),
+        xy: args.to_xy,
+        snapshot_id: args.snapshot_id.as_deref(),
+        missing_input_message: "Provide --to <ref> or --to-xy x,y",
+        focus_before_resolve: false,
+    };
+    let initial_from = resolve_point_with_deadline(from_args, deadline, &lease, adapter, context)?;
+    let from = resolve_point_with_deadline(
         PointResolveArgs {
-            ref_id: args.from_ref.as_deref(),
-            xy: args.from_xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide --from <ref> or --from-xy x,y",
+            focus_before_resolve: false,
+            ..from_args
         },
-        args.timeout_ms,
+        deadline,
+        &lease,
         adapter,
         context,
     )?;
-    let to = resolve_point_with_wait(
-        PointResolveArgs {
-            ref_id: args.to_ref.as_deref(),
-            xy: args.to_xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide --to <ref> or --to-xy x,y",
-        },
-        args.timeout_ms,
-        adapter,
-        context,
+    let to = resolve_point_with_deadline(to_args, deadline, &lease, adapter, context)?;
+    ensure_point_deadline(
+        deadline,
+        Some(json!({
+            "status": "actionable",
+            "from": { "x": from.point.x, "y": from.point.y },
+            "to": { "x": to.point.x, "y": to.point.y }
+        })),
     )?;
-    let focused = focus_for_physical_input(from.pid, adapter, context)?;
     let params = DragParams {
         from: from.point.clone(),
         to: to.point.clone(),
         duration_ms: args.duration_ms,
         drop_delay_ms: args.drop_delay_ms,
     };
-    adapter.drag(params)?;
+    params.validate(deadline)?;
+    adapter.drag(params, &lease)?;
     let mut response = json!({
         "dragged": true,
         "from": { "x": from.point.x, "y": from.point.y },
@@ -65,10 +80,16 @@ pub fn execute(
     if let Some(drop_delay_ms) = args.drop_delay_ms {
         response["drop_delay_ms"] = json!(drop_delay_ms);
     }
-    if focused {
+    if initial_from.focused {
         response["focused"] = json!(true);
     }
-    Ok(response)
+    apply_post_action_wait(
+        response,
+        initial_from.source_entry.as_ref(),
+        adapter,
+        context,
+        &lease,
+    )
 }
 
 #[cfg(test)]

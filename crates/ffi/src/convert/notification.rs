@@ -1,6 +1,6 @@
 use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
 use crate::types::AdNotificationInfo;
-use agent_desktop_core::notification::NotificationInfo;
+use agent_desktop_core::NotificationInfo;
 use std::os::raw::c_char;
 use std::ptr;
 
@@ -21,7 +21,7 @@ pub(crate) unsafe fn free_notification_info_fields(info: &mut AdNotificationInfo
         free_c_string(info.app_name as *mut c_char);
         free_c_string(info.title as *mut c_char);
         free_c_string(info.body as *mut c_char);
-        free_c_string_array(info.actions, info.action_count);
+        free_c_string_array(info.actions);
         info.app_name = ptr::null();
         info.title = ptr::null();
         info.body = ptr::null();
@@ -39,21 +39,28 @@ fn strings_to_c_array(strings: &[String]) -> (*mut *mut c_char, u32) {
     let mut boxed = ptrs.into_boxed_slice();
     let ptr = boxed.as_mut_ptr();
     std::mem::forget(boxed);
+    crate::resource::register_allocation(
+        crate::resource::AllocationKind::NotificationActions,
+        ptr,
+        count as usize,
+    );
     (ptr, count)
 }
 
-unsafe fn free_c_string_array(arr: *mut *mut c_char, count: u32) {
+unsafe fn free_c_string_array(arr: *mut *mut c_char) {
     unsafe {
-        if arr.is_null() {
+        let Some(count) = crate::resource::take_allocation(
+            crate::resource::AllocationKind::NotificationActions,
+            arr,
+        ) else {
             return;
-        }
-        let slice = std::slice::from_raw_parts_mut(arr, count as usize);
+        };
+        let slice = std::slice::from_raw_parts_mut(arr, count);
         for p in slice.iter_mut() {
             free_c_string(*p);
         }
         drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-            arr,
-            count as usize,
+            arr, count,
         )));
     }
 }
@@ -62,7 +69,7 @@ unsafe fn free_c_string_array(arr: *mut *mut c_char, count: u32) {
 mod tests {
     use super::*;
     use crate::convert::string::c_to_string;
-    use agent_desktop_core::notification::NotificationInfo;
+    use agent_desktop_core::NotificationInfo;
     use std::os::raw::c_char;
 
     fn make_info(body: Option<&str>, actions: &[&str]) -> NotificationInfo {

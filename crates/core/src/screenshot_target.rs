@@ -1,6 +1,8 @@
+use crate::{WindowInfo, display_info::DisplayInfo};
+
 pub enum ScreenshotTarget {
     Screen(usize),
-    /// Capture the largest visible window owned by this process ID.
-    Window(i32),
+    Display { index: usize, expected: DisplayInfo },
+    ExactWindow(WindowInfo),
     FullScreen,
 }

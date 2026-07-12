@@ -1,9 +1,8 @@
 use crate::{
+    AdapterError, AppError, ErrorCode,
     action::Action,
     action_request::ActionRequest,
-    actionability::states_are_enabled,
     adapter::{NativeHandle, PlatformAdapter, optional_live_read},
-    error::{AdapterError, AppError, ErrorCode},
     refs::RefEntry,
 };
 use serde_json::{Value, json};
@@ -104,13 +103,17 @@ pub(crate) fn observe(
     handle: &NativeHandle,
     predicate: &ElementPredicate,
     adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
+    stability: crate::actionability::StabilityExpectation,
 ) -> Result<Value, AdapterError> {
     match predicate {
         ElementPredicate::Exists => Ok(json!({ "exists": true })),
-        ElementPredicate::Enabled => enabled(entry, handle, adapter),
-        ElementPredicate::Visible => visible(entry, handle, adapter),
-        ElementPredicate::Actionable(request) => actionable(entry, handle, request, adapter),
-        ElementPredicate::Value(expected) => value(entry, handle, expected, adapter),
+        ElementPredicate::Enabled => enabled(entry, handle, adapter, deadline),
+        ElementPredicate::Visible => visible(entry, handle, adapter, deadline),
+        ElementPredicate::Actionable(request) => {
+            actionable(entry, handle, request, adapter, deadline, stability)
+        }
+        ElementPredicate::Value(expected) => value(entry, handle, expected, adapter, deadline),
     }
 }
 
@@ -135,29 +138,28 @@ fn reject_unused_value(value: Option<String>) -> Result<(), AppError> {
 }
 
 fn enabled(
-    entry: &RefEntry,
+    _entry: &RefEntry,
     handle: &NativeHandle,
     adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
 ) -> Result<Value, AdapterError> {
-    let enabled = optional_live_read(adapter.get_live_state(handle))?
-        .map(|state| states_are_enabled(&state.states))
-        .unwrap_or_else(|| states_are_enabled(&entry.states));
-    Ok(json!({ "enabled": enabled }))
+    let enabled = optional_live_read(adapter.get_live_state(handle, deadline))?
+        .and_then(|state| state.enabled);
+    Ok(json!({ "enabled": enabled, "applicable": enabled.is_some() }))
 }
 
 fn visible(
     _entry: &RefEntry,
     handle: &NativeHandle,
     adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
 ) -> Result<Value, AdapterError> {
-    let live_bounds = optional_live_read(adapter.get_element_bounds(handle))?;
-    let live_state = optional_live_read(adapter.get_live_state(handle))?;
-    let states_from_live = live_state.is_some();
+    let live = adapter.get_live_element(handle, deadline)?;
     let evidence = crate::state::VisibilityEvidence {
-        bounds: live_bounds,
-        states: live_state.map(|state| state.states).unwrap_or_default(),
-        bounds_from_live: live_bounds.is_some(),
-        states_from_live,
+        bounds: live.bounds,
+        states: live.state.states,
+        bounds_from_live: live.bounds.is_some(),
+        states_from_live: true,
     };
     Ok(json!({
         "visible": evidence.result(),
@@ -170,8 +172,12 @@ fn actionable(
     handle: &NativeHandle,
     request: &ActionRequest,
     adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
+    stability: crate::actionability::StabilityExpectation,
 ) -> Result<Value, AdapterError> {
-    match crate::actionability::check_live(entry, handle, adapter, request) {
+    match crate::actionability::check_live_with_stability(
+        entry, handle, adapter, request, stability, deadline,
+    ) {
         Ok(report) => Ok(json!(report)),
         Err(err) if err.code == ErrorCode::ActionFailed => match err.details {
             Some(report) => Ok(report),
@@ -182,12 +188,13 @@ fn actionable(
 }
 
 fn value(
-    entry: &RefEntry,
+    _entry: &RefEntry,
     handle: &NativeHandle,
     expected: &str,
     adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
 ) -> Result<Value, AdapterError> {
-    let observed = optional_live_read(adapter.get_live_value(handle))?.or(entry.value.clone());
+    let observed = optional_live_read(adapter.get_live_value(handle, deadline))?;
     let matched = observed.as_deref() == Some(expected);
     Ok(json!({
         "matched": matched,

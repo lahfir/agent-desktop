@@ -11,7 +11,7 @@ fn text_content_reports_text_format() {
 fn image_content_reports_image_format() {
     let content = ClipboardContent::Image(ImageBuffer {
         data: vec![0u8; 4],
-        format: crate::image_buffer::ImageFormat::Png,
+        format: crate::ImageFormat::Png,
         width: 2,
         height: 2,
         scale_factor: 1.0,

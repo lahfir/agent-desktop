@@ -1,8 +1,8 @@
 use crate::{
+    AppError,
     adapter::{PlatformAdapter, SnapshotSurface},
     commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
-    error::AppError,
     refs::validate_ref_id,
     snapshot, snapshot_ref,
 };
@@ -53,9 +53,7 @@ pub fn execute(
         args.compact
     );
 
-    let opts = tree_options(&args);
-
-    if let Some(root) = args.root_ref {
+    if let Some(root) = args.root_ref.as_deref() {
         if context.wait_selector().is_some() {
             return Err(AppError::invalid_input_with_suggestion(
                 "--root cannot be combined with --wait-for or --wait-for-gone",
@@ -67,7 +65,14 @@ pub fn execute(
                 "--root cannot be combined with --surface",
             ));
         }
-        validate_ref_id(&root)?;
+        validate_ref_id(root)?;
+    }
+
+    validate_surface_support(args.surface, adapter)?;
+
+    let opts = tree_options(&args);
+
+    if let Some(root) = args.root_ref {
         return format_result(snapshot_ref::run_from_ref_with_context(
             adapter,
             &opts,
@@ -101,6 +106,33 @@ pub fn execute(
     )?;
 
     format_result(result)
+}
+
+fn validate_surface_support(
+    requested: SnapshotSurface,
+    adapter: &dyn PlatformAdapter,
+) -> Result<(), AppError> {
+    let supported = adapter.supported_surfaces();
+    if supported.contains(&requested) {
+        return Ok(());
+    }
+    let supported = supported
+        .into_iter()
+        .map(SnapshotSurface::as_str)
+        .collect::<Vec<_>>();
+    Err(crate::AdapterError::new(
+        crate::ErrorCode::PlatformNotSupported,
+        format!(
+            "Snapshot surface '{}' is not supported on this platform",
+            requested.as_str()
+        ),
+    )
+    .with_details(json!({
+        "requested_surface": requested.as_str(),
+        "supported_surfaces": supported
+    }))
+    .with_suggestion("Choose one of the supported snapshot surfaces")
+    .into())
 }
 
 fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {

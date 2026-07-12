@@ -49,3 +49,32 @@ fn wait_args_batch_json_rejects_unknown_field_across_three_flattened_groups() {
 
     assert!(err.to_string().contains("totally_bogus"));
 }
+
+#[test]
+fn window_mutation_args_accept_window_ids() {
+    let resize = ResizeWindowCliArgs::try_parse_from([
+        "resize-window",
+        "--window-id",
+        "w-42",
+        "--width",
+        "800",
+        "--height",
+        "600",
+    ])
+    .unwrap();
+    let move_window = MoveWindowCliArgs::try_parse_from([
+        "move-window",
+        "--window-id",
+        "w-42",
+        "--x",
+        "10",
+        "--y",
+        "20",
+    ])
+    .unwrap();
+    let minimize = AppRefArgs::try_parse_from(["minimize", "--window-id", "w-42"]).unwrap();
+
+    assert_eq!(resize.scope.window_id.as_deref(), Some("w-42"));
+    assert_eq!(move_window.scope.window_id.as_deref(), Some("w-42"));
+    assert_eq!(minimize.scope.window_id.as_deref(), Some("w-42"));
+}

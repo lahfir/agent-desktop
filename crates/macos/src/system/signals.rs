@@ -1,12 +1,11 @@
 use agent_desktop_core::{
+    AdapterError, AppInfo, SignalBaseline, SignalCompleteness, SignalFilter, SurfaceSignal,
     adapter::{SnapshotSurface, WindowFilter},
-    error::AdapterError,
-    node::AppInfo,
-    signals::{SignalBaseline, SignalFilter, SurfaceSignal},
 };
+use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]
-pub fn supported_surfaces_impl() -> Vec<SnapshotSurface> {
+pub(crate) fn supported_surfaces_impl() -> Vec<SnapshotSurface> {
     vec![
         SnapshotSurface::Window,
         SnapshotSurface::Focused,
@@ -19,68 +18,123 @@ pub fn supported_surfaces_impl() -> Vec<SnapshotSurface> {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn supported_surfaces_impl() -> Vec<SnapshotSurface> {
+pub(crate) fn supported_surfaces_impl() -> Vec<SnapshotSurface> {
     vec![SnapshotSurface::Window]
 }
 
 #[cfg(target_os = "macos")]
-pub fn capture_signal_baseline_impl(filter: &SignalFilter) -> Result<SignalBaseline, AdapterError> {
-    let windows = crate::system::window_list::list_windows_impl(&WindowFilter {
-        focused_only: false,
-        app: filter.app.clone(),
-    })?;
-    let apps = matching_apps(filter)?;
-    let surfaces = surfaces_for_apps(filter, &apps);
+pub(crate) fn capture_signal_baseline_impl(
+    filter: &SignalFilter,
+    deadline: Instant,
+) -> Result<SignalBaseline, AdapterError> {
+    ensure_before_deadline(deadline)?;
+    let apps = matching_apps(filter, deadline)?;
+    cap_ax_messaging(&apps, deadline)?;
+    let windows = if filter.app.is_some() && apps.is_empty() {
+        Vec::new()
+    } else {
+        crate::system::app_inventory::list_windows_until(
+            &WindowFilter {
+                focused_only: false,
+                app: filter.app.clone(),
+            },
+            deadline,
+        )?
+    };
+    ensure_before_deadline(deadline)?;
+    let surfaces = surfaces_for_apps(filter, &apps, deadline)?;
+    ensure_before_deadline(deadline)?;
     Ok(SignalBaseline {
         windows,
         apps,
         surfaces,
+        completeness: SignalCompleteness::complete(),
     })
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn capture_signal_baseline_impl(
+pub(crate) fn capture_signal_baseline_impl(
     _filter: &SignalFilter,
+    _deadline: Instant,
 ) -> Result<SignalBaseline, AdapterError> {
     Err(AdapterError::not_supported("capture_signal_baseline"))
 }
 
 #[cfg(target_os = "macos")]
-fn matching_apps(filter: &SignalFilter) -> Result<Vec<AppInfo>, AdapterError> {
-    let all = crate::system::app_list::list_apps_impl()?;
-    if let Some(name) = &filter.app {
-        return Ok(all
-            .into_iter()
-            .filter(|app| app.name.eq_ignore_ascii_case(name))
-            .collect());
-    }
-    if let Some(pid) = filter.pid {
-        return Ok(all.into_iter().filter(|app| app.pid == pid).collect());
-    }
-    Ok(all)
+fn matching_apps(filter: &SignalFilter, deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
+    let all = crate::system::app_inventory::list_apps_complete_until(deadline)?;
+    ensure_before_deadline(deadline)?;
+    Ok(filter_apps(filter, all))
 }
 
-/// Surfaces (sheets, alerts, popovers, open menus) are only inspected for
-/// apps the caller has named — walking every running app's accessibility
-/// tree on every poll to look for a stray sheet would be prohibitively slow
-/// and noisy. This mirrors `list_surfaces_for_pid`'s existing per-app scope.
 #[cfg(target_os = "macos")]
-fn surfaces_for_apps(filter: &SignalFilter, apps: &[AppInfo]) -> Vec<SurfaceSignal> {
-    if filter.app.is_none() && filter.pid.is_none() {
-        return Vec::new();
+fn filter_apps(filter: &SignalFilter, all: Vec<AppInfo>) -> Vec<AppInfo> {
+    if let Some(name) = &filter.app {
+        return all
+            .into_iter()
+            .filter(|app| app.name.eq_ignore_ascii_case(name))
+            .collect();
+    }
+    if let Some(process) = &filter.process {
+        return all
+            .into_iter()
+            .filter(|app| {
+                app.pid == process.pid
+                    && app.process_instance.as_deref() == Some(process.instance.as_str())
+            })
+            .collect();
+    }
+    all
+}
+
+#[cfg(target_os = "macos")]
+fn cap_ax_messaging(apps: &[AppInfo], deadline: Instant) -> Result<(), AdapterError> {
+    for app in apps {
+        remaining_before_deadline(deadline)?;
+        let pid = crate::system::process_identity::to_pid_t(app.pid)?;
+        let element = crate::tree::element_for_pid(pid);
+        crate::tree::attributes::set_messaging_timeout(&element, deadline)?;
+    }
+    ensure_before_deadline(deadline)
+}
+
+#[cfg(target_os = "macos")]
+fn surfaces_for_apps(
+    filter: &SignalFilter,
+    apps: &[AppInfo],
+    deadline: Instant,
+) -> Result<Vec<SurfaceSignal>, AdapterError> {
+    if filter.app.is_none() && filter.process.is_none() {
+        return Ok(Vec::new());
     }
     let mut surfaces = Vec::new();
     for app in apps {
-        for info in crate::tree::surfaces::list_surfaces_for_pid(app.pid) {
+        ensure_before_deadline(deadline)?;
+        let pid = crate::system::process_identity::to_pid_t(app.pid)?;
+        for info in crate::tree::surface_inventory::list_surfaces_for_pid(pid, deadline)? {
             if let Some(kind) = map_surface_kind(&info.kind) {
+                let process_instance = app.process_instance.clone().ok_or_else(|| {
+                    AdapterError::new(
+                        agent_desktop_core::ErrorCode::AppUnresponsive,
+                        "Surface owner lacks a verified process instance",
+                    )
+                    .with_details(serde_json::json!({
+                        "pid": app.pid,
+                        "complete": false,
+                    }))
+                })?;
                 surfaces.push(SurfaceSignal {
                     kind,
                     app: app.name.clone(),
+                    pid: app.pid,
+                    process_instance,
+                    id: info.id,
+                    title: info.title,
                 });
             }
         }
     }
-    surfaces
+    Ok(surfaces)
 }
 
 #[cfg(target_os = "macos")]
@@ -92,6 +146,20 @@ fn map_surface_kind(raw: &str) -> Option<SnapshotSurface> {
         "menu" | "context_menu" => Some(SnapshotSurface::Menu),
         _ => None,
     }
+}
+
+#[cfg(target_os = "macos")]
+fn remaining_before_deadline(deadline: Instant) -> Result<Duration, AdapterError> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(AdapterError::timeout("Signal baseline capture timed out"));
+    }
+    Ok(remaining)
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_before_deadline(deadline: Instant) -> Result<(), AdapterError> {
+    remaining_before_deadline(deadline).map(|_| ())
 }
 
 #[cfg(test)]

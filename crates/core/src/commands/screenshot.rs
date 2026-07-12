@@ -1,6 +1,6 @@
 use crate::{
+    AdapterError, AppError, ErrorCode,
     adapter::{PlatformAdapter, ScreenshotTarget, WindowFilter},
-    error::{AdapterError, AppError, ErrorCode},
 };
 use base64::Engine;
 use serde_json::{Value, json};
@@ -14,12 +14,19 @@ pub struct ScreenshotArgs {
 }
 
 pub fn execute(args: ScreenshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let target = resolve_target(&args, adapter)?;
-    let buf = adapter.screenshot(target)?;
+    let deadline = crate::Deadline::standard()?;
+    let target = resolve_target(&args, adapter, deadline)?;
+    let buf = adapter.screenshot(target, deadline)?;
 
     if let Some(path) = args.output_path {
-        std::fs::write(&path, &buf.data)?;
-        Ok(json!({ "path": path.to_string_lossy() }))
+        crate::refs::write_user_file(&path, &buf.data)?;
+        Ok(json!({
+            "path": path.to_string_lossy(),
+            "format": buf.format.as_str(),
+            "width": buf.width,
+            "height": buf.height,
+            "scale_factor": buf.scale_factor
+        }))
     } else {
         let encoded = base64::engine::general_purpose::STANDARD.encode(&buf.data);
         Ok(json!({
@@ -35,9 +42,16 @@ pub fn execute(args: ScreenshotArgs, adapter: &dyn PlatformAdapter) -> Result<Va
 fn resolve_target(
     args: &ScreenshotArgs,
     adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
 ) -> Result<ScreenshotTarget, AppError> {
+    if args.screen.is_some() && (args.app.is_some() || args.window_id.is_some()) {
+        return Err(AppError::invalid_input_with_suggestion(
+            "--screen cannot be combined with --app or --window-id",
+            "Choose exactly one display target or one app/window target.",
+        ));
+    }
     if let Some(screen) = args.screen {
-        let displays = adapter.list_displays().map_err(AppError::from)?;
+        let displays = adapter.list_displays(deadline).map_err(AppError::from)?;
         if screen >= displays.len() {
             return Err(AppError::Adapter(
                 AdapterError::new(
@@ -53,33 +67,74 @@ fn resolve_target(
                 })),
             ));
         }
-        return Ok(ScreenshotTarget::Screen(screen));
+        return Ok(ScreenshotTarget::Display {
+            index: screen,
+            expected: displays[screen].clone(),
+        });
     }
 
     if let Some(window_id) = &args.window_id {
+        let expected_app = args
+            .app
+            .as_deref()
+            .map(|name| crate::commands::helpers::resolve_app(Some(name), adapter, deadline))
+            .transpose()?;
         let filter = WindowFilter {
             focused_only: false,
             app: args.app.clone(),
         };
-        let windows = adapter.list_windows(&filter)?;
-        let win = windows
+        let mut candidates = adapter
+            .list_windows(&filter, deadline)?
             .into_iter()
-            .find(|w| &w.id == window_id)
-            .ok_or_else(|| AppError::invalid_input(format!("Window '{window_id}' not found")))?;
-        return Ok(ScreenshotTarget::Window(win.pid));
+            .filter(|window| &window.id == window_id)
+            .collect::<Vec<_>>();
+        if candidates
+            .iter()
+            .any(|window| window.process_instance.as_deref().is_none_or(str::is_empty))
+        {
+            return Err(AdapterError::new(
+                ErrorCode::ActionNotSupported,
+                "Matching window has incomplete process identity",
+            )
+            .into());
+        }
+        if let Some(app) = expected_app.as_ref() {
+            let instance = crate::commands::helpers::process_identity(app)?.instance;
+            candidates.retain(|window| {
+                window.pid == app.pid
+                    && window.process_instance.as_deref() == Some(instance.as_str())
+            });
+        }
+        let win = select_unique_window(candidates, window_id)?;
+        return Ok(ScreenshotTarget::ExactWindow(win));
     }
 
     if let Some(app_name) = &args.app {
-        let filter = WindowFilter {
-            focused_only: false,
-            app: Some(app_name.clone()),
-        };
-        let windows = adapter.list_windows(&filter)?;
-        let win = windows.into_iter().next().ok_or_else(|| {
-            AppError::invalid_input(format!("No windows found for app '{app_name}'"))
-        })?;
-        return Ok(ScreenshotTarget::Window(win.pid));
+        let app = crate::commands::helpers::resolve_app(Some(app_name), adapter, deadline)?;
+        let win = crate::window_lookup::find_window_for_process(
+            crate::commands::helpers::process_identity(&app)?,
+            adapter,
+            deadline,
+        )?;
+        return Ok(ScreenshotTarget::ExactWindow(win));
     }
 
     Ok(ScreenshotTarget::FullScreen)
+}
+
+fn select_unique_window(
+    mut candidates: Vec<crate::WindowInfo>,
+    window_id: &str,
+) -> Result<crate::WindowInfo, AppError> {
+    match candidates.len() {
+        0 => Err(AppError::invalid_input(format!(
+            "Window '{window_id}' not found"
+        ))),
+        1 => Ok(candidates.swap_remove(0)),
+        _ => Err(AdapterError::ambiguous_target(format!(
+            "Multiple windows matched id '{window_id}'"
+        ))
+        .with_details(json!({ "candidate_count": candidates.len() }))
+        .into()),
+    }
 }

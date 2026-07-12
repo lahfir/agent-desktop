@@ -1,87 +1,144 @@
-# End-to-End Tests (real binary vs. real app)
+# Native macOS end-to-end tests
 
-These tests drive the **release `agent-desktop` binary** against a **real macOS
-application** and verify every effect by **independent observation** — never the
-command's own `ok: true`. A command that returns success without producing the
-effect is caught, because each check re-reads the UI (status label, element
-value, scroll offset, `list-apps`, …) and asserts the observed `before`/`after`.
+This suite drives the release `agent-desktop` binary against a real macOS app
+and verifies effects through independent accessibility observations. A command
+returning `ok: true` is never sufficient when the fixture exposes an observable
+status, value, process, window, or surface transition.
 
-This is the layer that mock-adapter unit tests cannot cover: it exercises the
-contract against the actual macOS Accessibility API.
+## Run the fixture suite
+
+```bash
+cargo build --release -p agent-desktop
+AGENT_DESKTOP_E2E_EXCLUSIVE=1 bash tests/e2e/run.sh
+```
+
+The single prerequisite gate requires:
+
+- macOS;
+- `target/release/agent-desktop` already built;
+- Accessibility permission granted to the terminal or runner; and
+- a buildable Swift fixture app.
+
+`AGENT_DESKTOP_E2E_EXCLUSIVE=1` is a safety acknowledgement that the caller has
+made the desktop exclusive, including stopping user input and other automation.
+The harness lock prevents a second native harness from starting, but it cannot
+stop an unrelated `agent-desktop` process from starting between commands. Do
+not set the acknowledgement while the desktop is in use.
+
+Before the gate runs, the release executable is hashed and copied to a
+read-only path under a private suite directory. The suite uses only that copy,
+an isolated `HOME`, ref/session stores, fixture build, `TMPDIR`, and Cargo target
+directory. Every CLI child runs in its own process group with an absolute
+timeout and bounded stdout/stderr capture. The hash and exact JSON/Clap version
+identity are checked again before success is reported.
+
+The harness then builds and launches `AgentDeskFixture.app`. Once the fixture is
+running, a missing control, window, status readout, bounds record, or surface is
+a test failure. Scenarios never turn a missing prerequisite into a successful
+`SKIP`. Exit `0` means every assertion passed from an uncontaminated run, exit
+`1` means a behavioral failure, and exit `2` means the global prerequisite gate
+failed.
+
+Headed cases move the real cursor. Run them on a machine where that is safe.
+The fixture process is force-closed by the cleanup trap even when a test fails.
+
+## Exact ref namespaces
+
+Every non-count `find` returns two inseparable values:
+
+```json
+{"ref_id":"@e12","snapshot_id":"..."}
+```
+
+`lib.sh` carries that pair as one target and every ref action, `get`, `is`, and
+element `wait` passes the exact `--snapshot` value. The harness deliberately
+runs unrelated observations between `find` and `get` to prove that a ref does
+not depend on the mutable latest-snapshot pointer. Do not add a helper that
+returns a bare `@eN`.
 
 ## Layout
 
-| Path | Role |
-|------|------|
-| `tests/fixture-app/AgentDeskFixture.swift` | SwiftUI + AppKit fixture exposing a fixed, diverse AX surface |
-| `tests/fixture-app/build.sh` | Compiles the fixture into `build/AgentDeskFixture.app` |
-| `tests/e2e/run.sh` | The harness: launches the fixture, runs the binary, asserts by observation |
+| Path | Responsibility |
+|---|---|
+| `run.sh` | Global gate, fixture lifecycle, semantic suite orchestration |
+| `lib.sh` | Fail-closed assertions and exact `{ref_id,snapshot_id}` target helpers |
+| `scenarios-observation.sh` | Snapshots, locators, namespace pinning, strict twins |
+| `scenarios-interaction.sh` | Headless/headed actions and exact-once effects |
+| `scenarios-acceptance.sh` | Named AE1-AE7 acceptance contract |
+| `scenarios-reliability.sh` | Stale refs, waits, drill-down, sessions |
+| `scenarios-surfaces.sh` | Sheets, menus, drag, disclosure |
+| `scenarios-trace-performance.sh` | Trace artifacts, redaction, timings, cleanup |
+| `permission-contract.sh` | Deterministic AE5 mapping tests without mutating TCC |
+| `electron-live.sh` | Opt-in installed Electron/Chromium app measurement |
 
-The fixture is a **principal-engineer-grade slice of real UI**, not a target
-tuned to make the CLI pass. It deliberately mixes AX-actionable native AppKit
-controls (`NSSlider`, `NSStepper`) with gesture-only and ambiguous patterns. **A
-failure here is a finding about the CLI or the harness — never a reason to edit
-the fixture so the CLI passes.**
+Every shell file stays below the repository's 400-line limit.
 
-## Running
+## AE1-AE7 acceptance map
+
+`scenarios-acceptance.sh` names and fails closed on every plan example:
+
+| Example | Native fixture assertion |
+|---|---|
+| AE1 | An addressable button whose live AX frame is zero reports `visible=false`. |
+| AE2 | A button enabled after 800 ms succeeds under the untouched 5 s default, dispatches exactly once, and `--timeout-ms 0` performs one immediate check. |
+| AE3 | A permanently disabled button with `--timeout-ms 2000` returns `TIMEOUT`, `details.kind=actionability_timeout`, and `details.last_report` near 2 s. |
+| AE4 | Two windows with the same title receive distinct ids; focusing the second id focuses that exact window. |
+| AE5 | Focused deterministic macOS tests prove permission prompts stay in the bounded helper path and Apple Events Automation is reported as not required. TCC is never reset or prompted. |
+| AE6 | One batch captures a pre-action baseline, clicks open a sheet, and reports `surface_appeared` without naming the surface title. |
+| AE7 | The same disabled action with no timeout flag returns the structured timeout near the untouched 5 s default. |
+
+AE2, AE3, and AE7 run in both headless and headed policy modes. Elapsed-time
+tolerances account for process launch and scheduler noise but are narrow enough
+to detect a missing wait, the wrong default, or an unbounded overrun. Delayed
+action status is observed after a settle interval so a duplicate late dispatch
+cannot pass.
+
+`permission-contract.sh` is intentionally deterministic. It tests the expired
+deadline, helper result, and Automation-not-required contracts without calling
+native prompt APIs, resetting TCC, or assuming the developer's consent state.
+
+## Installed Electron/Chromium measurement
+
+The live harness is opt-in and is never called by `run.sh` or unprivileged CI:
 
 ```bash
-cargo build --release            # the harness uses target/release/agent-desktop
-bash tests/e2e/run.sh
+AGENT_DESKTOP_E2E_EXCLUSIVE=1 bash tests/e2e/electron-live.sh --app Slack
+AGENT_DESKTOP_E2E_EXCLUSIVE=1 bash tests/e2e/electron-live.sh \
+  --app "Visual Studio Code" \
+  --baseline-binary /path/to/previous/agent-desktop \
+  --out /tmp/vscode-ax.json
 ```
 
-Requirements:
+The app must already be installed, running, and exposing at least one window.
+The harness does not launch, focus, click, type into, or close the user's app.
+If any prerequisite is unavailable, invocation fails instead of emitting a
+successful partial benchmark.
 
-- macOS with **Accessibility permission** granted to the terminal running the
-  harness (System Settings → Privacy & Security → Accessibility).
-- The harness builds the fixture `.app` automatically if it is missing.
-- `--headed` checks move the real cursor; run on a machine where that is OK.
+It performs exactly five warmup pairs and 31 measured release-binary pairs of
+`find --role button --first`. When `--baseline-binary` is supplied, immutable
+baseline (A) and current (B) binaries run in balanced AB/BA order against one
+exact process generation and window inventory, with separate `HOME`
+directories. State is checked before and after every pair. The v3 JSON schema
+includes nearest-rank wall and CPU p50/p95, paired current-minus-baseline
+deltas, success and correctness rates, AX traversal/read statistics when a
+binary emits them, renderer activation counts, SHA-256/version identities, raw
+samples, and exact-snapshot re-resolution checks. It deliberately omits RSS:
+`RUSAGE_CHILDREN.ru_maxrss` is a cumulative harness maximum, not a per-command
+measurement.
 
-Exit code is `0` when every scenario passes, `1` on any failure (with the
-observed values printed inline for each failing check), `2` on setup error.
-
-## What it verifies
-
-- **Observation:** snapshot role diversity, `find` vocabulary + `roles_present`
-  hint, textarea→textfield alias.
-- **Interaction in BOTH modes (the headless/headed contract):** every ref-action
-  command (`click`, `type`, `set-value`, `clear`, `check`, `uncheck`, `select`,
-  `set-value` on slider/stepper, `scroll`) is driven **twice** — default
-  **headless**, then **`--headed`** — with mode-specific target values so a
-  regression in either mode is caught by an independent `before`/`after`
-  observation. Headed must not regress the AX path (it is tried first); it only
-  adds cursor/physical fallbacks.
-- **The headless/headed discriminator:** `double-click` on a gesture-only button
-  (no `AXOpen`) **fails closed with `POLICY_DENIED` headless**, and **completes
-  with `--headed`** (physical double-click). This is the crisp proof the two
-  modes differ and that `--headed` unlocks the physical fallback.
-- **Strict resolution:** ambiguous twins do not silently act; a removed element
-  fails closed with `STALE_REF`.
-- **Reliability core:** `wait` predicates (`enabled`, `actionable`, `visible`,
-  `value`), `wait --text` async appearance, skeleton traversal + scoped
-  drill-down, session isolation + session-independent explicit snapshots, trace
-  JSONL with secret redaction.
-- **Surfaces / drag / expand / close:** open a sheet and act inside it,
-  source-tracked drag gesture verified by a tracking canvas, expand a
-  press-toggled disclosure, `close-app --force` verified via `list-apps`.
-
-## Documented limitations (tracked, not failures)
-
-- **Cross-target native drag-and-drop (`onDrop`)** needs the OS dragging-session
-  / pasteboard protocol. Synthetic mouse events route mouse-up to the drag
-  origin, so they cannot drop onto a separate native target. Source-tracked
-  gestures (and web/Electron mouse-DnD) work; the harness verifies the gesture
-  via a tracking canvas.
-- **SwiftUI `Slider`/`Stepper`/`DisclosureGroup` are not AX-actionable.** The
-  fixture uses native AppKit `NSSlider`/`NSStepper` (which are), so `set-value`
-  and `expand` are proven on controls that actually expose the capability.
+The report explicitly labels its limits: it describes one machine, app state,
+and TCC state; it measures observation and ref re-resolution rather than action
+delivery; and it never invents a baseline when none was explicitly supplied.
+The default output is a timestamped file under `/tmp`; pass `--out` to retain it
+elsewhere.
 
 ## Adding a scenario
 
-1. Expose the surface in `AgentDeskFixture.swift` with a stable
-   `accessibilityLabel` and a `statictext` status readout that reflects the
-   real state (so the harness can observe the effect, not the command's claim).
-2. Add a check in `run.sh` using `verify <label> <status> <expected> <subcmd…>`
-   (mode-injected) or an explicit `before`/`after` + `assert` block.
-3. If the command is a ref action, add it to `interaction_suite` so it is
-   covered in **both** headless and headed modes.
+1. Add a stable accessibility label and an independently observable status to
+   the fixture.
+2. Resolve action targets with `require_target`; never retain a bare ref.
+3. Use `act_target`, `get_target`, `is_target`, or `wait_target` so the source
+   snapshot id is always explicit.
+4. Treat missing controls and unsupported behavior as failures after setup.
+5. When timing behavior, assert both the structured JSON contract and elapsed
+   bounds, then verify that no duplicate effect appears after settling.

@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::AppError;
 use crate::session::{
     ArtifactsMode, GcOptions, SessionTraceMode, StartSessionOptions, end_session, gc,
     list_sessions, start_session,
@@ -12,10 +12,9 @@ pub enum SessionAction {
         name: Option<String>,
         no_trace: bool,
         screenshots: bool,
-        force: bool,
     },
     End {
-        id: Option<String>,
+        id: String,
     },
     List,
     Gc {
@@ -30,7 +29,6 @@ pub fn execute(action: SessionAction) -> Result<Value, AppError> {
             name,
             no_trace,
             screenshots,
-            force,
         } => {
             let manifest = start_session(StartSessionOptions {
                 name,
@@ -44,7 +42,6 @@ pub fn execute(action: SessionAction) -> Result<Value, AppError> {
                 } else {
                     ArtifactsMode::Events
                 },
-                force,
             })?;
             Ok(json!({
                 "session_id": manifest.id,
@@ -55,7 +52,7 @@ pub fn execute(action: SessionAction) -> Result<Value, AppError> {
             }))
         }
         SessionAction::End { id } => {
-            let manifest = end_session(id.as_deref())?;
+            let manifest = end_session(&id)?;
             Ok(json!({
                 "session_id": manifest.id,
                 "ended_at": manifest.ended_at,

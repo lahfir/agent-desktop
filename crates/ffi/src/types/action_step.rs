@@ -1,12 +1,5 @@
 use std::os::raw::c_char;
 
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AdStepMechanism {
-    SemanticApi = 1,
-    PhysicalSynthetic = 2,
-}
-
 #[repr(C)]
 pub struct AdActionStep {
     pub label: *const c_char,
@@ -31,12 +24,6 @@ pub extern "C" fn ad_action_step_size() -> usize {
 mod tests {
     use super::*;
     use std::mem::{offset_of, size_of};
-
-    #[test]
-    fn discriminants_are_abi_stable() {
-        assert_eq!(AdStepMechanism::SemanticApi as i32, 1);
-        assert_eq!(AdStepMechanism::PhysicalSynthetic as i32, 2);
-    }
 
     #[test]
     fn layout_matches_published_abi() {

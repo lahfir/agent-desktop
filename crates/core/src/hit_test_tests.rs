@@ -1,46 +1,51 @@
 use super::*;
 use crate::{
+    AdapterError, ErrorCode,
     action::Action,
     action_request::ActionRequest,
     actionability::{ActionabilityCheck, ActionabilityStatus, check_live},
     adapter::{ActionOps, InputOps, LiveElement, NativeHandle, ObservationOps, SystemOps},
+    capability,
     element_state::ElementState,
-    error::{AdapterError, ErrorCode},
     refs::RefEntry,
 };
 use smallvec::SmallVec;
+use std::collections::VecDeque;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 
 struct HitTestAdapter {
     outcome: Result<HitTestResult, AdapterError>,
+    actions: Vec<String>,
+    calls: AtomicUsize,
 }
 
 impl ObservationOps for HitTestAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn get_live_element(&self, _handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
-        Ok(LiveElement {
-            state: Some(ElementState {
-                role: "button".into(),
-                states: vec![],
-                value: None,
-            }),
-            bounds: Some(crate::node::Rect {
-                x: 10.0,
-                y: 10.0,
-                width: 40.0,
-                height: 20.0,
-            }),
-            available_actions: Some(vec!["Click".into()]),
-        })
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<LiveElement, AdapterError> {
+        Ok(live_element(self.actions.clone()))
     }
 
     fn hit_test(
         &self,
         _handle: &NativeHandle,
-        _point: crate::action::Point,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
     ) -> Result<HitTestResult, AdapterError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         self.outcome.clone()
     }
 }
@@ -49,49 +54,185 @@ impl ActionOps for HitTestAdapter {}
 impl InputOps for HitTestAdapter {}
 impl SystemOps for HitTestAdapter {}
 
-fn clickable_entry() -> RefEntry {
-    RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Save".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: Some(crate::node::Rect {
+struct SequencedHitAdapter {
+    outcomes: Mutex<VecDeque<HitTestResult>>,
+    actions: Vec<String>,
+    calls: AtomicUsize,
+}
+
+impl ObservationOps for SequencedHitAdapter {
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<LiveElement, AdapterError> {
+        Ok(live_element(self.actions.clone()))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<HitTestResult, AdapterError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .outcomes
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(HitTestResult::Unknown))
+    }
+}
+
+impl ActionOps for SequencedHitAdapter {}
+impl InputOps for SequencedHitAdapter {}
+impl SystemOps for SequencedHitAdapter {}
+
+fn live_element(actions: Vec<String>) -> LiveElement {
+    LiveElement {
+        identity: crate::adapter::live_identity("Save"),
+        state: ElementState {
+            role: "button".into(),
+            states: vec![],
+            value: None,
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
+        },
+        states_complete: true,
+        bounds: Some(crate::Rect {
             x: 10.0,
             y: 10.0,
             width: 40.0,
             height: 20.0,
         }),
-        bounds_hash: Some(1),
-        available_actions: vec!["Click".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: SmallVec::new(),
+        available_actions: actions,
     }
 }
 
-/// Runs `check_live` for a `Click` (which requires a hit test) against the
-/// given hit-test outcome and returns the `receives_events` check. Only the
-/// `InterceptedBy` outcome fails actionability, so every other outcome is
-/// safe to unwrap here; the `InterceptedBy` case is asserted separately
-/// against the `Err` path so its occluder details can be inspected.
+fn clickable_entry() -> RefEntry {
+    let bounds = crate::Rect {
+        x: 10.0,
+        y: 10.0,
+        width: 40.0,
+        height: 20.0,
+    };
+    RefEntry {
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Save".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec!["Click".into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: SmallVec::new(),
+        },
+    }
+}
+
 fn run_receives_events_check(outcome: Result<HitTestResult, AdapterError>) -> ActionabilityCheck {
-    let adapter = HitTestAdapter { outcome };
+    let adapter = HitTestAdapter {
+        outcome,
+        actions: Vec::new(),
+        calls: AtomicUsize::new(0),
+    };
     let entry = clickable_entry();
-    let request = ActionRequest::headless(Action::Click);
+    let request = ActionRequest::headed(Action::Click);
     let report = check_live(&entry, &NativeHandle::null(), &adapter, &request)
-        .expect("only an InterceptedBy hit-test outcome fails actionability");
+        .expect("a confirmed target hit should pass actionability");
     report
         .checks
         .into_iter()
         .find(|check| check.check == "receives_events")
         .expect("Click requires a receives_events check")
+}
+
+fn run_receives_events_error(outcome: Result<HitTestResult, AdapterError>) -> AdapterError {
+    let adapter = HitTestAdapter {
+        outcome,
+        actions: Vec::new(),
+        calls: AtomicUsize::new(0),
+    };
+    check_live(
+        &clickable_entry(),
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headed(Action::Click),
+    )
+    .expect_err("incomplete hit-test evidence must fail closed")
+}
+
+#[test]
+fn semantic_click_skips_inconclusive_screen_hit_testing() {
+    let adapter = HitTestAdapter {
+        outcome: Ok(HitTestResult::Unknown),
+        actions: vec![capability::CLICK.into()],
+        calls: AtomicUsize::new(0),
+    };
+
+    let report = check_live(
+        &clickable_entry(),
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headed(Action::Click),
+    )
+    .expect("a direct semantic click must not depend on screen hit testing");
+
+    assert!(report.actionable);
+    assert_eq!(adapter.calls.load(Ordering::SeqCst), 0);
+    assert!(
+        report
+            .checks
+            .iter()
+            .all(|check| check.check != "receives_events")
+    );
+}
+
+#[test]
+fn semantic_click_skips_occluded_screen_hit_testing() {
+    let adapter = HitTestAdapter {
+        outcome: Ok(HitTestResult::InterceptedBy {
+            role: Some("window".into()),
+            name: None,
+            bounds: None,
+        }),
+        actions: vec![capability::CLICK.into()],
+        calls: AtomicUsize::new(0),
+    };
+
+    let report = check_live(
+        &clickable_entry(),
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .expect("occlusion is irrelevant to a direct semantic click");
+
+    assert!(report.actionable);
+    assert_eq!(adapter.calls.load(Ordering::SeqCst), 0);
 }
 
 #[test]
@@ -101,27 +242,23 @@ fn reaches_target_result_passes_receives_events_check() {
 }
 
 #[test]
-fn unknown_hit_test_result_does_not_block_action() {
-    let check = run_receives_events_check(Ok(HitTestResult::Unknown));
-    assert_eq!(check.status, ActionabilityStatus::Unknown);
+fn unknown_hit_test_result_fails_closed() {
+    let err = run_receives_events_error(Ok(HitTestResult::Unknown));
+    assert_eq!(err.code, ErrorCode::ActionFailed);
 }
 
 #[test]
-fn not_supported_hit_test_does_not_block_action() {
-    let check = run_receives_events_check(Err(AdapterError::not_supported("hit_test")));
-    assert_eq!(check.status, ActionabilityStatus::Unknown);
+fn not_supported_hit_test_preserves_platform_error() {
+    let err = run_receives_events_error(Err(AdapterError::not_supported("hit_test")));
+    assert_eq!(err.code, ErrorCode::PlatformNotSupported);
 }
 
 #[test]
-fn hit_test_probe_error_does_not_block_action() {
-    let check = run_receives_events_check(Err(AdapterError::internal(
+fn hit_test_probe_error_is_not_reclassified() {
+    let err = run_receives_events_error(Err(AdapterError::internal(
         "AXUIElementCopyElementAtPosition failed",
     )));
-    assert_eq!(
-        check.status,
-        ActionabilityStatus::Unknown,
-        "a probe failure must never be reported as a Fail"
-    );
+    assert_eq!(err.code, ErrorCode::Internal);
 }
 
 #[test]
@@ -132,9 +269,11 @@ fn intercepted_by_result_fails_and_carries_redactable_occluder() {
             name: Some("Save changes?".into()),
             bounds: None,
         }),
+        actions: Vec::new(),
+        calls: AtomicUsize::new(0),
     };
     let entry = clickable_entry();
-    let request = ActionRequest::headless(Action::Click);
+    let request = ActionRequest::headed(Action::Click);
 
     let err = check_live(&entry, &NativeHandle::null(), &adapter, &request)
         .expect_err("a hit outside the target's ancestor chain must fail actionability");
@@ -156,4 +295,87 @@ fn intercepted_by_result_fails_and_carries_redactable_occluder() {
     assert_eq!(receives_events["status"], "fail");
     assert_eq!(receives_events["occluder"]["name"], "Save changes?");
     assert_eq!(receives_events["occluder"]["role"], "AXSheet");
+}
+
+#[test]
+fn mixed_unknown_and_occluded_points_remain_inconclusive() {
+    let intercepted = HitTestResult::InterceptedBy {
+        role: Some("sheet".into()),
+        name: None,
+        bounds: None,
+    };
+    let adapter = SequencedHitAdapter {
+        outcomes: Mutex::new(VecDeque::from([
+            HitTestResult::Unknown,
+            intercepted.clone(),
+            intercepted.clone(),
+            intercepted.clone(),
+            intercepted,
+        ])),
+        actions: Vec::new(),
+        calls: AtomicUsize::new(0),
+    };
+
+    let error = check_live(
+        &clickable_entry(),
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headed(Action::Click),
+    )
+    .unwrap_err();
+    let details = error.details.unwrap();
+    let check = details["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["check"] == "receives_events")
+        .unwrap();
+
+    assert_eq!(check["status"], "unknown");
+    assert_eq!(check["hit_test"]["attempted"], 5);
+    assert_eq!(check["hit_test"]["unknown"], 1);
+    assert_eq!(check["hit_test"]["occluded"], 4);
+    assert_eq!(check["occluder"]["role"], "sheet");
+    assert_eq!(
+        check["reason"],
+        "hit test evidence mixed unknown and occluded outcomes"
+    );
+}
+
+#[test]
+fn unknown_only_hit_test_evidence_never_claims_occlusion() {
+    let error = run_receives_events_error(Ok(HitTestResult::Unknown));
+    let details = error.details.unwrap();
+    let check = details["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["check"] == "receives_events")
+        .unwrap();
+
+    assert_eq!(check["status"], "unknown");
+    assert_eq!(check["reason"], "hit test result inconclusive");
+    assert!(check.get("occluder").is_none());
+    assert_eq!(check["hit_test"]["unknown"], 5);
+    assert_eq!(check["hit_test"]["occluded"], 0);
+}
+
+#[test]
+fn terminal_capability_policy_failure_skips_hit_testing() {
+    let adapter = SequencedHitAdapter {
+        outcomes: Mutex::new(VecDeque::new()),
+        actions: Vec::new(),
+        calls: AtomicUsize::new(0),
+    };
+
+    let error = check_live(
+        &clickable_entry(),
+        &NativeHandle::null(),
+        &adapter,
+        &ActionRequest::headless(Action::Click),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::PolicyDenied);
+    assert_eq!(adapter.calls.load(Ordering::SeqCst), 0);
 }

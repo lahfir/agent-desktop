@@ -1,5 +1,5 @@
-use crate::{action_step::ActionStep, element_state::ElementState};
-use serde::{Deserialize, Serialize};
+use crate::{DeliverySemantics, action_step::ActionStep, element_state::ElementState};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionResult {
@@ -10,15 +10,31 @@ pub struct ActionResult {
     pub steps: Vec<ActionStep>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+    #[serde(
+        default = "default_action_disposition",
+        deserialize_with = "deserialize_action_disposition"
+    )]
+    disposition: DeliverySemantics,
 }
 
 impl ActionResult {
-    pub fn new(action: impl Into<String>) -> Self {
+    pub fn satisfied_without_delivery(action: impl Into<String>) -> Self {
         Self {
             action: action.into(),
             post_state: None,
             steps: Vec::new(),
             details: None,
+            disposition: DeliverySemantics::not_delivered(),
+        }
+    }
+
+    pub fn delivered_unverified(action: impl Into<String>) -> Self {
+        Self {
+            action: action.into(),
+            post_state: None,
+            steps: Vec::new(),
+            details: None,
+            disposition: default_action_disposition(),
         }
     }
 
@@ -36,4 +52,38 @@ impl ActionResult {
         self.details = Some(details);
         self
     }
+
+    pub fn with_verified_delivery(mut self) -> Self {
+        if self.disposition == DeliverySemantics::delivered_unverified() {
+            self.disposition = DeliverySemantics::delivered_verified();
+        }
+        self
+    }
+
+    pub const fn disposition(&self) -> DeliverySemantics {
+        self.disposition
+    }
 }
+
+const fn default_action_disposition() -> DeliverySemantics {
+    DeliverySemantics::delivered_unverified()
+}
+
+fn deserialize_action_disposition<'de, D>(deserializer: D) -> Result<DeliverySemantics, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let disposition = DeliverySemantics::deserialize(deserializer)?;
+    match disposition {
+        DeliverySemantics::NotDelivered
+        | DeliverySemantics::DeliveredUnverified
+        | DeliverySemantics::DeliveredVerified => Ok(disposition),
+        _ => Err(serde::de::Error::custom(
+            "successful action result must represent satisfied or delivered work",
+        )),
+    }
+}
+
+#[cfg(test)]
+#[path = "action_result_tests.rs"]
+mod tests;

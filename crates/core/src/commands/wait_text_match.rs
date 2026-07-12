@@ -1,4 +1,4 @@
-use crate::{node::AccessibilityNode, search_text};
+use crate::{AccessibilityNode, search_text};
 
 pub(crate) struct TextMatch {
     pub ref_id: Option<String>,
@@ -48,14 +48,11 @@ mod tests {
         AccessibilityNode {
             ref_id: None,
             role: "group".into(),
-            name: Some(name.into()),
-            value: None,
-            description: None,
-            native_id: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
+            identity: crate::NodeIdentity {
+                name: Some(name.into()),
+                ..Default::default()
+            },
+            presentation: Default::default(),
             children_count: None,
             children,
         }

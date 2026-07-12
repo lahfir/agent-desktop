@@ -2,15 +2,16 @@ use crate::AdAdapter;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdModifier, AdMouseButton, AdMouseEvent, AdMouseEventKind};
-use agent_desktop_core::action::{
+use agent_desktop_core::{
     Modifier as CoreModifier, MouseButton as CoreMouseButton, MouseEvent as CoreMouseEvent,
     MouseEventKind as CoreMouseEventKind, Point as CorePoint,
 };
 
-/// Four modifier keys exist (`AdModifier::{Cmd, Ctrl, Alt, Shift}`), so a
+/// Four modifier keys exist (`AdModifier::{Meta, Ctrl, Alt, Shift}`), so a
 /// chord can name at most four. Anything larger must be bogus input — bail
 /// out instead of trusting it into `from_raw_parts`.
 const MAX_MOUSE_MODIFIERS: u32 = 4;
+const ALL_MODIFIER_BITS: u32 = 0b1111;
 
 pub(crate) fn mouse_button_from_c(b: AdMouseButton) -> CoreMouseButton {
     match b {
@@ -43,7 +44,7 @@ pub(crate) unsafe fn modifiers_from_c(
         for raw_modifier in slice {
             let m = AdModifier::from_c(*raw_modifier).ok_or("invalid modifier discriminant")?;
             out.push(match m {
-                AdModifier::Cmd => CoreModifier::Cmd,
+                AdModifier::Meta => CoreModifier::Meta,
                 AdModifier::Ctrl => CoreModifier::Ctrl,
                 AdModifier::Alt => CoreModifier::Alt,
                 AdModifier::Shift => CoreModifier::Shift,
@@ -51,6 +52,24 @@ pub(crate) unsafe fn modifiers_from_c(
         }
     }
     Ok(out)
+}
+
+fn modifiers_from_mask(mask: u32) -> Result<Vec<CoreModifier>, &'static str> {
+    if mask & !ALL_MODIFIER_BITS != 0 {
+        return Err("modifier mask contains unknown bits");
+    }
+    let mut modifiers = Vec::new();
+    for (bit, modifier) in [
+        (0, CoreModifier::Meta),
+        (1, CoreModifier::Ctrl),
+        (2, CoreModifier::Alt),
+        (3, CoreModifier::Shift),
+    ] {
+        if mask & (1 << bit) != 0 {
+            modifiers.push(modifier);
+        }
+    }
+    Ok(modifiers)
 }
 
 fn build_mouse_event(
@@ -65,14 +84,21 @@ fn build_mouse_event(
         x: ev.point.x,
         y: ev.point.y,
     };
+    point
+        .validate()
+        .map_err(|_| "mouse coordinates exceed supported geometry bounds")?;
     let button = mouse_button_from_c(validated_button);
     let kind = match validated_kind {
         AdMouseEventKind::Move => CoreMouseEventKind::Move,
         AdMouseEventKind::Down => CoreMouseEventKind::Down,
         AdMouseEventKind::Up => CoreMouseEventKind::Up,
-        AdMouseEventKind::Click => CoreMouseEventKind::Click {
-            count: ev.click_count,
-        },
+        AdMouseEventKind::Click => {
+            agent_desktop_core::validate_mouse_click_count(ev.click_count)
+                .map_err(|_| "click_count must be between 1 and 100")?;
+            CoreMouseEventKind::Click {
+                count: ev.click_count,
+            }
+        }
     };
     Ok(CoreMouseEvent {
         kind,
@@ -87,7 +113,7 @@ fn build_mouse_event(
 /// is `CLICK` (e.g., `click_count == 2` for a double-click). Callers that
 /// need headless policy enforcement should use ref actions with policy.
 /// Carries no modifier chord — use [`ad_mouse_event_with_modifiers`] for
-/// cmd/ctrl/alt/shift-held clicks.
+/// meta/ctrl/alt/shift-held clicks.
 ///
 /// # Safety
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -98,24 +124,22 @@ pub unsafe extern "C" fn ad_mouse_event(
     event: *const AdMouseEvent,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(event, c"event is null");
-        let adapter = &*adapter;
         let ev = &*event;
         let core_event = match build_mouse_event(ev, Vec::new()) {
             Ok(e) => e,
             Err(msg) => {
-                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                error::set_last_error(&agent_desktop_core::AdapterError::new(
+                    agent_desktop_core::ErrorCode::InvalidArgs,
                     msg,
                 ));
                 return AdResult::ErrInvalidArgs;
             }
         };
-        match adapter.inner.mouse_event(core_event) {
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
+        match adapter.inner.mouse_event(core_event, &lease) {
             Ok(()) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
@@ -126,7 +150,7 @@ pub unsafe extern "C" fn ad_mouse_event(
 }
 
 /// Additive counterpart to [`ad_mouse_event`] that also carries a held
-/// modifier chord (cmd/ctrl/alt/shift) — e.g. cmd-click for additive
+/// modifier chord (meta/ctrl/alt/shift) — e.g. Meta-click for additive
 /// selection, shift-click for range selection. `AdMouseEvent`'s layout is
 /// unchanged; modifiers travel as a separate array + count, mirroring
 /// `AdKeyCombo::modifiers`/`modifier_count`.
@@ -144,18 +168,14 @@ pub unsafe extern "C" fn ad_mouse_event_with_modifiers(
     modifier_count: u32,
 ) -> AdResult {
     trap_panic(|| unsafe {
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         crate::pointer_guard::guard_non_null!(event, c"event is null");
-        let adapter = &*adapter;
         let ev = &*event;
         let mods = match modifiers_from_c(modifiers, modifier_count) {
             Ok(m) => m,
             Err(msg) => {
-                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                error::set_last_error(&agent_desktop_core::AdapterError::new(
+                    agent_desktop_core::ErrorCode::InvalidArgs,
                     msg,
                 ));
                 return AdResult::ErrInvalidArgs;
@@ -164,17 +184,77 @@ pub unsafe extern "C" fn ad_mouse_event_with_modifiers(
         let core_event = match build_mouse_event(ev, mods) {
             Ok(e) => e,
             Err(msg) => {
-                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
+                error::set_last_error(&agent_desktop_core::AdapterError::new(
+                    agent_desktop_core::ErrorCode::InvalidArgs,
                     msg,
                 ));
                 return AdResult::ErrInvalidArgs;
             }
         };
-        match adapter.inner.mouse_event(core_event) {
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
+        match adapter.inner.mouse_event(core_event, &lease) {
             Ok(()) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
+                error::last_error_code()
+            }
+        }
+    })
+}
+
+/// Dispatches a physical wheel event using platform-neutral line deltas.
+/// Positive `delta_y` scrolls up and negative scrolls down; positive
+/// `delta_x` scrolls left and negative scrolls right. `modifier_mask` uses
+/// bits 0-3 for meta, ctrl, alt, and shift respectively.
+///
+/// # Safety
+/// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_mouse_wheel(
+    adapter: *const AdAdapter,
+    point: crate::types::AdPoint,
+    delta_x: f64,
+    delta_y: f64,
+    modifier_mask: u32,
+) -> AdResult {
+    trap_panic(|| {
+        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
+        let point = CorePoint {
+            x: point.x,
+            y: point.y,
+        };
+        if point.validate().is_err() || !delta_x.is_finite() || !delta_y.is_finite() {
+            let err = agent_desktop_core::AdapterError::new(
+                agent_desktop_core::ErrorCode::InvalidArgs,
+                "wheel coordinates and line deltas must be finite",
+            );
+            error::set_last_error(&err);
+            return AdResult::ErrInvalidArgs;
+        }
+        let modifiers = match modifiers_from_mask(modifier_mask) {
+            Ok(modifiers) => modifiers,
+            Err(message) => {
+                let err = agent_desktop_core::AdapterError::new(
+                    agent_desktop_core::ErrorCode::InvalidArgs,
+                    message,
+                );
+                error::set_last_error(&err);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let event = CoreMouseEvent {
+            kind: CoreMouseEventKind::Wheel { delta_x, delta_y },
+            point,
+            button: CoreMouseButton::Left,
+            modifiers,
+        };
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
+        match adapter.inner.mouse_event(event, &lease) {
+            Ok(()) => AdResult::Ok,
+            Err(err) => {
+                error::set_last_error(&err);
                 error::last_error_code()
             }
         }

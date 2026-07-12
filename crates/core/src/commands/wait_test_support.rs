@@ -3,11 +3,10 @@ use crate::commands::wait::{WaitArgs, WaitModeArgs, WaitPredicateArgs};
 use crate::commands::wait_element::{ElementWaitInput, wait_for_element};
 use crate::commands::wait_predicate;
 use crate::{
+    AdapterError, AppError, Rect,
     adapter::NativeHandle,
     context::CommandContext,
     element_state::ElementState,
-    error::{AdapterError, AppError},
-    node::Rect,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
 };
@@ -68,24 +67,74 @@ pub(super) struct PredicateAdapter {
 }
 
 impl ObservationOps for PredicateAdapter {
-    fn resolve_element_strict_with_timeout(
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::LiveElement, AdapterError> {
+        Ok(crate::LiveElement {
+            identity: crate::adapter::live_identity("Run"),
+            state: self.state.clone().unwrap_or_else(|| ElementState {
+                role: "button".into(),
+                states: Vec::new(),
+                value: self.value.clone(),
+                enabled: None,
+                hidden: None,
+                offscreen: None,
+            }),
+            states_complete: true,
+            bounds: self.bounds,
+            available_actions: vec![crate::capability::CLICK.into()],
+        })
+    }
+
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: std::time::Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+    fn get_live_state(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
         Ok(self.state.clone())
     }
 
-    fn get_live_value(&self, _handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
+    fn get_live_value(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<String>, AdapterError> {
         Ok(self.value.clone())
     }
 
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
         Ok(self.bounds)
+    }
+
+    fn get_live_actions(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        Ok(Some(vec![crate::capability::CLICK.into()]))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
+        Ok(crate::hit_test::HitTestResult::ReachesTarget)
     }
 }
 
@@ -114,23 +163,37 @@ pub(super) fn save_ref_in_session(session_id: &str, states: Vec<String>) -> Stri
 fn save_ref_in_store(store: RefStore, states: Vec<String>) -> String {
     let mut refmap = RefMap::new();
     refmap.allocate(RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states,
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["Click".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Run".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states,
+            available_actions: vec!["Click".into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     store.save_new_snapshot(&refmap).unwrap()
 }

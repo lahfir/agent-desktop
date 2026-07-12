@@ -114,6 +114,6 @@ The process is self-documenting: the failing assert names the struct and the exp
 
 ## Related
 
-- `best-practices/keep-ffi-action-policy-aligned-with-cli-2026-05-12.md` — the behavioral-parity companion; this doc is the structural-parity half of the same FFI review discipline
-- `best-practices/playwright-grade-desktop-reliability-2026-06-02.md` — "FFI and CLI divergence makes language bindings less reliable" is the motivation the pins serve
-- `best-practices/deterministic-build-artifact-marker-2026-04-16.md` — records that the header is a hand-committed ABI contract, the discipline these pins extend
+- [Keep FFI action policy aligned with CLI action policy](keep-ffi-action-policy-aligned-with-cli-2026-05-12.md) — the behavioral-parity companion; this document is the structural-parity half of the same FFI review discipline.
+- [Playwright-grade desktop reliability contract](playwright-grade-desktop-reliability-2026-06-02.md) — ABI pins prevent bindings from silently diverging from the reliability contract.
+- The committed `crates/ffi/include/agent_desktop.h`, its generated header checks, and the Rust layout tests are the current source of truth; this repository intentionally does not use a Cargo build-artifact marker for header generation.

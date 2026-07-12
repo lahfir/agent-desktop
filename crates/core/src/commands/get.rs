@@ -1,8 +1,8 @@
 use crate::{
+    AppError,
     adapter::{PlatformAdapter, optional_live_read},
     commands::helpers::resolve_ref_with_context,
     context::CommandContext,
-    error::AppError,
 };
 use serde_json::{Value, json};
 
@@ -28,20 +28,21 @@ pub fn execute(
 ) -> Result<Value, AppError> {
     let (entry, handle) =
         resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
+    let deadline = crate::Deadline::standard()?;
 
     let (prop_name, value) = match args.property {
-        GetProperty::Role => ("role", json!(entry.role)),
-        GetProperty::Title => ("title", json!(entry.name)),
+        GetProperty::Role => ("role", json!(entry.identity.role)),
+        GetProperty::Title => ("title", json!(entry.identity.name)),
         GetProperty::Text => {
-            let live = optional_live_read(adapter.get_live_value(handle.handle()))?;
-            ("text", json!(live.or(entry.value)))
+            let live = optional_live_read(adapter.get_live_value(&handle, deadline))?;
+            ("text", json!(live.or(entry.identity.value)))
         }
         GetProperty::Value => {
-            let live = optional_live_read(adapter.get_live_value(handle.handle()))?;
-            ("value", json!(live.or(entry.value)))
+            let live = optional_live_read(adapter.get_live_value(&handle, deadline))?;
+            ("value", json!(live.or(entry.identity.value)))
         }
-        GetProperty::Bounds => ("bounds", json!(entry.bounds)),
-        GetProperty::States => ("states", json!(entry.states)),
+        GetProperty::Bounds => ("bounds", json!(entry.geometry.bounds)),
+        GetProperty::States => ("states", json!(entry.capabilities.states)),
     };
 
     Ok(json!({ "property": prop_name, "ref": args.ref_id, "value": value }))

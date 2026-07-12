@@ -1,11 +1,7 @@
 use crate::{
-    error::AppError,
-    locator::{self, IdentityPredicate, LocatorQuery},
-    node::AccessibilityNode,
-    roles, search_text,
+    AccessibilityNode, AppError, IdentityPredicate, LocatorQuery, accessibility_node_matches,
+    search_text,
 };
-
-pub use locator::{LocatorQuery as FindQuery, StatePredicate};
 
 pub fn validate_selector(raw: &str) -> Result<LocatorQuery, AppError> {
     let query = parse_selector(raw);
@@ -26,7 +22,7 @@ pub fn parse_selector(raw: &str) -> LocatorQuery {
 
     let role = role_part
         .filter(|part| !part.is_empty())
-        .map(roles::normalize_role_query);
+        .map(str::to_string);
     let has_text = text_part
         .filter(|part| !part.is_empty())
         .map(search_text::normalize);
@@ -42,7 +38,7 @@ pub fn parse_selector(raw: &str) -> LocatorQuery {
 }
 
 pub fn node_matches(node: &AccessibilityNode, query: &LocatorQuery) -> bool {
-    locator::accessibility_node_matches(node, query)
+    accessibility_node_matches(node, query)
 }
 
 pub fn tree_has_match(tree: &AccessibilityNode, query: &LocatorQuery) -> bool {

@@ -1,110 +1,243 @@
 use agent_desktop_core::{
-    adapter::WindowFilter,
-    node::{AppInfo, WindowInfo},
+    AdapterError, AppInfo, ErrorCode, ProcessId, WindowInfo, adapter::WindowFilter,
 };
+use std::time::Instant;
 
 use crate::system::{process_apps, window_inventory, workspace_apps};
 
-pub(crate) fn list_apps() -> Vec<AppInfo> {
-    let visible = window_inventory::visible_apps();
-    let workspace = workspace_apps::list_apps();
-    let process = process_apps::list_apps();
-    tracing::debug!(
-        workspace_count = workspace.len(),
-        visible_count = visible.len(),
-        process_count = process.len(),
-        "system: app inventory sources"
-    );
-    let mut apps = list_apps_from_sources(workspace, visible, process);
-    if apps.is_empty() {
-        let fallback = window_inventory::visible_apps();
-        tracing::debug!(
-            fallback_count = fallback.len(),
-            "system: app inventory visible-window fallback"
-        );
-        merge_apps(&mut apps, fallback);
-    }
-    sort_apps(&mut apps);
-    apps
+pub(crate) fn list_apps_complete_until(deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
+    stabilize_apps_until(deadline, || capture_complete_apps(deadline))
 }
 
-pub(crate) fn list_windows(filter: &WindowFilter) -> Vec<WindowInfo> {
-    window_inventory::list_windows(filter, |app_name, visible_apps| {
-        app_for_name_from_sources(
-            app_name,
-            workspace_apps::list_apps(),
-            visible_apps,
-            process_apps::list_apps,
-        )
+pub(crate) fn list_apps_scoped_until(
+    name: &str,
+    bundle_id: Option<&str>,
+    deadline: Instant,
+) -> Result<Vec<AppInfo>, AdapterError> {
+    stabilize_apps_until(deadline, || capture_scoped_apps(name, bundle_id, deadline))
+}
+
+fn capture_complete_apps(deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
+    ensure_before_deadline(deadline)?;
+    let apps = complete_apps_from_sources(
+        workspace_apps::list_apps_until(deadline),
+        process_apps::list_apps_until(deadline),
+    )?;
+    ensure_before_deadline(deadline)?;
+    validate_app_instances(apps)
+}
+
+fn capture_scoped_apps(
+    name: &str,
+    bundle_id: Option<&str>,
+    deadline: Instant,
+) -> Result<Vec<AppInfo>, AdapterError> {
+    ensure_before_deadline(deadline)?;
+    let process = if bundle_id.is_none() {
+        process_apps::list_apps_scoped_until(name, deadline)
+    } else {
+        Ok(Vec::new())
+    };
+    let apps = complete_apps_from_sources(
+        workspace_apps::list_apps_scoped_until(name, bundle_id, deadline),
+        process,
+    )?;
+    ensure_before_deadline(deadline)?;
+    validate_app_instances(apps)
+}
+
+fn stabilize_apps_until(
+    deadline: Instant,
+    mut capture: impl FnMut() -> Result<Vec<AppInfo>, AdapterError>,
+) -> Result<Vec<AppInfo>, AdapterError> {
+    let mut previous: Option<Vec<AppInfo>> = None;
+    let mut attempts = 0_u64;
+    let mut churn_events = 0_u64;
+    let mut last_failure: Option<AdapterError> = None;
+    loop {
+        if Instant::now() >= deadline {
+            return Err(unstable_apps_error(
+                attempts,
+                churn_events,
+                last_failure.as_ref(),
+            ));
+        }
+        attempts += 1;
+        match capture() {
+            Ok(current) => {
+                if previous
+                    .as_ref()
+                    .is_some_and(|prior| app_signature(prior) == app_signature(&current))
+                {
+                    return Ok(current);
+                }
+                churn_events += u64::from(previous.is_some());
+                previous = Some(current);
+                last_failure = None;
+            }
+            Err(error) if retryable_inventory_error(&error) => {
+                churn_events += 1;
+                previous = None;
+                last_failure = Some(error);
+            }
+            Err(error) => return Err(error),
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if !remaining.is_zero() {
+            std::thread::sleep(remaining.min(std::time::Duration::from_millis(5)));
+        }
+    }
+}
+
+fn app_signature(apps: &[AppInfo]) -> Vec<(ProcessId, &str, Option<&str>, Option<&str>)> {
+    let mut signature = apps
+        .iter()
+        .map(|app| {
+            (
+                app.pid,
+                app.name.as_str(),
+                app.bundle_id.as_deref(),
+                app.process_instance.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+    signature.sort_unstable();
+    signature
+}
+
+fn retryable_inventory_error(error: &AdapterError) -> bool {
+    error.code == ErrorCode::AppUnresponsive && error.is_explicitly_retryable()
+}
+
+fn unstable_apps_error(
+    attempts: u64,
+    churn_events: u64,
+    last_failure: Option<&AdapterError>,
+) -> AdapterError {
+    AdapterError::timeout("macOS application inventory did not stabilize before the deadline")
+        .with_suggestion("Retry after application launches and exits settle")
+        .with_details(serde_json::json!({
+            "kind": "application_inventory_unstable",
+            "attempts": attempts,
+            "churn_events": churn_events,
+            "last_failure": last_failure.map(|error| &error.message),
+            "retryable": true,
+        }))
+}
+
+pub(crate) fn list_windows_until(
+    filter: &WindowFilter,
+    deadline: Instant,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    window_inventory::list_windows_until(filter, deadline)
+}
+
+fn complete_apps_from_sources(
+    workspace: Result<Vec<AppInfo>, AdapterError>,
+    process: Result<Vec<AppInfo>, AdapterError>,
+) -> Result<Vec<AppInfo>, AdapterError> {
+    let (workspace, process) = match (workspace, process) {
+        (Ok(workspace), Ok(process)) => (workspace, process),
+        (workspace, process) => return Err(required_sources_failed(&workspace, &process)),
+    };
+    let mut apps = Vec::new();
+    merge_apps(&mut apps, workspace)?;
+    merge_apps(&mut apps, process)?;
+    sort_apps(&mut apps);
+    Ok(apps)
+}
+
+fn required_sources_failed(
+    workspace: &Result<Vec<AppInfo>, AdapterError>,
+    process: &Result<Vec<AppInfo>, AdapterError>,
+) -> AdapterError {
+    let failures = [
+        source_failure("ns_workspace", workspace),
+        source_failure("ps", process),
+    ]
+    .into_iter()
+    .filter(|failure| !failure["code"].is_null())
+    .collect::<Vec<_>>();
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "A required macOS app inventory source failed",
+    )
+    .with_suggestion("Retry the event observation with a fresh complete inventory")
+    .with_details(serde_json::json!({
+        "kind": "inventory_sources",
+        "retryable": true,
+        "complete": false,
+        "failures": failures,
+    }))
+}
+
+fn source_failure(source: &str, result: &Result<Vec<AppInfo>, AdapterError>) -> serde_json::Value {
+    let error = result.as_ref().err();
+    serde_json::json!({
+        "source": source,
+        "code": error.map(|error| error.code.as_str()),
+        "message": error.map(|error| error.message.as_str()),
     })
 }
 
-pub(crate) fn pid_for_app_name(app_name: &str) -> Option<i32> {
-    app_for_name(app_name).map(|app| app.pid)
+fn ensure_before_deadline(deadline: Instant) -> Result<(), AdapterError> {
+    if Instant::now() >= deadline {
+        return Err(AdapterError::timeout("macOS app inventory timed out"));
+    }
+    Ok(())
 }
 
-pub(crate) fn pids_for_app_name(app_name: &str) -> Vec<i32> {
-    matching_pids(&list_apps(), app_name)
-}
-
-pub(crate) fn app_for_name(app_name: &str) -> Option<AppInfo> {
-    app_for_name_from_sources(
-        app_name,
-        workspace_apps::list_apps(),
-        &window_inventory::visible_apps(),
-        process_apps::list_apps,
-    )
-}
-
-fn app_for_name_from_sources(
-    app_name: &str,
-    workspace: Vec<AppInfo>,
-    visible: &[AppInfo],
-    process: impl FnOnce() -> Vec<AppInfo>,
-) -> Option<AppInfo> {
-    let primary = merge_primary_sources(workspace, visible.to_vec());
-    find_app_with_process_fallback(&primary, process, app_name)
-}
-
-fn list_apps_from_sources(
-    workspace: Vec<AppInfo>,
-    visible: Vec<AppInfo>,
-    process: Vec<AppInfo>,
-) -> Vec<AppInfo> {
-    let mut apps = merge_primary_sources(workspace, visible);
-    merge_apps(&mut apps, process);
-    apps
-}
-
-fn merge_primary_sources(workspace: Vec<AppInfo>, visible: Vec<AppInfo>) -> Vec<AppInfo> {
-    let mut apps = workspace;
-    merge_apps(&mut apps, visible);
-    apps
-}
-
-fn find_app_with_process_fallback(
-    primary: &[AppInfo],
-    process: impl FnOnce() -> Vec<AppInfo>,
-    app_name: &str,
-) -> Option<AppInfo> {
-    find_app_in_apps(primary, app_name).or_else(|| find_app_in_apps(&process(), app_name))
-}
-
-fn merge_apps(apps: &mut Vec<AppInfo>, incoming: Vec<AppInfo>) {
-    let mut seen_pids = apps
-        .iter()
-        .map(|app| app.pid)
-        .collect::<rustc_hash::FxHashSet<_>>();
-
+fn merge_apps(apps: &mut Vec<AppInfo>, incoming: Vec<AppInfo>) -> Result<(), AdapterError> {
     for app in incoming {
-        if seen_pids.insert(app.pid) {
-            apps.push(app);
-        } else if let Some(existing) = apps.iter_mut().find(|existing| existing.pid == app.pid) {
+        let incoming_instance = app.process_instance.as_deref().ok_or_else(|| {
+            incomplete_identity_error(app.pid, "source omitted the process instance token")
+        })?;
+        if let Some(existing) = apps.iter_mut().find(|existing| existing.pid == app.pid) {
+            if existing.process_instance.as_deref() != Some(incoming_instance) {
+                return Err(incomplete_identity_error(
+                    app.pid,
+                    "process instance changed between inventory sources",
+                ));
+            }
             if existing.bundle_id.is_none() {
                 existing.bundle_id = app.bundle_id;
             }
+        } else {
+            apps.push(app);
         }
     }
+    Ok(())
+}
+
+fn validate_app_instances(apps: Vec<AppInfo>) -> Result<Vec<AppInfo>, AdapterError> {
+    for app in &apps {
+        let captured = app.process_instance.as_deref().ok_or_else(|| {
+            incomplete_identity_error(app.pid, "inventory omitted the process instance token")
+        })?;
+        let pid = crate::system::process_identity::to_pid_t(app.pid)?;
+        if crate::system::process_identity::token_for_pid(pid)?.as_deref() != Some(captured) {
+            return Err(incomplete_identity_error(
+                app.pid,
+                "process instance changed before inventory completion",
+            ));
+        }
+    }
+    Ok(apps)
+}
+
+fn incomplete_identity_error(pid: ProcessId, phase: &str) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Application inventory changed while exact identity was being assembled",
+    )
+    .with_details(serde_json::json!({
+        "kind": "inventory_identity_race",
+        "pid": pid,
+        "phase": phase,
+        "complete": false,
+        "retryable": true,
+    }))
+    .with_suggestion("Retry after the application process list stabilizes")
 }
 
 fn sort_apps(apps: &mut [AppInfo]) {
@@ -116,13 +249,8 @@ fn sort_apps(apps: &mut [AppInfo]) {
     });
 }
 
-fn find_app_in_apps(apps: &[AppInfo], app_name: &str) -> Option<AppInfo> {
-    apps.iter()
-        .find(|app| app.name.eq_ignore_ascii_case(app_name))
-        .cloned()
-}
-
-fn matching_pids(apps: &[AppInfo], app_name: &str) -> Vec<i32> {
+#[cfg(test)]
+fn matching_pids(apps: &[AppInfo], app_name: &str) -> Vec<ProcessId> {
     let mut pids = apps
         .iter()
         .filter(|app| app.name.eq_ignore_ascii_case(app_name))

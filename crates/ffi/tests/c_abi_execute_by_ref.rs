@@ -1,8 +1,8 @@
 mod common;
 
 use common::{
-    AdResult, CStr, ad_execute_by_ref, ad_free_string, ad_last_error_code, default_action,
-    with_adapter,
+    AdResult, CStr, ad_execute_by_ref, ad_execute_by_ref_timeout, ad_free_string,
+    ad_last_error_code, ad_last_error_message, default_action, with_adapter,
 };
 
 #[test]
@@ -40,10 +40,7 @@ fn execute_by_ref_null_adapter_rejected() {
             0,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "null adapter must fail — got {rc:?} (ErrInternal on macOS off-main-thread is expected)"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on failure");
     }
 }
@@ -61,11 +58,27 @@ fn execute_by_ref_null_ref_id_returns_invalid_args() {
             0,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "null ref_id must fail — got {rc:?}"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on null ref_id");
+    });
+}
+
+#[test]
+fn execute_by_ref_bare_ref_requires_explicit_snapshot() {
+    with_adapter(|adapter| unsafe {
+        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let action = default_action();
+        let mut out = std::ptr::null_mut();
+        let result = ad_execute_by_ref(
+            adapter,
+            ref_id.as_ptr(),
+            std::ptr::null(),
+            &action,
+            0,
+            &mut out,
+        );
+        assert_eq!(result, AdResult::ErrInvalidArgs);
+        assert!(out.is_null());
     });
 }
 
@@ -83,10 +96,7 @@ fn execute_by_ref_invalid_utf8_ref_id_returns_invalid_args() {
             0,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "invalid UTF-8 ref_id must fail — got {rc:?}"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on invalid UTF-8 ref_id");
     });
 }
@@ -104,10 +114,7 @@ fn execute_by_ref_null_action_rejected() {
             0,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "null action must fail — got {rc:?}"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on null action");
     });
 }
@@ -126,10 +133,7 @@ fn execute_by_ref_invalid_ref_format_returns_invalid_args() {
             0,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "bad ref format must fail — got {rc:?}"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on bad ref format");
     });
 }
@@ -183,18 +187,63 @@ fn execute_by_ref_out_of_range_policy_returns_invalid_args() {
             99,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "out-of-range policy discriminant must fail — got {rc:?} \
-             (ErrInternal on macOS off-main-thread is expected)"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on invalid policy");
-        if rc == AdResult::ErrInvalidArgs {
-            assert_eq!(
-                ad_last_error_code(),
-                AdResult::ErrInvalidArgs,
-                "last-error code must reflect the invalid-args rejection"
+        assert_eq!(
+            ad_last_error_code(),
+            AdResult::ErrInvalidArgs,
+            "last-error code must reflect the invalid-args rejection"
+        );
+    });
+}
+
+#[test]
+fn execute_by_ref_timeout_rejects_values_below_default_sentinel_at_the_boundary() {
+    with_adapter(|adapter| unsafe {
+        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let action = default_action();
+        let mut out = std::ptr::null_mut();
+
+        let rc = ad_execute_by_ref_timeout(
+            adapter,
+            ref_id.as_ptr(),
+            std::ptr::null(),
+            &action,
+            0,
+            -2,
+            &mut out,
+        );
+
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
+        assert!(out.is_null());
+        let message = CStr::from_ptr(ad_last_error_message()).to_string_lossy();
+        assert!(message.contains("-1"));
+        assert!(message.contains("0"));
+    });
+}
+
+#[test]
+fn execute_by_ref_timeout_accepts_default_and_single_shot_sentinels_before_ref_validation() {
+    with_adapter(|adapter| unsafe {
+        let invalid_ref = std::ffi::CString::new("@e0").unwrap();
+        let action = default_action();
+        for timeout_ms in [-1, 0] {
+            let mut out = std::ptr::null_mut();
+            let rc = ad_execute_by_ref_timeout(
+                adapter,
+                invalid_ref.as_ptr(),
+                std::ptr::null(),
+                &action,
+                0,
+                timeout_ms,
+                &mut out,
             );
+
+            assert_eq!(rc, AdResult::ErrInvalidArgs);
+            assert!(out.is_null());
+            let message = CStr::from_ptr(ad_last_error_message()).to_string_lossy();
+            assert!(message.contains("ref"));
+            assert!(!message.contains("timeout_ms must"));
         }
     });
 }

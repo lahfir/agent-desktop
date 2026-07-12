@@ -1,0 +1,55 @@
+use std::path::PathBuf;
+
+use clap::Parser;
+
+use super::{Commands, post_action_wait::PostActionWaitArgs};
+
+const BEFORE_HELP: &str = include_str!("help_before.txt");
+const AFTER_HELP: &str = include_str!("help_after.txt");
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "agent-desktop",
+    version,
+    about = "Desktop automation CLI for AI agents",
+    long_about = None,
+    before_help = BEFORE_HELP,
+    after_help = AFTER_HELP,
+)]
+pub(crate) struct Cli {
+    #[arg(
+        long,
+        short = 'v',
+        global = true,
+        help = "Enable debug logging to stderr"
+    )]
+    pub verbose: bool,
+    #[arg(
+        long,
+        global = true,
+        help = "Select the latest-snapshot namespace; explicit --snapshot IDs do not require it"
+    )]
+    pub session: Option<String>,
+    #[arg(
+        long,
+        global = true,
+        help = "Append reliability trace JSONL to this path"
+    )]
+    pub trace: Option<PathBuf>,
+    #[arg(
+        long,
+        global = true,
+        help = "Fail on trace setup/pre-action write errors"
+    )]
+    pub trace_strict: bool,
+    #[arg(
+        long,
+        global = true,
+        help = "Permit cursor movement and focus stealing for physical input commands and fallbacks. Default is headless (AX-only, no cursor)."
+    )]
+    pub headed: bool,
+    #[command(flatten)]
+    pub post_action_wait: PostActionWaitArgs,
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}

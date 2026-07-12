@@ -1,7 +1,7 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::NativeHandle, error::AdapterError, node::Rect, refs::RefMap, refs_store::RefStore,
+    AdapterError, Rect, adapter::NativeHandle, refs::RefMap, refs_store::RefStore,
     refs_test_support::HomeGuard, state,
 };
 use std::sync::Mutex;
@@ -20,6 +20,9 @@ impl LiveStateAdapter {
                 role: "button".into(),
                 states,
                 value: None,
+                enabled: Some(true),
+                hidden: Some(false),
+                offscreen: Some(false),
             })),
             bounds: Mutex::new(Some(bounds)),
             bounds_supported: true,
@@ -38,18 +41,30 @@ impl LiveStateAdapter {
 }
 
 impl ObservationOps for LiveStateAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+    fn get_live_state(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
         if !self.state_supported {
             return Err(AdapterError::not_supported("get_live_state"));
         }
         Ok(self.state.lock().unwrap().clone())
     }
 
-    fn get_element_bounds(&self, _handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
         if !self.bounds_supported {
             return Err(AdapterError::not_supported("get_element_bounds"));
         }
@@ -71,23 +86,37 @@ fn save_entry(entry: RefEntry) -> String {
 
 fn entry(states: Vec<String>, value: Option<&str>, actions: Vec<&str>) -> RefEntry {
     RefEntry {
-        pid: 1,
-        role: "checkbox".into(),
-        name: Some("Target".into()),
-        value: value.map(str::to_string),
-        description: None,
-        native_id: None,
-        states,
-        bounds: None,
-        bounds_hash: None,
-        available_actions: actions.into_iter().map(str::to_string).collect(),
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "checkbox".into(),
+            name: Some("Target".into()),
+            value: value.map(str::to_string),
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states,
+            available_actions: actions.into_iter().map(str::to_string).collect(),
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -222,6 +251,9 @@ fn checked_uses_live_canonical_state() {
             role: "checkbox".into(),
             states: vec!["checked".into()],
             value: Some("1".into()),
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
         })),
         bounds: Mutex::new(None),
         bounds_supported: false,
@@ -323,50 +355,8 @@ fn basic_state_properties_use_live_state() {
     }
 }
 
-#[test]
-fn action_availability_makes_toggle_and_expand_applicable() {
-    let _guard = HomeGuard::new();
-    let snapshot_id = save_entry(RefEntry {
-        pid: 1,
-        role: "cell".into(),
-        name: Some("Disclosure".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["Check".into(), "Expand".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
-    });
-    let adapter = LiveStateAdapter {
-        state: Mutex::new(None),
-        bounds: Mutex::new(None),
-        bounds_supported: false,
-        state_supported: true,
-    };
-
-    for property in [IsProperty::Checked, IsProperty::Expanded] {
-        let result = execute(
-            IsArgs {
-                ref_id: "@e1".into(),
-                snapshot_id: Some(snapshot_id.clone()),
-                property,
-            },
-            &adapter,
-            &CommandContext::default(),
-        )
-        .unwrap();
-
-        assert_eq!(result["applicable"], true);
-    }
-}
+#[path = "is_check_applicability_tests.rs"]
+mod applicability_tests;
 
 #[path = "is_check_vocabulary_tests.rs"]
 mod vocabulary_tests;

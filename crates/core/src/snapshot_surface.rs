@@ -10,6 +10,18 @@ pub enum SnapshotSurface {
     Sheet,
     Popover,
     Alert,
+    Desktop,
+    Taskbar,
+    SystemTray,
+    QuickSettings,
+    NotificationCenter,
+    Toolbar,
+    Dock,
+    Spotlight,
+    MenuBarExtras,
+    SystemTrayOverflow,
+    StartMenu,
+    ActionCenter,
 }
 
 impl SnapshotSurface {
@@ -26,6 +38,18 @@ impl SnapshotSurface {
             Self::Sheet => "sheet",
             Self::Popover => "popover",
             Self::Alert => "alert",
+            Self::Desktop => "desktop",
+            Self::Taskbar => "taskbar",
+            Self::SystemTray => "system_tray",
+            Self::QuickSettings => "quick_settings",
+            Self::NotificationCenter => "notification_center",
+            Self::Toolbar => "toolbar",
+            Self::Dock => "dock",
+            Self::Spotlight => "spotlight",
+            Self::MenuBarExtras => "menu_bar_extras",
+            Self::SystemTrayOverflow => "system_tray_overflow",
+            Self::StartMenu => "start_menu",
+            Self::ActionCenter => "action_center",
         }
     }
 }

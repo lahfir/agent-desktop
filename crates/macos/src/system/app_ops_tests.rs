@@ -1,27 +1,4 @@
 use super::*;
-use agent_desktop_core::error::ErrorCode;
-
-#[test]
-fn osascript_quit_maps_automation_denial_to_perm_denied() {
-    let stderr =
-        "36:44: execution error: Not authorized to send Apple events to System Events. (-1743)";
-    let err = map_osascript_quit_error("TextEdit", stderr);
-
-    assert_eq!(err.code, ErrorCode::PermDenied);
-    assert!(err.suggestion.is_some());
-    assert!(
-        err.platform_detail
-            .as_ref()
-            .is_some_and(|d| d.contains("-1743"))
-    );
-}
-
-#[test]
-fn osascript_quit_keeps_action_failed_for_other_errors() {
-    let err = map_osascript_quit_error("TextEdit", "application isn't running");
-
-    assert_eq!(err.code, ErrorCode::ActionFailed);
-}
 
 #[test]
 fn protected_processes_match_display_and_bundle_forms() {
@@ -53,8 +30,23 @@ fn lookalike_names_containing_protected_substrings_stay_closable() {
 fn adapter_guard_refuses_protected_processes_with_the_cli_contract() {
     let err = ensure_not_protected("loginwindow").unwrap_err();
 
-    assert_eq!(err.code, agent_desktop_core::error::ErrorCode::InvalidArgs);
+    assert_eq!(err.code, agent_desktop_core::ErrorCode::InvalidArgs);
     assert!(err.message.contains("protected"));
     assert!(err.suggestion.is_some());
     assert!(ensure_not_protected("TextEdit").is_ok());
+}
+
+#[test]
+fn native_termination_rejection_does_not_blame_the_target_application() {
+    let error = termination_request_not_accepted("Fixture", 42, false);
+
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::ActionFailed);
+    assert!(
+        error
+            .message
+            .contains("native termination API did not accept")
+    );
+    assert!(!error.message.contains("App 'Fixture' rejected"));
+    assert_eq!(error.details.as_ref().unwrap()["pid"], 42);
+    assert_eq!(error.details.as_ref().unwrap()["force"], false);
 }

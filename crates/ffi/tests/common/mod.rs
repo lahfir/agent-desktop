@@ -4,22 +4,77 @@
 pub use agent_desktop_ffi::error::AdResult;
 pub use agent_desktop_ffi::{
     AdAction, AdActionResult, AdActionStep, AdAdapter, AdAppList, AdDirection, AdDragParams,
-    AdElementState, AdFindQuery, AdKeyCombo, AdNativeHandle, AdPoint, AdPolicyKind, AdRect,
-    AdRefEntry, AdScrollParams, AdWaitArgs, AdWindowInfo, AdWindowList,
+    AdElementState, AdExactRefEntry, AdExactSurfaceInfo, AdExactSurfaceList, AdExactWindowInfo,
+    AdExactWindowList, AdFindQuery, AdIdentifierKind, AdKeyCombo, AdNativeHandle,
+    AdNotificationActionRequest, AdNotificationIdentity, AdOptionalU64, AdOptionalUsize, AdPoint,
+    AdPolicyKind, AdRect, AdRefEntry, AdScrollParams, AdWaitArgs, AdWaitMode, AdWaitPredicate,
+    AdWaitScope, AdWaitSurfaceModes, AdWindowInfo, AdWindowList,
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU64, Ordering},
+};
+
+static HOME_LOCK: Mutex<()> = Mutex::new(());
+static HOME_ID: AtomicU64 = AtomicU64::new(1);
+
+struct IsolatedHome {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    path: std::path::PathBuf,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl IsolatedHome {
+    fn enter() -> Self {
+        let lock = HOME_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let id = HOME_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "agent-desktop-ffi-test-{}-{id}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).expect("create isolated FFI test HOME");
+        let previous = std::env::var_os("HOME");
+        unsafe { std::env::set_var("HOME", &path) };
+        Self {
+            _lock: lock,
+            path,
+            previous,
+        }
+    }
+}
+
+impl Drop for IsolatedHome {
+    fn drop(&mut self) {
+        match self.previous.as_ref() {
+            Some(previous) => unsafe { std::env::set_var("HOME", previous) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
 
 unsafe extern "C" {
     pub fn ad_abi_version() -> u32;
     pub fn ad_init(expected_major: u32) -> AdResult;
     pub fn ad_version(out: *mut *mut c_char) -> AdResult;
     pub fn ad_free_string(s: *mut c_char);
+    pub fn ad_notification_action(
+        adapter: *const AdAdapter,
+        request: *const AdNotificationActionRequest,
+        out: *mut AdActionResult,
+    ) -> AdResult;
     pub fn ad_set_log_callback(
         cb: Option<unsafe extern "C" fn(level: i32, msg: *const c_char)>,
     ) -> AdResult;
 
     pub fn ad_ref_entry_size() -> usize;
+    pub fn ad_exact_ref_entry_size() -> usize;
+    pub fn ad_exact_surface_info_size() -> usize;
+    pub fn ad_exact_window_info_size() -> usize;
     pub fn ad_action_size() -> usize;
     pub fn ad_action_step_size() -> usize;
     pub fn ad_action_result_size() -> usize;
@@ -45,6 +100,9 @@ unsafe extern "C" {
     pub fn ad_app_list_count(list: *const AdAppList) -> u32;
     pub fn ad_app_list_get(list: *const AdAppList, index: u32) -> *const u8;
     pub fn ad_app_list_free(list: *mut AdAppList);
+    pub fn ad_get_clipboard(adapter: *const AdAdapter, out: *mut *mut c_char) -> AdResult;
+    pub fn ad_set_clipboard(adapter: *const AdAdapter, text: *const c_char) -> AdResult;
+    pub fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResult;
 
     pub fn ad_list_windows(
         adapter: *const AdAdapter,
@@ -54,6 +112,29 @@ unsafe extern "C" {
     ) -> AdResult;
     pub fn ad_window_list_count(list: *const AdWindowList) -> u32;
     pub fn ad_window_list_free(list: *mut AdWindowList);
+    pub fn ad_list_windows_exact(
+        adapter: *const AdAdapter,
+        app_filter: *const c_char,
+        focused_only: bool,
+        out: *mut *mut AdExactWindowList,
+    ) -> AdResult;
+    pub fn ad_exact_window_list_count(list: *const AdExactWindowList) -> u32;
+    pub fn ad_exact_window_list_get(
+        list: *const AdExactWindowList,
+        index: u32,
+    ) -> *const AdExactWindowInfo;
+    pub fn ad_exact_window_list_free(list: *mut AdExactWindowList);
+    pub fn ad_list_surfaces_exact(
+        adapter: *const AdAdapter,
+        pid: u32,
+        out: *mut *mut AdExactSurfaceList,
+    ) -> AdResult;
+    pub fn ad_exact_surface_list_count(list: *const AdExactSurfaceList) -> u32;
+    pub fn ad_exact_surface_list_get(
+        list: *const AdExactSurfaceList,
+        index: u32,
+    ) -> *const AdExactSurfaceInfo;
+    pub fn ad_exact_surface_list_free(list: *mut AdExactSurfaceList);
 
     pub fn ad_launch_app(
         adapter: *const AdAdapter,
@@ -98,6 +179,11 @@ unsafe extern "C" {
         entry: *const AdRefEntry,
         out: *mut AdNativeHandle,
     ) -> AdResult;
+    pub fn ad_resolve_element_exact(
+        adapter: *const AdAdapter,
+        entry: *const AdExactRefEntry,
+        out: *mut AdNativeHandle,
+    ) -> AdResult;
 
     pub fn ad_snapshot(
         adapter: *const AdAdapter,
@@ -118,10 +204,20 @@ unsafe extern "C" {
         policy: i32,
         out: *mut *mut c_char,
     ) -> AdResult;
+    pub fn ad_execute_by_ref_timeout(
+        adapter: *const AdAdapter,
+        ref_id: *const c_char,
+        snapshot_id: *const c_char,
+        action: *const AdAction,
+        policy: i32,
+        timeout_ms: i64,
+        out: *mut *mut c_char,
+    ) -> AdResult;
 
 }
 
 pub fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
+    let _home = IsolatedHome::enter();
     unsafe {
         let adapter = ad_adapter_create();
         assert!(!adapter.is_null(), "ad_adapter_create must not return null");
@@ -130,36 +226,20 @@ pub fn with_adapter<F: FnOnce(*mut AdAdapter)>(body: F) {
     }
 }
 
+pub fn with_isolated_home<F: FnOnce()>(body: F) {
+    let _home = IsolatedHome::enter();
+    body();
+}
+
 pub fn default_ref_entry() -> AdRefEntry {
-    AdRefEntry {
-        pid: 0,
-        role: std::ptr::null(),
-        name: std::ptr::null(),
-        value: std::ptr::null(),
-        description: std::ptr::null(),
-        native_id: std::ptr::null(),
-        states: std::ptr::null(),
-        state_count: 0,
-        available_actions: std::ptr::null(),
-        available_action_count: 0,
-        bounds: AdRect {
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 0.0,
-        },
-        has_bounds: false,
-        bounds_hash: 0,
-        has_bounds_hash: false,
-        source_app: std::ptr::null(),
-        source_window_id: std::ptr::null(),
-        source_window_title: std::ptr::null(),
-        source_surface: 0,
-        root_ref: std::ptr::null(),
-        path_is_absolute: false,
-        path: std::ptr::null(),
-        path_count: 0,
-    }
+    unsafe { std::mem::zeroed() }
+}
+
+pub fn default_exact_ref_entry() -> AdExactRefEntry {
+    let mut entry: AdExactRefEntry = unsafe { std::mem::zeroed() };
+    entry.version = 1;
+    entry.size = std::mem::size_of::<AdExactRefEntry>() as u32;
+    entry
 }
 
 pub fn default_action() -> AdAction {

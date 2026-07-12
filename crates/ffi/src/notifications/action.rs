@@ -1,11 +1,9 @@
 use crate::AdAdapter;
 use crate::actions::result::action_result_to_c;
-use crate::convert::string::{c_to_string, decode_optional_filter};
+use crate::convert::string::required_adapter_string;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
-use crate::types::AdActionResult;
-use agent_desktop_core::notification::NotificationIdentity;
-use std::os::raw::c_char;
+use crate::types::{AdActionResult, AdNotificationActionRequest, AdPolicyKind};
 
 /// Triggers the named action on the notification at `index`. Typical
 /// action names are those reported in `AdNotificationInfo.actions`
@@ -20,61 +18,76 @@ use std::os::raw::c_char;
 /// press the action button on a different notification than the host
 /// intended.
 ///
-/// `expected_app` and `expected_title` let the host pin the targeted
-/// notification to an observed fingerprint. If either pointer is
-/// non-null, the row currently at `index` must match that field or the
-/// call fails closed with `AD_RESULT_ERR_NOTIFICATION_NOT_FOUND`. Both
-/// null preserves the legacy index-only behavior for hosts that do
-/// their own reconciliation.
+/// `request.identity` pins the target to an observed fingerprint. At least one
+/// identity field is required; a mismatch fails closed with
+/// `AD_RESULT_ERR_NOTIFICATION_NOT_FOUND`.
 ///
 /// # Safety
-/// `adapter` must be valid. `action_name` must be a non-null UTF-8
-/// C string. `expected_app` and `expected_title` must each be null
-/// or a NUL-terminated UTF-8 C string. Invalid UTF-8 in either field
+/// `adapter` and `request` must be valid. `request.action_name` must be a
+/// non-null UTF-8 C string. Identity fields must each be null or a
+/// NUL-terminated UTF-8 C string. Invalid UTF-8 in either field
 /// is rejected with `AD_RESULT_ERR_INVALID_ARGS` rather than silently
 /// treated as "no fingerprint". `out` must be a valid writable
 /// `*mut AdActionResult`; on error it is zero-initialized.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_notification_action(
     adapter: *const AdAdapter,
-    index: u32,
-    expected_app: *const c_char,
-    expected_title: *const c_char,
-    action_name: *const c_char,
+    request: *const AdNotificationActionRequest,
     out: *mut AdActionResult,
 ) -> AdResult {
     trap_panic(|| unsafe {
         crate::pointer_guard::guard_non_null!(out, c"out is null");
         *out = std::mem::zeroed();
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        let adapter = &*adapter;
-        let action = match c_to_string(action_name) {
-            Some(s) => s,
+        crate::pointer_guard::guard_non_null!(request, c"request is null");
+        let request = &*request;
+        let index = match super::index::notification_index(request.index) {
+            Ok(index) => index,
+            Err(error) => {
+                set_last_error(&error);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let action = match required_adapter_string(request.action_name, "action_name") {
+            Ok(action) => action,
+            Err(error) => {
+                set_last_error(&error);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let identity = match super::identity::decode(request.identity.app, request.identity.title) {
+            Ok(identity) => identity,
+            Err(error) => {
+                set_last_error(&error);
+                return AdResult::ErrInvalidArgs;
+            }
+        };
+        let policy = match AdPolicyKind::from_c(request.policy) {
+            Some(policy) => policy.to_interaction_policy(),
             None => {
-                set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    "action_name is null or invalid UTF-8",
+                set_last_error(&agent_desktop_core::AdapterError::new(
+                    agent_desktop_core::ErrorCode::InvalidArgs,
+                    "Invalid notification action policy",
                 ));
                 return AdResult::ErrInvalidArgs;
             }
         };
-        let expected_app = decode_optional_filter!(expected_app, "expected_app");
-        let expected_title = decode_optional_filter!(expected_title, "expected_title");
-        let identity = if expected_app.is_some() || expected_title.is_some() {
-            Some(NotificationIdentity {
-                expected_app,
-                expected_title,
-            })
-        } else {
-            None
+        if !policy.allow_focus_steal {
+            set_last_error(&agent_desktop_core::AdapterError::policy_denied_for_policy(
+                "Notification actions open and focus the operating system notification surface",
+                policy,
+            ));
+            return crate::error::last_error_code();
+        }
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
+        let request = agent_desktop_core::NotificationActionRequest {
+            index,
+            identity: &identity,
+            action_name: &action,
+            policy,
         };
-        match adapter
-            .inner
-            .notification_action(index as usize, identity.as_ref(), &action)
-        {
+        match adapter.inner.notification_action(request, &lease) {
             Ok(result) => {
                 *out = action_result_to_c(&result);
                 AdResult::Ok

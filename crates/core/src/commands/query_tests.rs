@@ -1,18 +1,16 @@
 use super::*;
-use crate::{locator::IdentityPredicate, node::AccessibilityNode, search_text};
+use crate::{AccessibilityNode, IdentityPredicate, LocatorQuery, search_text};
 
 fn node(role: &str, name: Option<&str>, value: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
         ref_id: None,
         role: role.into(),
-        name: name.map(String::from),
-        value: value.map(String::from),
-        description: None,
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: name.map(String::from),
+            value: value.map(String::from),
+            ..Default::default()
+        },
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
     }
@@ -71,12 +69,12 @@ fn parse_selector_splits_on_first_colon_only() {
 #[test]
 fn find_query_without_text_never_calls_contains_with_empty_needle() {
     let root = node("button", Some("Save"), None);
-    let query = FindQuery {
+    let query = LocatorQuery {
         identity: IdentityPredicate {
             role: Some("button".into()),
             ..IdentityPredicate::default()
         },
-        ..FindQuery::default()
+        ..LocatorQuery::default()
     };
     assert!(tree_has_match(&root, &query));
 }
@@ -85,13 +83,13 @@ fn find_query_without_text_never_calls_contains_with_empty_needle() {
 fn tree_has_match_finds_nested_node() {
     let mut root = node("window", None, None);
     root.children.push(node("button", Some("Submit"), None));
-    let query = FindQuery {
+    let query = LocatorQuery {
         identity: IdentityPredicate {
             role: Some("button".into()),
             ..IdentityPredicate::default()
         },
         has_text: Some(search_text::normalize("submit")),
-        ..FindQuery::default()
+        ..LocatorQuery::default()
     };
     assert!(tree_has_match(&root, &query));
 }

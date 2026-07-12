@@ -1,3 +1,5 @@
+use crate::ImageFormat;
+
 #[derive(Debug)]
 pub struct ImageBuffer {
     pub data: Vec<u8>,
@@ -7,61 +9,82 @@ pub struct ImageBuffer {
     pub scale_factor: f64,
 }
 
-#[derive(Debug)]
-pub enum ImageFormat {
-    Png,
-    Jpg,
-}
+pub const MAX_PNG_INPUT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_PNG_PIXELS: u64 = 64 * 1024 * 1024;
+const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+const PNG_HEADER_BYTES: usize = 33;
 
-impl ImageFormat {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ImageFormat::Png => "png",
-            ImageFormat::Jpg => "jpg",
-        }
-    }
-}
-
-const PNG_SIGNATURE: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-const PNG_IHDR_CHUNK_TYPE: &[u8; 4] = b"IHDR";
-
-/// Reads width/height from a PNG's `IHDR` chunk, validating the 8-byte PNG
-/// signature and the `IHDR` chunk type before trusting the byte offsets.
-/// Returns `None` for anything that is not a well-formed PNG header,
-/// including truncated buffers.
 pub fn parse_png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
-    if data.len() < 24 {
+    if data.len() < PNG_HEADER_BYTES || data.len() > MAX_PNG_INPUT_BYTES {
         return None;
     }
-    if data[0..8] != PNG_SIGNATURE {
+    if data.get(..PNG_SIGNATURE.len())? != PNG_SIGNATURE {
         return None;
     }
-    if &data[12..16] != PNG_IHDR_CHUNK_TYPE {
+    if read_u32(data, 8)? != 13 || data.get(12..16)? != b"IHDR" {
         return None;
     }
-    let width = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-    let height = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
-    Some((width, height))
+    let width = read_u32(data, 16)?;
+    let height = read_u32(data, 20)?;
+    let depth = *data.get(24)?;
+    let color = *data.get(25)?;
+    valid_png_header(width, height, depth, color, data.get(26..29)?).then_some((width, height))
+}
+
+fn read_u32(data: &[u8], offset: usize) -> Option<u32> {
+    Some(u32::from_be_bytes(
+        data.get(offset..offset.checked_add(4)?)?.try_into().ok()?,
+    ))
+}
+
+fn valid_png_header(width: u32, height: u32, depth: u8, color: u8, tail: &[u8]) -> bool {
+    let valid_depth = match color {
+        0 => matches!(depth, 1 | 2 | 4 | 8 | 16),
+        2 | 4 | 6 => matches!(depth, 8 | 16),
+        3 => matches!(depth, 1 | 2 | 4 | 8),
+        _ => false,
+    };
+    let pixels = u64::from(width).checked_mul(u64::from(height));
+    width > 0
+        && height > 0
+        && pixels.is_some_and(|pixels| pixels <= MAX_PNG_PIXELS)
+        && valid_depth
+        && matches!(tail, [0, 0, 0 | 1])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn valid_png_header(width: u32, height: u32) -> Vec<u8> {
-        let mut bytes = PNG_SIGNATURE.to_vec();
-        bytes.extend_from_slice(&[0, 0, 0, 13]);
-        bytes.extend_from_slice(PNG_IHDR_CHUNK_TYPE);
-        bytes.extend_from_slice(&width.to_be_bytes());
-        bytes.extend_from_slice(&height.to_be_bytes());
-        bytes
+    fn one_pixel_png() -> Vec<u8> {
+        vec![
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 4, 0, 0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 100, 248, 15,
+            0, 1, 5, 1, 1, 39, 24, 227, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+        ]
     }
 
     #[test]
-    fn parses_dimensions_from_valid_png_header() {
-        let bytes = valid_png_header(640, 480);
+    fn decodes_valid_png_before_returning_dimensions() {
+        let bytes = one_pixel_png();
 
-        assert_eq!(parse_png_dimensions(&bytes), Some((640, 480)));
+        assert_eq!(parse_png_dimensions(&bytes), Some((1, 1)));
+    }
+
+    #[test]
+    fn accepts_adam7_interlaced_png_header() {
+        let mut bytes = one_pixel_png();
+        bytes[28] = 1;
+
+        assert_eq!(parse_png_dimensions(&bytes), Some((1, 1)));
+    }
+
+    #[test]
+    fn rejects_unknown_png_interlace_method() {
+        let mut bytes = one_pixel_png();
+        bytes[28] = 2;
+
+        assert_eq!(parse_png_dimensions(&bytes), None);
     }
 
     #[test]
@@ -71,17 +94,24 @@ mod tests {
 
     #[test]
     fn rejects_buffer_with_wrong_signature() {
-        let mut bytes = valid_png_header(640, 480);
+        let mut bytes = one_pixel_png();
         bytes[0] = 0x00;
 
         assert_eq!(parse_png_dimensions(&bytes), None);
     }
 
     #[test]
-    fn rejects_buffer_with_wrong_chunk_type() {
-        let mut bytes = valid_png_header(640, 480);
-        bytes[12..16].copy_from_slice(b"IDAT");
+    fn metadata_parse_does_not_duplicate_platform_payload_validation() {
+        let mut bytes = one_pixel_png();
+        bytes[45] ^= 0xff;
 
-        assert_eq!(parse_png_dimensions(&bytes), None);
+        assert_eq!(parse_png_dimensions(&bytes), Some((1, 1)));
+    }
+
+    #[test]
+    fn rejects_header_only_png() {
+        let bytes = one_pixel_png();
+
+        assert_eq!(parse_png_dimensions(&bytes[..24]), None);
     }
 }

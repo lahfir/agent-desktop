@@ -1,13 +1,11 @@
 use super::*;
-use crate::refs_lock::RefStoreLock;
 use crate::refs_test_support::HomeGuard;
 use crate::session::{ArtifactsMode, SessionTraceMode};
 use std::fs;
 
 #[test]
-fn resolve_prefers_explicit_over_env_and_pointer() {
+fn resolve_prefers_explicit_over_env() {
     let _guard = HomeGuard::new();
-    write_current_session_pointer("pointer").unwrap();
     unsafe { std::env::set_var("AGENT_DESKTOP_SESSION", "env-session") };
     let resolved = resolve_active_session(Some("explicit"), None).unwrap();
     assert_eq!(resolved.as_deref(), Some("explicit"));
@@ -15,9 +13,8 @@ fn resolve_prefers_explicit_over_env_and_pointer() {
 }
 
 #[test]
-fn resolve_prefers_env_over_pointer() {
+fn resolve_uses_env_without_explicit_session() {
     let _guard = HomeGuard::new();
-    write_current_session_pointer("pointer").unwrap();
     unsafe { std::env::set_var("AGENT_DESKTOP_SESSION", "env-session") };
     let resolved = resolve_active_session(None, Some("env-session")).unwrap();
     assert_eq!(resolved.as_deref(), Some("env-session"));
@@ -25,11 +22,10 @@ fn resolve_prefers_env_over_pointer() {
 }
 
 #[test]
-fn resolve_falls_back_to_pointer() {
+fn resolve_does_not_infer_an_active_session() {
     let _guard = HomeGuard::new();
-    write_current_session_pointer("pointer").unwrap();
     let resolved = resolve_active_session(None, None).unwrap();
-    assert_eq!(resolved.as_deref(), Some("pointer"));
+    assert!(resolved.is_none());
 }
 
 #[test]
@@ -62,62 +58,47 @@ fn validate_session_name_rejects_control_chars() {
 }
 
 #[test]
-fn start_creates_tree_manifest_and_pointer() {
+fn start_creates_tree_and_manifest() {
     let _guard = HomeGuard::new();
     let manifest = start_session(StartSessionOptions {
         name: Some("demo".into()),
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
     assert!(session_dir(&manifest.id).unwrap().join("trace").is_dir());
-    assert_eq!(
-        read_current_session_pointer().unwrap().as_deref(),
-        Some(manifest.id.as_str())
-    );
+    assert_eq!(read_manifest(&manifest.id).unwrap().unwrap(), manifest);
 }
 
 #[test]
-fn start_refuses_live_pointer_without_force() {
+fn start_allows_concurrent_explicit_sessions() {
     let _guard = HomeGuard::new();
     let first = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
-    let _lock = RefStoreLock::acquire(
-        &crate::refs_store::RefStore::for_session(Some(&first.id))
-            .unwrap()
-            .base_dir()
-            .join("refstore.lock"),
-    )
-    .unwrap();
-    let err = start_session(StartSessionOptions {
+    let second = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
-    .unwrap_err();
-    assert_eq!(err.code(), "INVALID_ARGS");
+    .unwrap();
+    assert_ne!(first.id, second.id);
 }
 
 #[test]
-fn end_seals_manifest_and_clears_pointer() {
+fn end_seals_the_explicit_manifest() {
     let _guard = HomeGuard::new();
-    let _manifest = start_session(StartSessionOptions {
+    let manifest = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
-    let ended = end_session(None).unwrap();
+    let ended = end_session(&manifest.id).unwrap();
     assert!(ended.ended_at.is_some());
-    assert!(read_current_session_pointer().unwrap().is_none());
 }
 
 #[test]
@@ -126,7 +107,6 @@ fn list_reports_manifest_fields_only() {
     let manifest = start_session(StartSessionOptions {
         name: Some("listed".into()),
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
@@ -141,7 +121,6 @@ fn trace_enabled_requires_manifest_on() {
     let manifest = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: false,
         ..Default::default()
     })
     .unwrap();
@@ -161,7 +140,6 @@ fn corrupt_manifest_is_ignored_not_fatal() {
     let good = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: true,
         ..Default::default()
     })
     .unwrap();
@@ -176,34 +154,21 @@ fn corrupt_manifest_is_ignored_not_fatal() {
 }
 
 #[test]
-fn start_with_force_overrides_live_pointer() {
+fn multiple_starts_remain_independent() {
     let _guard = HomeGuard::new();
     let first = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
-    .unwrap();
-    let _lock = RefStoreLock::acquire(
-        &crate::refs_store::RefStore::for_session(Some(&first.id))
-            .unwrap()
-            .base_dir()
-            .join("refstore.lock"),
-    )
     .unwrap();
     let second = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: true,
         ..Default::default()
     })
     .unwrap();
     assert_ne!(first.id, second.id);
-    assert_eq!(
-        read_current_session_pointer().unwrap().as_deref(),
-        Some(second.id.as_str())
-    );
 }
 
 #[test]
@@ -212,12 +177,11 @@ fn trace_enabled_false_once_session_ended() {
     let manifest = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
     assert!(trace_enabled_for_session(&manifest.id).unwrap());
-    end_session(Some(&manifest.id)).unwrap();
+    end_session(&manifest.id).unwrap();
     assert!(!trace_enabled_for_session(&manifest.id).unwrap());
 }
 
@@ -254,6 +218,11 @@ fn legacy_manifest_without_artifacts_defaults_to_events() {
         r#"{"id":"legacy","created_at":1,"trace":"on"}"#,
     )
     .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir.join("session.json"), fs::Permissions::from_mode(0o600)).unwrap();
+    }
     let manifest = read_manifest("legacy").unwrap().expect("manifest");
     assert_eq!(manifest.artifacts, ArtifactsMode::Events);
 }
@@ -279,7 +248,7 @@ fn ended_session_reports_artifacts_full_false() {
     })
     .unwrap();
     assert!(manifest.artifacts_full());
-    end_session(Some(&manifest.id)).unwrap();
+    end_session(&manifest.id).unwrap();
     let ended = read_manifest(&manifest.id).unwrap().expect("manifest");
     assert!(!ended.artifacts_full());
 }
@@ -291,7 +260,6 @@ fn symlinked_manifest_is_ignored_not_fatal() {
     let good = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: true,
         ..Default::default()
     })
     .unwrap();
@@ -309,12 +277,16 @@ fn symlinked_manifest_is_ignored_not_fatal() {
 
 #[cfg(unix)]
 #[test]
-fn symlinked_session_pointer_degrades_to_none() {
+fn legacy_pointer_symlink_does_not_activate_a_session() {
     let _guard = HomeGuard::new();
     let target = agent_desktop_dir().unwrap().join("pointer-target");
     fs::create_dir_all(target.parent().unwrap()).unwrap();
     fs::write(&target, b"whatever").unwrap();
-    std::os::unix::fs::symlink(&target, current_session_path().unwrap()).unwrap();
+    std::os::unix::fs::symlink(
+        &target,
+        agent_desktop_dir().unwrap().join("current_session"),
+    )
+    .unwrap();
 
-    assert!(read_current_session_pointer().unwrap().is_none());
+    assert!(resolve_active_session(None, None).unwrap().is_none());
 }

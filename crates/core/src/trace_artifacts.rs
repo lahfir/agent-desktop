@@ -1,128 +1,26 @@
 use crate::{
+    AppError,
     adapter::{PlatformAdapter, ScreenshotTarget},
     context::CommandContext,
-    error::AppError,
-    refs::{RefMap, is_symlink, open_nofollow, write_private_file},
+    refs::{RefEntry, RefMap, is_symlink},
     refs_store::RefStore,
     trace::{ensure_trace_dir, process_start_ms},
 };
 use serde_json::json;
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
-const SCREENSHOT_BYTE_BUDGET: u64 = 128 * 1024 * 1024;
-const SCREENSHOT_COUNT_BUDGET: u32 = 200;
-const REFMAP_BYTE_BUDGET: u64 = 64 * 1024 * 1024;
-
-// ponytail: per-process budget ceiling — a long multi-invocation session can exceed the intended per-session disk cap; session-scoped accounting (persisted counter under the refstore lock) is deferred to the Phase 4 daemon.
 static CAPTURE_SEQ: AtomicU32 = AtomicU32::new(0);
-static SCREENSHOT_BYTES_USED: AtomicU64 = AtomicU64::new(0);
-static SCREENSHOT_COUNT_USED: AtomicU32 = AtomicU32::new(0);
-static REFMAP_BYTES_USED: AtomicU64 = AtomicU64::new(0);
-
-#[cfg(test)]
-#[derive(Clone, Copy)]
-struct LocalBudget {
-    screenshot_bytes: u64,
-    screenshot_count: u32,
-    refmap_bytes: u64,
-    screenshot_bytes_used: u64,
-    screenshot_count_used: u32,
-    refmap_bytes_used: u64,
-}
-
-#[cfg(test)]
-thread_local! {
-    static LOCAL_BUDGET: std::cell::RefCell<Option<LocalBudget>> = const { std::cell::RefCell::new(None) };
-}
+const MAX_EMBED_SCREENSHOT_BYTES: u64 = 128 * 1024 * 1024;
 
 #[cfg(test)]
 pub(crate) fn set_test_budgets(screenshot_bytes: u64, screenshot_count: u32, refmap_bytes: u64) {
-    LOCAL_BUDGET.with(|cell| {
-        *cell.borrow_mut() = Some(LocalBudget {
-            screenshot_bytes,
-            screenshot_count,
-            refmap_bytes,
-            screenshot_bytes_used: 0,
-            screenshot_count_used: 0,
-            refmap_bytes_used: 0,
-        });
-    });
+    crate::trace_artifact_budget::set_test_limits(screenshot_bytes, screenshot_count, refmap_bytes);
 }
 
 #[cfg(test)]
 pub(crate) fn clear_test_budgets() {
-    LOCAL_BUDGET.with(|cell| {
-        *cell.borrow_mut() = None;
-    });
-}
-
-#[cfg(test)]
-fn reserve_screenshot_local(byte_len: u64) -> Option<Result<(), &'static str>> {
-    let mut local = LOCAL_BUDGET.with(|cell| *cell.borrow())?;
-    if local.screenshot_count_used >= local.screenshot_count {
-        return Some(Err("count_budget"));
-    }
-    if local.screenshot_bytes_used.saturating_add(byte_len) > local.screenshot_bytes {
-        return Some(Err("budget"));
-    }
-    local.screenshot_count_used += 1;
-    local.screenshot_bytes_used = local.screenshot_bytes_used.saturating_add(byte_len);
-    LOCAL_BUDGET.with(|cell| *cell.borrow_mut() = Some(local));
-    Some(Ok(()))
-}
-
-#[cfg(test)]
-fn reserve_refmap_local(byte_len: u64) -> Option<Result<(), &'static str>> {
-    let mut local = LOCAL_BUDGET.with(|cell| *cell.borrow())?;
-    if local.refmap_bytes_used.saturating_add(byte_len) > local.refmap_bytes {
-        return Some(Err("budget"));
-    }
-    local.refmap_bytes_used = local.refmap_bytes_used.saturating_add(byte_len);
-    LOCAL_BUDGET.with(|cell| *cell.borrow_mut() = Some(local));
-    Some(Ok(()))
-}
-
-fn reserve_atomic_bytes(used: &AtomicU64, limit: u64, byte_len: u64) -> Result<(), &'static str> {
-    used.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |cur| {
-        let next = cur.saturating_add(byte_len);
-        if next > limit { None } else { Some(next) }
-    })
-    .map(|_| ())
-    .map_err(|_| "budget")
-}
-
-fn reserve_atomic_count(used: &AtomicU32, limit: u32) -> Result<(), &'static str> {
-    used.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |cur| {
-        let next = cur.saturating_add(1);
-        if next > limit { None } else { Some(next) }
-    })
-    .map(|_| ())
-    .map_err(|_| "count_budget")
-}
-
-fn reserve_screenshot(byte_len: u64) -> Result<(), &'static str> {
-    #[cfg(test)]
-    if let Some(result) = reserve_screenshot_local(byte_len) {
-        return result;
-    }
-    reserve_atomic_count(&SCREENSHOT_COUNT_USED, SCREENSHOT_COUNT_BUDGET)?;
-    if let Err(reason) =
-        reserve_atomic_bytes(&SCREENSHOT_BYTES_USED, SCREENSHOT_BYTE_BUDGET, byte_len)
-    {
-        SCREENSHOT_COUNT_USED.fetch_sub(1, Ordering::Relaxed);
-        return Err(reason);
-    }
-    Ok(())
-}
-
-fn reserve_refmap(byte_len: u64) -> Result<(), &'static str> {
-    #[cfg(test)]
-    if let Some(result) = reserve_refmap_local(byte_len) {
-        return result;
-    }
-    reserve_atomic_bytes(&REFMAP_BYTES_USED, REFMAP_BYTE_BUDGET, byte_len)
+    crate::trace_artifact_budget::clear_test_limits();
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,12 +56,32 @@ fn relative_to_trace(trace_dir: &Path, path: &Path) -> String {
 pub(crate) fn capture_action_screenshot(
     context: &CommandContext,
     adapter: &dyn PlatformAdapter,
-    pid: i32,
+    entry: &RefEntry,
     phase: &str,
+    deadline: crate::Deadline,
 ) -> ArtifactOutcome {
     if !artifacts_enabled(context) {
         return ArtifactOutcome::Skipped("disabled".into());
     }
+    if deadline.is_expired() {
+        return ArtifactOutcome::Skipped("deadline".into());
+    }
+    let Some(window_id) = entry
+        .source
+        .source_window_id
+        .as_deref()
+        .filter(|window_id| !window_id.is_empty())
+    else {
+        return ArtifactOutcome::Skipped("exact_target_unavailable".into());
+    };
+    let Some(process_instance) = entry
+        .process
+        .process_instance
+        .as_deref()
+        .filter(|instance| !instance.is_empty())
+    else {
+        return ArtifactOutcome::Skipped("exact_target_unavailable".into());
+    };
     let Some(trace_dir) = session_trace_dir(context) else {
         return ArtifactOutcome::Skipped("no_session".into());
     };
@@ -172,22 +90,37 @@ pub(crate) fn capture_action_screenshot(
         return ArtifactOutcome::Skipped(format!("dir: {err}"));
     }
 
-    let buf = match adapter.screenshot(ScreenshotTarget::Window(pid)) {
+    let target = crate::WindowInfo {
+        id: window_id.into(),
+        title: entry.source.source_window_title.clone().unwrap_or_default(),
+        app: entry.source.source_app.clone().unwrap_or_default(),
+        pid: entry.process.pid,
+        process_instance: Some(process_instance.into()),
+        bounds: None,
+        state: crate::WindowState {
+            is_focused: false,
+            ..Default::default()
+        },
+    };
+    let buf = match adapter.screenshot(ScreenshotTarget::ExactWindow(target), deadline) {
         Ok(buf) => buf,
         Err(err) => {
             return ArtifactOutcome::Skipped(format!("adapter: {}", err.code.as_str()));
         }
     };
-    let byte_len = buf.data.len() as u64;
-    if let Err(reason) = reserve_screenshot(byte_len) {
-        return ArtifactOutcome::Skipped(reason.into());
-    }
-
     let seq = CAPTURE_SEQ.fetch_add(1, Ordering::Relaxed);
-    let filename = format!("{}-{}-{}-{}.png", pid, process_start_ms(), seq, phase);
+    let filename = format!(
+        "{}-{}-{}-{}.png",
+        entry.process.pid,
+        process_start_ms(),
+        seq,
+        phase
+    );
     let path = screens.join(&filename);
-    if write_private_file(&path, &buf.data).is_err() {
-        return ArtifactOutcome::Skipped("write_failed".into());
+    if let Err(reason) =
+        crate::trace_artifact_budget::write_screenshot(&trace_dir, &path, &buf.data)
+    {
+        return ArtifactOutcome::Skipped(reason.into());
     }
     ArtifactOutcome::Captured(relative_to_trace(&trace_dir, &path))
 }
@@ -208,9 +141,6 @@ pub(crate) fn copy_refmap_if_full(
         return Ok(());
     }
     let dest = refmaps.join(format!("{snapshot_id}.json"));
-    if dest.is_file() {
-        return Ok(());
-    }
     let json = match refmap.serialize_with_size_check() {
         Ok(json) => json,
         Err(err) => {
@@ -218,15 +148,15 @@ pub(crate) fn copy_refmap_if_full(
             return Ok(());
         }
     };
-    let byte_len = json.len() as u64;
-    if reserve_refmap(byte_len).is_err() {
+    if crate::trace_artifact_budget::write_refmap_if_absent(&trace_dir, &dest, json.as_bytes())
+        .is_err()
+    {
         let _ = context.trace_lazy(
             "action.artifacts.refmap_skipped",
             || json!({ "snapshot_id": snapshot_id }),
         );
         return Ok(());
     }
-    let _ = write_private_file(&dest, json.as_bytes());
     Ok(())
 }
 
@@ -296,10 +226,7 @@ pub(crate) fn resolve_screenshot_path(trace_dir: &Path, relative: &str) -> Optio
 
 pub(crate) fn read_screenshot_for_embed(trace_dir: &Path, relative: &str) -> Option<Vec<u8>> {
     let path = resolve_screenshot_path(trace_dir, relative)?;
-    let mut file = open_nofollow(&path).ok()?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).ok()?;
-    Some(bytes)
+    crate::private_file::read_private_bounded(&path, MAX_EMBED_SCREENSHOT_BYTES).ok()
 }
 
 #[cfg(test)]
@@ -309,3 +236,7 @@ mod tests;
 #[cfg(test)]
 #[path = "trace_artifacts_more_tests.rs"]
 mod more_tests;
+
+#[cfg(test)]
+#[path = "trace_artifacts_toctou_tests.rs"]
+mod toctou_tests;

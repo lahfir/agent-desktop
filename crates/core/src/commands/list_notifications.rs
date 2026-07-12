@@ -1,4 +1,4 @@
-use crate::{adapter::PlatformAdapter, error::AppError, notification::NotificationFilter};
+use crate::{AppError, NotificationFilter, adapter::PlatformAdapter};
 use serde_json::{Value, json};
 
 pub struct ListNotificationsArgs {
@@ -16,7 +16,7 @@ pub fn execute(
         text: args.text,
         limit: args.limit,
     };
-    let notifications = adapter.list_notifications(&filter)?;
+    let notifications = adapter.list_notifications(&filter, crate::Deadline::standard()?)?;
     Ok(json!({
         "count": notifications.len(),
         "notifications": notifications,

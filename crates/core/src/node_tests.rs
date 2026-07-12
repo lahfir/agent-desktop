@@ -22,14 +22,11 @@ fn test_children_count_omitted_when_none() {
     let node = AccessibilityNode {
         ref_id: None,
         role: "group".into(),
-        name: Some("Sidebar".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: Some("Sidebar".into()),
+            ..Default::default()
+        },
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
     };
@@ -42,14 +39,11 @@ fn test_children_count_present_when_set() {
     let node = AccessibilityNode {
         ref_id: None,
         role: "group".into(),
-        name: Some("Sidebar".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: Some("Sidebar".into()),
+            ..Default::default()
+        },
+        presentation: Default::default(),
         children_count: Some(47),
         children: vec![],
     };
@@ -85,8 +79,9 @@ fn test_rect_normal_roundtrip() {
 fn app_info_bundle_id_none_omitted_from_json() {
     let info = AppInfo {
         name: "Finder".into(),
-        pid: 42,
+        pid: crate::ProcessId::new(42),
         bundle_id: None,
+        process_instance: Some("test-instance".into()),
     };
     let json = serde_json::to_string(&info).unwrap();
     assert!(
@@ -100,8 +95,9 @@ fn app_info_bundle_id_none_omitted_from_json() {
 fn app_info_bundle_id_some_present_in_json() {
     let info = AppInfo {
         name: "Safari".into(),
-        pid: 7,
+        pid: crate::ProcessId::new(7),
         bundle_id: Some("com.apple.Safari".into()),
+        process_instance: Some("test-instance".into()),
     };
     let json = serde_json::to_string(&info).unwrap();
     assert!(
@@ -116,8 +112,9 @@ fn app_info_bundle_id_some_present_in_json() {
 fn app_info_roundtrip_preserves_all_fields() {
     let original = AppInfo {
         name: "TextEdit".into(),
-        pid: 1234,
+        pid: crate::ProcessId::new(1234),
         bundle_id: Some("com.apple.TextEdit".into()),
+        process_instance: Some("test-instance".into()),
     };
     let json = serde_json::to_string(&original).unwrap();
     let back: AppInfo = serde_json::from_str(&json).unwrap();
@@ -147,14 +144,11 @@ fn accessibility_node_bounds_none_omitted_from_json() {
     let node = AccessibilityNode {
         ref_id: None,
         role: "button".into(),
-        name: Some("OK".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: Some("OK".into()),
+            ..Default::default()
+        },
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
     };
@@ -172,14 +166,8 @@ fn accessibility_node_hint_none_omitted_from_json() {
     let node = AccessibilityNode {
         ref_id: None,
         role: "textfield".into(),
-        name: None,
-        value: None,
-        description: None,
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: Default::default(),
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
     };

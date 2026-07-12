@@ -1,5 +1,5 @@
 use crate::{
-    action::Action, action_request::ActionRequest, error::AppError,
+    AdapterError, AppError, SignalBaseline, action::Action, action_request::ActionRequest,
     interaction_policy::InteractionPolicy, session, trace::TraceConfig,
 };
 use serde_json::{Value, json};
@@ -12,8 +12,9 @@ pub struct CommandContext {
     session_id: Option<String>,
     trace: TraceConfig,
     artifacts_full: bool,
-    headed: bool,
+    interaction_policy: InteractionPolicy,
     wait_selector: Option<WaitSelector>,
+    event_baseline: Option<Result<SignalBaseline, AdapterError>>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,23 +35,27 @@ pub struct WaitSelector {
 pub struct CommandScope<'a> {
     context: &'a CommandContext,
     command: &'static str,
+    success_disposition: crate::DeliverySemantics,
     started: Instant,
     finished: Cell<bool>,
 }
 
 impl CommandScope<'_> {
-    pub fn complete(self, result: &Result<Value, AppError>) {
+    pub fn complete(self, result: &Result<Value, AppError>) -> Result<(), AppError> {
         self.finished.set(true);
-        match result {
-            Ok(_) => self.emit_end(true, None, None),
-            Err(err) => {
-                let message = err.to_string();
-                self.emit_end(false, Some(err.code()), Some(message.as_str()));
-            }
-        }
+        let emitted = match result {
+            Ok(_) => self.emit_end(true, None),
+            Err(err) => self.emit_end(false, Some(err.code())),
+        };
+        emitted.map_err(|error| {
+            trace_error_with_disposition(
+                error,
+                result_disposition(result, self.success_disposition),
+            )
+        })
     }
 
-    fn emit_end(&self, ok: bool, code: Option<&str>, message: Option<&str>) {
+    fn emit_end(&self, ok: bool, code: Option<&str>) -> Result<(), AppError> {
         let mut fields = json!({
             "command": self.command,
             "ok": ok,
@@ -59,10 +64,7 @@ impl CommandScope<'_> {
         if let Some(code) = code {
             fields["code"] = json!(code);
         }
-        if let Some(message) = message {
-            fields["message"] = json!(message);
-        }
-        let _ = self.context.trace("command.end", fields);
+        self.context.trace("command.end", fields)
     }
 }
 
@@ -71,11 +73,7 @@ impl Drop for CommandScope<'_> {
         if self.finished.get() {
             return;
         }
-        self.emit_end(
-            false,
-            Some("INTERNAL"),
-            Some("command scope dropped without completion"),
-        );
+        let _ = self.emit_end(false, Some("INTERNAL"));
     }
 }
 
@@ -94,13 +92,23 @@ impl CommandContext {
             session_id,
             trace: TraceConfig::build(trace_path, segment_dir, trace_strict)?,
             artifacts_full,
-            headed: false,
+            interaction_policy: InteractionPolicy::headless(),
             wait_selector: None,
+            event_baseline: None,
         })
     }
 
     pub fn with_headed(mut self, headed: bool) -> Self {
-        self.headed = headed;
+        self.interaction_policy = if headed {
+            InteractionPolicy::headed()
+        } else {
+            InteractionPolicy::headless()
+        };
+        self
+    }
+
+    pub fn with_interaction_policy(mut self, policy: InteractionPolicy) -> Self {
+        self.interaction_policy = policy;
         self
     }
 
@@ -113,14 +121,48 @@ impl CommandContext {
         self.wait_selector.as_ref()
     }
 
-    pub fn command_scope(&self, command: &'static str) -> CommandScope<'_> {
-        let _ = self.trace("command.start", json!({ "command": command }));
-        CommandScope {
+    pub fn with_event_baseline(
+        mut self,
+        baseline: Option<Result<SignalBaseline, AdapterError>>,
+    ) -> Self {
+        self.event_baseline = baseline;
+        self
+    }
+
+    pub fn event_baseline(&self) -> Option<&Result<SignalBaseline, AdapterError>> {
+        self.event_baseline.as_ref()
+    }
+
+    pub fn command_scope(&self, command: &'static str) -> Result<CommandScope<'_>, AppError> {
+        self.command_scope_with_disposition(command, crate::DeliverySemantics::not_delivered())
+    }
+
+    pub fn mutating_command_scope(
+        &self,
+        command: &'static str,
+    ) -> Result<CommandScope<'_>, AppError> {
+        self.command_scope_with_disposition(
+            command,
+            crate::DeliverySemantics::delivered_unverified(),
+        )
+    }
+
+    fn command_scope_with_disposition(
+        &self,
+        command: &'static str,
+        success_disposition: crate::DeliverySemantics,
+    ) -> Result<CommandScope<'_>, AppError> {
+        self.trace("command.start", json!({ "command": command }))
+            .map_err(|error| {
+                trace_error_with_disposition(error, crate::DeliverySemantics::not_delivered())
+            })?;
+        Ok(CommandScope {
             context: self,
             command,
+            success_disposition,
             started: Instant::now(),
             finished: Cell::new(false),
-        }
+        })
     }
 
     pub fn request(&self, action: Action, base: InteractionPolicy) -> ActionRequest {
@@ -128,6 +170,8 @@ impl CommandContext {
             action,
             policy: self.policy_with_base(base),
             timeout_ms: None,
+            verified_point: None,
+            expected_process: None,
         }
     }
 
@@ -141,11 +185,7 @@ impl CommandContext {
     }
 
     fn policy_with_base(&self, base: InteractionPolicy) -> InteractionPolicy {
-        if self.headed {
-            InteractionPolicy::headed()
-        } else {
-            base
-        }
+        base.join(self.interaction_policy)
     }
 
     pub fn for_batch_item(&self, session_id: Option<String>) -> Result<Self, AppError> {
@@ -168,8 +208,9 @@ impl CommandContext {
             session_id,
             trace,
             artifacts_full,
-            headed: self.headed,
+            interaction_policy: self.interaction_policy,
             wait_selector: None,
+            event_baseline: None,
         })
     }
 
@@ -193,6 +234,32 @@ impl CommandContext {
     pub fn artifacts_full(&self) -> bool {
         self.artifacts_full
     }
+}
+
+fn result_disposition(
+    result: &Result<Value, AppError>,
+    success_fallback: crate::DeliverySemantics,
+) -> crate::DeliverySemantics {
+    match result {
+        Ok(value) => value
+            .get("disposition")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or(success_fallback),
+        Err(AppError::Adapter(error)) => error.disposition,
+        Err(_) => crate::DeliverySemantics::unknown(),
+    }
+}
+
+pub(crate) fn trace_error_with_disposition(
+    error: AppError,
+    disposition: crate::DeliverySemantics,
+) -> AppError {
+    let adapter_error = match error {
+        AppError::Adapter(error) => error,
+        other => crate::AdapterError::internal(other.to_string()),
+    };
+    AppError::Adapter(adapter_error.with_disposition(disposition))
 }
 
 fn session_trace_state(

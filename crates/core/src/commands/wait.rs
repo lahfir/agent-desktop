@@ -1,14 +1,13 @@
 use crate::{
+    AppError, ErrorCode, NotificationFilter, NotificationInfo,
     adapter::{PlatformAdapter, WindowFilter},
     commands::{
-        helpers::resolve_app_pid,
+        helpers::resolve_app,
         wait_element::{ElementWaitInput, wait_for_element},
         wait_mode::WaitMode,
         wait_text_match, wait_timeout,
     },
     context::CommandContext,
-    error::{AppError, ErrorCode},
-    notification::{NotificationFilter, NotificationInfo},
     refs_store::RefStore,
     search_text,
     snapshot::{self, emit_snapshot_saved},
@@ -58,7 +57,7 @@ pub fn execute(
     let timeout_ms = args.timeout_ms;
     match WaitMode::from_args(args)? {
         WaitMode::Sleep(ms) => {
-            std::thread::sleep(Duration::from_millis(ms));
+            std::thread::sleep(crate::wait_timeout_duration(ms)?);
             Ok(json!({ "waited_ms": ms }))
         }
         WaitMode::Menu { app, open } => wait_for_menu(app, open, timeout_ms, adapter),
@@ -96,12 +95,15 @@ pub fn execute(
             window_id,
             window_title,
         } => crate::commands::wait_event::wait_for_event(
-            &event,
-            app,
-            window_id,
-            window_title,
-            timeout_ms,
+            crate::commands::wait_event_input::EventWaitInput {
+                event,
+                app,
+                window_id,
+                window_title,
+                timeout_ms,
+            },
             adapter,
+            context.event_baseline().cloned(),
         ),
     }
 }
@@ -112,10 +114,15 @@ fn wait_for_menu(
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
-    let pid = resolve_app_pid(app.as_deref(), adapter)?;
     let start = Instant::now();
+    let deadline = crate::Deadline::at(start, timeout_ms)?;
+    let target = resolve_app(app.as_deref(), adapter, deadline)?;
     adapter
-        .wait_for_menu(pid, open, timeout_ms)
+        .wait_for_menu(
+            crate::commands::helpers::process_identity(&target)?,
+            open,
+            deadline,
+        )
         .map_err(AppError::Adapter)?;
     let elapsed = start.elapsed().as_millis();
     Ok(json!({ "found": true, "elapsed_ms": elapsed }))
@@ -127,7 +134,7 @@ fn wait_for_window(
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
     let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
+    let deadline = crate::Deadline::at(start, timeout_ms)?;
     let filter = WindowFilter {
         focused_only: false,
         app: None,
@@ -135,7 +142,10 @@ fn wait_for_window(
     let mut last_error = None;
 
     loop {
-        match adapter.list_windows(&filter) {
+        if deadline.is_expired() {
+            return wait_timeout::window(&title, timeout_ms, last_error);
+        }
+        match adapter.list_windows(&filter, deadline) {
             Ok(windows) => {
                 if let Some(win) = windows.into_iter().find(|w| w.title.contains(&title)) {
                     let elapsed = start.elapsed().as_millis();
@@ -151,7 +161,7 @@ fn wait_for_window(
             Err(err) => return Err(AppError::Adapter(err)),
         }
 
-        let remaining = timeout.saturating_sub(start.elapsed());
+        let remaining = deadline.remaining();
         if remaining.is_zero() {
             return wait_timeout::window(&title, timeout_ms, last_error);
         }
@@ -179,15 +189,18 @@ fn wait_for_text(
         timeout_ms,
     } = input;
     let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
+    let deadline = crate::Deadline::at(start, timeout_ms)?;
     let opts = crate::adapter::TreeOptions::default();
     let normalized_text = search_text::normalize(&text);
     let mut interval = Duration::from_millis(200);
     let mut last_error = None;
 
     loop {
-        match snapshot::build(adapter, &opts, app.as_deref(), None) {
-            Ok(result) => {
+        if deadline.is_expired() {
+            return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
+        }
+        match snapshot::build(adapter, &opts, app.as_deref(), None, deadline) {
+            Ok(mut result) => {
                 let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
                 let matched = expected_count
                     .map(|expected| matches.len() == expected)
@@ -201,13 +214,16 @@ fn wait_for_text(
                         &snapshot_id,
                         &result.refmap,
                     )?;
+                    result.bind_snapshot_id(snapshot_id.clone());
                     emit_snapshot_saved(context, &result)?;
                     let elapsed = start.elapsed().as_millis();
                     let found = matches.first();
                     let mut body = json!({
                         "found": true,
                         "text": text,
-                        "ref": found.and_then(|found| found.ref_id.clone()),
+                        "ref": found
+                            .and_then(|found| found.ref_id.as_deref())
+                            .map(|ref_id| crate::ref_token::qualify_ref_id(&snapshot_id, ref_id)),
                         "role": found.map(|found| found.role.clone()),
                         "snapshot_id": snapshot_id,
                         "elapsed_ms": elapsed
@@ -227,7 +243,7 @@ fn wait_for_text(
             Err(err) => return Err(err),
         }
 
-        let remaining = timeout.saturating_sub(start.elapsed());
+        let remaining = deadline.remaining();
         if remaining.is_zero() {
             return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
         }
@@ -257,12 +273,15 @@ fn wait_for_notification(
         ..Default::default()
     };
     let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
+    let deadline = crate::Deadline::at(start, timeout_ms)?;
     let mut baseline: Option<std::collections::HashMap<NotificationFingerprint, usize>> = None;
     let mut last_error = None;
 
     loop {
-        match adapter.list_notifications(&filter) {
+        if deadline.is_expired() {
+            return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
+        }
+        match adapter.list_notifications(&filter, deadline) {
             Ok(current) => match &baseline {
                 None => {
                     baseline = Some(notification_counts(&current));
@@ -288,7 +307,7 @@ fn wait_for_notification(
             Err(err) => return Err(AppError::Adapter(err)),
         }
 
-        let remaining = timeout.saturating_sub(start.elapsed());
+        let remaining = deadline.remaining();
         if remaining.is_zero() {
             return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
         }

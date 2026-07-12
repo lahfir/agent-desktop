@@ -8,10 +8,9 @@ use std::ptr;
 
 /// Lists the notifications currently on-screen.
 ///
-/// Notification indexes are only stable within a single list response.
-/// Pass them straight to `ad_dismiss_notification` /
-/// `ad_notification_action` without caching across ticks — the adapter
-/// re-queries Notification Center internally on every call.
+/// Notification indexes are only stable within a single list response. Pass
+/// the entry's app or title fingerprint to the checked mutation functions;
+/// index-only mutations are rejected.
 ///
 /// # Safety
 /// `adapter` must be valid. `filter` may be null. `out` must be a valid
@@ -26,11 +25,7 @@ pub unsafe extern "C" fn ad_list_notifications(
     trap_panic(|| unsafe {
         crate::pointer_guard::guard_non_null!(out, c"out is null");
         *out = ptr::null_mut();
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        let adapter = &*adapter;
         let core_filter = match filter_from_c(filter) {
             Ok(f) => f,
             Err(e) => {
@@ -38,8 +33,16 @@ pub unsafe extern "C" fn ad_list_notifications(
                 return crate::error::last_error_code();
             }
         };
-        match adapter.inner.list_notifications(&core_filter) {
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        let deadline = crate::operation::operation_deadline!();
+        match adapter.inner.list_notifications(&core_filter, deadline) {
             Ok(notifications) => {
+                if let Err(error) =
+                    crate::resource::validate_list_len(notifications.len(), "Notification list")
+                {
+                    set_last_error(&error);
+                    return crate::error::last_error_code();
+                }
                 let items: Vec<AdNotificationInfo> =
                     notifications.iter().map(notification_info_to_c).collect();
                 let list = Box::new(AdNotificationList {

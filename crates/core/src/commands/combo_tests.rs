@@ -1,18 +1,18 @@
 use super::parse_combo;
-use crate::action::Modifier;
+use crate::Modifier;
 
 #[test]
 fn parse_combo_single_modifier_and_key() {
     let combo = parse_combo("cmd+k").expect("cmd+k is valid");
     assert_eq!(combo.key, "k");
-    assert_eq!(combo.modifiers, vec![Modifier::Cmd]);
+    assert_eq!(combo.modifiers, vec![Modifier::Meta]);
 }
 
 #[test]
 fn parse_combo_two_modifiers_preserved_in_declaration_order() {
     let combo = parse_combo("cmd+shift+t").expect("cmd+shift+t is valid");
     assert_eq!(combo.key, "t");
-    assert_eq!(combo.modifiers, vec![Modifier::Cmd, Modifier::Shift]);
+    assert_eq!(combo.modifiers, vec![Modifier::Meta, Modifier::Shift]);
 }
 
 #[test]
@@ -25,7 +25,10 @@ fn parse_combo_bare_key_yields_empty_modifier_list() {
 #[test]
 fn parse_combo_accepts_long_form_modifier_aliases() {
     let cmd = parse_combo("command+a").expect("command alias");
-    assert_eq!(cmd.modifiers, vec![Modifier::Cmd]);
+    assert_eq!(cmd.modifiers, vec![Modifier::Meta]);
+
+    let meta = parse_combo("meta+a").expect("portable meta name");
+    assert_eq!(meta.modifiers, vec![Modifier::Meta]);
 
     let alt = parse_combo("option+x").expect("option alias");
     assert_eq!(alt.modifiers, vec![Modifier::Alt]);
@@ -58,5 +61,5 @@ fn parse_combo_key_is_preserved_verbatim_without_lowercasing() {
         combo.key, "K",
         "parse_combo must NOT lowercase the key — normalization is the caller's responsibility"
     );
-    assert_eq!(combo.modifiers, vec![Modifier::Cmd]);
+    assert_eq!(combo.modifiers, vec![Modifier::Meta]);
 }

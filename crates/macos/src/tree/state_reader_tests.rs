@@ -1,26 +1,14 @@
 use super::*;
-use crate::tree::node_attrs::{NodeAttrStates, NodeAttrs};
-use agent_desktop_core::node::Rect;
+use crate::tree::{node_attr_states::NodeAttrStates, node_attrs::NodeAttrs};
+use agent_desktop_core::Rect;
 
 fn sample_attrs() -> NodeAttrs {
     NodeAttrs {
         role: Some("AXCheckBox".into()),
-        title: None,
-        description: None,
+        subrole: None,
         value: Some("2".into()),
-        native_id: None,
-        states: NodeAttrStates {
-            enabled: true,
-            focused: None,
-            expanded: None,
-            disclosing: None,
-            selected: None,
-            hidden: None,
-            busy: None,
-            modal: None,
-            required: None,
-            readonly: None,
-        },
+        name_evidence: agent_desktop_core::NameEvidence::default(),
+        states: NodeAttrStates::default(),
         bounds: Some(Rect {
             x: 0.0,
             y: 0.0,
@@ -52,7 +40,7 @@ fn mixed_checkbox_emits_indeterminate_not_checked() {
 #[test]
 fn hidden_attr_emits_hidden_token() {
     let mut attrs = sample_attrs();
-    attrs.states.hidden = Some(true);
+    attrs.states.semantic.hidden = Some(true);
     let ctx = ctx_with(None, false);
     let el = AXElement(std::ptr::null_mut());
     let states = states_from_element(&el, &attrs, "button", &ctx);
@@ -80,16 +68,6 @@ fn clipped_bounds_emit_offscreen() {
     assert!(states.contains(&state::OFFSCREEN.to_string()));
 }
 
-/// Real drift guard for U1/U2/KTD2, replacing the tautological version that
-/// asserted `state::` constants against a vocabulary built from those same
-/// constants (could never fail). This drives the actual production
-/// `states_from_element` producer over inputs representative of every
-/// branch it has (disabled, secure, expanded, checked/indeterminate,
-/// selected, hidden, busy, modal, required, pressed, readonly, offscreen)
-/// and asserts the real emitted token set is a subset of
-/// `STATE_VOCABULARY`. If a future change to `states_from_element` pushes a
-/// token that is not a `state::` constant, this fails on the actual
-/// emission, not on a copy of the constant list.
 #[test]
 fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
     let el = AXElement(std::ptr::null_mut());
@@ -108,7 +86,7 @@ fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
     cases.push((sample_attrs(), "textfield", ctx_with(None, true)));
 
     let mut expanded = sample_attrs();
-    expanded.states.expanded = Some(true);
+    expanded.states.control.expanded = Some(true);
     cases.push((expanded, "disclosure", ctx_with(None, false)));
 
     let mut checked = sample_attrs();
@@ -116,19 +94,19 @@ fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
     cases.push((checked, "checkbox", ctx_with(None, false)));
 
     let mut selected = sample_attrs();
-    selected.states.selected = Some(true);
+    selected.states.control.selected = Some(true);
     cases.push((selected, "cell", ctx_with(None, false)));
 
     let mut busy = sample_attrs();
-    busy.states.busy = Some(true);
+    busy.states.semantic.busy = Some(true);
     cases.push((busy, "button", ctx_with(None, false)));
 
     let mut modal = sample_attrs();
-    modal.states.modal = Some(true);
+    modal.states.semantic.modal = Some(true);
     cases.push((modal, "window", ctx_with(None, false)));
 
     let mut required = sample_attrs();
-    required.states.required = Some(true);
+    required.states.semantic.required = Some(true);
     cases.push((required, "textfield", ctx_with(None, false)));
 
     let mut pressed = sample_attrs();
@@ -136,7 +114,7 @@ fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
     cases.push((pressed, "button", ctx_with(None, false)));
 
     let mut readonly = sample_attrs();
-    readonly.states.readonly = Some(true);
+    readonly.states.control.readonly = Some(true);
     cases.push((readonly, "textfield", ctx_with(None, false)));
 
     let mut offscreen = sample_attrs();
@@ -159,10 +137,6 @@ fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
     state::assert_states_in_vocabulary(&emitted);
 }
 
-/// Proves the guard above is not vacuous: `assert_states_in_vocabulary`
-/// genuinely panics when handed a token that never came from a `state::`
-/// constant, so a producer that starts emitting a drifted token would fail
-/// this same assertion path, not silently pass.
 #[test]
 #[should_panic(expected = "is not in STATE_VOCABULARY")]
 fn assert_states_in_vocabulary_rejects_bogus_token() {

@@ -1,8 +1,10 @@
-use crate::{element_state::ElementState, node::Rect};
+use crate::{LiveIdentity, Rect, element_state::ElementState};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct LiveElement {
-    pub state: Option<ElementState>,
+    pub identity: LiveIdentity,
+    pub state: ElementState,
+    pub states_complete: bool,
     pub bounds: Option<Rect>,
-    pub available_actions: Option<Vec<String>>,
+    pub available_actions: Vec<String>,
 }

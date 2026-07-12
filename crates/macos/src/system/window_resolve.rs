@@ -1,53 +1,158 @@
-use agent_desktop_core::{
-    error::{AdapterError, ErrorCode},
-    node::WindowInfo,
-};
+use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo};
 
 use crate::system::cg_window::WindowRecord;
-use crate::tree::{AXElement, copy_ax_array, copy_string_attr, element_for_pid};
+use crate::tree::{AXElement, attributes::set_messaging_timeout, element_for_pid};
 
-#[cfg(target_os = "macos")]
-use accessibility_sys::{AXUIElementRef, kAXErrorSuccess, kAXWindowsAttribute};
+pub(crate) fn window_element_for_info(
+    win: &WindowInfo,
+    deadline: agent_desktop_core::Deadline,
+) -> Result<AXElement, AdapterError> {
+    window_element_for_info_with_deadline(
+        win,
+        std::time::Instant::now()
+            .checked_add(deadline.remaining())
+            .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "deadline is out of range"))?,
+    )
+}
 
-pub(crate) fn window_element_for_info(win: &WindowInfo) -> Result<AXElement, AdapterError> {
+pub(crate) fn window_element_for_info_with_deadline(
+    win: &WindowInfo,
+    deadline: std::time::Instant,
+) -> Result<AXElement, AdapterError> {
     if win.id.is_empty() {
-        return Ok(crate::tree::window_element_for(win.pid, &win.title));
+        let pid = crate::system::process_identity::to_pid_t(win.pid)?;
+        return window_element_by_title(pid, &win.title, deadline);
     }
-    resolve_window_element_strict(win)
+    resolve_window_element_strict(win, deadline)
 }
 
-pub(crate) fn resolve_window_strict(win: &WindowInfo) -> Result<WindowInfo, AdapterError> {
-    let (_, record) = locate_verified_record(win)?;
-    Ok(window_info_from_record(win, &record))
+pub(crate) fn resolve_window_strict(
+    win: &WindowInfo,
+    deadline: std::time::Instant,
+) -> Result<WindowInfo, AdapterError> {
+    let (window_number, record) = locate_verified_record_until(win, deadline)?;
+    let ax_state = crate::system::window_ax_state::read_until(record.pid, deadline)?;
+    verify_window_record(win, &record)?;
+    let mut resolved = window_info_from_record(win, &record)?;
+    resolved.state.minimized = ax_state.minimized_by_id.get(&window_number).copied();
+    if let Some((_, Some(focused_number))) = ax_state.focused {
+        resolved.state.is_focused = focused_number == window_number;
+    }
+    Ok(resolved)
 }
 
-fn resolve_window_element_strict(win: &WindowInfo) -> Result<AXElement, AdapterError> {
-    let (window_number, record) = locate_verified_record(win)?;
-    ax_window_element_for_number(win.pid, window_number, record.title.as_deref())
-        .ok_or_else(|| window_not_found(&win.id))
-}
-
-/// Single owner of the parse-id → find-record → verify-identity chain shared
-/// by [`resolve_window_strict`] and [`resolve_window_element_strict`].
-fn locate_verified_record(win: &WindowInfo) -> Result<(i64, WindowRecord), AdapterError> {
+fn locate_verified_record_until(
+    win: &WindowInfo,
+    deadline: std::time::Instant,
+) -> Result<(i64, WindowRecord), AdapterError> {
     let window_number = parse_window_number(&win.id).ok_or_else(|| invalid_window_id(&win.id))?;
-    let record = find_window_record(window_number).ok_or_else(|| window_not_found(&win.id))?;
+    let record =
+        crate::system::cg_window_exact::exact_window_record_until(window_number, deadline)?
+            .ok_or_else(|| window_not_found(&win.id))?;
     verify_window_record(win, &record)?;
     Ok((window_number, record))
 }
 
-pub(crate) fn parse_window_number(id: &str) -> Option<i64> {
-    id.strip_prefix('w')?.strip_prefix('-')?.parse().ok()
+pub(crate) fn verify_window_identity_until(
+    id: &str,
+    pid: i32,
+    app: Option<&str>,
+    process_instance: Option<&str>,
+    title: Option<&str>,
+    bounds_hash: Option<u64>,
+    deadline: std::time::Instant,
+) -> Result<(), AdapterError> {
+    let window_number = parse_window_number(id).ok_or_else(|| invalid_window_id(id))?;
+    let record =
+        crate::system::cg_window_exact::exact_window_record_until(window_number, deadline)?
+            .ok_or_else(|| window_not_found(id))?;
+    if !window_record_matches_source(&record, pid, app, process_instance, title, bounds_hash) {
+        return Err(window_identity_mismatch(id));
+    }
+    let Some(process_instance) = process_instance else {
+        return Err(window_identity_mismatch(id));
+    };
+    if !crate::system::process_identity::matches_instance(pid, process_instance)? {
+        return Err(window_identity_mismatch(id));
+    }
+    Ok(())
 }
 
-fn find_window_record(window_number: i64) -> Option<WindowRecord> {
-    crate::system::cg_window::visible_window_records()
-        .into_iter()
-        .find(|record| record.window_number == window_number)
+fn window_record_matches_source(
+    record: &WindowRecord,
+    pid: i32,
+    app: Option<&str>,
+    process_instance: Option<&str>,
+    title: Option<&str>,
+    bounds_hash: Option<u64>,
+) -> bool {
+    if record.pid != pid
+        || app.is_some_and(|app| !app.is_empty() && record.app_name != app)
+        || process_instance.is_none()
+        || record.process_instance.as_deref() != process_instance
+    {
+        return false;
+    }
+    let bounds_changed = bounds_hash.is_some_and(|expected| {
+        record
+            .bounds
+            .bounds_hash()
+            .is_none_or(|actual| actual != expected)
+    });
+    if bounds_changed {
+        tracing::debug!(
+            expected_bounds_hash = ?bounds_hash,
+            actual_bounds_hash = ?record.bounds.bounds_hash(),
+            "window moved or resized while immutable source identity remained valid"
+        );
+    }
+    let title_changed = title.is_some_and(|title| {
+        !title.is_empty() && record.title.as_deref().unwrap_or(record.app_name.as_str()) != title
+    });
+    if title_changed {
+        tracing::debug!(
+            expected_title = ?title,
+            actual_title = ?record.title,
+            "window title changed while immutable source identity remained valid"
+        );
+    }
+    true
+}
+
+fn resolve_window_element_strict(
+    win: &WindowInfo,
+    deadline: std::time::Instant,
+) -> Result<AXElement, AdapterError> {
+    crate::tree::locator_deadline::remaining(deadline)?;
+    let (window_number, record) = locate_verified_record_until(win, deadline)?;
+    crate::tree::locator_deadline::remaining(deadline)?;
+    let pid = crate::system::process_identity::to_pid_t(win.pid)?;
+    ax_window_element_for_number(pid, window_number, record.title.as_deref(), deadline)?
+        .ok_or_else(|| window_not_found(&win.id))
+}
+
+pub(crate) fn parse_window_number(id: &str) -> Option<i64> {
+    id.strip_prefix('w')?
+        .strip_prefix('-')?
+        .parse()
+        .ok()
+        .filter(|number| *number > 0)
 }
 
 fn verify_window_record(win: &WindowInfo, record: &WindowRecord) -> Result<(), AdapterError> {
-    if record.pid != win.pid {
+    let pid = crate::system::process_identity::to_pid_t(win.pid)?;
+    if record.pid != pid {
+        return Err(window_identity_mismatch(&win.id));
+    }
+    let Some(instance) = win.process_instance.as_deref() else {
+        return Err(window_identity_mismatch(&win.id));
+    };
+    if record.process_instance.as_deref() != Some(instance)
+        || !crate::system::process_identity::matches_instance(pid, instance)?
+    {
+        return Err(window_identity_mismatch(&win.id));
+    }
+    if !win.app.is_empty() && record.app_name != win.app {
         return Err(window_identity_mismatch(&win.id));
     }
     if !win.title.is_empty() {
@@ -59,84 +164,177 @@ fn verify_window_record(win: &WindowInfo, record: &WindowRecord) -> Result<(), A
     Ok(())
 }
 
-fn window_info_from_record(win: &WindowInfo, record: &WindowRecord) -> WindowInfo {
-    WindowInfo {
+fn window_info_from_record(
+    win: &WindowInfo,
+    record: &WindowRecord,
+) -> Result<WindowInfo, AdapterError> {
+    Ok(WindowInfo {
         id: win.id.clone(),
         title: record
             .title
             .clone()
             .unwrap_or_else(|| record.app_name.clone()),
         app: record.app_name.clone(),
-        pid: record.pid,
-        bounds: None,
-        is_focused: win.is_focused,
-    }
+        pid: crate::system::process_identity::from_pid_t(record.pid)?,
+        process_instance: record.process_instance.clone(),
+        bounds: Some(record.bounds),
+        state: agent_desktop_core::WindowState {
+            is_focused: win.state.is_focused,
+            minimized: win.state.minimized,
+            visible: Some(record.visible),
+        },
+    })
 }
 
-/// Matches the CGWindow-verified `window_number` against the app's live
-/// `AXWindow` elements.
-///
-/// The CGWindow record was already verified (pid + title) by
-/// `locate_verified_record`, so a total bridge miss means
-/// `_AXUIElementGetWindow` transiently failed (busy/hung app, benign race),
-/// not that the window is gone. In that case, fall back to the AX window
-/// matching the verified title before reporting `WINDOW_NOT_FOUND` — but only
-/// when the title identifies exactly one live `AXWindow`. If zero or two-plus
-/// windows share that title, the correct target cannot be determined safely,
-/// so this returns `None` and lets the caller surface `WINDOW_NOT_FOUND`
-/// rather than risk acting on the wrong same-titled window.
 fn ax_window_element_for_number(
     pid: i32,
     window_number: i64,
     fallback_title: Option<&str>,
-) -> Option<AXElement> {
-    let app = element_for_pid(pid);
-    let windows = copy_ax_array(&app, kAXWindowsAttribute)?;
+    deadline: std::time::Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let windows = windows_for_pid(pid, deadline)?;
+    let mut unavailable_bridge = None;
     for window in &windows {
-        if copy_string_attr(window, "AXRole").as_deref() != Some("AXWindow") {
+        prepare_for_read(window, deadline)?;
+        if crate::tree::resolve_ax_read::read_string(window, "AXRole", deadline)?.as_deref()
+            != Some("AXWindow")
+        {
             continue;
         }
-        if ax_window_id(window) == Some(window_number) {
-            return Some(window.clone());
+        match ax_window_id_with_deadline(window, deadline) {
+            Ok(Some(actual)) if actual == window_number => return Ok(Some(window.clone())),
+            Ok(_) => {}
+            Err(error) if crate::system::window_bridge::is_unavailable(&error) => {
+                unavailable_bridge = Some(error);
+                break;
+            }
+            Err(error) => return Err(error),
         }
     }
-    let title = fallback_title?;
-    let mut matches = windows.into_iter().filter(|window| {
-        copy_string_attr(window, "AXRole").as_deref() == Some("AXWindow")
-            && copy_string_attr(window, "AXTitle").as_deref() == Some(title)
-    });
-    let single_match = matches.next()?;
-    match matches.next() {
-        Some(_) => None,
-        None => Some(single_match),
+    let Some(title) = fallback_title else {
+        return match unavailable_bridge {
+            Some(error) => Err(error),
+            None => Ok(None),
+        };
+    };
+    let mut single_match = None;
+    for window in windows {
+        prepare_for_read(&window, deadline)?;
+        if crate::tree::resolve_ax_read::read_string(&window, "AXRole", deadline)?.as_deref()
+            != Some("AXWindow")
+        {
+            continue;
+        }
+        if crate::tree::resolve_ax_read::read_string(&window, "AXTitle", deadline)?.as_deref()
+            != Some(title)
+        {
+            continue;
+        }
+        if single_match.is_some() {
+            return Err(AdapterError::ambiguous_target(format!(
+                "Multiple AX windows matched the verified CoreGraphics title '{title}'"
+            ))
+            .with_details(serde_json::json!({
+                "kind": "verified_window_title_ambiguous",
+                "title": title,
+            })));
+        }
+        single_match = Some(window);
+    }
+    match single_match {
+        Some(window) => Ok(Some(window)),
+        None => match unavailable_bridge {
+            Some(error) => Err(error),
+            None => Ok(None),
+        },
     }
 }
 
-/// Bridges an accessibility window element to its CoreGraphics window number
-/// via the private-but-stable `_AXUIElementGetWindow`, the same call every
-/// macOS window manager relies on. The `AXWindowNumber` attribute is not
-/// published by AppKit or SwiftUI windows, so this is the only reliable way to
-/// match an `AXUIElement` back to the `kCGWindowNumber` that `list-windows`
-/// reports.
-/// The one owner of the AX-element -> CGWindowID bridge, shared by
-/// [`ax_window_element_for_number`], `resolve_roots`'s source-window scoping,
-/// and `window_inventory`'s AX-fallback/focus paths, so `AXWindowNumber` (which
-/// AppKit/SwiftUI never publish) is not read anywhere.
+fn window_element_by_title(
+    pid: i32,
+    requested_title: &str,
+    deadline: std::time::Instant,
+) -> Result<AXElement, AdapterError> {
+    let windows = windows_for_pid(pid, deadline)?;
+    let mut exact = Vec::new();
+    let mut window_count = 0_usize;
+    let mut only_window = None;
+    for window in windows {
+        if crate::tree::resolve_ax_read::read_string(&window, "AXRole", deadline)?.as_deref()
+            != Some("AXWindow")
+        {
+            continue;
+        }
+        window_count += 1;
+        only_window = Some(window.clone());
+        let title = crate::tree::resolve_ax_read::read_string(&window, "AXTitle", deadline)?;
+        if title.as_deref() == Some(requested_title) && !requested_title.is_empty() {
+            exact.push(window);
+        }
+    }
+    if exact.len() == 1 {
+        return Ok(exact.remove(0));
+    }
+    if exact.len() > 1 {
+        return Err(AdapterError::ambiguous_target(format!(
+            "Multiple windows have the exact title '{requested_title}'"
+        ))
+        .with_details(serde_json::json!({
+            "kind": "window_title_ambiguous",
+            "title": requested_title,
+            "candidate_count": exact.len(),
+        })));
+    }
+    if requested_title.is_empty() && window_count == 1 {
+        return only_window.ok_or_else(|| window_not_found(requested_title));
+    }
+    Err(window_not_found(requested_title))
+}
+
+fn windows_for_pid(pid: i32, deadline: std::time::Instant) -> Result<Vec<AXElement>, AdapterError> {
+    let app = element_for_pid(pid);
+    #[cfg(target_os = "macos")]
+    {
+        Ok(
+            crate::tree::resolve_ax_read::read_array(&app, "AXWindows", deadline)?
+                .unwrap_or_default(),
+        )
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        prepare_for_read(&app, deadline)?;
+        let windows = crate::tree::attributes::copy_ax_array_result(&app, "AXWindows")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        crate::tree::locator_deadline::remaining(deadline)?;
+        Ok(windows)
+    }
+}
+
+fn prepare_for_read(element: &AXElement, deadline: std::time::Instant) -> Result<(), AdapterError> {
+    crate::tree::locator_deadline::remaining(deadline)?;
+    set_messaging_timeout(element, deadline)?;
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
-pub(crate) fn ax_window_id(window: &AXElement) -> Option<i64> {
-    let mut window_id: u32 = 0;
-    let result = unsafe { _AXUIElementGetWindow(window.0, &mut window_id) };
-    (result == kAXErrorSuccess).then_some(i64::from(window_id))
+pub(crate) fn ax_window_id_with_deadline(
+    window: &AXElement,
+    deadline: std::time::Instant,
+) -> Result<Option<i64>, AdapterError> {
+    prepare_for_read(window, deadline)?;
+    let window_id = crate::system::window_bridge::window_id(window, deadline)?;
+    crate::tree::locator_deadline::remaining(deadline)?;
+    Ok(window_id)
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn ax_window_id(_window: &AXElement) -> Option<i64> {
-    None
-}
-
-#[cfg(target_os = "macos")]
-unsafe extern "C" {
-    fn _AXUIElementGetWindow(element: AXUIElementRef, out: *mut u32) -> i32;
+pub(crate) fn ax_window_id_with_deadline(
+    _window: &AXElement,
+    _deadline: std::time::Instant,
+) -> Result<Option<i64>, AdapterError> {
+    Ok(None)
 }
 
 fn invalid_window_id(id: &str) -> AdapterError {

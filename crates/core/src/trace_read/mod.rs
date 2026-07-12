@@ -4,7 +4,7 @@ mod segment;
 
 pub use html::{ExportOptions, ExportStats, TRACE_EXPORT_DEFAULT_LIMIT, export_html};
 
-use crate::error::AppError;
+use crate::AppError;
 use merge::{
     annotate_provenance, apply_tail_limit, detect_unpaired_commands, filter_by_event_prefix,
     merge_segments,

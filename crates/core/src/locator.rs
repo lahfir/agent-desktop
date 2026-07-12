@@ -1,45 +1,9 @@
 use crate::{
-    error::{AdapterError, ErrorCode},
-    node::AccessibilityNode,
-    roles, search_text,
+    AccessibilityNode, AdapterError, ErrorCode, roles, search_text,
     state::{self, STATE_VOCABULARY},
 };
+pub(crate) use crate::{ContainmentPredicate, IdentityPredicate, NodeMatchContext, StatePredicate};
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StatePredicate {
-    pub token: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected: Option<bool>,
-}
-
-/// Fields that identify a candidate element: role plus its text-bearing
-/// evidence. Grouped out of [`LocatorQuery`] so the query stays under the
-/// repo's field-count limit; flattened back onto the wire so JSON callers
-/// still see a single flat object.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct IdentityPredicate {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-}
-
-/// Subtree-containment predicates: recursive sub-queries a matching element's
-/// descendants must (or must not) satisfy. Flattened back onto the wire.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct ContainmentPredicate {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub has: Option<Box<LocatorQuery>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub has_not: Option<Box<LocatorQuery>>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct LocatorQuery {
@@ -88,24 +52,18 @@ impl LocatorQuery {
     }
 }
 
-pub struct NodeMatchContext<'a> {
-    pub role: &'a str,
-    pub name: Option<&'a str>,
-    pub description: Option<&'a str>,
-    pub native_id: Option<&'a str>,
-    pub value: Option<&'a str>,
-    pub states: &'a [String],
-    pub children: &'a [AccessibilityNode],
-}
-
 pub fn node_context(node: &AccessibilityNode) -> NodeMatchContext<'_> {
     NodeMatchContext {
         role: &node.role,
-        name: node.name.as_deref(),
-        description: node.description.as_deref(),
-        native_id: node.native_id.as_deref(),
-        value: node.value.as_deref(),
-        states: &node.states,
+        name: node.identity.name.as_deref(),
+        description: node.identity.description.as_deref(),
+        native_id: node
+            .identity
+            .native_id
+            .as_ref()
+            .map(|identifier| identifier.value.as_str()),
+        value: node.identity.value.as_deref(),
+        states: &node.presentation.states,
         children: &node.children,
     }
 }
@@ -130,7 +88,7 @@ pub fn node_matches(query: &LocatorQuery, ctx: NodeMatchContext<'_>) -> bool {
     if !text_field_matches(query.identity.value.as_deref(), ctx.value, query.exact) {
         return false;
     }
-    if !has_text_matches(query.has_text.as_deref(), &ctx) {
+    if !has_text_matches(query.has_text.as_deref(), &ctx, query.exact) {
         return false;
     }
     if !state_predicates_match(&query.states, ctx.states) {
@@ -186,14 +144,41 @@ fn native_id_matches(expected: Option<&str>, actual: Option<&str>) -> bool {
     actual == Some(expected)
 }
 
-fn has_text_matches(expected: Option<&str>, ctx: &NodeMatchContext<'_>) -> bool {
+fn has_text_matches(expected: Option<&str>, ctx: &NodeMatchContext<'_>, exact: bool) -> bool {
     let Some(expected) = expected else {
         return true;
     };
     [ctx.name, ctx.description, ctx.value]
         .into_iter()
         .flatten()
-        .any(|text| search_text::contains(text, expected))
+        .any(|text| text_matches(text, expected, exact))
+        || ctx
+            .children
+            .iter()
+            .any(|child| subtree_text_matches(child, expected, exact))
+}
+
+fn subtree_text_matches(node: &AccessibilityNode, expected: &str, exact: bool) -> bool {
+    [
+        node.identity.name.as_deref(),
+        node.identity.description.as_deref(),
+        node.identity.value.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|text| text_matches(text, expected, exact))
+        || node
+            .children
+            .iter()
+            .any(|child| subtree_text_matches(child, expected, exact))
+}
+
+fn text_matches(actual: &str, expected: &str, exact: bool) -> bool {
+    if exact {
+        search_text::normalize(actual) == expected
+    } else {
+        search_text::contains(actual, expected)
+    }
 }
 
 fn state_predicates_match(predicates: &[StatePredicate], states: &[String]) -> bool {
@@ -204,9 +189,9 @@ fn state_predicates_match(predicates: &[StatePredicate], states: &[String]) -> b
 }
 
 fn subtree_contains(query: &LocatorQuery, children: &[AccessibilityNode]) -> bool {
-    children
-        .iter()
-        .any(|child| accessibility_node_matches(child, query))
+    children.iter().any(|child| {
+        accessibility_node_matches(child, query) || subtree_contains(query, &child.children)
+    })
 }
 
 #[cfg(test)]

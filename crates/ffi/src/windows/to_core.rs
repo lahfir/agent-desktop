@@ -1,6 +1,6 @@
 use crate::convert::string::{optional_adapter_string, required_adapter_string};
-use crate::types::AdWindowInfo;
-use agent_desktop_core::error::AdapterError;
+use crate::types::{AdExactWindowInfo, AdWindowInfo};
+use agent_desktop_core::{AdapterError, Rect, WindowInfo};
 
 /// Converts an `AdWindowInfo` from C into the core `WindowInfo`.
 ///
@@ -11,28 +11,68 @@ use agent_desktop_core::error::AdapterError;
 ///
 /// `app_name` is allowed to be empty (some Electron apps report blank
 /// window owners) and is filled in from the platform adapter as needed.
-pub(crate) fn ad_window_to_core(
-    w: &AdWindowInfo,
-) -> Result<agent_desktop_core::node::WindowInfo, AdapterError> {
+pub(crate) fn ad_window_to_core(_w: &AdWindowInfo) -> Result<WindowInfo, AdapterError> {
+    Err(AdapterError::new(
+        agent_desktop_core::ErrorCode::InvalidArgs,
+        "legacy AdWindowInfo lacks process-generation evidence; use AdExactWindowInfo",
+    ))
+}
+
+pub(crate) fn ad_exact_window_to_core(
+    exact: &AdExactWindowInfo,
+) -> Result<WindowInfo, AdapterError> {
+    if exact.version != crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_VERSION
+        || exact.size as usize != crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_SIZE
+    {
+        return Err(AdapterError::new(
+            agent_desktop_core::ErrorCode::InvalidArgs,
+            "AdExactWindowInfo version or size does not match this library",
+        ));
+    }
+    let process_instance = required_adapter_string(exact.process_instance, "process_instance")?;
+    if process_instance.is_empty() {
+        return Err(AdapterError::new(
+            agent_desktop_core::ErrorCode::InvalidArgs,
+            "process_instance is empty",
+        ));
+    }
+    decode_window(&exact.window, process_instance)
+}
+
+fn decode_window(w: &AdWindowInfo, process_instance: String) -> Result<WindowInfo, AdapterError> {
+    if w.pid == 0 {
+        return Err(AdapterError::new(
+            agent_desktop_core::ErrorCode::InvalidArgs,
+            "window pid must be positive",
+        ));
+    }
     let id = required_adapter_string(w.id, "window id")?;
     let title = required_adapter_string(w.title, "window title")?;
     let app = optional_adapter_string(w.app_name, "window app_name")?.unwrap_or_default();
-    Ok(agent_desktop_core::node::WindowInfo {
+    let bounds = if w.has_bounds {
+        let bounds = Rect {
+            x: w.bounds.x,
+            y: w.bounds.y,
+            width: w.bounds.width,
+            height: w.bounds.height,
+        };
+        bounds.validate()?;
+        Some(bounds)
+    } else {
+        None
+    };
+    Ok(WindowInfo {
         id,
         title,
         app,
-        pid: w.pid,
-        bounds: if w.has_bounds {
-            Some(agent_desktop_core::node::Rect {
-                x: w.bounds.x,
-                y: w.bounds.y,
-                width: w.bounds.width,
-                height: w.bounds.height,
-            })
-        } else {
-            None
+        pid: agent_desktop_core::ProcessId::new(w.pid),
+        process_instance: Some(process_instance),
+        bounds,
+        state: agent_desktop_core::WindowState {
+            is_focused: w.is_focused,
+            minimized: None,
+            visible: None,
         },
-        is_focused: w.is_focused,
     })
 }
 
@@ -41,7 +81,7 @@ mod tests {
     use super::*;
     use crate::convert::string::AD_MAX_STRING_BYTES;
     use crate::types::AdRect;
-    use agent_desktop_core::error::ErrorCode;
+    use agent_desktop_core::ErrorCode;
     use std::ffi::CString;
 
     #[test]
@@ -52,7 +92,7 @@ mod tests {
         app.push(0);
         let win = window(id.as_ptr(), title.as_ptr(), app.as_ptr().cast());
 
-        let err = ad_window_to_core(&win).unwrap_err();
+        let err = ad_exact_window_to_core(&win).unwrap_err();
 
         assert_eq!(err.code, ErrorCode::InvalidArgs);
         assert!(err.message.contains("window app_name exceeds"));
@@ -65,30 +105,56 @@ mod tests {
         let app = [0xff_u8, 0x00];
         let win = window(id.as_ptr(), title.as_ptr(), app.as_ptr().cast());
 
-        let err = ad_window_to_core(&win).unwrap_err();
+        let err = ad_exact_window_to_core(&win).unwrap_err();
 
         assert_eq!(err.code, ErrorCode::InvalidArgs);
         assert!(err.message.contains("window app_name is not valid UTF-8"));
+    }
+
+    #[test]
+    fn legacy_window_fails_closed_without_process_generation() {
+        let window = unsafe { std::mem::zeroed::<AdWindowInfo>() };
+        let error = ad_window_to_core(&window).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::InvalidArgs);
+        assert!(error.message.contains("AdExactWindowInfo"));
+    }
+
+    #[test]
+    fn exact_window_rejects_unknown_layout_version() {
+        let mut exact = unsafe { std::mem::zeroed::<AdExactWindowInfo>() };
+        exact.version = u32::MAX;
+        exact.size = crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_SIZE as u32;
+
+        let error = ad_exact_window_to_core(&exact).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::InvalidArgs);
+        assert!(error.message.contains("version or size"));
     }
 
     fn window(
         id: *const std::os::raw::c_char,
         title: *const std::os::raw::c_char,
         app_name: *const std::os::raw::c_char,
-    ) -> AdWindowInfo {
-        AdWindowInfo {
-            id,
-            title,
-            app_name,
-            pid: 7,
-            bounds: AdRect {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
+    ) -> AdExactWindowInfo {
+        AdExactWindowInfo {
+            version: crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_VERSION,
+            size: crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_SIZE as u32,
+            window: AdWindowInfo {
+                id,
+                title,
+                app_name,
+                pid: 7,
+                bounds: AdRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                },
+                has_bounds: false,
+                is_focused: false,
             },
-            has_bounds: false,
-            is_focused: false,
+            process_instance: c"7:100".as_ptr(),
         }
     }
 }

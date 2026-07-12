@@ -1,6 +1,9 @@
-use super::*;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use super::AdapterSession;
+use crate::AdapterError;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 struct FlagSession {
     closed: Arc<AtomicBool>,
@@ -14,18 +17,15 @@ impl AdapterSession for FlagSession {
 }
 
 #[test]
-fn boxed_adapter_session_close_runs_through_dyn_dispatch() {
+fn boxed_adapter_session_close_runs_through_dynamic_dispatch() {
     let closed = Arc::new(AtomicBool::new(false));
     let session: Box<dyn AdapterSession> = Box::new(FlagSession {
-        closed: closed.clone(),
+        closed: Arc::clone(&closed),
     });
 
     session.close().unwrap();
 
-    assert!(
-        closed.load(Ordering::SeqCst),
-        "close() must run through Box<dyn AdapterSession> dispatch, proving the trait is object-safe"
-    );
+    assert!(closed.load(Ordering::SeqCst));
 }
 
 fn assert_send_sync<T: Send + Sync>() {}

@@ -1,11 +1,11 @@
 use super::*;
+use crate::adapter::TreeOptions;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
+    AdapterError, ErrorCode, WindowInfo,
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::{NativeHandle, WindowFilter},
-    error::{AdapterError, ErrorCode},
-    node::WindowInfo,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
@@ -16,11 +16,19 @@ struct ProbeFailingAdapter {
 }
 
 impl ObservationOps for ProbeFailingAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
 
-    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+    fn list_windows(
+        &self,
+        filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         if filter.app.is_some() && self.tree_error.is_none() {
             return Err(AdapterError::new(
                 ErrorCode::WindowNotFound,
@@ -37,9 +45,13 @@ impl ObservationOps for ProbeFailingAdapter {
             id: "w1".into(),
             title: "Main".into(),
             app: "TargetApp".into(),
-            pid: 7,
+            pid: crate::ProcessId::new(7),
+            process_instance: Some("test-instance".into()),
             bounds: None,
-            is_focused: true,
+            state: crate::WindowState {
+                is_focused: true,
+                ..Default::default()
+            },
         }])
     }
 
@@ -47,25 +59,22 @@ impl ObservationOps for ProbeFailingAdapter {
         &self,
         _win: &WindowInfo,
         _opts: &TreeOptions,
-    ) -> Result<crate::node::AccessibilityNode, AdapterError> {
+        _deadline: crate::Deadline,
+    ) -> Result<crate::AccessibilityNode, AdapterError> {
         if let Some(code) = self.tree_error.clone() {
             return Err(AdapterError::new(code, "menu tree unavailable"));
         }
-        Ok(crate::node::AccessibilityNode {
+        Ok(crate::AccessibilityNode {
             ref_id: None,
             role: "menu".into(),
-            name: None,
-            value: None,
-            description: None,
-            native_id: None,
-            hint: None,
-            states: Vec::new(),
-            available_actions: Vec::new(),
-            bounds: None,
+            identity: Default::default(),
+            presentation: Default::default(),
             children_count: None,
             children: Vec::new(),
         })
     }
+
+    crate::adapter::complete_live_observation!("button", "Open", [crate::capability::RIGHT_CLICK]);
 }
 
 impl ActionOps for ProbeFailingAdapter {
@@ -73,41 +82,64 @@ impl ActionOps for ProbeFailingAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("right_click"))
+        Ok(ActionResult::delivered_unverified("right_click"))
     }
 }
 
 impl InputOps for ProbeFailingAdapter {}
 
-impl SystemOps for ProbeFailingAdapter {}
+impl SystemOps for ProbeFailingAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 fn save_refmap(source_app: Option<String>) -> String {
     let mut refmap = RefMap::new();
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     refmap.allocate(RefEntry {
-        pid: 7,
-        role: "button".into(),
-        name: Some("Open".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: Vec::new(),
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["RightClick".into()],
-        source_app,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(7),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Open".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: Vec::new(),
+            available_actions: vec!["RightClick".into()],
+        },
+        source: crate::RefSource {
+            source_app,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
 }
 
 #[test]
-fn returns_action_success_when_menu_probe_fails() {
+fn returns_action_success_without_a_synthetic_menu_probe() {
     let _guard = HomeGuard::new();
     let snapshot_id = save_refmap(None);
 
@@ -123,12 +155,11 @@ fn returns_action_success_when_menu_probe_fails() {
     .unwrap();
 
     assert_eq!(value["action"], "right_click");
-    assert_eq!(value["menu_probe"]["ok"], false);
-    assert_eq!(value["menu_probe"]["error"]["code"], "WINDOW_NOT_FOUND");
+    assert!(value.get("menu_probe").is_none());
 }
 
 #[test]
-fn element_not_found_menu_probe_uses_right_click_specific_guidance() {
+fn right_click_result_does_not_depend_on_a_followup_tree_probe() {
     let _guard = HomeGuard::new();
     let snapshot_id = save_refmap(Some("TargetApp".into()));
 
@@ -146,12 +177,5 @@ fn element_not_found_menu_probe_uses_right_click_specific_guidance() {
     .unwrap();
 
     assert_eq!(value["action"], "right_click");
-    assert_eq!(value["menu_probe"]["ok"], false);
-    assert_eq!(value["menu_probe"]["error"]["code"], "ELEMENT_NOT_FOUND");
-    assert!(
-        value["menu_probe"]["error"]["suggestion"]
-            .as_str()
-            .unwrap()
-            .contains("snapshot --surface menu")
-    );
+    assert!(value.get("menu_probe").is_none());
 }

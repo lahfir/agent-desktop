@@ -1,21 +1,14 @@
 use super::*;
 
-/// `AdRefEntry` and `AdActionStep` are pinned `repr(C)` structs that a
-/// prebuilt C consumer reads by fixed offset. Reordering `native_id` inside
-/// `AdRefEntry` (F7) is a breaking layout change, so the major must be bumped
-/// past the last version a consumer could have compiled against. Pinning the
-/// literal here (rather than only comparing `ad_abi_version()` to the Rust
-/// constant, which trivially agrees with itself) makes an accidental revert
-/// of the bump fail this test even though the two symbols would still match
-/// each other.
+/// ABI 2 shipped the expanded result/ref layouts. Replacing the three-argument
+/// `ad_dismiss_notification` with the identity-required five-argument contract
+/// breaks callers compiled against ABI 2, so this branch must advertise ABI 3.
 #[test]
-fn abi_major_is_bumped_past_the_ref_entry_layout_break() {
+fn abi_major_covers_the_checked_dismiss_signature() {
     let major = std::hint::black_box(AD_ABI_VERSION_MAJOR);
     assert!(
-        major >= 2,
-        "AdRefEntry's native_id field moved to the end of the struct (F7); \
-         AD_ABI_VERSION_MAJOR must be bumped to at least 2 so a consumer built \
-         against the old layout fails ad_init instead of misreading fields"
+        major >= 3,
+        "identity-required ad_dismiss_notification is incompatible with ABI 2"
     );
 }
 

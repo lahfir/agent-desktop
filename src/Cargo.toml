@@ -1,8 +1,9 @@
 [package]
-name    = "agent-desktop"
+name      = "agent-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+autotests = false
 
 [dependencies]
 agent-desktop-core.workspace = true
@@ -33,6 +34,10 @@ path = "tests/snapshot_test.rs"
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[[test]]
+name = "cli_process"
+path = "tests/cli_process.rs"
 
 [lints]
 workspace = true

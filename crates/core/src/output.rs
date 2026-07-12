@@ -1,7 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::error::{AppError, ErrorCode};
+use crate::recovery_hint::RecoveryHint;
+use crate::{AppError, DeliverySemantics, ErrorCode, RetryDisposition};
 
 pub const ENVELOPE_VERSION: &str = "2.1";
 
@@ -24,11 +25,12 @@ pub struct ErrorPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub retry_command: Option<String>,
+    pub recovery: Option<RecoveryHint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform_detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
+    pub disposition: DeliverySemantics,
 }
 
 impl Response {
@@ -53,13 +55,29 @@ impl Response {
     }
 }
 
-fn retry_token_for_code(code: &ErrorCode) -> Option<String> {
+fn recovery_for_code(code: &ErrorCode, disposition: DeliverySemantics) -> Option<RecoveryHint> {
+    if disposition.retry() != RetryDisposition::Safe {
+        return None;
+    }
     match code {
-        ErrorCode::StaleRef | ErrorCode::SnapshotNotFound => {
-            Some("snapshot;execute_by_ref".to_owned())
-        }
-        ErrorCode::PolicyDenied => Some("escalate_policy".to_owned()),
-        ErrorCode::AppUnresponsive => Some("wait;execute_by_ref".to_owned()),
+        ErrorCode::StaleRef | ErrorCode::SnapshotNotFound => Some(RecoveryHint {
+            strategy: "refresh_snapshot_then_retry_original".into(),
+            retryable: true,
+            requires_fresh_snapshot: true,
+            retry_after_ms: None,
+        }),
+        ErrorCode::PolicyDenied => Some(RecoveryHint {
+            strategy: "request_explicit_policy_then_retry_original".into(),
+            retryable: true,
+            requires_fresh_snapshot: false,
+            retry_after_ms: None,
+        }),
+        ErrorCode::AppUnresponsive => Some(RecoveryHint {
+            strategy: "inspect_state_then_retry_original".into(),
+            retryable: true,
+            requires_fresh_snapshot: true,
+            retry_after_ms: Some(250),
+        }),
         _ => None,
     }
 }
@@ -73,7 +91,8 @@ impl ErrorPayload {
         if let AppError::Adapter(adapter_error) = err {
             payload.platform_detail = adapter_error.platform_detail.clone();
             payload.details = adapter_error.details.clone();
-            payload.retry_command = retry_token_for_code(&adapter_error.code);
+            payload.disposition = adapter_error.disposition;
+            payload.recovery = recovery_for_code(&adapter_error.code, adapter_error.disposition);
         }
         payload
     }
@@ -83,9 +102,10 @@ impl ErrorPayload {
             code: code.into(),
             message: message.into(),
             suggestion: None,
-            retry_command: None,
+            recovery: None,
             platform_detail: None,
             details: None,
+            disposition: DeliverySemantics::unknown(),
         }
     }
 
@@ -94,8 +114,8 @@ impl ErrorPayload {
         self
     }
 
-    pub fn with_retry(mut self, cmd: impl Into<String>) -> Self {
-        self.retry_command = Some(cmd.into());
+    pub fn with_recovery(mut self, recovery: RecoveryHint) -> Self {
+        self.recovery = Some(recovery);
         self
     }
 }

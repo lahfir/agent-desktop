@@ -1,4 +1,4 @@
-use crate::{adapter::PlatformAdapter, error::AppError};
+use crate::{AppError, adapter::PlatformAdapter, context::CommandContext};
 use serde_json::{Value, json};
 
 pub struct DismissAllNotificationsArgs {
@@ -8,8 +8,17 @@ pub struct DismissAllNotificationsArgs {
 pub fn execute(
     args: DismissAllNotificationsArgs,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let (dismissed, failures) = adapter.dismiss_all_notifications(args.app.as_deref())?;
+    let policy = super::notification_policy::mutation_policy(context)?;
+    let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
+    let (dismissed, failures) = adapter.dismiss_all_notifications(
+        crate::DismissAllNotificationsRequest {
+            app_filter: args.app.as_deref(),
+            policy,
+        },
+        &lease,
+    )?;
     let mut result = json!({
         "dismissed_count": dismissed.len(),
     });

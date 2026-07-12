@@ -1,89 +1,156 @@
 use agent_desktop_core::{
+    AppError,
+    adapter::PlatformAdapter,
     commands::{
-        close_app, focus_window, helpers, launch, list_apps, list_displays, list_surfaces,
-        list_windows, maximize, minimize, move_window, resize_window, restore,
+        close_app as close_app_command, focus_window as focus_window_command, helpers,
+        launch as launch_command, list_apps as list_apps_command,
+        list_displays as list_displays_command, list_surfaces as list_surfaces_command,
+        list_windows as list_windows_command, maximize as maximize_command,
+        minimize as minimize_command, move_window as move_window_command,
+        resize_window as resize_window_command, restore as restore_command,
     },
-    error::{AppError, ErrorCode},
 };
 use serde_json::Value;
 
-use crate::cli::Commands;
+use crate::cli_args::{
+    ListSurfacesArgs,
+    system::{
+        AppRefArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs, ListAppsArgs, ListWindowsArgs,
+        MoveWindowCliArgs, ResizeWindowCliArgs,
+    },
+};
 use crate::dispatch::parse::build_launch_options;
 
-pub(super) fn dispatch(
-    cmd: Commands,
-    adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
+pub(super) fn launch(args: LaunchArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    launch_command::execute(
+        launch_command::LaunchArgs {
+            app: args.app,
+            options: build_launch_options(
+                &args.args,
+                &args.env,
+                args.cwd,
+                args.timeout,
+                args.no_attach,
+            )?,
+        },
+        adapter,
+    )
+}
+
+pub(super) fn close_app(
+    args: CloseAppArgs,
+    adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
-    match cmd {
-        Commands::Launch(a) => launch::execute(
-            launch::LaunchArgs {
-                app: a.app,
-                timeout_ms: a.timeout,
-                options: build_launch_options(&a.args, &a.env, a.cwd, a.no_attach)?,
-            },
-            adapter,
-        ),
+    close_app_command::execute(
+        close_app_command::CloseAppArgs {
+            app: args.app,
+            force: args.force,
+        },
+        adapter,
+    )
+}
 
-        Commands::CloseApp(a) => close_app::execute(
-            close_app::CloseAppArgs {
-                app: a.app,
-                force: a.force,
-            },
-            adapter,
-        ),
+pub(super) fn list_windows(
+    args: ListWindowsArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    list_windows_command::execute(
+        list_windows_command::ListWindowsArgs { app: args.app },
+        adapter,
+    )
+}
 
-        Commands::ListWindows(a) => {
-            list_windows::execute(list_windows::ListWindowsArgs { app: a.app }, adapter)
-        }
+pub(super) fn list_displays(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    list_displays_command::execute(adapter)
+}
 
-        Commands::ListDisplays => list_displays::execute(adapter),
+pub(super) fn list_apps(
+    args: ListAppsArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    list_apps_command::execute(list_apps_command::ListAppsArgs { app: args.app }, adapter)
+}
 
-        Commands::ListApps(a) => {
-            list_apps::execute(list_apps::ListAppsArgs { app: a.app }, adapter)
-        }
+pub(super) fn list_surfaces(
+    args: ListSurfacesArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    list_surfaces_command::execute(
+        list_surfaces_command::ListSurfacesArgs { app: args.app },
+        adapter,
+    )
+}
 
-        Commands::ListSurfaces(a) => {
-            list_surfaces::execute(list_surfaces::ListSurfacesArgs { app: a.app }, adapter)
-        }
+pub(super) fn focus_window(
+    args: FocusWindowArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    focus_window_command::execute(
+        focus_window_command::FocusWindowArgs {
+            window_id: args.window_id,
+            app: args.app,
+            title: args.title,
+        },
+        adapter,
+    )
+}
 
-        Commands::FocusWindow(a) => focus_window::execute(
-            focus_window::FocusWindowArgs {
-                window_id: a.window_id,
-                app: a.app,
-                title: a.title,
-            },
-            adapter,
-        ),
+pub(super) fn resize_window(
+    args: ResizeWindowCliArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    resize_window_command::execute(
+        resize_window_command::ResizeWindowArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+            width: args.width,
+            height: args.height,
+        },
+        adapter,
+    )
+}
 
-        Commands::ResizeWindow(a) => resize_window::execute(
-            resize_window::ResizeWindowArgs {
-                app: a.app,
-                width: a.width,
-                height: a.height,
-            },
-            adapter,
-        ),
+pub(super) fn move_window(
+    args: MoveWindowCliArgs,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    move_window_command::execute(
+        move_window_command::MoveWindowArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+            x: args.x,
+            y: args.y,
+        },
+        adapter,
+    )
+}
 
-        Commands::MoveWindow(a) => move_window::execute(
-            move_window::MoveWindowArgs {
-                app: a.app,
-                x: a.x,
-                y: a.y,
-            },
-            adapter,
-        ),
+pub(super) fn minimize(args: AppRefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    minimize_command::execute(
+        helpers::AppArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+        },
+        adapter,
+    )
+}
 
-        Commands::Minimize(a) => minimize::execute(helpers::AppArgs { app: a.app }, adapter),
+pub(super) fn maximize(args: AppRefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    maximize_command::execute(
+        helpers::AppArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+        },
+        adapter,
+    )
+}
 
-        Commands::Maximize(a) => maximize::execute(helpers::AppArgs { app: a.app }, adapter),
-
-        Commands::Restore(a) => restore::execute(helpers::AppArgs { app: a.app }, adapter),
-
-        _ => Err(AppError::Adapter(
-            agent_desktop_core::error::AdapterError::new(
-                ErrorCode::InvalidArgs,
-                "app_window::dispatch received a non-app/window command",
-            ),
-        )),
-    }
+pub(super) fn restore(args: AppRefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    restore_command::execute(
+        helpers::AppArgs {
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+        },
+        adapter,
+    )
 }

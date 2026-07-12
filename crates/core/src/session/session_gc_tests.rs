@@ -1,6 +1,7 @@
 use super::*;
 use crate::refs_test_support::HomeGuard;
 use crate::session::SessionTraceMode;
+#[cfg(unix)]
 use std::fs;
 use std::time::Duration;
 
@@ -10,18 +11,16 @@ fn gc_removes_ended_sessions_but_not_pointer_or_live() {
     let live = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: false,
         ..Default::default()
     })
     .unwrap();
     let ended = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::On,
-        force: true,
         ..Default::default()
     })
     .unwrap();
-    end_session(Some(&ended.id)).unwrap();
+    end_session(&ended.id).unwrap();
     let report = gc(GcOptions {
         ended_only: false,
         older_than: None,
@@ -51,12 +50,10 @@ fn gc_respects_older_than_threshold() {
     let manifest = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: false,
         ..Default::default()
     })
     .unwrap();
-    end_session(Some(&manifest.id)).unwrap();
-    clear_current_session_pointer().unwrap();
+    end_session(&manifest.id).unwrap();
     let report = gc(GcOptions {
         ended_only: false,
         older_than: Some(Duration::from_secs(3600)),
@@ -71,11 +68,9 @@ fn gc_leaves_recently_created_unended_session() {
     let started = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: true,
         ..Default::default()
     })
     .unwrap();
-    clear_current_session_pointer().unwrap();
     let report = gc(GcOptions {
         ended_only: false,
         older_than: Some(Duration::from_secs(0)),
@@ -97,7 +92,6 @@ fn unreadable_manifest_is_skipped_not_fatal_for_list_and_gc() {
     let good = start_session(StartSessionOptions {
         name: None,
         trace: SessionTraceMode::Off,
-        force: true,
         ..Default::default()
     })
     .unwrap();

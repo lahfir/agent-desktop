@@ -1,82 +1,107 @@
 use agent_desktop_core::{
-    PermissionReport,
-    commands::{permissions, skills, status, version, wait},
+    AppError, PermissionReport,
+    adapter::PlatformAdapter,
+    commands::{
+        permissions as permissions_command, skills as skills_command, status as status_command,
+        version as version_command, wait as wait_command,
+    },
     context::CommandContext,
-    error::AppError,
 };
 use serde_json::Value;
 
-use crate::cli::Commands;
-use crate::cli_args::skills::SkillsAction;
-use crate::dispatch::{session, trace};
+use crate::cli_args::{
+    batch::BatchArgs,
+    session::SessionArgs,
+    skills::{SkillsAction, SkillsArgs},
+    system::{PermissionsArgs, WaitArgs},
+    trace::TraceArgs,
+};
+use crate::dispatch::{session as session_dispatch, trace as trace_dispatch};
 
-pub(super) fn dispatch(
-    cmd: Commands,
-    adapter: &dyn agent_desktop_core::adapter::PlatformAdapter,
+pub(super) fn wait(
+    args: WaitArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    wait_command::execute(
+        wait_command::WaitArgs {
+            mode: wait_command::WaitModeArgs {
+                ms: args.mode.ms,
+                element: args.mode.element,
+                window: args.mode.window,
+                text: args.mode.text,
+                menu: args.mode.menu,
+                menu_closed: args.mode.menu_closed,
+                notification: args.mode.notification,
+                event: args.event.event,
+                window_id: args.event.window_id,
+            },
+            predicate: wait_command::WaitPredicateArgs {
+                snapshot_id: args.predicate.snapshot,
+                predicate: args.predicate.predicate,
+                value: args.predicate.value,
+                action: args.predicate.action,
+                count: args.predicate.count,
+            },
+            timeout_ms: args.timeout,
+            app: args.app,
+        },
+        adapter,
+        context,
+    )
+}
+
+pub(super) fn status(
+    adapter: &dyn PlatformAdapter,
     permission_report: &PermissionReport,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    match cmd {
-        Commands::Wait(a) => wait::execute(
-            wait::WaitArgs {
-                mode: wait::WaitModeArgs {
-                    ms: a.mode.ms,
-                    element: a.mode.element,
-                    window: a.mode.window,
-                    text: a.mode.text,
-                    menu: a.mode.menu,
-                    menu_closed: a.mode.menu_closed,
-                    notification: a.mode.notification,
-                    event: a.event.event,
-                    window_id: a.event.window_id,
-                },
-                predicate: wait::WaitPredicateArgs {
-                    snapshot_id: a.predicate.snapshot,
-                    predicate: a.predicate.predicate,
-                    value: a.predicate.value,
-                    action: a.predicate.action,
-                    count: a.predicate.count,
-                },
-                timeout_ms: a.timeout,
-                app: a.app,
-            },
-            adapter,
-            context,
-        ),
+    status_command::execute_with_report_with_context(adapter, permission_report, context)
+}
 
-        Commands::Status => {
-            status::execute_with_report_with_context(adapter, permission_report, context)
-        }
-
-        Commands::Permissions(a) => permissions::execute_with_report(
-            permissions::PermissionsArgs { request: a.request },
-            adapter,
-            permission_report,
-        ),
-
-        Commands::Version => version::execute(),
-
-        Commands::Skills(a) => match a.action.unwrap_or(SkillsAction::List) {
-            SkillsAction::List => skills::list(),
-            SkillsAction::Path => skills::path(),
-            SkillsAction::Get(g) => skills::get(skills::GetArgs {
-                name: g.name,
-                full: g.full,
-                reference: g.reference,
-            }),
+pub(super) fn permissions(
+    args: PermissionsArgs,
+    adapter: &dyn PlatformAdapter,
+    permission_report: &PermissionReport,
+) -> Result<Value, AppError> {
+    permissions_command::execute_with_report(
+        permissions_command::PermissionsArgs {
+            request: args.request,
         },
+        adapter,
+        permission_report,
+    )
+}
 
-        Commands::Session(a) => session::dispatch(a, context),
+pub(super) fn version() -> Result<Value, AppError> {
+    version_command::execute()
+}
 
-        Commands::Trace(a) => trace::dispatch(a, context),
-
-        Commands::Batch(a) => crate::batch::execute(a, adapter, permission_report, context),
-
-        _ => Err(AppError::Adapter(
-            agent_desktop_core::error::AdapterError::new(
-                agent_desktop_core::error::ErrorCode::InvalidArgs,
-                "system::dispatch received a non-system command",
-            ),
-        )),
+pub(super) fn skills(args: SkillsArgs) -> Result<Value, AppError> {
+    match args.action.unwrap_or(SkillsAction::List) {
+        SkillsAction::List => skills_command::list(),
+        SkillsAction::Path => skills_command::path(),
+        SkillsAction::Get(get) => skills_command::get(skills_command::GetArgs {
+            name: get.name,
+            full: get.full,
+            reference: get.reference,
+        }),
     }
+}
+
+pub(super) fn session(args: SessionArgs, context: &CommandContext) -> Result<Value, AppError> {
+    session_dispatch::dispatch(args, context)
+}
+
+pub(super) fn trace(args: TraceArgs, context: &CommandContext) -> Result<Value, AppError> {
+    trace_dispatch::dispatch(args, context)
+}
+
+pub(super) fn batch(
+    args: BatchArgs,
+    adapter: &dyn PlatformAdapter,
+    permission_report: &PermissionReport,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    crate::batch::execute(args, adapter, permission_report, context)
 }

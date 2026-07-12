@@ -1,136 +1,102 @@
 use super::*;
-use agent_desktop_core::error::ErrorCode;
 
 #[test]
-fn open_app_args_preserve_current_focus() {
-    assert_eq!(open_app_args("Mail"), ["-g", "-a", "Mail"]);
+fn no_attach_requests_a_fresh_application_instance() {
+    let options = LaunchOptions {
+        attach_if_running: false,
+        ..Default::default()
+    };
+
+    assert!(crate::system::launch_workspace::creates_new_instance(
+        &options
+    ));
 }
 
 #[test]
-fn open_argv_with_no_args_omits_the_args_flag() {
-    assert_eq!(open_argv("Mail", &[]), vec!["-g", "-a", "Mail"]);
+fn default_launch_allows_attaching_to_a_running_instance() {
+    let options = LaunchOptions::default();
+
+    assert!(!crate::system::launch_workspace::creates_new_instance(
+        &options
+    ));
 }
 
 #[test]
-fn open_argv_with_one_arg_emits_the_args_flag_once() {
-    let args = vec!["foo".to_string()];
-
-    assert_eq!(
-        open_argv("Mail", &args),
-        vec!["-g", "-a", "Mail", "--args", "foo"]
-    );
-}
-
-#[test]
-fn open_argv_with_two_args_emits_exactly_one_args_flag() {
-    let args = vec!["foo".to_string(), "bar".to_string()];
-    let argv = open_argv("Mail", &args);
-
-    assert_eq!(argv, vec!["-g", "-a", "Mail", "--args", "foo", "bar"]);
-    assert_eq!(
-        argv.iter().filter(|a| a.as_str() == "--args").count(),
-        1,
-        "exactly one --args flag regardless of how many app args are passed, got argv: {argv:?}"
-    );
-}
-
-#[test]
-fn empty_options_argv_is_byte_identical_to_the_pre_options_launch_path() {
-    let empty_options_argv = open_argv("Preview", &[]);
-
-    assert_eq!(empty_options_argv, vec!["-g", "-a", "Preview"]);
-    assert_eq!(
-        empty_options_argv,
-        open_app_args("Preview")
-            .into_iter()
-            .map(String::from)
-            .collect::<Vec<_>>(),
-        "LaunchOptions with no args must produce the exact argv the options-free launch path used"
-    );
-}
-
-#[test]
-fn no_attach_against_a_running_app_fails_with_a_structured_error_naming_the_pid() {
-    let err = launch_conflict_error("Marker9182App", 4242);
-
-    assert_eq!(err.code, ErrorCode::ActionFailed);
-    assert!(
-        err.message.contains("4242"),
-        "structured --no-attach conflict must name the running pid so the caller can act on \
-         it, got message: {}",
-        err.message
-    );
-}
-
-#[test]
-fn launch_conflict_error_never_puts_the_raw_app_id_in_the_message() {
-    let marker = "MARKER_APP_ID_9f31c4";
-    let err = launch_conflict_error(marker, 777);
-
-    assert!(
-        !err.message.contains(marker),
-        "raw app id leaked into a trace-reachable message: {}",
-        err.message
-    );
-    let details = err
-        .details
-        .expect("--no-attach conflict error should carry the app id in details");
-    assert_eq!(details["app_name"], marker);
-}
-
-#[test]
-fn validate_app_identifier_rejects_parent_dir_traversal() {
-    let err = validate_app_identifier("../Evil").expect_err("must reject '..' traversal");
-
-    assert_eq!(err.code, ErrorCode::InvalidArgs);
-}
-
-#[test]
-fn validate_app_identifier_rejects_absolute_path() {
-    let err = validate_app_identifier("/abs/path").expect_err("must reject absolute path");
-
-    assert_eq!(err.code, ErrorCode::InvalidArgs);
-}
-
-#[test]
-fn validate_app_identifier_accepts_bare_app_name() {
+fn validates_safe_names_and_bundle_identifiers() {
     assert!(validate_app_identifier("Safari").is_ok());
-}
-
-#[test]
-fn validate_app_identifier_accepts_bundle_id() {
     assert!(validate_app_identifier("com.apple.Safari").is_ok());
 }
 
 #[test]
-fn validate_app_identifier_never_puts_the_raw_app_id_in_the_message() {
-    let marker = "../MARKER_APP_ID_9f31c4";
-    let err = validate_app_identifier(marker).expect_err("must reject '..' traversal");
-
-    assert!(
-        !err.message.contains(marker),
-        "raw app id leaked into a trace-reachable message: {}",
-        err.message
-    );
-    let details = err
-        .details
-        .expect("invalid app identifier error should carry the app id in details");
-    assert_eq!(details["app_name"], marker);
+fn rejects_paths_and_unsafe_bundle_identifiers() {
+    for identifier in [
+        "../Evil",
+        "/abs/path",
+        "Foo/Bar",
+        "bad\0name",
+        "bad\nname",
+        "com.apple.$evil",
+    ] {
+        let error = validate_app_identifier(identifier).expect_err("unsafe identifier");
+        assert_eq!(error.code, ErrorCode::InvalidArgs);
+        assert!(!error.message.contains(identifier));
+        assert_eq!(error.details.expect("details")["app_name"], identifier);
+    }
 }
 
 #[test]
-fn launch_no_window_error_never_puts_the_raw_app_id_in_the_message() {
-    let marker = "MARKER_APP_ID_9f31c4";
-    let err = launch_no_window_error(marker, 5000);
+fn zero_wait_still_launches_but_never_polls_after_first_observation() {
+    assert!(!should_poll_after_first_observation(0));
+    assert!(should_poll_after_first_observation(1));
+}
 
-    assert!(
-        !err.message.contains(marker),
-        "raw app id leaked into a trace-reachable message: {}",
-        err.message
-    );
-    assert!(err.message.contains("5000"));
-    let details = err
-        .details
-        .expect("no-window error should carry the app id in details");
+#[test]
+fn exact_native_launch_rejects_a_working_directory() {
+    let options = LaunchOptions {
+        cwd: Some(std::path::PathBuf::from("/tmp")),
+        ..Default::default()
+    };
+
+    let error = validate_launch_options(&options).expect_err("cwd is unsupported");
+
+    assert_eq!(error.code, ErrorCode::ActionNotSupported);
+}
+
+#[test]
+fn launch_options_enforce_bounded_entry_counts() {
+    let options = LaunchOptions {
+        args: (0..=MAX_ARGUMENT_COUNT)
+            .map(|index| index.to_string())
+            .collect(),
+        ..Default::default()
+    };
+
+    let error = validate_launch_options(&options).expect_err("too many args");
+
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+}
+
+#[test]
+fn launch_options_enforce_a_bounded_text_budget() {
+    let options = LaunchOptions {
+        args: vec!["x".repeat(MAX_LAUNCH_TEXT_BYTES + 1)],
+        ..Default::default()
+    };
+
+    let error = validate_launch_options(&options).expect_err("payload too large");
+
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+}
+
+#[test]
+fn launch_no_window_error_keeps_identifier_in_details_only() {
+    let marker = "MARKER_APP_ID_9f31c4";
+    let error = launch_no_window_error(marker, 5000, &(77, "generation".into()));
+
+    assert!(!error.message.contains(marker));
+    assert!(error.message.contains("5000"));
+    let details = error.details.expect("details");
     assert_eq!(details["app_name"], marker);
+    assert_eq!(details["pid"], 77);
+    assert_eq!(details["retry_safe"], false);
 }

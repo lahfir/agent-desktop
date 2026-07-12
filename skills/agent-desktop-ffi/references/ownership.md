@@ -34,8 +34,11 @@ dual-failure mode (command-level errors write `ok:false` JSON into
 | Allocates                                                    | Frees with                              |
 |--------------------------------------------------------------|-----------------------------------------|
 | `ad_list_apps(adapter, &list)`                               | `ad_app_list_free(list)`                |
+| `ad_list_displays(adapter, &list)`                           | `ad_display_list_free(list)`            |
 | `ad_list_windows(adapter, app, focused, &list)`              | `ad_window_list_free(list)`             |
+| `ad_list_windows_exact(adapter, app, focused, &list)`        | `ad_exact_window_list_free(list)`       |
 | `ad_list_surfaces(adapter, pid, &list)`                      | `ad_surface_list_free(list)`            |
+| `ad_list_surfaces_exact(adapter, pid, &list)`                | `ad_exact_surface_list_free(list)`      |
 | `ad_list_notifications(adapter, filter, &list)`              | `ad_notification_list_free(list)`       |
 | `ad_dismiss_all_notifications(adapter, f, &ok, &fail)`       | `ad_notification_list_free` on each, or `ad_dismiss_all_notifications_free(ok, fail)` |
 
@@ -44,14 +47,15 @@ dual-failure mode (command-level errors write `ok:false` JSON into
 | Allocates                                                 | Frees with                                                          |
 |-----------------------------------------------------------|---------------------------------------------------------------------|
 | `ad_launch_app(adapter, id, timeout, &out)`               | `ad_release_window_fields(&out)` — frees interior strings only; the `AdWindowInfo` struct lives on the caller's stack |
+| `ad_launch_app_exact(adapter, id, timeout, &out)`         | `ad_release_exact_window_fields(&out)` |
 
 ### Raw tree and element access
 
 | Allocates                                                                              | Frees with                              |
 |----------------------------------------------------------------------------------------|-----------------------------------------|
-| `ad_get_tree(adapter, win, opts, &out)`                                                | `ad_free_tree(&out)`                    |
-| `ad_resolve_element(adapter, entry, &handle)`                                          | `ad_free_handle(adapter, &handle)` — zeroes `handle.ptr` so a follow-up call is a no-op |
-| `ad_find(adapter, win, query, &handle)`                                                | same as `ad_resolve_element`            |
+| `ad_get_tree_exact(adapter, win, opts, &out)`                                          | `ad_free_tree(&out)`                    |
+| `ad_resolve_element_exact(adapter, entry, &handle)`                                    | `ad_free_handle(adapter, &handle)` — zeroes `handle.ptr` so a follow-up call is a no-op |
+| `ad_find_exact(adapter, win, query, &handle)`                                          | same as `ad_resolve_element_exact`      |
 
 ### Action results
 
@@ -59,8 +63,8 @@ dual-failure mode (command-level errors write `ok:false` JSON into
 |----------------------------------------------------------------------------------------|------------------------------|
 | `ad_execute_action(adapter, handle, action, &out)`                                     | `ad_free_action_result(&out)` |
 | `ad_execute_action_with_policy(adapter, handle, action, policy, &out)`                 | `ad_free_action_result(&out)` |
-| `ad_execute_ref_action_with_policy(adapter, entry, action, policy, &out)`              | `ad_free_action_result(&out)` |
-| `ad_notification_action(adapter, idx, expected_app, expected_title, name, &out)` — pass the `app_name`/`title` from `ad_list_notifications` (either may be null) so NC reorder between list and press returns `ERR_NOTIFICATION_NOT_FOUND` instead of pressing a different notification | `ad_free_action_result(&out)` |
+| `ad_execute_ref_action_exact_with_policy(adapter, entry, action, policy, &out)`        | `ad_free_action_result(&out)` |
+| `ad_notification_action(adapter, &request, &out)` — set `request.identity` from `ad_list_notifications` and choose an explicit non-headless policy; reorder mismatches fail closed | `ad_free_action_result(&out)` |
 
 ### Clipboard and image buffers
 
@@ -84,9 +88,9 @@ dual-failure mode (command-level errors write `ok:false` JSON into
   after the platform release, so a follow-up call sees `NULL` and
   returns `AD_RESULT_OK` without re-entering `CFRelease`.
 - **Adapters must outlive their handles.** Free every handle with the
-  same adapter that produced it before calling `ad_adapter_destroy`.
-  Destroying the adapter first and later freeing its handles is
-  undefined behavior.
+  same adapter and on the same thread that produced it before calling
+  `ad_adapter_destroy`. Destroyed, wrong-adapter, cross-thread, forged, and
+  already-freed tokens are rejected without dereferencing foreign memory.
 - Pointers inside a struct (`.id`, `.title`, `.app_name`, each
   `AdNotificationInfo.body`, etc.) are freed by the struct's owning
   free function (list_free / release_fields) — do not call
@@ -102,7 +106,7 @@ dual-failure mode (command-level errors write `ok:false` JSON into
 ## Out-param zeroing
 
 Every fallible FFI function zeroes its out-param **before** any guard
-(pointer validation, main-thread check, UTF-8 validation). On error,
+(pointer validation, UTF-8 validation, enum validation). On error,
 calling the paired free function is safe: all pointers inside are
 guaranteed null, all counts zero, so the free is a no-op rather than
 a double-free on a previous caller's allocation.
@@ -120,5 +124,5 @@ In particular:
   `ad_version` write `*out = NULL` before any guard, so on
   infrastructure failures no allocation is made and `ad_free_string(NULL)`
   is a safe no-op.
-- `ad_*_list` and `ad_resolve_element` / `ad_find` all apply the same
+- `ad_*_list` and `ad_resolve_element_exact` / `ad_find_exact` all apply the same
   pattern to their handle / list out-params.

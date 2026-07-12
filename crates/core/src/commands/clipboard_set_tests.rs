@@ -1,6 +1,6 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::error::{AdapterError, ErrorCode};
+use crate::{AdapterError, ErrorCode};
 use std::sync::Mutex;
 
 struct LocalDouble {
@@ -17,15 +17,21 @@ impl LocalDouble {
 
 impl ObservationOps for LocalDouble {}
 impl ActionOps for LocalDouble {}
-impl SystemOps for LocalDouble {}
+impl SystemOps for LocalDouble {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 impl InputOps for LocalDouble {
-    fn set_clipboard_content(&self, content: &ClipboardContent) -> Result<(), AdapterError> {
+    fn set_clipboard_content(
+        &self,
+        content: &ClipboardContent,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
         let stored = match content {
             ClipboardContent::Text(text) => ClipboardContent::Text(text.clone()),
             ClipboardContent::Image(image) => ClipboardContent::Image(ImageBuffer {
                 data: image.data.clone(),
-                format: crate::image_buffer::ImageFormat::Png,
+                format: crate::ImageFormat::Png,
                 width: image.width,
                 height: image.height,
                 scale_factor: image.scale_factor,
@@ -125,11 +131,11 @@ fn image_flag_reads_bytes_and_dimensions_from_file() {
         "agent-desktop-clipboard-set-image-{}.png",
         std::process::id()
     ));
-    let mut bytes = vec![0u8; 24];
-    bytes[0..8].copy_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-    bytes[12..16].copy_from_slice(b"IHDR");
-    bytes[16..20].copy_from_slice(&11u32.to_be_bytes());
-    bytes[20..24].copy_from_slice(&8u32.to_be_bytes());
+    let bytes = vec![
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4,
+        0, 0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 100, 248, 15, 0, 1, 5,
+        1, 1, 39, 24, 227, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+    ];
     std::fs::write(&path, &bytes).unwrap();
 
     let double = LocalDouble::new();
@@ -148,12 +154,29 @@ fn image_flag_reads_bytes_and_dimensions_from_file() {
     assert_eq!(out["type"], "image");
     match double.seen.lock().unwrap().as_ref().unwrap() {
         ClipboardContent::Image(image) => {
-            assert_eq!(image.width, 11);
-            assert_eq!(image.height, 8);
+            assert_eq!(image.width, 1);
+            assert_eq!(image.height, 1);
             assert_eq!(image.data, bytes);
         }
         _ => panic!("expected Image content"),
     }
+}
+
+#[test]
+fn missing_image_path_reports_invalid_args() {
+    let missing = std::env::temp_dir().join(format!(
+        "agent-desktop-missing-clipboard-image-{}.png",
+        crate::refs::new_snapshot_id()
+    ));
+
+    let error = build_content(ClipboardSetArgs {
+        text: None,
+        image: Some(missing),
+        file_urls: Vec::new(),
+    })
+    .unwrap_err();
+
+    assert_eq!(error.code(), ErrorCode::InvalidArgs.as_str());
 }
 
 #[test]
@@ -182,4 +205,42 @@ fn file_urls_take_priority_over_text_and_image() {
         ClipboardContent::FileUrls(urls) => assert_eq!(urls.len(), 1),
         _ => panic!("expected FileUrls content"),
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn image_rejects_fifo_without_blocking() {
+    use std::ffi::CString;
+
+    let path = std::env::temp_dir().join(format!(
+        "agent-desktop-clipboard-set-fifo-{}",
+        crate::refs::new_snapshot_id()
+    ));
+    let c_path = CString::new(path.to_string_lossy().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+    let started = std::time::Instant::now();
+
+    let error = build_content(ClipboardSetArgs {
+        text: None,
+        image: Some(path.clone()),
+        file_urls: Vec::new(),
+    })
+    .unwrap_err();
+
+    assert_eq!(error.code(), ErrorCode::InvalidArgs.as_str());
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    std::fs::remove_file(path).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn image_rejects_device_files() {
+    let error = build_content(ClipboardSetArgs {
+        text: None,
+        image: Some(PathBuf::from("/dev/null")),
+        file_urls: Vec::new(),
+    })
+    .unwrap_err();
+
+    assert_eq!(error.code(), ErrorCode::InvalidArgs.as_str());
 }

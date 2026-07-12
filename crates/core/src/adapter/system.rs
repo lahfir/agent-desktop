@@ -1,107 +1,117 @@
 use crate::{
-    PermissionReport, PermissionState,
-    action::{KeyCombo, WindowOp},
-    action_result::ActionResult,
-    display_info::DisplayInfo,
-    error::AdapterError,
-    image_buffer::ImageBuffer,
-    node::WindowInfo,
-    notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
-    screenshot_target::ScreenshotTarget,
+    AdapterError, AdapterSession, AppInfo, Deadline, DismissAllNotificationsRequest,
+    DismissNotificationRequest, ImageBuffer, InteractionLease, KeyCombo, NotificationActionRequest,
+    NotificationFilter, NotificationInfo, PermissionReport, PermissionState, ProcessIdentity,
+    SessionAffinity, SignalBaseline, SignalFilter, WindowInfo, WindowOp,
+    action_result::ActionResult, display_info::DisplayInfo, screenshot_target::ScreenshotTarget,
 };
 
 pub trait SystemOps: Send + Sync {
-    fn permission_report(&self) -> PermissionReport {
-        PermissionReport {
+    fn acquire_interaction_lease(
+        &self,
+        _deadline: Deadline,
+    ) -> Result<InteractionLease, AdapterError> {
+        Err(AdapterError::not_supported("acquire_interaction_lease"))
+    }
+
+    fn permission_report(&self, _deadline: Deadline) -> Result<PermissionReport, AdapterError> {
+        Ok(PermissionReport {
             accessibility: PermissionState::Denied {
                 suggestion: "Platform adapter not available".into(),
             },
             screen_recording: PermissionState::Unknown,
             automation: PermissionState::NotRequired,
-        }
+        })
     }
 
     fn unknown_accessibility_means_unsupported(&self) -> bool {
         true
     }
 
-    fn request_permissions(&self) -> PermissionReport {
-        self.permission_report()
+    /// Performs one renderer-accessibility activation mutation and returns.
+    /// Readiness polling belongs to core after the interaction lease is dropped.
+    fn activate_renderer_accessibility(
+        &self,
+        _process: ProcessIdentity,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported(
+            "activate_renderer_accessibility",
+        ))
     }
 
-    fn focus_window(&self, _win: &WindowInfo) -> Result<(), AdapterError> {
+    fn request_permissions(
+        &self,
+        lease: &InteractionLease,
+    ) -> Result<PermissionReport, AdapterError> {
+        self.permission_report(lease.deadline())
+    }
+
+    fn focus_window(
+        &self,
+        _win: &WindowInfo,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("focus_window"))
     }
 
-    /// Brings the application owning `pid` to the foreground. Best-effort guard
-    /// invoked before physical (cursor/keyboard) input that targets a known
-    /// element, so synthetic events land on the intended window rather than
-    /// whatever happens to be frontmost.
-    fn focus_app(&self, _pid: i32) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("focus_app"))
-    }
-
-    fn launch_app(&self, _id: &str, _timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
+    fn launch_app(
+        &self,
+        _id: &str,
+        _options: &crate::launch_options::LaunchOptions,
+        _lease: &InteractionLease,
+    ) -> Result<WindowInfo, AdapterError> {
         Err(AdapterError::not_supported("launch_app"))
     }
 
-    fn launch_app_with_options(
+    fn process_state(
         &self,
-        id: &str,
-        options: &crate::launch_options::LaunchOptions,
-        timeout_ms: u64,
-    ) -> Result<WindowInfo, AdapterError> {
-        if !options.args.is_empty()
-            || options.cwd.is_some()
-            || !options.env.is_empty()
-            || !options.attach
-        {
-            return Err(AdapterError::not_supported("launch_app_with_options"));
-        }
-        self.launch_app(id, timeout_ms)
-    }
-
-    fn process_state(&self, _pid: i32) -> Result<crate::process_state::ProcessState, AdapterError> {
+        _process: ProcessIdentity,
+        _deadline: Deadline,
+    ) -> Result<crate::process_state::ProcessState, AdapterError> {
         Err(AdapterError::not_supported("process_state"))
     }
 
     fn supported_surfaces(&self) -> Vec<crate::adapter::SnapshotSurface> {
-        vec![crate::adapter::SnapshotSurface::Window]
+        Vec::new()
     }
 
-    /// Captures a point-in-time [`crate::signals::SignalBaseline`] snapshot,
-    /// narrowed by `filter` when the caller already knows which app it cares
-    /// about. `wait --event` calls this once at wait-start and again on every
-    /// poll, then diffs the two snapshots with `crate::signals::diff_signals`
-    /// — the adapter never decides what changed, only what the desktop looks
-    /// like right now.
-    fn capture_signal_baseline(
-        &self,
-        _filter: &crate::signals::SignalFilter,
-    ) -> Result<crate::signals::SignalBaseline, AdapterError> {
-        Err(AdapterError::not_supported("capture_signal_baseline"))
-    }
-
-    /// Opens adapter-native session affinity for a host that outlives a
-    /// single command (an FFI embedder, a future daemon) — the landing zone
-    /// for a Windows COM-MTA apartment thread or a Linux D-Bus connection
-    /// before those adapters exist. `affinity.session_id` lets the caller
-    /// tie the native connection's lifetime to a CLI-level session (see
-    /// [`crate::session::SessionManifest`]). The returned session may hold
-    /// native connection state but must never hold a resolved element
-    /// handle — commands keep resolving elements per call from a
-    /// `RefEntry`, exactly as they do today. Nothing in the CLI/dispatch
-    /// path calls this yet; the stateless request-per-command flow is
-    /// unaffected until a persistent host opts in. Adapters with no native
-    /// connection state to manage return `not_supported`.
+    /// Opens adapter-native connection affinity for a persistent host.
+    ///
+    /// The returned session may retain platform connection state, but never a
+    /// resolved element handle. Stateless command callers do not need to open a
+    /// session. Adapters without persistent native state return
+    /// `PLATFORM_NOT_SUPPORTED`.
     fn open_session(
         &self,
-        _affinity: &crate::session_affinity::SessionAffinity,
-    ) -> Result<Box<dyn crate::adapter_session::AdapterSession>, AdapterError> {
+        _affinity: &SessionAffinity,
+        _deadline: Deadline,
+    ) -> Result<Box<dyn AdapterSession>, AdapterError> {
         Err(AdapterError::not_supported("open_session"))
     }
 
-    fn close_app(&self, _id: &str, _force: bool) -> Result<(), AdapterError> {
+    /// Captures a point-in-time [`SignalBaseline`] snapshot,
+    /// narrowed by `filter` when the caller already knows which app it cares
+    /// about. `deadline` is one absolute budget shared by every native read in
+    /// the capture; an adapter must return `TIMEOUT` rather than publish an
+    /// observation completed at or after it. `wait --event` calls this once at
+    /// wait-start and again on every poll, then diffs the two snapshots with
+    /// `crate::diff_signals` — the adapter never decides what changed,
+    /// only what the desktop looks like right now.
+    fn capture_signal_baseline(
+        &self,
+        _filter: &SignalFilter,
+        _deadline: Deadline,
+    ) -> Result<SignalBaseline, AdapterError> {
+        Err(AdapterError::not_supported("capture_signal_baseline"))
+    }
+
+    fn close_app(
+        &self,
+        _app: &AppInfo,
+        _force: bool,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("close_app"))
     }
 
@@ -124,79 +134,89 @@ pub trait SystemOps: Send + Sync {
         false
     }
 
-    fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
+    fn screenshot(
+        &self,
+        _target: ScreenshotTarget,
+        _deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
         Err(AdapterError::not_supported("screenshot"))
     }
 
-    fn list_displays(&self) -> Result<Vec<DisplayInfo>, AdapterError> {
+    fn list_displays(&self, _deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_displays"))
     }
 
-    fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError> {
+    fn focused_window(&self, _deadline: Deadline) -> Result<Option<WindowInfo>, AdapterError> {
         Err(AdapterError::not_supported("focused_window"))
     }
 
     fn press_key_for_app(
         &self,
-        _app_name: &str,
-        _combo: &crate::action::KeyCombo,
+        _process: ProcessIdentity,
+        _combo: &crate::KeyCombo,
+        _policy: crate::InteractionPolicy,
+        _lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::not_supported("press_key_for_app"))
     }
 
-    fn wait_for_menu(&self, _pid: i32, _open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
+    fn wait_for_menu(
+        &self,
+        _process: ProcessIdentity,
+        _open: bool,
+        _deadline: Deadline,
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("wait_for_menu"))
     }
 
-    fn window_op(&self, _win: &WindowInfo, _op: WindowOp) -> Result<(), AdapterError> {
+    fn window_op(
+        &self,
+        _win: &WindowInfo,
+        _op: WindowOp,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("window_op"))
     }
 
     /// Resolves a live window by `WindowInfo.id`, corroborating the match against
     /// `pid` and, when present, `title`. Opaque ids must not be parsed as numeric
     /// outside the adapter; macOS uses `w-<kCGWindowNumber>`.
-    fn resolve_window_strict(&self, _win: &WindowInfo) -> Result<WindowInfo, AdapterError> {
+    fn resolve_window_strict(
+        &self,
+        _win: &WindowInfo,
+        _deadline: Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
         Err(AdapterError::not_supported("resolve_window_strict"))
     }
 
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _deadline: Deadline,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_notifications"))
     }
 
     fn dismiss_notification(
         &self,
-        _index: usize,
-        _app_filter: Option<&str>,
+        _request: DismissNotificationRequest<'_>,
+        _lease: &InteractionLease,
     ) -> Result<NotificationInfo, AdapterError> {
         Err(AdapterError::not_supported("dismiss_notification"))
     }
 
     fn dismiss_all_notifications(
         &self,
-        _app_filter: Option<&str>,
+        _request: DismissAllNotificationsRequest<'_>,
+        _lease: &InteractionLease,
     ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
         Err(AdapterError::not_supported("dismiss_all_notifications"))
     }
 
-    /// Press a named action button on the notification at `index`.
-    ///
-    /// `identity` lets the caller pin the targeted notification to an
-    /// expected app / title fingerprint. Notification Center reindexes
-    /// entries between listings, so index-only targeting can press the
-    /// wrong button if a notification arrives or is dismissed between
-    /// `list_notifications` and this call. When any identity field is
-    /// `Some`, implementations must return
-    /// `ErrorCode::NotificationNotFound` if the row at `index` does not
-    /// match. Passing an empty identity (or `None`) preserves legacy
-    /// index-only behavior for callers that reconcile themselves.
     fn notification_action(
         &self,
-        _index: usize,
-        _identity: Option<&NotificationIdentity>,
-        _action_name: &str,
+        _request: NotificationActionRequest<'_>,
+        _lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::not_supported("notification_action"))
     }

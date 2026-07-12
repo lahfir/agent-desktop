@@ -1,9 +1,8 @@
-use agent_desktop_core::action_step_outcome::ActionStepOutcome;
-use agent_desktop_core::error::{AdapterError, ErrorCode};
 use agent_desktop_core::step_mechanism::StepMechanism;
-use agent_desktop_core::{action_step::ActionStep, interaction_policy::InteractionPolicy};
+use agent_desktop_core::{ActionStep, interaction_policy::InteractionPolicy};
+use agent_desktop_core::{AdapterError, ErrorCode};
 
-use crate::actions::discovery::ElementCaps;
+use crate::actions::chain_delivery::DeliveryOutcome;
 use crate::tree::AXElement;
 
 pub(crate) use super::chain_context::ChainContext;
@@ -13,65 +12,26 @@ pub(crate) use super::chain_step::ChainStep;
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use crate::actions::ax_helpers;
     use crate::actions::chain_step_exec::execute_step;
-    use std::time::{Duration, Instant};
-
-    const DEFAULT_CHAIN_TIMEOUT: Duration = Duration::from_secs(10);
-    const MAX_CHAIN_TIMEOUT_MS: u64 = 300_000;
 
     pub(crate) fn execute_chain(
         el: &AXElement,
-        caps: &ElementCaps,
         def: &ChainDef,
         ctx: &ChainContext,
         policy: InteractionPolicy,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        let deadline = ctx
-            .deadline
-            .unwrap_or_else(|| Instant::now() + chain_timeout());
-        let ctx = ChainContext {
-            dynamic_value: ctx.dynamic_value,
-            deadline: Some(deadline),
-        };
         let total = def.steps.len();
         let mut steps = Vec::new();
-
-        if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
-            ax_helpers::set_messaging_timeout(&crate::tree::element_for_pid(pid), 1.0);
+        if let Some(pid) = crate::system::app_ops::pid_from_element(el, ctx.deadline) {
+            crate::tree::attributes::set_messaging_timeout(
+                &crate::tree::element_for_pid(pid),
+                ctx.deadline,
+            )?;
         }
-        ax_helpers::set_messaging_timeout(el, 1.0);
-
-        if def.pre_scroll {
-            tracing::debug!("chain: pre-scroll AXScrollToVisible");
-            ax_helpers::ensure_visible(el);
-            steps.push(
-                ActionStep::attempted("AXScrollToVisible")
-                    .with_mechanism(StepMechanism::SemanticApi),
-            );
-        }
+        crate::tree::attributes::set_messaging_timeout(el, ctx.deadline)?;
 
         for (i, step) in def.steps.iter().enumerate() {
-            if Instant::now() > deadline {
-                tracing::debug!("chain: timeout after {i}/{total} steps, trying CGClick fallback");
-                if let Some(cg) = def
-                    .steps
-                    .iter()
-                    .find(|s| matches!(s, ChainStep::CGClick { .. }))
-                {
-                    if physical_click_permitted(policy) && execute_step(el, caps, cg, &ctx, policy)?
-                    {
-                        tracing::debug!("chain: CGClick fallback succeeded");
-                        steps.push(build_step(cg, ActionStepOutcome::Succeeded));
-                        return Ok(steps);
-                    }
-                }
-                return Err(
-                    AdapterError::timeout("Chain execution deadline exceeded").with_suggestion(
-                        "Retry the command, refresh the snapshot, or increase AGENT_DESKTOP_CHAIN_TIMEOUT_MS for slow apps.",
-                    ),
-                );
-            }
+            ctx.ensure_budget()?;
             if matches!(step, ChainStep::CGClick { .. }) && !physical_click_permitted(policy) {
                 return Err(AdapterError::policy_denied_for_policy(
                     "Physical click fallback is disabled by the current interaction policy",
@@ -79,18 +39,23 @@ mod imp {
                 ));
             }
             let label = step_label(step);
-            if execute_step(el, caps, step, &ctx, policy)? {
+            let outcome = execute_step(el, step, ctx, policy)?;
+            if record_step_outcome(
+                &mut steps,
+                step,
+                outcome,
+                def.continue_after_unverified_delivery,
+            ) {
                 tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
-                steps.push(build_step(step, ActionStepOutcome::Succeeded));
                 return Ok(steps);
             }
             tracing::debug!("chain: [{}/{}] {} -> skip", i + 1, total, label);
-            steps.push(build_step(step, ActionStepOutcome::Skipped));
         }
 
         tracing::debug!("chain: all {total} steps exhausted");
         Err(
             AdapterError::new(ErrorCode::ActionFailed, "All chain steps exhausted")
+                .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
                 .with_suggestion(def.suggestion),
         )
     }
@@ -104,35 +69,32 @@ mod imp {
         }
     }
 
-    pub(crate) fn step_verifies_effect(step: &ChainStep) -> bool {
-        match step {
-            ChainStep::SetBool { .. }
-            | ChainStep::SetDynamic { .. }
-            | ChainStep::FocusThenSetDynamic { .. }
-            | ChainStep::IncrementToDynamic => true,
-            ChainStep::Custom { label, .. } => matches!(
-                *label,
-                "verified_press" | "value_relay" | "visible_in_scroll_context"
-            ),
-            ChainStep::CustomWithDeadline { label, .. } => {
-                matches!(*label, "expand_verified" | "collapse_verified")
-            }
-            _ => false,
-        }
-    }
-
-    pub(crate) fn build_step(step: &ChainStep, outcome: ActionStepOutcome) -> ActionStep {
+    pub(crate) fn build_step(step: &ChainStep, outcome: DeliveryOutcome) -> ActionStep {
         let label = step_label(step);
         let mut built = match outcome {
-            ActionStepOutcome::Attempted => ActionStep::attempted(label),
-            ActionStepOutcome::Skipped => ActionStep::skipped(label),
-            ActionStepOutcome::Succeeded => ActionStep::succeeded(label),
+            DeliveryOutcome::NotDelivered => ActionStep::skipped(label),
+            DeliveryOutcome::SatisfiedNoDelivery => ActionStep::skipped(label).with_verified(true),
+            DeliveryOutcome::DeliveredUnverified | DeliveryOutcome::DeliveredVerified => {
+                ActionStep::succeeded(label)
+            }
         };
         built = built.with_mechanism(step_mechanism(step));
-        if matches!(outcome, ActionStepOutcome::Succeeded) && step_verifies_effect(step) {
-            built = built.with_verified(true);
+        if outcome.was_delivered() {
+            built = built.with_verified(outcome.was_verified());
         }
         built
+    }
+
+    pub(crate) fn record_step_outcome(
+        steps: &mut Vec<ActionStep>,
+        step: &ChainStep,
+        outcome: DeliveryOutcome,
+        continue_after_unverified_delivery: bool,
+    ) -> bool {
+        steps.push(build_step(step, outcome));
+        outcome.terminates_chain()
+            && !(continue_after_unverified_delivery
+                && outcome == DeliveryOutcome::DeliveredUnverified)
     }
 
     fn step_label(step: &ChainStep) -> &'static str {
@@ -140,25 +102,11 @@ mod imp {
             ChainStep::Action(name) => name,
             ChainStep::SetBool { attr, .. } => attr,
             ChainStep::SetDynamic { attr } => attr,
-            ChainStep::FocusThenSetDynamic { attr } => attr,
             ChainStep::IncrementToDynamic => "IncrementToDynamic",
             ChainStep::FocusThenClearByKeyboard => "FocusThenClearByKeyboard",
-            ChainStep::ChildActions { .. } => "ChildActions",
-            ChainStep::AncestorActions { .. } => "AncestorActions",
-            ChainStep::Custom { label, .. } => label,
             ChainStep::CustomWithDeadline { label, .. } => label,
             ChainStep::CGClick { .. } => "CGClick",
         }
-    }
-
-    fn chain_timeout() -> Duration {
-        std::env::var("AGENT_DESKTOP_CHAIN_TIMEOUT_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .filter(|ms| *ms > 0)
-            .map(|ms| ms.min(MAX_CHAIN_TIMEOUT_MS))
-            .map(Duration::from_millis)
-            .unwrap_or(DEFAULT_CHAIN_TIMEOUT)
     }
 
     fn physical_click_permitted(policy: InteractionPolicy) -> bool {
@@ -167,7 +115,7 @@ mod imp {
 }
 
 #[cfg(all(test, target_os = "macos"))]
-pub(crate) use imp::{build_step, step_mechanism, step_verifies_effect};
+pub(crate) use imp::{build_step, record_step_outcome, step_mechanism};
 
 #[cfg(test)]
 #[path = "chain_tests.rs"]
@@ -179,7 +127,6 @@ mod imp {
 
     pub fn execute_chain(
         _el: &AXElement,
-        _caps: &ElementCaps,
         def: &ChainDef,
         _ctx: &ChainContext,
         _policy: InteractionPolicy,

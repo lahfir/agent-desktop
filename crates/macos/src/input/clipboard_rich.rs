@@ -1,204 +1,207 @@
-use agent_desktop_core::image_buffer::parse_png_dimensions;
-use core_foundation::base::TCFType;
-use core_foundation::string::CFString;
-use core_foundation::url::CFURL;
-use core_foundation_sys::base::kCFAllocatorDefault;
-use core_foundation_sys::url::CFURLCreateWithString;
+use agent_desktop_core::{
+    AdapterError, Deadline, ErrorCode, MAX_PNG_INPUT_BYTES, parse_png_dimensions,
+};
+use std::borrow::Cow;
 use std::ffi::c_void;
 
+pub(crate) use super::clipboard_file_urls::{prepare_file_urls, read_file_urls, write_file_urls};
+
 type Id = *mut c_void;
-type Class = *mut c_void;
 type Sel = *mut c_void;
+type ImageDimensions = (u32, u32);
+type PreparedImage<'a> = (Cow<'a, [u8]>, ImageDimensions);
+type OwnedImage = (Vec<u8>, ImageDimensions);
+
+const MAX_IMAGE_PIXELS: u64 = 64 * 1024 * 1024;
+const PNG_HEADER_BYTES: usize = 24;
+const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
 unsafe extern "C" {
-    fn objc_getClass(name: *const core::ffi::c_char) -> Class;
     fn sel_registerName(name: *const core::ffi::c_char) -> Sel;
     fn objc_msgSend(receiver: Id, sel: Sel, ...) -> Id;
     static NSPasteboardTypePNG: Id;
-    static NSPasteboardTypeFileURL: Id;
 }
 
-/// Reads the width/height stored in a PNG's `IHDR` chunk via the shared core
-/// helper, defaulting to `(0, 0)` for read-path data that fails validation
-/// rather than rejecting an already-received clipboard payload.
-pub(crate) fn png_dimensions(data: &[u8]) -> (u32, u32) {
-    parse_png_dimensions(data).unwrap_or((0, 0))
+pub(crate) fn prepare_image(bytes: &[u8]) -> Result<PreparedImage<'_>, AdapterError> {
+    validate_byte_count(bytes.len(), true)?;
+    let header_dimensions = validate_png_header(bytes, true)?;
+    let dimensions = parse_png_dimensions(bytes)
+        .ok_or_else(|| invalid_image("Clipboard images must be complete, valid PNG payloads"))?;
+    if dimensions != header_dimensions || !super::clipboard_image_io::is_complete_png(bytes) {
+        return Err(invalid_image("Clipboard PNG failed platform validation"));
+    }
+    Ok((Cow::Borrowed(bytes), dimensions))
 }
 
-pub(crate) fn read_image(pb: Id) -> Option<Vec<u8>> {
-    unsafe { read_data(pb, NSPasteboardTypePNG) }
+pub(crate) fn read_image(pb: Id, deadline: Deadline) -> Result<Option<OwnedImage>, AdapterError> {
+    ensure_budget(deadline)?;
+    let png = unsafe { read_data(pb, NSPasteboardTypePNG, deadline) }?;
+    let result = normalize_image_data(png)?;
+    ensure_budget(deadline)?;
+    Ok(result)
 }
 
-pub(crate) fn write_image(pb: Id, bytes: &[u8]) -> bool {
-    unsafe { write_data(pb, bytes, NSPasteboardTypePNG) }
+fn normalize_image_data(png: Option<Vec<u8>>) -> Result<Option<OwnedImage>, AdapterError> {
+    let Some(bytes) = png else {
+        return Ok(None);
+    };
+    let header_dimensions = validate_png_header(&bytes, false)?;
+    let dimensions = parse_png_dimensions(&bytes)
+        .ok_or_else(|| clipboard_data_error("Clipboard PNG payload failed complete validation"))?;
+    if dimensions != header_dimensions || !super::clipboard_image_io::is_complete_png(&bytes) {
+        return Err(clipboard_data_error(
+            "Clipboard PNG failed platform validation",
+        ));
+    }
+    Ok(Some((bytes, dimensions)))
 }
 
-unsafe fn read_data(pb: Id, pasteboard_type: Id) -> Option<Vec<u8>> {
+pub(crate) fn write_image(pb: Id, png: &[u8], deadline: Deadline) -> Result<bool, AdapterError> {
+    ensure_budget(deadline)?;
+    if png.len() > MAX_PNG_INPUT_BYTES {
+        return Ok(false);
+    }
+    unsafe { Ok(write_data(pb, png, NSPasteboardTypePNG)) }
+}
+
+unsafe fn read_data(
+    pb: Id,
+    pasteboard_type: Id,
+    deadline: Deadline,
+) -> Result<Option<Vec<u8>>, AdapterError> {
     unsafe {
-        let sel = sel_registerName(c"dataForType:".as_ptr());
         let send: unsafe extern "C" fn(Id, Sel, Id) -> Id =
             std::mem::transmute(objc_msgSend as *const c_void);
-        let data = send(pb, sel, pasteboard_type);
+        let data = send(
+            pb,
+            sel_registerName(c"dataForType:".as_ptr()),
+            pasteboard_type,
+        );
         if data.is_null() {
-            return None;
+            return Ok(None);
         }
-        let length_sel = sel_registerName(c"length".as_ptr());
+        copy_nsdata(data, deadline)
+    }
+}
+
+unsafe fn copy_nsdata(data: Id, deadline: Deadline) -> Result<Option<Vec<u8>>, AdapterError> {
+    unsafe {
+        ensure_budget(deadline)?;
         let send_usize: unsafe extern "C" fn(Id, Sel) -> usize =
             std::mem::transmute(objc_msgSend as *const c_void);
-        let len = send_usize(data, length_sel);
+        let len = send_usize(data, sel_registerName(c"length".as_ptr()));
+        validate_byte_count(len, false)?;
         if len == 0 {
-            return Some(Vec::new());
+            return Ok(Some(Vec::new()));
         }
-        let bytes_sel = sel_registerName(c"bytes".as_ptr());
         let send_ptr: unsafe extern "C" fn(Id, Sel) -> *const u8 =
             std::mem::transmute(objc_msgSend as *const c_void);
-        let ptr = send_ptr(data, bytes_sel);
+        let ptr = send_ptr(data, sel_registerName(c"bytes".as_ptr()));
         if ptr.is_null() {
-            return None;
+            return Err(clipboard_data_error("NSData returned null bytes"));
         }
-        Some(std::slice::from_raw_parts(ptr, len).to_vec())
+        let bytes = std::slice::from_raw_parts(ptr, len);
+        validate_png_header(bytes, false)?;
+        let copy = bytes.to_vec();
+        ensure_budget(deadline)?;
+        Ok(Some(copy))
     }
 }
 
 unsafe fn write_data(pb: Id, bytes: &[u8], pasteboard_type: Id) -> bool {
+    unsafe extern "C" {
+        fn objc_getClass(name: *const core::ffi::c_char) -> *mut c_void;
+    }
     unsafe {
-        let cls = objc_getClass(c"NSData".as_ptr());
-        if cls.is_null() {
+        let class = objc_getClass(c"NSData".as_ptr());
+        if class.is_null() {
             return false;
         }
-        let data_sel = sel_registerName(c"dataWithBytes:length:".as_ptr());
-        let send_new: unsafe extern "C" fn(Id, Sel, *const u8, usize) -> Id =
+        let send_data: unsafe extern "C" fn(Id, Sel, *const u8, usize) -> Id =
             std::mem::transmute(objc_msgSend as *const c_void);
-        let data = send_new(cls as Id, data_sel, bytes.as_ptr(), bytes.len());
+        let data = send_data(
+            class as Id,
+            sel_registerName(c"dataWithBytes:length:".as_ptr()),
+            bytes.as_ptr(),
+            bytes.len(),
+        );
         if data.is_null() {
             return false;
         }
-        let set_sel = sel_registerName(c"setData:forType:".as_ptr());
         let send_set: unsafe extern "C" fn(Id, Sel, Id, Id) -> bool =
             std::mem::transmute(objc_msgSend as *const c_void);
-        send_set(pb, set_sel, data, pasteboard_type)
-    }
-}
-
-pub(crate) fn read_file_urls(pb: Id) -> Vec<String> {
-    unsafe { read_file_urls_inner(pb) }
-}
-
-unsafe fn read_file_urls_inner(pb: Id) -> Vec<String> {
-    unsafe {
-        let items_sel = sel_registerName(c"pasteboardItems".as_ptr());
-        let send: unsafe extern "C" fn(Id, Sel) -> Id =
-            std::mem::transmute(objc_msgSend as *const c_void);
-        let items = send(pb, items_sel);
-        if items.is_null() {
-            return Vec::new();
-        }
-        let count_sel = sel_registerName(c"count".as_ptr());
-        let send_usize: unsafe extern "C" fn(Id, Sel) -> usize =
-            std::mem::transmute(objc_msgSend as *const c_void);
-        let count = send_usize(items, count_sel);
-
-        let idx_sel = sel_registerName(c"objectAtIndex:".as_ptr());
-        let send_at: unsafe extern "C" fn(Id, Sel, usize) -> Id =
-            std::mem::transmute(objc_msgSend as *const c_void);
-        let string_sel = sel_registerName(c"stringForType:".as_ptr());
-        let send_string: unsafe extern "C" fn(Id, Sel, Id) -> Id =
-            std::mem::transmute(objc_msgSend as *const c_void);
-
-        let mut urls = Vec::new();
-        for i in 0..count {
-            let item = send_at(items, idx_sel, i);
-            if item.is_null() {
-                continue;
-            }
-            let ns_url_string = send_string(item, string_sel, NSPasteboardTypeFileURL);
-            if ns_url_string.is_null() {
-                continue;
-            }
-            let url_string = CFString::wrap_under_get_rule(
-                ns_url_string as core_foundation_sys::string::CFStringRef,
-            )
-            .to_string();
-            if let Some(path) = file_url_to_path(&url_string) {
-                urls.push(path);
-            }
-        }
-        urls
-    }
-}
-
-pub(crate) fn file_url_to_path(url_string: &str) -> Option<String> {
-    if !url_string.starts_with("file://") {
-        return None;
-    }
-    let cf_string = CFString::new(url_string);
-    let url_ref = unsafe {
-        CFURLCreateWithString(
-            kCFAllocatorDefault,
-            cf_string.as_concrete_TypeRef(),
-            std::ptr::null(),
+        send_set(
+            pb,
+            sel_registerName(c"setData:forType:".as_ptr()),
+            data,
+            pasteboard_type,
         )
+    }
+}
+
+fn validate_png_header(data: &[u8], argument: bool) -> Result<(u32, u32), AdapterError> {
+    let dimensions = data
+        .get(..PNG_HEADER_BYTES)
+        .filter(|header| header.get(..8) == Some(PNG_SIGNATURE.as_slice()))
+        .filter(|header| header.get(8..12) == Some(13_u32.to_be_bytes().as_slice()))
+        .filter(|header| header.get(12..16) == Some(b"IHDR"))
+        .and_then(|header| {
+            Some((
+                u32::from_be_bytes(header.get(16..20)?.try_into().ok()?),
+                u32::from_be_bytes(header.get(20..24)?.try_into().ok()?),
+            ))
+        });
+    let Some(dimensions) = dimensions else {
+        return Err(if argument {
+            invalid_image("Clipboard image is missing a valid PNG header")
+        } else {
+            clipboard_data_error("Clipboard image is missing a valid PNG header")
+        });
     };
-    if url_ref.is_null() {
-        return None;
+    validate_dimensions(dimensions, argument)?;
+    Ok(dimensions)
+}
+
+fn validate_byte_count(bytes: usize, argument: bool) -> Result<(), AdapterError> {
+    if bytes <= MAX_PNG_INPUT_BYTES {
+        return Ok(());
     }
-    let url: CFURL = unsafe { TCFType::wrap_under_create_rule(url_ref) };
-    url.to_path().map(|p| p.to_string_lossy().into_owned())
+    Err(if argument {
+        invalid_image("Image exceeds the 64 MiB encoded-data budget")
+    } else {
+        clipboard_data_error("Clipboard image exceeds the 64 MiB encoded-data budget")
+    })
 }
 
-pub(crate) fn write_file_urls(pb: Id, paths: &[String]) -> bool {
-    unsafe { write_file_urls_inner(pb, paths) }
+fn validate_dimensions(dimensions: (u32, u32), argument: bool) -> Result<(), AdapterError> {
+    let (width, height) = dimensions;
+    let pixels = u64::from(width)
+        .checked_mul(u64::from(height))
+        .ok_or_else(|| clipboard_data_error("Image pixel count overflowed"))?;
+    if width > 0 && height > 0 && pixels <= MAX_IMAGE_PIXELS {
+        return Ok(());
+    }
+    Err(if argument {
+        invalid_image("Image exceeds the decoded-image budget")
+    } else {
+        clipboard_data_error("Clipboard image exceeds the decoded-image budget")
+    })
 }
 
-unsafe fn write_file_urls_inner(pb: Id, paths: &[String]) -> bool {
-    unsafe {
-        let ma_cls = objc_getClass(c"NSMutableArray".as_ptr());
-        if ma_cls.is_null() {
-            return false;
-        }
-        let alloc_sel = sel_registerName(c"alloc".as_ptr());
-        let init_sel = sel_registerName(c"init".as_ptr());
-        let send: unsafe extern "C" fn(Id, Sel) -> Id =
-            std::mem::transmute(objc_msgSend as *const c_void);
-        let array = send(send(ma_cls as Id, alloc_sel), init_sel);
-        if array.is_null() {
-            return false;
-        }
-
-        let add_sel = sel_registerName(c"addObject:".as_ptr());
-        let send_add: unsafe extern "C" fn(Id, Sel, Id) =
-            std::mem::transmute(objc_msgSend as *const c_void);
-
-        let mut added = false;
-        for path in paths {
-            let Some(url) = CFURL::from_path(path, false) else {
-                continue;
-            };
-            let url_id = url.as_concrete_TypeRef() as *mut c_void;
-            send_add(array, add_sel, url_id);
-            added = true;
-        }
-        if !added {
-            release(array);
-            return false;
-        }
-
-        let write_sel = sel_registerName(c"writeObjects:".as_ptr());
-        let send_write: unsafe extern "C" fn(Id, Sel, Id) -> bool =
-            std::mem::transmute(objc_msgSend as *const c_void);
-        let ok = send_write(pb, write_sel, array);
-        release(array);
-        ok
+fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
+    if deadline.is_expired() {
+        Err(deadline.timeout_error())
+    } else {
+        Ok(())
     }
 }
 
-unsafe fn release(object: Id) {
-    unsafe {
-        let sel = sel_registerName(c"release".as_ptr());
-        let send: unsafe extern "C" fn(Id, Sel) =
-            std::mem::transmute(objc_msgSend as *const c_void);
-        send(object, sel);
-    }
+fn invalid_image(message: &str) -> AdapterError {
+    AdapterError::new(ErrorCode::InvalidArgs, message)
+}
+
+fn clipboard_data_error(message: &str) -> AdapterError {
+    AdapterError::new(ErrorCode::ActionFailed, message)
 }
 
 #[cfg(test)]

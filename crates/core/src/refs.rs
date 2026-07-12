@@ -1,5 +1,5 @@
-use crate::adapter::SnapshotSurface;
-use crate::error::AppError;
+use crate::AppError;
+pub(crate) use crate::RefEntry;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::cell::RefCell;
@@ -19,54 +19,8 @@ thread_local! {
     static HOME_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RefEntry {
-    pub pid: i32,
-    pub role: String,
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub states: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bounds: Option<crate::node::Rect>,
-    pub bounds_hash: Option<u64>,
-    pub available_actions: Vec<String>,
-    pub source_app: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_window_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_window_title: Option<String>,
-    #[serde(default, skip_serializing_if = "SnapshotSurface::is_window")]
-    pub source_surface: SnapshotSurface,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub root_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub path_is_absolute: bool,
-    #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
-    pub path: RefPath,
-}
-
-fn is_false(value: &bool) -> bool {
-    !*value
-}
-
 pub fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
-    let valid = ref_id.starts_with("@e")
-        && ref_id.len() >= 3
-        && ref_id.len() <= 12
-        && ref_id[2..].chars().all(|c| c.is_ascii_digit())
-        && ref_id[2..].parse::<u32>().is_ok_and(|n| n > 0);
-    if valid {
-        return Ok(());
-    }
-    Err(AppError::invalid_input(format!(
-        "Invalid ref_id '{ref_id}': must match @e{{N}} where N is a positive integer"
-    )))
+    crate::ref_token::validate_ref_token(ref_id)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,11 +37,39 @@ impl RefMap {
         }
     }
 
-    pub fn allocate(&mut self, entry: RefEntry) -> String {
-        self.counter += 1;
+    pub fn try_allocate(&mut self, entry: RefEntry) -> Result<String, AppError> {
+        crate::refs_validate::validate_ref_entry(&entry)?;
+        self.allocate_validated(entry)
+    }
+
+    pub(crate) fn try_allocate_observed(
+        &mut self,
+        entry: RefEntry,
+    ) -> Result<crate::ref_allocation::RefAllocation, AppError> {
+        if !crate::Role::is_canonical(&entry.identity.role) || entry.identity.role == "unknown" {
+            return Ok(crate::ref_allocation::RefAllocation::SkippedInvalidRole);
+        }
+        if crate::refs_validate::validate_ref_entry(&entry).is_err() {
+            return Ok(crate::ref_allocation::RefAllocation::SkippedInvalidEntry);
+        }
+        self.allocate_validated(entry)
+            .map(crate::ref_allocation::RefAllocation::Allocated)
+    }
+
+    fn allocate_validated(&mut self, entry: RefEntry) -> Result<String, AppError> {
+        self.counter = self
+            .counter
+            .checked_add(1)
+            .ok_or_else(|| AppError::invalid_input("RefMap exhausted its identifier space"))?;
         let ref_id = format!("@e{}", self.counter);
         self.inner.insert(ref_id.clone(), entry);
-        ref_id
+        Ok(ref_id)
+    }
+
+    #[cfg(test)]
+    pub fn allocate(&mut self, entry: RefEntry) -> String {
+        self.try_allocate(entry)
+            .expect("test RefEntry must be valid")
     }
 
     pub fn get(&self, ref_id: &str) -> Option<&RefEntry> {
@@ -104,10 +86,35 @@ impl RefMap {
 
     pub fn remove_by_root_ref(&mut self, root: &str) {
         self.inner
-            .retain(|_, entry| entry.root_ref.as_deref() != Some(root));
+            .retain(|_, entry| entry.scope.root_ref.as_deref() != Some(root));
+    }
+
+    pub fn validate(&self) -> Result<(), AppError> {
+        let mut max_id = 0_u32;
+        for (ref_id, entry) in &self.inner {
+            let numeric = ref_id
+                .strip_prefix("@e")
+                .and_then(|value| value.parse::<u32>().ok())
+                .filter(|value| *value > 0)
+                .ok_or_else(|| AppError::invalid_input("RefMap contains an invalid ref key"))?;
+            if format!("@e{numeric}") != *ref_id {
+                return Err(AppError::invalid_input(
+                    "RefMap contains a non-canonical ref key",
+                ));
+            }
+            max_id = max_id.max(numeric);
+            crate::refs_validate::validate_ref_entry(entry)?;
+        }
+        if self.counter < max_id || self.counter == u32::MAX {
+            return Err(AppError::invalid_input(
+                "RefMap counter is inconsistent with its allocated refs",
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn serialize_with_size_check(&self) -> Result<String, AppError> {
+        self.validate()?;
         let json = serde_json::to_string(self)?;
         if json.len() as u64 > MAX_REFMAP_BYTES {
             return Err(AppError::Internal(
@@ -126,16 +133,9 @@ impl RefMap {
 
     pub fn load() -> Result<Self, AppError> {
         let path = refmap_path()?;
-
-        let metadata = std::fs::metadata(&path)?;
-        if metadata.len() > MAX_REFMAP_BYTES {
-            return Err(AppError::Internal(
-                "RefMap file exceeds 1MB size limit".into(),
-            ));
-        }
-
-        let json = std::fs::read_to_string(&path)?;
-        let map: Self = serde_json::from_str(&json)?;
+        let json = crate::private_file::read_private_bounded(&path, MAX_REFMAP_BYTES)?;
+        let map: Self = serde_json::from_slice(&json)?;
+        map.validate()?;
         Ok(map)
     }
 }
@@ -202,51 +202,11 @@ pub fn validate_snapshot_id(snapshot_id: &str) -> Result<(), AppError> {
 }
 
 pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
-    let dir = path
-        .parent()
-        .ok_or_else(|| AppError::Internal("invalid ref store path".into()))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(dir)?;
-    }
-    #[cfg(not(unix))]
-    std::fs::create_dir_all(dir)?;
-
-    static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-    let unique = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = path.with_extension(format!("{}.{unique}.tmp", std::process::id()));
-    let written = write_tmp_then_rename(&tmp, path, bytes);
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    written
+    crate::private_file::write_atomic(path, bytes).map_err(AppError::from)
 }
 
-fn write_tmp_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), AppError> {
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(tmp)?;
-        file.write_all(bytes)?;
-        file.flush()?;
-    }
-    #[cfg(not(unix))]
-    std::fs::write(tmp, bytes)?;
-
-    std::fs::rename(tmp, path)?;
-    Ok(())
+pub(crate) fn write_user_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
+    crate::private_file::write_user_atomic(path, bytes).map_err(AppError::from)
 }
 
 pub(crate) fn is_symlink(path: &Path) -> bool {

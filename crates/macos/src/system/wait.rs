@@ -1,53 +1,39 @@
-use agent_desktop_core::error::AdapterError;
-use std::time::{Duration, Instant};
+use agent_desktop_core::{AdapterError, Deadline, ProcessIdentity};
 
 #[cfg(target_os = "macos")]
-mod imp {
-    use super::*;
+pub(crate) fn wait_for_menu(
+    process: ProcessIdentity,
+    open: bool,
+    deadline: Deadline,
+) -> Result<(), AdapterError> {
     use crate::tree::surfaces::is_menu_open;
+    use std::time::Duration;
 
-    const DEFAULT_MENU_TIMEOUT_MS: u64 = 750;
-    const MAX_MENU_TIMEOUT_MS: u64 = 10_000;
-
-    pub fn wait_for_menu(pid: i32, open: bool, timeout_ms: u64) -> Result<(), AdapterError> {
-        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-        loop {
-            if is_menu_open(pid) == open {
-                return Ok(());
-            }
-            if Instant::now() >= deadline {
-                let msg = if open {
-                    format!("No context menu opened within {timeout_ms}ms")
-                } else {
-                    format!("Context menu did not close within {timeout_ms}ms")
-                };
-                return Err(AdapterError::timeout(msg));
-            }
-            std::thread::sleep(Duration::from_millis(50));
+    loop {
+        let identity = crate::system::process_identity::require_core(&process)?;
+        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+        if is_menu_open(identity.pid(), instant)? == open {
+            crate::system::process_identity::require_core(&process)?;
+            return Ok(());
         }
-    }
-
-    pub fn menu_timeout_ms() -> u64 {
-        std::env::var("AGENT_DESKTOP_MENU_TIMEOUT_MS")
-            .ok()
-            .and_then(|raw| raw.parse::<u64>().ok())
-            .filter(|ms| *ms > 0)
-            .map(|ms| ms.min(MAX_MENU_TIMEOUT_MS))
-            .unwrap_or(DEFAULT_MENU_TIMEOUT_MS)
+        if deadline.is_expired() {
+            let message = if open {
+                "No context menu opened before the deadline"
+            } else {
+                "Context menu did not close before the deadline"
+            };
+            return Err(deadline.timeout_error().with_platform_detail(message));
+        }
+        let pause = deadline.remaining_slice(Duration::from_millis(50))?;
+        std::thread::sleep(pause);
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-mod imp {
-    use super::*;
-
-    pub fn wait_for_menu(_pid: i32, _open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("wait_for_menu"))
-    }
-
-    pub fn menu_timeout_ms() -> u64 {
-        750
-    }
+pub(crate) fn wait_for_menu(
+    _process: ProcessIdentity,
+    _open: bool,
+    _deadline: Deadline,
+) -> Result<(), AdapterError> {
+    Err(AdapterError::not_supported("wait_for_menu"))
 }
-
-pub use imp::{menu_timeout_ms, wait_for_menu};

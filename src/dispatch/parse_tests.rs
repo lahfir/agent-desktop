@@ -67,4 +67,35 @@ fn rejects_bad_xy_shape_and_numbers() {
     assert_eq!(parse_xy("10").unwrap_err().code(), "INVALID_ARGS");
     assert_eq!(parse_xy("x,20").unwrap_err().code(), "INVALID_ARGS");
     assert_eq!(parse_xy("10,y").unwrap_err().code(), "INVALID_ARGS");
+    assert_eq!(parse_xy("1,2,3").unwrap_err().code(), "INVALID_ARGS");
+    assert_eq!(parse_xy("NaN,20").unwrap_err().code(), "INVALID_ARGS");
+    assert_eq!(parse_xy("10,inf").unwrap_err().code(), "INVALID_ARGS");
+}
+
+#[test]
+fn rejects_duplicate_modifiers() {
+    let error = parse_modifiers(&["shift".into(), "shift".into()])
+        .expect_err("duplicate modifier must not be silently applied twice");
+    assert_eq!(error.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn modifier_aliases_map_to_portable_meta() {
+    for alias in ["meta", "cmd", "command", "META"] {
+        assert_eq!(parse_modifier(alias).unwrap(), Modifier::Meta);
+    }
+}
+
+#[test]
+fn launch_options_reject_ambiguous_or_nonportable_environment() {
+    let duplicate = build_launch_options(&[], &["A=1".into(), "A=2".into()], None, 100, false)
+        .expect_err("duplicate keys must not silently overwrite");
+    assert_eq!(duplicate.code(), "INVALID_ARGS");
+
+    for entry in ["9KEY=value", "BAD-KEY=value", "KEY=bad\0value"] {
+        assert_eq!(parse_env_pair(entry, 0).unwrap_err().code(), "INVALID_ARGS");
+    }
+    let nul_arg = build_launch_options(&["bad\0arg".into()], &[], None, 100, false)
+        .expect_err("NUL arguments must fail before platform spawn");
+    assert_eq!(nul_arg.code(), "INVALID_ARGS");
 }

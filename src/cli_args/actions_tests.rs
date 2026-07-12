@@ -1,4 +1,6 @@
 use super::*;
+use crate::cli_args::drag::DragCliArgs;
+use clap::CommandFactory;
 
 /// F2 regression: `TypeArgs`, `SetValueArgs`, `SelectArgs`, `ScrollArgs`,
 /// `HoverArgs`, and `DragCliArgs` previously had no `--timeout-ms` field at
@@ -77,9 +79,18 @@ fn hover_args_batch_json_omitted_timeout_defaults_to_5000() {
 }
 
 #[test]
+fn hover_help_discloses_stateless_duration_rejection() {
+    let help = HoverArgs::command().render_long_help().to_string();
+    assert!(help.contains("positive values are rejected in stateless mode"));
+    assert!(help.contains("wait <ms>"));
+}
+
+#[test]
 fn drag_cli_args_cli_omitted_timeout_defaults_to_5000() {
     let args = DragCliArgs::try_parse_from(["drag", "--from", "@e1", "--to", "@e2"]).unwrap();
     assert_eq!(args.timeout_ms, 5000);
+    assert_eq!(args.target.from.as_deref(), Some("@e1"));
+    assert_eq!(args.target.to.as_deref(), Some("@e2"));
 }
 
 #[test]

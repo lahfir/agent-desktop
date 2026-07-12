@@ -1,23 +1,19 @@
 use super::*;
-use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps, WindowFilter};
+use crate::LocatorQuery;
 use crate::context::CommandContext;
-use crate::error::AdapterError;
-use crate::locator::LocatorQuery;
-use crate::node::WindowInfo;
 use crate::refs_test_support::HomeGuard;
 
 fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
         ref_id: Some("@e1".into()),
         role: "textfield".into(),
-        name: name.map(String::from),
-        value: value.map(String::from),
-        description: description.map(String::from),
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: name.map(String::from),
+            value: value.map(String::from),
+            description: description.map(String::from),
+            native_id: None,
+        },
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
     }
@@ -73,7 +69,7 @@ fn display_name_prefers_value_before_description() {
 #[test]
 fn search_tree_match_uses_ref_id_contract_and_includes_states() {
     let mut root = node(Some("Save"), None, None);
-    root.states = vec!["enabled".into()];
+    root.presentation.states = vec!["enabled".into()];
     let query = LocatorQuery::default();
     let mut matches = Vec::new();
 
@@ -103,14 +99,8 @@ fn default_limit_caps_materialized_matches() {
     let root = AccessibilityNode {
         ref_id: None,
         role: "window".into(),
-        name: None,
-        value: None,
-        description: None,
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: Default::default(),
+        presentation: Default::default(),
         children_count: None,
         children: (0..60)
             .map(|i| node(Some(&format!("Button {i}")), None, None))
@@ -156,14 +146,8 @@ fn count_matches_does_not_build_result_json() {
     let root = AccessibilityNode {
         ref_id: None,
         role: "window".into(),
-        name: None,
-        value: None,
-        description: None,
-        native_id: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: Default::default(),
+        presentation: Default::default(),
         children_count: None,
         children: vec![
             node(Some("Save"), None, None),
@@ -175,7 +159,7 @@ fn count_matches_does_not_build_result_json() {
         ..LocatorQuery::default()
     };
 
-    assert_eq!(count_matches(&root, &query), 2);
+    assert_eq!(count_matches(&root, &query), 3);
 }
 
 fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
@@ -185,7 +169,7 @@ fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
 }
 
 #[test]
-fn textarea_alias_resolves_to_textfield_query() {
+fn role_alias_is_preserved_until_live_validation() {
     let query = query_from_args(&FindArgs {
         app: None,
         window_id: None,
@@ -197,7 +181,7 @@ fn textarea_alias_resolves_to_textfield_query() {
         selection: no_selection(),
     });
 
-    assert_eq!(query.identity.role.as_deref(), Some("textfield"));
+    assert_eq!(query.identity.role.as_deref(), Some("textarea"));
 
     let root = node(None, Some("doc body"), None);
     let mut matches = Vec::new();
@@ -206,7 +190,7 @@ fn textarea_alias_resolves_to_textfield_query() {
 }
 
 #[test]
-fn unknown_role_passes_through_and_matches_nothing() {
+fn unknown_role_is_preserved_until_validation() {
     let query = query_from_args(&FindArgs {
         app: None,
         window_id: None,
@@ -277,61 +261,6 @@ fn roles_present_hint_is_omitted_when_a_match_is_found() {
     assert!(response.get("roles_present").is_none());
 }
 
-struct TwoWindowAdapter;
-
-impl ObservationOps for TwoWindowAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
-        Ok(vec![
-            WindowInfo {
-                id: "w-1".into(),
-                title: "First".into(),
-                app: "FixtureApp".into(),
-                pid: 101,
-                bounds: None,
-                is_focused: false,
-            },
-            WindowInfo {
-                id: "w-2".into(),
-                title: "Second".into(),
-                app: "FixtureApp".into(),
-                pid: 102,
-                bounds: None,
-                is_focused: false,
-            },
-        ])
-    }
-
-    fn get_tree(
-        &self,
-        win: &WindowInfo,
-        _opts: &crate::adapter::TreeOptions,
-    ) -> Result<AccessibilityNode, AdapterError> {
-        let marker = if win.id == "w-2" {
-            "OnlyInWindowTwo"
-        } else {
-            "OnlyInWindowOne"
-        };
-        Ok(AccessibilityNode {
-            ref_id: None,
-            role: "window".into(),
-            name: Some(win.title.clone()),
-            value: None,
-            description: None,
-            native_id: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
-            children_count: None,
-            children: vec![role_node("button", Some(marker))],
-        })
-    }
-}
-
-impl ActionOps for TwoWindowAdapter {}
-impl InputOps for TwoWindowAdapter {}
-impl SystemOps for TwoWindowAdapter {}
-
 fn find_args_scoped_to_window(window_id: &str) -> FindArgs {
     FindArgs {
         app: None,
@@ -349,13 +278,10 @@ fn find_args_scoped_to_window(window_id: &str) -> FindArgs {
 fn find_scopes_matches_to_requested_window_id() {
     let _guard = HomeGuard::new();
     let context = CommandContext::default();
+    let adapter = super::live_tests::LiveFindAdapter::complete();
 
-    let from_window_two = execute(
-        find_args_scoped_to_window("w-2"),
-        &TwoWindowAdapter,
-        &context,
-    )
-    .expect("find scoped to w-2 should succeed");
+    let from_window_two = execute(find_args_scoped_to_window("w-2"), &adapter, &context)
+        .expect("find scoped to w-2 should succeed");
     let hits = from_window_two["matches"]
         .as_array()
         .expect("matches must be an array");
@@ -366,12 +292,8 @@ fn find_scopes_matches_to_requested_window_id() {
     );
     assert_eq!(hits[0]["name"], "OnlyInWindowTwo");
 
-    let from_window_one = execute(
-        find_args_scoped_to_window("w-1"),
-        &TwoWindowAdapter,
-        &context,
-    )
-    .expect("find scoped to w-1 should succeed");
+    let from_window_one = execute(find_args_scoped_to_window("w-1"), &adapter, &context)
+        .expect("find scoped to w-1 should succeed");
     let misses = from_window_one["matches"]
         .as_array()
         .expect("matches must be an array");

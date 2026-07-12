@@ -1,5 +1,5 @@
 use super::{ReadOptions, read_merged};
-use crate::error::AppError;
+use crate::AppError;
 use crate::trace_artifacts::read_screenshot_for_embed;
 use base64::Engine;
 use serde_json::{Value, json};

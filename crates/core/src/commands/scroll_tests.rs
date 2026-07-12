@@ -1,12 +1,11 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    action::Direction,
+    AdapterError, Direction,
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::NativeHandle,
     commands::stale_retry_test_support::StaleRetryCounter,
-    error::AdapterError,
     refs::{RefEntry, RefMap},
     refs_store::RefStore,
     refs_test_support::HomeGuard,
@@ -25,9 +24,15 @@ impl StaleThenOkAdapter {
 }
 
 impl ObservationOps for StaleThenOkAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         self.retry.attempt()
     }
+
+    crate::adapter::complete_live_observation!("scrollarea", "Target", [crate::capability::SCROLL]);
 }
 
 impl ActionOps for StaleThenOkAdapter {
@@ -35,34 +40,57 @@ impl ActionOps for StaleThenOkAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("scroll"))
+        Ok(ActionResult::delivered_unverified("scroll"))
     }
 }
 
 impl InputOps for StaleThenOkAdapter {}
-impl SystemOps for StaleThenOkAdapter {}
+impl SystemOps for StaleThenOkAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 fn snapshot_id() -> String {
     let mut refmap = RefMap::new();
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     refmap.allocate(RefEntry {
-        pid: 1,
-        role: "scrollarea".into(),
-        name: Some("Target".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["Scroll".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "scrollarea".into(),
+            name: Some("Target".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec!["Scroll".into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
 }

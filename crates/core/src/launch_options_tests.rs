@@ -5,7 +5,7 @@ fn default_preserves_attach_if_running_semantics() {
     let options = LaunchOptions::default();
 
     assert!(
-        options.attach,
+        options.attach_if_running,
         "default LaunchOptions must attach to an already-running instance, matching \
          launch_app's historical behavior; a derived Default would silently flip this to \
          false and turn every unmodified caller into a --no-attach launch"
@@ -18,9 +18,9 @@ fn default_preserves_attach_if_running_semantics() {
 #[test]
 fn explicit_no_attach_overrides_the_default() {
     let options = LaunchOptions {
-        attach: false,
+        attach_if_running: false,
         ..Default::default()
     };
 
-    assert!(!options.attach);
+    assert!(!options.attach_if_running);
 }

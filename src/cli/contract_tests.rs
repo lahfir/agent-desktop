@@ -1,15 +1,20 @@
 use crate::cli::Cli;
-use clap::CommandFactory;
+use clap::{CommandFactory, Parser, error::ErrorKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const NON_COMMAND_MODULES: &[&str] = &[
     "combo",
     "execute_by_ref",
+    "find_live",
     "helpers",
     "helpers_test_support",
+    "input_hold_policy",
     "mod",
+    "notification_identity",
+    "notification_policy",
     "point_resolve",
+    "pointer_action",
     "query",
     "stale_retry_test_support",
     "wait_element",
@@ -20,6 +25,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "wait_text_match",
     "wait_timeout",
     "wait_event",
+    "wait_event_input",
     "wait_selector",
 ];
 
@@ -57,6 +63,28 @@ const SHARED_REF_ACTION_TESTS: &[&str] = &[
 ];
 
 const BINARY_CONTRACT_TESTS: &[&str] = &["batch", "permissions", "version"];
+
+#[test]
+fn standard_version_flag_reports_the_package_version() {
+    let error = Cli::try_parse_from(["agent-desktop", "--version"])
+        .expect_err("--version should use clap's display-version path");
+
+    assert_eq!(error.kind(), ErrorKind::DisplayVersion);
+    assert_eq!(
+        error.to_string().trim(),
+        format!("agent-desktop {}", env!("CARGO_PKG_VERSION"))
+    );
+}
+
+#[test]
+fn ci_compares_the_release_binary_to_the_workspace_version() {
+    let workflow = include_str!("../../.github/workflows/ci.yml");
+
+    assert!(workflow.contains("PACKAGE_ID=$(cargo pkgid -p agent-desktop)"));
+    assert!(workflow.contains("EXPECTED_VERSION=${PACKAGE_ID##*@}"));
+    assert!(workflow.contains("EXPECTED_OUTPUT=\"agent-desktop $EXPECTED_VERSION\""));
+    assert!(workflow.contains("[ \"$ACTUAL_OUTPUT\" != \"$EXPECTED_OUTPUT\" ]"));
+}
 
 const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "clipboard-clear",
@@ -130,6 +158,64 @@ fn every_cli_subcommand_has_explicit_test_coverage_classification() {
             "{command} has no explicit command coverage classification"
         );
     }
+}
+
+#[test]
+fn macos_capability_count_includes_restored_notifications() {
+    let commands = cli_command_names();
+    assert_eq!(
+        commands.len(),
+        58,
+        "the published CLI command count changed"
+    );
+    assert_eq!(
+        commands.len(),
+        58,
+        "macOS operational command count changed; update capability documentation"
+    );
+}
+
+#[test]
+fn every_visible_cli_argument_has_help_text() {
+    fn inspect(command: &clap::Command) {
+        for argument in command
+            .get_arguments()
+            .filter(|argument| !argument.is_hide_set())
+        {
+            assert!(
+                argument
+                    .get_help()
+                    .is_some_and(|help| !help.to_string().is_empty()),
+                "{} argument {:?} has no help text",
+                command.get_name(),
+                argument.get_id()
+            );
+        }
+        for child in command.get_subcommands() {
+            inspect(child);
+        }
+    }
+
+    inspect(&Cli::command());
+}
+
+#[test]
+fn curated_help_exposes_new_surfaces_and_current_ref_contract() {
+    let help = Cli::command().render_long_help().to_string();
+    for expected in [
+        "mouse-wheel",
+        "list-displays",
+        "--file-url",
+        "wait --event <kind>",
+        "@s8f3k2p9:e1",
+        "does not activate",
+    ] {
+        assert!(
+            help.contains(expected),
+            "missing curated help text: {expected}"
+        );
+    }
+    assert!(!help.contains("current-session pointer"));
 }
 
 #[test]

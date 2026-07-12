@@ -1,20 +1,42 @@
 use super::*;
 use crate::{
+    AdapterError, ErrorCode,
     action::Action,
     adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps},
     capability,
-    error::{AdapterError, ErrorCode},
 };
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU32, Ordering},
+};
 
 #[test]
 fn oversized_timeout_budget_is_clamped_and_never_overflows() {
-    assert_eq!(budget_from_ms(100), Duration::from_millis(100));
-    let clamped = budget_from_ms(u64::MAX);
+    assert_eq!(crate::Deadline::after(100).unwrap().timeout_ms(), 100);
+    assert_eq!(
+        crate::Deadline::after(u64::MAX).unwrap_err().code,
+        ErrorCode::InvalidArgs
+    );
+}
+
+#[test]
+fn actionability_timeout_exposes_the_last_report_contract() {
+    let error = crate::ref_action_poll::timeout_with_last_report(serde_json::json!({
+        "phase": "preflight"
+    }));
+
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("last_report")),
+        Some(&serde_json::json!({ "phase": "preflight" }))
+    );
     assert!(
-        std::time::Instant::now().checked_add(clamped).is_some(),
-        "deadline construction must not overflow for an oversized --timeout-ms"
+        error
+            .details
+            .as_ref()
+            .is_none_or(|details| details.get("report").is_none())
     );
 }
 
@@ -23,21 +45,20 @@ struct RetryAdapter {
 }
 
 impl ObservationOps for RetryAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         self.resolve_calls.fetch_add(1, Ordering::SeqCst);
         if self.resolve_calls.load(Ordering::SeqCst) < 3 {
-            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet"));
+            return Err(AdapterError::new(ErrorCode::StaleRef, "not yet")
+                .with_details(serde_json::json!({ "retryable": true })));
         }
         Ok(NativeHandle::null())
     }
 
-    fn resolve_element_strict_with_timeout(
-        &self,
-        entry: &RefEntry,
-        _timeout: Duration,
-    ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
-    }
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
 }
 
 impl ActionOps for RetryAdapter {
@@ -45,35 +66,39 @@ impl ActionOps for RetryAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for RetryAdapter {}
 
-impl SystemOps for RetryAdapter {}
+impl SystemOps for RetryAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 struct AmbiguousThenOkAdapter {
     resolve_calls: AtomicU32,
 }
 
 impl ObservationOps for AmbiguousThenOkAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         self.resolve_calls.fetch_add(1, Ordering::SeqCst);
         if self.resolve_calls.load(Ordering::SeqCst) == 1 {
-            return Err(AdapterError::ambiguous_target("2 candidates"));
+            return Err(AdapterError::ambiguous_target("2 candidates")
+                .with_details(serde_json::json!({ "retryable": true })));
         }
         Ok(NativeHandle::null())
     }
 
-    fn resolve_element_strict_with_timeout(
-        &self,
-        entry: &RefEntry,
-        _timeout: Duration,
-    ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_element_strict(entry)
-    }
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
 }
 
 impl ActionOps for AmbiguousThenOkAdapter {
@@ -81,39 +106,59 @@ impl ActionOps for AmbiguousThenOkAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for AmbiguousThenOkAdapter {}
 
-impl SystemOps for AmbiguousThenOkAdapter {}
+impl SystemOps for AmbiguousThenOkAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 fn entry() -> RefEntry {
+    let bounds = crate::Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 10.0,
+        height: 10.0,
+    };
     RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: Some(crate::node::Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 10.0,
-            height: 10.0,
-        }),
-        bounds_hash: Some(1),
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::snapshot_surface::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Run".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::snapshot_surface::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -134,7 +179,7 @@ fn none_timeout_uses_single_resolve_attempt() {
             context: &CommandContext::default(),
         },
         ActionRequest::headless(Action::Click),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap_err();
     assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
@@ -154,7 +199,7 @@ fn budget_timeout_retries_until_success() {
             context: &CommandContext::default(),
         },
         request_with_timeout(5_000),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap();
     assert_eq!(result.action, "click");
@@ -174,7 +219,7 @@ fn transient_ambiguity_is_recorded_in_result_details() {
             context: &CommandContext::default(),
         },
         request_with_timeout(5_000),
-        crate::ref_action::execute_resolved,
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap();
     assert_eq!(
@@ -186,31 +231,26 @@ fn transient_ambiguity_is_recorded_in_result_details() {
     );
 }
 
-/// Regression for the double `check_live` bug: `execute_poll_loop` used to
-/// call `actionability::check_live` itself and then hand off to `dispatch`
-/// (`execute_resolved`), which runs its own internal `check_live` — two live
-/// reads per iteration instead of one. If a second call observed a
-/// transiently different state (as this adapter's second `get_live_element`
-/// call does), the failure propagated via a bare `?` that bypassed the
-/// retry/permanent classification entirely, so the action never retried it.
-/// With the fix there is exactly one `check_live` per iteration (inside
-/// `dispatch`), so this succeeds on the first attempt with a single live
-/// read. Reintroducing the loop-level check makes `get_live_element`'s
-/// second-call "disabled" state observed within the very first iteration,
-/// turning this `Ok` into an immediate `Err`.
+/// Lease-free polling is followed by physical-pointer preflight and final
+/// stability validation under the interaction lease before dispatch.
 struct DoubleCheckAdapter {
     live_calls: AtomicU32,
+    lease_held: Arc<AtomicBool>,
+}
+
+struct DoubleCheckLeaseGuard(Arc<AtomicBool>);
+
+impl Drop for DoubleCheckLeaseGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 impl ObservationOps for DoubleCheckAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: Duration,
+        _deadline: crate::Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
@@ -218,27 +258,60 @@ impl ObservationOps for DoubleCheckAdapter {
     fn get_live_element(
         &self,
         _handle: &NativeHandle,
+        _deadline: crate::Deadline,
     ) -> Result<crate::adapter::LiveElement, AdapterError> {
         let call = self.live_calls.fetch_add(1, Ordering::SeqCst) + 1;
-        let states = if call == 1 {
+        assert_eq!(
+            self.lease_held.load(Ordering::SeqCst),
+            call > 2,
+            "poll reads must be lease-free and final validation must be leased"
+        );
+        let states = if call <= 2 {
             vec![]
         } else {
             vec!["disabled".to_string()]
         };
         Ok(crate::adapter::LiveElement {
-            state: Some(crate::element_state::ElementState {
+            identity: crate::adapter::live_identity("Run"),
+            state: crate::element_state::ElementState {
                 role: "button".into(),
                 states,
                 value: None,
-            }),
-            bounds: Some(crate::node::Rect {
+                enabled: Some(true),
+                hidden: Some(false),
+                offscreen: Some(false),
+            },
+            states_complete: true,
+            bounds: Some(crate::Rect {
                 x: 0.0,
                 y: 0.0,
                 width: 10.0,
                 height: 10.0,
             }),
-            available_actions: Some(vec![capability::CLICK.into()]),
+            available_actions: vec![capability::CLICK.into()],
         })
+    }
+
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<crate::Rect>, AdapterError> {
+        Ok(Some(crate::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        }))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
+        Ok(crate::hit_test::HitTestResult::ReachesTarget)
     }
 }
 
@@ -247,19 +320,36 @@ impl ActionOps for DoubleCheckAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::new("click"))
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
     }
 }
 
 impl InputOps for DoubleCheckAdapter {}
 
-impl SystemOps for DoubleCheckAdapter {}
+impl SystemOps for DoubleCheckAdapter {
+    fn acquire_interaction_lease(
+        &self,
+        deadline: crate::Deadline,
+    ) -> Result<crate::InteractionLease, AdapterError> {
+        assert_eq!(self.live_calls.load(Ordering::SeqCst), 2);
+        self.lease_held.store(true, Ordering::SeqCst);
+        Ok(crate::InteractionLease::guarded_with_contention(
+            deadline,
+            DoubleCheckLeaseGuard(Arc::clone(&self.lease_held)),
+            3,
+        ))
+    }
+}
 
 #[test]
-fn check_live_runs_exactly_once_per_iteration_not_twice() {
+fn stability_revalidates_once_under_lease_before_dispatch() {
     let adapter = DoubleCheckAdapter {
         live_calls: AtomicU32::new(0),
+        lease_held: Arc::new(AtomicBool::new(false)),
     };
 
     let result = execute_with_auto_wait(
@@ -269,11 +359,31 @@ fn check_live_runs_exactly_once_per_iteration_not_twice() {
             ref_id: "@e1",
             context: &CommandContext::default(),
         },
-        request_with_timeout(5_000),
-        crate::ref_action::execute_resolved,
+        ActionRequest::headed(Action::DoubleClick).with_timeout_ms(Some(5_000)),
+        crate::ref_action::dispatch_resolved,
     )
     .unwrap();
 
     assert_eq!(result.action, "click");
-    assert_eq!(adapter.live_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.live_calls.load(Ordering::SeqCst), 4);
+    let metrics = &result.details.as_ref().unwrap()["auto_wait"];
+    assert_eq!(metrics["read_only_resolve_attempts"], 2);
+    assert_eq!(metrics["read_only_preflight_attempts"], 2);
+    assert_eq!(metrics["lease_contention_count"], 3);
+    assert!(metrics["lease_hold_ms"].as_u64().is_some());
+    assert!(!adapter.lease_held.load(Ordering::SeqCst));
 }
+
+#[test]
+fn final_attempt_reserves_the_mandatory_stability_tail() {
+    let shared = crate::Deadline::after(20).expect("shared deadline");
+    std::thread::sleep(std::time::Duration::from_millis(10));
+
+    let final_attempt = super::final_attempt_deadline(shared).expect("final attempt deadline");
+
+    assert!(final_attempt.remaining_ms() >= 90);
+    assert_eq!(final_attempt.timeout_ms(), 100);
+}
+
+#[path = "ref_action_wait_unresponsive_tests.rs"]
+mod unresponsive_tests;

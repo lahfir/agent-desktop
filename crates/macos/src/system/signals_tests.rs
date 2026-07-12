@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn supported_surfaces_are_only_the_implemented_macos_contract() {
+    assert_eq!(
+        supported_surfaces_impl(),
+        vec![
+            SnapshotSurface::Window,
+            SnapshotSurface::Focused,
+            SnapshotSurface::Menu,
+            SnapshotSurface::Menubar,
+            SnapshotSurface::Sheet,
+            SnapshotSurface::Popover,
+            SnapshotSurface::Alert,
+        ]
+    );
+}
+
+#[test]
 fn map_surface_kind_covers_known_shapes() {
     assert_eq!(map_surface_kind("sheet"), Some(SnapshotSurface::Sheet));
     assert_eq!(map_surface_kind("popover"), Some(SnapshotSurface::Popover));
@@ -16,20 +32,46 @@ fn map_surface_kind_covers_known_shapes() {
 #[test]
 fn matching_apps_filters_by_name_case_insensitively() {
     let filter = SignalFilter {
-        app: Some("Definitely-Not-A-Real-App-xyz123".into()),
-        pid: None,
+        app: Some("textedit".into()),
+        process: None,
     };
-    let apps = matching_apps(&filter).expect("app enumeration must succeed on the test host");
-    assert!(
-        apps.is_empty(),
-        "an app name that matches no running process must yield no apps"
+    let apps = filter_apps(
+        &filter,
+        vec![
+            AppInfo {
+                name: "TextEdit".into(),
+                pid: agent_desktop_core::ProcessId::new(42),
+                bundle_id: None,
+                process_instance: None,
+            },
+            AppInfo {
+                name: "Finder".into(),
+                pid: agent_desktop_core::ProcessId::new(7),
+                bundle_id: None,
+                process_instance: None,
+            },
+        ],
     );
+
+    assert_eq!(apps.len(), 1);
+    assert_eq!(apps[0].pid, 42);
 }
 
 #[test]
-fn matching_apps_with_no_filter_does_not_panic() {
+fn app_filter_with_no_constraints_preserves_the_complete_inventory() {
     let filter = SignalFilter::default();
-    let _ = matching_apps(&filter);
+    let apps = vec![AppInfo {
+        name: "Finder".into(),
+        pid: agent_desktop_core::ProcessId::new(7),
+        bundle_id: None,
+        process_instance: None,
+    }];
+
+    let filtered = filter_apps(&filter, apps);
+
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].name, "Finder");
+    assert_eq!(filtered[0].pid, 7);
 }
 
 #[test]
@@ -37,12 +79,25 @@ fn surfaces_for_apps_is_empty_without_an_app_or_pid_filter() {
     let filter = SignalFilter::default();
     let apps = vec![AppInfo {
         name: "Finder".into(),
-        pid: 1,
+        pid: agent_desktop_core::ProcessId::new(1),
         bundle_id: None,
+        process_instance: None,
     }];
-    let surfaces = surfaces_for_apps(&filter, &apps);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let surfaces =
+        surfaces_for_apps(&filter, &apps, deadline).expect("unscoped inventory succeeds");
     assert!(
         surfaces.is_empty(),
         "unscoped waits must not walk every running app's AX tree for surfaces"
     );
+}
+
+#[test]
+fn baseline_capture_rejects_an_expired_deadline() {
+    let deadline = Instant::now() - Duration::from_millis(1);
+
+    let error = capture_signal_baseline_impl(&SignalFilter::default(), deadline)
+        .expect_err("an expired baseline capture must time out");
+
+    assert_eq!(error.code.as_str(), "TIMEOUT");
 }

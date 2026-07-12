@@ -1,108 +1,7 @@
-use crate::{
-    node::{AppInfo, WindowInfo},
-    snapshot_surface::SnapshotSurface,
-};
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-
-#[derive(Debug, Clone, Default)]
-pub struct SignalFilter {
-    pub app: Option<String>,
-    pub pid: Option<i32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SurfaceSignal {
-    pub kind: SnapshotSurface,
-    pub app: String,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SignalBaseline {
-    pub windows: Vec<WindowInfo>,
-    pub apps: Vec<AppInfo>,
-    pub surfaces: Vec<SurfaceSignal>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum EventKind {
-    WindowOpened,
-    WindowClosed,
-    AppLaunched,
-    AppTerminated,
-    FocusChangedWindow,
-    SurfaceAppeared { surface: SnapshotSurface },
-    SurfaceDismissed { surface: SnapshotSurface },
-}
-
-impl EventKind {
-    /// Ignores payload fields (e.g. the `surface` carried by `SurfaceAppeared`)
-    /// so a caller-supplied request template — which does not know which
-    /// surface kind will show up — still matches the concrete observed event.
-    pub fn same_variant(&self, other: &EventKind) -> bool {
-        std::mem::discriminant(self) == std::mem::discriminant(other)
-    }
-
-    pub fn cli_token(&self) -> &'static str {
-        match self {
-            EventKind::WindowOpened => "window-opened",
-            EventKind::WindowClosed => "window-closed",
-            EventKind::AppLaunched => "app-launched",
-            EventKind::AppTerminated => "app-terminated",
-            EventKind::FocusChangedWindow => "focus-changed",
-            EventKind::SurfaceAppeared { .. } => "surface-appeared",
-            EventKind::SurfaceDismissed { .. } => "surface-dismissed",
-        }
-    }
-
-    /// Every known `--event` token, in the order CLI help/error messages list them.
-    pub fn all_tokens() -> &'static [&'static str] {
-        &[
-            "window-opened",
-            "window-closed",
-            "app-launched",
-            "app-terminated",
-            "focus-changed",
-            "surface-appeared",
-            "surface-dismissed",
-        ]
-    }
-
-    /// Parses a `--event` token into a match template. `SurfaceAppeared`/
-    /// `SurfaceDismissed` templates carry a placeholder surface kind — it is
-    /// never inspected by `same_variant`, only the discriminant is.
-    pub fn parse(token: &str) -> Option<EventKind> {
-        match token {
-            "window-opened" => Some(EventKind::WindowOpened),
-            "window-closed" => Some(EventKind::WindowClosed),
-            "app-launched" => Some(EventKind::AppLaunched),
-            "app-terminated" => Some(EventKind::AppTerminated),
-            "focus-changed" => Some(EventKind::FocusChangedWindow),
-            "surface-appeared" => Some(EventKind::SurfaceAppeared {
-                surface: SnapshotSurface::Window,
-            }),
-            "surface-dismissed" => Some(EventKind::SurfaceDismissed {
-                surface: SnapshotSurface::Window,
-            }),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct UiEvent {
-    #[serde(flatten)]
-    pub kind: EventKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub app: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pid: Option<i32>,
-}
+#[cfg(test)]
+use crate::snapshot_surface::SnapshotSurface;
+use crate::{AppInfo, EventKind, ProcessId, SignalBaseline, SurfaceSignal, UiEvent, WindowInfo};
+use std::collections::HashSet;
 
 /// Pure baseline-diff over two independently captured [`SignalBaseline`]
 /// snapshots. Never touches the adapter — every code path here is exercised
@@ -111,11 +10,49 @@ pub struct UiEvent {
 /// that can only be verified by hand against a live desktop.
 pub fn diff_signals(baseline: &SignalBaseline, current: &SignalBaseline) -> Vec<UiEvent> {
     let mut events = Vec::new();
-    diff_windows(baseline, current, &mut events);
-    diff_focus(baseline, current, &mut events);
-    diff_apps(baseline, current, &mut events);
-    diff_surfaces(baseline, current, &mut events);
+    if baseline.completeness.windows && current.completeness.windows {
+        diff_windows(baseline, current, &mut events);
+        diff_focus(baseline, current, &mut events);
+    }
+    if baseline.completeness.apps && current.completeness.apps {
+        diff_apps(baseline, current, &mut events);
+    }
+    if baseline.completeness.surfaces && current.completeness.surfaces {
+        diff_surfaces(baseline, current, &mut events);
+    }
+    events.sort_by(compare_events);
     events
+}
+
+fn compare_events(left: &UiEvent, right: &UiEvent) -> std::cmp::Ordering {
+    event_rank(&left.kind)
+        .cmp(&event_rank(&right.kind))
+        .then_with(|| left.app.cmp(&right.app))
+        .then_with(|| left.pid.cmp(&right.pid))
+        .then_with(|| left.window_id.cmp(&right.window_id))
+        .then_with(|| left.title.cmp(&right.title))
+        .then_with(|| left.kind.cli_token().cmp(right.kind.cli_token()))
+}
+
+fn event_rank(kind: &EventKind) -> u8 {
+    match kind {
+        EventKind::WindowClosed => 0,
+        EventKind::AppTerminated => 1,
+        EventKind::SurfaceDismissed { .. } => 2,
+        EventKind::WindowOpened => 3,
+        EventKind::AppLaunched => 4,
+        EventKind::SurfaceAppeared { .. } => 5,
+        EventKind::FocusChangedWindow => 6,
+    }
+}
+
+type WindowIdentity<'a> = (ProcessId, &'a str, &'a str);
+
+fn window_identity(window: &WindowInfo) -> Option<WindowIdentity<'_>> {
+    window
+        .process_instance
+        .as_deref()
+        .map(|instance| (window.pid, instance, window.id.as_str()))
 }
 
 fn window_event(kind: EventKind, win: &WindowInfo) -> UiEvent {
@@ -129,15 +66,20 @@ fn window_event(kind: EventKind, win: &WindowInfo) -> UiEvent {
 }
 
 fn diff_windows(baseline: &SignalBaseline, current: &SignalBaseline, events: &mut Vec<UiEvent>) {
-    let baseline_ids: HashSet<&str> = baseline.windows.iter().map(|w| w.id.as_str()).collect();
+    let baseline_ids: HashSet<WindowIdentity<'_>> = baseline
+        .windows
+        .iter()
+        .filter_map(window_identity)
+        .collect();
     for win in &current.windows {
-        if !baseline_ids.contains(win.id.as_str()) {
+        if window_identity(win).is_some_and(|identity| !baseline_ids.contains(&identity)) {
             events.push(window_event(EventKind::WindowOpened, win));
         }
     }
-    let current_ids: HashSet<&str> = current.windows.iter().map(|w| w.id.as_str()).collect();
+    let current_ids: HashSet<WindowIdentity<'_>> =
+        current.windows.iter().filter_map(window_identity).collect();
     for win in &baseline.windows {
-        if !current_ids.contains(win.id.as_str()) {
+        if window_identity(win).is_some_and(|identity| !current_ids.contains(&identity)) {
             events.push(window_event(EventKind::WindowClosed, win));
         }
     }
@@ -147,12 +89,27 @@ fn diff_focus(baseline: &SignalBaseline, current: &SignalBaseline, events: &mut 
     let baseline_focused_id = baseline
         .windows
         .iter()
-        .find(|w| w.is_focused)
-        .map(|w| w.id.as_str());
-    if let Some(win) = current.windows.iter().find(|w| w.is_focused) {
-        if Some(win.id.as_str()) != baseline_focused_id {
-            events.push(window_event(EventKind::FocusChangedWindow, win));
+        .find(|w| w.state.is_focused)
+        .and_then(window_identity);
+    let current_focused = current
+        .windows
+        .iter()
+        .find(|window| window.state.is_focused);
+    match current_focused {
+        Some(window)
+            if window_identity(window)
+                .is_some_and(|identity| Some(identity) != baseline_focused_id) =>
+        {
+            events.push(window_event(EventKind::FocusChangedWindow, window));
         }
+        None if baseline_focused_id.is_some() => events.push(UiEvent {
+            kind: EventKind::FocusChangedWindow,
+            window_id: None,
+            title: None,
+            app: None,
+            pid: None,
+        }),
+        Some(_) | None => {}
     }
 }
 
@@ -167,81 +124,67 @@ fn app_event(kind: EventKind, app: &AppInfo) -> UiEvent {
 }
 
 fn diff_apps(baseline: &SignalBaseline, current: &SignalBaseline, events: &mut Vec<UiEvent>) {
-    let baseline_pids: HashSet<i32> = baseline.apps.iter().map(|a| a.pid).collect();
+    let baseline_pids: HashSet<_> = baseline.apps.iter().filter_map(app_identity).collect();
     for app in &current.apps {
-        if !baseline_pids.contains(&app.pid) {
+        if app_identity(app).is_some_and(|identity| !baseline_pids.contains(&identity)) {
             events.push(app_event(EventKind::AppLaunched, app));
         }
     }
-    let current_pids: HashSet<i32> = current.apps.iter().map(|a| a.pid).collect();
+    let current_pids: HashSet<_> = current.apps.iter().filter_map(app_identity).collect();
     for app in &baseline.apps {
-        if !current_pids.contains(&app.pid) {
+        if app_identity(app).is_some_and(|identity| !current_pids.contains(&identity)) {
             events.push(app_event(EventKind::AppTerminated, app));
         }
     }
 }
 
-type SurfaceCounts = HashMap<(&'static str, String), usize>;
-
-fn surface_counts(surfaces: &[SurfaceSignal]) -> SurfaceCounts {
-    let mut counts: SurfaceCounts = HashMap::new();
-    for surface in surfaces {
-        *counts
-            .entry((surface.kind.as_str(), surface.app.clone()))
-            .or_insert(0) += 1;
-    }
-    counts
+fn app_identity(app: &AppInfo) -> Option<(ProcessId, &str)> {
+    app.process_instance
+        .as_deref()
+        .map(|instance| (app.pid, instance))
 }
 
-fn surface_event(kind: SnapshotSurface, app: &str, appeared: bool) -> UiEvent {
+type SurfaceKey<'a> = (ProcessId, &'a str, &'a str, &'static str);
+
+fn surface_identity(surface: &SurfaceSignal) -> SurfaceKey<'_> {
+    (
+        surface.pid,
+        surface.process_instance.as_str(),
+        surface.id.as_str(),
+        surface.kind.as_str(),
+    )
+}
+
+fn surface_event(surface: &SurfaceSignal, appeared: bool) -> UiEvent {
     UiEvent {
         kind: if appeared {
-            EventKind::SurfaceAppeared { surface: kind }
+            EventKind::SurfaceAppeared {
+                surface: surface.kind,
+            }
         } else {
-            EventKind::SurfaceDismissed { surface: kind }
+            EventKind::SurfaceDismissed {
+                surface: surface.kind,
+            }
         },
         window_id: None,
-        title: None,
-        app: Some(app.to_string()),
-        pid: None,
+        title: surface.title.clone(),
+        app: Some(surface.app.clone()),
+        pid: Some(surface.pid),
     }
 }
 
-/// Counting-map diff (survives reordering, matches the `NotificationFingerprint`
-/// pattern) since surfaces have no stable id — only a `(kind, app)` shape.
 fn diff_surfaces(baseline: &SignalBaseline, current: &SignalBaseline, events: &mut Vec<UiEvent>) {
-    let baseline_counts = surface_counts(&baseline.surfaces);
-    let current_counts = surface_counts(&current.surfaces);
-
-    for (key, count) in &current_counts {
-        let prior = baseline_counts.get(key).copied().unwrap_or(0);
-        if *count > prior {
-            let kind = surface_kind_from_str(key.0);
-            for _ in 0..(*count - prior) {
-                events.push(surface_event(kind, &key.1, true));
-            }
+    let baseline_ids: HashSet<_> = baseline.surfaces.iter().map(surface_identity).collect();
+    for surface in &current.surfaces {
+        if !baseline_ids.contains(&surface_identity(surface)) {
+            events.push(surface_event(surface, true));
         }
     }
-    for (key, count) in &baseline_counts {
-        let now = current_counts.get(key).copied().unwrap_or(0);
-        if *count > now {
-            let kind = surface_kind_from_str(key.0);
-            for _ in 0..(*count - now) {
-                events.push(surface_event(kind, &key.1, false));
-            }
+    let current_ids: HashSet<_> = current.surfaces.iter().map(surface_identity).collect();
+    for surface in &baseline.surfaces {
+        if !current_ids.contains(&surface_identity(surface)) {
+            events.push(surface_event(surface, false));
         }
-    }
-}
-
-fn surface_kind_from_str(raw: &str) -> SnapshotSurface {
-    match raw {
-        "focused" => SnapshotSurface::Focused,
-        "menu" => SnapshotSurface::Menu,
-        "menubar" => SnapshotSurface::Menubar,
-        "sheet" => SnapshotSurface::Sheet,
-        "popover" => SnapshotSurface::Popover,
-        "alert" => SnapshotSurface::Alert,
-        _ => SnapshotSurface::Window,
     }
 }
 

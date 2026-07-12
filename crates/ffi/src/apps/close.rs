@@ -20,10 +20,7 @@ pub unsafe extern "C" fn ad_close_app(
     id: *const c_char,
     force: bool,
 ) -> AdResult {
-    trap_panic(|| unsafe {
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
+    trap_panic(|| {
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
         let id_str = match super::decode_app_id(id) {
             Ok(id) => id,
@@ -32,12 +29,14 @@ pub unsafe extern "C" fn ad_close_app(
                 return crate::error::last_error_code();
             }
         };
-        let adapter = &*adapter;
-
-        match adapter.inner.close_app(&id_str, force) {
-            Ok(()) => AdResult::Ok,
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        match agent_desktop_core::commands::close_app::execute(
+            agent_desktop_core::commands::close_app::CloseAppArgs { app: id_str, force },
+            adapter.inner.as_ref(),
+        ) {
+            Ok(_) => AdResult::Ok,
             Err(e) => {
-                set_last_error(&e);
+                set_last_error(&crate::commands::app_error_to_adapter(e));
                 crate::error::last_error_code()
             }
         }

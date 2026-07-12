@@ -1,8 +1,7 @@
-use agent_desktop_core::{PermissionReport, PermissionState};
+use agent_desktop_core::{AdapterError, Deadline, PermissionReport, PermissionState};
 
 const ACCESSIBILITY_SUGGESTION: &str = "Open System Settings > Privacy & Security > Accessibility and add the app that launches agent-desktop, such as Terminal, iTerm, or Codex. If macOS lists the built binary separately, add that binary too.";
 const SCREEN_RECORDING_SUGGESTION: &str = "Open System Settings > Privacy & Security > Screen Recording and add the app that launches agent-desktop, such as Terminal, iTerm, or Codex. If macOS lists the built binary separately, add that binary too.";
-pub(crate) const AUTOMATION_SUGGESTION: &str = "Open System Settings > Privacy & Security > Automation and allow the app that launches agent-desktop, such as Terminal, iTerm, or Codex, to control System Events. If macOS lists the built binary separately, add that binary too.";
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -39,62 +38,6 @@ mod imp {
     pub(super) fn request_screen_recording() -> bool {
         unsafe { CGRequestScreenCaptureAccess() }
     }
-
-    const TYPE_APPLICATION_BUNDLE_ID: u32 = 0x6275_6E64;
-    const SYSTEM_EVENTS_BUNDLE_ID: &[u8] = b"com.apple.systemevents";
-
-    #[repr(C)]
-    struct AEAddressDesc {
-        descriptor_type: u32,
-        data_handle: *mut std::ffi::c_void,
-    }
-
-    #[link(name = "ApplicationServices", kind = "framework")]
-    unsafe extern "C" {
-        fn AECreateDesc(
-            type_code: u32,
-            data_ptr: *const std::ffi::c_void,
-            data_size: isize,
-            result: *mut AEAddressDesc,
-        ) -> i32;
-        fn AEDisposeDesc(the_aedesc: *mut AEAddressDesc) -> i32;
-        fn AEDeterminePermissionToAutomateTarget(
-            target: *const AEAddressDesc,
-            ask_user_if_needed: bool,
-            automated_allowed: *mut bool,
-        ) -> i32;
-    }
-
-    pub(super) struct AutomationProbeOutcome {
-        pub status: i32,
-        pub allowed: bool,
-    }
-
-    pub(super) fn probe_automation_permission() -> AutomationProbeOutcome {
-        unsafe {
-            let mut target = AEAddressDesc {
-                descriptor_type: 0,
-                data_handle: std::ptr::null_mut(),
-            };
-            let create_status = AECreateDesc(
-                TYPE_APPLICATION_BUNDLE_ID,
-                SYSTEM_EVENTS_BUNDLE_ID.as_ptr().cast(),
-                SYSTEM_EVENTS_BUNDLE_ID.len() as isize,
-                &mut target,
-            );
-            if create_status != 0 {
-                return AutomationProbeOutcome {
-                    status: create_status,
-                    allowed: false,
-                };
-            }
-
-            let mut allowed = false;
-            let status = AEDeterminePermissionToAutomateTarget(&target, false, &mut allowed);
-            let _ = AEDisposeDesc(&mut target);
-            AutomationProbeOutcome { status, allowed }
-        }
-    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -111,35 +54,59 @@ mod imp {
     pub fn request_screen_recording() -> bool {
         false
     }
-    pub struct AutomationProbeOutcome {
-        pub status: i32,
-        pub allowed: bool,
-    }
-    pub fn probe_automation_permission() -> AutomationProbeOutcome {
-        AutomationProbeOutcome {
-            status: -600,
-            allowed: false,
-        }
-    }
 }
 
-pub fn report() -> PermissionReport {
-    PermissionReport {
+pub(crate) fn report(deadline: Deadline) -> Result<PermissionReport, AdapterError> {
+    ensure_budget(deadline)?;
+    let report = PermissionReport {
         accessibility: accessibility_report_state(),
         screen_recording: screen_recording_report_state(),
         automation: automation_report_state(),
-    }
+    };
+    ensure_budget(deadline)?;
+    Ok(report)
 }
 
-pub fn request_report() -> PermissionReport {
-    PermissionReport {
-        accessibility: permission_state(imp::request_trust(), ACCESSIBILITY_SUGGESTION),
-        screen_recording: permission_state(
-            imp::request_screen_recording(),
-            SCREEN_RECORDING_SUGGESTION,
-        ),
-        automation: automation_report_state(),
-    }
+pub(crate) fn request_report(deadline: Deadline) -> Result<PermissionReport, AdapterError> {
+    request_report_with(deadline, crate::system::permission_helper::request, report)
+}
+
+fn request_report_with(
+    deadline: Deadline,
+    mut request: impl FnMut(
+        crate::system::permission_operation::PermissionOperation,
+        Deadline,
+    ) -> Result<bool, AdapterError>,
+    report: impl FnOnce(Deadline) -> Result<PermissionReport, AdapterError>,
+) -> Result<PermissionReport, AdapterError> {
+    ensure_budget(deadline)?;
+    let _ = request(
+        crate::system::permission_operation::PermissionOperation::Accessibility,
+        deadline,
+    )?;
+    ensure_budget(deadline)?;
+    let _ = request(
+        crate::system::permission_operation::PermissionOperation::ScreenRecording,
+        deadline,
+    )?;
+    ensure_budget(deadline)?;
+    report(deadline)
+}
+
+pub(crate) fn prompt_accessibility() -> bool {
+    imp::request_trust()
+}
+
+pub(crate) fn prompt_screen_recording() -> bool {
+    imp::request_screen_recording()
+}
+
+pub(crate) fn preflight_accessibility() -> bool {
+    imp::is_trusted()
+}
+
+pub(crate) fn preflight_screen_recording() -> bool {
+    imp::screen_recording_granted()
 }
 
 fn permission_state(granted: bool, suggestion: &'static str) -> PermissionState {
@@ -161,26 +128,14 @@ fn screen_recording_report_state() -> PermissionState {
 }
 
 fn automation_report_state() -> PermissionState {
-    let outcome = imp::probe_automation_permission();
-    map_automation_probe(outcome.status, outcome.allowed)
+    PermissionState::NotRequired
 }
 
-pub(crate) fn map_automation_probe(status: i32, allowed: bool) -> PermissionState {
-    const NO_ERR: i32 = 0;
-    const PROC_NOT_FOUND: i32 = -600;
-    const ERR_AE_EVENT_NOT_PERMITTED: i32 = -1743;
-    const ERR_AE_EVENT_WOULD_REQUIRE_USER_CONSENT: i32 = -1744;
-
-    match status {
-        PROC_NOT_FOUND | ERR_AE_EVENT_WOULD_REQUIRE_USER_CONSENT => PermissionState::Unknown,
-        ERR_AE_EVENT_NOT_PERMITTED => PermissionState::Denied {
-            suggestion: AUTOMATION_SUGGESTION.into(),
-        },
-        NO_ERR if allowed => PermissionState::Granted,
-        NO_ERR => PermissionState::Denied {
-            suggestion: AUTOMATION_SUGGESTION.into(),
-        },
-        _ => PermissionState::Unknown,
+fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
+    if deadline.is_expired() {
+        Err(deadline.timeout_error())
+    } else {
+        Ok(())
     }
 }
 

@@ -1,7 +1,7 @@
 use super::test_support::{entry, text_entry};
 use super::*;
+use crate::AdapterError;
 use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps};
-use crate::error::AdapterError;
 use crate::refs::RefMap;
 use crate::refs_test_support::HomeGuard;
 use crate::{
@@ -16,9 +16,19 @@ struct RecordingAdapter {
 }
 
 impl ObservationOps for RecordingAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "OK",
+        [crate::capability::CLICK, crate::capability::TYPE_TEXT]
+    );
 }
 
 impl ActionOps for RecordingAdapter {
@@ -26,13 +36,17 @@ impl ActionOps for RecordingAdapter {
         &self,
         _handle: &NativeHandle,
         request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         *self.request.lock().unwrap() = Some(request);
-        Ok(ActionResult::new("ok")
+        Ok(ActionResult::delivered_unverified("ok")
             .with_state(ElementState {
                 role: "textfield".into(),
                 states: vec!["focused".into()],
                 value: Some("updated".into()),
+                enabled: Some(true),
+                hidden: Some(false),
+                offscreen: Some(false),
             })
             .with_steps(vec![ActionStep::succeeded("AXPress")]))
     }
@@ -40,14 +54,20 @@ impl ActionOps for RecordingAdapter {
 
 impl InputOps for RecordingAdapter {}
 
-impl SystemOps for RecordingAdapter {}
+impl SystemOps for RecordingAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 struct AmbiguousAdapter {
     executed: AtomicU32,
 }
 
 impl ObservationOps for AmbiguousAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Err(
             AdapterError::ambiguous_target("2 candidates matched").with_details(
                 serde_json::json!({
@@ -64,21 +84,29 @@ impl ActionOps for AmbiguousAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         self.executed.fetch_add(1, Ordering::SeqCst);
-        Ok(ActionResult::new("unexpected"))
+        Ok(ActionResult::delivered_unverified("unexpected"))
     }
 }
 
 impl InputOps for AmbiguousAdapter {}
 
-impl SystemOps for AmbiguousAdapter {}
+impl SystemOps for AmbiguousAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 #[test]
 fn execute_ref_action_preserves_action_and_policy() {
     let _guard = HomeGuard::new();
     let mut refmap = RefMap::new();
-    refmap.allocate(entry());
+    let mut target = text_entry();
+    target
+        .capabilities
+        .available_actions
+        .push(crate::capability::CLICK.into());
+    refmap.allocate(target);
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
     let adapter = RecordingAdapter {
         request: Mutex::new(None),

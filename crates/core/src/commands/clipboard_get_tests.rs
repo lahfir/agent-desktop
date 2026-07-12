@@ -1,6 +1,6 @@
 use super::*;
+use crate::AdapterError;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::error::AdapterError;
 use crate::refs_test_support::HomeGuard;
 use std::sync::Mutex;
 
@@ -26,6 +26,7 @@ impl InputOps for LocalDouble {
     fn get_clipboard_content(
         &self,
         format: ClipboardFormat,
+        _deadline: crate::Deadline,
     ) -> Result<Option<ClipboardContent>, AdapterError> {
         *self.seen_format.lock().unwrap() = Some(format);
         self.response
@@ -124,11 +125,16 @@ fn image_variant_with_explicit_out_writes_that_path() {
         std::process::id()
     ));
     std::fs::create_dir_all(&dir).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
     let out_path = dir.join("explicit.png");
 
     let double = LocalDouble::returning(Ok(Some(ClipboardContent::Image(ImageBuffer {
         data: vec![1, 2, 3, 4],
-        format: crate::image_buffer::ImageFormat::Png,
+        format: crate::ImageFormat::Png,
         width: 10,
         height: 5,
         scale_factor: 1.0,
@@ -162,7 +168,7 @@ fn image_variant_without_out_writes_private_0600_file_under_session_dir() {
 
     let double = LocalDouble::returning(Ok(Some(ClipboardContent::Image(ImageBuffer {
         data: vec![9, 9, 9],
-        format: crate::image_buffer::ImageFormat::Png,
+        format: crate::ImageFormat::Png,
         width: 3,
         height: 3,
         scale_factor: 1.0,

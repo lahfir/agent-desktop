@@ -1,7 +1,7 @@
 use super::*;
 use crate::cli_args::Surface;
 use crate::test_noop_ops::NoopAdapter;
-use agent_desktop_core::PermissionReport;
+use agent_desktop_core::{PermissionReport, output::ENVELOPE_VERSION};
 use clap::CommandFactory;
 
 fn item(command: &str, args: Value) -> BatchCommand {
@@ -56,8 +56,8 @@ fn applies_cli_defaults_during_batch_decode() {
 
     match command {
         Commands::Snapshot(args) => {
-            assert_eq!(args.max_depth, 10);
-            assert!(!args.interactive_only);
+            assert_eq!(args.tree.max_depth, 10);
+            assert!(!args.tree.interactive_only);
             assert!(matches!(args.surface, Surface::Window));
         }
         other => panic!("unexpected command: {other:?}"),
@@ -98,11 +98,12 @@ fn rejects_version_args_after_json_flag_removal() {
 fn stop_on_error_halts_after_first_failure() {
     let args = BatchArgs {
         commands_json: serde_json::json!([
-            {"command": "missing", "args": {}},
+            {"command": "snapshot", "args": {}},
             {"command": "version", "args": {}}
         ])
         .to_string(),
         stop_on_error: true,
+        timeout_ms: 60_000,
     };
 
     let value = execute(
@@ -117,14 +118,8 @@ fn stop_on_error_halts_after_first_failure() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0]["ok"], false);
     assert_eq!(results[0]["version"], ENVELOPE_VERSION);
-    assert_eq!(results[0]["command"], "missing");
-    assert_eq!(results[0]["error"]["code"], "INVALID_ARGS");
-    assert!(
-        results[0]["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("Unknown batch command")
-    );
+    assert_eq!(results[0]["command"], "snapshot");
+    assert_eq!(results[0]["error"]["code"], "PLATFORM_NOT_SUPPORTED");
 }
 
 #[test]
@@ -134,6 +129,22 @@ fn no_args_rejection_has_suggestion() {
 
     assert_eq!(err.code(), "INVALID_ARGS");
     assert!(err.suggestion().is_some());
+}
+
+#[test]
+fn list_displays_accepts_only_empty_args() {
+    assert!(matches!(
+        parse_command(item("list-displays", serde_json::Value::Null)),
+        Ok(Commands::ListDisplays)
+    ));
+    assert!(matches!(
+        parse_command(item("list-displays", serde_json::json!({}))),
+        Ok(Commands::ListDisplays)
+    ));
+
+    let err = parse_command(item("list-displays", serde_json::json!({ "display": 1 })))
+        .expect_err("list-displays rejects unknown args");
+    assert_eq!(err.code(), "INVALID_ARGS");
 }
 
 #[test]
@@ -192,6 +203,26 @@ fn trace_batch_rejects_unknown_field() {
     ))
     .expect_err("unknown trace field rejected");
     assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn batch_variants_reject_known_but_inapplicable_fields() {
+    for (command, args) in [
+        ("skills", serde_json::json!({"action": "list", "name": "x"})),
+        (
+            "skills",
+            serde_json::json!({"action": "path", "full": false}),
+        ),
+        ("trace", serde_json::json!({"action": "show", "out": "x"})),
+        (
+            "trace",
+            serde_json::json!({"action": "export", "event": "x"}),
+        ),
+    ] {
+        let error = parse_command(item(command, args))
+            .expect_err("fields for another action must be rejected");
+        assert_eq!(error.code(), "INVALID_ARGS");
+    }
 }
 
 #[test]

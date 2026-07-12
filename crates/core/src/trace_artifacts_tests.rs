@@ -1,18 +1,18 @@
 use super::*;
+use crate::AdapterError;
 use crate::action::Action;
 use crate::action_request::ActionRequest;
 use crate::action_result::ActionResult;
 use crate::adapter::{
-    ActionOps, ImageBuffer, ImageFormat, InputOps, NativeHandle, ObservationOps, PlatformAdapter,
-    ScreenshotTarget, SystemOps,
+    ActionOps, InputOps, NativeHandle, ObservationOps, PlatformAdapter, ScreenshotTarget, SystemOps,
 };
 use crate::context::CommandContext;
-use crate::error::AdapterError;
 use crate::ref_action::{ResolvedRefAction, execute_resolved};
 use crate::refs_store::RefStore;
 use crate::refs_test_support::HomeGuard;
 use crate::session::{ArtifactsMode, SessionTraceMode, StartSessionOptions, start_session};
 use crate::trace_artifacts::clear_test_budgets;
+use crate::{ImageBuffer, ImageFormat};
 use crate::{capability, refs::RefEntry};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -25,25 +25,45 @@ const MINI_PNG: &[u8] = &[
     0x42, 0x60, 0x82,
 ];
 
-pub(super) fn entry(pid: i32) -> RefEntry {
+pub(super) fn entry(pid: u32) -> RefEntry {
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     RefEntry {
-        pid,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(pid),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Run".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: Some("FixtureApp".into()),
+            source_window_id: Some(format!("w-{pid}")),
+            source_window_title: Some("Fixture".into()),
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -61,9 +81,15 @@ pub(super) struct PngAdapter {
 }
 
 impl ObservationOps for PngAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
 }
 
 impl ActionOps for PngAdapter {
@@ -71,15 +97,22 @@ impl ActionOps for PngAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("ok"))
+        Ok(ActionResult::delivered_unverified("ok"))
     }
 }
 
 impl InputOps for PngAdapter {}
 
 impl SystemOps for PngAdapter {
-    fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn screenshot(
+        &self,
+        target: ScreenshotTarget,
+        _deadline: crate::Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
         *self.target.lock().unwrap() = Some(target);
         Ok(ImageBuffer {
             data: MINI_PNG.to_vec(),
@@ -100,9 +133,15 @@ pub(super) fn png_adapter() -> PngAdapter {
 struct FailingScreenshotAdapter;
 
 impl ObservationOps for FailingScreenshotAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
 }
 
 impl ActionOps for FailingScreenshotAdapter {
@@ -110,15 +149,22 @@ impl ActionOps for FailingScreenshotAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("ok"))
+        Ok(ActionResult::delivered_unverified("ok"))
     }
 }
 
 impl InputOps for FailingScreenshotAdapter {}
 
 impl SystemOps for FailingScreenshotAdapter {
-    fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn screenshot(
+        &self,
+        _target: ScreenshotTarget,
+        _deadline: crate::Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
         Err(AdapterError::not_supported("screenshot"))
     }
 }
@@ -128,9 +174,15 @@ struct FailingActionAdapter {
 }
 
 impl ObservationOps for FailingActionAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
 }
 
 impl ActionOps for FailingActionAdapter {
@@ -138,6 +190,7 @@ impl ActionOps for FailingActionAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::internal("boom"))
     }
@@ -146,7 +199,13 @@ impl ActionOps for FailingActionAdapter {
 impl InputOps for FailingActionAdapter {}
 
 impl SystemOps for FailingActionAdapter {
-    fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn screenshot(
+        &self,
+        _target: ScreenshotTarget,
+        _deadline: crate::Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
         self.screenshot_calls.fetch_add(1, Ordering::SeqCst);
         Ok(ImageBuffer {
             data: MINI_PNG.to_vec(),
@@ -161,9 +220,15 @@ impl SystemOps for FailingActionAdapter {
 struct DefaultScreenshotAdapter;
 
 impl ObservationOps for DefaultScreenshotAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
         Ok(NativeHandle::null())
     }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
 }
 
 impl ActionOps for DefaultScreenshotAdapter {
@@ -171,30 +236,40 @@ impl ActionOps for DefaultScreenshotAdapter {
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("ok"))
+        Ok(ActionResult::delivered_unverified("ok"))
     }
 }
 
 impl InputOps for DefaultScreenshotAdapter {}
 
-impl SystemOps for DefaultScreenshotAdapter {}
+impl SystemOps for DefaultScreenshotAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 pub(super) fn run_ref_action(
     context: &CommandContext,
     adapter: &dyn PlatformAdapter,
-    pid: i32,
-) -> Result<ActionResult, crate::error::AppError> {
+    pid: u32,
+) -> Result<ActionResult, crate::AppError> {
     let entry = entry(pid);
-    execute_resolved(
-        ResolvedRefAction {
+    let deadline = crate::Deadline::standard()?;
+    let lease = adapter.acquire_interaction_lease(deadline)?;
+    let handle = NativeHandle::null();
+    let target = crate::ref_action_context::RefActionContext::new(
+        crate::ref_action_wait_context::RefActionWaitContext {
             adapter,
             entry: &entry,
-            handle: &NativeHandle::null(),
             ref_id: "@e1",
             context,
         },
+        deadline,
+    );
+    execute_resolved(
+        ResolvedRefAction::new(target, &handle),
         ActionRequest::headless(Action::Click),
+        &lease,
     )
 }
 
@@ -300,36 +375,5 @@ fn symlinked_screens_dir_refuses_capture() {
     );
 }
 
-#[test]
-fn default_adapter_screenshot_skips_cleanly() {
-    let (_home, _lock) = setup_artifacts_test();
-    let manifest = artifacts_session();
-    let context = CommandContext::new(Some(manifest.id.clone()), None, false).unwrap();
-    run_ref_action(&context, &DefaultScreenshotAdapter, 1).unwrap();
-}
-
-#[test]
-fn failing_action_still_captures_post_screenshot() {
-    let (_home, _lock) = setup_artifacts_test();
-    let manifest = artifacts_session();
-    let context = CommandContext::new(Some(manifest.id.clone()), None, false).unwrap();
-    let adapter = FailingActionAdapter {
-        screenshot_calls: AtomicU32::new(0),
-    };
-    let err = run_ref_action(&context, &adapter, 1).unwrap_err();
-    assert_eq!(err.code(), "INTERNAL");
-    assert_eq!(adapter.screenshot_calls.load(Ordering::SeqCst), 2);
-}
-
-#[test]
-fn capture_targets_window_for_pid() {
-    let (_home, _lock) = setup_artifacts_test();
-    let manifest = artifacts_session();
-    let context = CommandContext::new(Some(manifest.id.clone()), None, false).unwrap();
-    let adapter = png_adapter();
-    run_ref_action(&context, &adapter, 99).unwrap();
-    match adapter.target.lock().unwrap().take() {
-        Some(ScreenshotTarget::Window(pid)) => assert_eq!(pid, 99),
-        _ => panic!("expected Window screenshot target"),
-    }
-}
+#[path = "trace_artifacts_outcome_tests.rs"]
+mod outcome_tests;

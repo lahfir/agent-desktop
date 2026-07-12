@@ -1,5 +1,5 @@
 use super::is_blocked;
-use agent_desktop_core::action::{KeyCombo, Modifier};
+use agent_desktop_core::{KeyCombo, Modifier};
 
 fn combo(modifiers: Vec<Modifier>, key: &str) -> KeyCombo {
     KeyCombo {
@@ -10,18 +10,21 @@ fn combo(modifiers: Vec<Modifier>, key: &str) -> KeyCombo {
 
 #[test]
 fn dangerous_shortcuts_are_blocked() {
-    assert!(is_blocked(&combo(vec![Modifier::Cmd], "q")));
+    assert!(is_blocked(&combo(vec![Modifier::Meta], "q")));
     assert!(is_blocked(&combo(
-        vec![Modifier::Cmd, Modifier::Shift],
+        vec![Modifier::Meta, Modifier::Shift],
         "q"
     )));
     assert!(is_blocked(&combo(
-        vec![Modifier::Cmd, Modifier::Alt],
+        vec![Modifier::Meta, Modifier::Alt],
         "esc"
     )));
-    assert!(is_blocked(&combo(vec![Modifier::Ctrl, Modifier::Cmd], "q")));
     assert!(is_blocked(&combo(
-        vec![Modifier::Cmd, Modifier::Shift],
+        vec![Modifier::Ctrl, Modifier::Meta],
+        "q"
+    )));
+    assert!(is_blocked(&combo(
+        vec![Modifier::Meta, Modifier::Shift],
         "delete"
     )));
 }
@@ -29,7 +32,7 @@ fn dangerous_shortcuts_are_blocked() {
 #[test]
 fn modifier_order_does_not_matter() {
     assert!(
-        is_blocked(&combo(vec![Modifier::Cmd, Modifier::Ctrl], "q")),
+        is_blocked(&combo(vec![Modifier::Meta, Modifier::Ctrl], "q")),
         "cmd+ctrl+q must match the blocked ctrl+cmd+q regardless of order"
     );
 }
@@ -37,22 +40,22 @@ fn modifier_order_does_not_matter() {
 #[test]
 fn key_aliases_are_blocked() {
     assert!(
-        is_blocked(&combo(vec![Modifier::Cmd, Modifier::Alt], "escape")),
+        is_blocked(&combo(vec![Modifier::Meta, Modifier::Alt], "escape")),
         "escape is the same physical key as esc"
     );
     assert!(
-        is_blocked(&combo(vec![Modifier::Cmd, Modifier::Shift], "backspace")),
+        is_blocked(&combo(vec![Modifier::Meta, Modifier::Shift], "backspace")),
         "backspace is the same physical key as delete"
     );
 }
 
 #[test]
 fn benign_combos_are_not_blocked() {
-    assert!(!is_blocked(&combo(vec![Modifier::Cmd], "c")));
-    assert!(!is_blocked(&combo(vec![Modifier::Cmd], "v")));
-    assert!(!is_blocked(&combo(vec![Modifier::Cmd], "w")));
+    assert!(!is_blocked(&combo(vec![Modifier::Meta], "c")));
+    assert!(!is_blocked(&combo(vec![Modifier::Meta], "v")));
+    assert!(!is_blocked(&combo(vec![Modifier::Meta], "w")));
     assert!(!is_blocked(&combo(
-        vec![Modifier::Cmd, Modifier::Shift],
+        vec![Modifier::Meta, Modifier::Shift],
         "r"
     )));
     assert!(!is_blocked(&combo(vec![Modifier::Ctrl], "s")));

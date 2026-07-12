@@ -11,8 +11,13 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum ProcessState {
     Running,
-    Exited { code: Option<i32> },
-    Crashed { signal_or_code: i32 },
+    Exited {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        code: Option<i32>,
+    },
+    Crashed {
+        signal_or_code: i32,
+    },
     Unresponsive,
 }
 

@@ -1,36 +1,21 @@
 use super::*;
-use crate::tree::node_attrs::{NodeAttrStates, NodeAttrs};
+use crate::tree::{node_attr_states::NodeAttrStates, node_attrs::NodeAttrs};
 
 fn attrs_with_bounds(bounds: Rect) -> NodeAttrs {
     NodeAttrs {
         role: Some("AXButton".into()),
-        title: Some("Target".into()),
-        description: None,
+        subrole: None,
         value: None,
-        native_id: None,
-        states: NodeAttrStates {
-            enabled: true,
-            focused: None,
-            expanded: None,
-            disclosing: None,
-            selected: None,
-            hidden: None,
-            busy: None,
-            modal: None,
-            required: None,
-            readonly: None,
+        name_evidence: agent_desktop_core::NameEvidence {
+            native_title: Some("Target".into()),
+            ..agent_desktop_core::NameEvidence::default()
         },
+        states: NodeAttrStates::default(),
         bounds: Some(bounds),
         has_scrollbars: false,
     }
 }
 
-/// Proves the `window_bounds` parameter this fix threads into
-/// `element_state_from_attrs` actually reaches the offscreen computation:
-/// with a window smaller than the element's position, the resulting state
-/// must carry `offscreen`. Before this fix the call sites hardcoded
-/// `window_bounds: None`, so this would never fire regardless of the
-/// element's real position relative to its window.
 #[test]
 fn element_state_from_attrs_includes_offscreen_when_window_bounds_supplied() {
     let el = crate::tree::AXElement(std::ptr::null_mut());
@@ -47,7 +32,7 @@ fn element_state_from_attrs_includes_offscreen_when_window_bounds_supplied() {
         height: 50.0,
     };
 
-    let state = element_state_from_attrs(&el, attrs, "button".into(), Some(window));
+    let state = element_state_from_attrs(&el, attrs, "button".into(), Some(window)).unwrap();
 
     assert!(
         state
@@ -66,7 +51,7 @@ fn element_state_from_attrs_omits_offscreen_without_window_bounds() {
         height: 10.0,
     });
 
-    let state = element_state_from_attrs(&el, attrs, "button".into(), None);
+    let state = element_state_from_attrs(&el, attrs, "button".into(), None).unwrap();
 
     assert!(
         !state
@@ -75,12 +60,113 @@ fn element_state_from_attrs_omits_offscreen_without_window_bounds() {
     );
 }
 
-/// `owning_window_bounds` must degrade to `None` rather than panic when the
-/// element has no reachable `AXWindow` (e.g. a detached/null probe), so a
-/// missing window never turns into a hard failure for post-action state
-/// reads.
 #[test]
-fn owning_window_bounds_is_none_for_detached_element() {
+fn post_delay_is_skipped_when_it_would_exhaust_the_budget() {
+    let deadline = Deadline::after(1).unwrap();
+
+    assert!(!pause_if_budget_allows(
+        deadline,
+        std::time::Duration::from_millis(50)
+    ));
+}
+
+#[test]
+fn click_does_not_post_read_a_target_that_navigation_may_detach() {
+    let element = crate::tree::AXElement(std::ptr::null_mut());
+    let state = read_post_state(&element, &Action::Click, Deadline::after(1).unwrap()).unwrap();
+
+    assert!(state.is_none());
+}
+
+#[test]
+fn post_state_uses_the_same_subrole_mapping_as_snapshot_observation() {
+    assert_eq!(
+        normalized_role(Some("AXRow"), Some("AXOutlineRow")),
+        "treeitem"
+    );
+}
+
+#[test]
+fn secure_subrole_never_exposes_its_value() {
     let el = crate::tree::AXElement(std::ptr::null_mut());
-    assert_eq!(owning_window_bounds(&el), None);
+    let mut attrs = attrs_with_bounds(Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 10.0,
+        height: 10.0,
+    });
+    attrs.role = Some("AXTextField".into());
+    attrs.subrole = Some("AXSecureTextField".into());
+    attrs.value = Some("secret".into());
+
+    let state = element_state_from_attrs(&el, attrs, "textfield".into(), None).unwrap();
+
+    assert_eq!(state.value, None);
+}
+
+#[test]
+fn element_visibility_preserves_live_hidden_evidence_for_every_role() {
+    assert_eq!(hidden_state(None), None);
+    assert_eq!(hidden_state(Some(false)), Some(false));
+    assert_eq!(hidden_state(Some(true)), Some(true));
+}
+
+#[test]
+fn top_level_container_is_used_only_when_window_is_authoritatively_absent() {
+    let mut attributes = Vec::new();
+    let container = first_owning_container(|attribute| {
+        attributes.push(attribute);
+        Ok((attribute == "AXTopLevelUIElement")
+            .then(|| crate::tree::AXElement(std::ptr::null_mut())))
+    })
+    .unwrap();
+
+    assert!(container.is_some());
+    assert_eq!(attributes, ["AXWindow", "AXTopLevelUIElement"]);
+}
+
+#[test]
+fn incomplete_window_read_never_falls_through_to_a_weaker_container() {
+    for error in [
+        accessibility_sys::kAXErrorCannotComplete,
+        accessibility_sys::kAXErrorInvalidUIElement,
+    ] {
+        let calls = std::cell::Cell::new(0);
+        let result = first_owning_container(|_| {
+            calls.set(calls.get() + 1);
+            Err(error)
+        });
+
+        let failure = match result {
+            Err(failure) => failure,
+            Ok(_) => panic!("incomplete AXWindow read must fail"),
+        };
+        assert_eq!(failure, ("AXWindow", error));
+        assert_eq!(calls.get(), 1);
+    }
+}
+
+#[test]
+fn optional_identity_gaps_do_not_poison_complete_actionability_evidence() {
+    let mut evidence = agent_desktop_core::LocatorEvidence {
+        role: LocatorField::Known("scrollarea".into()),
+        name: LocatorField::Unknown,
+        description: LocatorField::Unknown,
+        value: LocatorField::Absent,
+        identifiers: agent_desktop_core::IdentifierEvidence::unknown(),
+        states: LocatorField::Known(Vec::new()),
+        ref_evidence: agent_desktop_core::LocatorRefEvidence {
+            bounds: LocatorField::Known(Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+            }),
+            available_actions: LocatorField::Known(vec!["Scroll".into()]),
+        },
+    };
+
+    assert!(essential_live_evidence_complete(&evidence));
+    evidence.states = LocatorField::Unknown;
+    assert!(!essential_live_evidence_complete(&evidence));
 }

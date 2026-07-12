@@ -1,19 +1,23 @@
 use super::*;
-use crate::error::ErrorCode;
+use crate::ErrorCode;
 
 struct DefaultOnly;
 impl InputOps for DefaultOnly {}
 
+fn lease() -> crate::InteractionLease {
+    crate::InteractionLease::guarded(crate::Deadline::standard().unwrap(), ()).unwrap()
+}
+
 #[test]
 fn default_clear_clipboard_is_not_supported() {
-    let err = DefaultOnly.clear_clipboard().unwrap_err();
+    let err = DefaultOnly.clear_clipboard(&lease()).unwrap_err();
     assert_eq!(err.code, ErrorCode::PlatformNotSupported);
 }
 
 #[test]
 fn default_get_clipboard_content_is_not_supported() {
     let err = DefaultOnly
-        .get_clipboard_content(ClipboardFormat::Text)
+        .get_clipboard_content(ClipboardFormat::Text, crate::Deadline::standard().unwrap())
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::PlatformNotSupported);
 }
@@ -21,7 +25,7 @@ fn default_get_clipboard_content_is_not_supported() {
 #[test]
 fn default_set_clipboard_content_is_not_supported() {
     let err = DefaultOnly
-        .set_clipboard_content(&ClipboardContent::Text("x".into()))
+        .set_clipboard_content(&ClipboardContent::Text("x".into()), &lease())
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::PlatformNotSupported);
 }

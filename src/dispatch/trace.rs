@@ -1,4 +1,4 @@
-use agent_desktop_core::{commands::trace, context::CommandContext, error::AppError};
+use agent_desktop_core::{AppError, commands::trace, context::CommandContext};
 use serde_json::Value;
 
 use crate::cli_args::trace::{TraceAction, TraceArgs};

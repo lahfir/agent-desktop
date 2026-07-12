@@ -1,10 +1,8 @@
 use crate::{
+    AppError, ClipboardContent, ClipboardFormat, ImageBuffer,
     adapter::PlatformAdapter,
-    clipboard_content::{ClipboardContent, ClipboardFormat},
     context::CommandContext,
-    error::AppError,
-    image_buffer::ImageBuffer,
-    refs::write_private_file,
+    refs::{write_private_file, write_user_file},
     session,
 };
 use serde_json::{Value, json};
@@ -25,7 +23,7 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let format = args.format.unwrap_or(ClipboardFormat::Text);
-    let Some(content) = adapter.get_clipboard_content(format)? else {
+    let Some(content) = adapter.get_clipboard_content(format, crate::Deadline::standard()?)? else {
         return Ok(json!({ "type": format.as_str(), "found": false }));
     };
     match content {
@@ -43,10 +41,16 @@ fn write_image(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let path = match out {
-        Some(path) => path,
-        None => default_clipboard_image_path(context)?,
+        Some(path) => {
+            write_user_file(&path, &image.data)?;
+            path
+        }
+        None => {
+            let path = default_clipboard_image_path(context)?;
+            write_private_file(&path, &image.data)?;
+            path
+        }
     };
-    write_private_file(&path, &image.data)?;
     Ok(json!({
         "type": "image",
         "path": path.to_string_lossy(),

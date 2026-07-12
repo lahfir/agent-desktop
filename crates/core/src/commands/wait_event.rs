@@ -1,7 +1,6 @@
 use crate::{
-    adapter::PlatformAdapter,
-    error::{AdapterError, AppError, ErrorCode},
-    signals::{self, EventKind, SignalBaseline, SignalFilter, UiEvent},
+    AdapterError, AppError, ErrorCode, EventKind, SignalBaseline, SignalFilter, UiEvent,
+    adapter::PlatformAdapter, commands::wait_event_input::EventWaitInput, diff_signals,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -13,65 +12,137 @@ use std::time::{Duration, Instant};
 /// is that a caller who does not yet know a new window's id or title can
 /// still wait for it to appear.
 pub(crate) fn wait_for_event(
-    event: &str,
-    app: Option<String>,
-    window_id: Option<String>,
-    window_title: Option<String>,
-    timeout_ms: u64,
+    input: EventWaitInput,
     adapter: &dyn PlatformAdapter,
+    seeded_baseline: Option<Result<SignalBaseline, AdapterError>>,
 ) -> Result<Value, AppError> {
-    let requested = parse_event_kind(event)?;
-    let filter = SignalFilter {
-        app: app.clone(),
-        pid: None,
-    };
+    let requested = parse_event_kind(&input.event)?;
     let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
-    let mut baseline: Option<SignalBaseline> = None;
-    let mut last_error = None;
+    let deadline = crate::Deadline::at(start, input.timeout_ms)?;
+    let process = input
+        .app
+        .as_deref()
+        .map(|app| crate::commands::helpers::resolve_app(Some(app), adapter, deadline))
+        .transpose()?
+        .map(|app| crate::commands::helpers::process_identity(&app))
+        .transpose()?;
+    let filter = SignalFilter {
+        app: input.app.clone(),
+        process,
+    };
+    let (mut baseline, mut last_error) = match seeded_baseline {
+        Some(Ok(baseline)) => {
+            validate_signal_scope(&filter, &baseline)?;
+            (Some(baseline), None)
+        }
+        Some(Err(error)) if is_retryable(&error.code) => (None, Some(error_evidence(&error))),
+        Some(Err(error)) => return Err(AppError::Adapter(error)),
+        None => (None, None),
+    };
 
     loop {
-        match adapter.capture_signal_baseline(&filter) {
-            Ok(current) => match &baseline {
-                None => baseline = Some(current),
-                Some(base) => {
-                    let events = signals::diff_signals(base, &current);
-                    if let Some(found) = find_match(
-                        &events,
-                        &requested,
-                        window_id.as_deref(),
-                        window_title.as_deref(),
-                    ) {
-                        let elapsed = start.elapsed().as_millis();
-                        return Ok(json!({
-                            "found": true,
-                            "event": serde_json::to_value(found)?,
-                            "elapsed_ms": elapsed,
-                        }));
+        if deadline.is_expired() {
+            return timeout_err(
+                &input.event,
+                input.app.as_ref(),
+                input.timeout_ms,
+                baseline.as_ref(),
+                last_error,
+            );
+        }
+
+        let observation = adapter.capture_signal_baseline(&filter, deadline);
+        if deadline.is_expired() {
+            return timeout_err(
+                &input.event,
+                input.app.as_ref(),
+                input.timeout_ms,
+                baseline.as_ref(),
+                last_error,
+            );
+        }
+
+        match observation {
+            Ok(current) => {
+                validate_signal_scope(&filter, &current)?;
+                match &baseline {
+                    None => baseline = Some(current),
+                    Some(base) => {
+                        let events = diff_signals(base, &current);
+                        if let Some(found) = find_match(
+                            &events,
+                            &requested,
+                            input.window_id.as_deref(),
+                            input.window_title.as_deref(),
+                        ) {
+                            let elapsed = start.elapsed().as_millis();
+                            return Ok(json!({
+                                "found": true,
+                                "event": serde_json::to_value(found)?,
+                                "elapsed_ms": elapsed,
+                            }));
+                        }
                     }
                 }
-            },
+            }
             Err(err) if is_retryable(&err.code) => {
-                last_error = Some(json!({
-                    "code": err.code.as_str(),
-                    "message": err.message
-                }));
+                last_error = Some(error_evidence(&err));
             }
             Err(err) => return Err(AppError::Adapter(err)),
         }
 
-        let remaining = timeout.saturating_sub(start.elapsed());
+        let remaining = deadline.remaining();
         if remaining.is_zero() {
             return timeout_err(
-                event,
-                app.as_ref(),
-                timeout_ms,
+                &input.event,
+                input.app.as_ref(),
+                input.timeout_ms,
                 baseline.as_ref(),
                 last_error,
             );
         }
         std::thread::sleep(remaining.min(Duration::from_millis(200)));
     }
+}
+
+fn validate_signal_scope(filter: &SignalFilter, baseline: &SignalBaseline) -> Result<(), AppError> {
+    let Some(expected) = filter.process.as_ref() else {
+        return Ok(());
+    };
+    let observed = baseline
+        .apps
+        .iter()
+        .map(|app| (app.pid, app.process_instance.as_deref()))
+        .chain(
+            baseline
+                .windows
+                .iter()
+                .map(|window| (window.pid, window.process_instance.as_deref())),
+        )
+        .chain(
+            baseline
+                .surfaces
+                .iter()
+                .map(|surface| (surface.pid, Some(surface.process_instance.as_str()))),
+        );
+    if let Some((pid, instance)) = observed.into_iter().find(|(pid, instance)| {
+        *pid != expected.pid || *instance != Some(expected.instance.as_str())
+    }) {
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
+            "Target process identity changed during event observation",
+        )
+        .with_details(json!({
+            "kind": "process_changed",
+            "expected_pid": expected.pid,
+            "observed_pid": pid,
+            "observed_instance_matches": instance == Some(expected.instance.as_str()),
+            "retryable": false,
+        }))
+        .with_disposition(crate::DeliverySemantics::not_delivered())
+        .into());
+    }
+    Ok(())
 }
 
 fn find_match<'a>(
@@ -99,7 +170,18 @@ fn find_match<'a>(
 }
 
 fn is_retryable(code: &ErrorCode) -> bool {
-    matches!(code, ErrorCode::Timeout | ErrorCode::ElementNotFound)
+    matches!(
+        code,
+        ErrorCode::Timeout | ErrorCode::ElementNotFound | ErrorCode::AppUnresponsive
+    )
+}
+
+fn error_evidence(error: &AdapterError) -> Value {
+    json!({
+        "code": error.code.as_str(),
+        "message": error.message,
+        "details": error.details,
+    })
 }
 
 pub(crate) fn parse_event_kind(event: &str) -> Result<EventKind, AppError> {

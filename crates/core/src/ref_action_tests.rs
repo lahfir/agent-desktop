@@ -6,115 +6,278 @@ use crate::{
     adapter::{NativeHandle, SnapshotSurface},
     capability,
 };
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU32, Ordering},
+};
 
-struct ReleaseFailingAdapter;
+struct DropProbe(Arc<AtomicU32>);
 
-impl ObservationOps for ReleaseFailingAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
+impl Drop for DropProbe {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
     }
 }
 
-impl ActionOps for ReleaseFailingAdapter {
+struct SuccessfulAdapter {
+    drops: Arc<AtomicU32>,
+    dispatched_policies: Mutex<Vec<crate::InteractionPolicy>>,
+}
+
+impl SuccessfulAdapter {
+    fn new() -> Self {
+        Self {
+            drops: Arc::new(AtomicU32::new(0)),
+            dispatched_policies: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl ObservationOps for SuccessfulAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::new(DropProbe(Arc::clone(&self.drops))))
+    }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+}
+
+impl ActionOps for SuccessfulAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
-        _request: ActionRequest,
+        request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        Ok(ActionResult::new("click"))
-    }
-
-    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
-        Err(AdapterError::internal("release failed"))
-    }
-}
-
-impl InputOps for ReleaseFailingAdapter {}
-
-impl SystemOps for ReleaseFailingAdapter {}
-
-struct ErrorReleasingAdapter {
-    releases: AtomicU32,
-}
-
-impl ObservationOps for ErrorReleasingAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
+        self.dispatched_policies
+            .lock()
+            .unwrap()
+            .push(request.policy);
+        Ok(ActionResult::delivered_unverified("click"))
     }
 }
 
-impl ActionOps for ErrorReleasingAdapter {
+impl InputOps for SuccessfulAdapter {}
+
+impl SystemOps for SuccessfulAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
+
+struct FailingAdapter {
+    drops: Arc<AtomicU32>,
+}
+
+impl ObservationOps for FailingAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::new(DropProbe(Arc::clone(&self.drops))))
+    }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+}
+
+impl ActionOps for FailingAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::internal("dispatch failed"))
     }
+}
 
-    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
-        self.releases.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+impl InputOps for FailingAdapter {}
+
+impl SystemOps for FailingAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
+
+struct ProcessReplacingAdapter;
+
+impl ObservationOps for ProcessReplacingAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+}
+
+impl ActionOps for ProcessReplacingAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        request: ActionRequest,
+        _lease: &crate::InteractionLease,
+    ) -> Result<ActionResult, AdapterError> {
+        let expected = request
+            .expected_process()
+            .ok_or_else(|| AdapterError::internal("missing expected process identity"))?;
+        if expected.instance != "replacement-generation" {
+            return Err(AdapterError::stale_ref(
+                "process generation changed before physical dispatch",
+            ));
+        }
+        Ok(ActionResult::delivered_unverified("click"))
     }
 }
 
-impl InputOps for ErrorReleasingAdapter {}
+impl InputOps for ProcessReplacingAdapter {}
+impl SystemOps for ProcessReplacingAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
-impl SystemOps for ErrorReleasingAdapter {}
+struct TraceFailureAdapter {
+    path: std::path::PathBuf,
+    fail_after_dispatch: bool,
+    dispatches: AtomicU32,
+}
+
+impl ObservationOps for TraceFailureAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+}
+
+impl ActionOps for TraceFailureAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+        _lease: &crate::InteractionLease,
+    ) -> Result<ActionResult, AdapterError> {
+        self.dispatches.fetch_add(1, Ordering::SeqCst);
+        if self.fail_after_dispatch {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&self.path)
+                .unwrap()
+                .set_len(crate::trace::MAX_TRACE_FILE_BYTES)
+                .unwrap();
+        }
+        Ok(ActionResult::delivered_unverified("click"))
+    }
+}
+
+impl InputOps for TraceFailureAdapter {}
+impl SystemOps for TraceFailureAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 fn entry() -> RefEntry {
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("Run".into()),
-        value: None,
-        description: None,
-        native_id: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Run".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
 #[test]
-fn successful_action_survives_release_failure() {
-    let result = execute_entry(
-        &ReleaseFailingAdapter,
-        &entry(),
-        ActionRequest::headless(Action::Click),
-    )
-    .unwrap();
+fn successful_action_drops_resolved_payload() {
+    let adapter = SuccessfulAdapter::new();
+    let result = execute_entry(&adapter, &entry(), ActionRequest::headless(Action::Click)).unwrap();
 
     assert_eq!(result.action, "click");
+    assert_eq!(adapter.drops.load(Ordering::SeqCst), 1);
 }
 
 #[test]
-fn failed_action_still_releases_resolved_handle() {
-    let adapter = ErrorReleasingAdapter {
-        releases: AtomicU32::new(0),
+fn semantic_preflight_revokes_unverified_physical_fallback() {
+    let adapter = SuccessfulAdapter::new();
+
+    execute_entry(&adapter, &entry(), ActionRequest::headed(Action::Click)).unwrap();
+
+    assert_eq!(
+        adapter.dispatched_policies.lock().unwrap().as_slice(),
+        &[crate::InteractionPolicy::headless()]
+    );
+}
+
+#[test]
+fn failed_action_still_drops_resolved_payload() {
+    let adapter = FailingAdapter {
+        drops: Arc::new(AtomicU32::new(0)),
     };
 
     let err =
         execute_entry(&adapter, &entry(), ActionRequest::headless(Action::Click)).unwrap_err();
 
-    assert_eq!(err.code, crate::error::ErrorCode::Internal);
-    assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
+    assert_eq!(err.code, crate::ErrorCode::Internal);
+    assert_eq!(adapter.drops.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn replacement_between_resolution_and_dispatch_fails_before_delivery() {
+    let error = execute_entry(
+        &ProcessReplacingAdapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, crate::ErrorCode::StaleRef);
+    assert_eq!(
+        error.disposition.delivery(),
+        crate::DeliveryDisposition::NotDelivered
+    );
 }
 
 #[test]
 fn execute_entry_with_context_succeeds_and_matches_execute_entry() {
     let context = CommandContext::default();
+    let adapter = SuccessfulAdapter::new();
     let result = execute_entry_with_context(
-        &ReleaseFailingAdapter,
+        &adapter,
         &entry(),
         ActionRequest::headless(Action::Click),
         &context,
@@ -135,9 +298,10 @@ fn execute_entry_with_context_emits_trace_events() {
     ));
     let context =
         CommandContext::new(Some("test-session".into()), Some(trace_path.clone()), false).unwrap();
+    let adapter = SuccessfulAdapter::new();
 
     let _ = execute_entry_with_context(
-        &ReleaseFailingAdapter,
+        &adapter,
         &entry(),
         ActionRequest::headless(Action::Click),
         &context,
@@ -172,9 +336,10 @@ fn trace_records_omit_session_id_when_context_has_none() {
             .as_nanos()
     ));
     let context = CommandContext::new(None, Some(trace_path.clone()), false).unwrap();
+    let adapter = SuccessfulAdapter::new();
 
     let _ = execute_entry_with_context(
-        &ReleaseFailingAdapter,
+        &adapter,
         &entry(),
         ActionRequest::headless(Action::Click),
         &context,
@@ -197,6 +362,9 @@ fn ref_label_from_entry_uses_role_and_path_indices() {
     assert_eq!(ref_label_from_entry(&no_path), "<button>");
 
     let mut with_path = entry();
-    with_path.path = smallvec::smallvec![2, 0, 3];
+    with_path.scope.path = smallvec::smallvec![2, 0, 3];
     assert_eq!(ref_label_from_entry(&with_path), "<button/2/0/3>");
 }
+
+#[path = "ref_action_trace_failure_tests.rs"]
+mod trace_failure_tests;

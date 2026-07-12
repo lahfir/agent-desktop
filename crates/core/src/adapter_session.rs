@@ -1,18 +1,11 @@
-use crate::error::AdapterError;
+use crate::AdapterError;
 
-/// A live handle to adapter-native connection affinity opened by
-/// [`crate::adapter::SystemOps::open_session`] for a host that outlives a
-/// single command (an FFI embedder, a future daemon) — the landing zone for
-/// state like a Windows COM-MTA apartment thread or a Linux D-Bus
-/// connection. It may hold that native connection state for as long as the
-/// session stays open, but it must never hold a resolved element handle:
-/// commands keep resolving elements per call from a `RefEntry` (the
-/// resolve-then-release RAII boundary), and a session must not become a
-/// second place stale identity can hide.
+/// A live adapter-native connection owned by a persistent host.
 ///
-/// `Send + Sync` so a persistent host can hand the boxed session across
-/// threads, matching every other adapter capability trait
-/// (`ObservationOps`, `ActionOps`, `InputOps`, `SystemOps`).
+/// The session may retain platform connection state, such as a Windows COM
+/// apartment or Linux D-Bus connection, but must not retain resolved element
+/// handles. Elements remain command-scoped so stale identity cannot escape the
+/// resolve-and-release boundary.
 pub trait AdapterSession: Send + Sync {
     fn close(self: Box<Self>) -> Result<(), AdapterError>;
 }

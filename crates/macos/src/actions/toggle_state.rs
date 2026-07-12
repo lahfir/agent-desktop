@@ -1,24 +1,26 @@
 use agent_desktop_core::{
-    error::{AdapterError, ErrorCode},
-    interaction_policy::InteractionPolicy,
+    ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
+    StepMechanism,
 };
 
 use crate::{
     actions::{
         ax_helpers,
         chain::{ChainContext, execute_chain},
-        chain_defs, discovery,
+        chain_defs,
     },
     tree::AXElement,
 };
 
-const DEFAULT_TOGGLE_TIMEOUT_MS: u64 = 600;
-const MAX_TOGGLE_TIMEOUT_MS: u64 = 10_000;
-const DEFAULT_TOGGLE_STABLE_MS: u64 = 200;
-const MAX_TOGGLE_STABLE_MS: u64 = 2_000;
+const TOGGLE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(600);
+const TOGGLE_STABLE: std::time::Duration = std::time::Duration::from_millis(200);
 
-pub(crate) fn toggle(el: &AXElement, policy: InteractionPolicy) -> Result<(), AdapterError> {
-    let role = ax_helpers::element_role(el);
+pub(crate) fn toggle(
+    el: &AXElement,
+    policy: InteractionPolicy,
+    deadline: Deadline,
+) -> Result<Vec<ActionStep>, AdapterError> {
+    let role = read_role(el, deadline)?;
     if !role
         .as_deref()
         .is_some_and(crate::tree::roles::is_toggleable_role)
@@ -34,25 +36,30 @@ pub(crate) fn toggle(el: &AXElement, policy: InteractionPolicy) -> Result<(), Ad
             "Toggle works on checkboxes, switches, and radio buttons. Use 'click' for other elements.",
         ));
     }
-    let before = crate::tree::copy_value_typed(el);
-    let caps = discovery::discover(el);
+    let before = read_value(el, deadline)?;
     let ctx = ChainContext {
         dynamic_value: None,
-        deadline: None,
+        verified_point: None,
+        deadline,
     };
-    execute_chain(el, &caps, &chain_defs::CLICK_CHAIN, &ctx, policy)?;
-    if let Some(before) = before {
-        wait_for_value_change(el, &before)?;
-    }
-    Ok(())
+    let mut steps = execute_chain(el, &chain_defs::CLICK_CHAIN, &ctx, policy)?;
+    let verified = if let Some(before) = before {
+        wait_for_value_change(el, &before, deadline).map_err(after_delivery)?;
+        true
+    } else {
+        false
+    };
+    mark_last_verified(&mut steps, verified);
+    Ok(steps)
 }
 
 pub(crate) fn check_uncheck(
     el: &AXElement,
     want_checked: bool,
     policy: InteractionPolicy,
-) -> Result<(), AdapterError> {
-    let role = ax_helpers::element_role(el);
+    deadline: Deadline,
+) -> Result<Vec<ActionStep>, AdapterError> {
+    let role = read_role(el, deadline)?;
     if !role
         .as_deref()
         .is_some_and(crate::tree::roles::is_toggleable_role)
@@ -66,26 +73,50 @@ pub(crate) fn check_uncheck(
         )
         .with_suggestion("Only works on checkboxes, switches, and radio buttons."));
     }
-    if checked_state(el) == Some(want_checked) {
-        return Ok(());
+    if checked_state(el, deadline)? == Some(want_checked) {
+        return Ok(vec![already_in_state_step()]);
     }
-    if ax_helpers::is_attr_settable(el, "AXValue")
-        && ax_helpers::set_ax_bool(el, "AXValue", want_checked)
-        && wait_for_checked_state(el, want_checked).is_ok()
-    {
-        return Ok(());
+    prepare(el, deadline)?;
+    if ax_helpers::is_attr_settable(el, "AXValue", deadline)? && {
+        prepare(el, deadline)?;
+        ax_helpers::set_ax_bool_or_err(el, "AXValue", want_checked, deadline)?
+    } {
+        wait_for_checked_state(el, want_checked, deadline).map_err(after_delivery)?;
+        return Ok(vec![
+            ActionStep::succeeded("AXValue")
+                .with_mechanism(StepMechanism::SemanticApi)
+                .with_verified(true),
+        ]);
     }
-    let caps = discovery::discover(el);
     let ctx = ChainContext {
         dynamic_value: None,
-        deadline: None,
+        verified_point: None,
+        deadline,
     };
-    execute_chain(el, &caps, &chain_defs::CLICK_CHAIN, &ctx, policy)?;
-    wait_for_checked_state(el, want_checked)
+    let mut steps = execute_chain(el, &chain_defs::CLICK_CHAIN, &ctx, policy)?;
+    wait_for_checked_state(el, want_checked, deadline).map_err(after_delivery)?;
+    mark_last_verified(&mut steps, true);
+    Ok(steps)
 }
 
-fn checked_state(el: &AXElement) -> Option<bool> {
-    crate::tree::copy_value_typed(el).and_then(|value| parse_checked_value(&value))
+fn already_in_state_step() -> ActionStep {
+    ActionStep::skipped("AlreadyInState").with_verified(true)
+}
+
+fn after_delivery(error: AdapterError) -> AdapterError {
+    error.with_disposition(DeliverySemantics::delivered_unverified())
+}
+
+fn mark_last_verified(steps: &mut [ActionStep], verified: bool) {
+    if let Some(step) = steps.last_mut() {
+        if verified || step.verified.is_none() {
+            step.verified = Some(verified);
+        }
+    }
+}
+
+fn checked_state(el: &AXElement, deadline: Deadline) -> Result<Option<bool>, AdapterError> {
+    Ok(read_value(el, deadline)?.and_then(|value| parse_checked_value(&value)))
 }
 
 fn parse_checked_value(value: &str) -> Option<bool> {
@@ -97,10 +128,14 @@ fn parse_checked_value(value: &str) -> Option<bool> {
     }
 }
 
-fn wait_for_checked_state(el: &AXElement, want_checked: bool) -> Result<(), AdapterError> {
-    let deadline = std::time::Instant::now() + toggle_timeout();
+fn wait_for_checked_state(
+    el: &AXElement,
+    want_checked: bool,
+    action_deadline: Deadline,
+) -> Result<(), AdapterError> {
+    let deadline = verification_deadline(action_deadline)?;
     loop {
-        if checked_state(el) == Some(want_checked) {
+        if checked_state(el, action_deadline)? == Some(want_checked) {
             return Ok(());
         }
         if std::time::Instant::now() >= deadline {
@@ -108,22 +143,30 @@ fn wait_for_checked_state(el: &AXElement, want_checked: bool) -> Result<(), Adap
                 ErrorCode::ActionFailed,
                 "check/uncheck did not reach the requested state",
             )
-            .with_suggestion("Retry after refreshing the snapshot."));
+            .with_details(serde_json::json!({
+                "verification": "requested_checked_state_not_observed"
+            }))
+            .with_suggestion(
+                "Refresh the snapshot and inspect the checked state before deciding whether to retry.",
+            ));
         }
-        std::thread::sleep(std::time::Duration::from_millis(25));
+        sleep_poll(deadline, action_deadline)?;
     }
 }
 
-fn wait_for_value_change(el: &AXElement, before: &str) -> Result<(), AdapterError> {
-    let deadline = std::time::Instant::now() + toggle_timeout();
-    let stable_for = toggle_stable_duration();
+fn wait_for_value_change(
+    el: &AXElement,
+    before: &str,
+    action_deadline: Deadline,
+) -> Result<(), AdapterError> {
+    let deadline = verification_deadline(action_deadline)?;
     let mut candidate: Option<(String, std::time::Instant)> = None;
     loop {
-        if let Some(changed) = crate::tree::copy_value_typed(el) {
+        if let Some(changed) = read_value(el, action_deadline)? {
             if changed != before {
                 match &mut candidate {
                     Some((candidate_value, since)) if candidate_value == &changed => {
-                        if since.elapsed() >= stable_for {
+                        if since.elapsed() >= TOGGLE_STABLE {
                             return Ok(());
                         }
                     }
@@ -140,41 +183,83 @@ fn wait_for_value_change(el: &AXElement, before: &str) -> Result<(), AdapterErro
                 ErrorCode::ActionFailed,
                 "toggle did not change the element value",
             )
-            .with_suggestion("Use 'click' for controls that do not expose stable toggle state."));
+            .with_details(serde_json::json!({
+                "verification": "stable_value_change_not_observed"
+            }))
+            .with_suggestion(
+                "Refresh the snapshot and inspect the value before deciding whether to retry or use 'click'.",
+            ));
         }
-        std::thread::sleep(std::time::Duration::from_millis(25));
+        sleep_poll(deadline, action_deadline)?;
     }
 }
 
-fn toggle_timeout() -> std::time::Duration {
-    env_duration_ms(
-        "AGENT_DESKTOP_TOGGLE_TIMEOUT_MS",
-        DEFAULT_TOGGLE_TIMEOUT_MS,
-        MAX_TOGGLE_TIMEOUT_MS,
-    )
+fn verification_deadline(action_deadline: Deadline) -> Result<std::time::Instant, AdapterError> {
+    let local = std::time::Instant::now() + TOGGLE_TIMEOUT;
+    let remaining = action_deadline.remaining();
+    if remaining.is_zero() {
+        Err(action_deadline.timeout_error())
+    } else {
+        Ok(std::time::Instant::now()
+            .checked_add(remaining)
+            .map_or(local, |deadline| deadline.min(local)))
+    }
 }
 
-fn toggle_stable_duration() -> std::time::Duration {
-    env_duration_ms(
-        "AGENT_DESKTOP_TOGGLE_STABLE_MS",
-        DEFAULT_TOGGLE_STABLE_MS,
-        MAX_TOGGLE_STABLE_MS,
-    )
+fn sleep_poll(deadline: std::time::Instant, action_deadline: Deadline) -> Result<(), AdapterError> {
+    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+    if !remaining.is_zero() {
+        std::thread::sleep(remaining.min(std::time::Duration::from_millis(25)));
+    }
+    if action_deadline.is_expired() {
+        Err(action_deadline
+            .timeout_error()
+            .with_details(serde_json::json!({
+                "verification": "action_deadline_elapsed",
+            })))
+    } else {
+        Ok(())
+    }
 }
 
-fn env_duration_ms(name: &str, default_ms: u64, max_ms: u64) -> std::time::Duration {
-    let ms = std::env::var(name)
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .filter(|ms| *ms > 0)
-        .map(|ms| ms.min(max_ms))
-        .unwrap_or(default_ms);
-    std::time::Duration::from_millis(ms)
+fn read_value(el: &AXElement, deadline: Deadline) -> Result<Option<String>, AdapterError> {
+    use accessibility_sys::{
+        kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorInvalidUIElement,
+    };
+
+    crate::tree::attributes::set_messaging_timeout(el, deadline)?;
+    let result = crate::tree::attributes::copy_value_typed_result(el, deadline);
+    if deadline.is_expired() {
+        return Err(deadline.timeout_error());
+    }
+    result.map_err(|error| {
+        let code = if error == kAXErrorAPIDisabled {
+            ErrorCode::PermDenied
+        } else if error == kAXErrorCannotComplete {
+            ErrorCode::Timeout
+        } else if error == kAXErrorInvalidUIElement {
+            ErrorCode::StaleRef
+        } else {
+            ErrorCode::ActionFailed
+        };
+        AdapterError::new(code, "Could not verify the live toggle value")
+            .with_details(serde_json::json!({ "ax_error": error }))
+    })
+}
+
+fn read_role(el: &AXElement, deadline: Deadline) -> Result<Option<String>, AdapterError> {
+    ax_helpers::element_role(el, deadline)
+}
+
+fn prepare(el: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
+    crate::tree::attributes::set_messaging_timeout(el, deadline)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_checked_value;
+    use agent_desktop_core::action_step::ActionStep;
+
+    use super::{already_in_state_step, mark_last_verified, parse_checked_value};
 
     #[test]
     fn parses_checked_values_from_common_ax_strings() {
@@ -191,5 +276,30 @@ mod tests {
         for value in ["2", "mixed", "indeterminate", "maybe", ""] {
             assert_eq!(parse_checked_value(value), None);
         }
+    }
+
+    #[test]
+    fn absent_toggle_state_does_not_erase_existing_verification() {
+        let mut steps = vec![ActionStep::succeeded("verified_press").with_verified(true)];
+        mark_last_verified(&mut steps, false);
+        assert_eq!(steps[0].verified(), Some(true));
+    }
+
+    #[test]
+    fn toggle_state_verification_upgrades_an_unverified_step() {
+        let mut steps = vec![ActionStep::succeeded("AXPress").with_verified(false)];
+        mark_last_verified(&mut steps, true);
+        assert_eq!(steps[0].verified(), Some(true));
+    }
+
+    #[test]
+    fn already_in_state_is_verified_without_claiming_delivery() {
+        let step = already_in_state_step();
+        assert!(matches!(
+            step.outcome,
+            agent_desktop_core::action_step_outcome::ActionStepOutcome::Skipped
+        ));
+        assert!(step.mechanism().is_none());
+        assert_eq!(step.verified(), Some(true));
     }
 }

@@ -52,7 +52,7 @@ try_from_c_enum! {
 
 try_from_c_enum! {
     AdModifier {
-        Cmd = 0, Ctrl = 1, Alt = 2, Shift = 3,
+        Meta = 0, Ctrl = 1, Alt = 2, Shift = 3,
     }
 }
 
@@ -83,7 +83,11 @@ try_from_c_enum! {
 try_from_c_enum! {
     AdSnapshotSurface {
         Window = 0, Focused = 1, Menu = 2, Menubar = 3,
-        Sheet = 4, Popover = 5, Alert = 6,
+        Sheet = 4, Popover = 5, Alert = 6, Desktop = 7,
+        Taskbar = 8, SystemTray = 9, QuickSettings = 10,
+        NotificationCenter = 11,
+        Toolbar = 12, Dock = 13, Spotlight = 14, MenuBarExtras = 15,
+        SystemTrayOverflow = 16, StartMenu = 17, ActionCenter = 18,
     }
 }
 
@@ -178,6 +182,7 @@ mod tests {
             let _ = AdMouseEventKind::from_c(raw);
             let _ = AdWindowOpKind::from_c(raw);
             let _ = AdScreenshotKind::from_c(raw);
+            let _ = AdSnapshotSurface::from_c(raw);
         }
     }
 
@@ -201,7 +206,7 @@ mod tests {
 
     #[test]
     fn modifier_boundary_discriminants_map_to_exact_variants() {
-        assert_eq!(AdModifier::from_c(0), Some(AdModifier::Cmd));
+        assert_eq!(AdModifier::from_c(0), Some(AdModifier::Meta));
         assert_eq!(AdModifier::from_c(3), Some(AdModifier::Shift));
     }
 
@@ -238,6 +243,9 @@ mod tests {
             AdSnapshotSurface::from_c(0),
             Some(AdSnapshotSurface::Window)
         );
-        assert_eq!(AdSnapshotSurface::from_c(6), Some(AdSnapshotSurface::Alert));
+        assert_eq!(
+            AdSnapshotSurface::from_c(18),
+            Some(AdSnapshotSurface::ActionCenter)
+        );
     }
 }

@@ -31,6 +31,24 @@ fn get_full_inlines_references() {
     let content = v["content"].as_str().expect("string");
     assert!(content.contains("--- references/workflows.md ---"));
     assert!(content.contains("--- references/macos.md ---"));
+    assert!(content.contains("@s8f3k2p9:e1"));
+    assert!(content.contains("session start` does not activate later processes"));
+    assert!(!content.contains("~/.agent-desktop/current_session"));
+    assert!(!content.contains("resolves cross-session"));
+}
+
+#[test]
+fn ffi_skill_defines_ref_and_concurrency_contracts() {
+    let v = get(GetArgs {
+        name: "ffi".into(),
+        full: true,
+        reference: None,
+    })
+    .expect("get full ffi");
+    let content = v["content"].as_str().expect("string");
+    assert!(content.contains("## Ref token validation"));
+    assert!(content.contains("read + mutation"));
+    assert!(content.contains("## Off-main-thread migration"));
 }
 
 #[test]

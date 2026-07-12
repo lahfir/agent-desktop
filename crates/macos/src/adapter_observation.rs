@@ -1,168 +1,178 @@
+use crate::adapter::{MacOSAdapter, ax_element};
 use agent_desktop_core::{
-    adapter::{
-        LiveElement, NativeHandle, ObservationOps, SnapshotSurface, TreeOptions, WindowFilter,
-    },
-    element_state::ElementState,
-    error::AdapterError,
-    node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
-    refs::RefEntry,
+    AccessibilityNode, AdapterError, AppInfo, Deadline, ElementState, ObservationRequest,
+    ObservationRoot, ObservedTree, Rect, RefEntry, SurfaceInfo, WindowInfo,
+    adapter::{LiveElement, NativeHandle, ObservationOps, TreeOptions, WindowFilter},
 };
-use rustc_hash::FxHashSet;
-
-use crate::adapter::{MacOSAdapter, with_borrowed_ax_element};
 
 impl ObservationOps for MacOSAdapter {
+    fn observe_tree(
+        &self,
+        root: ObservationRoot<'_>,
+        request: &ObservationRequest,
+    ) -> Result<ObservedTree, AdapterError> {
+        crate::tree::query::observe_tree(root, request)
+    }
+
     fn get_tree(
         &self,
-        win: &WindowInfo,
-        opts: &TreeOptions,
+        window: &WindowInfo,
+        options: &TreeOptions,
+        deadline: Deadline,
     ) -> Result<AccessibilityNode, AdapterError> {
-        let el = match opts.surface {
-            SnapshotSurface::Window => crate::system::window_resolve::window_element_for_info(win)?,
-            SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::internal("No focused surface found"))?,
-            SnapshotSurface::Menu => crate::tree::surfaces::menu_element_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?,
-            SnapshotSurface::Menubar => crate::tree::surfaces::menubar_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?,
-            SnapshotSurface::Sheet => crate::tree::surfaces::sheet_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No open sheet"))?,
-            SnapshotSurface::Popover => crate::tree::surfaces::popover_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No visible popover"))?,
-            SnapshotSurface::Alert => crate::tree::surfaces::alert_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
-            _ => return Err(AdapterError::not_supported("snapshot surface")),
-        };
-        let mut visited = FxHashSet::default();
-        let context = crate::tree::TreeBuildContext::for_pid(win.pid, opts.include_bounds);
-        crate::tree::build_subtree(
-            &el,
-            0,
-            0,
-            opts.max_depth,
-            &mut visited,
-            opts.skeleton,
-            &context,
-        )
-        .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
+        self.observe_tree(
+            ObservationRoot::Window(window),
+            &ObservationRequest::snapshot(options, deadline),
+        )?
+        .into_accessibility_tree()
     }
 
-    fn resolve_element_strict(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        crate::tree::resolve::resolve_element_impl(entry)
-    }
-
-    fn resolve_element_strict_with_timeout(
+    fn resolve_element_strict(
         &self,
         entry: &RefEntry,
-        timeout: std::time::Duration,
+        deadline: Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        crate::tree::resolve::resolve_element_with_timeout(entry, timeout)
+        crate::tree::resolve::resolve_element_with_deadline(entry, deadline)
     }
 
-    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
-        crate::system::window_list::list_windows_impl(filter)
+    fn resolve_locator_anchor(
+        &self,
+        entry: &RefEntry,
+        deadline: Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        crate::tree::resolve::resolve_locator_anchor_with_deadline(entry, deadline)
     }
 
-    fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
-        crate::system::app_list::list_apps_impl()
+    fn list_windows(
+        &self,
+        filter: &WindowFilter,
+        deadline: Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
+        crate::system::app_inventory::list_windows_until(
+            filter,
+            crate::tree::locator_deadline::from_operation(deadline)?,
+        )
     }
 
-    fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> {
-        Ok(crate::tree::surfaces::list_surfaces_for_pid(pid))
+    fn list_apps(&self, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+        crate::system::app_inventory::list_apps_complete_until(
+            crate::tree::locator_deadline::from_operation(deadline)?,
+        )
+    }
+
+    fn list_apps_scoped(
+        &self,
+        name: &str,
+        bundle_id: Option<&str>,
+        deadline: Deadline,
+    ) -> Result<Vec<AppInfo>, AdapterError> {
+        crate::system::app_inventory::list_apps_scoped_until(
+            name,
+            bundle_id,
+            crate::tree::locator_deadline::from_operation(deadline)?,
+        )
+    }
+
+    fn list_surfaces(
+        &self,
+        process: agent_desktop_core::ProcessIdentity,
+        deadline: Deadline,
+    ) -> Result<Vec<SurfaceInfo>, AdapterError> {
+        let identity = crate::system::process_identity::require_core(&process)?;
+        let surfaces = crate::tree::surface_inventory::list_surfaces_for_pid(
+            identity.pid(),
+            crate::tree::locator_deadline::from_operation(deadline)?,
+        )?;
+        crate::system::process_identity::require_core(&process)?;
+        Ok(surfaces)
     }
 
     fn hit_test(
         &self,
         handle: &NativeHandle,
-        point: agent_desktop_core::action::Point,
+        point: agent_desktop_core::Point,
+        deadline: Deadline,
     ) -> Result<agent_desktop_core::hit_test::HitTestResult, AdapterError> {
-        crate::tree::hit_test::hit_test_impl(handle, point)
+        crate::tree::hit_test::hit_test_impl(handle, point, deadline)
     }
 
-    fn get_live_value(&self, handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
+    fn get_live_value(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            Ok(with_borrowed_ax_element(
-                handle,
-                crate::tree::copy_value_typed,
-            ))
+            Ok(
+                crate::actions::post_state::read_element_state(ax_element(handle)?, deadline)?
+                    .value,
+            )
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_value"))
     }
 
-    fn get_live_state(&self, handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+    fn get_live_state(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            Ok(Some(with_borrowed_ax_element(
-                handle,
-                crate::actions::post_state::read_element_state,
-            )))
+            Ok(Some(crate::actions::post_state::read_element_state(
+                ax_element(handle)?,
+                deadline,
+            )?))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_state"))
     }
 
-    fn get_live_actions(&self, handle: &NativeHandle) -> Result<Option<Vec<String>>, AdapterError> {
+    fn get_live_actions(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            Ok(Some(with_borrowed_ax_element(
-                handle,
-                crate::actions::post_state::read_live_actions,
-            )))
+            Ok(Some(crate::actions::post_state::read_live_actions(
+                ax_element(handle)?,
+                deadline,
+            )?))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_actions"))
     }
 
-    fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
+    fn get_live_element(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<LiveElement, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            Ok(with_borrowed_ax_element(
-                handle,
-                crate::actions::post_state::read_live_element,
-            ))
+            crate::actions::post_state::read_live_element(ax_element(handle)?, deadline)
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_element"))
     }
 
-    fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
+    fn get_element_bounds(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            Ok(with_borrowed_ax_element(handle, crate::tree::read_bounds))
+            crate::tree::element_bounds::read_bounds_with_deadline(
+                ax_element(handle)?,
+                crate::tree::locator_deadline::from_operation(deadline)?,
+            )
         }
         #[cfg(not(target_os = "macos"))]
         {
             let _ = handle;
             Err(AdapterError::not_supported("get_element_bounds"))
         }
-    }
-
-    fn get_subtree(
-        &self,
-        handle: &NativeHandle,
-        opts: &TreeOptions,
-    ) -> Result<AccessibilityNode, AdapterError> {
-        with_borrowed_ax_element(handle, |el| {
-            let mut ancestors = FxHashSet::default();
-            let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
-            crate::tree::build_subtree(
-                el,
-                0,
-                0,
-                opts.max_depth,
-                &mut ancestors,
-                opts.skeleton,
-                &context,
-            )
-            .ok_or_else(|| {
-                AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::ElementNotFound,
-                    "Element no longer exists in accessibility tree",
-                )
-                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
-            })
-        })
     }
 }

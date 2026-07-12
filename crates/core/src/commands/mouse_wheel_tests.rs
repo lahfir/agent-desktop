@@ -1,15 +1,15 @@
 use super::*;
-use crate::action::Modifier;
+use crate::AdapterError;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::error::AdapterError;
+use crate::{Modifier, MouseEvent, MouseEventKind};
 use std::sync::Mutex;
 
 #[derive(Debug, PartialEq)]
 struct WheelCall {
     x: f64,
     y: f64,
-    dy: i32,
-    dx: i32,
+    dy: f64,
+    dx: f64,
     modifiers: Vec<Modifier>,
 }
 
@@ -36,23 +36,25 @@ impl WheelCaptureAdapter {
 
 impl ObservationOps for WheelCaptureAdapter {}
 impl ActionOps for WheelCaptureAdapter {}
-impl SystemOps for WheelCaptureAdapter {}
+impl SystemOps for WheelCaptureAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
 
 impl InputOps for WheelCaptureAdapter {
-    fn mouse_wheel(
+    fn mouse_event(
         &self,
-        x: f64,
-        y: f64,
-        dy: i32,
-        dx: i32,
-        modifiers: &[Modifier],
+        event: MouseEvent,
+        _lease: &crate::InteractionLease,
     ) -> Result<(), AdapterError> {
+        let MouseEventKind::Wheel { delta_x, delta_y } = event.kind else {
+            return Err(AdapterError::not_supported("non-wheel mouse event"));
+        };
         *self.captured.lock().unwrap() = Some(WheelCall {
-            x,
-            y,
-            dy,
-            dx,
-            modifiers: modifiers.to_vec(),
+            x: event.point.x,
+            y: event.point.y,
+            dy: delta_y,
+            dx: delta_x,
+            modifiers: event.modifiers,
         });
         if self.fail {
             return Err(AdapterError::not_supported("mouse_wheel"));
@@ -69,11 +71,12 @@ fn requested_wheel_args_reach_the_adapter_unchanged() {
         MouseWheelArgs {
             x: 10.0,
             y: 20.0,
-            dy: -3,
-            dx: 5,
+            dy: -3.0,
+            dx: 5.0,
             modifiers: vec![Modifier::Shift, Modifier::Alt],
         },
         &adapter,
+        &CommandContext::default().with_headed(true),
     )
     .unwrap();
 
@@ -86,8 +89,8 @@ fn requested_wheel_args_reach_the_adapter_unchanged() {
         WheelCall {
             x: 10.0,
             y: 20.0,
-            dy: -3,
-            dx: 5,
+            dy: -3.0,
+            dx: 5.0,
             modifiers: vec![Modifier::Shift, Modifier::Alt],
         }
     );
@@ -101,15 +104,16 @@ fn returns_scrolled_envelope_with_requested_deltas() {
         MouseWheelArgs {
             x: 0.0,
             y: 0.0,
-            dy: 7,
-            dx: -2,
+            dy: 7.0,
+            dx: -2.0,
             modifiers: Vec::new(),
         },
         &adapter,
+        &CommandContext::default().with_headed(true),
     )
     .unwrap();
 
-    assert_eq!(value, json!({ "scrolled": true, "dy": 7, "dx": -2 }));
+    assert_eq!(value, json!({ "scrolled": true, "dy": 7.0, "dx": -2.0 }));
 }
 
 #[test]
@@ -120,12 +124,32 @@ fn adapter_error_propagates_as_err() {
         MouseWheelArgs {
             x: 1.0,
             y: 2.0,
-            dy: 1,
-            dx: 0,
+            dy: 1.0,
+            dx: 0.0,
             modifiers: Vec::new(),
         },
         &adapter,
+        &CommandContext::default().with_headed(true),
     );
 
     assert!(result.is_err());
+}
+
+#[test]
+fn headless_policy_rejects_wheel_before_adapter_dispatch() {
+    let adapter = WheelCaptureAdapter::recording();
+    let err = execute(
+        MouseWheelArgs {
+            x: 1.0,
+            y: 2.0,
+            dy: -3.0,
+            dx: 0.0,
+            modifiers: Vec::new(),
+        },
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "POLICY_DENIED");
+    assert!(adapter.captured.lock().unwrap().is_none());
 }

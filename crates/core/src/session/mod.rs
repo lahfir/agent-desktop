@@ -1,23 +1,23 @@
 mod gc;
 mod manifest;
 
-pub use gc::{GcOptions, GcReport, gc, is_live, pointer_references_live_session};
+pub use gc::{GcOptions, GcReport, gc, is_live};
 pub use manifest::{ArtifactsMode, SessionManifest, SessionTraceMode};
 
 use crate::{
+    AppError,
     context::validate_session_id,
-    error::AppError,
     refs::{home_dir, write_private_file},
     refs_store::RefStore,
 };
 use serde_json;
-use std::io::{ErrorKind, Read};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const CURRENT_SESSION_FILE: &str = "current_session";
 const SESSION_MANIFEST_FILE: &str = "session.json";
+const MAX_SESSION_MANIFEST_BYTES: u64 = 64 * 1024;
 pub(super) const TRACE_LIVENESS_WINDOW: Duration = Duration::from_secs(300);
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -25,7 +25,6 @@ pub struct StartSessionOptions {
     pub name: Option<String>,
     pub trace: SessionTraceMode,
     pub artifacts: ArtifactsMode,
-    pub force: bool,
 }
 
 impl Default for StartSessionOptions {
@@ -34,7 +33,6 @@ impl Default for StartSessionOptions {
             name: None,
             trace: SessionTraceMode::On,
             artifacts: ArtifactsMode::Events,
-            force: false,
         }
     }
 }
@@ -51,10 +49,6 @@ pub fn session_dir(session_id: &str) -> Result<PathBuf, AppError> {
 
 pub fn trace_dir(session_id: &str) -> Result<PathBuf, AppError> {
     Ok(RefStore::for_session(Some(session_id))?.trace_dir())
-}
-
-pub fn current_session_path() -> Result<PathBuf, AppError> {
-    Ok(agent_desktop_dir()?.join(CURRENT_SESSION_FILE))
 }
 
 pub fn resolve_active_session(
@@ -75,57 +69,17 @@ pub fn resolve_active_session(
         validate_session_id(id)?;
         return Ok(Some(id.to_string()));
     }
-    read_current_session_pointer()
-}
-
-pub fn read_current_session_pointer() -> Result<Option<String>, AppError> {
-    let path = current_session_path()?;
-    let mut file = match crate::refs::open_nofollow(&path) {
-        Ok(file) => file,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) if crate::refs::is_symlink(&path) => {
-            tracing::warn!(
-                "ignoring symlinked session pointer {}: {err}",
-                path.display()
-            );
-            return Ok(None);
-        }
-        Err(err) => return Err(err.into()),
-    };
-    let mut id = String::new();
-    file.read_to_string(&mut id)?;
-    let id = id.trim().to_string();
-    if id.is_empty() || validate_session_id(&id).is_err() {
-        return Ok(None);
-    }
-    Ok(Some(id))
-}
-
-pub fn write_current_session_pointer(session_id: &str) -> Result<(), AppError> {
-    validate_session_id(session_id)?;
-    write_private_file(&current_session_path()?, session_id.as_bytes())
-}
-
-pub fn clear_current_session_pointer() -> Result<(), AppError> {
-    match std::fs::remove_file(current_session_path()?) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(err.into()),
-    }
+    Ok(None)
 }
 
 pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppError> {
     let path = manifest_path(session_id)?;
-    let mut file = match crate::refs::open_nofollow(&path) {
-        Ok(file) => file,
+    let json = match crate::private_file::read_private_bounded(&path, MAX_SESSION_MANIFEST_BYTES) {
+        Ok(json) => json,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
         Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
     };
-    let mut json = String::new();
-    if let Err(err) = file.read_to_string(&mut json) {
-        return Ok(ignore_unreadable_manifest(&path, &err));
-    }
-    match serde_json::from_str(&json) {
+    match serde_json::from_slice(&json) {
         Ok(manifest) => Ok(Some(manifest)),
         Err(err) => Ok(ignore_unreadable_manifest(&path, &err)),
     }
@@ -217,12 +171,6 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
             "Remove --no-trace or omit --screenshots.",
         ));
     }
-    if !options.force && pointer_references_live_session()? {
-        return Err(AppError::invalid_input_with_suggestion(
-            "Refusing to clobber the current session pointer while it references a live session",
-            "Run `session end` first, set AGENT_DESKTOP_SESSION for concurrent work, or pass --force.",
-        ));
-    }
     let id = new_session_id();
     let name = options
         .name
@@ -239,23 +187,12 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
         artifacts: options.artifacts,
     };
     write_manifest(&manifest)?;
-    write_current_session_pointer(&id)?;
     Ok(manifest)
 }
 
-pub fn end_session(session_id: Option<&str>) -> Result<SessionManifest, AppError> {
-    let id = match session_id {
-        Some(id) => {
-            validate_session_id(id)?;
-            id.to_string()
-        }
-        None => read_current_session_pointer()?.ok_or_else(|| {
-            AppError::invalid_input_with_suggestion(
-                "No active session to end",
-                "Pass a session id or run `session start` first.",
-            )
-        })?,
-    };
+pub fn end_session(session_id: &str) -> Result<SessionManifest, AppError> {
+    validate_session_id(session_id)?;
+    let id = session_id.to_string();
     let mut manifest = read_manifest(&id)?.ok_or_else(|| {
         AppError::invalid_input_with_suggestion(
             format!("Session '{id}' has no manifest"),
@@ -265,9 +202,6 @@ pub fn end_session(session_id: Option<&str>) -> Result<SessionManifest, AppError
     if manifest.ended_at.is_none() {
         manifest.ended_at = Some(now_millis());
         write_manifest(&manifest)?;
-    }
-    if read_current_session_pointer()?.as_deref() == Some(id.as_str()) {
-        clear_current_session_pointer()?;
     }
     Ok(manifest)
 }

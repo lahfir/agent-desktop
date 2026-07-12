@@ -10,7 +10,10 @@ app="$out_dir/AgentDeskFixture.app"
 macos_dir="$app/Contents/MacOS"
 bin="$macos_dir/AgentDeskFixture"
 
-rm -rf "$app"
+if [ -e "$app" ]; then
+  previous="$(mktemp -d "$out_dir/.fixture-previous.XXXXXX")"
+  mv "$app" "$previous/"
+fi
 mkdir -p "$macos_dir"
 
 # Pin the SDK and deployment target so the fixture builds reproducibly instead
@@ -42,5 +45,9 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+if [ "${AGENT_DESKTOP_FIXTURE_BACKGROUND_BUNDLE:-}" = "1" ]; then
+  /usr/bin/plutil -insert LSUIElement -bool true "$app/Contents/Info.plist"
+fi
 
 echo "Built: $app"
