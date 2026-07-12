@@ -10,7 +10,7 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(windows)]
 #[path = "private_file_windows.rs"]
-mod windows;
+pub(crate) mod windows;
 
 pub(crate) fn open_private_lock(path: &Path, create: bool) -> std::io::Result<File> {
     #[cfg(windows)]

@@ -62,7 +62,7 @@ pub(super) fn create_new(path: &Path) -> std::io::Result<File> {
     open_private(path, TEMP_ACCESS, CREATE_NEW, false)
 }
 
-pub(super) fn ensure_private_parent(path: &Path) -> std::io::Result<()> {
+pub(crate) fn ensure_private_parent(path: &Path) -> std::io::Result<()> {
     let path = path::normalized(path)?;
     let security = PrivateSecurity::new_directory()?;
     guard::with_ancestor_guards(&path, true, Some(&security), |guards| {
@@ -70,7 +70,7 @@ pub(super) fn ensure_private_parent(path: &Path) -> std::io::Result<()> {
     })
 }
 
-pub(super) fn ensure_user_parent(path: &Path) -> std::io::Result<()> {
+pub(crate) fn ensure_user_parent(path: &Path) -> std::io::Result<()> {
     let path = path::normalized(path)?;
     let security = PrivateSecurity::new_directory()?;
     guard::with_ancestor_guards(&path, true, Some(&security), |_| Ok(()))
