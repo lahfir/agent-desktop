@@ -94,24 +94,24 @@ else
 fi
 
 check_fixture_contention || { finish; exit 1; }
-# shellcheck source=tests/e2e/scenarios-observation.sh
-source "$here/scenarios-observation.sh"
+# shellcheck source=tests/e2e/scenarios/observation.sh
+source "$here/scenarios/observation.sh"
 check_fixture_contention || { finish; exit 1; }
-# shellcheck source=tests/e2e/scenarios-interaction.sh
-source "$here/scenarios-interaction.sh"
+# shellcheck source=tests/e2e/scenarios/interaction.sh
+source "$here/scenarios/interaction.sh"
 check_fixture_contention || { finish; exit 1; }
-# shellcheck source=tests/e2e/scenarios-acceptance.sh
-source "$here/scenarios-acceptance.sh"
+# shellcheck source=tests/e2e/scenarios/acceptance.sh
+source "$here/scenarios/acceptance.sh"
 check_fixture_contention || { finish; exit 1; }
-# shellcheck source=tests/e2e/scenarios-reliability.sh
-source "$here/scenarios-reliability.sh"
+# shellcheck source=tests/e2e/scenarios/reliability.sh
+source "$here/scenarios/reliability.sh"
 check_fixture_contention || { finish; exit 1; }
-# shellcheck source=tests/e2e/scenarios-surfaces.sh
-source "$here/scenarios-surfaces.sh"
+# shellcheck source=tests/e2e/scenarios/surfaces.sh
+source "$here/scenarios/surfaces.sh"
 check_fixture_contention || { finish; exit 1; }
-# shellcheck source=tests/e2e/scenarios-trace-performance.sh
-source "$here/scenarios-trace-performance.sh"
-# shellcheck source=tests/e2e/scenarios-notifications.sh
-source "$here/scenarios-notifications.sh"
+# shellcheck source=tests/e2e/scenarios/trace_performance.sh
+source "$here/scenarios/trace_performance.sh"
+# shellcheck source=tests/e2e/scenarios/notifications.sh
+source "$here/scenarios/notifications.sh"
 
 finish

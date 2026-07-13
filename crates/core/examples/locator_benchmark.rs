@@ -1,9 +1,9 @@
 #[path = "locator_benchmark/adapter.rs"]
 mod adapter;
-#[path = "locator_benchmark/build.rs"]
-mod build;
 #[path = "locator_benchmark/fixture.rs"]
 mod fixture;
+#[path = "locator_benchmark/fixture_builder.rs"]
+mod fixture_builder;
 #[path = "locator_benchmark/fixture_node.rs"]
 mod fixture_node;
 #[path = "locator_benchmark/legacy.rs"]

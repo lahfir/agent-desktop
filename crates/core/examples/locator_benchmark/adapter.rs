@@ -1,6 +1,6 @@
 use crate::{
-    build::{live_target_tree, live_tree},
     fixture::Fixture,
+    fixture_builder::{live_target_tree, live_tree},
 };
 use agent_desktop_core::{
     AdapterError, Deadline, ElementIdentifier, ErrorCode, IdentifierKind, NativeHandle,

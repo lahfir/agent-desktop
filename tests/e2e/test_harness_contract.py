@@ -9,7 +9,7 @@ from pathlib import Path
 E2E_ROOT = Path(__file__).resolve().parent
 SOURCED_SUITE_FILES = [
     E2E_ROOT / "lib.sh",
-    *sorted(E2E_ROOT.glob("scenarios-*.sh")),
+    *sorted((E2E_ROOT / "scenarios").glob("*.sh")),
 ]
 
 
@@ -45,6 +45,7 @@ class HarnessContractTests(unittest.TestCase):
         offenders = []
         shell_paths = [
             *E2E_ROOT.glob("*.sh"),
+            *(E2E_ROOT / "scenarios").glob("*.sh"),
             *(E2E_ROOT.parent / "fixture-app").glob("*.sh"),
             *(E2E_ROOT.parent.parent / "scripts").glob("*.sh"),
         ]
@@ -55,7 +56,7 @@ class HarnessContractTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_wait_scenarios_use_independent_oracles(self):
-        source = (E2E_ROOT / "scenarios-reliability.sh").read_text()
+        source = (E2E_ROOT / "scenarios" / "reliability.sh").read_text()
 
         self.assertIn('is_target "$delayed" enabled', source)
         self.assertIn('is_target "$primary" visible', source)
@@ -76,7 +77,7 @@ class HarnessContractTests(unittest.TestCase):
         self.assertIn('--role statictext --native-id "$name" --first', source)
 
     def test_trace_artifact_actions_use_the_session_that_created_their_refs(self):
-        source = (E2E_ROOT / "scenarios-trace-performance.sh").read_text()
+        source = (E2E_ROOT / "scenarios" / "trace_performance.sh").read_text()
 
         self.assertIn('"$bin" --session "$trace_session" find', source)
         self.assertIn('trace_click="$("$bin" --session "$trace_session" click', source)
@@ -88,12 +89,12 @@ class HarnessContractTests(unittest.TestCase):
     def test_sheet_scenarios_scroll_the_button_before_clicking(self):
         fixtures = [
             (
-                "scenarios-surfaces.sh",
+                "scenarios/surfaces.sh",
                 'act_target "$open_sheet" scroll-to',
                 'act_target "$open_sheet" click',
             ),
             (
-                "scenarios-acceptance.sh",
+                "scenarios/acceptance.sh",
                 'act_target "$open_sheet" scroll-to',
                 'batch_payload="$(python3',
             ),

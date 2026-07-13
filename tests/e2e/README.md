@@ -62,12 +62,12 @@ returns a bare `@eN`.
 |---|---|
 | `run.sh` | Global gate, fixture lifecycle, semantic suite orchestration |
 | `lib.sh` | Fail-closed assertions and exact `{ref_id,snapshot_id}` target helpers |
-| `scenarios-observation.sh` | Snapshots, locators, namespace pinning, strict twins |
-| `scenarios-interaction.sh` | Headless/headed actions and exact-once effects |
-| `scenarios-acceptance.sh` | Named AE1-AE7 acceptance contract |
-| `scenarios-reliability.sh` | Stale refs, waits, drill-down, sessions |
-| `scenarios-surfaces.sh` | Sheets, menus, drag, disclosure |
-| `scenarios-trace-performance.sh` | Trace artifacts, redaction, timings, cleanup |
+| `scenarios/observation.sh` | Snapshots, locators, namespace pinning, strict twins |
+| `scenarios/interaction.sh` | Headless/headed actions and exact-once effects |
+| `scenarios/acceptance.sh` | Named AE1-AE7 acceptance contract |
+| `scenarios/reliability.sh` | Stale refs, waits, drill-down, sessions |
+| `scenarios/surfaces.sh` | Sheets, menus, drag, disclosure |
+| `scenarios/trace_performance.sh` | Trace artifacts, redaction, timings, cleanup |
 | `permission-contract.sh` | Deterministic AE5 mapping tests without mutating TCC |
 | `electron-live.sh` | Opt-in installed Electron/Chromium app measurement |
 
@@ -75,7 +75,7 @@ Every shell file stays below the repository's 400-line limit.
 
 ## AE1-AE7 acceptance map
 
-`scenarios-acceptance.sh` names and fails closed on every plan example:
+`scenarios/acceptance.sh` names and fails closed on every plan example:
 
 | Example | Native fixture assertion |
 |---|---|
