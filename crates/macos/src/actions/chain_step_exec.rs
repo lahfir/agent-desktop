@@ -84,6 +84,9 @@ mod imp {
                 Ok(DeliveryOutcome::DeliveredUnverified)
             }
             ChainStep::CGDisclosureClick { expanded } => {
+                if !policy.allow_focus_steal || !policy.allow_cursor_move {
+                    return Ok(DeliveryOutcome::NotDelivered);
+                }
                 if !crate::actions::chain_disclosure_steps::physical_fallback_allowed(
                     el,
                     *expanded,

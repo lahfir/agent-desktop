@@ -32,11 +32,7 @@ mod imp {
 
         for (i, step) in def.steps.iter().enumerate() {
             ctx.ensure_budget()?;
-            if matches!(
-                step,
-                ChainStep::CGClick { .. } | ChainStep::CGDisclosureClick { .. }
-            ) && !physical_click_permitted(policy)
-            {
+            if matches!(step, ChainStep::CGClick { .. }) && !physical_click_permitted(policy) {
                 return Err(AdapterError::policy_denied_for_policy(
                     "Physical click fallback is disabled by the current interaction policy",
                     policy,
