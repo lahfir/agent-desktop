@@ -42,9 +42,10 @@ is `AMBIGUOUS_TARGET`. Mutable field values are not stable identity.
 ### 3. Separate actionability from dispatch
 
 Semantic ref actions use the shared auto-wait and live actionability checks.
-The command owns the base interaction policy: most actions are headless;
-typing and ref-targeted key presses may use focus fallback; headed mode can
-only elevate policy. A failed preflight must say why and preserve retry safety.
+The command owns the base interaction policy: semantic actions, including
+typing, are strictly headless; explicit ref-targeted key presses may use focus
+fallback, and headed mode can only elevate policy. A failed preflight must say
+why and preserve retry safety.
 
 Pointer commands are a separate physical family. They resolve a live point,
 verify visibility, geometry stability, and hit-test receipt, then require an

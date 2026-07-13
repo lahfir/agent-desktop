@@ -16,6 +16,7 @@ use crate::cli_args::notifications::{
 pub(super) fn list(
     args: ListNotificationsCliArgs,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
     list_notifications::execute(
         list_notifications::ListNotificationsArgs {
@@ -24,6 +25,7 @@ pub(super) fn list(
             limit: args.limit,
         },
         adapter,
+        context,
     )
 }
 

@@ -8,7 +8,7 @@ OBSERVATION
 
 INTERACTION
   click <ref>                Click element (kAXPress)
-  double-click <ref>         Open via AXOpen; physical double-click uses mouse-click
+  double-click <ref>         Physical double-click; requires --headed
   triple-click <ref>         Triple-click element; POLICY_DENIED if physical input is disabled
   right-click <ref>          Right-click; includes menu when verified
   type <ref> <text>          Insert text; may use focus fallback only for explicit policy paths

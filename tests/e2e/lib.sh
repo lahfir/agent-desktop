@@ -202,17 +202,18 @@ wait_target() {
 }
 
 verify() {
-    local label="$1" status="$2" expected="$3" target="$4" command="$5"
-    shift 5
-    local before after output command_ok error
+    local label="$1" status="$2" expected="$3" expected_mechanism="$4" target="$5" command="$6"
+    shift 6
+    local before after output command_ok error mechanism
     require_value before "$status"
     output="$(act_target "$target" "$command" "$@" 2>&1)"
     sleep 0.35
     require_value after "$status"
     command_ok="$(json_field "$output" ok)"
     error="$(json_field "$output" error.code)"
-    assert "$label" "$([ "$after" = "$expected" ] && [ "$command_ok" = "True" ] && echo 1 || echo 0)" \
-        "before='$before' after='$after' expected='$expected' ok=$command_ok${error:+ error=$error}"
+    mechanism="$(printf '%s' "$output" | python3 "$json_tool" delivered-mechanism 2>/dev/null)"
+    assert "$label" "$([ "$after" = "$expected" ] && [ "$command_ok" = "True" ] && [ "$mechanism" = "$expected_mechanism" ] && echo 1 || echo 0)" \
+        "before='$before' after='$after' expected='$expected' ok=$command_ok mechanism=$mechanism${error:+ error=$error}"
 }
 
 run_timed() {

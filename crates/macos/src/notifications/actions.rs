@@ -17,7 +17,7 @@ pub fn dismiss_notification(
     deadline: Deadline,
 ) -> Result<NotificationInfo, AdapterError> {
     require_foreground_policy(policy)?;
-    let session = NcSession::open(deadline)?;
+    let session = NcSession::open(policy, deadline)?;
     let result = dismiss_impl(index, app_filter, identity, policy, session.pid(), deadline);
     close_session(session, result)
 }
@@ -28,7 +28,7 @@ pub fn dismiss_all(
     deadline: Deadline,
 ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
     require_foreground_policy(policy)?;
-    let session = NcSession::open(deadline)?;
+    let session = NcSession::open(policy, deadline)?;
     let result = dismiss_all_impl(app_filter, policy, session.pid(), deadline);
     close_session(session, result)
 }
@@ -41,7 +41,7 @@ pub fn notification_action(
     deadline: Deadline,
 ) -> Result<ActionResult, AdapterError> {
     require_foreground_policy(policy)?;
-    let session = NcSession::open(deadline)?;
+    let session = NcSession::open(policy, deadline)?;
     let result = action_impl(index, identity, action_name, session.pid(), deadline);
     close_session(session, result)
 }

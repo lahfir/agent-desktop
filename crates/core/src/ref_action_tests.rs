@@ -232,14 +232,14 @@ fn successful_action_drops_resolved_payload() {
 }
 
 #[test]
-fn semantic_preflight_revokes_unverified_physical_fallback() {
+fn headed_preflight_preserves_requested_physical_delivery() {
     let adapter = SuccessfulAdapter::new();
 
     execute_entry(&adapter, &entry(), ActionRequest::headed(Action::Click)).unwrap();
 
     assert_eq!(
         adapter.dispatched_policies.lock().unwrap().as_slice(),
-        &[crate::InteractionPolicy::headless()]
+        &[crate::InteractionPolicy::headed()]
     );
 }
 

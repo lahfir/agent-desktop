@@ -44,11 +44,17 @@ impl ActionabilityRequirements {
         &self,
         action: &Action,
         available_actions: &[String],
+        policy: crate::InteractionPolicy,
     ) -> PointerDelivery {
         if !self.receives_events {
             return PointerDelivery::NotApplicable;
         }
-        if crate::capability::supports_direct_semantic_pointer_delivery(action, available_actions) {
+        if policy.is_headed() {
+            PointerDelivery::Physical
+        } else if crate::capability::supports_direct_semantic_pointer_delivery(
+            action,
+            available_actions,
+        ) {
             PointerDelivery::Semantic
         } else {
             PointerDelivery::Physical

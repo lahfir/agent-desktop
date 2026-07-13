@@ -190,9 +190,10 @@ impl SystemOps for MacOSAdapter {
     fn list_notifications(
         &self,
         filter: &NotificationFilter,
+        policy: agent_desktop_core::InteractionPolicy,
         deadline: Deadline,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
-        crate::notifications::list::list_notifications(filter, deadline)
+        crate::notifications::list::list_notifications(filter, policy, deadline)
     }
 
     fn dismiss_notification(

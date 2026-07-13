@@ -95,10 +95,9 @@ impl Action {
         matches!(self, Self::TypeText(_) | Self::PressKey(_))
     }
 
-    /// Returns the least-permissive interaction policy that can execute this
-    /// action with the same fallback behavior as its command entrypoint.
+    /// Returns the command's minimum interaction policy.
     pub fn base_interaction_policy(&self) -> crate::interaction_policy::InteractionPolicy {
-        if self.may_use_focus_fallback() {
+        if matches!(self, Self::PressKey(_)) {
             crate::interaction_policy::InteractionPolicy::focus_fallback()
         } else {
             crate::interaction_policy::InteractionPolicy::headless()

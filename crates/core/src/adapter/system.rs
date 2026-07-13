@@ -1,9 +1,10 @@
 use crate::{
     AdapterError, AdapterSession, AppInfo, Deadline, DismissAllNotificationsRequest,
-    DismissNotificationRequest, ImageBuffer, InteractionLease, KeyCombo, NotificationActionRequest,
-    NotificationFilter, NotificationInfo, PermissionReport, PermissionState, ProcessIdentity,
-    SessionAffinity, SignalBaseline, SignalFilter, WindowInfo, WindowOp,
-    action_result::ActionResult, display_info::DisplayInfo, screenshot_target::ScreenshotTarget,
+    DismissNotificationRequest, ImageBuffer, InteractionLease, InteractionPolicy, KeyCombo,
+    NotificationActionRequest, NotificationFilter, NotificationInfo, PermissionReport,
+    PermissionState, ProcessIdentity, SessionAffinity, SignalBaseline, SignalFilter, WindowInfo,
+    WindowOp, action_result::ActionResult, display_info::DisplayInfo,
+    screenshot_target::ScreenshotTarget,
 };
 
 pub trait SystemOps: Send + Sync {
@@ -192,6 +193,7 @@ pub trait SystemOps: Send + Sync {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _policy: InteractionPolicy,
         _deadline: Deadline,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_notifications"))

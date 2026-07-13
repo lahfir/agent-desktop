@@ -62,7 +62,7 @@ pub fn execute(
         }
         WaitMode::Menu { app, open } => wait_for_menu(app, open, timeout_ms, adapter),
         WaitMode::Notification { app, text } => {
-            wait_for_notification(app, text, timeout_ms, adapter)
+            wait_for_notification(app, text, timeout_ms, adapter, context)
         }
         WaitMode::Element {
             ref_id,
@@ -266,6 +266,7 @@ fn wait_for_notification(
     text: Option<String>,
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<Value, AppError> {
     let filter = NotificationFilter {
         app: app.clone(),
@@ -281,7 +282,7 @@ fn wait_for_notification(
         if deadline.is_expired() {
             return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
         }
-        match adapter.list_notifications(&filter, deadline) {
+        match adapter.list_notifications(&filter, context.physical_input_policy(), deadline) {
             Ok(current) => match &baseline {
                 None => {
                     baseline = Some(notification_counts(&current));

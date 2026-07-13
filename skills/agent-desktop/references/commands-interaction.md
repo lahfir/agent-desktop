@@ -6,8 +6,8 @@ Commands for modifying UI state — clicking, typing, selecting, scrolling, and 
 
 Ref-based actions run in two modes, Playwright-style:
 
-- **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the AX path cannot perform the action it fails closed rather than reaching for OS input synthesis. (`type` is the one exception: its base tier may focus the target field — required for reliable typing — but still never moves the cursor.)
-- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that upgrades every ref action to permit focus stealing **and** cursor movement, unlocking the physical click/double-click/scroll/keypress fallbacks in the action chain. The AX path is still tried first, so `--headed` never regresses elements that work headlessly — it only adds fallbacks for elements that need a real gesture (e.g. a gesture-only button with no `AXOpen`).
+- **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the semantic path cannot perform the action it fails closed.
+- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that permits focus/cursor side effects and prefers physical delivery for natural input commands: `click`, `right-click`, `double-click`, `triple-click`, `type`, `clear`, `expand`, `collapse`, and `scroll`. Semantic-only commands (`set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, `scroll-to`) stay semantic.
 
 Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) are physical by nature. Cursor-moving commands (`hover`, `drag`, `mouse-*`) require `--headed`; keyboard commands are explicit low-level input.
 
@@ -47,9 +47,9 @@ The command surface is platform-agnostic: every ref action builds an `Action` an
 
 | Command | Headless path (macOS) | Notes |
 |---------|---------------|-------|
-| `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes | semantic AX actions; the default and most reliable surface |
-| `type` | focus fallback | CLI `type` may focus the target field but never moves the cursor; use `set-value` for pure headless value mutation when supported |
-| `double-click` | partial | `AXOpen` works headless on items that advertise it (Finder/list/outline rows, table cells). Falls back to `--headed` only for gesture-only targets with no `AXOpen`. |
+| `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes | semantic AX actions in strict headless mode |
+| `type` | yes | uses `AXSelectedText` headlessly; `--headed` synthesizes keyboard input |
+| `double-click` | no | a real two-click gesture; requires `--headed` |
 | `triple-click` | no | macOS exposes no triple-click action; it is purely 3 physical clicks → `--headed` only |
 | `hover` | no | hovering *is* moving the cursor over an element; no AX equivalent |
 | `drag` / drop | no | dragging *is* a cursor press-move-release; no general AX drag. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD) |
@@ -69,20 +69,20 @@ Every ref-resolving action accepts `--timeout-ms` (default `5000`), but it budge
 
 ## Click Actions
 
-Click commands use semantic AX activation first. In the default headless mode, coordinate click fallback is blocked; pass `--headed` to allow the physical click fallback, or use `agent-desktop --headed mouse-click` for a raw coordinate click.
+Click commands use semantic AX activation in strict headless mode. Pass `--headed` to prefer a physical click, or use `agent-desktop --headed mouse-click` for a raw coordinate click.
 
 ### click
 ```bash
 agent-desktop click @s8f3k2p9:e5
 agent-desktop click @e5 --snapshot <snapshot_id>
 ```
-Primary activation. Tries verified AXPress > AXConfirm > AXOpen > AXPick > child activation > selection/value relays > custom actions > ancestor activation. Focus-stealing and coordinate fallback steps are not used by the default ref command path.
+Primary activation. Headless uses `AXPress`; `--headed` performs a physical click first and reports `physical_synthetic` in `data.steps`.
 
 ### double-click
 ```bash
 agent-desktop double-click @s8f3k2p9:e3
 ```
-Tries AXOpen (headless). When the element advertises no `AXOpen`, the headless command fails closed with `POLICY_DENIED`; pass `--headed` to perform a real double-click (`agent-desktop --headed double-click @s8f3k2p9:e3`), or use `agent-desktop --headed mouse-click --xy X,Y --count 2` for a raw coordinate double-click.
+Double-click is a physical gesture and fails closed in headless mode. Pass `--headed` to perform it, or use `agent-desktop --headed mouse-click --xy X,Y --count 2` for raw coordinates.
 
 ### triple-click
 ```bash
@@ -94,7 +94,7 @@ Triple-click requires cursor/focus side effects and is blocked in headless mode;
 ```bash
 agent-desktop right-click @s8f3k2p9:e5
 ```
-Performs a semantic right-click/context-menu action. On macOS, `AXShowMenu` can return `APP_UNRESPONSIVE` with `delivery: delivery_uncertain` and `retry: unsafe` after opening a modal context menu; inspect the resulting menu or target effect before deciding what to do, and never retry that outcome blindly. Combo boxes and menu buttons expose menu-opening actions for their primary dropdown; use `select` for those controls, not `right-click`. Focus-stealing and coordinate right-click fallback are blocked in headless mode; pass `--headed` to allow them.
+Headless uses semantic context-menu actions. `--headed` performs a physical right-click first. On macOS, a semantic `AXShowMenu` can return `APP_UNRESPONSIVE` with uncertain delivery after opening a modal menu; inspect the effect and never retry blindly. Use `select` for combo boxes and menu buttons.
 
 ## Text Input
 
@@ -103,9 +103,7 @@ Performs a semantic right-click/context-menu action. On macOS, `AXShowMenu` can 
 agent-desktop type @s8f3k2p9:e2 "hello@example.com"
 agent-desktop type @s8f3k2p9:e2 "multi line\ntext"
 ```
-`type` uses the focus-fallback policy floor: it may focus the target field because typing requires focus, but it never moves the cursor. If the field cannot be updated and the focused-insert path is unavailable, it returns a structured error. Pass `--headed` to unlock physical keyboard synthesis and pasteboard-based insertion for fields that ignore AX value writes (common in web/Electron inputs).
-
-Under focus-fallback or `--headed`, non-ASCII text on macOS may be briefly placed on the clipboard to paste it. Do not use that path for secrets; prefer `set-value` when the target supports it.
+Headless `type` uses `AXSelectedText` without focusing the app or synthesizing keys. Pass `--headed` to focus the target and synthesize keyboard input. Use `set-value` when direct semantic value assignment is the intended interaction.
 
 ### set-value
 ```bash
@@ -117,7 +115,7 @@ Sets the value directly via the AX value attribute. Faster than `type` but may n
 ```bash
 agent-desktop clear @s8f3k2p9:e2
 ```
-Clears the element's value to an empty string. Equivalent to `set-value @s8f3k2p9:e2 ""`.
+Headless clears through `AXValue`. With `--headed`, it performs focus + Select All + Delete first.
 
 ### focus
 ```bash

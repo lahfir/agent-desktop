@@ -31,13 +31,9 @@ pub struct ExecuteByRefArgs<'a> {
 /// explicit ID must match the qualified ref.
 ///
 /// The effective `InteractionPolicy` is the join of `caller_policy` and the
-/// action's CLI base policy, ensuring the result is always at least as
-/// permissive as what the CLI would use for the same action, while allowing
-/// FFI callers to opt in to higher-permission policies such as `headed`.
-///
-/// Note on PressKey: its base policy is `focus_fallback` (derived from
-/// `Action::base_interaction_policy`, shared with `TypeText`) because a
-/// ref-targeted key press may need the target focused for keystrokes to land.
+/// action's base policy. Semantic actions, including `TypeText`, are strict
+/// headless; explicit `PressKey` permits focus without cursor movement. FFI
+/// callers may opt in to `focus_fallback` or `headed`.
 pub fn execute(
     args: ExecuteByRefArgs<'_>,
     adapter: &dyn PlatformAdapter,

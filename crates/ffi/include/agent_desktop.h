@@ -1331,12 +1331,10 @@ void ad_app_list_free(struct AdAppList *list);
  * strict element resolution (→ `STALE_REF`/`AMBIGUOUS_TARGET`) → live
  * actionability preflight → dispatch → owned-handle drop.
  *
- * Policy: `TypeText` defaults to `focus_fallback` (matching the CLI `type`
- * command); `PressKey` shares that `focus_fallback` base (a ref-targeted key
- * press may need the target focused); every other action defaults to
- * `headless`. An explicit `policy` discriminant may *elevate* to headed but
- * must not downgrade an action below its base. Base and elevation are computed
- * by `agent_desktop_core::commands::execute_by_ref::execute` via
+ * Policy: semantic actions, including `TypeText`, default to strict
+ * `headless`. Explicit `PressKey` defaults to `focus_fallback`. A policy
+ * discriminant may elevate to focus fallback or headed. Base and elevation
+ * are computed by `agent_desktop_core::commands::execute_by_ref::execute` via
  * `Action::base_interaction_policy` + `InteractionPolicy::join`, so CLI and
  * FFI share a single source of policy truth.
  *
@@ -1349,8 +1347,9 @@ void ad_app_list_free(struct AdAppList *list);
  *
  * `policy` is an `AdPolicyKind` discriminant (0=Headless, 1=FocusFallback,
  * 2=Headed). An out-of-range value returns `ErrInvalidArgs`. `Headless (0)`
- * accepts the action's own CLI base (so `TypeText` still uses
- * `focus_fallback`). `Headed (2)` opts in to cursor-based fallbacks.
+ * accepts the action's base policy. `FocusFallback (1)` explicitly permits
+ * focus without cursor movement. `Headed (2)` opts in to physical cursor and
+ * keyboard delivery.
  *
  * Uses a fixed 5000ms auto-wait budget (`DEFAULT_ACTION_TIMEOUT_MS`) before
  * the actionability preflight, matching the CLI default. Call

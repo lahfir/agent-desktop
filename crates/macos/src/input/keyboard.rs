@@ -60,33 +60,6 @@ pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<(), Adapt
     crate::input::keyboard_event::preflight_text(text, deadline)
 }
 
-#[cfg(target_os = "macos")]
-pub(crate) fn synthesize_keycode(
-    key_code: u16,
-    repeats: u32,
-    target_pid: Option<i32>,
-    deadline: Deadline,
-) -> Result<(), AdapterError> {
-    const MAX_REPEATS: u32 = 1_000;
-
-    if repeats == 0 || repeats > MAX_REPEATS {
-        return Err(AdapterError::new(
-            ErrorCode::InvalidArgs,
-            "Key repeat count must be between 1 and 1000",
-        ));
-    }
-    for delivered in 0..repeats {
-        crate::input::keyboard_event::post_key(
-            key_code,
-            core_graphics::event::CGEventFlags::empty(),
-            target_pid,
-            deadline,
-            (delivered as usize, repeats as usize),
-        )?;
-    }
-    Ok(())
-}
-
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn synthesize_key(
     _combo: &KeyCombo,
@@ -117,16 +90,6 @@ pub(crate) fn synthesize_text(
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn preflight_text(_text: &str, _deadline: Deadline) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("synthesize_text"))
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(crate) fn synthesize_keycode(
-    _key_code: u16,
-    _repeats: u32,
-    _target_pid: Option<i32>,
-    _deadline: Deadline,
-) -> Result<(), AdapterError> {
-    Err(AdapterError::not_supported("synthesize_keycode"))
 }
 
 #[cfg(test)]

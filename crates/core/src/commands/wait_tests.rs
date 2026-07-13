@@ -28,6 +28,7 @@ impl SystemOps for NotificationErrorAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _policy: crate::InteractionPolicy,
         _deadline: crate::Deadline,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         Err(AdapterError::new(
@@ -61,6 +62,7 @@ impl SystemOps for FlakyNotificationAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _policy: crate::InteractionPolicy,
         _deadline: crate::Deadline,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         self.responses

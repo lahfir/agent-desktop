@@ -1,12 +1,15 @@
-use agent_desktop_core::{AdapterError, Deadline, NotificationFilter, NotificationInfo};
+use agent_desktop_core::{
+    AdapterError, Deadline, InteractionPolicy, NotificationFilter, NotificationInfo,
+};
 
 use super::nc_session::{NcSession, close_session};
 
 pub fn list_notifications(
     filter: &NotificationFilter,
+    policy: InteractionPolicy,
     deadline: Deadline,
 ) -> Result<Vec<NotificationInfo>, AdapterError> {
-    let session = NcSession::open(deadline)?;
+    let session = NcSession::open(policy, deadline)?;
     let result = list_from_nc(filter, session.pid(), deadline);
     close_session(session, result)
 }

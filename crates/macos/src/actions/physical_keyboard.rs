@@ -46,19 +46,6 @@ pub(crate) fn type_text(
     })
 }
 
-pub(crate) fn repeat_keycode(
-    element: &AXElement,
-    key_code: u16,
-    repeats: u32,
-    policy: InteractionPolicy,
-    deadline: Deadline,
-) -> Result<(), AdapterError> {
-    let identity = prepare_target(element, policy, deadline)?;
-    let pid = identity.pid();
-    verify_delivery_target(element, identity, deadline)?;
-    crate::input::keyboard::synthesize_keycode(key_code, repeats, Some(pid), deadline)
-}
-
 fn prepare_target(
     element: &AXElement,
     policy: InteractionPolicy,

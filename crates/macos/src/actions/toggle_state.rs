@@ -42,7 +42,7 @@ pub(crate) fn toggle(
         verified_point: None,
         deadline,
     };
-    let mut steps = execute_chain(el, &chain_defs::CLICK_CHAIN, &ctx, policy)?;
+    let mut steps = execute_chain(el, &chain_defs::SEMANTIC_CLICK_CHAIN, &ctx, policy)?;
     let verified = if let Some(before) = before {
         wait_for_value_change(el, &before, deadline).map_err(after_delivery)?;
         true
@@ -93,7 +93,7 @@ pub(crate) fn check_uncheck(
         verified_point: None,
         deadline,
     };
-    let mut steps = execute_chain(el, &chain_defs::CLICK_CHAIN, &ctx, policy)?;
+    let mut steps = execute_chain(el, &chain_defs::SEMANTIC_CLICK_CHAIN, &ctx, policy)?;
     wait_for_checked_state(el, want_checked, deadline).map_err(after_delivery)?;
     mark_last_verified(&mut steps, true);
     Ok(steps)

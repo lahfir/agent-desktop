@@ -79,11 +79,10 @@ The default activation-chain deadline is 10 seconds. Set `AGENT_DESKTOP_CHAIN_TI
 
 Ref commands use `ActionRequest { action, policy }`. The default policy forbids focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. macOS actions split semantic AX steps from explicit physical/headed paths:
 
-- `click`, `right-click`, `scroll`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, and `scroll-to` try AX-first semantics and fail clearly when the headless path is unavailable.
-- `type` uses focus fallback in the CLI/ref-action path. It may focus the target field, never moves the cursor, and can use the pasteboard for non-ASCII insertion. Use `set-value` for pure headless value mutation when supported.
-- `focus`, `press`, `hover`, `drag`, and `mouse-*` are explicit physical/focus/cursor commands.
-- FFI ref-action callers should use focus fallback for `type` to match CLI behavior; direct-handle `ad_execute_action` is lower-level and defaults to headless.
-- Explicit focus/physical policy can use the clipboard briefly for non-ASCII text insertion. Use `set-value` for sensitive text when possible.
+- `click`, `right-click`, `type`, `clear`, `scroll`, `expand`, and `collapse` use semantic AX delivery headlessly and prefer physical input with `--headed`.
+- `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` are semantic-only even under `--headed`.
+- `press`, `hover`, `drag`, and `mouse-*` are explicit physical input; cursor-moving commands require `--headed`.
+- FFI ref-action callers get the same strict headless `type` default; direct-handle `ad_execute_action` is lower-level and applies the supplied policy verbatim.
 - If a command would need a forbidden physical path, it returns a structured error with a recovery hint.
 
 ### Surfaces

@@ -27,7 +27,7 @@ if [ -n "$nc_posted" ]; then
     nc_list=""
     nc_found=""
     for _ in $(seq 1 20); do
-        nc_list="$("$bin" list-notifications --text "$nc_title_a" 2>/dev/null)"
+        nc_list="$("$bin" --headed list-notifications --text "$nc_title_a" 2>/dev/null)"
         if [ "$(json_field "$nc_list" data.count)" = "1" ]; then
             nc_found=1
             break
@@ -51,7 +51,7 @@ if [ -n "$nc_posted" ]; then
         nc_gone=""
         nc_after=""
         for _ in $(seq 1 12); do
-            nc_after="$("$bin" list-notifications --text "$nc_title_a" 2>/dev/null)"
+            nc_after="$("$bin" --headed list-notifications --text "$nc_title_a" 2>/dev/null)"
             if [ "$(json_field "$nc_after" data.count)" = "0" ]; then
                 nc_gone=1
                 break
@@ -65,7 +65,7 @@ if [ -n "$nc_posted" ]; then
         osascript -e "display notification \"$nc_body\" with title \"$nc_title_b\"" >/dev/null 2>&1
         nc_list_b=""
         for _ in $(seq 1 10); do
-            nc_list_b="$("$bin" list-notifications --text "$nc_title_b" 2>/dev/null)"
+            nc_list_b="$("$bin" --headed list-notifications --text "$nc_title_b" 2>/dev/null)"
             if [ "$(json_field "$nc_list_b" data.count)" = "1" ]; then
                 break
             fi
@@ -77,7 +77,7 @@ if [ -n "$nc_posted" ]; then
             nc_cleared=""
             nc_left=""
             for _ in $(seq 1 12); do
-                nc_left="$("$bin" list-notifications --text "$nc_prefix" 2>/dev/null)"
+                nc_left="$("$bin" --headed list-notifications --text "$nc_prefix" 2>/dev/null)"
                 if [ "$(json_field "$nc_left" data.count)" = "0" ]; then
                     nc_cleared=1
                     break

@@ -4,7 +4,7 @@ use agent_desktop_core::MouseButton;
 use agent_desktop_core::step_mechanism::StepMechanism;
 
 #[test]
-fn right_click_restores_semantic_menu_fallbacks_before_physical_input() {
+fn right_click_prefers_physical_input_before_semantic_fallbacks() {
     let labels: Vec<&str> = crate::actions::chain_defs::RIGHT_CLICK_CHAIN
         .steps
         .iter()
@@ -19,14 +19,29 @@ fn right_click_restores_semantic_menu_fallbacks_before_physical_input() {
     assert_eq!(
         labels,
         [
+            "CGClick",
             "show_menu",
             "select_then_show_menu",
             "selected_items_menu",
             "child_show_menu",
             "ancestor_show_menu",
-            "CGClick",
         ]
     );
+}
+
+#[test]
+fn click_and_clear_prefer_physical_delivery_when_policy_allows_it() {
+    assert!(matches!(
+        crate::actions::chain_defs::CLICK_CHAIN.steps.first(),
+        Some(ChainStep::CGClick {
+            button: MouseButton::Left,
+            count: 1
+        })
+    ));
+    assert!(matches!(
+        crate::actions::chain_defs::CLEAR_CHAIN.steps.first(),
+        Some(ChainStep::FocusThenClearByKeyboard)
+    ));
 }
 
 #[test]

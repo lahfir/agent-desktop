@@ -18,6 +18,12 @@ if [ ! -x "$release_bin" ]; then
     echo "release binary missing at $release_bin; run 'cargo build --release'" >&2
     exit 2
 fi
+note "Strict headless non-interference gate"
+AGENT_DESKTOP_E2E_RELEASE_BIN="$release_bin" bash "$here/safe-semantic.sh"
+safe_semantic_status=$?
+if [ "$safe_semantic_status" -ne 0 ]; then
+    exit "$safe_semantic_status"
+fi
 if ! prepare_native_harness; then
     exit 2
 fi

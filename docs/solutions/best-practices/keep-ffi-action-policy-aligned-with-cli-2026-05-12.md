@@ -26,8 +26,8 @@ high-level ref path can reproduce CLI observation-to-action behavior.
 `ad_execute_by_ref` and its timeout variant use the core command path. They
 load the ref map, resolve strictly, apply actionability, and compute policy
 through `Action::base_interaction_policy` joined with the caller's explicit
-policy. Headless callers therefore retain an action's required focus fallback;
-headed is an opt-in elevation.
+policy. Semantic actions, including `type`, stay strictly headless; explicit
+`press` retains its focus fallback and headed is an opt-in elevation.
 
 `ad_execute_action` and struct-based direct action entrypoints are deliberately
 lower-level escape hatches. They operate on a caller-held native handle or

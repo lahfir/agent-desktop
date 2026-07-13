@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, Deadline, KeyCombo};
+use agent_desktop_core::{AdapterError, Deadline, InteractionPolicy, KeyCombo};
 
 pub(crate) fn close_session<T>(
     session: NcSession,
@@ -24,18 +24,30 @@ pub(crate) struct NcSession {
 }
 
 impl NcSession {
-    pub(crate) fn open(deadline: Deadline) -> Result<Self, AdapterError> {
+    pub(crate) fn open(
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<Self, AdapterError> {
+        if let Some(pid) = nc_pid(deadline)?
+            && is_nc_open(pid, deadline)
+        {
+            return Ok(Self {
+                pid,
+                was_already_open: true,
+                previous_app: None,
+                closed: false,
+                deadline,
+            });
+        }
+        if !policy.is_headed() {
+            return Err(closed_center_policy_error(policy));
+        }
         let previous_app = frontmost_app(deadline);
-        let (was_already_open, pid) = match nc_pid(deadline)? {
-            Some(pid) if is_nc_open(pid, deadline) => (true, pid),
-            _ => {
-                open_nc(deadline)?;
-                (false, wait_for_nc_ready(deadline)?)
-            }
-        };
+        open_nc(deadline)?;
+        let pid = wait_for_nc_ready(deadline)?;
         Ok(Self {
             pid,
-            was_already_open,
+            was_already_open: false,
             previous_app,
             closed: false,
             deadline,
@@ -58,6 +70,16 @@ impl NcSession {
         self.closed = true;
         close_result
     }
+}
+
+fn closed_center_policy_error(policy: InteractionPolicy) -> AdapterError {
+    AdapterError::policy_denied_for_policy(
+        "Notification Center is closed and observation cannot open it in headless mode",
+        policy,
+    )
+    .with_suggestion(
+        "Open Notification Center yourself or pass --headed to allow opening and restoring desktop focus.",
+    )
 }
 
 impl Drop for NcSession {
@@ -221,7 +243,7 @@ fn close_nc(deadline: Deadline) -> Result<(), AdapterError> {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::{applescript_string, nc_pid_from_output};
+    use super::{applescript_string, closed_center_policy_error, nc_pid_from_output};
     use agent_desktop_core::AdapterError;
 
     #[test]
@@ -246,6 +268,20 @@ mod tests {
             .expect_err("timeout must not become process-not-found");
 
         assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+    }
+
+    #[test]
+    fn closed_notification_center_is_policy_denied_headlessly() {
+        let error = closed_center_policy_error(agent_desktop_core::InteractionPolicy::headless());
+
+        assert_eq!(error.code, agent_desktop_core::ErrorCode::PolicyDenied);
+        assert!(error.message.contains("headless"));
+        assert!(
+            error
+                .suggestion
+                .as_deref()
+                .is_some_and(|value| value.contains("--headed"))
+        );
     }
 }
 

@@ -32,12 +32,6 @@ mod imp {
 
         for (i, step) in def.steps.iter().enumerate() {
             ctx.ensure_budget()?;
-            if matches!(step, ChainStep::CGClick { .. }) && !physical_click_permitted(policy) {
-                return Err(AdapterError::policy_denied_for_policy(
-                    "Physical click fallback is disabled by the current interaction policy",
-                    policy,
-                ));
-            }
             let label = step_label(step);
             let outcome = execute_step(el, step, ctx, policy)?;
             if record_step_outcome(
@@ -108,10 +102,6 @@ mod imp {
             ChainStep::CGClick { .. } => "CGClick",
             ChainStep::CGDisclosureClick { .. } => "CGDisclosureClick",
         }
-    }
-
-    fn physical_click_permitted(policy: InteractionPolicy) -> bool {
-        policy.allow_focus_steal && policy.allow_cursor_move
     }
 }
 

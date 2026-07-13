@@ -287,6 +287,19 @@ def command_match_value():
     print("" if match["value"] is None else match["value"])
 
 
+def command_delivered_mechanism():
+    data = read_json()
+    steps = data.get("data", {}).get("steps", [])
+    delivered = [
+        step.get("mechanism")
+        for step in steps
+        if isinstance(step, dict) and step.get("outcome") == "succeeded"
+    ]
+    if data.get("ok") is not True or not delivered or not delivered[0]:
+        raise SystemExit(2)
+    print(delivered[0])
+
+
 def command_tree(name, mode):
     data = read_json()
     node = find_node(data.get("data", {}).get("tree", {}), name)
@@ -377,6 +390,8 @@ def main():
         command_target()
     elif command == "match-value":
         command_match_value()
+    elif command == "delivered-mechanism":
+        command_delivered_mechanism()
     elif command == "tree":
         command_tree(sys.argv[2], sys.argv[3])
     elif command == "duplicate-ids":

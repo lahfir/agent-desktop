@@ -45,7 +45,7 @@ pub(crate) struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Permit cursor movement and focus stealing for physical input commands and fallbacks. Default is headless (AX-only, no cursor)."
+        help = "Prefer physical delivery for natural input commands and permit focus/cursor side effects. Default is strict headless semantic delivery."
     )]
     pub headed: bool,
     #[command(flatten)]

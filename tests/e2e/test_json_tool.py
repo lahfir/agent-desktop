@@ -5,10 +5,27 @@ import tempfile
 import unittest
 from unittest import mock
 
-from json_tool import run_bounded
+from json_tool import command_delivered_mechanism, run_bounded
 
 
 class RunBoundedTests(unittest.TestCase):
+    def test_delivered_mechanism_reports_the_first_successful_step(self):
+        payload = {
+            "ok": True,
+            "data": {
+                "steps": [
+                    {"outcome": "skipped", "mechanism": "physical_synthetic"},
+                    {"outcome": "succeeded", "mechanism": "semantic_api"},
+                ]
+            },
+        }
+        with mock.patch("json_tool.read_json", return_value=payload), mock.patch(
+            "builtins.print"
+        ) as output:
+            command_delivered_mechanism()
+
+        output.assert_called_once_with("semantic_api")
+
     def test_marked_child_receives_the_canonical_interaction_lease_fd(self):
         with tempfile.TemporaryFile() as lease:
             os.set_inheritable(lease.fileno(), True)

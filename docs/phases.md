@@ -249,7 +249,7 @@ crates/macos/src/
 │   ├── extras.rs       # select_value helpers
 │   ├── post_state.rs   # Post-action state reads
 │   ├── scroll.rs       # scroll semantics and explicit physical policy paths
-│   └── type_text.rs    # focus-fallback text insertion and physical typing
+│   └── type_text.rs    # strict semantic text insertion and headed physical typing
 ├── input/
 │   ├── mod.rs          # re-exports
 │   ├── keyboard.rs     # CGEventCreateKeyboardEvent, key synthesis, text typing
@@ -285,7 +285,7 @@ crates/macos/src/
 **Action execution:**
 - Ref actions take `ActionRequest`, not bare `Action`
 - Default policy forbids focus stealing and cursor movement
-- Click/right-click/scroll chains run semantic AX steps first and return structured errors instead of silently using physical/headed paths
+- Click/right-click/scroll use semantic AX delivery headlessly and prefer physical delivery only under explicit `--headed`
 - Type uses the focus-fallback policy floor; SetValue/Clear are the pure headless AX value-mutation paths
 - SetValue/Clear: `AXUIElementSetAttributeValue(kAXValueAttribute, value)`
 - SetFocus/Press/Hover/Drag/Mouse: explicit focus/cursor/physical commands

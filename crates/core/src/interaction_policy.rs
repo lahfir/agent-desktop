@@ -28,6 +28,10 @@ impl InteractionPolicy {
         }
     }
 
+    pub fn is_headed(self) -> bool {
+        self.allow_focus_steal && self.allow_cursor_move
+    }
+
     pub fn join(self, other: InteractionPolicy) -> InteractionPolicy {
         InteractionPolicy {
             allow_focus_steal: self.allow_focus_steal || other.allow_focus_steal,

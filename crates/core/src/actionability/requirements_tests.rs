@@ -31,15 +31,31 @@ fn pointer_delivery_is_selected_from_live_semantic_capability_evidence() {
     let requirements = ActionabilityRequirements::for_action(&Action::Click);
 
     assert_eq!(
-        requirements.pointer_delivery(&Action::Click, &[crate::capability::CLICK.into()]),
+        requirements.pointer_delivery(
+            &Action::Click,
+            &[crate::capability::CLICK.into()],
+            crate::InteractionPolicy::headless(),
+        ),
         PointerDelivery::Semantic
     );
     assert_eq!(
-        requirements.pointer_delivery(&Action::Click, &[]),
+        requirements.pointer_delivery(&Action::Click, &[], crate::InteractionPolicy::headless(),),
         PointerDelivery::Physical
     );
     assert_eq!(
-        requirements.pointer_delivery(&Action::DoubleClick, &[crate::capability::CLICK.into()]),
+        requirements.pointer_delivery(
+            &Action::DoubleClick,
+            &[crate::capability::CLICK.into()],
+            crate::InteractionPolicy::headless(),
+        ),
+        PointerDelivery::Physical
+    );
+    assert_eq!(
+        requirements.pointer_delivery(
+            &Action::Click,
+            &[crate::capability::CLICK.into()],
+            crate::InteractionPolicy::headed(),
+        ),
         PointerDelivery::Physical
     );
 

@@ -76,9 +76,7 @@ impl ElementPredicate {
 fn parse_actionability_action(action: Option<&str>) -> Result<ActionRequest, AppError> {
     match action.unwrap_or("click") {
         "click" => Ok(ActionRequest::headless(Action::Click)),
-        "type" => Ok(ActionRequest::focus_fallback(Action::TypeText(
-            String::new(),
-        ))),
+        "type" => Ok(ActionRequest::headless(Action::TypeText(String::new()))),
         "set-value" => Ok(ActionRequest::headless(Action::SetValue(String::new()))),
         "clear" => Ok(ActionRequest::headless(Action::Clear)),
         other => Err(AppError::invalid_input_with_suggestion(

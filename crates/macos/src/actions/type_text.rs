@@ -17,20 +17,15 @@ pub(crate) fn execute_type(
             "Type requires a text field, secure text field, or combo box",
         ));
     }
-    match insert_selected_text(element, text, deadline) {
-        Ok(()) => {
-            return Ok(ActionStep::succeeded("AXSelectedText")
-                .with_mechanism(StepMechanism::SemanticApi)
-                .with_verified(false));
-        }
-        Err(error)
-            if policy.allow_focus_steal
-                && crate::actions::mutation_delivery::fallback_is_safe(&error) => {}
-        Err(error) => return Err(error),
+    if policy.is_headed() {
+        crate::actions::physical_keyboard::type_text(element, text, policy, deadline)?;
+        return Ok(ActionStep::succeeded("PIDTargetedUnicodeText")
+            .with_mechanism(StepMechanism::PhysicalSynthetic)
+            .with_verified(false));
     }
-    crate::actions::physical_keyboard::type_text(element, text, policy, deadline)?;
-    Ok(ActionStep::succeeded("PIDTargetedUnicodeText")
-        .with_mechanism(StepMechanism::PhysicalSynthetic)
+    insert_selected_text(element, text, deadline)?;
+    Ok(ActionStep::succeeded("AXSelectedText")
+        .with_mechanism(StepMechanism::SemanticApi)
         .with_verified(false))
 }
 

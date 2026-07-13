@@ -221,7 +221,7 @@ fn execute_with_timeout_zero_normalizes_to_single_attempt() {
 }
 
 #[test]
-fn caller_cannot_downgrade_press_key_below_focus_fallback() {
+fn explicit_press_key_keeps_its_focus_fallback_policy() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_ref("textfield", &["PressKey"]);
     let adapter = PolicyCaptureAdapter::new();

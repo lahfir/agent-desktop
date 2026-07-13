@@ -42,13 +42,13 @@ pub(crate) enum Commands {
     Is(IsArgs),
     #[command(about = "Click element via accessibility press action")]
     Click(RefArgs),
-    #[command(about = "Open element via AXOpen; physical double-click uses mouse-click")]
+    #[command(about = "Physically double-click element; requires --headed")]
     DoubleClick(RefArgs),
     #[command(
         about = "Triple-click element; returns POLICY_DENIED when physical input is disabled"
     )]
     TripleClick(RefArgs),
-    #[command(about = "Right-click and include menu/menu_probe details when available")]
+    #[command(about = "Open a context menu semantically, or physically with --headed")]
     RightClick(RefArgs),
     #[command(about = "Insert text into a text target")]
     Type(TypeArgs),

@@ -71,21 +71,21 @@ fn pure_ax_actions_base_policy_is_headless() {
 }
 
 #[test]
-fn press_key_and_type_text_base_policy_is_focus_fallback() {
-    let focus_fallback = InteractionPolicy::focus_fallback();
+fn type_text_is_headless_but_explicit_press_allows_focus() {
+    let headless = InteractionPolicy::headless();
     assert_eq!(
         Action::PressKey(KeyCombo {
             key: "a".into(),
             modifiers: vec![Modifier::Meta],
         })
         .base_interaction_policy(),
-        focus_fallback,
-        "PressKey must permit the focus fallback needed to target keystrokes"
+        InteractionPolicy::focus_fallback(),
+        "PressKey is an explicit physical-input command"
     );
     assert_eq!(
         Action::TypeText("hello".into()).base_interaction_policy(),
-        focus_fallback,
-        "TypeText must permit the focus fallback needed by physical typing"
+        headless,
+        "TypeText must not gain implicit focus or keyboard permission"
     );
 }
 

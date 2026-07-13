@@ -56,7 +56,7 @@ mod imp {
             },
 
             ChainStep::FocusThenClearByKeyboard => {
-                if !policy.allow_focus_steal {
+                if !policy.is_headed() {
                     return Ok(DeliveryOutcome::NotDelivered);
                 }
                 crate::actions::physical_keyboard::press_sequence(
@@ -80,6 +80,9 @@ mod imp {
             ChainStep::CustomWithDeadline { label: _, func } => func(el, ctx.deadline),
 
             ChainStep::CGClick { button, count } => {
+                if !policy.is_headed() {
+                    return Ok(DeliveryOutcome::NotDelivered);
+                }
                 physical_click(el, button.clone(), *count, ctx, policy)?;
                 Ok(DeliveryOutcome::DeliveredUnverified)
             }

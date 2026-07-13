@@ -16,6 +16,10 @@ pub(crate) fn ax_scroll(
     validate_amount(amount)?;
     let scroll_area = find_scroll_area(element, deadline)?;
     let target = scroll_area.as_ref().unwrap_or(element);
+    if policy.is_headed() {
+        physical_wheel(target, direction, amount, deadline)?;
+        return Ok((StepMechanism::PhysicalSynthetic, false));
+    }
     accept_optional_visibility_result(try_action(element, "AXScrollToVisible", deadline))?;
     let (bar_attribute, increment_action) = scroll_bar_action(direction);
 
@@ -32,26 +36,6 @@ pub(crate) fn ax_scroll(
     }
     if perform_repeated_action(target, page_action(direction), amount, deadline)? {
         return Ok((StepMechanism::SemanticApi, false));
-    }
-    if policy.allow_focus_steal {
-        let keycode = direction_keycode(direction);
-        match crate::actions::physical_keyboard::repeat_keycode(
-            target, keycode, amount, policy, deadline,
-        ) {
-            Ok(()) => return Ok((StepMechanism::PhysicalSynthetic, false)),
-            Err(error) if crate::actions::mutation_delivery::fallback_is_safe(&error) => {}
-            Err(error) => return Err(error),
-        }
-    }
-    if policy.allow_focus_steal && policy.allow_cursor_move {
-        physical_wheel(target, direction, amount, deadline)?;
-        return Ok((StepMechanism::PhysicalSynthetic, false));
-    }
-    if policy.allow_focus_steal {
-        return Err(AdapterError::policy_denied_for_policy(
-            "Cursor-moving scroll fallback is disabled by the current interaction policy",
-            policy,
-        ));
     }
     Err(AdapterError::new(
         ErrorCode::ActionNotSupported,
@@ -104,15 +88,6 @@ fn page_action(direction: &Direction) -> &'static str {
         Direction::Up => "AXScrollUpByPage",
         Direction::Right => "AXScrollRightByPage",
         Direction::Left => "AXScrollLeftByPage",
-    }
-}
-
-fn direction_keycode(direction: &Direction) -> u16 {
-    match direction {
-        Direction::Down => 121,
-        Direction::Up => 116,
-        Direction::Right => 124,
-        Direction::Left => 123,
     }
 }
 

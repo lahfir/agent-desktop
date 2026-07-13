@@ -82,7 +82,7 @@ pub(super) fn check_with_stability(
 ) -> Result<ActionabilityReport, AdapterError> {
     let requirements = ActionabilityRequirements::for_action(&request.action);
     let pointer_delivery =
-        requirements.pointer_delivery(&request.action, &evidence.available_actions);
+        requirements.pointer_delivery(&request.action, &evidence.available_actions, request.policy);
     let mut checks = Vec::new();
     let mut verified_point = None;
     if requirements.visible {

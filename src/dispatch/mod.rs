@@ -72,7 +72,7 @@ pub(crate) fn dispatch(
         Commands::Maximize(args) => app_window::maximize(args, adapter),
         Commands::Restore(args) => app_window::restore(args, adapter),
         Commands::ListSurfaces(args) => app_window::list_surfaces(args, adapter),
-        Commands::ListNotifications(args) => notifications::list(args, adapter),
+        Commands::ListNotifications(args) => notifications::list(args, adapter, context),
         Commands::DismissNotification(args) => notifications::dismiss(args, adapter, context),
         Commands::DismissAllNotifications(args) => {
             notifications::dismiss_all(args, adapter, context)

@@ -11,8 +11,11 @@ mod imp {
 
     pub(crate) static CLICK_CHAIN: ChainDef = ChainDef {
         steps: &[
+            ChainStep::CGClick {
+                button: MouseButton::Left,
+                count: 1,
+            },
             ChainStep::Action("AXPress"),
-            ChainStep::CGDisclosureClick { expanded: true },
         ],
         suggestion: "Target an element that advertises Click or use an explicit point click.",
         continue_after_unverified_delivery: false,
@@ -20,6 +23,10 @@ mod imp {
 
     pub(crate) static RIGHT_CLICK_CHAIN: ChainDef = ChainDef {
         steps: &[
+            ChainStep::CGClick {
+                button: MouseButton::Right,
+                count: 1,
+            },
             ChainStep::CustomWithDeadline {
                 label: "show_menu",
                 func: chain_menu_steps::show_menu,
@@ -39,10 +46,6 @@ mod imp {
             ChainStep::CustomWithDeadline {
                 label: "ancestor_show_menu",
                 func: chain_menu_steps::show_menu_on_ancestors,
-            },
-            ChainStep::CGClick {
-                button: MouseButton::Right,
-                count: 1,
             },
         ],
         suggestion: "Try 'mouse-click --button right --xy X,Y'.",
@@ -84,11 +87,17 @@ mod imp {
 
     pub(crate) static CLEAR_CHAIN: ChainDef = ChainDef {
         steps: &[
-            ChainStep::SetDynamic { attr: "AXValue" },
             ChainStep::FocusThenClearByKeyboard,
+            ChainStep::SetDynamic { attr: "AXValue" },
         ],
         suggestion: "Target an editable control or allow the verified keyboard fallback.",
         continue_after_unverified_delivery: true,
+    };
+
+    pub(crate) static SEMANTIC_CLICK_CHAIN: ChainDef = ChainDef {
+        steps: &[ChainStep::Action("AXPress")],
+        suggestion: "Target an element that advertises Click.",
+        continue_after_unverified_delivery: false,
     };
 
     pub(crate) static FOCUS_CHAIN: ChainDef = ChainDef {
@@ -171,5 +180,5 @@ mod imp {}
 #[cfg(target_os = "macos")]
 pub(crate) use imp::{
     CLEAR_CHAIN, CLICK_CHAIN, COLLAPSE_CHAIN, EXPAND_CHAIN, FOCUS_CHAIN, RIGHT_CLICK_CHAIN,
-    SCROLL_TO_CHAIN, SET_VALUE_CHAIN, double_click, triple_click,
+    SCROLL_TO_CHAIN, SEMANTIC_CLICK_CHAIN, SET_VALUE_CHAIN, double_click, triple_click,
 };

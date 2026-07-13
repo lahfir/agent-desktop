@@ -190,8 +190,9 @@ agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers,
 ### Interaction
 
 ```bash
-agent-desktop click @s8f3k2p9:e3                  # semantic AX-first click
-agent-desktop double-click @s8f3k2p9:e3           # AXOpen; physical double-click uses --headed mouse-click --count 2
+agent-desktop click @s8f3k2p9:e3                  # strict headless AX click
+agent-desktop --headed click @s8f3k2p9:e3         # physical click, focus/cursor allowed
+agent-desktop --headed double-click @s8f3k2p9:e3  # physical double-click
 agent-desktop triple-click @s8f3k2p9:e3           # POLICY_DENIED if physical input is disabled
 agent-desktop right-click @s8f3k2p9:e3            # open context menu; inspect effect before retrying
 agent-desktop type @s8f3k2p9:e5 "hello world"     # insert text into element
@@ -204,11 +205,11 @@ agent-desktop check @s8f3k2p9:e12                 # idempotent check
 agent-desktop uncheck @s8f3k2p9:e12               # idempotent uncheck
 agent-desktop expand @s8f3k2p9:e15                # expand disclosure/tree item
 agent-desktop collapse @s8f3k2p9:e15              # collapse disclosure/tree item
-agent-desktop scroll @s8f3k2p9:e1 --direction down --amount 3  # scroll (AX-first)
+agent-desktop scroll @s8f3k2p9:e1 --direction down --amount 3  # strict headless AX scroll
 agent-desktop scroll-to @s8f3k2p9:e20             # scroll element into view
 ```
 
-> **(macOS, Phase 1)** Pure cursor gestures have no accessibility equivalent, so `triple-click`, `hover`, and `drag` are always physical; `double-click` is headless via `AXOpen` and only needs `--headed` for gesture-only targets. Windows (UIA) and Linux (AT-SPI) adapters may expose different capabilities. See `skills/agent-desktop/references/commands-interaction.md`.
+> **(macOS, Phase 1)** Default ref actions are strict headless semantic operations. `--headed` prefers physical delivery for natural input commands; double/triple-click, hover, and drag are physical-only. Semantic-only commands remain semantic. See `skills/agent-desktop/references/commands-interaction.md`.
 
 ### Keyboard
 
@@ -253,9 +254,9 @@ agent-desktop restore --window-id w-4521
 ### Notifications *(macOS only)*
 
 ```bash
-agent-desktop list-notifications                       # list all notifications
-agent-desktop list-notifications --app "Slack"         # filter by app
-agent-desktop list-notifications --text "deploy" --limit 5  # filter by text
+agent-desktop --headed list-notifications              # open Notification Center if needed, then list
+agent-desktop --headed list-notifications --app "Slack"         # filter by app
+agent-desktop --headed list-notifications --text "deploy" --limit 5  # filter by text
 agent-desktop dismiss-notification 1 --expected-app "Slack" --expected-title "Deploy complete"
 agent-desktop dismiss-all-notifications                # dismiss all
 agent-desktop dismiss-all-notifications --app "Slack"  # dismiss all from app
@@ -263,8 +264,8 @@ agent-desktop notification-action 1 "Reply" --expected-app "Slack" --expected-ti
 ```
 
 Single-notification mutations require an app or title fingerprint from the
-same listing. Semantic dismiss is headless; pass global `--headed` only when
-Notification Center requires its hover-revealed close control.
+same listing. Headless listing observes an already-open Notification Center;
+pass `--headed` to allow opening it and restoring the prior frontmost app.
 
 ### Clipboard
 

@@ -236,7 +236,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
     )
     .unwrap();
     let type_request = adapter.requests.lock().unwrap()[before_type].clone();
-    assert_eq!(type_request.policy, InteractionPolicy::focus_fallback());
+    assert_eq!(type_request.policy, InteractionPolicy::headless());
     scroll::execute(
         scroll::ScrollArgs {
             ref_id: "@e1".into(),
@@ -251,9 +251,6 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
     .unwrap();
 
     for request in adapter.requests.lock().unwrap().iter() {
-        if matches!(request.action, Action::TypeText(_)) {
-            continue;
-        }
         assert_headless(request);
     }
 }
@@ -272,7 +269,7 @@ fn focus_command_is_explicit_headless_policy() {
 }
 
 #[test]
-fn headed_context_preserves_physical_fallback_only_when_semantic_delivery_is_unavailable() {
+fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_id();
     let adapter = RecordingAdapter::new();
@@ -337,13 +334,9 @@ fn headed_context_preserves_physical_fallback_only_when_semantic_delivery_is_una
     .unwrap();
 
     for request in adapter.requests.lock().unwrap().iter() {
-        let expected = if matches!(request.action, Action::Click | Action::RightClick) {
-            InteractionPolicy::headless()
-        } else {
-            InteractionPolicy::headed()
-        };
         assert_eq!(
-            request.policy, expected,
+            request.policy,
+            InteractionPolicy::headed(),
             "unexpected policy for {:?}",
             request.action
         );

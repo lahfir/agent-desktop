@@ -25,11 +25,12 @@ future adapters copy macOS assumptions.
 ## Guidance
 
 Core creates an `ActionRequest` with the action's least-permissive base policy.
-Most actions start headless. `type` and ref-targeted `press` may use focus
-fallback. Explicit headed mode can elevate that policy but may not weaken it.
+Semantic actions, including `type`, start strictly headless. Explicit `press`
+may use focus fallback. Headed mode can elevate policy but may not weaken it.
 
-The adapter chooses the best legal implementation: semantic accessibility APIs
-first, then a policy-gated physical fallback when appropriate. `hover` and
+The adapter chooses the requested legal implementation: strict headless uses
+semantic accessibility APIs, while headed natural-input commands prefer
+physical delivery. `hover` and
 `drag` are physical pointer commands by definition and require a cursor-moving
 policy before resolving or moving the pointer. A semantic reorder capability,
 if a future platform offers one, is a distinct action contract rather than a

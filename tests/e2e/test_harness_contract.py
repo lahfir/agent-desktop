@@ -63,6 +63,13 @@ class HarnessContractTests(unittest.TestCase):
         self.assertIn("require_value actionable_before click-status", source)
         self.assertIn("require_value actionable_after click-status", source)
 
+    def test_native_runner_gates_on_strict_headless_non_interference(self):
+        source = (E2E_ROOT / "run.sh").read_text()
+
+        safe_gate = source.index('bash "$here/safe-semantic.sh"')
+        focused_fixture = source.index("prepare_native_harness")
+        self.assertLess(safe_gate, focused_fixture)
+
     def test_fixture_status_oracles_use_stable_native_identifiers(self):
         source = (E2E_ROOT / "lib.sh").read_text()
 

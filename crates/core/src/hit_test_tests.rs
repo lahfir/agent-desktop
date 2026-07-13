@@ -186,7 +186,7 @@ fn run_receives_events_error(outcome: Result<HitTestResult, AdapterError>) -> Ad
 }
 
 #[test]
-fn semantic_click_skips_inconclusive_screen_hit_testing() {
+fn headless_semantic_click_skips_inconclusive_screen_hit_testing() {
     let adapter = HitTestAdapter {
         outcome: Ok(HitTestResult::Unknown),
         actions: vec![capability::CLICK.into()],
@@ -197,7 +197,7 @@ fn semantic_click_skips_inconclusive_screen_hit_testing() {
         &clickable_entry(),
         &NativeHandle::null(),
         &adapter,
-        &ActionRequest::headed(Action::Click),
+        &ActionRequest::headless(Action::Click),
     )
     .expect("a direct semantic click must not depend on screen hit testing");
 

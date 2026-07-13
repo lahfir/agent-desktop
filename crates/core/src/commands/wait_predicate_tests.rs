@@ -315,7 +315,7 @@ fn element_wait_actionable_type_fails_on_uneditable_role() {
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Actionable(
-            crate::action_request::ActionRequest::focus_fallback(crate::action::Action::TypeText(
+            crate::action_request::ActionRequest::headless(crate::action::Action::TypeText(
                 String::new(),
             )),
         ),
@@ -380,7 +380,7 @@ fn actionable_parse_mirrors_each_real_command_policy() {
     );
     assert_eq!(
         request_for(Some("type")).policy,
-        InteractionPolicy::focus_fallback()
+        InteractionPolicy::headless()
     );
     assert_eq!(
         request_for(Some("set-value")).policy,

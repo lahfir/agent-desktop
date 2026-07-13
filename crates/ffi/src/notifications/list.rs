@@ -35,7 +35,11 @@ pub unsafe extern "C" fn ad_list_notifications(
         };
         let adapter = crate::adapter::acquire_adapter!(adapter);
         let deadline = crate::operation::operation_deadline!();
-        match adapter.inner.list_notifications(&core_filter, deadline) {
+        match adapter.inner.list_notifications(
+            &core_filter,
+            agent_desktop_core::InteractionPolicy::headless(),
+            deadline,
+        ) {
             Ok(notifications) => {
                 if let Err(error) =
                     crate::resource::validate_list_len(notifications.len(), "Notification list")
