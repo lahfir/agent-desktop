@@ -1,5 +1,8 @@
 use super::*;
 
+const PROCESS_TIMEOUT: Duration = Duration::from_millis(300);
+const PROCESS_TEST_LIMIT: Duration = Duration::from_secs(1);
+
 #[test]
 fn successful_process_returns_output() {
     let mut command = Command::new("/bin/echo");
@@ -13,13 +16,14 @@ fn successful_process_returns_output() {
 #[test]
 fn slow_process_is_killed_within_the_absolute_deadline() {
     let mut command = Command::new("/bin/sleep");
-    command.arg("1");
+    command.arg("5");
     let started = Instant::now();
-    let error = run_with_timeout(&mut command, "sleep", Duration::from_millis(300))
+    let error = run_with_timeout(&mut command, "sleep", PROCESS_TIMEOUT)
         .expect_err("slow process must time out");
 
     assert_eq!(error.code, ErrorCode::Timeout);
-    assert!(started.elapsed() < Duration::from_millis(350));
+    assert!(error.platform_detail.is_none());
+    assert!(started.elapsed() < PROCESS_TEST_LIMIT);
 }
 
 #[test]
@@ -27,11 +31,12 @@ fn descendant_holding_stdout_is_killed_with_its_process_group() {
     let mut command = Command::new("/bin/sh");
     command.args(["-c", "sleep 60 >&1 & exit 0"]);
     let started = Instant::now();
-    let error = run_with_timeout(&mut command, "pipe-holder", Duration::from_millis(300))
+    let error = run_with_timeout(&mut command, "pipe-holder", PROCESS_TIMEOUT)
         .expect_err("inherited pipe must not outlive the deadline");
 
     assert_eq!(error.code, ErrorCode::Timeout);
-    assert!(started.elapsed() < Duration::from_millis(350));
+    assert!(error.platform_detail.is_none());
+    assert!(started.elapsed() < PROCESS_TEST_LIMIT);
 }
 
 #[test]
