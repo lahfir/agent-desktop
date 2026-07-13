@@ -106,7 +106,6 @@ class CommandPolicyTests(unittest.TestCase):
             ["launch", APP],
             ["close-app", APP],
             ["press", "cmd+a"],
-            ["type", "@snap:e1", "text"],
             ["mouse-click", "--xy", "1,1"],
             ["hover", "@snap:e1"],
             ["drag", "@snap:e1", "@snap:e2"],
@@ -144,39 +143,21 @@ class CommandPolicyTests(unittest.TestCase):
             with self.assertRaises(SafetyError):
                 validate_command(argv, APP, window, armed)
 
-    def test_set_value_payload_and_scroll_are_narrowly_bounded(self):
-        validate_command(
-            [
-                "set-value", "@snap-1:e2", "safe-semantic-4242",
-                "--snapshot", "snap-1", "--timeout-ms", "1500",
-            ],
-            APP,
-            WINDOW,
-            True,
-        )
-        validate_command(
-            [
-                "scroll", "@snap-1:e3", "--snapshot", "snap-1",
-                "--direction", "down", "--amount", "1", "--timeout-ms", "1500",
-            ],
-            APP,
-            WINDOW,
-            True,
-        )
-        unsafe = [
-            [
-                "set-value", "@snap-1:e2", "arbitrary user text",
-                "--snapshot", "snap-1", "--timeout-ms", "1500",
-            ],
-            [
-                "scroll", "@snap-1:e3", "--snapshot", "snap-1",
-                "--direction", "right", "--amount", "1", "--timeout-ms", "1500",
-            ],
-            [
-                "scroll", "@snap-1:e3", "--snapshot", "snap-1",
-                "--direction", "down", "--amount", "2", "--timeout-ms", "1500",
-            ],
-        ]
+    def test_text_payloads_are_narrowly_bounded(self):
+        for command in ["type", "set-value"]:
+            validate_command(
+                [
+                    command, "@snap-1:e2", "safe-semantic-4242",
+                    "--snapshot", "snap-1", "--timeout-ms", "1500",
+                ],
+                APP,
+                WINDOW,
+                True,
+            )
+        unsafe = [[
+            "set-value", "@snap-1:e2", "arbitrary user text",
+            "--snapshot", "snap-1", "--timeout-ms", "1500",
+        ]]
         for argv in unsafe:
             with self.subTest(argv=argv), self.assertRaises(SafetyError):
                 validate_command(argv, APP, WINDOW, True)
@@ -276,7 +257,7 @@ class ResultGuardTests(unittest.TestCase):
                     "role": "statictext",
                     "name": "dynamic-value",
                     "interactive": False,
-                    "value": "",
+                    "value": None,
                 }
             ]
         }

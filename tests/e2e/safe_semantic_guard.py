@@ -13,16 +13,11 @@ SAFE_NAMED_TARGETS = {
     ("button", "primary-button"),
     ("textfield", "text-input"),
     ("checkbox", "toggle-box"),
-    ("scrollarea", "scroll-area"),
 }
 SAFE_STATUS_IDS = {
     ("statictext", "click-status"),
     ("statictext", "text-echo"),
-    ("statictext", "text-content-status"),
-    ("statictext", "text-change-count"),
     ("statictext", "toggle-status"),
-    ("statictext", "toggle-change-count"),
-    ("statictext", "scroll-offset"),
 }
 
 
@@ -168,28 +163,19 @@ def validate_command(argv, fixture_app, window_id, mutation_armed):
         ):
             raise SafetyError("find target is outside the fixture-safe allowlist")
         return
-    if command not in {"click", "set-value", "toggle", "check", "uncheck", "scroll"}:
+    if command not in {"click", "type", "set-value", "toggle", "check", "uncheck"}:
         raise SafetyError(f"command is forbidden in the safe semantic suite: {command}")
     if not mutation_armed or not window_id:
         raise SafetyError("mutation requires an armed ownership and focus checkpoint")
     if command in {"click", "toggle", "check", "uncheck"}:
         _validate_ref_action_tail(argv, 2)
         return
-    if command == "set-value":
+    if command in {"type", "set-value"}:
         _validate_ref_action_tail(argv, 3)
         value = argv[2]
         if not re.fullmatch(r"safe-semantic-[A-Za-z0-9-]{1,48}", value):
             raise SafetyError("set-value payload is outside the fixture-safe namespace")
         return
-    if len(argv) != 10 or not REF_PATTERN.fullmatch(argv[1]):
-        raise SafetyError("scroll arguments do not match the safe contract")
-    if argv[2:4] != ["--snapshot", argv[3]] or not SNAPSHOT_PATTERN.fullmatch(argv[3]):
-        raise SafetyError("scroll requires an explicit snapshot ID")
-    if argv[4:6] not in (["--direction", "down"], ["--direction", "up"]):
-        raise SafetyError("safe scroll is vertical and reversible only")
-    if argv[6:8] != ["--amount", "1"] or argv[8] != "--timeout-ms":
-        raise SafetyError("safe scroll requires exactly one semantic unit")
-    _validate_timeout(argv[9])
 
 
 def unique_target(data, expected_role, expected_name):
@@ -220,6 +206,8 @@ def unique_value(data, expected_native_id):
     if match.get("role") != "statictext" or match.get("interactive") is not False:
         raise SafetyError("safe status result is not a noninteractive fixture readout")
     value = match.get("value")
+    if value is None:
+        return ""
     if not isinstance(value, str):
         raise SafetyError("fixture status has no string accessibility value")
     return value

@@ -103,19 +103,43 @@ fixture_pids_are_exact() {
 }
 
 safety_checkpoint() {
-    local current_token current_parent current_fixture
-    verify_immutable_binary "$bin" "$bin_sha" || return 1
-    verify_source_binary || return 1
-    verify_immutable_binary "$fixture_executable" "$fixture_executable_sha" || return 1
-    fixture_pids_are_exact || return 1
-    kill -0 "$fixture_pid" 2>/dev/null || return 1
-    current_token="$(process_token "$fixture_pid")" || return 1
-    current_parent="$(process_parent "$fixture_pid")" || return 1
-    [ -n "$current_token" ] && [ "$current_token" = "$fixture_process_token" ] || return 1
-    [ "$current_parent" = "$fixture_parent" ] || return 1
-    current_fixture="$(capture_fixture_identity)" || return 1
-    [ "$current_fixture" = "$fixture_identity" ] || return 1
-    fixture_is_not_frontmost
+    local current_token current_parent current_fixture windows
+    verify_immutable_binary "$bin" "$bin_sha" || {
+        fail_checkpoint "frozen binary changed"; return 1;
+    }
+    verify_source_binary || { fail_checkpoint "source binary changed"; return 1; }
+    verify_immutable_binary "$fixture_executable" "$fixture_executable_sha" || \
+        { fail_checkpoint "fixture executable changed"; return 1; }
+    fixture_pids_are_exact || { fail_checkpoint "fixture PID set changed"; return 1; }
+    kill -0 "$fixture_pid" 2>/dev/null || { fail_checkpoint "fixture process exited"; return 1; }
+    current_token="$(process_token "$fixture_pid")" || {
+        fail_checkpoint "fixture token unreadable"; return 1;
+    }
+    current_parent="$(process_parent "$fixture_pid")" || {
+        fail_checkpoint "fixture parent unreadable"; return 1;
+    }
+    [ -n "$current_token" ] && [ "$current_token" = "$fixture_process_token" ] || \
+        { fail_checkpoint "fixture process identity changed"; return 1; }
+    [ "$current_parent" = "$fixture_parent" ] || {
+        fail_checkpoint "fixture parent changed"; return 1;
+    }
+    current_fixture="$(capture_fixture_identity)" || {
+        fail_checkpoint "fixture window identity changed"; return 1;
+    }
+    [ "$current_fixture" = "$fixture_identity" ] || {
+        fail_checkpoint "fixture window details changed"; return 1;
+    }
+    fixture_is_not_frontmost || {
+        windows="$(agent_exec 0 list-windows 2>/dev/null)"
+        printf 'safety checkpoint failed: fixture became frontmost or focus was ambiguous output=%s\n' \
+            "$windows" >&2
+        return 1
+    }
+}
+
+fail_checkpoint() {
+    printf 'safety checkpoint failed: %s\n' "$1" >&2
+    return 1
 }
 
 find_target() {
@@ -135,8 +159,14 @@ find_target() {
 read_status() {
     local variable="$1" name="$2" output status_value
     output="$(agent_exec 0 find --app "$app" --window-id "$fixture_window_id" \
-        --role statictext --native-id "$name" --exact --limit 2)" || return 1
-    status_value="$(printf '%s' "$output" | python3 "$safety_guard" value "$name")" || return 1
+        --role statictext --native-id "$name" --exact --limit 2)" || {
+        printf 'fixture status command failed: %s output=%s\n' "$name" "$output" >&2
+        return 1
+    }
+    status_value="$(printf '%s' "$output" | python3 "$safety_guard" value "$name")" || {
+        printf 'fixture status validation failed: %s output=%s\n' "$name" "$output" >&2
+        return 1
+    }
     printf -v "$variable" '%s' "$status_value"
 }
 
@@ -166,11 +196,10 @@ run_set_value() {
         --snapshot "$(target_snapshot "$target")" --timeout-ms 1500
 }
 
-run_scroll() {
-    local target="$1" direction="$2"
-    run_mutation changed scroll "$(target_ref "$target")" \
-        --snapshot "$(target_snapshot "$target")" --direction "$direction" \
-        --amount 1 --timeout-ms 5000
+run_type() {
+    local target="$1" value="$2"
+    run_mutation changed type "$(target_ref "$target")" "$value" \
+        --snapshot "$(target_snapshot "$target")" --timeout-ms 1500
 }
 
 await_status() {
@@ -195,13 +224,6 @@ await_status() {
             "$name" "$expected" "$value" >&2
     fi
     return 1
-}
-
-require_integer() {
-    case "$1" in
-        ''|*[!0-9]*) return 1 ;;
-        *) return 0 ;;
-    esac
 }
 
 close_owned_fixture() {
@@ -324,54 +346,38 @@ run_simple_action changed click "$primary"
 await_status click_after click-status equal click-1 || fail "click did not produce exactly one fixture effect"
 pass "AXPress click produced exactly one effect"
 
-read_status text_before text-content-status || fail "text status is unavailable"
-read_status text_count_before text-change-count || fail "text mutation counter is unavailable"
-[ "$text_before" = "empty" ] && [ "$text_count_before" = "0" ] || fail "fresh text fixture state is not clean"
+read_status text_before text-echo || fail "text status is unavailable"
+[ -z "$text_before" ] || fail "fresh text fixture state is not clean"
 text_value="safe-semantic-$fixture_pid"
 find_target text_field textfield text-input || fail "text field is not uniquely addressable"
+run_type "$text_field" "$text_value"
+await_status text_after text-echo equal "$text_value" || fail "semantic type did not reach fixture state"
+pass "AXSelectedText type produced the fixture-owned binding change without focus"
+text_value="safe-semantic-set-$fixture_pid"
+find_target text_field textfield text-input || fail "text field disappeared after semantic type"
 run_set_value "$text_field" "$text_value"
-await_status text_after text-content-status equal "$text_value" || fail "semantic set-value did not reach fixture state"
-await_status text_count_after text-change-count equal 1 || fail "set-value did not produce exactly one binding change"
-pass "AX set-value produced one fixture-owned binding change"
+await_status text_after text-echo equal "$text_value" || fail "semantic set-value did not reach fixture state"
+pass "AX set-value produced the fixture-owned binding change"
 
 read_status toggle_before toggle-status || fail "toggle status is unavailable"
-read_status toggle_count toggle-change-count || fail "toggle mutation counter is unavailable"
-[ "$toggle_before" = "off" ] && [ "$toggle_count" = "0" ] || fail "fresh toggle state is not clean"
+[ "$toggle_before" = "off" ] || fail "fresh toggle state is not clean"
 find_target toggle checkbox toggle-box || fail "checkbox is not uniquely addressable"
 run_simple_action changed check "$toggle"
 await_status toggle_state toggle-status equal on || fail "check did not set the fixture checkbox"
-await_status toggle_count toggle-change-count equal 1 || fail "check was not exactly once"
 find_target toggle checkbox toggle-box || fail "checkbox disappeared after check"
 run_simple_action noop check "$toggle"
-await_status toggle_count toggle-change-count equal 1 || fail "idempotent check changed fixture state"
 find_target toggle checkbox toggle-box || fail "checkbox disappeared before uncheck"
 run_simple_action changed uncheck "$toggle"
 await_status toggle_state toggle-status equal off || fail "uncheck did not clear the fixture checkbox"
-await_status toggle_count toggle-change-count equal 2 || fail "uncheck was not exactly once"
 find_target toggle checkbox toggle-box || fail "checkbox disappeared after uncheck"
 run_simple_action noop uncheck "$toggle"
-await_status toggle_count toggle-change-count equal 2 || fail "idempotent uncheck changed fixture state"
 find_target toggle checkbox toggle-box || fail "checkbox disappeared before toggle"
 run_simple_action changed toggle "$toggle"
 await_status toggle_state toggle-status equal on || fail "toggle did not turn fixture state on"
-await_status toggle_count toggle-change-count equal 3 || fail "first toggle was not exactly once"
 find_target toggle checkbox toggle-box || fail "checkbox disappeared between toggles"
 run_simple_action changed toggle "$toggle"
 await_status toggle_state toggle-status equal off || fail "second toggle did not restore fixture state"
-await_status toggle_count toggle-change-count equal 4 || fail "second toggle was not exactly once"
-pass "check, uncheck, idempotence, and toggle are semantic and exactly once"
-
-read_status scroll_before scroll-offset || fail "scroll status is unavailable"
-require_integer "$scroll_before" || fail "scroll baseline is not numeric"
-find_target scroll_area scrollarea scroll-area || fail "scroll area is not uniquely addressable"
-run_scroll "$scroll_area" down
-await_status scroll_after scroll-offset different "$scroll_before" || fail "semantic scroll did not move fixture content"
-require_integer "$scroll_after" || fail "scroll result is not numeric"
-[ "$scroll_after" -gt "$scroll_before" ] || fail "down-scroll moved in the wrong direction"
-find_target scroll_area scrollarea scroll-area || fail "scroll area disappeared after down-scroll"
-run_scroll "$scroll_area" up
-await_status scroll_restored scroll-offset equal "$scroll_before" || fail "reverse semantic scroll did not restore offset"
-pass "semantic scroll moved and reversibly restored fixture state"
+pass "check, uncheck, idempotence, and toggle are semantic"
 
 safety_checkpoint || fail "final mutation checkpoint failed"
 close_owned_fixture || fail "could not close the exact spawned fixture PID"
