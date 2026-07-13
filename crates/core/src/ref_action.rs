@@ -10,7 +10,7 @@ use crate::{
 };
 use serde_json::json;
 
-const TRACE_CAPTURE_BUDGET_MS: u64 = 100;
+const TRACE_CAPTURE_BUDGET_MS: u64 = 1_000;
 
 /// A strictly resolved ref-action target plus the tracing identity for it.
 pub(crate) struct ResolvedRefAction<'a> {

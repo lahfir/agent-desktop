@@ -17,7 +17,7 @@ use crate::{capability, refs::RefEntry};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-const MINI_PNG: &[u8] = &[
+pub(super) const MINI_PNG: &[u8] = &[
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
     0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
@@ -78,6 +78,7 @@ pub(super) fn artifacts_session() -> crate::session::SessionManifest {
 
 pub(super) struct PngAdapter {
     target: Mutex<Option<ScreenshotTarget>>,
+    minimum_budget_ms: u64,
 }
 
 impl ObservationOps for PngAdapter {
@@ -111,9 +112,12 @@ impl SystemOps for PngAdapter {
     fn screenshot(
         &self,
         target: ScreenshotTarget,
-        _deadline: crate::Deadline,
+        deadline: crate::Deadline,
     ) -> Result<ImageBuffer, AdapterError> {
         *self.target.lock().unwrap() = Some(target);
+        if deadline.remaining_ms() < self.minimum_budget_ms {
+            return Err(deadline.timeout_error());
+        }
         Ok(ImageBuffer {
             data: MINI_PNG.to_vec(),
             format: ImageFormat::Png,
@@ -127,6 +131,14 @@ impl SystemOps for PngAdapter {
 pub(super) fn png_adapter() -> PngAdapter {
     PngAdapter {
         target: Mutex::new(None),
+        minimum_budget_ms: 0,
+    }
+}
+
+pub(super) fn deadline_png_adapter(minimum_budget_ms: u64) -> PngAdapter {
+    PngAdapter {
+        target: Mutex::new(None),
+        minimum_budget_ms,
     }
 }
 

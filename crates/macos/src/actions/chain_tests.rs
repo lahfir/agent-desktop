@@ -39,6 +39,10 @@ fn step_mechanism_tags_physical_for_cgclick_and_keyboard_clear() {
         StepMechanism::PhysicalSynthetic
     );
     assert_eq!(
+        step_mechanism(&ChainStep::CGDisclosureClick { expanded: true }),
+        StepMechanism::PhysicalSynthetic
+    );
+    assert_eq!(
         step_mechanism(&ChainStep::FocusThenClearByKeyboard),
         StepMechanism::PhysicalSynthetic
     );

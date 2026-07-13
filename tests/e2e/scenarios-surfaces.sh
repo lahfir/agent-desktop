@@ -83,18 +83,27 @@ disclosed_present() {
         [ -n "$(json_field "$out" data.match)" ] && echo 1 || echo 0
 }
 require_target disclosure disclosure disclosure-section
-precondition_output="$(act_target "$disclosure" click 2>&1)"
+initially_hidden="$(disclosed_present)"
+assert "disclosure starts with its child hidden" "$([ "$initially_hidden" = "0" ] && echo 1 || echo 0)" \
+    "content_present=$initially_hidden"
+MODE_FLAG="--headed"
+first_expand_output="$(act_target "$disclosure" expand 2>&1)"
+MODE_FLAG=""
 sleep 0.4
 expanded_before="$(disclosed_present)"
-assert "disclosure precondition is independently expanded" \
-    "$([ "$(json_field "$precondition_output" ok)" = "True" ] && [ "$expanded_before" = "1" ] && echo 1 || echo 0)" \
-    "content_present=$expanded_before error=$(json_field "$precondition_output" error.code)"
+assert "expand reveals the initially hidden disclosure content" \
+    "$([ "$(json_field "$first_expand_output" ok)" = "True" ] && [ "$expanded_before" = "1" ] && echo 1 || echo 0)" \
+    "content_present=$expanded_before error=$(json_field "$first_expand_output" error.code)"
 require_target disclosure disclosure disclosure-section
+MODE_FLAG="--headed"
 collapse_output="$(act_target "$disclosure" collapse 2>&1)"
+MODE_FLAG=""
 sleep 0.4
 collapsed_hidden="$(disclosed_present)"
 require_target disclosure disclosure disclosure-section
+MODE_FLAG="--headed"
 expand_output="$(act_target "$disclosure" expand 2>&1)"
+MODE_FLAG=""
 sleep 0.4
 expanded_shown="$(disclosed_present)"
 assert "collapse hides the disclosed content" \

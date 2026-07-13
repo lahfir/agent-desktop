@@ -80,20 +80,45 @@ mod imp {
             ChainStep::CustomWithDeadline { label: _, func } => func(el, ctx.deadline),
 
             ChainStep::CGClick { button, count } => {
-                ctx.ensure_budget()?;
-                crate::actions::physical_click::click_via_bounds(
-                    el,
-                    crate::actions::physical_click::PhysicalClick {
-                        button: button.clone(),
-                        count: *count,
-                        verified_point: ctx.verified_point.cloned(),
-                    },
-                    policy,
-                    ctx.deadline,
-                )?;
+                physical_click(el, button.clone(), *count, ctx, policy)?;
                 Ok(DeliveryOutcome::DeliveredUnverified)
             }
+            ChainStep::CGDisclosureClick { expanded } => {
+                if !crate::actions::chain_disclosure_steps::physical_fallback_allowed(
+                    el,
+                    *expanded,
+                    ctx.deadline,
+                )? {
+                    return Ok(DeliveryOutcome::NotDelivered);
+                }
+                physical_click(el, agent_desktop_core::MouseButton::Left, 1, ctx, policy)?;
+                crate::actions::chain_disclosure_steps::verify_physical_delivery(
+                    el,
+                    *expanded,
+                    ctx.deadline,
+                )
+            }
         }
+    }
+
+    fn physical_click(
+        element: &AXElement,
+        button: agent_desktop_core::MouseButton,
+        count: u32,
+        context: &ChainContext<'_>,
+        policy: InteractionPolicy,
+    ) -> Result<(), AdapterError> {
+        context.ensure_budget()?;
+        crate::actions::physical_click::click_via_bounds(
+            element,
+            crate::actions::physical_click::PhysicalClick {
+                button,
+                count,
+                verified_point: context.verified_point.cloned(),
+            },
+            policy,
+            context.deadline,
+        )
     }
 
     fn prepare(

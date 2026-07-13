@@ -32,7 +32,11 @@ mod imp {
 
         for (i, step) in def.steps.iter().enumerate() {
             ctx.ensure_budget()?;
-            if matches!(step, ChainStep::CGClick { .. }) && !physical_click_permitted(policy) {
+            if matches!(
+                step,
+                ChainStep::CGClick { .. } | ChainStep::CGDisclosureClick { .. }
+            ) && !physical_click_permitted(policy)
+            {
                 return Err(AdapterError::policy_denied_for_policy(
                     "Physical click fallback is disabled by the current interaction policy",
                     policy,
@@ -62,9 +66,9 @@ mod imp {
 
     pub(crate) fn step_mechanism(step: &ChainStep) -> StepMechanism {
         match step {
-            ChainStep::CGClick { .. } | ChainStep::FocusThenClearByKeyboard => {
-                StepMechanism::PhysicalSynthetic
-            }
+            ChainStep::CGClick { .. }
+            | ChainStep::CGDisclosureClick { .. }
+            | ChainStep::FocusThenClearByKeyboard => StepMechanism::PhysicalSynthetic,
             _ => StepMechanism::SemanticApi,
         }
     }
@@ -106,6 +110,7 @@ mod imp {
             ChainStep::FocusThenClearByKeyboard => "FocusThenClearByKeyboard",
             ChainStep::CustomWithDeadline { label, .. } => label,
             ChainStep::CGClick { .. } => "CGClick",
+            ChainStep::CGDisclosureClick { .. } => "CGDisclosureClick",
         }
     }
 

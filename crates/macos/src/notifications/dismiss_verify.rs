@@ -32,6 +32,17 @@ pub(super) fn disappeared(
     }
 }
 
+pub(super) fn verified_after_strategy(
+    outcome: Result<bool, AdapterError>,
+    deadline: Deadline,
+    verify: impl FnOnce() -> Result<bool, AdapterError>,
+) -> Result<bool, AdapterError> {
+    if let Err(error) = outcome {
+        super::read::tolerate_ax_strategy_error(error, deadline)?;
+    }
+    verify()
+}
+
 fn wait_with(
     mut is_present: impl FnMut() -> Result<bool, AdapterError>,
     deadline: Deadline,

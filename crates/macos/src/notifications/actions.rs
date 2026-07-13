@@ -346,16 +346,15 @@ fn strategy_verified(
     pid: i32,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
-    if !strategy_succeeded(outcome, deadline)? {
-        return Ok(false);
-    }
-    match super::dismiss_verify::disappeared(entry, filter, matching_before, pid, deadline) {
-        Ok(disappeared) => Ok(disappeared),
-        Err(error) => {
-            crate::notifications::read::tolerate_ax_strategy_error(error, deadline)?;
-            Ok(false)
+    super::dismiss_verify::verified_after_strategy(outcome, deadline, || {
+        match super::dismiss_verify::disappeared(entry, filter, matching_before, pid, deadline) {
+            Ok(disappeared) => Ok(disappeared),
+            Err(error) => {
+                crate::notifications::read::tolerate_ax_strategy_error(error, deadline)?;
+                Ok(false)
+            }
         }
-    }
+    })
 }
 
 fn all_dismiss_strategies_failed() -> AdapterError {

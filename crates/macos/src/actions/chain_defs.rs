@@ -12,10 +12,7 @@ mod imp {
     pub(crate) static CLICK_CHAIN: ChainDef = ChainDef {
         steps: &[
             ChainStep::Action("AXPress"),
-            ChainStep::CGClick {
-                button: MouseButton::Left,
-                count: 1,
-            },
+            ChainStep::CGDisclosureClick { expanded: true },
         ],
         suggestion: "Target an element that advertises Click or use an explicit point click.",
         continue_after_unverified_delivery: false,
@@ -53,19 +50,25 @@ mod imp {
     };
 
     pub(crate) static EXPAND_CHAIN: ChainDef = ChainDef {
-        steps: &[ChainStep::CustomWithDeadline {
-            label: "expand_verified",
-            func: chain_disclosure_steps::press_to_expand,
-        }],
+        steps: &[
+            ChainStep::CustomWithDeadline {
+                label: "expand_verified",
+                func: chain_disclosure_steps::press_to_expand,
+            },
+            ChainStep::CGDisclosureClick { expanded: true },
+        ],
         suggestion: "Target a control with a readable expandable state.",
         continue_after_unverified_delivery: false,
     };
 
     pub(crate) static COLLAPSE_CHAIN: ChainDef = ChainDef {
-        steps: &[ChainStep::CustomWithDeadline {
-            label: "collapse_verified",
-            func: chain_disclosure_steps::press_to_collapse,
-        }],
+        steps: &[
+            ChainStep::CustomWithDeadline {
+                label: "collapse_verified",
+                func: chain_disclosure_steps::press_to_collapse,
+            },
+            ChainStep::CGDisclosureClick { expanded: false },
+        ],
         suggestion: "Target a control with a readable expandable state.",
         continue_after_unverified_delivery: false,
     };
@@ -143,6 +146,22 @@ mod imp {
                 .with_mechanism(StepMechanism::PhysicalSynthetic)
                 .with_verified(false),
         ])
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{COLLAPSE_CHAIN, EXPAND_CHAIN};
+        use crate::actions::chain_step::ChainStep;
+
+        #[test]
+        fn disclosure_chains_end_with_a_headed_physical_fallback() {
+            for chain in [&EXPAND_CHAIN, &COLLAPSE_CHAIN] {
+                assert!(matches!(
+                    chain.steps.last(),
+                    Some(ChainStep::CGDisclosureClick { .. })
+                ));
+            }
+        }
     }
 }
 

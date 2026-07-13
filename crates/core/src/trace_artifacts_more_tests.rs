@@ -1,4 +1,7 @@
-use super::tests::{artifacts_session, entry, png_adapter, run_ref_action, setup_artifacts_test};
+use super::tests::{
+    artifacts_session, deadline_png_adapter, entry, png_adapter, run_ref_action,
+    setup_artifacts_test,
+};
 use super::*;
 use crate::context::CommandContext;
 use crate::refs::RefMap;
@@ -41,6 +44,20 @@ fn artifacts_full_captures_pre_and_post_pngs() {
     let body = std::fs::read_to_string(segments[0].clone()).unwrap();
     assert!(body.contains("action.artifacts"));
     assert!(body.contains("screens/"));
+}
+
+#[test]
+fn artifact_capture_budget_supports_deadline_bound_screenshot_backends() {
+    let (_home, _lock) = setup_artifacts_test();
+    let manifest = artifacts_session();
+    let context = CommandContext::new(Some(manifest.id.clone()), None, false).unwrap();
+    run_ref_action(&context, &deadline_png_adapter(250), 42).unwrap();
+    let screens = RefStore::for_session(Some(&manifest.id))
+        .unwrap()
+        .trace_dir()
+        .join("screens");
+
+    assert_eq!(std::fs::read_dir(screens).unwrap().count(), 2);
 }
 
 #[test]

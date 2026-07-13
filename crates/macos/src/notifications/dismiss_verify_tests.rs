@@ -22,6 +22,20 @@ fn acknowledged_strategy_succeeds_only_after_reobservation_finds_no_row() {
 }
 
 #[test]
+fn tolerated_native_error_succeeds_when_reobservation_proves_removal() {
+    let result = super::verified_after_strategy(
+        Err(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "target disappeared during AXDismiss",
+        )),
+        Deadline::standard().expect("deadline"),
+        || Ok(true),
+    );
+
+    assert!(result.expect("verified removal must dominate native acknowledgement"));
+}
+
+#[test]
 fn fallback_identity_includes_the_body() {
     let original = NotificationInfo {
         index: 1,

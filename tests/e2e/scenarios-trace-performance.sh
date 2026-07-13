@@ -44,7 +44,18 @@ trace_events="$(printf '%s' "$trace_show" | python3 -c '
 import json,sys
 data=json.load(sys.stdin)
 events=[entry.get("event") for entry in data.get("data",{}).get("events",[])]
-print(1 if {"command.start","command.end","snapshot.saved"}.issubset(events) else 0)
+required={"command.start","command.end","snapshot.saved","action.artifacts"}
+print(1 if required.issubset(events) else 0)
+' 2>/dev/null)"
+trace_artifact_skips="$(printf '%s' "$trace_show" | python3 -c '
+import json,sys
+data=json.load(sys.stdin)
+keys=("skipped","skipped_pre","skipped_post")
+items=[]
+for event in data.get("data",{}).get("events",[]):
+    if event.get("event") == "action.artifacts":
+        items.extend(f"{key}={event[key]}" for key in keys if key in event)
+print(",".join(items) or "none")
 ' 2>/dev/null)"
 trace_dir="${HOME}/.agent-desktop/sessions/${trace_session}/trace"
 png_magic=0
@@ -59,7 +70,7 @@ assert "trace show includes command and snapshot events" "$trace_events" \
 trace_artifacts_ok="$([ "$(json_field "$trace_click" ok)" = "True" ] && \
     [ "$(json_field "$trace_session_type" ok)" = "True" ] && [ "$png_magic" = "1" ] && echo 1 || echo 0)"
 assert "trace screenshot artifacts have PNG magic" "$trace_artifacts_ok" \
-    "click_ok=$(json_field "$trace_click" ok) type_ok=$(json_field "$trace_session_type" ok) directory=$trace_dir/screens exists=$([ -d "$trace_dir/screens" ] && echo yes || echo no) pngs=$(find "$trace_dir/screens" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+    "click_ok=$(json_field "$trace_click" ok) type_ok=$(json_field "$trace_session_type" ok) directory=$trace_dir/screens exists=$([ -d "$trace_dir/screens" ] && echo yes || echo no) pngs=$(find "$trace_dir/screens" -name '*.png' 2>/dev/null | wc -l | tr -d ' ') skips=$trace_artifact_skips"
 
 trace_html="$(mktemp -t agentdesk-e2e-trace-export.XXXXXX.html)"
 cleanup_files+=("$trace_html")
