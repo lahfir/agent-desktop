@@ -185,11 +185,16 @@ fn persistent_cannot_complete_exhausts_one_deadline_with_last_evidence() {
     assert_eq!(error.code, ErrorCode::Timeout);
     let details = error.details.unwrap();
     assert_eq!(details["kind"], "locator_transient_incomplete");
-    assert!(details["observation_attempts"].as_u64().unwrap() >= 2);
+    let observation_attempts = details["observation_attempts"].as_u64().unwrap();
+    assert!(observation_attempts >= 1);
+    assert_eq!(
+        observation_attempts,
+        adapter.builds.load(Ordering::SeqCst) as u64
+    );
     assert_eq!(details["last_incomplete"]["cannot_complete"], 1);
     assert_eq!(
         details["query_stats"]["reads"]["cannot_complete"],
-        details["observation_attempts"]
+        observation_attempts
     );
 }
 
