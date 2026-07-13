@@ -9,7 +9,8 @@ values, containment predicates, and large trees.
 Run it without network access:
 
 ```bash
-rtk cargo run -p agent-desktop-core --release --example locator_benchmark
+rtk cargo run -p agent-desktop-core --release --example locator_benchmark \
+  > /private/tmp/agent-desktop-locator-synthetic.json
 ```
 
 The JSON report includes 31-run p50/p95 wall-clock latency, candidate nodes,
@@ -28,10 +29,12 @@ evidence:
 
 ```bash
 python3 benchmarks/locator-resolution/generate_performance_report.py \
-  --synthetic benchmarks/locator-resolution/results/2026-07-10-final.json \
+  --synthetic /private/tmp/agent-desktop-locator-synthetic.json \
   --live /private/tmp/agent-desktop-electron-slack-paired-final.json \
-  --output benchmarks/locator-resolution/results/2026-07-10-performance-report.html
+  --output /private/tmp/agent-desktop-locator-performance-report.html
 ```
+
+Benchmark outputs are generated evidence, not source. Keep them outside the repository.
 
 For privileged Electron/Chromium runs, the macOS adapter first asks whether the
 application root exposes `AXManualAccessibility` as settable, reads its current

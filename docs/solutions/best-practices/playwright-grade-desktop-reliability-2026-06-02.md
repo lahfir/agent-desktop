@@ -41,11 +41,18 @@ is `AMBIGUOUS_TARGET`. Mutable field values are not stable identity.
 
 ### 3. Separate actionability from dispatch
 
-Semantic ref actions use the shared auto-wait and live actionability checks.
-The command owns the base interaction policy: semantic actions, including
-typing, are strictly headless; explicit ref-targeted key presses may use focus
-fallback, and headed mode can only elevate policy. A failed preflight must say
-why and preserve retry safety.
+Ref actions use the shared auto-wait and live actionability checks. Each command
+owns its least-permissive base interaction policy: ref actions, including
+typing, start headless, while explicit ref-targeted key presses retain their
+focus fallback. Headed mode is an opt-in policy elevation, not a different
+resolution path. A failed preflight must say why and preserve retry safety.
+
+On macOS, headless natural-input commands use semantic accessibility delivery.
+Headed `click`, `right-click`, `type`, `clear`, and `scroll` prefer physical
+delivery; semantic-only commands remain semantic. Double- and triple-click,
+hover, and drag are physical-only and fail closed without headed permission.
+Results expose the delivered step mechanism so tests and callers can verify
+this split instead of inferring it from a successful response.
 
 Pointer commands are a separate physical family. They resolve a live point,
 verify visibility, geometry stability, and hit-test receipt, then require an
@@ -73,7 +80,8 @@ Use deterministic core tests for identity, policy, retry, and delivery rules;
 C/C++ header compilation and layout tests for FFI; and a permissioned release
 binary against the SwiftUI fixture for native observation and harmless
 interaction. Real-app ignored tests protect platform seams such as window
-identity and accessible-name agreement.
+identity and accessible-name agreement. Headed and headless fixture scenarios
+must assert both the observed effect and the reported delivery mechanism.
 
 ## Why This Matters
 

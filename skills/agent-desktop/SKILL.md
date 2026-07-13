@@ -9,9 +9,10 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 58 commands across observation, interaction, keyboard/mouse, app lifecycle,
-  notifications (macOS), clipboard, wait, session lifecycle, and a `skills` command
-  bundled docs straight from the binary.
+  Covers 58 command names (54 operational; four held-input names fail closed until
+  daemon ownership exists) across observation, interaction, keyboard/mouse, app
+  lifecycle, notifications (macOS), clipboard, wait, session lifecycle, and a
+  `skills` command that bundles docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
   "take screenshot", "desktop automation", "agent-desktop", or any desktop GUI interaction task.
@@ -94,7 +95,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - **Scoped invalidation:** re-drilling a qualified root ref only replaces refs from that root's previous drill — refs from other regions and the skeleton itself are preserved
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - **Actionability:** every ref-addressed action checks its applicable live visibility, stability, enabled, editability, policy, supported-action, and hit-test requirements under one bounded budget before a single dispatch. Pointer actions focus before their final geometry read, re-resolve moving endpoints, and return `TIMEOUT` with `details.kind: "actionability_timeout"` instead of sending input after the deadline.
-- **Headless vs headed:** ref actions are strictly headless by default: semantic accessibility APIs only, with no focus stealing, cursor movement, or synthesized keyboard input. Pass global `--headed` to prefer physical delivery for natural input commands (`click`, `right-click`, `type`, `clear`, `expand`, `collapse`, and `scroll`); semantic-only commands such as `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` remain semantic. Raw input commands (`press`, `hover`, `drag`, `mouse-*`) are explicit physical input; cursor commands require `--headed`.
+- **Headless vs headed:** ref actions are strictly headless by default: semantic accessibility APIs only, with no focus stealing, cursor movement, or synthesized keyboard input. In headed mode, core focuses the exact ref window before dispatch; pointer actions also require a verified target point, while the adapter owns OS delivery. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and other semantic actions remain semantic. Raw `--xy` input has no window identity and never steals focus. `press` is explicit physical keyboard input; held-input commands (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and fail closed in the stateless CLI.
 - **Sessions and tracing:** run `session start` once per agent run to create a manifest with `trace: on` (default), then pass its returned ID with `--session` or `AGENT_DESKTOP_SESSION`. Use `session start --screenshots` when you need replay artifacts (`artifacts: full`): pre/post-action PNGs and refmap copies under the session trace directory (sensitive — treat exports like screenshots). Commands in that explicit scope record JSONL automatically to per-process segments under `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl` — no `--trace` on every call. Read traces back with `trace show` (bounded JSON for agents) or `trace export` (single-file HTML for humans). A session owns both its trace and its latest-snapshot namespace. Snapshot lookup never searches another namespace. **`--session <id>` alone** (no manifest from `session start`) selects only the snapshot namespace — existing callers see no surprise trace files. **`--trace <path>`** still overrides to one atomic file for CI or one-offs. Activation precedence is `--session` > `AGENT_DESKTOP_SESSION` > no session; `session start` does not activate later processes. Multi-agent shared sessions: each agent acts on qualified refs from its own snapshot — implicit latest is not a cross-agent guarantee. Run `status` to see `session_id` and `tracing`. Trace lines include `ts_ms`, monotonic per-process `seq`, and redacted sensitive fields (`text`, `value`, `expected`, `name`, `username`, `description`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, `placeholder` → `{ "redacted": true }`). `--trace-strict` fails on trace setup and pre-action writes; post-action success traces are best-effort.
 
 ## JSON Output Contract
@@ -133,7 +134,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 
 `TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
-## Command Quick Reference (58 commands)
+## Command Quick Reference (58 names, 54 operational)
 
 ### Observation
 ```
@@ -150,9 +151,9 @@ agent-desktop list-surfaces --app "App"                     # Available surfaces
 
 ### Interaction
 ```
-agent-desktop click @e5 --snapshot <snapshot_id> # AX-first click, no cursor move by default
+agent-desktop click @e5 --snapshot <snapshot_id> # Headless semantic click
 agent-desktop --headed double-click @s8f3k2p9:e3 # physical double-click
-agent-desktop triple-click @s8f3k2p9:e2         # Physical triple-click uses mouse-click --count 3
+agent-desktop --headed triple-click @s8f3k2p9:e2 # physical triple-click
 agent-desktop right-click @s8f3k2p9:e5          # Right-click; inspect the resulting menu/effect separately
 agent-desktop type @e2 --snapshot <snapshot_id> "hello"  # Headless AX text insertion when supported
 agent-desktop set-value @s8f3k2p9:e2 "new value"         # Set value directly
@@ -172,16 +173,14 @@ agent-desktop scroll-to @s8f3k2p9:e8                     # Scroll into view
 ```
 agent-desktop press cmd+c                       # Key combo
 agent-desktop press return --app "App"          # Targeted key press
-agent-desktop key-down shift                    # Hold key
-agent-desktop key-up shift                      # Release key
 agent-desktop --headed hover @s8f3k2p9:e5       # Explicit cursor movement
 agent-desktop --headed hover --xy 500,300       # Cursor to coordinates
 agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5 # Drag between elements
 agent-desktop --headed mouse-click --xy 500,300 # Click at coordinates
 agent-desktop --headed mouse-move --xy 100,200  # Move cursor
-agent-desktop --headed mouse-down --xy 100,200  # Press mouse button
-agent-desktop --headed mouse-up --xy 300,400    # Release mouse button
 ```
+
+`key-down`, `key-up`, `mouse-down`, and `mouse-up` return `ACTION_NOT_SUPPORTED` until a stateful daemon can own held-input lifetime. Use `press`, `mouse-click`, or `drag` instead.
 
 ### App & Window
 ```
@@ -202,17 +201,18 @@ Use `--window-id <id>` from `list-windows` instead of `--app` when an app has mu
 
 ### Notifications
 ```
-agent-desktop list-notifications                # List all notifications
-agent-desktop list-notifications --app "Slack"  # Filter by app
-agent-desktop list-notifications --text "deploy" --limit 5  # Filter by text
-agent-desktop dismiss-notification 1 --expected-app Slack --expected-title "Deploy complete"
-agent-desktop dismiss-all-notifications         # Dismiss all
-agent-desktop dismiss-all-notifications --app "Slack"  # Dismiss all from app
-agent-desktop notification-action 1 "Reply" --expected-app Slack --expected-title "Deploy complete"
+agent-desktop --headed list-notifications                # Open center if needed, then list
+agent-desktop --headed list-notifications --app "Slack"  # Filter by app
+agent-desktop --headed list-notifications --text "deploy" --limit 5  # Filter by text
+agent-desktop --headed dismiss-notification 1 --expected-app Slack --expected-title "Deploy complete"
+agent-desktop --headed dismiss-all-notifications         # Dismiss all
+agent-desktop --headed dismiss-all-notifications --app "Slack"  # Dismiss all from app
+agent-desktop --headed notification-action 1 "Reply" --expected-app Slack --expected-title "Deploy complete"
 ```
 
-Notification mutations require an app or title fingerprint from the same
-listing. Use global `--headed` only for hover-revealed dismiss controls.
+Every notification mutation requires global `--headed`; single-notification
+mutations also require an app or title fingerprint from the same listing.
+Headless listing works only while Notification Center is already open.
 
 ### Clipboard
 ```
@@ -263,6 +263,6 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 8. **Use `find` for targeted searches.** Faster than any snapshot when you know role/name.
 9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused.
 10. **Batch for performance.** Multiple commands in one invocation.
-11. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use explicit `focus`, `press`, `hover`, `drag`, or `mouse-*` commands only when physical/headed interaction is intended.
+11. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use `--headed` only when exact-window focus or physical delivery is intended; raw coordinates never imply focus.
 12. **Start a session once per run.** `session start` creates the manifest; pass its returned ID through `AGENT_DESKTOP_SESSION` for the run or `--session <id>` for one command. It does not activate later processes implicitly.
 13. **Trace hard failures.** With an active trace-enabled session, segments are written automatically. Add `--trace /tmp/agent-desktop.jsonl` only when you need a single override file (CI, one-offs). Check `status` when unsure whether tracing is active.

@@ -96,11 +96,11 @@ If Notification Center fails to close after a successful list or dismiss operati
 
 ### list-notifications
 ```bash
-agent-desktop list-notifications
-agent-desktop list-notifications --app "Slack"
-agent-desktop list-notifications --text "deploy" --limit 5
+agent-desktop --headed list-notifications
+agent-desktop --headed list-notifications --app "Slack"
+agent-desktop --headed list-notifications --text "deploy" --limit 5
 ```
-Lists notifications in the Notification Center. Returns array of `{ index, app_name, title, body, actions }`.
+Lists notifications in Notification Center. Headless mode can observe it only when it is already open; `--headed` may open it and restore the prior frontmost app afterward. Returns array of `{ index, app_name, title, body, actions }`.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -110,40 +110,40 @@ Lists notifications in the Notification Center. Returns array of `{ index, app_n
 
 ### dismiss-notification
 ```bash
-agent-desktop dismiss-notification 1
-agent-desktop dismiss-notification 3 --app "Slack"
+agent-desktop --headed dismiss-notification 1 --expected-app "Slack" --expected-title "Deploy complete"
+agent-desktop --headed dismiss-notification 3 --app "Slack" --expected-app "Slack"
 ```
-Dismisses a single notification by its 1-based index. Returns the dismissed notification info.
+Dismisses a single notification by its 1-based index. Requires `--headed` and at least one fingerprint from the listing (`--expected-app` or `--expected-title`). Returns the dismissed notification info.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | (positional) | | 1-based notification index (required) |
 | `--app` | | Filter by app before indexing |
+| `--expected-app` | | Fingerprint app name (at least one fingerprint required) |
+| `--expected-title` | | Fingerprint title (at least one fingerprint required) |
 
 ### dismiss-all-notifications
 ```bash
-agent-desktop dismiss-all-notifications
-agent-desktop dismiss-all-notifications --app "Slack"
+agent-desktop --headed dismiss-all-notifications
+agent-desktop --headed dismiss-all-notifications --app "Slack"
 ```
-Dismisses all notifications, optionally filtered by app. Reports per-notification failures.
+Dismisses all notifications, optionally filtered by app. Requires `--headed` because it mutates the focused system notification surface. Reports per-notification failures.
 
 Returns `{ "dismissed_count": N, "failures": [...], "failed_count": N }`.
 
 ### notification-action
 ```bash
-agent-desktop notification-action 1 "Reply"
-agent-desktop notification-action 2 "Mark as Read" --expected-app Slack --expected-title "#general"
+agent-desktop --headed notification-action 1 "Reply" --expected-app Slack
+agent-desktop --headed notification-action 2 "Mark as Read" --expected-app Slack --expected-title "#general"
 ```
-Clicks a named action button on a notification by its 1-based index.
+Clicks a named action button on a notification by its 1-based index. Requires `--headed` and at least one listing fingerprint.
 
 `--expected-app` and `--expected-title` pin the call to the notification
 you observed in `list-notifications`. Notification Center reorders
-entries between listings, so without a fingerprint an arriving or
-dismissed notification can shift the target at `INDEX` and cause the
-action to press the wrong row. When either flag is set and the row at
+entries between listings, so an arriving or dismissed notification can shift
+the target at `INDEX`. When the row at
 `INDEX` no longer matches, the call fails with `NOTIFICATION_NOT_FOUND`
-instead of pressing. Both flags omitted preserves the legacy
-index-only behavior for callers that reconcile themselves.
+instead of pressing. Omitting both fingerprints is rejected with `INVALID_ARGS`.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -158,6 +158,8 @@ agent-desktop wait --notification --app "App" --timeout 10000
 agent-desktop wait --notification --text "build passed" --timeout 15000
 ```
 Blocks until a new notification appears (detects index-diff from a baseline captured at wait start). Supports `--app` and `--text` filters. Transient Notification Center errors (timeouts, element-not-found) are retried within the `--timeout` budget for both the baseline capture and polling; permanent errors (for example `PERM_DENIED`) fail immediately. Timeout errors include a `last_error` detail with the most recent transient failure.
+
+Like listing, a headless wait can observe only an already-open Notification Center; use global `--headed` when the command may open and later restore it.
 
 ## Clipboard
 

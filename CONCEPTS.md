@@ -84,7 +84,9 @@ The platform-neutral set of supported action names that core uses to compare com
 Each adapter maps native primitives into this shared vocabulary before core evaluates actionability. New commands should extend the central vocabulary first, then reuse it from actionability, ref allocation, predicates, FFI tests, and platform adapters.
 
 ### Interaction Policy
-The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input fallbacks. Ref commands expose exactly two modes: **headless** (the default — accessibility-only, no cursor, fails closed when the AX path is unavailable) and **headed** (opt-in via the global `--headed` flag — permits focus stealing and cursor movement so the action chain's physical fallbacks can complete). The AX path is always tried first, so headed never regresses headless-capable elements. The `headed` upgrade applies uniformly to every ref command; each command still declares its own headless base policy (most are pure-AX; `type` uses a focus-fallback base because typing requires focus but never moves the cursor).
+The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input. Ref commands expose exactly two modes: **headless** (the default — accessibility-only, no cursor, fails closed when the semantic path is unavailable) and **headed** (opt-in via the global `--headed` flag — authorizes the action's declared focus and cursor preconditions).
+
+Core owns those preconditions through `HeadedRequirement`: `FocusedWindow` for keyboard or focus-sensitive work, and `FocusedWindowAndCursor` for pointer delivery. For ref actions, core focuses the exact source window before dispatch and resolves a verified target point for pointer work; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. On macOS, headed `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and the remaining semantic actions stay semantic after the core focus precondition.
 
 ### Headless Ref Action
 A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
@@ -92,7 +94,7 @@ A ref-based action that uses semantic accessibility operations without implicit 
 Headless ref actions may still fail when the native accessibility API cannot perform the requested semantic operation; they fail closed with structured actionability or policy errors rather than silently substituting physical input. The broader **headed** policy must be selected explicitly with `--headed`.
 
 ### Action Chain
-The ordered ladder of strategies a ref action walks to perform one intent — semantic accessibility actions first, then settable attributes, then policy-gated physical input — with each step verified against the element's observed state before it counts as success.
+The ordered ladder of strategies a ref action walks to perform one intent, with each step gated by policy and its delivery evidence recorded. The order is action-specific: natural input may put a headed physical step first, while semantic state changes use accessibility actions or settable attributes only.
 
 The chain pins one execution deadline at its start (distinct from the Resolver Deadline, which budgets re-identification) and every step observes it. Expiry while a step may have partially mutated the element surfaces as a structured timeout carrying the observed state, never as a plain step failure — the caller must be able to tell "nothing happened" from "something may have happened".
 
@@ -105,11 +107,11 @@ The remaining time budget carried through strict ref resolution so every native 
 ### Coordinate Fallback
 An explicit opt-in path that uses screen coordinates or physical input when semantic accessibility operations cannot perform the requested action.
 
-Physical input lands on the topmost window at the target point, so the fallback first ensures the target element's own window is frontmost — the app being frontmost is not sufficient when the element lives in a background window of that app.
+Ref-targeted physical input lands on the topmost window at the resolved point, so core first ensures the target element's exact window is frontmost — the app being frontmost is not sufficient when the element lives in a background window of that app. Raw `--xy` input carries no window identity and therefore moves/clicks at the requested coordinates without focusing any application.
 
 ### FFI Ref-Action Parity
 The requirement that language bindings using refs follow the same strict resolution, actionability, and interaction-policy semantics as CLI ref commands.
 
 ## Relationships
 
-A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected by ID within that same namespace. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch, and the action chain executes that dispatch under its own deadline with the interaction policy gating its physical steps. FFI ref-action parity keeps that same relationship true for language bindings.
+A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected by ID within that same namespace. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether the action can safely dispatch. In headed mode, core applies the action's focus/cursor requirement before the platform adapter executes the action-specific chain under its own deadline. FFI ref-action parity keeps that same relationship true for language bindings.

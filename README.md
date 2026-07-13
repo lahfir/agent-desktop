@@ -41,7 +41,7 @@
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
 - **C-ABI cdylib** (`libagent_desktop_ffi`): Load once from Python / Swift / Go / Ruby / Node / C instead of forking the CLI per call
-- **58 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, trace read/export, plus a bundled `skills` doc loader
+- **58 command names, 54 operational commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, trace read/export, plus a bundled `skills` doc loader. The four held-input names are reserved for a stateful daemon and fail closed in the stateless CLI.
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using compact snapshot IDs and qualified element references (`@s8f3k2p9:e1`, `@s8f3k2p9:e2`)
 - **Headless-by-default interactions**: Ref actions use accessibility APIs and block silent focus, cursor, keyboard, or pasteboard side effects
@@ -193,7 +193,7 @@ agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers,
 agent-desktop click @s8f3k2p9:e3                  # strict headless AX click
 agent-desktop --headed click @s8f3k2p9:e3         # physical click, focus/cursor allowed
 agent-desktop --headed double-click @s8f3k2p9:e3  # physical double-click
-agent-desktop triple-click @s8f3k2p9:e3           # POLICY_DENIED if physical input is disabled
+agent-desktop --headed triple-click @s8f3k2p9:e3  # physical triple-click
 agent-desktop right-click @s8f3k2p9:e3            # open context menu; inspect effect before retrying
 agent-desktop type @s8f3k2p9:e5 "hello world"     # insert text into element
 agent-desktop set-value @s8f3k2p9:e5 "new value"  # set value directly via AX
@@ -209,7 +209,7 @@ agent-desktop scroll @s8f3k2p9:e1 --direction down --amount 3  # strict headless
 agent-desktop scroll-to @s8f3k2p9:e20             # scroll element into view
 ```
 
-> **(macOS, Phase 1)** Default ref actions are strict headless semantic operations. `--headed` prefers physical delivery for natural input commands; double/triple-click, hover, and drag are physical-only. Semantic-only commands remain semantic. See `skills/agent-desktop/references/commands-interaction.md`.
+> **(macOS, Phase 1)** Default ref actions are strict headless semantic operations. In headed mode, core focuses the exact ref window before dispatch; pointer commands additionally require a verified target point, while the adapter owns physical delivery. `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and other semantic commands remain semantic. Raw coordinates never imply a target window and therefore never steal focus. See `skills/agent-desktop/references/commands-interaction.md`.
 
 ### Keyboard
 
@@ -217,9 +217,9 @@ agent-desktop scroll-to @s8f3k2p9:e20             # scroll element into view
 agent-desktop press cmd+s               # key combo
 agent-desktop press cmd+shift+z          # multi-modifier
 agent-desktop press escape               # single key
-agent-desktop key-down shift             # hold key
-agent-desktop key-up shift               # release key
 ```
+
+`key-down` and `key-up` are reserved command names and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the held-key lifetime.
 
 ### Mouse
 
@@ -229,9 +229,9 @@ agent-desktop --headed hover --xy 500,300         # move cursor to coordinates
 agent-desktop --headed drag --from @s8f3k2p9:e3 --to @s8f3k2p9:e8   # drag between elements
 agent-desktop --headed drag --from-xy 100,200 --to-xy 400,200  # drag between coordinates
 agent-desktop --headed mouse-click --xy 500,300   # click at coordinates
-agent-desktop --headed mouse-down --xy 500,300    # press at coordinates
-agent-desktop --headed mouse-up --xy 500,300      # release at coordinates
 ```
+
+`mouse-down` and `mouse-up` are likewise reserved; use the atomic `mouse-click` or `drag` commands.
 
 ### App & Window Management
 
@@ -243,7 +243,7 @@ agent-desktop close-app Safari --force   # force quit (SIGTERM, then SIGKILL if 
 agent-desktop list-apps                  # list running GUI apps
 agent-desktop list-windows               # list visible windows
 agent-desktop list-windows --app Finder  # windows for specific app
-agent-desktop focus-window w-4521        # bring window to front
+agent-desktop focus-window --window-id w-4521  # bring exact window to front
 agent-desktop resize-window --window-id w-4521 --width 800 --height 600
 agent-desktop move-window --window-id w-4521 --x 100 --y 100
 agent-desktop minimize --window-id w-4521
@@ -257,15 +257,16 @@ agent-desktop restore --window-id w-4521
 agent-desktop --headed list-notifications              # open Notification Center if needed, then list
 agent-desktop --headed list-notifications --app "Slack"         # filter by app
 agent-desktop --headed list-notifications --text "deploy" --limit 5  # filter by text
-agent-desktop dismiss-notification 1 --expected-app "Slack" --expected-title "Deploy complete"
-agent-desktop dismiss-all-notifications                # dismiss all
-agent-desktop dismiss-all-notifications --app "Slack"  # dismiss all from app
-agent-desktop notification-action 1 "Reply" --expected-app "Slack" --expected-title "Deploy complete"
+agent-desktop --headed dismiss-notification 1 --expected-app "Slack" --expected-title "Deploy complete"
+agent-desktop --headed dismiss-all-notifications                # dismiss all
+agent-desktop --headed dismiss-all-notifications --app "Slack"  # dismiss all from app
+agent-desktop --headed notification-action 1 "Reply" --expected-app "Slack" --expected-title "Deploy complete"
 ```
 
 Single-notification mutations require an app or title fingerprint from the
-same listing. Headless listing observes an already-open Notification Center;
-pass `--headed` to allow opening it and restoring the prior frontmost app.
+same listing. Every mutation requires `--headed` because it opens and focuses
+Notification Center. Headless listing can only observe an already-open center;
+headed listing may open it and restore the prior frontmost app afterward.
 
 ### Clipboard
 

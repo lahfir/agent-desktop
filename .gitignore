@@ -49,6 +49,10 @@ lcov.info
 tarpaulin-report.html
 coverage/
 
+# Generated review and benchmark evidence
+/benchmarks/locator-resolution/results/
+/regression_findings.json
+
 # Binary artifacts
 *.dylib
 *.so

@@ -131,7 +131,7 @@ agent-desktop snapshot --app "TextEdit" --surface sheet -i
 ## Pattern: Right-Click Context Menu
 
 ```bash
-# 1. Right-click the target element. Success means a menu surface was verified.
+# 1. Right-click the target. On macOS, APP_UNRESPONSIVE can mean AXShowMenu entered modal tracking after delivery; inspect the effect before retrying.
 agent-desktop right-click @s8f3k2p9:e3
 
 # 2. Use the returned menu tree, or snapshot the menu surface if you need a fresh read.
@@ -286,7 +286,7 @@ agent-desktop uncheck @s8f3k2p9:e6  # No-op if already unchecked
 ## Pattern: Batch Operations
 
 ```bash
-# Run multiple commands atomically
+# Run multiple commands sequentially in one process; this is not a transaction
 agent-desktop batch '[
   {"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}},
   {"command":"wait","args":{"ms":200}},
@@ -306,4 +306,4 @@ agent-desktop batch '[
 7. **Assuming UI stability.** Re-drill the affected region after every action that could change the UI.
 8. **Snapshotting the full window when an overlay is open.** Use `--surface sheet/alert/popover/menu` instead. Never `--skeleton` for surfaces — they're already focused.
 9. **Re-snapshotting everything after one action.** Use scoped re-drill (`--root @ref`) to refresh only the affected region. Other refs stay valid.
-10. **Relying on implicit focus or cursor movement.** Non-mouse ref commands use semantic paths and block silent physical/headed paths.
+10. **Assuming headed and headless have the same side effects.** Headless ref actions block implicit focus/cursor input. Headed ref actions intentionally focus the exact source window when required, and headed pointer actions may move the cursor; raw coordinates never infer focus.

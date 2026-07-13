@@ -49,17 +49,21 @@ pub extern "C" fn ad_action_size() -> usize {
 
 The anonymous const assert fails the Rust build the moment the layout drifts. The extern function lets any binding language query the true size at startup and compare it against its own layout computation.
 
-**Layer 2 — C header: macro + C11-gated `_Static_assert` + layout history.**
+**Layer 2 — C header: literal macro + C11-gated `_Static_assert`.**
 
 ```c
 /* crates/ffi/include/agent_desktop.h */
-#define AD_ACTION_SIZE (sizeof(AdAction))
+#define AD_ACTION_SIZE 96
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdAction) == 96, "AdAction ABI size changed");
+_Static_assert(sizeof(AdAction) == AD_ACTION_SIZE, "AdAction ABI size changed");
 #endif
 ```
 
-C11 consumers fail at their own compile time when the header and the pinned literal diverge; pre-C11 consumers verify at runtime by comparing their own layout against `ad_action_size()` (the macro is a sizing shorthand, not a pin — `sizeof` always tracks the current struct). A layout-history comment in the header records past size changes (40→48, the AdAction propagation, renames) so fresh reviewers and upgrading callers stop re-discovering adjudicated breaks.
+C11 consumers fail at their own compile time when the generated literal and the
+actual C layout diverge. Pre-C11 and runtime-layout consumers compare their own
+layout against `ad_action_size()`. The committed header is generated from the
+Rust definitions, so the literal macro remains the single C-side pin rather
+than tracking `sizeof` automatically.
 
 **Layer 3 — integration test: size, alignment, offset ordering, zeroed-read, const-vs-extern agreement.**
 
@@ -106,7 +110,7 @@ Adding a field to a pinned struct forces this sequence, and any step done wrong 
 
 1. Add the field to the Rust struct → the `const _` assert fails
 2. Update the Rust const to the new size → build green
-3. Update the header `_Static_assert` literal and the layout-history comment
+3. Regenerate the committed header so its literal size macro is updated
 4. Update the integration test size assertion and extend the zeroed-read check to the new field
 5. The header-compile test and `c_abi_layout` test confirm both sides agree
 
