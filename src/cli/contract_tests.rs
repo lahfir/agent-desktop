@@ -27,6 +27,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "wait_event",
     "wait_event_input",
     "wait_selector",
+    "window_target",
 ];
 
 const COMMAND_SPECIFIC_TESTS: &[&str] = &[
