@@ -8,7 +8,7 @@ mod imp {
         AXUIElementCreateSystemWide, kAXApplicationRole, kAXErrorSuccess, kAXRoleAttribute,
     };
     use agent_desktop_core::{
-        AdapterError, Point, hit_test::HitTestResult, native_handle::NativeHandle,
+        AdapterError, Point, Rect, hit_test::HitTestResult, native_handle::NativeHandle,
     };
 
     /// Hit-tests `point` in the system-wide accessibility hierarchy, then
@@ -32,6 +32,14 @@ mod imp {
     ) -> Result<HitTestResult, AdapterError> {
         let deadline = crate::tree::locator_deadline::from_operation(deadline)?;
         hit_test_element(target, point, deadline)
+    }
+
+    pub(crate) fn visible_bounds_ax_element(
+        target: &AXElement,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        let deadline = crate::tree::locator_deadline::from_operation(deadline)?;
+        clipped_bounds(target, deadline)
     }
 
     fn hit_test_element(
@@ -222,6 +230,21 @@ mod imp {
         point: &Point,
         deadline: std::time::Instant,
     ) -> Result<bool, AdapterError> {
+        Ok(clipped_bounds(target, deadline)?.is_some_and(|bounds| {
+            point.x >= bounds.x
+                && point.y >= bounds.y
+                && point.x <= bounds.x + bounds.width
+                && point.y <= bounds.y + bounds.height
+        }))
+    }
+
+    fn clipped_bounds(
+        target: &AXElement,
+        deadline: std::time::Instant,
+    ) -> Result<Option<Rect>, AdapterError> {
+        let Some(mut visible) = read_bounds_with_deadline(target, deadline)? else {
+            return Ok(None);
+        };
         let mut current = target.clone();
         let mut visited = Vec::new();
         let mut usage = crate::tree::observation_usage::ObservationUsage::new(
@@ -229,7 +252,7 @@ mod imp {
         );
         for _ in 0..ABSOLUTE_MAX_DEPTH {
             if !remember_ancestor(&mut visited, &current) {
-                return Ok(false);
+                return Ok(None);
             }
             let role = match read_complete_text(
                 &current,
@@ -239,31 +262,41 @@ mod imp {
                 "hit_test.clip_role",
             ) {
                 Ok(role) => role,
-                Err(_) => return Ok(false),
+                Err(_) => return Ok(None),
             };
             if ends_clipping_walk(role.as_deref()) {
-                return Ok(true);
+                return Ok(Some(visible));
             }
             if role.as_deref().is_some_and(clips_descendants) {
                 let Some(bounds) = read_bounds_with_deadline(&current, deadline)? else {
-                    return Ok(false);
+                    return Ok(None);
                 };
-                if point.x < bounds.x
-                    || point.y < bounds.y
-                    || point.x > bounds.x + bounds.width
-                    || point.y > bounds.y + bounds.height
-                {
-                    return Ok(false);
-                }
+                let Some(intersection) = intersect_rects(visible, bounds) else {
+                    return Ok(None);
+                };
+                visible = intersection;
             }
             current =
                 match crate::tree::resolve_ax_read::read_element(&current, "AXParent", deadline) {
                     Ok(Some(parent)) => parent,
-                    Ok(None) => return Ok(true),
-                    Err(_) => return Ok(false),
+                    Ok(None) => return Ok(Some(visible)),
+                    Err(_) => return Ok(None),
                 };
         }
-        Ok(false)
+        Ok(None)
+    }
+
+    pub(super) fn intersect_rects(left: Rect, right: Rect) -> Option<Rect> {
+        let x = left.x.max(right.x);
+        let y = left.y.max(right.y);
+        let right_edge = (left.x + left.width).min(right.x + right.width);
+        let bottom_edge = (left.y + left.height).min(right.y + right.height);
+        (right_edge > x && bottom_edge > y).then_some(Rect {
+            x,
+            y,
+            width: right_edge - x,
+            height: bottom_edge - y,
+        })
     }
 
     fn clips_descendants(role: &str) -> bool {
@@ -334,7 +367,7 @@ mod imp {
 pub(crate) use imp::hit_test_impl;
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::hit_test_ax_element;
+pub(crate) use imp::{hit_test_ax_element, visible_bounds_ax_element};
 
 #[cfg(all(test, target_os = "macos"))]
 #[path = "hit_test_tests.rs"]

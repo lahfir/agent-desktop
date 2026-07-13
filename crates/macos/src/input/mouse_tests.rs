@@ -1,6 +1,5 @@
-use super::{Modifier, approach_point, event_flags, standalone_state_error, wheel_lines_to_i32};
+use super::{Modifier, event_flags, standalone_state_error, wheel_lines_to_i32};
 use core_graphics::event::CGEventFlags;
-use core_graphics::geometry::CGPoint;
 
 #[test]
 fn standalone_mouse_state_is_rejected_without_emission() {
@@ -74,14 +73,6 @@ fn wheel_line_conversion_preserves_direction_and_small_nonzero_input() {
 fn wheel_line_conversion_rejects_non_finite_input() {
     assert!(wheel_lines_to_i32(f64::NAN).is_err());
     assert!(wheel_lines_to_i32(f64::INFINITY).is_err());
-}
-
-#[test]
-fn hover_approach_moves_one_point_before_the_exact_destination() {
-    let approach = approach_point(CGPoint::new(2065.0, 636.0));
-
-    assert_eq!(approach.x, 2064.0);
-    assert_eq!(approach.y, 636.0);
 }
 
 #[cfg(feature = "interactive-tests")]

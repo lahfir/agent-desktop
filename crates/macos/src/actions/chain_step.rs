@@ -22,7 +22,4 @@ pub(crate) enum ChainStep {
         button: MouseButton,
         count: u32,
     },
-    CGDisclosureClick {
-        expanded: bool,
-    },
 }

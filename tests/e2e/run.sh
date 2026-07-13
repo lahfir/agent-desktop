@@ -38,6 +38,10 @@ guard_exec 120 4194304 "$repo/tests/fixture-app/build.sh" "$suite_root/fixture" 
     echo "fixture build failed; cannot run E2E" >&2
     exit 2
 }
+"$bin" --headed mouse-move --xy 20,20 >/dev/null 2>&1 || {
+    echo "fixture cursor precondition could not be established" >&2
+    exit 2
+}
 
 guard_exec 10 1048576 open "$fixture_app" || {
     echo "fixture could not be opened" >&2

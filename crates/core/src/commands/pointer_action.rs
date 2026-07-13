@@ -131,7 +131,7 @@ pub(crate) fn resolve_point_with_deadline<'a>(
         return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, lease);
     };
     let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
-    let focused = if args.focus_before_resolve {
+    let focused = if args.headed_requirement.requires_focus() {
         crate::commands::point_resolve::focus_for_physical_input(
             Some(&entry),
             adapter,

@@ -11,4 +11,6 @@ pub(crate) mod mouse;
 mod mouse_drag;
 #[cfg(target_os = "macos")]
 mod mouse_drag_state;
+pub(crate) mod mouse_move;
+pub(crate) mod mouse_scroll;
 mod owned_object;

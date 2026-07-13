@@ -41,9 +41,9 @@ fn snapshot_with_ref(role: &str, available_actions: &[&str]) -> String {
             available_actions: available_actions.iter().map(|a| (*a).to_string()).collect(),
         },
         source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
+            source_app: Some("Fixture".into()),
+            source_window_id: Some("w-1".into()),
+            source_window_title: Some("Fixture".into()),
             source_window_bounds_hash: None,
             source_surface: crate::adapter::SnapshotSurface::Window,
         },
@@ -159,6 +159,7 @@ impl ActionOps for PolicyCaptureAdapter {
 impl InputOps for PolicyCaptureAdapter {}
 impl SystemOps for PolicyCaptureAdapter {
     crate::adapter::guarded_interaction_lease!();
+    crate::adapter::exact_window_focus!();
 }
 
 #[test]

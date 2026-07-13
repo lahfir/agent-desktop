@@ -85,7 +85,7 @@ fn point_args(snapshot_id: &str) -> crate::commands::point_resolve::PointResolve
         xy: None,
         snapshot_id: Some(snapshot_id),
         missing_input_message: "target required",
-        focus_before_resolve: false,
+        headed_requirement: crate::HeadedRequirement::None,
     }
 }
 

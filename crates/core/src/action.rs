@@ -28,6 +28,32 @@ pub enum Action {
 }
 
 impl Action {
+    pub fn headed_requirement(&self) -> crate::HeadedRequirement {
+        match self {
+            Self::Click
+            | Self::DoubleClick
+            | Self::RightClick
+            | Self::TripleClick
+            | Self::Scroll(_, _)
+            | Self::Hover
+            | Self::Drag(_) => crate::HeadedRequirement::FocusedWindowAndCursor,
+            Self::SetValue(_)
+            | Self::SetFocus
+            | Self::Expand
+            | Self::Collapse
+            | Self::Select(_)
+            | Self::Toggle
+            | Self::Check
+            | Self::Uncheck
+            | Self::ScrollTo
+            | Self::PressKey(_)
+            | Self::KeyDown(_)
+            | Self::KeyUp(_)
+            | Self::TypeText(_)
+            | Self::Clear => crate::HeadedRequirement::FocusedWindow,
+        }
+    }
+
     pub fn name(&self) -> &'static str {
         match self {
             Self::Click => "click",

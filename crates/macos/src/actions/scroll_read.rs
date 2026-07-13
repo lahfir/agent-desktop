@@ -1,5 +1,4 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode};
-use std::time::Instant;
 
 use crate::tree::AXElement;
 
@@ -84,16 +83,6 @@ pub(crate) fn number(
     Ok(value
         .downcast::<CFNumber>()
         .and_then(|number| number.to_f64()))
-}
-
-pub(crate) fn deadline_instant(deadline: Deadline) -> Result<Instant, AdapterError> {
-    let remaining = deadline.remaining();
-    if remaining.is_zero() {
-        return Err(deadline.timeout_error());
-    }
-    Instant::now()
-        .checked_add(remaining)
-        .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "Deadline is out of range"))
 }
 
 fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {

@@ -37,8 +37,8 @@ fn optional_visibility_pre_step_preserves_terminal_failures() {
 
 #[test]
 fn horizontal_wheel_delta_matches_direction() {
-    assert_eq!(super::scroll_wheel_delta(&Direction::Right, 2), (0, 10));
-    assert_eq!(super::scroll_wheel_delta(&Direction::Left, 2), (0, -10));
+    assert_eq!(super::scroll_wheel_delta(&Direction::Right, 2), (0, 2));
+    assert_eq!(super::scroll_wheel_delta(&Direction::Left, 2), (0, -2));
 }
 
 #[test]

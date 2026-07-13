@@ -9,7 +9,6 @@ mod imp {
     use super::*;
     use core_graphics::event::{
         CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
-        ScrollEventUnit,
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use core_graphics::geometry::CGPoint;
@@ -52,7 +51,16 @@ mod imp {
         let cg_button = to_cg_button(&event.button);
         let flags = event_flags(&event.modifiers);
         match event.kind {
-            MouseEventKind::Move => post_move_events(point, cg_button, flags, deadline),
+            MouseEventKind::Move => {
+                let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+                crate::input::mouse_move::post_move_events(
+                    point,
+                    cg_button,
+                    flags,
+                    deadline,
+                    &mut delivery,
+                )
+            }
             MouseEventKind::Down | MouseEventKind::Up => Err(standalone_state_error()),
             MouseEventKind::Click { count } => {
                 agent_desktop_core::validate_mouse_click_count(count)?;
@@ -66,13 +74,14 @@ mod imp {
                     verify_target,
                 )
             }
-            MouseEventKind::Wheel { delta_x, delta_y } => synthesize_scroll_at(
-                event.point,
-                (wheel_lines_to_i32(delta_y)?, wheel_lines_to_i32(delta_x)?),
-                &event.modifiers,
-                None,
-                deadline,
-            ),
+            MouseEventKind::Wheel { delta_x, delta_y } => {
+                crate::input::mouse_scroll::synthesize_scroll_at(
+                    event.point,
+                    (wheel_lines_to_i32(delta_y)?, wheel_lines_to_i32(delta_x)?),
+                    &event.modifiers,
+                    deadline,
+                )
+            }
         }
     }
 
@@ -131,6 +140,13 @@ mod imp {
         let down_ty = down_type(button);
         let up_ty = up_type(button);
         let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        crate::input::mouse_move::post_move_events(
+            point,
+            cg_button,
+            flags,
+            deadline,
+            &mut delivery,
+        )?;
         for i in 1..=count {
             ensure_budget(deadline, delivery)?;
             let down = create_event(down_ty, point, cg_button, flags)
@@ -205,36 +221,6 @@ mod imp {
             .map_err(|()| AdapterError::internal("Failed to create CGEventSource"))
     }
 
-    fn post_move_events(
-        point: CGPoint,
-        button: CGMouseButton,
-        flags: CGEventFlags,
-        deadline: Deadline,
-    ) -> Result<(), AdapterError> {
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
-        let source = event_source().map_err(|error| delivery.annotate(error))?;
-        for position in [approach_point(point), point] {
-            ensure_budget(deadline, delivery)?;
-            let event =
-                create_event_with_source(&source, CGEventType::MouseMoved, position, button, flags)
-                    .map_err(|error| delivery.annotate(error))?;
-            event.post(CGEventTapLocation::HID);
-            delivery.mark_delivered();
-        }
-        ensure_budget(deadline, delivery)
-    }
-
-    pub(crate) fn approach_point(point: CGPoint) -> CGPoint {
-        CGPoint::new(
-            if point.x > -999_999.0 {
-                point.x - 1.0
-            } else {
-                point.x + 1.0
-            },
-            point.y,
-        )
-    }
-
     pub(crate) fn post_event_with_source(
         source: &CGEventSource,
         event: (CGEventType, CGPoint, CGMouseButton, CGEventFlags),
@@ -272,34 +258,6 @@ mod imp {
             MouseButton::Right => CGEventType::RightMouseUp,
             MouseButton::Middle => CGEventType::OtherMouseUp,
         }
-    }
-
-    pub fn synthesize_scroll_at(
-        point: Point,
-        delta: (i32, i32),
-        modifiers: &[Modifier],
-        target_pid: Option<i32>,
-        deadline: Deadline,
-    ) -> Result<(), AdapterError> {
-        validate_point(&point)?;
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
-        ensure_budget(deadline, delivery)?;
-        let (dy, dx) = delta;
-        let (x, y) = (point.x, point.y);
-        tracing::debug!("mouse: scroll at ({x:.0},{y:.0}) dy={dy} dx={dx} modifiers={modifiers:?}");
-        let source = event_source().map_err(|error| delivery.annotate(error))?;
-        let event = CGEvent::new_scroll_event(source, ScrollEventUnit::LINE, 2, dy, dx, 0)
-            .map_err(|()| AdapterError::internal("CGEvent::new_scroll_event failed"))
-            .map_err(|error| delivery.annotate(error))?;
-        event.set_location(CGPoint::new(x, y));
-        event.set_flags(event_flags(modifiers));
-        if let Some(pid) = target_pid {
-            event.post_to_pid(pid);
-        } else {
-            event.post(CGEventTapLocation::HID);
-        }
-        delivery.mark_delivered();
-        ensure_budget(deadline, delivery)
     }
 
     pub(crate) fn sleep_bounded(
@@ -352,19 +310,9 @@ mod imp {
     pub fn synthesize_drag(_params: DragParams, _deadline: Deadline) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("drag"))
     }
-
-    pub fn synthesize_scroll_at(
-        _point: Point,
-        _delta: (i32, i32),
-        _modifiers: &[Modifier],
-        _target_pid: Option<i32>,
-        _deadline: Deadline,
-    ) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("scroll"))
-    }
 }
 
-pub(crate) use imp::{synthesize_mouse, synthesize_mouse_after, synthesize_scroll_at};
+pub(crate) use imp::{synthesize_mouse, synthesize_mouse_after};
 
 #[cfg(target_os = "macos")]
 pub(crate) use crate::input::mouse_drag::synthesize_drag;
@@ -377,9 +325,6 @@ pub(crate) use imp::{
     create_event_with_source, ensure_budget, event_flags, event_source, post_event_with_source,
     sleep_bounded, validate_point,
 };
-
-#[cfg(all(test, target_os = "macos"))]
-pub(crate) use imp::approach_point;
 
 #[cfg(all(test, target_os = "macos", feature = "interactive-tests"))]
 pub(crate) use imp::{create_event, standalone_state_error, wheel_lines_to_i32};

@@ -148,9 +148,9 @@ fn entry() -> RefEntry {
             available_actions: vec![capability::CLICK.into()],
         },
         source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
+            source_app: Some("Fixture".into()),
+            source_window_id: Some("w-1".into()),
+            source_window_title: Some("Fixture".into()),
             source_window_bounds_hash: None,
             source_surface: crate::snapshot_surface::SnapshotSurface::Window,
         },
@@ -331,6 +331,8 @@ impl ActionOps for DoubleCheckAdapter {
 impl InputOps for DoubleCheckAdapter {}
 
 impl SystemOps for DoubleCheckAdapter {
+    crate::adapter::exact_window_focus!();
+
     fn acquire_interaction_lease(
         &self,
         deadline: crate::Deadline,

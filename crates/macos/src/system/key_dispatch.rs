@@ -47,13 +47,10 @@ pub(crate) fn press_for_app_impl(
 
     if policy.allow_focus_steal {
         crate::system::process_identity::require_core(&process)?;
-        crate::system::focus::ensure_app_focused(pid, deadline)?;
+        crate::system::focus::verify_app_focused(pid, deadline)?;
     }
     crate::system::process_identity::require_core(&process)?;
     require_focused_element(&app, deadline)?;
-    if policy.allow_focus_steal {
-        crate::system::focus::verify_app_focused(pid, deadline)?;
-    }
     crate::system::process_identity::require_core(&process)?;
     crate::input::keyboard::synthesize_key(combo, Some(pid), deadline)?;
     post_delivery_process_result(&process)

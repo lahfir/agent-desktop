@@ -117,15 +117,15 @@ assert "headed triple-click delivers a three-tap gesture" \
     "$([ "$triple_after" = "triple-clicked" ] && echo 1 || echo 0)" \
     "before=$triple_before after=$triple_after"
 
-require_value hover_before hover-status
-assert "hover baseline is clean" "$([ "$hover_before" != "hovered" ] && echo 1 || echo 0)" \
-    "status=$hover_before"
 hover_preposition="$("$bin" --headed mouse-move --xy 20,20 2>&1)"
 "$bin" focus-window --app "$app" >/dev/null 2>&1
 sleep 0.2
 assert "hover precondition positions the pointer outside the target" \
     "$([ "$(json_field "$hover_preposition" ok)" = "True" ] && echo 1 || echo 0)" \
     "ok=$(json_field "$hover_preposition" ok) error=$(json_field "$hover_preposition" error.code)"
+require_value hover_before hover-status
+assert "hover baseline is clean after moving outside the target" \
+    "$([ "$hover_before" != "hovered" ] && echo 1 || echo 0)" "status=$hover_before"
 hover_snapshot="$("$bin" snapshot --app "$app" --include-bounds --max-depth 30 2>/dev/null)"
 hover_xy="$(printf '%s' "$hover_snapshot" | python3 "$json_tool" tree hover-target center 2>/dev/null)" || hover_xy=""
 if [ -z "$hover_xy" ]; then

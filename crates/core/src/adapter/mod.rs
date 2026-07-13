@@ -12,7 +12,8 @@ pub(crate) use observation::optional_live_read;
 pub use system::SystemOps;
 #[cfg(test)]
 pub(crate) use test_support::{
-    complete_live_observation, guarded_interaction_lease, live_identity, observed_tree,
+    complete_live_observation, exact_window_focus, guarded_interaction_lease, live_identity,
+    observed_tree,
 };
 
 pub use crate::live_element::LiveElement;

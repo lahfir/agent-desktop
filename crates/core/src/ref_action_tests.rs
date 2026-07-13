@@ -64,6 +64,7 @@ impl InputOps for SuccessfulAdapter {}
 
 impl SystemOps for SuccessfulAdapter {
     crate::adapter::guarded_interaction_lease!();
+    crate::adapter::exact_window_focus!();
 }
 
 struct FailingAdapter {
@@ -208,9 +209,9 @@ fn entry() -> RefEntry {
             available_actions: vec![capability::CLICK.into()],
         },
         source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
+            source_app: Some("Fixture".into()),
+            source_window_id: Some("w-42".into()),
+            source_window_title: Some("Fixture".into()),
             source_window_bounds_hash: None,
             source_surface: SnapshotSurface::Window,
         },

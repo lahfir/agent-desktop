@@ -35,19 +35,19 @@ pub fn execute(
         xy: args.from_xy,
         snapshot_id: args.snapshot_id.as_deref(),
         missing_input_message: "Provide --from <ref> or --from-xy x,y",
-        focus_before_resolve: true,
+        headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
     };
     let to_args = PointResolveArgs {
         ref_id: args.to_ref.as_deref(),
         xy: args.to_xy,
         snapshot_id: args.snapshot_id.as_deref(),
         missing_input_message: "Provide --to <ref> or --to-xy x,y",
-        focus_before_resolve: false,
+        headed_requirement: crate::HeadedRequirement::None,
     };
     let initial_from = resolve_point_with_deadline(from_args, deadline, &lease, adapter, context)?;
     let from = resolve_point_with_deadline(
         PointResolveArgs {
-            focus_before_resolve: false,
+            headed_requirement: crate::HeadedRequirement::None,
             ..from_args
         },
         deadline,

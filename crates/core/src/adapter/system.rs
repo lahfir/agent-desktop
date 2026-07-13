@@ -48,6 +48,9 @@ pub trait SystemOps: Send + Sync {
         self.permission_report(lease.deadline())
     }
 
+    /// Performs the platform-native focus/raise operation for the exact window.
+    /// Core decides when focus is required; implementations must return only
+    /// after that window is confirmed focused, or return an error.
     fn focus_window(
         &self,
         _win: &WindowInfo,

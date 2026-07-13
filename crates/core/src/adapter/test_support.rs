@@ -92,6 +92,28 @@ macro_rules! guarded_interaction_lease {
 
 pub(crate) use guarded_interaction_lease;
 
+macro_rules! exact_window_focus {
+    () => {
+        fn resolve_window_strict(
+            &self,
+            window: &$crate::WindowInfo,
+            _deadline: $crate::Deadline,
+        ) -> Result<$crate::WindowInfo, $crate::AdapterError> {
+            Ok(window.clone())
+        }
+
+        fn focus_window(
+            &self,
+            _window: &$crate::WindowInfo,
+            _lease: &$crate::InteractionLease,
+        ) -> Result<(), $crate::AdapterError> {
+            Ok(())
+        }
+    };
+}
+
+pub(crate) use exact_window_focus;
+
 pub(crate) fn live_identity(name: &str) -> crate::LiveIdentity {
     crate::LiveIdentity {
         name: crate::LocatorField::Known(name.into()),

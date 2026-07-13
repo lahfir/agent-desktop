@@ -1,6 +1,8 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use crate::{AdapterError, WindowInfo};
 use std::sync::Mutex;
+use std::time::Duration;
 
 struct FocusAdapter {
     windows: Vec<WindowInfo>,
@@ -157,7 +159,7 @@ fn focus_confirmation_resets_after_transient_wrong_window() {
         focused_window_supported: true,
     };
 
-    let value = wait_for_focused_window_with_poll_interval(
+    let value = crate::window_focus::wait_for_focused_window_with_poll_interval(
         &adapter,
         &target.id,
         None,

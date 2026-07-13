@@ -80,7 +80,10 @@ class HarnessContractTests(unittest.TestCase):
 
         self.assertIn('"$bin" --session "$trace_session" find', source)
         self.assertIn('trace_click="$("$bin" --session "$trace_session" click', source)
-        self.assertIn('trace_session_type="$("$bin" --session "$trace_session" type', source)
+        self.assertIn(
+            'trace_session_type="$("$bin" --headed --session "$trace_session" type',
+            source,
+        )
 
     def test_sheet_scenarios_scroll_the_button_before_clicking(self):
         fixtures = [

@@ -72,10 +72,10 @@ fn prepare_target(
                 "Keyboard target process exited before physical input preparation",
             )
         })?;
-    crate::system::focus::ensure_app_focused(pid, deadline)?;
     if let Some(window) = target_window(element, deadline)? {
-        crate::system::window_ops::raise_window(&window, deadline)?;
+        crate::system::focus::verify_window_main(&window, deadline)?;
     }
+    crate::system::focus::verify_app_focused(pid, deadline)?;
     prepare(element, deadline)?;
     if !crate::actions::ax_helpers::ax_focus_or_err(element, deadline)? {
         return Err(AdapterError::new(

@@ -39,7 +39,7 @@ pub fn execute(
             xy: args.xy,
             snapshot_id: args.snapshot_id.as_deref(),
             missing_input_message: "Provide a ref (@e1) or --xy x,y",
-            focus_before_resolve: true,
+            headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
         },
         deadline,
         &lease,

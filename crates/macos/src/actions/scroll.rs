@@ -271,31 +271,26 @@ fn physical_wheel(
     amount: u32,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
-    let pid = crate::system::app_ops::pid_from_element(target, deadline)
-        .filter(|pid| *pid > 0)
-        .ok_or_else(|| AdapterError::new(ErrorCode::StaleRef, "Scroll target has no owner"))?;
-    crate::system::focus::ensure_app_focused(pid, deadline)?;
-    let bounds = crate::tree::element_bounds::read_bounds_with_deadline(
-        target,
-        crate::actions::scroll_read::deadline_instant(deadline)?,
-    )?
-    .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Scroll target has no bounds"))?;
+    let prepared =
+        crate::actions::physical_target::PreparedPhysicalTarget::prepare(target, deadline)?;
+    let bounds =
+        crate::tree::hit_test::visible_bounds_ax_element(target, deadline)?.ok_or_else(|| {
+            AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Scroll target has no visible delivery area",
+            )
+        })?;
     let (vertical, horizontal) = wheel_delta(direction, amount);
-    crate::system::focus::verify_app_focused(pid, deadline)?;
-    crate::input::mouse::synthesize_scroll_at(
-        agent_desktop_core::Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        },
-        (vertical, horizontal),
-        &[],
-        Some(pid),
-        deadline,
-    )
+    let point = agent_desktop_core::Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    };
+    prepared.verify_pointer(target, &point, deadline)?;
+    crate::input::mouse_scroll::synthesize_scroll_at(point, (vertical, horizontal), &[], deadline)
 }
 
 fn wheel_delta(direction: &Direction, amount: u32) -> (i32, i32) {
-    let units = amount.saturating_mul(5).min(i32::MAX as u32) as i32;
+    let units = amount.min(i32::MAX as u32) as i32;
     match direction {
         Direction::Down => (-units, 0),
         Direction::Up => (units, 0),

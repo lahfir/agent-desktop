@@ -38,6 +38,7 @@ fn remaining_at(deadline: Instant, now: Instant) -> Result<Duration, AdapterErro
         return Err(
             AdapterError::timeout("Live locator deadline exhausted").with_details(json!({
                 "kind": "locator_deadline_exhausted",
+                "retryable": true,
             })),
         );
     }
@@ -65,7 +66,8 @@ mod tests {
         let started = Instant::now();
         let deadline = from_timeout(started, Duration::from_millis(1));
 
-        assert!(remaining_at(deadline, deadline).is_err());
+        let error = remaining_at(deadline, deadline).expect_err("deadline must be exhausted");
+        assert!(error.is_explicitly_retryable());
         assert_eq!(from_timeout(started, Duration::MAX), started);
     }
 

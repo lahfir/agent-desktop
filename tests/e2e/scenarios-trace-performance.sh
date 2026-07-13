@@ -2,7 +2,7 @@ note "Trace JSONL and secret redaction"
 trace_file="$(mktemp -t agentdesk-e2e-trace.XXXXXX)"
 cleanup_files+=("$trace_file")
 require_target trace_text textfield text-input
-trace_type="$("$bin" --trace "$trace_file" type "$(target_ref "$trace_text")" \
+trace_type="$("$bin" --headed --trace "$trace_file" type "$(target_ref "$trace_text")" \
     --snapshot "$(target_snapshot "$trace_text")" "sup3r-secret-trace" 2>&1)"
 sleep 0.2
 trace_bytes="$(wc -c < "$trace_file" | tr -d ' ')"
@@ -36,7 +36,7 @@ if [ -z "$trace_primary" ] || [ -z "$trace_text" ]; then
 fi
 trace_click="$("$bin" --session "$trace_session" click "$(target_ref "$trace_primary")" \
     --snapshot "$(target_snapshot "$trace_primary")" 2>&1)"
-trace_session_type="$("$bin" --session "$trace_session" type "$(target_ref "$trace_text")" \
+trace_session_type="$("$bin" --headed --session "$trace_session" type "$(target_ref "$trace_text")" \
     --snapshot "$(target_snapshot "$trace_text")" trace-e2e 2>&1)"
 sleep 0.5
 trace_show="$("$bin" --session "$trace_session" trace show --limit 0 2>/dev/null)"
@@ -107,7 +107,7 @@ record_timing "click AX press" "$bin" click "$(target_ref "$perf_primary")" \
     --snapshot "$(target_snapshot "$perf_primary")"
 record_timing "set text value" "$bin" set-value "$(target_ref "$perf_text")" \
     --snapshot "$(target_snapshot "$perf_text")" perf-probe
-record_timing "type text" "$bin" type "$(target_ref "$perf_text")" \
+record_timing "type text" "$bin" --headed type "$(target_ref "$perf_text")" \
     --snapshot "$(target_snapshot "$perf_text")" perf
 
 awk -F'\t' '{printf "  %-26s %9.1f ms\n",$1,$2; n++; s+=$2}

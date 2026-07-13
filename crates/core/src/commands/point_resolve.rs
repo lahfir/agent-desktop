@@ -2,7 +2,6 @@ use crate::{
     AdapterError, AppError, Point, actionability, adapter::PlatformAdapter,
     commands::helpers::resolve_ref_with_context, context::CommandContext,
 };
-use serde_json::json;
 
 #[derive(Clone, Copy)]
 pub(crate) struct PointResolveArgs<'a> {
@@ -10,7 +9,7 @@ pub(crate) struct PointResolveArgs<'a> {
     pub xy: Option<(f64, f64)>,
     pub snapshot_id: Option<&'a str>,
     pub missing_input_message: &'a str,
-    pub focus_before_resolve: bool,
+    pub headed_requirement: crate::HeadedRequirement,
 }
 
 pub(crate) struct ResolvedPoint {
@@ -77,71 +76,8 @@ pub(crate) fn focus_for_physical_input(
     if !context.physical_input_policy().allow_focus_steal {
         return Ok(false);
     }
-    let process_instance = entry
-        .process
-        .process_instance
-        .clone()
-        .filter(|instance| !instance.is_empty());
-    let Some(process_instance) = process_instance else {
-        return Ok(false);
-    };
-    let window_id = entry
-        .source
-        .source_window_id
-        .clone()
-        .filter(|id| !id.is_empty());
-    let Some(window_id) = window_id else {
-        return Ok(false);
-    };
-    let expected = crate::WindowInfo {
-        id: window_id,
-        title: entry.source.source_window_title.clone().unwrap_or_default(),
-        app: entry.source.source_app.clone().unwrap_or_default(),
-        pid: entry.process.pid,
-        process_instance: Some(process_instance.clone()),
-        bounds: None,
-        state: crate::WindowState {
-            is_focused: false,
-            ..Default::default()
-        },
-    };
-    let live = match adapter.resolve_window_strict(&expected, lease.deadline()) {
-        Ok(live) => live,
-        Err(error) => return focus_failure(error),
-    };
-    if live.id != expected.id
-        || live.pid != expected.pid
-        || live.process_instance.as_deref() != Some(process_instance.as_str())
-    {
-        return Err(AdapterError::stale_ref(
-            "target source window belongs to a different process instance",
-        )
-        .into());
-    }
-    if let Err(error) = adapter.focus_window(&live, lease) {
-        return focus_failure(error);
-    }
-    let focused = true;
-    context.trace_lazy(
-        "input.focus_window",
-        || json!({ "pid": live.pid, "window_id": live.id, "ok": focused }),
-    )?;
-    Ok(focused)
-}
-
-fn focus_failure(error: AdapterError) -> Result<bool, AppError> {
-    if matches!(
-        error.code,
-        crate::ErrorCode::PermDenied
-            | crate::ErrorCode::PolicyDenied
-            | crate::ErrorCode::StaleRef
-            | crate::ErrorCode::AmbiguousTarget
-            | crate::ErrorCode::InvalidArgs
-            | crate::ErrorCode::Internal
-    ) {
-        return Err(error.into());
-    }
-    Ok(false)
+    crate::headed_focus::focus_entry_window(entry, adapter, context, lease)?;
+    Ok(true)
 }
 
 #[cfg(test)]

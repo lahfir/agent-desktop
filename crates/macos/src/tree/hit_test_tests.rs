@@ -1,10 +1,10 @@
 use super::imp::{
-    HitClassification, ax_point, classify_relation, ends_clipping_walk, needs_application_retry,
-    remember_ancestor,
+    HitClassification, ax_point, classify_relation, ends_clipping_walk, intersect_rects,
+    needs_application_retry, remember_ancestor,
 };
 use crate::tree::AXElement;
 use accessibility_sys::AXUIElementCreateSystemWide;
-use agent_desktop_core::Point;
+use agent_desktop_core::{Point, Rect};
 
 #[test]
 fn self_hit_reaches_target() {
@@ -61,6 +61,32 @@ fn application_root_completes_the_clipping_walk_without_a_parent() {
     assert!(ends_clipping_walk(Some("AXApplication")));
     assert!(!ends_clipping_walk(Some("AXGroup")));
     assert!(!ends_clipping_walk(None));
+}
+
+#[test]
+fn clipped_bounds_keep_only_the_visible_part_of_a_partially_shown_target() {
+    let target = Rect {
+        x: 100.0,
+        y: 900.0,
+        width: 220.0,
+        height: 160.0,
+    };
+    let viewport = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 1000.0,
+        height: 950.0,
+    };
+
+    assert_eq!(
+        intersect_rects(target, viewport),
+        Some(Rect {
+            x: 100.0,
+            y: 900.0,
+            width: 220.0,
+            height: 50.0,
+        })
+    );
 }
 
 #[test]

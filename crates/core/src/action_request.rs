@@ -16,6 +16,14 @@ pub struct ActionRequest {
 }
 
 impl ActionRequest {
+    pub fn headed_requirement(&self) -> crate::HeadedRequirement {
+        if self.policy.is_headed() {
+            self.action.headed_requirement()
+        } else {
+            crate::HeadedRequirement::None
+        }
+    }
+
     pub fn headless(action: Action) -> Self {
         Self {
             action,
@@ -86,6 +94,22 @@ mod tests {
     fn headless_request_blocks_physical_side_effects() {
         let request = ActionRequest::headless(Action::Click);
         assert_eq!(request.policy, InteractionPolicy::headless());
+    }
+
+    #[test]
+    fn headed_requirement_is_inert_until_the_caller_selects_headed_mode() {
+        assert_eq!(
+            ActionRequest::headless(Action::Click).headed_requirement(),
+            crate::HeadedRequirement::None
+        );
+        assert_eq!(
+            ActionRequest::headed(Action::Click).headed_requirement(),
+            crate::HeadedRequirement::FocusedWindowAndCursor
+        );
+        assert_eq!(
+            ActionRequest::headed(Action::TypeText("text".into())).headed_requirement(),
+            crate::HeadedRequirement::FocusedWindow
+        );
     }
 
     #[test]

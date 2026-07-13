@@ -53,25 +53,19 @@ mod imp {
     };
 
     pub(crate) static EXPAND_CHAIN: ChainDef = ChainDef {
-        steps: &[
-            ChainStep::CGDisclosureClick { expanded: true },
-            ChainStep::CustomWithDeadline {
-                label: "expand_verified",
-                func: chain_disclosure_steps::press_to_expand,
-            },
-        ],
+        steps: &[ChainStep::CustomWithDeadline {
+            label: "expand_verified",
+            func: chain_disclosure_steps::press_to_expand,
+        }],
         suggestion: "Target a control with a readable expandable state.",
         continue_after_unverified_delivery: false,
     };
 
     pub(crate) static COLLAPSE_CHAIN: ChainDef = ChainDef {
-        steps: &[
-            ChainStep::CGDisclosureClick { expanded: false },
-            ChainStep::CustomWithDeadline {
-                label: "collapse_verified",
-                func: chain_disclosure_steps::press_to_collapse,
-            },
-        ],
+        steps: &[ChainStep::CustomWithDeadline {
+            label: "collapse_verified",
+            func: chain_disclosure_steps::press_to_collapse,
+        }],
         suggestion: "Target a control with a readable expandable state.",
         continue_after_unverified_delivery: false,
     };
@@ -163,11 +157,11 @@ mod imp {
         use crate::actions::chain_step::ChainStep;
 
         #[test]
-        fn disclosure_chains_begin_with_a_headed_physical_fallback() {
+        fn disclosure_chains_use_verified_semantic_delivery() {
             for chain in [&EXPAND_CHAIN, &COLLAPSE_CHAIN] {
                 assert!(matches!(
                     chain.steps.first(),
-                    Some(ChainStep::CGDisclosureClick { .. })
+                    Some(ChainStep::CustomWithDeadline { .. })
                 ));
             }
         }

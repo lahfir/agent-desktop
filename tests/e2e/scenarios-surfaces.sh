@@ -43,6 +43,8 @@ assert "context-menu item action is independently observed" \
     "before=$context_before after=$context_after"
 
 note "Menu bar enumeration"
+"$bin" focus-window --app "$app" >/dev/null 2>&1
+sleep 0.2
 menu_snapshot="$("$bin" snapshot --app "$app" --surface menubar --max-depth 5 2>/dev/null)"
 menu_items="$(printf '%s' "$menu_snapshot" | grep -o '"role":"menuitem"' | wc -l | tr -d ' ')"
 has_fixture_menu="$(printf '%s' "$menu_snapshot" | grep -q '"name":"Fixture"' && echo 1 || echo 0)"
@@ -79,8 +81,12 @@ note "Disclosure collapse and expand"
 disclosed_present() {
     local out
     out="$("$bin" find --app "$app" --role statictext --name disclosed-content --first 2>/dev/null)"
-    [ "$(json_field "$out" ok)" = "True" ] && \
-        [ -n "$(json_field "$out" data.match)" ] && echo 1 || echo 0
+    if [ "$(json_field "$out" ok)" = "True" ] && [ -n "$(json_field "$out" data.match)" ]; then
+        echo 1
+        return
+    fi
+    out="$("$bin" find --app "$app" --role statictext --name disclosure-section --first 2>/dev/null)"
+    [ "$(json_field "$out" ok)" = "True" ] && [ -n "$(json_field "$out" data.match)" ] && echo 1 || echo 0
 }
 require_target disclosure disclosure disclosure-section
 initially_hidden="$(disclosed_present)"

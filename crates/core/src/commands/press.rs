@@ -30,12 +30,12 @@ pub fn execute(
             &expected,
             lease.deadline(),
         )?;
-        let result = adapter.press_key_for_app(
-            crate::commands::helpers::process_identity(&live)?,
-            &combo,
-            context.physical_input_policy(),
-            &lease,
-        )?;
+        let process = crate::commands::helpers::process_identity(&live)?;
+        if context.physical_input_policy().is_headed() {
+            crate::headed_focus::focus_process_window(process.clone(), adapter, context, &lease)?;
+        }
+        let result =
+            adapter.press_key_for_app(process, &combo, context.physical_input_policy(), &lease)?;
         return Ok(serde_json::to_value(result)?);
     }
 

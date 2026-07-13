@@ -68,6 +68,25 @@ impl ObservationOps for CapturingAdapter {
             process_instance: Some("generation-1".into()),
         }])
     }
+
+    fn list_windows(
+        &self,
+        _filter: &crate::WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<crate::WindowInfo>, AdapterError> {
+        Ok(vec![crate::WindowInfo {
+            id: "w-42".into(),
+            title: "Editor".into(),
+            app: "Editor".into(),
+            pid: crate::ProcessId::new(42),
+            process_instance: Some("generation-1".into()),
+            bounds: None,
+            state: crate::WindowState {
+                visible: Some(true),
+                ..Default::default()
+            },
+        }])
+    }
 }
 
 impl ActionOps for CapturingAdapter {
@@ -86,6 +105,7 @@ impl InputOps for CapturingAdapter {}
 
 impl SystemOps for CapturingAdapter {
     crate::adapter::guarded_interaction_lease!();
+    crate::adapter::exact_window_focus!();
 
     fn press_key_for_app(
         &self,

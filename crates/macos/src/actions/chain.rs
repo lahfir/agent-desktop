@@ -59,9 +59,9 @@ mod imp {
 
     pub(crate) fn step_mechanism(step: &ChainStep) -> StepMechanism {
         match step {
-            ChainStep::CGClick { .. }
-            | ChainStep::CGDisclosureClick { .. }
-            | ChainStep::FocusThenClearByKeyboard => StepMechanism::PhysicalSynthetic,
+            ChainStep::CGClick { .. } | ChainStep::FocusThenClearByKeyboard => {
+                StepMechanism::PhysicalSynthetic
+            }
             _ => StepMechanism::SemanticApi,
         }
     }
@@ -103,16 +103,13 @@ mod imp {
             ChainStep::FocusThenClearByKeyboard => "FocusThenClearByKeyboard",
             ChainStep::CustomWithDeadline { label, .. } => label,
             ChainStep::CGClick { .. } => "CGClick",
-            ChainStep::CGDisclosureClick { .. } => "CGDisclosureClick",
         }
     }
 
     pub(crate) fn step_allowed(step: &ChainStep, policy: InteractionPolicy) -> bool {
         !matches!(
             step,
-            ChainStep::CGClick { .. }
-                | ChainStep::CGDisclosureClick { .. }
-                | ChainStep::FocusThenClearByKeyboard
+            ChainStep::CGClick { .. } | ChainStep::FocusThenClearByKeyboard
         ) || policy.is_headed()
     }
 }

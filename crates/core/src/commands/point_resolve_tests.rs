@@ -121,7 +121,7 @@ fn ref_args(snapshot_id: &str) -> PointResolveArgs<'_> {
         xy: None,
         snapshot_id: Some(snapshot_id),
         missing_input_message: "Provide a ref (@e1) or --xy x,y",
-        focus_before_resolve: false,
+        headed_requirement: crate::HeadedRequirement::None,
     }
 }
 
@@ -221,7 +221,7 @@ fn raw_xy_input_never_calls_hit_test() {
             xy: Some((5.0, 6.0)),
             snapshot_id: None,
             missing_input_message: "Provide a ref (@e1) or --xy x,y",
-            focus_before_resolve: false,
+            headed_requirement: crate::HeadedRequirement::None,
         },
         &adapter,
         &CommandContext::default(),
@@ -307,27 +307,27 @@ fn focus_test_lease() -> crate::InteractionLease {
 }
 
 #[test]
-fn transient_window_resolution_failure_degrades_to_unfocused_input() {
+fn transient_window_resolution_failure_blocks_headed_input() {
     let adapter = FocusFailureAdapter {
         resolve_error: Some(AdapterError::app_unresponsive("Fixture")),
         focus_error: None,
         focus_calls: AtomicU32::new(0),
     };
 
-    let focused = focus_for_physical_input(
+    let error = focus_for_physical_input(
         Some(&focus_ref_entry()),
         &adapter,
         &CommandContext::default().with_headed(true),
         &focus_test_lease(),
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert!(!focused);
+    assert_eq!(error.code(), "APP_UNRESPONSIVE");
     assert_eq!(adapter.focus_calls.load(Ordering::SeqCst), 0);
 }
 
 #[test]
-fn transient_focus_failure_degrades_to_unfocused_input() {
+fn transient_focus_failure_blocks_headed_input() {
     let adapter = FocusFailureAdapter {
         resolve_error: None,
         focus_error: Some(AdapterError::new(
@@ -337,15 +337,15 @@ fn transient_focus_failure_degrades_to_unfocused_input() {
         focus_calls: AtomicU32::new(0),
     };
 
-    let focused = focus_for_physical_input(
+    let error = focus_for_physical_input(
         Some(&focus_ref_entry()),
         &adapter,
         &CommandContext::default().with_headed(true),
         &focus_test_lease(),
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert!(!focused);
+    assert_eq!(error.code(), "ACTION_FAILED");
     assert_eq!(adapter.focus_calls.load(Ordering::SeqCst), 1);
 }
 
