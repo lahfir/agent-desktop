@@ -9,6 +9,8 @@ const MAX_CAPTURED_STREAM_BYTES: usize = 8 * 1024 * 1024;
 const OUTPUT_CONTEXT_BYTES: usize = 4 * 1024;
 const MAX_CLEANUP_RESERVE: Duration = Duration::from_millis(250);
 const TERM_GRACE: Duration = Duration::from_millis(25);
+const POSIX_EPERM: i32 = 1;
+const POSIX_ESRCH: i32 = 3;
 
 struct DrainResult {
     bytes: Vec<u8>,
@@ -58,20 +60,6 @@ pub(crate) fn run_with_deadline(
     let mut stdout = child.stdout.take().map(spawn_drain);
     let mut stderr = child.stderr.take().map(spawn_drain);
 
-    let status = match wait_for_status(&mut child, work_deadline) {
-        Ok(status) => status,
-        Err(error) => {
-            return cleanup_after_error(
-                &mut child,
-                process_group,
-                &mut stdout,
-                &mut stderr,
-                label,
-                deadline,
-                error,
-            );
-        }
-    };
     let stderr_result = match receive_drain(&mut stderr, label, "stderr", work_deadline) {
         Ok(result) => result,
         Err(error) => {
@@ -88,6 +76,20 @@ pub(crate) fn run_with_deadline(
     };
     let stdout_result = match receive_drain(&mut stdout, label, "stdout", work_deadline) {
         Ok(result) => result,
+        Err(error) => {
+            return cleanup_after_error(
+                &mut child,
+                process_group,
+                &mut stdout,
+                &mut stderr,
+                label,
+                deadline,
+                error,
+            );
+        }
+    };
+    let status = match wait_for_status(&mut child, work_deadline) {
+        Ok(status) => status,
         Err(error) => {
             return cleanup_after_error(
                 &mut child,
@@ -164,7 +166,7 @@ fn terminate_process_group_with(
     child: &mut Child,
     process_group: i32,
     deadline: Instant,
-    mut signal: impl FnMut(i32, i32) -> Result<(), String>,
+    mut signal: impl FnMut(i32, i32) -> std::io::Result<bool>,
 ) -> Vec<String> {
     let mut failures = Vec::new();
     if let Err(error) = signal(process_group, 15) {
@@ -173,30 +175,35 @@ fn terminate_process_group_with(
     let grace_deadline = Instant::now()
         .checked_add(TERM_GRACE)
         .map_or(deadline, |grace| grace.min(deadline));
-    let _ = poll_reap(child, grace_deadline);
-    if let Err(error) = signal(process_group, 9) {
-        failures.push(format!("SIGKILL process group {process_group}: {error}"));
+    std::thread::sleep(grace_deadline.saturating_duration_since(Instant::now()));
+    let kill_error = signal(process_group, 9).err();
+    let reaped = poll_reap(child, deadline);
+    if let Some(error) = kill_error {
+        let group_is_gone = reaped
+            && error.raw_os_error() == Some(POSIX_EPERM)
+            && matches!(signal(process_group, 0), Ok(false));
+        if !group_is_gone {
+            failures.push(format!("SIGKILL process group {process_group}: {error}"));
+        }
     }
-    if !poll_reap(child, deadline) {
+    if !reaped {
         failures.push("subprocess could not be reaped before cleanup deadline".into());
     }
     failures
 }
 
-fn signal_group(process_group: i32, signal: i32) -> Result<(), String> {
-    const POSIX_ESRCH: i32 = 3;
-
+fn signal_group(process_group: i32, signal: i32) -> std::io::Result<bool> {
     unsafe extern "C" {
         fn kill(pid: i32, signal: i32) -> i32;
     }
     if unsafe { kill(-process_group, signal) } == 0 {
-        return Ok(());
+        return Ok(true);
     }
     let error = std::io::Error::last_os_error();
     if error.raw_os_error() == Some(POSIX_ESRCH) {
-        Ok(())
+        Ok(false)
     } else {
-        Err(error.to_string())
+        Err(error)
     }
 }
 
