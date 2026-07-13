@@ -90,10 +90,10 @@ assert "post-action selector waits for asynchronous text" \
 require_target reset_row button reset-removable
 act_target "$reset_row" click >/dev/null 2>&1
 require_target remove_row button remove-row
-wait_gone="$(act_target "$remove_row" click --wait-for-gone ":removable-row" --wait-timeout 5000 2>&1)"
+wait_gone="$(act_target "$remove_row" click --wait-for-gone "button:removable-row" --wait-timeout 5000 2>&1)"
 assert "post-action wait-for-gone observes removal" \
     "$([ "$(json_field "$wait_gone" ok)" = "True" ] && \
-        [ "$(json_field "$wait_gone" data.matched_selector)" = ":removable-row" ] && echo 1 || echo 0)" \
+        [ "$(json_field "$wait_gone" data.matched_selector)" = "button:removable-row" ] && echo 1 || echo 0)" \
     "matched=$(json_field "$wait_gone" data.matched_selector) ok=$(json_field "$wait_gone" ok) err=$(json_field "$wait_gone" error.code) kind=$(json_field "$wait_gone" error.details.kind)"
 
 run_timed "$bin" snapshot --app "$app" -w ":does-not-exist-xyz" --wait-timeout 400
