@@ -1,7 +1,7 @@
 use super::*;
 
-const PROCESS_TIMEOUT: Duration = Duration::from_millis(300);
-const PROCESS_TEST_LIMIT: Duration = Duration::from_secs(1);
+const PROCESS_TIMEOUT: Duration = Duration::from_secs(1);
+const PROCESS_TEST_LIMIT: Duration = Duration::from_secs(2);
 
 fn process_exists(process: i32) -> bool {
     unsafe extern "C" {

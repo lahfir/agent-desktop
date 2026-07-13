@@ -264,15 +264,23 @@ fn stabilization_retries_churn_and_preserves_strict_failures() {
 }
 
 #[test]
-fn persistent_owner_churn_times_out_with_attempt_metrics() {
+fn persistent_owner_churn_times_out_with_exact_attempt_metrics() {
+    let mut attempts = 0_u64;
     let error = stabilize_global_with(
         Instant::now() + std::time::Duration::from_millis(20),
-        || Err(owner_churn_error(None, "test")),
+        || {
+            attempts += 1;
+            Err(owner_churn_error(None, "test"))
+        },
     )
     .unwrap_err();
 
     assert_eq!(error.code, ErrorCode::Timeout);
-    assert!(error.details.unwrap()["attempts"].as_u64().unwrap() >= 2);
+    let details = error.details.unwrap();
+    assert!(attempts >= 1);
+    assert_eq!(details["attempts"].as_u64(), Some(attempts));
+    assert_eq!(details["last_code"], "APP_UNRESPONSIVE");
+    assert_eq!(details["last_kind"], "global_window_owner_churn");
 }
 
 #[test]

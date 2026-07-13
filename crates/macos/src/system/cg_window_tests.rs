@@ -47,11 +47,13 @@ fn changing_inventory_retries_until_two_consecutive_captures_match() {
 }
 
 #[test]
-fn persistent_window_churn_times_out_with_attempt_metrics() {
+fn persistent_window_churn_times_out_with_exact_attempt_metrics() {
     let mut visible = false;
+    let mut attempts = 0_u64;
     let error = stabilize_records_until(
         Instant::now() + std::time::Duration::from_millis(20),
         || {
+            attempts += 1;
             visible = !visible;
             Ok(records_fixture(visible))
         },
@@ -60,8 +62,12 @@ fn persistent_window_churn_times_out_with_attempt_metrics() {
 
     assert_eq!(error.code, ErrorCode::Timeout);
     let details = error.details.unwrap();
-    assert!(details["attempts"].as_u64().unwrap() >= 2);
-    assert!(details["churn_events"].as_u64().unwrap() >= 1);
+    assert!(attempts >= 1);
+    assert_eq!(details["attempts"].as_u64(), Some(attempts));
+    assert_eq!(
+        details["churn_events"].as_u64(),
+        Some(attempts.saturating_sub(1))
+    );
 }
 
 #[test]
