@@ -1,4 +1,4 @@
-use super::{ChainStep, build_step, record_step_outcome, step_mechanism};
+use super::{ChainStep, build_step, record_step_outcome, step_allowed, step_mechanism};
 use crate::actions::chain_delivery::DeliveryOutcome;
 use agent_desktop_core::MouseButton;
 use agent_desktop_core::step_mechanism::StepMechanism;
@@ -65,6 +65,20 @@ fn step_mechanism_tags_physical_for_cgclick_and_keyboard_clear() {
         step_mechanism(&ChainStep::Action("AXPress")),
         StepMechanism::SemanticApi
     );
+}
+
+#[test]
+fn headless_chains_omit_physical_steps_before_reporting() {
+    let headless = agent_desktop_core::InteractionPolicy::headless();
+    let headed = agent_desktop_core::InteractionPolicy::headed();
+    let physical = ChainStep::CGClick {
+        button: MouseButton::Left,
+        count: 1,
+    };
+
+    assert!(!step_allowed(&physical, headless));
+    assert!(step_allowed(&physical, headed));
+    assert!(step_allowed(&ChainStep::Action("AXPress"), headless));
 }
 
 #[test]

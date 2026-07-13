@@ -32,6 +32,9 @@ mod imp {
 
         for (i, step) in def.steps.iter().enumerate() {
             ctx.ensure_budget()?;
+            if !step_allowed(step, policy) {
+                continue;
+            }
             let label = step_label(step);
             let outcome = execute_step(el, step, ctx, policy)?;
             if record_step_outcome(
@@ -103,10 +106,19 @@ mod imp {
             ChainStep::CGDisclosureClick { .. } => "CGDisclosureClick",
         }
     }
+
+    pub(crate) fn step_allowed(step: &ChainStep, policy: InteractionPolicy) -> bool {
+        !matches!(
+            step,
+            ChainStep::CGClick { .. }
+                | ChainStep::CGDisclosureClick { .. }
+                | ChainStep::FocusThenClearByKeyboard
+        ) || policy.is_headed()
+    }
 }
 
 #[cfg(all(test, target_os = "macos"))]
-pub(crate) use imp::{build_step, record_step_outcome, step_mechanism};
+pub(crate) use imp::{build_step, record_step_outcome, step_allowed, step_mechanism};
 
 #[cfg(test)]
 #[path = "chain_tests.rs"]
