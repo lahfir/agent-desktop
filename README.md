@@ -193,7 +193,7 @@ agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers,
 agent-desktop click @s8f3k2p9:e3                  # semantic AX-first click
 agent-desktop double-click @s8f3k2p9:e3           # AXOpen; physical double-click uses --headed mouse-click --count 2
 agent-desktop triple-click @s8f3k2p9:e3           # POLICY_DENIED if physical input is disabled
-agent-desktop right-click @s8f3k2p9:e3            # open verified context menu
+agent-desktop right-click @s8f3k2p9:e3            # open context menu; inspect effect before retrying
 agent-desktop type @s8f3k2p9:e5 "hello world"     # insert text into element
 agent-desktop set-value @s8f3k2p9:e5 "new value"  # set value directly via AX
 agent-desktop clear @s8f3k2p9:e5                  # clear element value

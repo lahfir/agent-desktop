@@ -153,7 +153,7 @@ agent-desktop list-surfaces --app "App"                     # Available surfaces
 agent-desktop click @e5 --snapshot <snapshot_id> # AX-first click, no cursor move by default
 agent-desktop double-click @s8f3k2p9:e3         # AXOpen; physical double-click uses --headed mouse-click --count 2
 agent-desktop triple-click @s8f3k2p9:e2         # Physical triple-click uses mouse-click --count 3
-agent-desktop right-click @s8f3k2p9:e5          # Right-click; menu returned when verified
+agent-desktop right-click @s8f3k2p9:e5          # Right-click; inspect the resulting menu/effect separately
 agent-desktop type @e2 --snapshot <snapshot_id> "hello"  # Headless AX text insertion when supported
 agent-desktop set-value @s8f3k2p9:e2 "new value"         # Set value directly
 agent-desktop clear @s8f3k2p9:e2                         # Clear element value

@@ -94,7 +94,7 @@ Triple-click requires cursor/focus side effects and is blocked in headless mode;
 ```bash
 agent-desktop right-click @s8f3k2p9:e5
 ```
-Performs a semantic right-click/context-menu action and includes `menu` plus `menu_snapshot_id` when a menu surface can be verified. If the right-click action succeeds but menu probing fails, the command still returns the action result with `menu_probe.ok: false` so callers do not retry and double-open context menus. Combo boxes and menu buttons expose menu-opening actions for their primary dropdown; use `select` for those controls, not `right-click`. Focus-stealing and coordinate right-click fallback are blocked in headless mode; pass `--headed` to allow them.
+Performs a semantic right-click/context-menu action. On macOS, `AXShowMenu` can return `APP_UNRESPONSIVE` with `delivery: delivery_uncertain` and `retry: unsafe` after opening a modal context menu; inspect the resulting menu or target effect before deciding what to do, and never retry that outcome blindly. Combo boxes and menu buttons expose menu-opening actions for their primary dropdown; use `select` for those controls, not `right-click`. Focus-stealing and coordinate right-click fallback are blocked in headless mode; pass `--headed` to allow them.
 
 ## Text Input
 

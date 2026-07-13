@@ -27,7 +27,7 @@ class HarnessContractTests(unittest.TestCase):
 
         self.assertEqual(len(exits), 1, exits)
         self.assertEqual(exits[0][0], "lib.sh")
-        self.assertEqual(len(abort_calls), 10, abort_calls)
+        self.assertEqual(len(abort_calls), 11, abort_calls)
         source = (E2E_ROOT / "lib.sh").read_text()
         abort = re.search(r"abort_suite\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL)
         self.assertIsNotNone(abort)
@@ -67,6 +67,13 @@ class HarnessContractTests(unittest.TestCase):
         source = (E2E_ROOT / "lib.sh").read_text()
 
         self.assertIn('--role statictext --native-id "$name" --first', source)
+
+    def test_trace_artifact_actions_use_the_session_that_created_their_refs(self):
+        source = (E2E_ROOT / "scenarios-trace-performance.sh").read_text()
+
+        self.assertIn('"$bin" --session "$trace_session" find', source)
+        self.assertIn('trace_click="$("$bin" --session "$trace_session" click', source)
+        self.assertIn('trace_session_type="$("$bin" --session "$trace_session" type', source)
 
     def test_sheet_scenarios_scroll_the_button_before_clicking(self):
         fixtures = [

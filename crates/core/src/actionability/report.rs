@@ -34,8 +34,8 @@ impl ActionabilityReport {
     pub(crate) fn terminal_code(&self) -> Option<ErrorCode> {
         self.checks
             .iter()
-            .filter(|check| !matches!(check.status, ActionabilityStatus::Pass))
-            .find_map(|check| check.terminal_code.clone())
+            .find(|check| !matches!(check.status, ActionabilityStatus::Pass))
+            .and_then(|check| check.terminal_code.clone())
     }
 
     pub(crate) fn failure_reasons(&self) -> String {
@@ -48,5 +48,36 @@ impl ActionabilityReport {
             })
             .collect::<Vec<_>>()
             .join(", ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failed(check: &'static str, terminal_code: Option<ErrorCode>) -> ActionabilityCheck {
+        ActionabilityCheck {
+            check,
+            status: ActionabilityStatus::Fail,
+            reason: None,
+            occluder: None,
+            terminal_code,
+            hit_test: None,
+            stability: None,
+        }
+    }
+
+    #[test]
+    fn retryable_failure_is_not_overridden_by_a_later_terminal_check() {
+        let report = ActionabilityReport::from_checks(
+            vec![
+                failed("enabled", None),
+                failed("supported_action", Some(ErrorCode::PolicyDenied)),
+            ],
+            None,
+            PointerDelivery::NotApplicable,
+        );
+
+        assert_eq!(report.terminal_code(), None);
     }
 }

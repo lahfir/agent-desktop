@@ -20,6 +20,7 @@ fn live_bounds() -> Option<crate::Rect> {
 
 struct FlippingPredicateAdapter {
     states: Mutex<Vec<Vec<String>>>,
+    remaining_errors: Mutex<usize>,
 }
 
 impl ObservationOps for FlippingPredicateAdapter {
@@ -36,6 +37,13 @@ impl ObservationOps for FlippingPredicateAdapter {
         _handle: &NativeHandle,
         _deadline: crate::Deadline,
     ) -> Result<crate::LiveElement, AdapterError> {
+        let mut remaining_errors = self.remaining_errors.lock().unwrap();
+        if *remaining_errors > 0 {
+            *remaining_errors -= 1;
+            return Err(AdapterError::app_unresponsive("Fixture")
+                .with_details(serde_json::json!({ "retryable": true })));
+        }
+        drop(remaining_errors);
         let states = self.states.lock().unwrap().pop().unwrap_or_default();
         Ok(crate::LiveElement {
             identity: crate::adapter::live_identity("Run"),
@@ -242,6 +250,7 @@ fn element_wait_actionable_retries_until_live_state_converges() {
     let snapshot_id = snapshot_with_disabled_ref();
     let adapter = FlippingPredicateAdapter {
         states: Mutex::new(vec![vec![], vec!["disabled".into()]]),
+        remaining_errors: Mutex::new(0),
     };
 
     let value = wait_for_element_test(
@@ -258,6 +267,31 @@ fn element_wait_actionable_retries_until_live_state_converges() {
 
     assert_eq!(value["predicate"], "actionable");
     assert_eq!(value["observed"]["actionable"], true);
+}
+
+#[test]
+fn element_wait_actionable_retries_transient_observation_errors() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_disabled_ref();
+    let adapter = FlippingPredicateAdapter {
+        states: Mutex::new(vec![vec![]]),
+        remaining_errors: Mutex::new(1),
+    };
+
+    let value = wait_for_element_test(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Actionable(
+            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
+        ),
+        500,
+        &adapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(value["observed"]["actionable"], true);
+    assert_eq!(*adapter.remaining_errors.lock().unwrap(), 0);
 }
 
 #[test]

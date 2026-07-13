@@ -69,9 +69,9 @@ When you run `click @ref`, agent-desktop doesn't just do a simple click. It runs
 11. **Ancestor activation** — try pressing ancestor elements
 12. **Explicit physical path** — coordinate click only when the caller selected a policy that allows focus stealing and cursor movement
 
-For `right-click`, AXShowMenu and related semantic menu paths include a `menu` tree only after a real menu surface appears. If the action succeeds but the menu probe cannot verify a surface, the command still returns success with `menu_probe.ok: false`; callers should inspect that field instead of retrying blindly. Combo boxes and menu buttons use the same AX menu mechanism for their primary dropdown; use `select` for those controls. Coordinate right-click is blocked by the default headless policy.
+For `right-click`, `AXShowMenu` may enter modal menu tracking and return `kAXErrorCannotComplete` after the menu opened. The command reports this as `APP_UNRESPONSIVE` with `delivery: delivery_uncertain` and `retry: unsafe`; inspect the resulting menu or target effect instead of retrying blindly. Combo boxes and menu buttons use the same AX menu mechanism for their primary dropdown; use `select` for those controls. Coordinate right-click is blocked by the default headless policy.
 
-Menu verification intentionally requires a closed-to-open transition. If a menu is already open for the target app, `right-click` and `select` refuse to treat that existing menu as proof of success; dismiss the old menu and retry. This avoids acting on a stale sibling menu opened by a prior command.
+Menu verification for `select` intentionally requires a closed-to-open transition. If a menu is already open for the target app, dismiss it before selecting so an existing sibling menu is not treated as proof of success.
 
 The default activation-chain deadline is 10 seconds. Set `AGENT_DESKTOP_CHAIN_TIMEOUT_MS` to a positive millisecond value when diagnosing unusually slow AX targets; values are capped at 300000 ms. Menu verification waits use `AGENT_DESKTOP_MENU_TIMEOUT_MS` with a default of 750 ms and a 10000 ms cap. Toggle verification uses `AGENT_DESKTOP_TOGGLE_TIMEOUT_MS` with a default of 600 ms and a 10000 ms cap; changed toggle values must remain stable for `AGENT_DESKTOP_TOGGLE_STABLE_MS`, default 200 ms and cap 2000 ms.
 
@@ -94,7 +94,7 @@ macOS apps can have multiple accessibility surfaces:
 |---------|-------------|-------------|
 | `window` | Main application window (default) | General UI interaction |
 | `focused` | Currently focused element's context | Inspecting active element |
-| `menu` | Open dropdown or context menu | After `select`, verified `right-click`, or explicit menu trigger |
+| `menu` | Open dropdown or context menu | After `select`, `right-click`, or an explicit menu trigger |
 | `menubar` | Application menu bar | Navigating File/Edit/View menus |
 | `sheet` | Modal sheet (Save dialog, etc.) | After triggering sheet dialogs |
 | `popover` | Popover/popup content | Inspecting tooltips, popovers |
@@ -237,7 +237,7 @@ Large apps (Xcode, Safari with many tabs) can have deep trees.
 
 ### Context Menu Doesn't Appear
 
-After `right-click @ref`, inspect `menu` first. If it is absent and `menu_probe.ok` is `false`:
+After `right-click @ref`, inspect the open menu or the target effect. If macOS returns `APP_UNRESPONSIVE` for `AXShowMenu` with unsafe retry semantics:
 1. The element may not support context menus
 2. If the target is a combo box or menu button, use `select @ref "Option"` instead
 3. Run `list-surfaces --app "App"` to confirm whether a menu surface exists

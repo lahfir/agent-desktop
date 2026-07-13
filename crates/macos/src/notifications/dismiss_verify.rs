@@ -15,12 +15,13 @@ pub(super) fn disappeared(
     original: &NotificationEntry,
     filter: &NotificationFilter,
     matching_before: usize,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
     let settle_deadline = deadline.capped(STRATEGY_SETTLE_TIME);
     let result = wait_with(
         || {
-            let current = super::list::list_entries(filter, settle_deadline)?;
+            let current = super::list::list_entries(filter, pid, settle_deadline)?;
             Ok(matching_count(&current, original) >= matching_before)
         },
         settle_deadline,

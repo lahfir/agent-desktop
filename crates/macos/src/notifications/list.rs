@@ -7,16 +7,17 @@ pub fn list_notifications(
     deadline: Deadline,
 ) -> Result<Vec<NotificationInfo>, AdapterError> {
     let session = NcSession::open(deadline)?;
-    let result = list_from_nc(filter, deadline);
+    let result = list_from_nc(filter, session.pid(), deadline);
     close_session(session, result)
 }
 
 #[cfg(target_os = "macos")]
 fn list_from_nc(
     filter: &NotificationFilter,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<Vec<NotificationInfo>, AdapterError> {
-    let entries = list_entries(filter, deadline)?;
+    let entries = list_entries(filter, pid, deadline)?;
     Ok(entries.into_iter().map(|e| e.info).collect())
 }
 
@@ -29,12 +30,10 @@ pub(super) struct NotificationEntry {
 #[cfg(target_os = "macos")]
 pub(super) fn list_entries(
     filter: &NotificationFilter,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<Vec<NotificationEntry>, AdapterError> {
     use crate::tree::element_for_pid;
-
-    let pid = super::nc_session::nc_pid(deadline)
-        .ok_or_else(|| AdapterError::internal("Notification Center process not found"))?;
 
     let app = element_for_pid(pid);
     let windows = crate::notifications::read::children_for_attribute(&app, "AXWindows", deadline)?;
@@ -81,6 +80,7 @@ pub(super) fn matches_filters(
 #[cfg(not(target_os = "macos"))]
 fn list_from_nc(
     _filter: &NotificationFilter,
+    _pid: i32,
     _deadline: Deadline,
 ) -> Result<Vec<NotificationInfo>, AdapterError> {
     Err(AdapterError::not_supported("list_notifications"))

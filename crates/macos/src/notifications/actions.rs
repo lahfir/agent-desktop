@@ -18,7 +18,7 @@ pub fn dismiss_notification(
 ) -> Result<NotificationInfo, AdapterError> {
     require_foreground_policy(policy)?;
     let session = NcSession::open(deadline)?;
-    let result = dismiss_impl(index, app_filter, identity, policy, deadline);
+    let result = dismiss_impl(index, app_filter, identity, policy, session.pid(), deadline);
     close_session(session, result)
 }
 
@@ -29,7 +29,7 @@ pub fn dismiss_all(
 ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
     require_foreground_policy(policy)?;
     let session = NcSession::open(deadline)?;
-    let result = dismiss_all_impl(app_filter, policy, deadline);
+    let result = dismiss_all_impl(app_filter, policy, session.pid(), deadline);
     close_session(session, result)
 }
 
@@ -42,7 +42,7 @@ pub fn notification_action(
 ) -> Result<ActionResult, AdapterError> {
     require_foreground_policy(policy)?;
     let session = NcSession::open(deadline)?;
-    let result = action_impl(index, identity, action_name, deadline);
+    let result = action_impl(index, identity, action_name, session.pid(), deadline);
     close_session(session, result)
 }
 
@@ -52,10 +52,11 @@ fn dismiss_impl(
     app_filter: Option<&str>,
     identity: Option<&NotificationIdentity>,
     policy: InteractionPolicy,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<NotificationInfo, AdapterError> {
     let filter = build_filter(app_filter);
-    let entries = super::list::list_entries(&filter, deadline)?;
+    let entries = super::list::list_entries(&filter, pid, deadline)?;
 
     let entry = entries
         .iter()
@@ -65,7 +66,7 @@ fn dismiss_impl(
 
     let info = entry.info.clone();
     let matching_before = super::dismiss_verify::matching_count(&entries, entry);
-    dismiss_entry(entry, policy, &filter, matching_before, deadline)?;
+    dismiss_entry(entry, policy, &filter, matching_before, pid, deadline)?;
     Ok(info)
 }
 
@@ -73,16 +74,17 @@ fn dismiss_impl(
 fn dismiss_all_impl(
     app_filter: Option<&str>,
     policy: InteractionPolicy,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
     let filter = build_filter(app_filter);
-    let entries = super::list::list_entries(&filter, deadline)?;
+    let entries = super::list::list_entries(&filter, pid, deadline)?;
 
     let mut dismissed = Vec::new();
     let mut failures = Vec::new();
 
     for original in entries.iter().rev() {
-        let current_entries = super::list::list_entries(&filter, deadline)?;
+        let current_entries = super::list::list_entries(&filter, pid, deadline)?;
         let Some(current) = current_entries
             .iter()
             .find(|entry| super::dismiss_verify::matches(original, entry))
@@ -94,7 +96,7 @@ fn dismiss_all_impl(
             continue;
         };
         let matching_before = super::dismiss_verify::matching_count(&current_entries, current);
-        match dismiss_entry(current, policy, &filter, matching_before, deadline) {
+        match dismiss_entry(current, policy, &filter, matching_before, pid, deadline) {
             Ok(()) => dismissed.push(original.info.clone()),
             Err(e) => failures.push(format!("#{}: {}", original.info.index, e)),
         }
@@ -109,12 +111,13 @@ fn dismiss_entry(
     policy: InteractionPolicy,
     filter: &NotificationFilter,
     matching_before: usize,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     for action in ["AXDismiss", "AXRemoveFromParent"] {
         let outcome =
             crate::actions::ax_helpers::try_ax_action_or_err(&entry.element, action, deadline);
-        if strategy_verified(outcome, entry, filter, matching_before, deadline)? {
+        if strategy_verified(outcome, entry, filter, matching_before, pid, deadline)? {
             return Ok(());
         }
     }
@@ -125,7 +128,7 @@ fn dismiss_entry(
     )?
     .unwrap_or_default();
     let pressed = try_dismiss_button(&children, deadline)?;
-    if strategy_verified(Ok(pressed), entry, filter, matching_before, deadline)? {
+    if strategy_verified(Ok(pressed), entry, filter, matching_before, pid, deadline)? {
         return Ok(());
     }
 
@@ -151,7 +154,7 @@ fn dismiss_entry(
     )?
     .unwrap_or_default();
     let pressed = try_dismiss_button(&children, deadline)?;
-    if strategy_verified(Ok(pressed), entry, filter, matching_before, deadline)? {
+    if strategy_verified(Ok(pressed), entry, filter, matching_before, pid, deadline)? {
         return Ok(());
     }
 
@@ -203,10 +206,11 @@ fn action_impl(
     index: usize,
     identity: Option<&NotificationIdentity>,
     action_name: &str,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<ActionResult, AdapterError> {
     let filter = NotificationFilter::default();
-    let entries = super::list::list_entries(&filter, deadline)?;
+    let entries = super::list::list_entries(&filter, pid, deadline)?;
 
     let entry = entries
         .into_iter()
@@ -339,12 +343,13 @@ fn strategy_verified(
     entry: &super::list::NotificationEntry,
     filter: &NotificationFilter,
     matching_before: usize,
+    pid: i32,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
     if !strategy_succeeded(outcome, deadline)? {
         return Ok(false);
     }
-    match super::dismiss_verify::disappeared(entry, filter, matching_before, deadline) {
+    match super::dismiss_verify::disappeared(entry, filter, matching_before, pid, deadline) {
         Ok(disappeared) => Ok(disappeared),
         Err(error) => {
             crate::notifications::read::tolerate_ax_strategy_error(error, deadline)?;
@@ -366,6 +371,7 @@ fn dismiss_impl(
     _app_filter: Option<&str>,
     _identity: Option<&NotificationIdentity>,
     _policy: InteractionPolicy,
+    _pid: i32,
     _deadline: Deadline,
 ) -> Result<NotificationInfo, AdapterError> {
     Err(AdapterError::not_supported("dismiss_notification"))
@@ -375,6 +381,7 @@ fn dismiss_impl(
 fn dismiss_all_impl(
     _app_filter: Option<&str>,
     _policy: InteractionPolicy,
+    _pid: i32,
     _deadline: Deadline,
 ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
     Err(AdapterError::not_supported("dismiss_all_notifications"))
@@ -385,6 +392,7 @@ fn action_impl(
     _index: usize,
     _identity: Option<&NotificationIdentity>,
     _action_name: &str,
+    _pid: i32,
     _deadline: Deadline,
 ) -> Result<ActionResult, AdapterError> {
     Err(AdapterError::not_supported("notification_action"))

@@ -23,12 +23,21 @@ if [ -z "$trace_session" ]; then
     abort_suite "trace session did not return a session_id"
 fi
 "$bin" --session "$trace_session" snapshot --app "$app" -i >/dev/null 2>&1
-require_target trace_primary button primary-button
-"$bin" --session "$trace_session" click "$(target_ref "$trace_primary")" \
-    --snapshot "$(target_snapshot "$trace_primary")" >/dev/null 2>&1
-require_target trace_text textfield text-input
-"$bin" --session "$trace_session" type "$(target_ref "$trace_text")" \
-    --snapshot "$(target_snapshot "$trace_text")" trace-e2e >/dev/null 2>&1
+trace_target() {
+    local role="$1" name="$2" output
+    output="$("$bin" --session "$trace_session" find --app "$app" \
+        --role "$role" --name "$name" --first 2>/dev/null)"
+    printf '%s' "$output" | python3 "$json_tool" target 2>/dev/null
+}
+trace_primary="$(trace_target button primary-button)"
+trace_text="$(trace_target textfield text-input)"
+if [ -z "$trace_primary" ] || [ -z "$trace_text" ]; then
+    abort_suite "trace session targets are missing"
+fi
+trace_click="$("$bin" --session "$trace_session" click "$(target_ref "$trace_primary")" \
+    --snapshot "$(target_snapshot "$trace_primary")" 2>&1)"
+trace_session_type="$("$bin" --session "$trace_session" type "$(target_ref "$trace_text")" \
+    --snapshot "$(target_snapshot "$trace_text")" trace-e2e 2>&1)"
 sleep 0.5
 trace_show="$("$bin" --session "$trace_session" trace show --limit 0 2>/dev/null)"
 trace_events="$(printf '%s' "$trace_show" | python3 -c '
@@ -47,8 +56,10 @@ if [ -d "$trace_dir/screens" ]; then
 fi
 assert "trace show includes command and snapshot events" "$trace_events" \
     "session=$trace_session"
-assert "trace screenshot artifacts have PNG magic" "$png_magic" \
-    "directory=$trace_dir/screens exists=$([ -d "$trace_dir/screens" ] && echo yes || echo no) pngs=$(find "$trace_dir/screens" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+trace_artifacts_ok="$([ "$(json_field "$trace_click" ok)" = "True" ] && \
+    [ "$(json_field "$trace_session_type" ok)" = "True" ] && [ "$png_magic" = "1" ] && echo 1 || echo 0)"
+assert "trace screenshot artifacts have PNG magic" "$trace_artifacts_ok" \
+    "click_ok=$(json_field "$trace_click" ok) type_ok=$(json_field "$trace_session_type" ok) directory=$trace_dir/screens exists=$([ -d "$trace_dir/screens" ] && echo yes || echo no) pngs=$(find "$trace_dir/screens" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
 
 trace_html="$(mktemp -t agentdesk-e2e-trace-export.XXXXXX.html)"
 cleanup_files+=("$trace_html")

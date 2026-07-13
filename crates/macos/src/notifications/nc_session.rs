@@ -16,6 +16,7 @@ pub(crate) fn close_session<T>(
 }
 
 pub(crate) struct NcSession {
+    pid: i32,
     was_already_open: bool,
     previous_app: Option<String>,
     closed: bool,
@@ -25,17 +26,24 @@ pub(crate) struct NcSession {
 impl NcSession {
     pub(crate) fn open(deadline: Deadline) -> Result<Self, AdapterError> {
         let previous_app = frontmost_app(deadline);
-        let was_already_open = is_nc_open(deadline);
-        if !was_already_open {
-            open_nc(deadline)?;
-            wait_for_nc_ready(deadline)?;
-        }
+        let (was_already_open, pid) = match nc_pid(deadline)? {
+            Some(pid) if is_nc_open(pid, deadline) => (true, pid),
+            _ => {
+                open_nc(deadline)?;
+                (false, wait_for_nc_ready(deadline)?)
+            }
+        };
         Ok(Self {
+            pid,
             was_already_open,
             previous_app,
             closed: false,
             deadline,
         })
+    }
+
+    pub(crate) fn pid(&self) -> i32 {
+        self.pid
     }
 
     pub(crate) fn close(mut self) -> Result<(), AdapterError> {
@@ -130,31 +138,36 @@ fn applescript_string(value: &str) -> String {
 fn reactivate_app(_name: &str, _deadline: Deadline) {}
 
 #[cfg(target_os = "macos")]
-pub(super) fn nc_pid(deadline: Deadline) -> Option<i32> {
+fn nc_pid(deadline: Deadline) -> Result<Option<i32>, AdapterError> {
     let mut command = std::process::Command::new("/usr/bin/pgrep");
     command.arg("-x").arg("NotificationCenter");
     let output = crate::system::process::run_with_deadline(
         &mut command,
         "pgrep NotificationCenter",
-        operation_deadline(deadline, std::time::Duration::from_secs(1)).ok()?,
-    )
-    .ok()?;
-
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .lines()
-        .next()
-        .and_then(|line| line.trim().parse::<i32>().ok())
+        operation_deadline(deadline, std::time::Duration::from_secs(1))?,
+    );
+    nc_pid_from_output(output)
 }
 
 #[cfg(target_os = "macos")]
-fn is_nc_open(deadline: Deadline) -> bool {
+fn nc_pid_from_output(
+    output: Result<std::process::Output, AdapterError>,
+) -> Result<Option<i32>, AdapterError> {
+    let output = output?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .lines()
+        .next()
+        .and_then(|line| line.trim().parse::<i32>().ok()))
+}
+
+#[cfg(target_os = "macos")]
+fn is_nc_open(pid: i32, deadline: Deadline) -> bool {
     use crate::tree::element_for_pid;
 
-    let pid = match nc_pid(deadline) {
-        Some(p) => p,
-        None => return false,
-    };
     let app = element_for_pid(pid);
     let windows = crate::notifications::read::children_for_attribute(&app, "AXWindows", deadline)
         .unwrap_or_default();
@@ -162,7 +175,12 @@ fn is_nc_open(deadline: Deadline) -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn is_nc_open(_deadline: Deadline) -> bool {
+fn nc_pid(_deadline: Deadline) -> Result<Option<i32>, AdapterError> {
+    Ok(None)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_nc_open(_pid: i32, _deadline: Deadline) -> bool {
     false
 }
 
@@ -203,7 +221,8 @@ fn close_nc(deadline: Deadline) -> Result<(), AdapterError> {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::applescript_string;
+    use super::{applescript_string, nc_pid_from_output};
+    use agent_desktop_core::AdapterError;
 
     #[test]
     fn applescript_string_escapes_quotes_and_backslashes() {
@@ -220,6 +239,14 @@ mod tests {
         assert_eq!(applescript_string("a\\\nb"), r#""a\\b""#);
         assert_eq!(applescript_string("a\"b\nc"), r#""a\"bc""#);
     }
+
+    #[test]
+    fn nc_pid_preserves_probe_errors() {
+        let error = nc_pid_from_output(Err(AdapterError::timeout("pid probe timed out")))
+            .expect_err("timeout must not become process-not-found");
+
+        assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -228,12 +255,14 @@ fn close_nc(_deadline: Deadline) -> Result<(), AdapterError> {
 }
 
 #[cfg(target_os = "macos")]
-fn wait_for_nc_ready(deadline: Deadline) -> Result<(), AdapterError> {
+fn wait_for_nc_ready(deadline: Deadline) -> Result<i32, AdapterError> {
     let poll = std::time::Duration::from_millis(50);
 
     loop {
-        if is_nc_open(deadline) {
-            return Ok(());
+        if let Some(pid) = nc_pid(deadline)? {
+            if is_nc_open(pid, deadline) {
+                return Ok(pid);
+            }
         }
         if deadline.is_expired() {
             return Err(AdapterError::timeout(
@@ -245,7 +274,7 @@ fn wait_for_nc_ready(deadline: Deadline) -> Result<(), AdapterError> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn wait_for_nc_ready(_deadline: Deadline) -> Result<(), AdapterError> {
+fn wait_for_nc_ready(_deadline: Deadline) -> Result<i32, AdapterError> {
     Err(AdapterError::not_supported("wait_for_nc_ready"))
 }
 

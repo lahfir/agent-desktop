@@ -24,10 +24,9 @@ mod imp {
         expanded: bool,
         deadline: Deadline,
     ) -> Result<DeliveryOutcome, AdapterError> {
-        let Some(current) = disclosed_state(element, deadline)? else {
-            return Ok(DeliveryOutcome::NotDelivered);
-        };
-        if current == expanded {
+        let (satisfied, allow_toggle) =
+            disclosure_plan(disclosed_state(element, deadline)?, expanded);
+        if satisfied {
             return Ok(DeliveryOutcome::SatisfiedNoDelivery);
         }
         let action = if expanded { "AXExpand" } else { "AXCollapse" };
@@ -47,11 +46,17 @@ mod imp {
                 return verify_disclosure(element, expanded, deadline).map_err(after_delivery);
             }
         }
-        prepare(element, deadline)?;
-        if crate::actions::ax_helpers::try_ax_action_or_err(element, "AXPress", deadline)? {
-            return verify_disclosure(element, expanded, deadline).map_err(after_delivery);
+        if allow_toggle {
+            prepare(element, deadline)?;
+            if crate::actions::ax_helpers::try_ax_action_or_err(element, "AXPress", deadline)? {
+                return verify_disclosure(element, expanded, deadline).map_err(after_delivery);
+            }
         }
         Ok(DeliveryOutcome::NotDelivered)
+    }
+
+    fn disclosure_plan(current: Option<bool>, desired: bool) -> (bool, bool) {
+        (current == Some(desired), current == Some(!desired))
     }
 
     fn verify_disclosure(
@@ -96,6 +101,21 @@ mod imp {
         let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
         delivery.mark_delivered();
         delivery.annotate(error)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::disclosure_plan;
+
+        #[test]
+        fn disclosure_plan_never_blindly_toggles_unknown_state() {
+            assert_eq!(disclosure_plan(Some(true), true), (true, false));
+            assert_eq!(disclosure_plan(Some(false), true), (false, true));
+            assert_eq!(disclosure_plan(None, true), (false, false));
+            assert_eq!(disclosure_plan(Some(false), false), (true, false));
+            assert_eq!(disclosure_plan(Some(true), false), (false, true));
+            assert_eq!(disclosure_plan(None, false), (false, false));
+        }
     }
 }
 

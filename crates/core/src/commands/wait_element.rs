@@ -49,33 +49,44 @@ pub(crate) fn wait_for_element(
                 return wait_timeout::element(ref_id, predicate, timeout_ms, last_observed);
             }
             ResolveAttemptOutcome::Resolved(handle) => {
-                let observed = wait_predicate::observe(
+                match wait_predicate::observe(
                     &entry,
                     &handle,
                     &predicate,
                     adapter,
                     deadline,
                     crate::actionability::StabilityExpectation::strict_hash(expected_bounds_hash),
-                );
-                last_observed = observed.map_err(AppError::Adapter)?;
-                if let Some(observed) = last_observed
-                    .get("observed_bounds_hash")
-                    .and_then(Value::as_u64)
-                {
-                    expected_bounds_hash = Some(observed);
-                }
-                if wait_predicate::satisfied(&predicate, &last_observed) {
-                    let elapsed = start.elapsed().as_millis();
-                    return Ok(json!({
-                        "found": true,
-                        "ref": ref_id,
-                        "predicate": predicate.name(),
-                        "observed": last_observed,
-                        "elapsed_ms": elapsed
-                    }));
+                ) {
+                    Ok(observed) => {
+                        last_observed = observed;
+                        if let Some(observed) = last_observed
+                            .get("observed_bounds_hash")
+                            .and_then(Value::as_u64)
+                        {
+                            expected_bounds_hash = Some(observed);
+                        }
+                        if wait_predicate::satisfied(&predicate, &last_observed) {
+                            let elapsed = start.elapsed().as_millis();
+                            return Ok(json!({
+                                "found": true,
+                                "ref": ref_id,
+                                "predicate": predicate.name(),
+                                "observed": last_observed,
+                                "elapsed_ms": elapsed
+                            }));
+                        }
+                    }
+                    Err(err) if is_retryable_wait_error(&err) => {
+                        last_observed = json!({
+                            "error": err.code.as_str(),
+                            "message": err.message,
+                            "details": err.details
+                        });
+                    }
+                    Err(err) => return Err(AppError::Adapter(err)),
                 }
             }
-            ResolveAttemptOutcome::Failed(err) if is_retryable_wait_resolution_error(&err) => {
+            ResolveAttemptOutcome::Failed(err) if is_retryable_wait_error(&err) => {
                 last_observed = json!({
                     "error": err.code.as_str(),
                     "message": err.message
@@ -92,6 +103,6 @@ pub(crate) fn wait_for_element(
     }
 }
 
-fn is_retryable_wait_resolution_error(error: &crate::AdapterError) -> bool {
+fn is_retryable_wait_error(error: &crate::AdapterError) -> bool {
     error.is_explicitly_retryable()
 }

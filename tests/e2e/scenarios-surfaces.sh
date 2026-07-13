@@ -24,14 +24,20 @@ act_target "$context_target" scroll-to >/dev/null 2>&1
 require_target context_target button context-target
 context_output="$(act_target "$context_target" right-click 2>&1)"
 sleep 0.5
-context_menu="$(json_field "$context_output" data.menu)"
 require_target context_choice menuitem context-choice
 act_target "$context_choice" click >/dev/null 2>&1
 sleep 0.4
 require_value context_after right-status
-assert "right-click returns a verifiable context-menu snapshot" \
-    "$([ "$(json_field "$context_output" ok)" = "True" ] && [ -n "$context_menu" ] && echo 1 || echo 0)" \
-    "menu_snapshot=$(json_field "$context_output" data.menu_snapshot_id)"
+context_ok="$(json_field "$context_output" ok)"
+context_code="$(json_field "$context_output" error.code)"
+context_operation="$(json_field "$context_output" error.details.operation)"
+context_delivery="$(json_field "$context_output" error.disposition.delivery)"
+context_retry="$(json_field "$context_output" error.disposition.retry)"
+assert "right-click reports success or exact macOS modal delivery uncertainty" \
+    "$([ "$context_ok" = "True" ] || \
+        { [ "$context_code" = "APP_UNRESPONSIVE" ] && [ "$context_operation" = "AXShowMenu" ] && \
+          [ "$context_delivery" = "delivery_uncertain" ] && [ "$context_retry" = "unsafe" ]; } && echo 1 || echo 0)" \
+    "ok=$context_ok code=$context_code operation=$context_operation delivery=$context_delivery retry=$context_retry"
 assert "context-menu item action is independently observed" \
     "$([ "$context_after" = "context-picked" ] && echo 1 || echo 0)" \
     "before=$context_before after=$context_after"
@@ -73,8 +79,16 @@ note "Disclosure collapse and expand"
 disclosed_present() {
     local out
     out="$("$bin" find --app "$app" --role statictext --name disclosed-content --first 2>/dev/null)"
-    [ "$(json_field "$out" ok)" = "True" ] && echo 1 || echo 0
+    [ "$(json_field "$out" ok)" = "True" ] && \
+        [ -n "$(json_field "$out" data.match)" ] && echo 1 || echo 0
 }
+require_target disclosure disclosure disclosure-section
+precondition_output="$(act_target "$disclosure" click 2>&1)"
+sleep 0.4
+expanded_before="$(disclosed_present)"
+assert "disclosure precondition is independently expanded" \
+    "$([ "$(json_field "$precondition_output" ok)" = "True" ] && [ "$expanded_before" = "1" ] && echo 1 || echo 0)" \
+    "content_present=$expanded_before error=$(json_field "$precondition_output" error.code)"
 require_target disclosure disclosure disclosure-section
 collapse_output="$(act_target "$disclosure" collapse 2>&1)"
 sleep 0.4
