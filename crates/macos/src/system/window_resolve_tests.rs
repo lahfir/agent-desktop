@@ -35,9 +35,12 @@ fn current_pid() -> i32 {
 }
 
 fn instance(pid: i32) -> String {
+    if pid != current_pid() {
+        return format!("instance-{pid}");
+    }
     crate::system::process_identity::token_for_pid(pid)
         .unwrap()
-        .unwrap_or_else(|| format!("instance-{pid}"))
+        .expect("current test process has an identity token")
 }
 
 #[test]
