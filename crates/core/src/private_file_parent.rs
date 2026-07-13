@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub(super) fn ensure_private(path: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
@@ -54,7 +54,7 @@ pub(super) fn ensure_user(path: &Path) -> std::io::Result<()> {
 fn ensure_directory_path(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 
-    let mut current = PathBuf::new();
+    let mut current = std::path::PathBuf::new();
     for component in path.components() {
         match component {
             std::path::Component::CurDir => continue,
