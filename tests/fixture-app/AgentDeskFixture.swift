@@ -124,7 +124,7 @@ struct ContentView: View {
                 .padding(6)
                 .background(hoverStatus == "hovered" ? Color.yellow.opacity(0.4) : Color.clear)
                 .accessibilityLabel("hover-target")
-                .onHover { inside in if inside { hoverStatus = "hovered" } }
+                .onHover { inside in hoverStatus = inside ? "hovered" : "idle" }
             StatusReadout(name: "hover-status", value: hoverStatus)
 
             /// Two controls sharing role and name. Each records a distinct
