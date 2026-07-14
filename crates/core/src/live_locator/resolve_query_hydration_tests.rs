@@ -1,4 +1,4 @@
-use super::resolve_query_tests::window;
+use super::test_support::window;
 use super::{
     LocatorMaterialization, LocatorResolveRequest, LocatorSelection, ObservationRequest,
     ObservationRoot, ObservedTree, resolve_query,

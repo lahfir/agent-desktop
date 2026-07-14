@@ -4,6 +4,21 @@ use super::{
 };
 use crate::{WindowInfo, refs::RefPath};
 
+pub(super) fn window() -> WindowInfo {
+    WindowInfo {
+        id: "w-1".into(),
+        title: "Fixture".into(),
+        app: "FixtureApp".into(),
+        pid: crate::ProcessId::new(42),
+        process_instance: Some("test-instance".into()),
+        bounds: None,
+        state: crate::WindowState {
+            is_focused: true,
+            ..Default::default()
+        },
+    }
+}
+
 pub(crate) fn evidence(role: &str, name: Option<&str>) -> LocatorEvidence {
     LocatorEvidence {
         role: LocatorField::Known(role.to_string()),
@@ -46,18 +61,7 @@ pub(crate) fn tree(
     ObservedTree {
         nodes,
         roots,
-        source: ObservationSource::Window(WindowInfo {
-            id: "w-1".into(),
-            title: "Fixture".into(),
-            app: "FixtureApp".into(),
-            pid: crate::ProcessId::new(42),
-            process_instance: Some("test-instance".into()),
-            bounds: None,
-            state: crate::WindowState {
-                is_focused: true,
-                ..Default::default()
-            },
-        }),
+        source: ObservationSource::Window(window()),
         stats: LocatorStats::default(),
         structurally_complete,
     }
