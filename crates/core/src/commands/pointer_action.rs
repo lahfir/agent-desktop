@@ -223,22 +223,15 @@ fn point_observed_bounds_hash(err: &AppError) -> Option<u64> {
 }
 
 fn is_retryable_point_error(err: &AppError) -> bool {
-    match err.code() {
-        "STALE_REF" | "AMBIGUOUS_TARGET" | "TIMEOUT" | "APP_UNRESPONSIVE" => {
-            error_is_explicitly_retryable(err)
+    match err {
+        AppError::Adapter(error) if error.is_retryable_resolution_failure() => true,
+        AppError::Adapter(error) if error.code == crate::ErrorCode::ActionFailed => {
+            ["visible", "stable", "receives_events"]
+                .into_iter()
+                .any(|check| point_failed_check(err, check))
         }
-        "ACTION_FAILED" => ["visible", "stable", "receives_events"]
-            .into_iter()
-            .any(|check| point_failed_check(err, check)),
         _ => false,
     }
-}
-
-fn error_is_explicitly_retryable(err: &AppError) -> bool {
-    let AppError::Adapter(error) = err else {
-        return false;
-    };
-    error.is_explicitly_retryable()
 }
 
 fn point_failed_check(err: &AppError, expected: &str) -> bool {
