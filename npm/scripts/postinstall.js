@@ -9,7 +9,6 @@ const {
   readFileSync,
   readdirSync,
   renameSync,
-  rmSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -48,6 +47,18 @@ const SUPPORTED_PLATFORMS = ['darwin'];
 
 function log(msg) {
   process.stderr.write(`agent-desktop: ${msg}\n`);
+}
+
+function trashRecoverably(path, trashCommand = 'trash') {
+  try {
+    execFileSync(trashCommand, [path], { stdio: 'pipe', timeout: 30000 });
+  } catch (err) {
+    if (!existsSync(path)) return;
+    const reason = err.code === 'ENOENT'
+      ? `trash command is unavailable: ${trashCommand}`
+      : `trash exited with status ${err.status ?? 'unknown'}`;
+    log(`Could not move cleanup artifact to Trash; retained at ${path}: ${reason}`);
+  }
 }
 
 function getPlatformKey() {
@@ -126,7 +137,7 @@ function validateArchive(tarballPath) {
   }
 }
 
-function installArchive(tarballPath, binaryPath, helperPath) {
+function installArchive(tarballPath, binaryPath, helperPath, trashCommand = 'trash') {
   validateArchive(tarballPath);
   const staging = mkdtempSync(join(binDir, '.extract-'));
   try {
@@ -147,7 +158,7 @@ function installArchive(tarballPath, binaryPath, helperPath) {
     installExecutable(extractedHelper, helperPath);
     installExecutable(extractedBinary, binaryPath);
   } finally {
-    rmSync(staging, { recursive: true, force: true });
+    trashRecoverably(staging, trashCommand);
   }
 }
 
@@ -307,5 +318,6 @@ module.exports = {
   checksumFor,
   customHelperPath,
   installArchive,
+  trashRecoverably,
   validateArchive,
 };

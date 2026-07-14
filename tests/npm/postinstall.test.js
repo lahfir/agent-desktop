@@ -2,10 +2,10 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } = require('node:fs');
 const { tmpdir } = require('node:os');
@@ -19,7 +19,7 @@ const roots = [];
 afterEach(() => {
   delete process.env.AGENT_DESKTOP_MACOS_HELPER_PATH;
   for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
+    postinstall.trashRecoverably(root);
   }
 });
 
@@ -41,6 +41,28 @@ function archive(entries) {
   const tarball = join(root, 'release.tar.gz');
   execFileSync('tar', ['-czf', tarball, '-C', source, ...Object.keys(entries)]);
   return { root, tarball };
+}
+
+function executable(contents) {
+  const root = temporaryDirectory();
+  const path = join(root, 'trash');
+  writeFileSync(path, contents, { mode: 0o755 });
+  return path;
+}
+
+function captureWarnings(run) {
+  const warnings = [];
+  const write = process.stderr.write;
+  process.stderr.write = (chunk) => {
+    warnings.push(String(chunk));
+    return true;
+  };
+  try {
+    run();
+    return warnings.join('');
+  } finally {
+    process.stderr.write = write;
+  }
 }
 
 test('checksum lookup requires an exact archive name', () => {
@@ -80,6 +102,66 @@ test('archive installation preserves the exact paired executables', () => {
 
   assert.equal(readFileSync(binary, 'utf8'), 'cli-build-v1');
   assert.equal(readFileSync(helper, 'utf8'), 'helper-build-v1');
+});
+
+test('recoverable cleanup invokes trash and removes the original path', () => {
+  const target = temporaryDirectory();
+  const recovered = `${target}.recovered`;
+  roots.push(recovered);
+  const fakeTrash = executable('#!/bin/sh\nmv "$1" "$1.recovered"\n');
+
+  postinstall.trashRecoverably(target, fakeTrash);
+  assert.equal(existsSync(target), false);
+  assert.equal(existsSync(recovered), true);
+});
+
+test('recoverable cleanup retains artifacts and warns when trash is unavailable or fails', () => {
+  const unavailable = temporaryDirectory();
+  const failing = temporaryDirectory();
+  const fakeTrash = executable('#!/bin/sh\nexit 9\n');
+
+  for (const [target, command, reason] of [
+    [
+      unavailable,
+      '/definitely-missing-agent-desktop-trash',
+      'trash command is unavailable: /definitely-missing-agent-desktop-trash',
+    ],
+    [failing, fakeTrash, 'trash exited with status 9'],
+  ]) {
+    const warnings = captureWarnings(() =>
+      postinstall.trashRecoverably(target, command),
+    );
+    assert.equal(existsSync(target), true);
+    assert.ok(warnings.includes(`retained at ${target}:`));
+    assert.ok(warnings.includes(reason));
+  }
+});
+
+test('cleanup failure does not mask a successful archive install', () => {
+  const payload = archive({
+    'agent-desktop': 'cli-build-v2',
+    'agent-desktop-macos-helper': 'helper-build-v2',
+  });
+  const destination = temporaryDirectory();
+  const binary = join(destination, 'agent-desktop-darwin-arm64');
+  const helper = join(destination, 'agent-desktop-macos-helper');
+
+  const warnings = captureWarnings(() =>
+    postinstall.installArchive(
+      payload.tarball,
+      binary,
+      helper,
+      '/definitely-missing-agent-desktop-trash',
+    ),
+  );
+
+  assert.equal(readFileSync(binary, 'utf8'), 'cli-build-v2');
+  assert.equal(readFileSync(helper, 'utf8'), 'helper-build-v2');
+  assert.match(warnings, /Could not move cleanup artifact to Trash; retained at .*\.extract-/);
+  const retained = warnings.match(/retained at (.*\.extract-[^:]+):/)?.[1];
+  assert.ok(retained);
+  assert.equal(existsSync(retained), true);
+  roots.push(retained);
 });
 
 test('custom helper override must be absolute', () => {
