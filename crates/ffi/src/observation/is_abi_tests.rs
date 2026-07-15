@@ -89,6 +89,7 @@ fn strict_duplicate_is_ambiguous_at_the_c_boundary() {
     let adapter = crate::adapter::register_adapter(AdAdapter {
         inner: Box::new(DuplicateAdapter),
         session_id: None,
+        _session_lease: None,
     })
     .unwrap();
     let mut out = false;
@@ -106,6 +107,7 @@ fn last_and_nth_selection_are_applied_at_the_c_boundary() {
     let adapter = crate::adapter::register_adapter(AdAdapter {
         inner: Box::new(DuplicateAdapter),
         session_id: None,
+        _session_lease: None,
     })
     .unwrap();
     for (kind, nth) in [

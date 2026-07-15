@@ -1,0 +1,26 @@
+name: Native desktop E2E
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: agent-desktop-native-e2e
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  native-e2e:
+    name: Native macOS E2E
+    runs-on: [self-hosted, macOS, agent-desktop-e2e]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      AGENT_DESKTOP_NATIVE_E2E_RUNNER: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Build and run the exclusive native suite
+        run: scripts/run-native-e2e-ci.sh

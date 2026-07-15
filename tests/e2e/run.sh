@@ -2,7 +2,24 @@
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
 if [ -z "${AGENT_DESKTOP_INTERACTION_LEASE_FD:-}" ]; then
+    if [ "$(uname -s)" != "Darwin" ]; then
+        echo "macOS is required for the native accessibility E2E suite" >&2
+        exit 2
+    fi
+    if [ "${AGENT_DESKTOP_E2E_EXCLUSIVE:-}" != "1" ]; then
+        echo "SKIP (blocked): native E2E requires an exclusive desktop" >&2
+        exit 2
+    fi
+    CARGO_TARGET_DIR="$repo/target" cargo build --locked --release -p agent-desktop || exit 2
+    CARGO_TARGET_DIR="$repo/target" cargo build --locked --release \
+        -p agent-desktop-macos --bin agent-desktop-macos-helper || exit 2
+    CARGO_TARGET_DIR="$repo/target" cargo build --locked --profile release-ffi \
+        -p agent-desktop-ffi || exit 2
+    export AGENT_DESKTOP_E2E_RELEASE_BIN="$repo/target/release/agent-desktop"
+    export AGENT_DESKTOP_E2E_RELEASE_FFI="$repo/target/release-ffi/libagent_desktop_ffi.dylib"
+    export AGENT_DESKTOP_E2E_RELEASE_FFI_HELPER="$repo/target/release/agent-desktop-macos-helper"
     exec python3 "$here/interaction_lock.py" run "$0" "$@"
 fi
 # shellcheck source=tests/e2e/lib.sh
@@ -16,6 +33,10 @@ if [ "$(uname -s)" != "Darwin" ]; then
 fi
 if [ ! -x "$release_bin" ]; then
     echo "release binary missing at $release_bin; run 'cargo build --release'" >&2
+    exit 2
+fi
+if [ ! -f "$release_ffi" ] || [ ! -x "$release_ffi_helper" ]; then
+    echo "release FFI bundle missing; build agent-desktop-ffi with release-ffi and the agent-desktop-macos-helper binary with release" >&2
     exit 2
 fi
 note "Strict headless non-interference gate"

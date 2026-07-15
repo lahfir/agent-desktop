@@ -58,6 +58,7 @@ pub(crate) mod panic_injection;
 pub(crate) mod pointer_guard;
 pub(crate) mod resource;
 pub(crate) mod screenshot;
+pub(crate) mod session_lease;
 pub(crate) mod surfaces;
 pub(crate) mod tree;
 pub(crate) mod types;

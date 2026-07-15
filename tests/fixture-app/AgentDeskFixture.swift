@@ -120,7 +120,7 @@ struct ContentView: View {
                 }
             StatusReadout(name: "right-status", value: rightStatus)
 
-            Text("Hover Target")
+            Button("Hover Target") { }
                 .padding(6)
                 .background(hoverStatus == "hovered" ? Color.yellow.opacity(0.4) : Color.clear)
                 .accessibilityLabel("hover-target")

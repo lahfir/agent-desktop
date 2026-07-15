@@ -242,15 +242,15 @@ fn reaches_target_result_passes_receives_events_check() {
 }
 
 #[test]
-fn unknown_hit_test_result_fails_closed() {
-    let err = run_receives_events_error(Ok(HitTestResult::Unknown));
-    assert_eq!(err.code, ErrorCode::ActionFailed);
+fn unknown_hit_test_result_is_non_blocking_evidence() {
+    let check = run_receives_events_check(Ok(HitTestResult::Unknown));
+    assert_eq!(check.status, ActionabilityStatus::Unknown);
 }
 
 #[test]
-fn not_supported_hit_test_preserves_platform_error() {
-    let err = run_receives_events_error(Err(AdapterError::not_supported("hit_test")));
-    assert_eq!(err.code, ErrorCode::PlatformNotSupported);
+fn not_supported_hit_test_is_non_blocking_evidence() {
+    let check = run_receives_events_check(Err(AdapterError::not_supported("hit_test")));
+    assert_eq!(check.status, ActionabilityStatus::Unknown);
 }
 
 #[test]
@@ -298,7 +298,7 @@ fn intercepted_by_result_fails_and_carries_redactable_occluder() {
 }
 
 #[test]
-fn mixed_unknown_and_occluded_points_remain_inconclusive() {
+fn mixed_unknown_and_occluded_points_block_physical_delivery() {
     let intercepted = HitTestResult::InterceptedBy {
         role: Some("sheet".into()),
         name: None,
@@ -322,7 +322,7 @@ fn mixed_unknown_and_occluded_points_remain_inconclusive() {
         &adapter,
         &ActionRequest::headed(Action::Click),
     )
-    .unwrap_err();
+    .expect_err("known occlusion must not degrade to center-point delivery");
     let details = error.details.unwrap();
     let check = details["checks"]
         .as_array()
@@ -344,8 +344,18 @@ fn mixed_unknown_and_occluded_points_remain_inconclusive() {
 
 #[test]
 fn unknown_only_hit_test_evidence_never_claims_occlusion() {
-    let error = run_receives_events_error(Ok(HitTestResult::Unknown));
-    let details = error.details.unwrap();
+    let report = check_live(
+        &clickable_entry(),
+        &NativeHandle::null(),
+        &HitTestAdapter {
+            outcome: Ok(HitTestResult::Unknown),
+            actions: Vec::new(),
+            calls: AtomicUsize::new(0),
+        },
+        &ActionRequest::headed(Action::Click),
+    )
+    .unwrap();
+    let details = serde_json::to_value(report).unwrap();
     let check = details["checks"]
         .as_array()
         .unwrap()

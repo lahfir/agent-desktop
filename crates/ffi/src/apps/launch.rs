@@ -209,6 +209,7 @@ mod tests {
                 probe: Arc::clone(&probe),
             }),
             session_id: None,
+            _session_lease: None,
         })
         .unwrap();
         let id = CString::new("Fixture").unwrap();

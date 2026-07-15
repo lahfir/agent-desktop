@@ -20,9 +20,7 @@ impl ActionabilityReport {
         verified_point: Option<Point>,
         pointer_delivery: PointerDelivery,
     ) -> Self {
-        let actionable = checks
-            .iter()
-            .all(|check| matches!(check.status, ActionabilityStatus::Pass));
+        let actionable = checks.iter().all(|check| !is_blocking(check));
         Self {
             actionable,
             checks,
@@ -34,14 +32,14 @@ impl ActionabilityReport {
     pub(crate) fn terminal_code(&self) -> Option<ErrorCode> {
         self.checks
             .iter()
-            .find(|check| !matches!(check.status, ActionabilityStatus::Pass))
+            .find(|check| is_blocking(check))
             .and_then(|check| check.terminal_code.clone())
     }
 
     pub(crate) fn failure_reasons(&self) -> String {
         self.checks
             .iter()
-            .filter(|check| !matches!(check.status, ActionabilityStatus::Pass))
+            .filter(|check| is_blocking(check))
             .map(|check| {
                 let reason = check.reason.as_deref().unwrap_or("failed");
                 format!("{} ({reason})", check.check)
@@ -49,6 +47,16 @@ impl ActionabilityReport {
             .collect::<Vec<_>>()
             .join(", ")
     }
+}
+
+fn is_blocking(check: &ActionabilityCheck) -> bool {
+    matches!(check.status, ActionabilityStatus::Fail)
+        || matches!(check.status, ActionabilityStatus::Unknown)
+            && (check.check != "receives_events"
+                || check
+                    .hit_test
+                    .as_ref()
+                    .is_some_and(|evidence| evidence.occluded > 0))
 }
 
 #[cfg(test)]

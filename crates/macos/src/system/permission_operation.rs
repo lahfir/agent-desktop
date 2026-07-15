@@ -2,6 +2,7 @@
 pub(crate) enum PermissionOperation {
     Accessibility,
     ScreenRecording,
+    Automation,
 }
 
 impl PermissionOperation {
@@ -9,6 +10,7 @@ impl PermissionOperation {
         match value {
             "accessibility" => Some(Self::Accessibility),
             "screen_recording" => Some(Self::ScreenRecording),
+            "automation" => Some(Self::Automation),
             _ => None,
         }
     }
@@ -17,6 +19,7 @@ impl PermissionOperation {
         match self {
             Self::Accessibility => "accessibility",
             Self::ScreenRecording => "screen_recording",
+            Self::Automation => "automation",
         }
     }
 }
@@ -26,7 +29,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn helper_operation_is_a_closed_two_value_protocol() {
+    fn helper_operation_protocol_accepts_only_permission_requests() {
         assert_eq!(
             PermissionOperation::parse("accessibility"),
             Some(PermissionOperation::Accessibility)
@@ -34,6 +37,10 @@ mod tests {
         assert_eq!(
             PermissionOperation::parse("screen_recording"),
             Some(PermissionOperation::ScreenRecording)
+        );
+        assert_eq!(
+            PermissionOperation::parse("automation"),
+            Some(PermissionOperation::Automation)
         );
         assert_eq!(PermissionOperation::parse("shell"), None);
     }

@@ -192,7 +192,13 @@ impl SystemOps for MacOSAdapter {
         filter: &NotificationFilter,
         policy: agent_desktop_core::InteractionPolicy,
         deadline: Deadline,
+        lease: Option<&InteractionLease>,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
+        if policy.allow_focus_steal && lease.is_none() {
+            return Err(AdapterError::internal(
+                "Headed notification observation requires an interaction lease",
+            ));
+        }
         crate::notifications::list::list_notifications(filter, policy, deadline)
     }
 

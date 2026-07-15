@@ -17,10 +17,11 @@ pub fn execute(
         text: args.text,
         limit: args.limit,
     };
-    let notifications = adapter.list_notifications(
+    let notifications = super::notification_policy::list_with_foreground_lease(
         &filter,
-        context.physical_input_policy(),
         crate::Deadline::standard()?,
+        adapter,
+        context,
     )?;
     Ok(json!({
         "count": notifications.len(),

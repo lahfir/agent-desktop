@@ -57,7 +57,11 @@ pub fn execute(
     let timeout_ms = args.timeout_ms;
     match WaitMode::from_args(args)? {
         WaitMode::Sleep(ms) => {
-            std::thread::sleep(crate::wait_timeout_duration(ms)?);
+            let deadline = crate::Deadline::after(ms)?;
+            std::thread::sleep(deadline.remaining());
+            if deadline.was_capped() {
+                return Err(deadline.timeout_error().into());
+            }
             Ok(json!({ "waited_ms": ms }))
         }
         WaitMode::Menu { app, open } => wait_for_menu(app, open, timeout_ms, adapter),
@@ -282,7 +286,9 @@ fn wait_for_notification(
         if deadline.is_expired() {
             return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
         }
-        match adapter.list_notifications(&filter, context.physical_input_policy(), deadline) {
+        match super::notification_policy::list_with_foreground_lease(
+            &filter, deadline, adapter, context,
+        ) {
             Ok(current) => match &baseline {
                 None => {
                     baseline = Some(notification_counts(&current));
@@ -299,13 +305,13 @@ fn wait_for_notification(
                     }
                 }
             },
-            Err(err) if is_retryable_wait_poll_error(&err.code) => {
+            Err(AppError::Adapter(err)) if is_retryable_wait_poll_error(&err.code) => {
                 last_error = Some(json!({
                     "code": err.code.as_str(),
                     "message": err.message
                 }));
             }
-            Err(err) => return Err(AppError::Adapter(err)),
+            Err(err) => return Err(err),
         }
 
         let remaining = deadline.remaining();

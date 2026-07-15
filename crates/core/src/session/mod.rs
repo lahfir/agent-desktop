@@ -1,7 +1,9 @@
 mod gc;
+mod liveness;
 mod manifest;
 
 pub use gc::{GcOptions, GcReport, gc, is_live};
+pub use liveness::SessionLivenessLease;
 pub use manifest::{ArtifactsMode, SessionManifest, SessionTraceMode};
 
 use crate::{
@@ -192,6 +194,7 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
 
 pub fn end_session(session_id: &str) -> Result<SessionManifest, AppError> {
     validate_session_id(session_id)?;
+    let _lease = acquire_liveness_lease(session_id)?;
     let id = session_id.to_string();
     let mut manifest = read_manifest(&id)?.ok_or_else(|| {
         AppError::invalid_input_with_suggestion(
@@ -204,6 +207,18 @@ pub fn end_session(session_id: &str) -> Result<SessionManifest, AppError> {
         write_manifest(&manifest)?;
     }
     Ok(manifest)
+}
+
+pub fn acquire_liveness_lease(session_id: &str) -> Result<Option<SessionLivenessLease>, AppError> {
+    acquire_liveness_lease_with_deadline(session_id, crate::Deadline::standard()?)
+}
+
+pub(crate) fn acquire_liveness_lease_with_deadline(
+    session_id: &str,
+    deadline: crate::Deadline,
+) -> Result<Option<SessionLivenessLease>, AppError> {
+    validate_session_id(session_id)?;
+    liveness::acquire(session_id, deadline)
 }
 
 fn create_session_tree(dir: &Path) -> Result<(), AppError> {

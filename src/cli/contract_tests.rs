@@ -210,6 +210,7 @@ fn curated_help_exposes_new_surfaces_and_current_ref_contract() {
         "wait --event <kind>",
         "@s8f3k2p9:e1",
         "does not activate",
+        "session-owned refs require the same scope",
     ] {
         assert!(
             help.contains(expected),
@@ -217,6 +218,28 @@ fn curated_help_exposes_new_surfaces_and_current_ref_contract() {
         );
     }
     assert!(!help.contains("current-session pointer"));
+    assert!(!help.contains("explicit --snapshot IDs do not require it"));
+}
+
+#[test]
+fn permissions_help_names_the_isolated_request_boundary() {
+    let mut command = Cli::command();
+    let help = command
+        .find_subcommand_mut("permissions")
+        .expect("permissions command")
+        .render_long_help()
+        .to_string();
+
+    assert!(help.contains("Request missing permissions in the bounded isolated helper"));
+}
+
+#[test]
+fn faq_uses_the_unwind_safe_ffi_build_profile() {
+    let faq = include_str!("../../docs/faq.md");
+
+    assert!(faq.contains("cargo build --profile release-ffi -p agent-desktop-ffi"));
+    assert!(faq.contains("target/release-ffi/"));
+    assert!(!faq.contains("cargo build --release\n# Outputs: libagent_desktop_ffi"));
 }
 
 #[test]

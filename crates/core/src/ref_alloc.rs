@@ -59,15 +59,12 @@ pub(crate) fn ref_entry_from_node(
 /// role. Container roles like `scrollarea` (Scroll) and `disclosure`
 /// (Expand/Collapse) are not "interactive" by role but are genuinely
 /// actionable, and `scroll` / `expand` / `collapse` need a ref to target
-/// them — so action-bearing elements must be ref-able when their known bounds
-/// have positive area. A bare `SetFocus` affordance does not qualify on its
-/// own: focusability is not a primary action and would ref-allocate large
-/// numbers of inert containers.
+/// them — so action-bearing elements must be ref-able even when their current
+/// bounds are zero-sized. Visibility remains a live actionability concern. A
+/// bare `SetFocus` affordance does not qualify on its own: focusability is not
+/// a primary action and would ref-allocate large numbers of inert containers.
 pub(crate) fn is_ref_able(node: &AccessibilityNode) -> bool {
-    node.presentation
-        .bounds
-        .is_none_or(|bounds| bounds.width > 0.0 && bounds.height > 0.0)
-        && is_ref_able_role_actions(&node.role, &node.presentation.available_actions)
+    is_ref_able_role_actions(&node.role, &node.presentation.available_actions)
 }
 
 pub(crate) fn is_ref_able_role_actions(role: &str, available_actions: &[String]) -> bool {

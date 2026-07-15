@@ -10,7 +10,7 @@ Most recent shipments against this roadmap:
 
 | Version | Date       | What shipped |
 |---------|------------|--------------|
-| v0.3.0 | 2026-06-20 | Playwright-grade reliability hardening on the Phase 1 contracts: session-scoped latest snapshot pointers, explicit snapshot IDs usable across sessions, actionability checks, headed/headless policy, JSONL `--trace`, stale-ref diagnostics, and refstore symlink hardening |
+| v0.3.0 | 2026-06-20 | Playwright-grade reliability hardening on the Phase 1 contracts: session-scoped latest snapshot pointers, qualified snapshot refs within explicit namespaces, actionability checks, headed/headless policy, JSONL `--trace`, stale-ref diagnostics, and refstore symlink hardening |
 | v0.2.3 | 2026-06-06 | macOS AX window fallback hardening and fullscreen AX tree retrieval fixes |
 | v0.2.2 | 2026-06-02 | macOS CFArray type-safety fix for Mail.app snapshot stability |
 | v0.2.1 | 2026-05-23 | Empty accessibility-identity ref stability fix |
@@ -297,11 +297,11 @@ crates/macos/src/
 - Probe once per CLI process into `PermissionReport`
 - Accessibility: `AXIsProcessTrusted()` / `AXIsProcessTrustedWithOptions(prompt: true)`
 - Screen Recording: platform screen-capture preflight/request path
-- Automation: probed against System Events without prompting for `permissions` / `status`; `permissions --request` may prompt via the platform request path
+- Automation: probed against System Events without prompting for `permissions` / `status`; `permissions --request` may prompt through the bounded isolated permission helper
 - `status`, `permissions`, preflight, and `batch` share the same report; `permissions --request` invokes the request path
 
 **Notification management:**
-- Open Notification Center via AX: target the `NotificationCenter` process (bundleId: `com.apple.notificationcenterui`)
+- Open Notification Center through the guarded System Events path to Control Center's Clock item; authorization is probed without prompting before the Apple Event is sent
 - List notifications: traverse the Notification Center AX tree — each notification is an `AXGroup` with title, subtitle, and action buttons
 - Dismiss: perform `AXPress` on the notification's close button, or `AXRemoveFromParent` if supported
 - Interact: resolve action buttons within a notification group and perform `AXPress`
@@ -329,7 +329,7 @@ Platform-agnostic, lives in `agent-desktop-core`:
 4. Serialize: Omit null fields. Omit empty arrays. Omit bounds in compact mode
 5. Estimate tokens: Optionally warn if exceeding threshold
 
-Snapshot refs persist through `RefStore`. The default namespace stores snapshots under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`; `--session <id>` stores the same shape under `~/.agent-desktop/sessions/{id}/snapshots/{snapshot_id}/refmap.json`. Each namespace owns one `latest_snapshot_id` pointer for commands that omit `--snapshot`. Explicit `--snapshot <id>` is a direct snapshot handle and can be used without repeating `--session`; if the same snapshot ID appears in multiple sessions, callers pass the matching session to disambiguate. `~/.agent-desktop/last_refmap.json` remains only as a latest-snapshot inspection artifact. Action commands resolve through `RefStore` and use `ResolvedElement` RAII so native handles are released after ref-consuming commands. Return `STALE_REF` on live re-identification mismatch and `SNAPSHOT_NOT_FOUND` when the requested snapshot does not exist.
+Snapshot refs persist through `RefStore`. The default namespace stores snapshots under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`; `--session <id>` stores the same shape under `~/.agent-desktop/sessions/{id}/snapshots/{snapshot_id}/refmap.json`. Each namespace owns one `latest_snapshot_id` pointer for commands that omit `--snapshot`. A qualified ref or explicit `--snapshot <id>` identifies the snapshot within the selected namespace; session-owned snapshots still require the matching `--session` or `AGENT_DESKTOP_SESSION` scope, and lookup never searches another namespace. `~/.agent-desktop/last_refmap.json` remains only as a latest-snapshot inspection artifact. Action commands resolve through `RefStore` and use `ResolvedElement` RAII so native handles are released after ref-consuming commands. Return `STALE_REF` on live re-identification mismatch and `SNAPSHOT_NOT_FOUND` when the requested snapshot does not exist.
 
 **Progressive Skeleton Traversal:**
 - `--skeleton` flag clamps depth to `min(max_depth, 3)`, annotates truncated containers with `children_count` for agent discovery
@@ -696,7 +696,7 @@ Cross-platform core extensions (new, landed alongside Windows):
 | P2-O14 | Toolbar and missing surfaces | Implement the core-predeclared surface vocabulary without changing core: `Toolbar` on both platforms; `Spotlight`, `Dock`, and `MenuBarExtras` on macOS; `Taskbar`, `SystemTray`, `SystemTrayOverflow`, `StartMenu`, `ActionCenter`, and `QuickSettings` on Windows where the current build/session exposes them. `NotificationCenter` remains the portable notification surface while `ActionCenter` names the distinct Windows shell entry point |
 | P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override |
 | P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks the compile-time `CommandDescriptor` registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry and the same descriptor metadata can feed JSON Schema / MCP generation in Phase 4. Marshaling helpers stay in `crates/ffi/src/convert/` — these are per-type, not per-command. In the same migration: backfill `ad_snapshot` (full refmap pipeline), `ad_execute_by_ref(adapter, "@e5", action, out)`, `ad_wait(…)`, `ad_version`, `ad_abi_version() -> u32` with `AD_ABI_VERSION_MAJOR` cbindgen `[defines]` export, `ad_status`, `ad_set_log_callback(fn(level, msg))` installing a `tracing_subscriber` layer so dlopen consumers see debug output |
-| P2-O17 | Screen Recording / Automation permission detection | macOS Phase 1 exposes `PermissionReport { accessibility, screen_recording, automation }`. The current native AppKit and Accessibility implementation sends no Apple Events, so `automation` is truthfully `NotRequired`; Accessibility and Screen Recording retain explicit preflight states |
+| P2-O17 | Screen Recording / Automation permission detection | macOS Phase 1 exposes `PermissionReport { accessibility, screen_recording, automation }`. Automation is probed noninteractively for the remaining System Events-backed Notification Center opener; Accessibility and Screen Recording retain explicit preflight states |
 | P2-O18 | Windows shell surface coverage | Add explicit shell coverage for Start menu/search, taskbar, system tray/overflow, Action Center/notification center, Quick Settings, multi-monitor/DPI, virtual desktop detection, UAC/elevated targets, RDP/locked-session behavior, and Explorer-specific file destinations. New commands are added only where a ref-based `snapshot --surface …` loop cannot expose the surface first; Windows-only behavior still routes through core command files and adapter trait defaults |
 
 ### Cross-Platform Trait Extensions
@@ -760,7 +760,7 @@ New supporting types (land in `crates/core/src/`):
 | `Cancel` | `AXPerformAction(kAXCancelAction)` | UIA `WindowPattern.Close` on dialog or `InvokePattern` on cancel button | AT-SPI2 `Action.DoAction("cancel")` or synthesize Escape |
 | `DeliverFiles(Vec<PathBuf>)` | 4-tier headless fallback: (1) app-native URL scheme, (2) `NSWorkspace.open(urls:withApplicationAt:configuration:)` with `activates: false`, (3) `NSPasteboard.public.file-url` + `CGEventPostToPid(cmd+v)`, (4) `osascript open`. NEVER `NSDraggingSession` (not headless-compatible — Phase 2 plan Unit 12 research) | App/shell delivery first: app URI handlers, `ShellExecuteEx`, `IFileOperation` for filesystem destinations, and `CF_HDROP` clipboard paste where accepted. `IDataObject + DoDragDrop` is policy-gated fallback/spike only | Portal/native file-transfer path where available; XDND is Phase 3 research, not default |
 | Screen Recording permission | `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` | No macOS-style TCC field. Use `GraphicsCaptureSession::IsSupported` / capture API failures to report `not_required`, `unknown`, `PERM_DENIED`, or `PLATFORM_NOT_SUPPORTED` with `platform_detail` | PipeWire portal permission dialog |
-| Automation permission | `NotRequired` while the adapter uses native AppKit and Accessibility APIs without Apple Events | N/A (no equivalent restriction) | N/A |
+| Automation permission | Nonprompting System Events probe; explicit request uses the bounded isolated helper | N/A (no equivalent restriction) | N/A |
 
 ### Windows Adapter Implementation
 
@@ -981,7 +981,7 @@ screencapturekit = "1.5"
 - Toolbar surface: `snapshot --surface toolbar` on Safari (macOS) and Edge (Windows) returns the toolbar's children with refs
 - Electron deep-tree: VS Code snapshot with `--force-electron-a11y` exposes ≥100 refs at default depth on both platforms
 - Screen Recording permission: on a macOS runner without Screen Recording, `screenshot --window` returns `PermDenied` with the Screen Recording suggestion (distinct from AX denial)
-- Automation permission: `permissions` reports `NotRequired`, and fixture-app `close-app` uses native `NSRunningApplication` termination without requesting Apple Event authorization
+- Automation permission: `permissions` reports `granted`, `denied`, or `unknown` without prompting; explicit requests run in the bounded isolated helper, while native `close-app` needs no Apple Event authorization
 
 **FFI parity tests (P2-O16):**
 - `ad_abi_version()` returns a packed `u32` matching the Cargo version; consumer built against 0.2.0 refuses to load 0.3.0

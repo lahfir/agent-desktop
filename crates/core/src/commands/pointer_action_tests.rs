@@ -132,12 +132,10 @@ fn terminal_stale_ref_is_preserved_after_retry_budget_expires() {
         bounds_reads: AtomicU32::new(0),
     };
     let deadline = crate::Deadline::after(100).unwrap();
-    let lease = crate::InteractionLease::guarded(deadline, ()).unwrap();
 
-    let err = match resolve_point_with_deadline(
+    let err = match wait_for_point_with_deadline(
         point_args(&snapshot_id),
         deadline,
-        &lease,
         &adapter,
         &crate::CommandContext::default(),
     ) {
@@ -200,12 +198,10 @@ fn explicitly_retryable_app_unresponsive_recovers_within_shared_deadline() {
         resolve_calls: AtomicU32::new(0),
     };
     let deadline = crate::Deadline::after(1_000).unwrap();
-    let lease = crate::InteractionLease::guarded(deadline, ()).unwrap();
 
-    let resolved = resolve_point_with_deadline(
+    let resolved = wait_for_point_with_deadline(
         point_args(&snapshot_id),
         deadline,
-        &lease,
         &adapter,
         &crate::CommandContext::default(),
     )

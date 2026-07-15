@@ -274,7 +274,10 @@ pub(crate) struct WaitPredicateArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PermissionsArgs {
-    #[arg(long, help = "Trigger the system accessibility permission dialog")]
+    #[arg(
+        long,
+        help = "Request missing permissions in the bounded isolated helper"
+    )]
     #[serde(default)]
     pub request: bool,
 }

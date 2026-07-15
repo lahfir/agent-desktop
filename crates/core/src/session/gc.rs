@@ -24,6 +24,9 @@ pub fn is_live(session_id: &str) -> Result<bool, AppError> {
     if lock_holder_is_live(&store.base_dir().join("refstore.lock")) {
         return Ok(true);
     }
+    if super::liveness::any_held(store.base_dir()) {
+        return Ok(true);
+    }
     let manifest = read_manifest(session_id)?;
     Ok(has_recent_activity(&store, manifest.as_ref()))
 }
@@ -64,7 +67,7 @@ pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
             Ok(lock) => lock,
             Err(_) => continue,
         };
-        if has_recent_activity(&store, Some(&manifest)) {
+        if super::liveness::any_held(&dir) || has_recent_activity(&store, Some(&manifest)) {
             drop(lock);
             continue;
         }

@@ -75,10 +75,10 @@ Requires Rust 1.89+ and macOS 13.0+.
 
 ### Permissions
 
-macOS requires Accessibility permission. Screenshots also require Screen Recording permission. Grant them in **System Settings > Privacy & Security** by adding the app that launches agent-desktop, or:
+macOS requires Accessibility permission. Screenshots also require Screen Recording permission, and the Notification Center opener requires Automation permission for System Events. Plain permission checks never prompt. Request missing permissions in a bounded isolated helper with:
 
 ```bash
-agent-desktop permissions --request   # trigger platform permission request path
+agent-desktop permissions --request   # request missing permissions in an isolated helper
 ```
 
 Permission fields are explicit objects, for example:
@@ -87,9 +87,11 @@ Permission fields are explicit objects, for example:
 {
   "accessibility": { "state": "granted" },
   "screen_recording": { "state": "denied", "suggestion": "Grant Screen Recording permission" },
-  "automation": { "state": "not_required" }
+  "automation": { "state": "unknown" }
 }
 ```
+
+Automation reports `granted`, `denied`, or `unknown`; `unknown` means macOS would need to prompt or System Events could not be probed without prompting.
 
 ## Language bindings (FFI)
 
@@ -314,7 +316,7 @@ agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]
 agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot
 agent-desktop permissions                # check accessibility/screen-recording/automation
-agent-desktop permissions --request      # invoke platform request path
+agent-desktop permissions --request      # request in the bounded isolated helper
 agent-desktop version                    # version string
 agent-desktop skills get desktop --full  # bundled agent guidance
 ```

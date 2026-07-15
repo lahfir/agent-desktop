@@ -27,7 +27,7 @@ pub(crate) struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Select the latest-snapshot namespace; explicit --snapshot IDs do not require it"
+        help = "Select the snapshot namespace; session-owned refs require the same scope"
     )]
     pub session: Option<String>,
     #[arg(

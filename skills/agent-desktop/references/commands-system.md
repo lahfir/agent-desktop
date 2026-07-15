@@ -459,9 +459,9 @@ When `session_id` resolves to a session with a readable manifest, the response a
 agent-desktop permissions
 agent-desktop permissions --request
 ```
-Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation is probed against System Events without prompting; `{ "state": "unknown" }` means macOS would need to prompt or the target could not be probed. Use `--request` to invoke the platform request path.
+Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation is probed against System Events without prompting; `{ "state": "unknown" }` means macOS would need to prompt or the target could not be probed. `--request` asks for all three permissions through a bounded isolated helper so a stalled native prompt cannot strand the command process.
 
-`status`, `permissions`, command preflight, and `batch` share one permission probe per process. `permissions --request` is the only path that intentionally asks the platform to prompt again.
+`status`, `permissions`, command preflight, and `batch` share one nonprompting permission probe per process. `permissions --request` is the only path that intentionally asks the platform to prompt again, and it does so in the isolated helper.
 
 ### version
 ```bash

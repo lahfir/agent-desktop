@@ -338,6 +338,7 @@ impl SystemOps for DoubleCheckAdapter {
         deadline: crate::Deadline,
     ) -> Result<crate::InteractionLease, AdapterError> {
         assert_eq!(self.live_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(deadline.timeout_ms(), 80);
         self.lease_held.store(true, Ordering::SeqCst);
         Ok(crate::InteractionLease::guarded_with_contention(
             deadline,
@@ -361,7 +362,7 @@ fn stability_revalidates_once_under_lease_before_dispatch() {
             ref_id: "@e1",
             context: &CommandContext::default(),
         },
-        ActionRequest::headed(Action::DoubleClick).with_timeout_ms(Some(5_000)),
+        ActionRequest::headed(Action::DoubleClick).with_timeout_ms(Some(80)),
         crate::ref_action::dispatch_resolved,
     )
     .unwrap();
@@ -374,15 +375,6 @@ fn stability_revalidates_once_under_lease_before_dispatch() {
     assert_eq!(metrics["lease_contention_count"], 3);
     assert!(metrics["lease_hold_ms"].as_u64().is_some());
     assert!(!adapter.lease_held.load(Ordering::SeqCst));
-}
-
-#[test]
-fn final_attempt_reserves_the_mandatory_stability_tail() {
-    let shared = crate::Deadline::after(20).expect("shared deadline");
-
-    let final_attempt = super::final_attempt_deadline(shared).expect("final attempt deadline");
-
-    assert_eq!(final_attempt.timeout_ms(), 100);
 }
 
 #[path = "ref_action_wait_unresponsive_tests.rs"]

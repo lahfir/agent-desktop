@@ -198,6 +198,7 @@ pub trait SystemOps: Send + Sync {
         _filter: &NotificationFilter,
         _policy: InteractionPolicy,
         _deadline: Deadline,
+        _lease: Option<&InteractionLease>,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_notifications"))
     }

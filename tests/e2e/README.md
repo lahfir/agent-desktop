@@ -8,14 +8,12 @@ status, value, process, window, or surface transition.
 ## Run the fixture suite
 
 ```bash
-cargo build --release -p agent-desktop
 AGENT_DESKTOP_E2E_EXCLUSIVE=1 bash tests/e2e/run.sh
 ```
 
 The single prerequisite gate requires:
 
 - macOS;
-- `target/release/agent-desktop` already built;
 - Accessibility permission granted to the terminal or runner; and
 - a buildable Swift fixture app.
 
@@ -25,12 +23,14 @@ The harness lock prevents a second native harness from starting, but it cannot
 stop an unrelated `agent-desktop` process from starting between commands. Do
 not set the acknowledgement while the desktop is in use.
 
-Before the gate runs, the release executable is hashed and copied to a
-read-only path under a private suite directory. The suite uses only that copy,
-an isolated `HOME`, ref/session stores, fixture build, `TMPDIR`, and Cargo target
-directory. Every CLI child runs in its own process group with an absolute
-timeout and bounded stdout/stderr capture. The hash and exact JSON/Clap version
-identity are checked again before success is reported.
+Before taking the desktop lock, `run.sh` builds the CLI, macOS helper, and FFI
+library from the current checkout with `--locked` into the canonical repository
+`target` directory. It then hashes and copies those exact artifacts to read-only
+paths under a private suite directory. The suite uses only those copies plus an
+isolated `HOME`, ref/session stores, fixture build, and `TMPDIR`. Every CLI child
+runs in its own process group with an absolute timeout and bounded stdout/stderr
+capture. Artifact hashes and exact JSON/Clap version identity are checked again
+before success is reported.
 
 The harness then builds and launches `AgentDeskFixture.app`. Once the fixture is
 running, a missing control, window, status readout, bounds record, or surface is
@@ -80,10 +80,10 @@ Every shell file stays below the repository's 400-line limit.
 | Example | Native fixture assertion |
 |---|---|
 | AE1 | An addressable button whose live AX frame is zero reports `visible=false`. |
-| AE2 | A button enabled after 800 ms succeeds under the untouched 5 s default, dispatches exactly once, and `--timeout-ms 0` performs one immediate check. |
+| AE2 | CLI and native release-FFI consumers wait for a button enabled after 800 ms, dispatch exactly once, and perform one immediate check under timeout zero without a late effect. |
 | AE3 | A permanently disabled button with `--timeout-ms 2000` returns `TIMEOUT`, `details.kind=actionability_timeout`, and `details.last_report` near 2 s. |
 | AE4 | Two windows with the same title receive distinct ids; focusing the second id focuses that exact window. |
-| AE5 | Focused deterministic macOS tests prove permission prompts stay in the bounded helper path and Apple Events Automation is reported as not required. TCC is never reset or prompted. |
+| AE5 | Deterministic tests prove prompt isolation and nonprompting Automation probes; when the runner already has denied Automation TCC, a native headed Notification Center operation must return `PERM_DENIED`. Other TCC states are explicitly logged as unavailable rather than claimed as exercised. |
 | AE6 | One batch captures a pre-action baseline, clicks open a sheet, and reports `surface_appeared` without naming the surface title. |
 | AE7 | The same disabled action with no timeout flag returns the structured timeout near the untouched 5 s default. |
 

@@ -6,8 +6,6 @@ use crate::{
     ref_action_wait_support::enrich_with_process_state,
 };
 
-const FINAL_ATTEMPT_BUDGET_MS: u64 = 100;
-
 #[cfg(test)]
 use crate::{context::CommandContext, refs::RefEntry};
 #[cfg(test)]
@@ -89,25 +87,24 @@ fn execute_with_deadline(
     } else {
         RefActionPollState::default()
     };
-    let final_deadline = final_attempt_deadline(deadline)?;
     let pre = crate::ref_action::capture_pre_artifact(
         context.context,
         context.adapter,
         context.entry,
-        final_deadline,
+        deadline,
     );
     let lease = context
         .adapter
-        .acquire_interaction_lease(final_deadline)
+        .acquire_interaction_lease(deadline)
         .map_err(|error| state.attach_error_metrics(error))?;
-    if final_deadline.is_expired() {
-        return Err(state.attach_error_metrics(final_deadline.timeout_error()));
+    if deadline.is_expired() {
+        return Err(state.attach_error_metrics(deadline.timeout_error()));
     }
     if request.timeout_ms.is_some_and(|timeout_ms| timeout_ms > 0) {
-        request.timeout_ms = Some(final_deadline.remaining_ms());
+        request.timeout_ms = Some(deadline.remaining_ms());
     }
     let lease_started = std::time::Instant::now();
-    let mut result = match execute_single_shot(context, request, final_deadline, &lease, dispatch) {
+    let mut result = match execute_single_shot(context, request, deadline, &lease, dispatch) {
         Ok(result) => result,
         Err(error) => {
             drop(lease);
@@ -117,7 +114,7 @@ fn execute_with_deadline(
                 context.entry,
                 context.ref_id,
                 &pre,
-                final_deadline,
+                deadline,
             );
             return Err(error);
         }
@@ -128,16 +125,7 @@ fn execute_with_deadline(
         &lease,
         u64::try_from(lease_started.elapsed().as_millis()).unwrap_or(u64::MAX),
     );
-    Ok((result, lease, pre, final_deadline, lease_started))
-}
-
-fn final_attempt_deadline(deadline: Deadline) -> Result<Deadline, AdapterError> {
-    let remaining_ms = deadline.remaining_ms();
-    if remaining_ms == 0 || remaining_ms >= FINAL_ATTEMPT_BUDGET_MS {
-        Ok(deadline)
-    } else {
-        Deadline::after(FINAL_ATTEMPT_BUDGET_MS)
-    }
+    Ok((result, lease, pre, deadline, lease_started))
 }
 
 pub(crate) fn operation_deadline(request: &ActionRequest) -> Result<Deadline, AdapterError> {

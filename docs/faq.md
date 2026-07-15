@@ -52,13 +52,13 @@ agent-desktop snapshot --app Safari
 Build the FFI library from source:
 
 ```bash
-cargo build --release
-# Outputs: libagent_desktop_ffi.dylib/.so/.dll
+cargo build --profile release-ffi -p agent-desktop-ffi
+# Outputs under target/release-ffi/: libagent_desktop_ffi.dylib/.so or agent_desktop_ffi.dll
 ```
 
 ## What is the ref system?
 
-`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the active session's latest snapshot pointer, but explicit snapshot IDs are the deterministic path and do not require also passing `--session`.
+`snapshot` assigns qualified refs to interactive elements in depth-first order, such as `@s8f3k2p9:e1`. The embedded snapshot ID removes the separate `--snapshot` flag. Snapshot lookup remains confined to the selected namespace, so refs created under a session still require that session's `--session` or `AGENT_DESKTOP_SESSION` scope. Legacy bare refs such as `@e1` require an explicit `--snapshot` in the same namespace.
 
 Interactive roles that receive refs:
 

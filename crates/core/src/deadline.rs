@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
@@ -6,15 +7,32 @@ use crate::{AdapterError, ErrorCode, wait_timeout_duration};
 
 pub const DEFAULT_OPERATION_TIMEOUT_MS: u64 = 5_000;
 
+thread_local! {
+    static INHERITED_DEADLINE: Cell<Option<Deadline>> = const { Cell::new(None) };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Deadline {
     started_at: Instant,
     expires_at: Instant,
     timeout_ms: u64,
+    capped: bool,
 }
 
 impl Deadline {
     pub fn after(timeout_ms: u64) -> Result<Self, AdapterError> {
+        let deadline = Self::detached_after(timeout_ms)?;
+        Ok(INHERITED_DEADLINE.with(|inherited| {
+            inherited
+                .get()
+                .map_or(deadline, |parent| deadline.min_expiry(parent))
+        }))
+    }
+
+    /// Creates a bounded deadline that is intentionally independent of the
+    /// current command scope. Use only for recovery work that must run after
+    /// an operation deadline expires.
+    pub fn detached_after(timeout_ms: u64) -> Result<Self, AdapterError> {
         let started_at = Instant::now();
         let duration = wait_timeout_duration(timeout_ms)?;
         let expires_at = started_at.checked_add(duration).ok_or_else(|| {
@@ -28,6 +46,7 @@ impl Deadline {
             started_at,
             expires_at,
             timeout_ms,
+            capped: false,
         })
     }
 
@@ -56,11 +75,17 @@ impl Deadline {
             )
             .with_details(json!({ "timeout_ms": timeout_ms }))
         })?;
-        Ok(Self {
+        let deadline = Self {
             started_at,
             expires_at,
             timeout_ms,
-        })
+            capped: false,
+        };
+        Ok(INHERITED_DEADLINE.with(|inherited| {
+            inherited
+                .get()
+                .map_or(deadline, |parent| deadline.min_expiry(parent))
+        }))
     }
 
     pub fn remaining(self) -> Duration {
@@ -80,7 +105,11 @@ impl Deadline {
         let expires_at = Instant::now()
             .checked_add(maximum)
             .map_or(self.expires_at, |slice| self.expires_at.min(slice));
-        Self { expires_at, ..self }
+        Self {
+            capped: self.capped || expires_at < self.expires_at,
+            expires_at,
+            ..self
+        }
     }
 
     pub fn is_expired(self) -> bool {
@@ -106,12 +135,48 @@ impl Deadline {
         self.timeout_ms
     }
 
+    pub(crate) fn was_capped(self) -> bool {
+        self.capped
+    }
+
     pub fn timeout_error(self) -> AdapterError {
         AdapterError::timeout("Operation exceeded its deadline").with_details(json!({
             "kind": "deadline",
             "timeout_ms": self.timeout_ms,
             "elapsed_ms": self.elapsed().as_millis(),
         }))
+    }
+
+    fn min_expiry(self, other: Self) -> Self {
+        Self {
+            capped: self.capped || other.expires_at < self.expires_at,
+            expires_at: self.expires_at.min(other.expires_at),
+            ..self
+        }
+    }
+}
+
+pub(crate) struct DeadlineScope {
+    previous: Option<Deadline>,
+    _not_send: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+impl Drop for DeadlineScope {
+    fn drop(&mut self) {
+        INHERITED_DEADLINE.set(self.previous);
+    }
+}
+
+pub(crate) fn enter_scope(deadline: Option<Deadline>) -> DeadlineScope {
+    let previous = INHERITED_DEADLINE.replace(None);
+    let effective = match (previous, deadline) {
+        (Some(parent), Some(child)) => Some(child.min_expiry(parent)),
+        (parent, child) => parent.or(child),
+    };
+    INHERITED_DEADLINE.set(effective);
+    DeadlineScope {
+        previous,
+        _not_send: std::marker::PhantomData,
     }
 }
 

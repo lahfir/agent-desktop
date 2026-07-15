@@ -168,20 +168,29 @@ fn reaches_target_allows_ref_targeted_point_resolution() {
 }
 
 #[test]
-fn unknown_hit_test_result_fails_closed_for_ref_targeted_resolution() {
+fn unknown_hit_test_result_allows_ref_targeted_resolution() {
     let _guard = HomeGuard::new();
     let snapshot_id = ref_snapshot(42);
     let adapter = HitTestOutcomeAdapter {
         outcome: Ok(HitTestResult::Unknown),
     };
 
-    let err = match resolve_test_point(ref_args(&snapshot_id), &adapter, &CommandContext::default())
-    {
-        Ok(_) => panic!("inconclusive hit-test evidence must fail closed"),
-        Err(err) => err,
+    let resolved =
+        resolve_test_point(ref_args(&snapshot_id), &adapter, &CommandContext::default()).unwrap();
+    assert_eq!((resolved.point.x, resolved.point.y), (110.0, 205.0));
+}
+
+#[test]
+fn unsupported_hit_test_allows_ref_targeted_resolution() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = ref_snapshot(42);
+    let adapter = HitTestOutcomeAdapter {
+        outcome: Err(AdapterError::not_supported("hit_test")),
     };
 
-    assert_eq!(err.code(), "ACTION_FAILED");
+    let resolved =
+        resolve_test_point(ref_args(&snapshot_id), &adapter, &CommandContext::default()).unwrap();
+    assert_eq!((resolved.point.x, resolved.point.y), (110.0, 205.0));
 }
 
 #[test]

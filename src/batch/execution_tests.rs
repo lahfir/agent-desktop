@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use agent_desktop_core::{CommandContext, InteractionLease, PermissionReport, PermissionState};
 use serde_json::json;
@@ -201,4 +202,54 @@ fn entry_count_and_output_are_bounded() {
         "delivered_verified"
     );
     assert_eq!(entry["error"]["disposition"]["retry"], "unsafe");
+}
+
+struct SlowReadAdapter;
+
+impl agent_desktop_core::adapter::ObservationOps for SlowReadAdapter {}
+impl agent_desktop_core::adapter::ActionOps for SlowReadAdapter {}
+impl agent_desktop_core::adapter::InputOps for SlowReadAdapter {}
+
+impl agent_desktop_core::adapter::SystemOps for SlowReadAdapter {
+    fn list_displays(
+        &self,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Result<Vec<agent_desktop_core::DisplayInfo>, AdapterError> {
+        std::thread::sleep(
+            deadline
+                .remaining()
+                .saturating_add(Duration::from_millis(2)),
+        );
+        Err(deadline.timeout_error())
+    }
+}
+
+#[test]
+fn inherited_batch_deadline_bounds_slow_non_action_command() {
+    let started = Instant::now();
+    let output = execute(
+        args(json!([{"command": "list-displays", "args": {}}]), 25),
+        &SlowReadAdapter,
+        &PermissionReport::default(),
+        &CommandContext::default(),
+    )
+    .expect("entry timeout remains a structured batch result");
+
+    assert!(started.elapsed() < Duration::from_millis(500));
+    assert_eq!(output["results"][0]["error"]["code"], "TIMEOUT");
+}
+
+#[test]
+fn inherited_batch_deadline_caps_sleep_without_variant_rewriting() {
+    let started = Instant::now();
+    let output = execute(
+        args(json!([{"command": "wait", "args": {"ms": 5_000}}]), 25),
+        &adapter(),
+        &PermissionReport::default(),
+        &CommandContext::default(),
+    )
+    .expect("entry timeout remains a structured batch result");
+
+    assert!(started.elapsed() < Duration::from_millis(500));
+    assert_eq!(output["results"][0]["error"]["code"], "TIMEOUT");
 }

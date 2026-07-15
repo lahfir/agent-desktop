@@ -10,6 +10,8 @@ use std::time::Instant;
 #[derive(Debug, Clone, Default)]
 pub struct CommandContext {
     session_id: Option<String>,
+    session_lease: Option<session::SessionLivenessLease>,
+    inherited_deadline: Option<crate::Deadline>,
     trace: TraceConfig,
     artifacts_full: bool,
     interaction_policy: InteractionPolicy,
@@ -38,6 +40,7 @@ pub struct CommandScope<'a> {
     success_disposition: crate::DeliverySemantics,
     started: Instant,
     finished: Cell<bool>,
+    _deadline_scope: crate::deadline::DeadlineScope,
 }
 
 impl CommandScope<'_> {
@@ -88,8 +91,11 @@ impl CommandContext {
         }
         let (segment_dir, artifacts_full) =
             session_trace_state(session_id.as_deref(), trace_path.is_some())?;
+        let session_lease = acquire_session_lease(session_id.as_deref(), None)?;
         Ok(Self {
             session_id,
+            session_lease,
+            inherited_deadline: None,
             trace: TraceConfig::build(trace_path, segment_dir, trace_strict)?,
             artifacts_full,
             interaction_policy: InteractionPolicy::headless(),
@@ -129,6 +135,11 @@ impl CommandContext {
         self
     }
 
+    pub fn with_inherited_deadline(mut self, deadline: crate::Deadline) -> Self {
+        self.inherited_deadline = Some(deadline);
+        self
+    }
+
     pub fn event_baseline(&self) -> Option<&Result<SignalBaseline, AdapterError>> {
         self.event_baseline.as_ref()
     }
@@ -152,6 +163,7 @@ impl CommandContext {
         command: &'static str,
         success_disposition: crate::DeliverySemantics,
     ) -> Result<CommandScope<'_>, AppError> {
+        let deadline_scope = crate::deadline::enter_scope(self.inherited_deadline);
         self.trace("command.start", json!({ "command": command }))
             .map_err(|error| {
                 trace_error_with_disposition(error, crate::DeliverySemantics::not_delivered())
@@ -162,6 +174,7 @@ impl CommandContext {
             success_disposition,
             started: Instant::now(),
             finished: Cell::new(false),
+            _deadline_scope: deadline_scope,
         })
     }
 
@@ -204,8 +217,15 @@ impl CommandContext {
                 artifacts_full,
             )
         };
+        let session_lease = if session_id == self.session_id {
+            self.session_lease.clone()
+        } else {
+            acquire_session_lease(session_id.as_deref(), self.inherited_deadline)?
+        };
         Ok(Self {
             session_id,
+            session_lease,
+            inherited_deadline: self.inherited_deadline,
             trace,
             artifacts_full,
             interaction_policy: self.interaction_policy,
@@ -233,6 +253,19 @@ impl CommandContext {
 
     pub fn artifacts_full(&self) -> bool {
         self.artifacts_full
+    }
+}
+
+fn acquire_session_lease(
+    session_id: Option<&str>,
+    deadline: Option<crate::Deadline>,
+) -> Result<Option<session::SessionLivenessLease>, AppError> {
+    let Some(session_id) = session_id else {
+        return Ok(None);
+    };
+    match deadline {
+        Some(deadline) => session::acquire_liveness_lease_with_deadline(session_id, deadline),
+        None => session::acquire_liveness_lease(session_id),
     }
 }
 

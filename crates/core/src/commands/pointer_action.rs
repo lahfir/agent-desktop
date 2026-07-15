@@ -12,7 +12,8 @@ fn resolve_point_from_entry(
     target: (&str, &RefEntry),
     stability: Option<Option<u64>>,
     deadline: crate::Deadline,
-    lease: &crate::InteractionLease,
+    lease: Option<&crate::InteractionLease>,
+    verify_receives_events: bool,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
@@ -37,6 +38,14 @@ fn resolve_point_from_entry(
             )
             .into());
         }
+        let Some(lease) = lease else {
+            return Err(crate::AdapterError::new(
+                crate::ErrorCode::ActionFailed,
+                "Pointer target is not visible in the live accessibility tree",
+            )
+            .with_details(json!({ "check": "visible", "requires_scroll": true }))
+            .into());
+        };
         adapter.scroll_into_view(&handle, lease)?;
         handle = resolve_handle_within_deadline(adapter, entry, deadline)?;
         (bounds, states) = pointer_live_observation(adapter, &handle, deadline)?;
@@ -78,7 +87,9 @@ fn resolve_point_from_entry(
         x: bounds.x + bounds.width / 2.0,
         y: bounds.y + bounds.height / 2.0,
     };
-    crate::actionability::require_receives_events(&handle, point.clone(), adapter, deadline)?;
+    if verify_receives_events {
+        crate::actionability::require_receives_events(&handle, point.clone(), adapter, deadline)?;
+    }
     if deadline.is_expired() {
         return Err(crate::AdapterError::timeout(
             "Pointer target did not become actionable within the wait budget",
@@ -89,6 +100,7 @@ fn resolve_point_from_entry(
         point,
         focused: false,
         source_entry: Some(entry.clone()),
+        bounds_hash: Some(observed_bounds_hash),
     })
 }
 
@@ -118,29 +130,19 @@ pub(crate) fn point_deadline(timeout_ms: Option<u64>) -> Result<crate::Deadline,
         .map_err(AppError::Adapter)
 }
 
-pub(crate) fn resolve_point_with_deadline<'a>(
+pub(crate) fn wait_for_point_with_deadline<'a>(
     args: crate::commands::point_resolve::PointResolveArgs<'a>,
     deadline: crate::Deadline,
-    lease: &crate::InteractionLease,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
     use crate::commands::point_resolve::resolve_point_from_ref_or_xy_with_context;
 
     let Some(ref_id) = args.ref_id else {
-        return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, lease);
+        let lease = crate::InteractionLease::guarded(deadline, ())?;
+        return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, &lease);
     };
     let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
-    let focused = if args.headed_requirement.requires_focus() {
-        crate::commands::point_resolve::focus_for_physical_input(
-            Some(&entry),
-            adapter,
-            context,
-            lease,
-        )?
-    } else {
-        false
-    };
     let mut stability = Some(None);
     let mut last_report = None;
     loop {
@@ -151,12 +153,13 @@ pub(crate) fn resolve_point_with_deadline<'a>(
             (ref_id, &entry),
             stability,
             deadline,
-            lease,
+            None,
+            false,
             adapter,
             context,
         ) {
             Ok(mut point) => {
-                point.focused = focused;
+                point.focused = false;
                 return Ok(point);
             }
             Err(err) => {
@@ -164,16 +167,14 @@ pub(crate) fn resolve_point_with_deadline<'a>(
                 if !is_retryable_point_error(&err) {
                     return Err(err);
                 }
-                last_report = Some(json!({
-                    "code": err.code(),
-                    "message": err.to_string(),
-                    "details": match &err {
-                        AppError::Adapter(adapter_error) => adapter_error.details.clone(),
-                        _ => None,
-                    }
-                }));
+                last_report = Some(point_error_report(&err));
                 if remaining.is_zero() {
                     return Err(point_actionability_timeout(last_report));
+                }
+                if point_requires_scroll(&err) {
+                    scroll_point_target(&entry, deadline, adapter)?;
+                    std::thread::sleep(POLL_INTERVAL.min(deadline.remaining()));
+                    continue;
                 }
                 let observed = point_observed_bounds_hash(&err);
                 if let Some(observed) = observed {
@@ -190,6 +191,97 @@ pub(crate) fn resolve_point_with_deadline<'a>(
     }
 }
 
+pub(crate) fn focus_point_under_lease(
+    args: crate::commands::point_resolve::PointResolveArgs<'_>,
+    lease: &crate::InteractionLease,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<bool, AppError> {
+    if !args.headed_requirement.requires_focus() {
+        return Ok(false);
+    }
+    let Some(ref_id) = args.ref_id else {
+        return Ok(false);
+    };
+    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    crate::commands::point_resolve::focus_for_physical_input(Some(&entry), adapter, context, lease)
+}
+
+pub(crate) fn resolve_point_under_lease<'a>(
+    target: (
+        crate::commands::point_resolve::PointResolveArgs<'a>,
+        Option<Option<u64>>,
+    ),
+    allow_scroll: bool,
+    deadline: crate::Deadline,
+    lease: &crate::InteractionLease,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
+    use crate::commands::point_resolve::resolve_point_from_ref_or_xy_with_context;
+
+    let (args, stability) = target;
+    let Some(ref_id) = args.ref_id else {
+        return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, lease);
+    };
+    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    resolve_point_from_entry(
+        (ref_id, &entry),
+        stability,
+        deadline,
+        allow_scroll.then_some(lease),
+        true,
+        adapter,
+        context,
+    )
+}
+
+pub(crate) fn retry_leased_point_phase<T>(
+    timeout_ms: Option<u64>,
+    deadline: crate::Deadline,
+    mut attempt: impl FnMut() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let auto_wait = timeout_ms.is_some_and(|timeout_ms| timeout_ms > 0);
+    loop {
+        match attempt() {
+            Ok(value) => return Ok(value),
+            Err(error) if auto_wait && is_retryable_point_error(&error) => {
+                let remaining = deadline.remaining();
+                if remaining.is_zero() {
+                    return Err(point_actionability_timeout(Some(point_error_report(
+                        &error,
+                    ))));
+                }
+                std::thread::sleep(POLL_INTERVAL.min(remaining));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn scroll_point_target(
+    entry: &RefEntry,
+    deadline: crate::Deadline,
+    adapter: &dyn PlatformAdapter,
+) -> Result<(), AppError> {
+    let lease = adapter.acquire_interaction_lease(deadline)?;
+    let handle = resolve_handle_within_deadline(adapter, entry, deadline)?;
+    adapter.scroll_into_view(&handle, &lease)?;
+    Ok(())
+}
+
+fn point_requires_scroll(err: &AppError) -> bool {
+    let AppError::Adapter(error) = err else {
+        return false;
+    };
+    error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("requires_scroll"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn point_actionability_timeout(last_report: Option<Value>) -> AppError {
     let mut details = json!({ "kind": "actionability_timeout" });
     if let Some(last_report) = last_report
@@ -200,6 +292,17 @@ fn point_actionability_timeout(last_report: Option<Value>) -> AppError {
     crate::AdapterError::timeout("Pointer target did not become actionable within the wait budget")
         .with_details(details)
         .into()
+}
+
+fn point_error_report(error: &AppError) -> Value {
+    json!({
+        "code": error.code(),
+        "message": error.to_string(),
+        "details": match error {
+            AppError::Adapter(adapter_error) => adapter_error.details.clone(),
+            _ => None,
+        }
+    })
 }
 
 pub(crate) fn ensure_point_deadline(
@@ -258,3 +361,7 @@ fn point_failed_check(err: &AppError, expected: &str) -> bool {
 #[cfg(test)]
 #[path = "pointer_action_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "pointer_single_shot_tests.rs"]
+mod single_shot_tests;

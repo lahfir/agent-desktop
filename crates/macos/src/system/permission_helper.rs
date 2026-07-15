@@ -86,6 +86,7 @@ fn execute_child(get: &impl Fn(&str) -> Option<String>) -> Result<Value, String>
             super::permissions::prompt_screen_recording();
             super::permissions::preflight_screen_recording()
         }
+        PermissionOperation::Automation => super::permissions::prompt_automation(),
     };
     Ok(json!({
         "version": 1,

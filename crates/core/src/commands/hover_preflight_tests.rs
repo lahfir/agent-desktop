@@ -2,6 +2,18 @@ use super::*;
 
 struct OccludedTargetAdapter {
     moved_to: Mutex<Option<MouseEvent>>,
+    occlusions_before_success: usize,
+    hit_tests: std::sync::atomic::AtomicUsize,
+    lease_acquisitions: std::sync::atomic::AtomicUsize,
+    lease_held: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+struct LeaseFlag(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for LeaseFlag {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl ObservationOps for OccludedTargetAdapter {
@@ -32,6 +44,12 @@ impl ObservationOps for OccludedTargetAdapter {
         _point: crate::Point,
         _deadline: crate::Deadline,
     ) -> Result<HitTestResult, AdapterError> {
+        let attempt = self
+            .hit_tests
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if attempt >= self.occlusions_before_success {
+            return Ok(HitTestResult::ReachesTarget);
+        }
         Ok(HitTestResult::InterceptedBy {
             role: Some("AXSheet".into()),
             name: Some("Save changes?".into()),
@@ -54,7 +72,19 @@ impl InputOps for OccludedTargetAdapter {
 }
 
 impl SystemOps for OccludedTargetAdapter {
-    crate::adapter::guarded_interaction_lease!();
+    fn acquire_interaction_lease(
+        &self,
+        deadline: crate::Deadline,
+    ) -> Result<crate::InteractionLease, AdapterError> {
+        assert!(
+            !self
+                .lease_held
+                .swap(true, std::sync::atomic::Ordering::SeqCst)
+        );
+        self.lease_acquisitions
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        crate::InteractionLease::guarded(deadline, LeaseFlag(self.lease_held.clone()))
+    }
 
     fn resolve_window_strict(
         &self,
@@ -83,6 +113,10 @@ fn hover_on_occluded_ref_fails_preflight_before_dispatch() {
     let snapshot_id = ref_snapshot(42);
     let adapter = OccludedTargetAdapter {
         moved_to: Mutex::new(None),
+        occlusions_before_success: usize::MAX,
+        hit_tests: std::sync::atomic::AtomicUsize::new(0),
+        lease_acquisitions: std::sync::atomic::AtomicUsize::new(0),
+        lease_held: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
 
     let err = execute(
@@ -92,9 +126,9 @@ fn hover_on_occluded_ref_fails_preflight_before_dispatch() {
     )
     .unwrap_err();
 
-    assert_eq!(err.code(), "TIMEOUT");
+    assert_eq!(err.code(), "ACTION_FAILED");
     let AppError::Adapter(adapter_error) = &err else {
-        panic!("expected adapter timeout")
+        panic!("expected adapter actionability failure")
     };
     assert!(
         adapter_error
@@ -103,15 +137,163 @@ fn hover_on_occluded_ref_fails_preflight_before_dispatch() {
             .is_some_and(|details| details.to_string().contains("AXSheet"))
     );
     assert!(adapter.moved_to.lock().unwrap().is_none());
+    assert_eq!(
+        adapter.hit_tests.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        adapter
+            .lease_acquisitions
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
 }
 
 #[test]
-fn timeout_none_uses_the_default_retry_budget() {
+fn headed_hover_retries_transient_post_focus_occlusion_without_holding_lease() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = ref_snapshot(42);
+    let adapter = OccludedTargetAdapter {
+        moved_to: Mutex::new(None),
+        occlusions_before_success: 1,
+        hit_tests: std::sync::atomic::AtomicUsize::new(0),
+        lease_acquisitions: std::sync::atomic::AtomicUsize::new(0),
+        lease_held: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    };
+    let mut args = ref_args(snapshot_id);
+    args.timeout_ms = Some(500);
+
+    let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
+
+    assert_eq!(value["hovered"], true);
+    assert_eq!(
+        adapter.hit_tests.load(std::sync::atomic::Ordering::SeqCst),
+        3
+    );
+    assert_eq!(
+        adapter
+            .lease_acquisitions
+            .load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+    assert!(!adapter.lease_held.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+struct BackgroundTargetAdapter {
+    focused: std::sync::atomic::AtomicBool,
+    hit_tests: std::sync::atomic::AtomicUsize,
+    moved_to: Mutex<Option<MouseEvent>>,
+}
+
+impl ObservationOps for BackgroundTargetAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        Ok(Some(Rect {
+            x: 100.0,
+            y: 200.0,
+            width: 20.0,
+            height: 10.0,
+        }))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<HitTestResult, AdapterError> {
+        self.hit_tests
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.focused.load(std::sync::atomic::Ordering::SeqCst) {
+            Ok(HitTestResult::ReachesTarget)
+        } else {
+            Ok(HitTestResult::InterceptedBy {
+                role: Some("window".into()),
+                name: Some("Foreground app".into()),
+                bounds: None,
+            })
+        }
+    }
+}
+
+impl ActionOps for BackgroundTargetAdapter {}
+
+impl InputOps for BackgroundTargetAdapter {
+    fn mouse_event(
+        &self,
+        event: MouseEvent,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        *self.moved_to.lock().unwrap() = Some(event);
+        Ok(())
+    }
+}
+
+impl SystemOps for BackgroundTargetAdapter {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn resolve_window_strict(
+        &self,
+        window: &crate::WindowInfo,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::WindowInfo, AdapterError> {
+        Ok(window.clone())
+    }
+
+    fn focus_window(
+        &self,
+        _window: &crate::WindowInfo,
+        _lease: &crate::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        self.focused
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+#[test]
+fn headed_hover_defers_hit_testing_until_after_focus() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = ref_snapshot(42);
+    let adapter = BackgroundTargetAdapter {
+        focused: std::sync::atomic::AtomicBool::new(false),
+        hit_tests: std::sync::atomic::AtomicUsize::new(0),
+        moved_to: Mutex::new(None),
+    };
+
+    execute(
+        ref_args(snapshot_id),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+
+    assert!(adapter.focused.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        adapter.hit_tests.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+    assert!(adapter.moved_to.lock().unwrap().is_some());
+}
+
+#[test]
+fn timeout_none_is_single_shot() {
     let _guard = HomeGuard::new();
     let snapshot_id = ref_snapshot(42);
     let adapter = StaleThenOkAdapter::new(1);
 
-    let value = execute(
+    let error = execute(
         HoverArgs {
             ref_id: Some("@e1".into()),
             snapshot_id: Some(snapshot_id),
@@ -122,10 +304,10 @@ fn timeout_none_uses_the_default_retry_budget() {
         &adapter,
         &CommandContext::default().with_headed(true),
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(value["hovered"], true);
-    assert!(adapter.retry.calls() >= 2);
+    assert_eq!(error.code(), "STALE_REF");
+    assert_eq!(adapter.retry.calls(), 1);
 }
 
 #[test]

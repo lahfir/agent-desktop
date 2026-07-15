@@ -4,7 +4,10 @@ use crate::{
     commands::{
         helpers::{apply_post_action_wait, validate_post_action_wait},
         point_resolve::{PointResolveArgs, require_cursor_policy},
-        pointer_action::{ensure_point_deadline, point_deadline, resolve_point_with_deadline},
+        pointer_action::{
+            ensure_point_deadline, focus_point_under_lease, point_deadline,
+            resolve_point_under_lease, retry_leased_point_phase, wait_for_point_with_deadline,
+        },
     },
     context::CommandContext,
 };
@@ -32,20 +35,39 @@ pub fn execute(
     require_cursor_policy(context, "hover")?;
     validate_post_action_wait(context)?;
     let deadline = point_deadline(args.timeout_ms)?;
-    let lease = adapter.acquire_interaction_lease(deadline)?;
-    let resolved = resolve_point_with_deadline(
-        PointResolveArgs {
-            ref_id: args.ref_id.as_deref(),
-            xy: args.xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide a ref (@e1) or --xy x,y",
-            headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
-        },
-        deadline,
-        &lease,
-        adapter,
-        context,
-    )?;
+    let point_args = PointResolveArgs {
+        ref_id: args.ref_id.as_deref(),
+        xy: args.xy,
+        snapshot_id: args.snapshot_id.as_deref(),
+        missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
+    };
+    let auto_wait = args.timeout_ms.is_some_and(|timeout_ms| timeout_ms > 0);
+    if auto_wait {
+        wait_for_point_with_deadline(point_args, deadline, adapter, context)?;
+    }
+    let (resolved, lease) = retry_leased_point_phase(args.timeout_ms, deadline, || {
+        let lease = adapter.acquire_interaction_lease(deadline)?;
+        let focused = focus_point_under_lease(point_args, &lease, adapter, context)?;
+        let first = resolve_point_under_lease(
+            (point_args, None),
+            !auto_wait,
+            deadline,
+            &lease,
+            adapter,
+            context,
+        )?;
+        let mut resolved = resolve_point_under_lease(
+            (point_args, Some(first.bounds_hash)),
+            false,
+            deadline,
+            &lease,
+            adapter,
+            context,
+        )?;
+        resolved.focused = focused;
+        Ok((resolved, lease))
+    })?;
     ensure_point_deadline(
         deadline,
         Some(json!({

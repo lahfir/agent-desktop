@@ -25,10 +25,13 @@ assert_actionability_timeout() {
 }
 
 note "AE1: zero-sized element is not visible"
-zero_has_ref="$(printf '%s' "$snapshot_json" | python3 "$json_tool" tree zero-bounds-button has-ref 2>/dev/null)" || zero_has_ref=""
-assert "AE1 zero-bounds node remains observable without an unsafe ref" \
-    "$([ "$zero_has_ref" = "False" ] && echo 1 || echo 0)" \
-    "has_ref=$zero_has_ref"
+require_target zero_target button zero-bounds-button
+zero_visible="$(is_target "$zero_target" visible 2>&1)"
+assert "AE1 qualified zero-bounds ref reports visible false" \
+    "$([ "$(json_field "$zero_visible" ok)" = "True" ] && \
+        [ "$(json_field "$zero_visible" data.applicable)" = "True" ] && \
+        [ "$(json_field "$zero_visible" data.result)" = "False" ] && echo 1 || echo 0)" \
+    "ref=$(target_ref "$zero_target") snapshot=$(target_snapshot "$zero_target") applicable=$(json_field "$zero_visible" data.applicable) result=$(json_field "$zero_visible" data.result) error=$(json_field "$zero_visible" error.code)"
 
 for mode in headless headed; do
     note "AE2, AE3, AE7: action auto-wait ($mode)"
@@ -83,6 +86,23 @@ for mode in headless headed; do
         "exit=$RUN_EXIT elapsed_ms=$RUN_MS count_after_settle=$delayed_count"
 done
 
+note "AE2: native release FFI consumer preserves wait and namespace semantics"
+ffi_default="$(guard_agent_wrapper_exec 20 4194304 python3 "$here/ffi_live.py" default 2>&1)"
+ffi_default_exit=$?
+sleep 0.2
+require_value ffi_default_count delayed-action-status
+assert "AE2 release FFI default wait dispatches exactly once" \
+    "$([ "$ffi_default_exit" -eq 0 ] && [ "$(json_field "$ffi_default" ok)" = "True" ] && \
+        [ "$ffi_default_count" = "1" ] && echo 1 || echo 0)" \
+    "exit=$ffi_default_exit elapsed_ms=$(json_field "$ffi_default" elapsed_ms) count=$ffi_default_count error=$(json_field "$ffi_default" error)"
+ffi_zero="$(guard_agent_wrapper_exec 20 4194304 python3 "$here/ffi_live.py" zero 2>&1)"
+ffi_zero_exit=$?
+require_value ffi_zero_count delayed-action-status
+assert "AE2 release FFI timeout zero performs one check without a late effect" \
+    "$([ "$ffi_zero_exit" -eq 0 ] && [ "$(json_field "$ffi_zero" ok)" = "True" ] && \
+        [ "$ffi_zero_count" = "0" ] && echo 1 || echo 0)" \
+    "exit=$ffi_zero_exit elapsed_ms=$(json_field "$ffi_zero" elapsed_ms) code=$(json_field "$ffi_zero" zero_code) count_after_settle=$ffi_zero_count error=$(json_field "$ffi_zero" error)"
+
 note "AE4: duplicate-title windows honor exact window id"
 require_target open_duplicates button open-duplicate-windows
 open_output="$(act_target "$open_duplicates" click 2>&1)"
@@ -106,12 +126,43 @@ assert "AE4 exact second window id is focused despite duplicate titles" \
 require_target close_duplicates button close-duplicate-windows
 act_target "$close_duplicates" click >/dev/null 2>&1
 
-note "AE5: deterministic permission architecture contract"
+note "AE5: deterministic and native denied-permission contracts"
 permission_contract="$(guard_exec 620 4194304 bash "$here/permission-contract.sh" 2>&1)"
 permission_exit=$?
-assert "AE5 permission prompts are isolated and Apple Events automation is not required" \
+assert "AE5 permission prompts are isolated and Automation probing never prompts" \
     "$([ "$permission_exit" -eq 0 ] && [ "$(json_field "$permission_contract" ok)" = "True" ] && echo 1 || echo 0)" \
     "exit=$permission_exit kind=$(json_field "$permission_contract" data.kind) error=$(json_field "$permission_contract" error.code)"
+
+permission_json="$("$bin" permissions 2>&1)"
+automation_state="$(json_field "$permission_json" data.automation.state)"
+if [ "$(json_field "$permission_json" ok)" != "True" ] || [ -z "$automation_state" ]; then
+    badmsg "AE5 native permission state could not be read"
+elif [ "$automation_state" = "denied" ]; then
+    nc_probe="$("$bin" list-notifications 2>&1)"
+    if [ "$(json_field "$nc_probe" ok)" = "True" ]; then
+        "$bin" focus-window --app NotificationCenter >/dev/null 2>&1 || true
+        "$bin" --headed press escape >/dev/null 2>&1 || true
+        sleep 0.3
+        nc_probe="$("$bin" list-notifications 2>&1)"
+    fi
+    if [ "$(json_field "$nc_probe" error.code)" != "POLICY_DENIED" ]; then
+        skipmsg "AE5 native denied-Automation path unavailable: Notification Center could not be proven closed after best-effort preparation; deterministic contract still ran"
+    else
+        denied_output="$("$bin" --headed list-notifications 2>&1)"
+        denied_code="$(json_field "$denied_output" error.code)"
+        denied_suggestion="$(json_field "$denied_output" error.suggestion)"
+        suggestion_has_automation=0
+        case "$denied_suggestion" in
+            *Automation*) suggestion_has_automation=1 ;;
+        esac
+        assert "AE5 headed Notification Center rejects denied Automation before AppleScript" \
+            "$([ "$denied_code" = "PERM_DENIED" ] && \
+                [ "$suggestion_has_automation" -eq 1 ] && echo 1 || echo 0)" \
+            "state=$automation_state code=$denied_code suggestion=$denied_suggestion"
+    fi
+else
+    skipmsg "AE5 native denied-Automation path unavailable: current TCC state is ${automation_state:-unknown}; deterministic contract still ran"
+fi
 
 note "AE6: post-action surface event uses a pre-action baseline"
 open_sheet_ref="$(printf '%s' "$snapshot_json" | python3 "$json_tool" tree open-sheet ref 2>/dev/null)" || open_sheet_ref=""

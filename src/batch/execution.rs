@@ -20,7 +20,8 @@ pub(super) fn execute(
 ) -> Result<Value, AppError> {
     let deadline = Deadline::after(args.timeout_ms)
         .map_err(|error| error.with_disposition(DeliverySemantics::not_delivered()))?;
-    let mut commands = prepare(&args.commands_json, permission_report, context)?;
+    let batch_context = context.clone().with_inherited_deadline(deadline);
+    let mut commands = prepare(&args.commands_json, permission_report, &batch_context)?;
     let total = commands.len();
     let mut results = Vec::with_capacity(total);
     let mut results_bytes = 0;
@@ -77,10 +78,10 @@ pub(super) fn execute(
             None => None,
         };
 
-        cap_timeout(&mut commands[index].command, deadline.remaining_ms());
         let item_context = commands[index]
             .context
             .clone()
+            .with_inherited_deadline(deadline)
             .with_event_baseline(current_baseline);
         let command = std::mem::replace(&mut commands[index].command, Commands::Version);
         let result = crate::dispatch::dispatch(command, adapter, permission_report, &item_context);
@@ -155,37 +156,6 @@ fn event_filter(command: &PreparedCommand) -> Option<SignalFilter> {
             process: None,
         }),
         _ => None,
-    }
-}
-
-fn cap_timeout(command: &mut Commands, remaining_ms: u64) {
-    match command {
-        Commands::Click(args)
-        | Commands::DoubleClick(args)
-        | Commands::TripleClick(args)
-        | Commands::RightClick(args)
-        | Commands::Clear(args)
-        | Commands::Focus(args)
-        | Commands::Toggle(args)
-        | Commands::Check(args)
-        | Commands::Uncheck(args)
-        | Commands::Expand(args)
-        | Commands::Collapse(args)
-        | Commands::ScrollTo(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
-        Commands::Type(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
-        Commands::SetValue(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
-        Commands::Select(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
-        Commands::Scroll(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
-        Commands::Hover(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
-        Commands::Drag(args) => args.timeout_ms = args.timeout_ms.min(remaining_ms),
-        Commands::Launch(args) => args.timeout = args.timeout.min(remaining_ms),
-        Commands::Wait(args) => {
-            args.timeout = args.timeout.min(remaining_ms);
-            if let Some(ms) = args.mode.ms.as_mut() {
-                *ms = (*ms).min(remaining_ms);
-            }
-        }
-        _ => {}
     }
 }
 

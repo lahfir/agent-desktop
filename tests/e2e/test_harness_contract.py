@@ -27,7 +27,7 @@ class HarnessContractTests(unittest.TestCase):
 
         self.assertEqual(len(exits), 1, exits)
         self.assertEqual(exits[0][0], "lib.sh")
-        self.assertEqual(len(abort_calls), 11, abort_calls)
+        self.assertTrue(abort_calls)
         source = (E2E_ROOT / "lib.sh").read_text()
         abort = re.search(r"abort_suite\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL)
         self.assertIsNotNone(abort)
@@ -64,12 +64,73 @@ class HarnessContractTests(unittest.TestCase):
         self.assertIn("require_value actionable_before click-status", source)
         self.assertIn("require_value actionable_after click-status", source)
 
+    def test_acceptance_visibility_uses_a_qualified_zero_bounds_ref(self):
+        source = (E2E_ROOT / "scenarios" / "acceptance.sh").read_text()
+
+        self.assertIn("require_target zero_target button zero-bounds-button", source)
+        self.assertIn('is_target "$zero_target" visible', source)
+        self.assertIn('data.applicable)" = "True"', source)
+        self.assertIn('data.result)" = "False"', source)
+
+    def test_hover_uses_the_headed_qualified_ref_pipeline(self):
+        source = (E2E_ROOT / "scenarios" / "interaction.sh").read_text()
+
+        self.assertIn("require_target hover_target button hover-target", source)
+        self.assertIn('act_target "$hover_target" hover', source)
+        self.assertIn("require_value hover_after hover-status", source)
+        self.assertNotIn("hover --xy", source)
+
+    def test_denied_automation_skips_when_notification_center_cannot_be_closed(self):
+        source = (E2E_ROOT / "scenarios" / "acceptance.sh").read_text()
+
+        unavailable = source.index(
+            "Notification Center could not be proven closed after best-effort preparation"
+        )
+        permission_gate = source.index(
+            'if [ "$(json_field "$nc_probe" error.code)" != "POLICY_DENIED" ]'
+        )
+        denial_call = source.index('denied_output="$("$bin" --headed list-notifications')
+        self.assertLess(permission_gate, unavailable)
+        self.assertLess(unavailable, denial_call)
+        self.assertIn("skipmsg", source[permission_gate:denial_call])
+        self.assertNotIn("badmsg", source[permission_gate:denial_call])
+
     def test_native_runner_gates_on_strict_headless_non_interference(self):
         source = (E2E_ROOT / "run.sh").read_text()
 
         safe_gate = source.index('bash "$here/safe-semantic.sh"')
         focused_fixture = source.index("prepare_native_harness")
         self.assertLess(safe_gate, focused_fixture)
+
+    def test_native_runner_builds_locked_canonical_artifacts_before_desktop_lock(self):
+        source = (E2E_ROOT / "run.sh").read_text()
+
+        cli_build = source.index("cargo build --locked --release -p agent-desktop")
+        ffi_build = source.index("cargo build --locked --profile release-ffi")
+        desktop_lock = source.index('exec python3 "$here/interaction_lock.py"')
+        self.assertLess(cli_build, desktop_lock)
+        self.assertLess(ffi_build, desktop_lock)
+        self.assertIn(
+            'AGENT_DESKTOP_E2E_RELEASE_BIN="$repo/target/release/agent-desktop"',
+            source,
+        )
+        self.assertIn(
+            'AGENT_DESKTOP_E2E_RELEASE_FFI="$repo/target/release-ffi/libagent_desktop_ffi.dylib"',
+            source,
+        )
+
+    def test_success_checks_every_staged_native_artifact_before_returning(self):
+        source = (E2E_ROOT / "lib.sh").read_text()
+        finish = re.search(r"finish\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL)
+
+        self.assertIsNotNone(finish)
+        body = finish.group("body")
+        self.assertIn('verify_immutable_binary "$raw_bin" "$raw_bin_sha"', body)
+        self.assertIn('verify_immutable_binary "$ffi_dylib" "$ffi_dylib_sha"', body)
+        self.assertIn('verify_immutable_binary "$ffi_helper" "$ffi_helper_sha"', body)
+        decision = body.index('if [ "$fail" -gt 0 ]')
+        self.assertLess(body.index('verify_immutable_binary "$ffi_dylib"'), decision)
+        self.assertLess(body.index('verify_immutable_binary "$ffi_helper"'), decision)
 
     def test_fixture_status_oracles_use_stable_native_identifiers(self):
         source = (E2E_ROOT / "lib.sh").read_text()

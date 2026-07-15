@@ -19,6 +19,7 @@ static NEXT_ADAPTER_ID: AtomicUsize = AtomicUsize::new(1);
 pub struct AdAdapter {
     pub(crate) inner: Box<dyn PlatformAdapter>,
     pub(crate) session_id: Option<String>,
+    pub(crate) _session_lease: Option<agent_desktop_core::session::SessionLivenessLease>,
 }
 
 fn adapters() -> &'static Mutex<HashMap<usize, Arc<AdAdapter>>> {
@@ -133,7 +134,18 @@ fn create_adapter(session_id: Option<String>) -> *mut AdAdapter {
             return std::ptr::null_mut();
         }
     };
-    match register_adapter(AdAdapter { inner, session_id }) {
+    let session_lease = match crate::session_lease::acquire(session_id.as_deref()) {
+        Ok(lease) => lease,
+        Err(error) => {
+            error::set_last_error(&error);
+            return std::ptr::null_mut();
+        }
+    };
+    match register_adapter(AdAdapter {
+        inner,
+        session_id,
+        _session_lease: session_lease,
+    }) {
         Ok(handle) => handle,
         Err(error) => {
             error::set_last_error(&error);
@@ -288,6 +300,7 @@ mod tests {
         register_adapter(AdAdapter {
             inner,
             session_id: None,
+            _session_lease: None,
         })
         .unwrap()
     }

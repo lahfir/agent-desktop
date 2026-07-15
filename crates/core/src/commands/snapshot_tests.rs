@@ -196,7 +196,7 @@ fn test_tree_options_suppresses_skeleton_for_drill_down() {
 }
 
 #[test]
-fn default_snapshot_retains_zero_sized_node_without_ref() {
+fn default_snapshot_retains_zero_sized_node_with_ref() {
     let args = base_args();
     let result = crate::snapshot::build(
         &WaitSnapshotAdapter,
@@ -213,8 +213,8 @@ fn default_snapshot_retains_zero_sized_node_without_ref() {
         .find(|node| node.identity.name.as_deref() == Some("zero-bounds-button"))
         .unwrap();
 
-    assert!(zero.ref_id.is_none());
-    assert_eq!(result.refmap.len(), 1);
+    assert!(zero.ref_id.is_some());
+    assert_eq!(result.refmap.len(), 2);
 }
 
 #[test]

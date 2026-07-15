@@ -99,6 +99,7 @@ fn call(adapter: CardinalityAdapter) -> AdResult {
     let handle = crate::adapter::register_adapter(AdAdapter {
         inner: Box::new(adapter),
         session_id: None,
+        _session_lease: None,
     })
     .unwrap();
     let mut out = AdNativeHandle {

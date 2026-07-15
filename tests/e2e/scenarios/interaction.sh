@@ -126,13 +126,11 @@ assert "hover precondition positions the pointer outside the target" \
 require_value hover_before hover-status
 assert "hover baseline is clean after moving outside the target" \
     "$([ "$hover_before" != "hovered" ] && echo 1 || echo 0)" "status=$hover_before"
-hover_snapshot="$("$bin" snapshot --app "$app" --include-bounds --max-depth 30 2>/dev/null)"
-hover_xy="$(printf '%s' "$hover_snapshot" | python3 "$json_tool" tree hover-target center 2>/dev/null)" || hover_xy=""
-if [ -z "$hover_xy" ]; then
-    abort_suite "required hover-target bounds are missing"
-fi
-hover_output="$("$bin" --headed hover --xy "$hover_xy" 2>&1)"
+require_target hover_target button hover-target
+MODE_FLAG="--headed"
+hover_output="$(act_target "$hover_target" hover 2>&1)"
+MODE_FLAG=""
 sleep 0.6
 require_value hover_after hover-status
 assert "headed hover triggers the fixture onHover" "$([ "$hover_after" = "hovered" ] && echo 1 || echo 0)" \
-    "xy=$hover_xy before=$hover_before after=$hover_after ok=$(json_field "$hover_output" ok)"
+    "ref=$(target_ref "$hover_target") snapshot=$(target_snapshot "$hover_target") before=$hover_before after=$hover_after ok=$(json_field "$hover_output" ok) error=$(json_field "$hover_output" error.code)"

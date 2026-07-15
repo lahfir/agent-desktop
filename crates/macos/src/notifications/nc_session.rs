@@ -1,26 +1,34 @@
-use agent_desktop_core::{AdapterError, Deadline, InteractionPolicy, KeyCombo};
+use agent_desktop_core::{AdapterError, Deadline, InteractionPolicy, KeyCombo, ProcessIdentity};
+
+const CLEANUP_TIMEOUT_MS: u64 = 2_000;
 
 pub(crate) fn close_session<T>(
     session: NcSession,
     result: Result<T, AdapterError>,
 ) -> Result<T, AdapterError> {
-    let close_result = session.close();
-    match (result, close_result) {
+    merge_session_result(result, session.close())
+}
+
+fn merge_session_result<T>(
+    result: Result<T, AdapterError>,
+    cleanup: Result<(), AdapterError>,
+) -> Result<T, AdapterError> {
+    match (result, cleanup) {
         (Ok(value), Ok(())) => Ok(value),
-        (Ok(value), Err(close_err)) => {
-            tracing::warn!(error = %close_err, "notification center close failed after a successful operation");
-            Ok(value)
+        (Ok(_), Err(close_err)) => Err(close_err),
+        (Err(err), Ok(())) => Err(err),
+        (Err(err), Err(close_err)) => {
+            tracing::warn!(error = %close_err, "notification center cleanup also failed after the operation failed");
+            Err(err)
         }
-        (Err(err), _) => Err(err),
     }
 }
 
 pub(crate) struct NcSession {
     pid: i32,
-    was_already_open: bool,
-    previous_app: Option<String>,
-    closed: bool,
-    deadline: Deadline,
+    close_pending: bool,
+    previous_app: Option<ProcessIdentity>,
+    cleanup_on_drop: bool,
 }
 
 impl NcSession {
@@ -33,25 +41,51 @@ impl NcSession {
         {
             return Ok(Self {
                 pid,
-                was_already_open: true,
+                close_pending: false,
                 previous_app: None,
-                closed: false,
-                deadline,
+                cleanup_on_drop: true,
             });
         }
         if !policy.is_headed() {
             return Err(closed_center_policy_error(policy));
         }
-        let previous_app = frontmost_app(deadline);
-        open_nc(deadline)?;
-        let pid = wait_for_nc_ready(deadline)?;
-        Ok(Self {
-            pid,
-            was_already_open: false,
+        let previous_app = frontmost_app(deadline)?;
+        crate::system::permissions::require_automation_permission()?;
+        Self::open_with(
             previous_app,
-            closed: false,
             deadline,
-        })
+            open_nc,
+            wait_for_nc_ready,
+            close_nc,
+            reactivate_app,
+        )
+    }
+
+    fn open_with(
+        previous_app: Option<ProcessIdentity>,
+        deadline: Deadline,
+        mut open: impl FnMut(Deadline) -> Result<(), AdapterError>,
+        mut wait_until_ready: impl FnMut(Deadline) -> Result<i32, AdapterError>,
+        close: impl FnMut(Deadline) -> Result<(), AdapterError>,
+        reactivate: impl FnMut(&ProcessIdentity, Deadline) -> Result<(), AdapterError>,
+    ) -> Result<Self, AdapterError> {
+        let mut session = Self {
+            pid: 0,
+            close_pending: true,
+            previous_app,
+            cleanup_on_drop: true,
+        };
+        let result = open(deadline).and_then(|()| wait_until_ready(deadline));
+        match result {
+            Ok(pid) => {
+                session.pid = pid;
+                Ok(session)
+            }
+            Err(error) => {
+                let cleanup = session.cleanup_with(close, reactivate);
+                merge_session_result(Err(error), cleanup)
+            }
+        }
     }
 
     pub(crate) fn pid(&self) -> i32 {
@@ -59,16 +93,46 @@ impl NcSession {
     }
 
     pub(crate) fn close(mut self) -> Result<(), AdapterError> {
-        let close_result = if self.was_already_open {
-            Ok(())
+        self.close_with(close_nc, reactivate_app)
+    }
+
+    fn close_with(
+        &mut self,
+        mut close: impl FnMut(Deadline) -> Result<(), AdapterError>,
+        mut reactivate: impl FnMut(&ProcessIdentity, Deadline) -> Result<(), AdapterError>,
+    ) -> Result<(), AdapterError> {
+        let first = self.cleanup_with(&mut close, &mut reactivate);
+        let result = if first.is_err() && self.has_pending_cleanup() {
+            self.cleanup_with(close, reactivate)
         } else {
-            close_nc(self.deadline)
+            first
         };
-        if let Some(ref app) = self.previous_app {
-            reactivate_app(app, self.deadline);
-        }
-        self.closed = true;
-        close_result
+        self.cleanup_on_drop = false;
+        result
+    }
+
+    fn cleanup_with(
+        &mut self,
+        mut close: impl FnMut(Deadline) -> Result<(), AdapterError>,
+        mut reactivate: impl FnMut(&ProcessIdentity, Deadline) -> Result<(), AdapterError>,
+    ) -> Result<(), AdapterError> {
+        let close_result = if self.close_pending {
+            close(Deadline::detached_after(CLEANUP_TIMEOUT_MS)?)
+                .inspect(|()| self.close_pending = false)
+        } else {
+            Ok(())
+        };
+        let restore_result = if let Some(app) = self.previous_app.as_ref() {
+            reactivate(app, Deadline::detached_after(CLEANUP_TIMEOUT_MS)?)
+                .inspect(|()| self.previous_app = None)
+        } else {
+            Ok(())
+        };
+        merge_cleanup_results(close_result, restore_result)
+    }
+
+    fn has_pending_cleanup(&self) -> bool {
+        self.close_pending || self.previous_app.is_some()
     }
 }
 
@@ -84,80 +148,65 @@ fn closed_center_policy_error(policy: InteractionPolicy) -> AdapterError {
 
 impl Drop for NcSession {
     fn drop(&mut self) {
-        if self.closed {
+        if !self.cleanup_on_drop {
             return;
         }
-        if !self.was_already_open {
-            if let Err(e) = close_nc(self.deadline) {
-                tracing::warn!("Failed to close NC in Drop: {e}");
-            }
-        }
-        if let Some(ref app) = self.previous_app {
-            reactivate_app(app, self.deadline);
+        if let Err(error) = self.cleanup_with(close_nc, reactivate_app) {
+            tracing::warn!(%error, "Notification Center cleanup retry failed in Drop");
         }
     }
 }
 
 #[cfg(target_os = "macos")]
-fn frontmost_app(deadline: Deadline) -> Option<String> {
-    let mut command = std::process::Command::new("/usr/bin/osascript");
-    command.args([
-        "-e",
-        "tell application \"System Events\" to get name of first application process whose frontmost is true",
-    ]);
-    let output = crate::system::process::run_with_deadline(
-        &mut command,
-        "frontmost-app osascript",
-        operation_deadline(deadline, std::time::Duration::from_secs(2)).ok()?,
-    )
-    .ok()?;
-    if output.status.success() {
-        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if name.is_empty() { None } else { Some(name) }
-    } else {
-        None
-    }
+fn frontmost_app(deadline: Deadline) -> Result<Option<ProcessIdentity>, AdapterError> {
+    let snapshot = crate::system::workspace_apps::window_owner_snapshot_until(operation_deadline(
+        deadline,
+        std::time::Duration::from_secs(2),
+    )?)?;
+    let Some(owner) = snapshot.frontmost() else {
+        return Ok(None);
+    };
+    let Some(instance) = crate::system::process_identity::token_for_pid(owner.pid)? else {
+        return Ok(None);
+    };
+    Ok(Some(ProcessIdentity::new(
+        crate::system::process_identity::from_pid_t(owner.pid)?,
+        instance,
+    )))
 }
 
 #[cfg(not(target_os = "macos"))]
-fn frontmost_app(_deadline: Deadline) -> Option<String> {
-    None
+fn frontmost_app(_deadline: Deadline) -> Result<Option<ProcessIdentity>, AdapterError> {
+    Ok(None)
 }
 
 #[cfg(target_os = "macos")]
-fn reactivate_app(name: &str, deadline: Deadline) {
-    let script = format!("tell application {} to activate", applescript_string(name));
-    let mut command = std::process::Command::new("/usr/bin/osascript");
-    command.arg("-e").arg(script);
-    if let Err(e) = crate::system::process::run_with_deadline(
-        &mut command,
-        "reactivate-app osascript",
-        operation_deadline(deadline, std::time::Duration::from_secs(1))
-            .unwrap_or_else(|_| std::time::Instant::now()),
-    ) {
-        tracing::warn!("reactivate_app osascript failed for app {:?}: {e}", name);
+fn reactivate_app(app: &ProcessIdentity, deadline: Deadline) -> Result<(), AdapterError> {
+    let pid = crate::system::process_identity::to_pid_t(app.pid)?;
+    if !crate::system::process_identity::matches_instance(pid, &app.instance)? {
+        return Ok(());
     }
-}
-
-#[cfg(target_os = "macos")]
-fn applescript_string(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len() + 2);
-    escaped.push('"');
-    for ch in value.chars() {
-        if ch.is_control() {
-            continue;
-        }
-        if matches!(ch, '\\' | '"') {
-            escaped.push('\\');
-        }
-        escaped.push(ch);
-    }
-    escaped.push('"');
-    escaped
+    crate::system::focus::ensure_app_focused(pid, deadline)
 }
 
 #[cfg(not(target_os = "macos"))]
-fn reactivate_app(_name: &str, _deadline: Deadline) {}
+fn reactivate_app(_app: &ProcessIdentity, _deadline: Deadline) -> Result<(), AdapterError> {
+    Ok(())
+}
+
+fn merge_cleanup_results(
+    close: Result<(), AdapterError>,
+    restore: Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
+    match (close, restore) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(error), Err(restore_error)) => {
+            tracing::warn!(error = %restore_error, "focus restoration also failed during Notification Center cleanup");
+            Err(error)
+        }
+    }
+}
 
 #[cfg(target_os = "macos")]
 fn nc_pid(deadline: Deadline) -> Result<Option<i32>, AdapterError> {
@@ -214,11 +263,17 @@ fn open_nc(deadline: Deadline) -> Result<(), AdapterError> {
 
     let mut command = std::process::Command::new("/usr/bin/osascript");
     command.arg("-e").arg(script);
-    crate::system::process::run_with_deadline(
+    let output = crate::system::process::run_with_deadline(
         &mut command,
         "osascript open-nc",
         operation_deadline(deadline, std::time::Duration::from_secs(2))?,
     )?;
+    if !output.status.success() {
+        return Err(crate::system::permissions::map_automation_command_failure(
+            output.status,
+            &output.stderr,
+        ));
+    }
     std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(())
 }
@@ -232,6 +287,12 @@ fn open_nc(_deadline: Deadline) -> Result<(), AdapterError> {
 fn close_nc(deadline: Deadline) -> Result<(), AdapterError> {
     use crate::input::keyboard;
 
+    let Some(pid) = nc_pid(deadline)? else {
+        return Ok(());
+    };
+    if !is_nc_open(pid, deadline) {
+        return Ok(());
+    }
     let combo = KeyCombo {
         key: "escape".into(),
         modifiers: vec![],
@@ -242,48 +303,8 @@ fn close_nc(deadline: Deadline) -> Result<(), AdapterError> {
 }
 
 #[cfg(all(test, target_os = "macos"))]
-mod tests {
-    use super::{applescript_string, closed_center_policy_error, nc_pid_from_output};
-    use agent_desktop_core::AdapterError;
-
-    #[test]
-    fn applescript_string_escapes_quotes_and_backslashes() {
-        assert_eq!(
-            applescript_string(r#"Bad \ "Name""#),
-            r#""Bad \\ \"Name\"""#
-        );
-    }
-
-    #[test]
-    fn applescript_string_strips_control_chars() {
-        assert_eq!(applescript_string("a\nb"), r#""ab""#);
-        assert_eq!(applescript_string("a\tb"), r#""ab""#);
-        assert_eq!(applescript_string("a\\\nb"), r#""a\\b""#);
-        assert_eq!(applescript_string("a\"b\nc"), r#""a\"bc""#);
-    }
-
-    #[test]
-    fn nc_pid_preserves_probe_errors() {
-        let error = nc_pid_from_output(Err(AdapterError::timeout("pid probe timed out")))
-            .expect_err("timeout must not become process-not-found");
-
-        assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
-    }
-
-    #[test]
-    fn closed_notification_center_is_policy_denied_headlessly() {
-        let error = closed_center_policy_error(agent_desktop_core::InteractionPolicy::headless());
-
-        assert_eq!(error.code, agent_desktop_core::ErrorCode::PolicyDenied);
-        assert!(error.message.contains("headless"));
-        assert!(
-            error
-                .suggestion
-                .as_deref()
-                .is_some_and(|value| value.contains("--headed"))
-        );
-    }
-}
+#[path = "nc_session_tests.rs"]
+mod tests;
 
 #[cfg(not(target_os = "macos"))]
 fn close_nc(_deadline: Deadline) -> Result<(), AdapterError> {

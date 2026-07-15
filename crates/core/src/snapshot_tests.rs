@@ -145,7 +145,7 @@ fn test_compact_with_interactive_only() {
 }
 
 #[test]
-fn zero_sized_actionable_node_remains_observable_without_ref() {
+fn zero_sized_actionable_node_remains_addressable() {
     let mut button = node("button");
     button.identity.name = Some("zero-bounds-button".into());
     button.presentation.bounds = Some(crate::Rect {
@@ -164,8 +164,8 @@ fn zero_sized_actionable_node_remains_observable_without_ref() {
         result.children[0].identity.name.as_deref(),
         Some("zero-bounds-button")
     );
-    assert!(result.children[0].ref_id.is_none());
-    assert!(refmap.is_empty());
+    assert!(result.children[0].ref_id.is_some());
+    assert_eq!(refmap.len(), 1);
 }
 
 #[test]

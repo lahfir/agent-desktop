@@ -39,6 +39,7 @@ pub unsafe extern "C" fn ad_list_notifications(
             &core_filter,
             agent_desktop_core::InteractionPolicy::headless(),
             deadline,
+            None,
         ) {
             Ok(notifications) => {
                 if let Err(error) =

@@ -89,7 +89,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - In skeleton mode, named/described containers at truncation boundary also get refs (drill-down targets with empty `available_actions`)
 - Static text and non-actionable groups/containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
-- Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <snapshot_id>`, and explicit snapshot IDs do not require also passing `--session`
+- Snapshot output uses qualified refs that embed `snapshot_id` and need no separate `--snapshot`; a session-owned ref still requires the same `--session` or `AGENT_DESKTOP_SESSION` scope because lookup never crosses namespaces
 - `last_refmap.json` is only a latest-snapshot inspection artifact. The command path uses snapshot-scoped storage.
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling a qualified root ref only replaces refs from that root's previous drill — refs from other regions and the skeleton itself are preserved
@@ -244,7 +244,7 @@ agent-desktop trace show [--limit N] [--event PREFIX]               # Merge trac
 agent-desktop trace export [--out path.html] [--limit N]            # Self-contained HTML viewer (default tail 5000)
 agent-desktop status                            # Health, session_id, tracing, artifacts, permissions
 agent-desktop permissions                       # Check permission
-agent-desktop permissions --request             # Trigger permission dialog
+agent-desktop permissions --request             # Request missing permissions in an isolated helper
 agent-desktop version                           # Version info (always JSON envelope)
 agent-desktop batch '[...]' --stop-on-error     # Batch uses the same typed command path as CLI
 agent-desktop skills                            # List bundled skill docs

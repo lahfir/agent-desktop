@@ -45,6 +45,12 @@ pub(super) fn receives_events_check(
                 first_occlusion.get_or_insert_with(|| occluded(role, name, bounds));
             }
             Ok(HitTestResult::Unknown) => evidence.unknown += 1,
+            Err(error) if error.code == ErrorCode::PlatformNotSupported => {
+                evidence.unknown += 1;
+                let mut check = unknown("receives_events", "hit testing is not supported");
+                check.hit_test = Some(evidence);
+                return Ok((check, None));
+            }
             Err(error) => return Err(error),
         }
     }
@@ -90,7 +96,8 @@ pub(crate) fn require_receives_events(
 ) -> Result<(), AdapterError> {
     let check = match adapter.hit_test(handle, point, deadline) {
         Ok(HitTestResult::ReachesTarget) => return Ok(()),
-        Ok(HitTestResult::Unknown) => unknown("receives_events", "hit test result inconclusive"),
+        Ok(HitTestResult::Unknown) => return Ok(()),
+        Err(error) if error.code == ErrorCode::PlatformNotSupported => return Ok(()),
         Err(error) => return Err(error),
         Ok(HitTestResult::InterceptedBy { role, name, bounds }) => occluded(role, name, bounds),
     };

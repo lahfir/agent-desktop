@@ -30,6 +30,7 @@ impl SystemOps for NotificationErrorAdapter {
         _filter: &NotificationFilter,
         _policy: crate::InteractionPolicy,
         _deadline: crate::Deadline,
+        _lease: Option<&crate::InteractionLease>,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         Err(AdapterError::new(
             ErrorCode::PlatformNotSupported,
@@ -64,12 +65,82 @@ impl SystemOps for FlakyNotificationAdapter {
         _filter: &NotificationFilter,
         _policy: crate::InteractionPolicy,
         _deadline: crate::Deadline,
+        _lease: Option<&crate::InteractionLease>,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         self.responses
             .lock()
             .unwrap()
             .pop()
             .unwrap_or_else(|| Err(AdapterError::timeout("notification center unavailable")))
+    }
+}
+
+struct LeaseState {
+    active: std::sync::atomic::AtomicBool,
+    acquisitions: std::sync::atomic::AtomicUsize,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+struct LeaseRelease(std::sync::Arc<LeaseState>);
+
+impl Drop for LeaseRelease {
+    fn drop(&mut self) {
+        self.0
+            .active
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+struct LeaseTrackingNotificationAdapter {
+    state: std::sync::Arc<LeaseState>,
+}
+
+impl ObservationOps for LeaseTrackingNotificationAdapter {}
+impl ActionOps for LeaseTrackingNotificationAdapter {}
+impl InputOps for LeaseTrackingNotificationAdapter {}
+
+impl SystemOps for LeaseTrackingNotificationAdapter {
+    fn acquire_interaction_lease(
+        &self,
+        deadline: crate::Deadline,
+    ) -> Result<crate::InteractionLease, AdapterError> {
+        assert!(
+            self.state
+                .active
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok(),
+            "a wait poll retained the previous interaction lease"
+        );
+        self.state
+            .acquisitions
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        crate::InteractionLease::guarded(deadline, LeaseRelease(self.state.clone()))
+    }
+
+    fn list_notifications(
+        &self,
+        _filter: &NotificationFilter,
+        policy: crate::InteractionPolicy,
+        _deadline: crate::Deadline,
+        lease: Option<&crate::InteractionLease>,
+    ) -> Result<Vec<NotificationInfo>, AdapterError> {
+        assert!(policy.is_headed());
+        assert!(lease.is_some());
+        assert!(self.state.active.load(std::sync::atomic::Ordering::SeqCst));
+        let call = self
+            .state
+            .calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call == 0 {
+            Ok(vec![notification(0, "old")])
+        } else {
+            Ok(vec![notification(0, "old"), notification(1, "fresh")])
+        }
     }
 }
 
@@ -147,6 +218,32 @@ fn notification_wait_retries_transient_baseline_errors() {
 
     assert_eq!(value["matched"], true);
     assert_eq!(value["notification"]["title"], "fresh");
+}
+
+#[test]
+fn headed_notification_wait_leases_each_poll_without_holding_across_sleep() {
+    let state = std::sync::Arc::new(LeaseState {
+        active: std::sync::atomic::AtomicBool::new(false),
+        acquisitions: std::sync::atomic::AtomicUsize::new(0),
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let adapter = LeaseTrackingNotificationAdapter {
+        state: state.clone(),
+    };
+
+    let value = execute(
+        notification_wait_args(5_000),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+
+    assert_eq!(value["notification"]["title"], "fresh");
+    assert_eq!(
+        state.acquisitions.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+    assert!(!state.active.load(std::sync::atomic::Ordering::SeqCst));
 }
 
 #[test]

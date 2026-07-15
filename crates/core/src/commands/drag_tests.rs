@@ -257,6 +257,26 @@ fn headed_ref_drag_focuses_only_the_from_app_once() {
 }
 
 #[test]
+fn positive_timeout_uses_stable_post_focus_drag_bounds() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = cross_app_snapshot();
+    let adapter = DragCaptureAdapter::new().with_focused_bounds(Rect {
+        x: 100.0,
+        y: 200.0,
+        width: 40.0,
+        height: 60.0,
+    });
+    let mut args = cross_app_args(snapshot_id);
+    args.timeout_ms = Some(500);
+
+    let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
+
+    assert_eq!(*adapter.focused_pids.lock().unwrap(), vec![1]);
+    assert_eq!(value["from"], json!({ "x": 120.0, "y": 230.0 }));
+    assert_eq!(value["to"], json!({ "x": 120.0, "y": 230.0 }));
+}
+
+#[test]
 fn headed_xy_drag_never_steals_focus() {
     let adapter = DragCaptureAdapter::new();
 
@@ -273,3 +293,6 @@ fn headed_xy_drag_never_steals_focus() {
 
 #[path = "drag_retry_tests.rs"]
 mod retry_tests;
+
+#[path = "drag_occlusion_retry_tests.rs"]
+mod occlusion_retry_tests;

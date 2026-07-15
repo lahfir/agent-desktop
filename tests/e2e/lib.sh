@@ -10,10 +10,16 @@ app="AgentDeskFixture"
 fixture_pid=""
 fixture_started=0
 contaminated=0
+ffi_dylib=""
+ffi_dylib_sha=""
+ffi_helper=""
+ffi_helper_sha=""
 
 pass=0
 fail=0
+skip=0
 declare -a failures=()
+declare -a skips=()
 declare -a cleanup_files=()
 MODE_FLAG=""
 
@@ -26,6 +32,11 @@ prepare_native_harness() {
     raw_bin_sha="$prepared_binary_sha"
     export AGENT_DESKTOP_E2E_BINARY="$raw_bin"
     bin="$command_guard"
+    copy_native_ffi_bundle || return 1
+    ffi_dylib="$AGENT_DESKTOP_E2E_FFI_DYLIB"
+    ffi_dylib_sha="$AGENT_DESKTOP_E2E_FFI_DYLIB_SHA"
+    ffi_helper="$(dirname "$ffi_dylib")/agent-desktop-macos-helper"
+    ffi_helper_sha="$AGENT_DESKTOP_E2E_FFI_HELPER_SHA"
     fixture_app="$suite_root/fixture/AgentDeskFixture.app"
 
     local expected_version version_json actual_version clap_version existing
@@ -81,6 +92,11 @@ badmsg() {
     printf '  \033[0;31mFAIL\033[0m %s\n' "$1"
     fail=$((fail + 1))
     failures+=("$1")
+}
+skipmsg() {
+    printf '  \033[0;33mSKIP\033[0m %s\n' "$1"
+    skip=$((skip + 1))
+    skips+=("$1")
 }
 
 abort_suite() {
@@ -251,6 +267,12 @@ cleanup() {
     if [ -n "$raw_bin" ] && ! verify_immutable_binary "$raw_bin" "$raw_bin_sha"; then
         contaminated=1
     fi
+    if [ -n "$ffi_dylib" ] && ! verify_immutable_binary "$ffi_dylib" "$ffi_dylib_sha"; then
+        contaminated=1
+    fi
+    if [ -n "$ffi_helper" ] && ! verify_immutable_binary "$ffi_helper" "$ffi_helper_sha"; then
+        contaminated=1
+    fi
     cleanup_isolated_environment
     release_exclusive_lock
 }
@@ -261,7 +283,15 @@ finish() {
         contaminated=1
         badmsg "immutable release binary identity changed during the suite"
     fi
-    printf '  passed: %d  failed: %d\n' "$pass" "$fail"
+    if [ -n "$ffi_dylib" ] && ! verify_immutable_binary "$ffi_dylib" "$ffi_dylib_sha"; then
+        contaminated=1
+        badmsg "immutable release FFI library identity changed during the suite"
+    fi
+    if [ -n "$ffi_helper" ] && ! verify_immutable_binary "$ffi_helper" "$ffi_helper_sha"; then
+        contaminated=1
+        badmsg "immutable release FFI helper identity changed during the suite"
+    fi
+    printf '  passed: %d  failed: %d  skipped: %d\n' "$pass" "$fail" "$skip"
     if [ "$fail" -gt 0 ] || [ "$contaminated" -ne 0 ]; then
         printf '\n  failures:\n'
         local failure
@@ -272,6 +302,13 @@ finish() {
             printf '   - run was contaminated; no success claim is valid\n'
         fi
         return 1
+    fi
+    if [ "$skip" -gt 0 ]; then
+        printf '\n  capability skips:\n'
+        local skipped
+        for skipped in "${skips[@]}"; do
+            printf '   - %s\n' "$skipped"
+        done
     fi
     echo "  all asserted E2E scenarios passed"
 }

@@ -14,7 +14,7 @@ test_count="$(printf '%s' "$test_output" | grep -Eo '[0-9]+ passed' | tail -1 | 
 test_count="${test_count:-0}"
 
 if [ "$test_exit" -eq 0 ] && [ "$test_count" -ge 3 ]; then
-    printf '{"ok":true,"data":{"kind":"deterministic_permission_architecture_contract","permission_tests":%s,"automation":"not_required","native_prompts":false}}\n' "$test_count"
+    printf '{"ok":true,"data":{"kind":"deterministic_permission_architecture_contract","permission_tests":%s,"automation":"nonprompting_probe","native_prompts":false}}\n' "$test_count"
     exit 0
 fi
 

@@ -4,12 +4,15 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 json_tool="$repo/tests/e2e/json_tool.py"
 command_guard="$repo/tests/e2e/guard-command.sh"
 release_bin="${AGENT_DESKTOP_E2E_RELEASE_BIN:-$repo/target/release/agent-desktop}"
+release_ffi="${AGENT_DESKTOP_E2E_RELEASE_FFI:-$repo/target/release-ffi/libagent_desktop_ffi.dylib}"
+release_ffi_helper="${AGENT_DESKTOP_E2E_RELEASE_FFI_HELPER:-$repo/target/release/agent-desktop-macos-helper}"
 host_home="${HOME:-}"
 host_tmp="${TMPDIR:-/tmp}"
 suite_root=""
 lock_owned=0
 prepared_binary=""
 prepared_binary_sha=""
+copied_file_sha=""
 
 require_exclusive_acknowledgement() {
     if [ "${AGENT_DESKTOP_E2E_EXCLUSIVE:-}" != "1" ]; then
@@ -127,6 +130,43 @@ verify_immutable_binary() {
         echo "immutable E2E binary changed during the run" >&2
         return 1
     fi
+}
+
+copy_native_ffi_bundle() {
+    if [ ! -f "$release_ffi" ]; then
+        echo "release FFI library missing at $release_ffi" >&2
+        return 1
+    fi
+    if [ ! -x "$release_ffi_helper" ]; then
+        echo "release FFI helper missing at $release_ffi_helper" >&2
+        return 1
+    fi
+    local stage="$suite_root/ffi"
+    mkdir -p "$stage"
+    copy_immutable_file "$release_ffi" "$stage/libagent_desktop_ffi.dylib" || return 1
+    local dylib_sha="$copied_file_sha"
+    copy_immutable_file "$release_ffi_helper" "$stage/agent-desktop-macos-helper" || return 1
+    local helper_sha="$copied_file_sha"
+    chmod 500 "$stage/libagent_desktop_ffi.dylib" "$stage/agent-desktop-macos-helper"
+    export AGENT_DESKTOP_E2E_FFI_DYLIB="$stage/libagent_desktop_ffi.dylib"
+    export AGENT_DESKTOP_E2E_FFI_DYLIB_SHA
+    export AGENT_DESKTOP_E2E_FFI_HELPER_SHA
+    AGENT_DESKTOP_E2E_FFI_DYLIB_SHA="$dylib_sha"
+    AGENT_DESKTOP_E2E_FFI_HELPER_SHA="$helper_sha"
+}
+
+copy_immutable_file() {
+    local source="$1" destination="$2"
+    local source_before source_after destination_hash
+    source_before="$(shasum -a 256 "$source" | awk '{print $1}')" || return 1
+    cp "$source" "$destination" || return 1
+    source_after="$(shasum -a 256 "$source" | awk '{print $1}')" || return 1
+    destination_hash="$(shasum -a 256 "$destination" | awk '{print $1}')" || return 1
+    if [ "$source_before" != "$source_after" ] || [ "$source_before" != "$destination_hash" ]; then
+        echo "artifact changed while it was copied; refusing a contaminated run" >&2
+        return 1
+    fi
+    copied_file_sha="$destination_hash"
 }
 
 guard_exec() {
