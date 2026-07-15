@@ -2,6 +2,7 @@
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -114,6 +115,42 @@ class RunBoundedTests(unittest.TestCase):
         self.assertTrue(result.timed_out)
         self.assertIn("ready", result.stdout)
         self.assertLess(result.wall_ms, 2000)
+
+    def test_timeout_kills_term_ignoring_descendant_after_leader_exits(self):
+        child_pid = None
+        child = (
+            "import os,signal,time; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            "print(f'child={os.getpid()}', flush=True); time.sleep(30)"
+        )
+        leader = (
+            "import signal,subprocess,sys,time; "
+            "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0)); "
+            "subprocess.Popen([sys.executable, '-c', sys.argv[1]]); "
+            "time.sleep(30)"
+        )
+        try:
+            result = run_bounded(
+                [sys.executable, "-c", leader, child],
+                timeout_seconds=0.3,
+                max_capture_bytes=1024,
+            )
+            child_pid = int(result.stdout.split("child=", 1)[1].splitlines()[0])
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail(f"TERM-ignoring descendant {child_pid} survived timeout cleanup")
+        finally:
+            if child_pid is not None:
+                try:
+                    os.kill(child_pid, 9)
+                except ProcessLookupError:
+                    pass
 
     def test_group_signal_failure_is_reported_without_blocking(self):
         with mock.patch("json_tool.os.killpg", side_effect=PermissionError("denied")):

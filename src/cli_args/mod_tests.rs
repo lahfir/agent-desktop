@@ -1,5 +1,5 @@
 use super::*;
-use agent_desktop_core::adapter::SnapshotSurface;
+use agent_desktop_core::SnapshotSurface;
 use clap::ValueEnum;
 
 /// The exhaustive set of `SnapshotSurface` values the CLI's `Surface` enum is

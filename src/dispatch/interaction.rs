@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AppError,
-    adapter::PlatformAdapter,
+    AppError, PlatformAdapter,
     commands::{
         check as check_command, clear as clear_command, click as click_command,
         collapse as collapse_command, double_click as double_click_command,

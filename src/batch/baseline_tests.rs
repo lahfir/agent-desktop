@@ -11,7 +11,7 @@ struct AtomicEventAdapter {
     opened: AtomicBool,
 }
 
-impl agent_desktop_core::adapter::ObservationOps for AtomicEventAdapter {
+impl agent_desktop_core::ObservationOps for AtomicEventAdapter {
     fn list_apps(
         &self,
         _deadline: agent_desktop_core::Deadline,
@@ -25,9 +25,9 @@ impl agent_desktop_core::adapter::ObservationOps for AtomicEventAdapter {
     }
 }
 
-impl agent_desktop_core::adapter::ActionOps for AtomicEventAdapter {}
+impl agent_desktop_core::ActionOps for AtomicEventAdapter {}
 
-impl agent_desktop_core::adapter::InputOps for AtomicEventAdapter {
+impl agent_desktop_core::InputOps for AtomicEventAdapter {
     fn clear_clipboard(
         &self,
         _lease: &agent_desktop_core::InteractionLease,
@@ -37,7 +37,7 @@ impl agent_desktop_core::adapter::InputOps for AtomicEventAdapter {
     }
 }
 
-impl agent_desktop_core::adapter::SystemOps for AtomicEventAdapter {
+impl agent_desktop_core::SystemOps for AtomicEventAdapter {
     fn acquire_interaction_lease(
         &self,
         deadline: agent_desktop_core::Deadline,

@@ -7,7 +7,7 @@ use crate::convert::window::{
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::{trap_panic, trap_panic_void};
 use crate::types::{AdExactWindowInfo, AdExactWindowList, AdWindowInfo, AdWindowList};
-use agent_desktop_core::adapter::WindowFilter;
+use agent_desktop_core::WindowFilter;
 use std::os::raw::c_char;
 use std::ptr;
 

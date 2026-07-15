@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AppError,
-    adapter::PlatformAdapter,
+    AppError, PlatformAdapter,
     commands::{
         find as find_command, get as get_command, is_check as is_command,
         screenshot as screenshot_command, snapshot as snapshot_command,

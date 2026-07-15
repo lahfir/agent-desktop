@@ -32,7 +32,7 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
     let duration_ms = params.duration_ms.unwrap_or(DEFAULT_DURATION_MS);
     let steps = duration_ms.div_ceil(DWELL_TICK_MS).clamp(1, MAX_STEPS);
     let step_delay = Duration::from_secs_f64(duration_ms as f64 / steps as f64 / 1_000.0);
-    let pre_delivery = crate::delivery_tracker::DeliveryTracker::default();
+    let pre_delivery = crate::actions::DeliveryTracker::default();
     let source =
         crate::input::mouse::event_source().map_err(|error| pre_delivery.annotate(error))?;
     let down = crate::input::mouse::create_event_with_source(
@@ -138,7 +138,7 @@ impl DragReleaseGuard {
         self.delivery.mark_down_posted();
     }
 
-    fn delivery(&self) -> crate::delivery_tracker::DeliveryTracker {
+    fn delivery(&self) -> crate::actions::DeliveryTracker {
         self.delivery.delivery()
     }
 
@@ -171,7 +171,7 @@ fn dwell_over_destination(
     destination: CGPoint,
     delay_ms: u64,
     deadline: Deadline,
-    delivery: crate::delivery_tracker::DeliveryTracker,
+    delivery: crate::actions::DeliveryTracker,
 ) -> Result<(), AdapterError> {
     if delay_ms == 0 {
         return Ok(());
@@ -206,16 +206,14 @@ fn preflight_drag(params: &DragParams, deadline: Deadline) -> Result<(), Adapter
     let remaining = deadline.remaining();
     let required = Duration::from_millis(required_ms);
     if remaining < required {
-        return Err(
-            crate::delivery_tracker::DeliveryTracker::default().annotate(
-                AdapterError::timeout("Drag cannot complete within the remaining deadline")
-                    .with_details(serde_json::json!({
-                        "physical_delivery_started": false,
-                        "required_ms": required_ms,
-                        "remaining_ms": remaining.as_millis(),
-                    })),
-            ),
-        );
+        return Err(crate::actions::DeliveryTracker::default().annotate(
+            AdapterError::timeout("Drag cannot complete within the remaining deadline")
+                .with_details(serde_json::json!({
+                    "physical_delivery_started": false,
+                    "required_ms": required_ms,
+                    "remaining_ms": remaining.as_millis(),
+                })),
+        ));
     }
     Ok(())
 }

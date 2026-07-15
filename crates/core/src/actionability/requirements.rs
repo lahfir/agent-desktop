@@ -1,11 +1,5 @@
+use super::PointerDelivery;
 use crate::action::Action;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PointerDelivery {
-    NotApplicable,
-    Semantic,
-    Physical,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ActionabilityRequirements {

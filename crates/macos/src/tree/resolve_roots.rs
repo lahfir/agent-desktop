@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, RefEntry, adapter::SnapshotSurface};
+use agent_desktop_core::{AdapterError, RefEntry, SnapshotSurface};
 
 use super::AXElement;
 use super::element::element_for_pid;
@@ -335,10 +335,10 @@ fn read_root_array(
         max_elements,
         context.deadline,
     );
-    context.stats.reads.child_reads += read.status.attempts;
-    context.stats.reads.cannot_complete += read.status.cannot_complete;
-    context.stats.reads.native_read_failures += read.status.native_read_failures;
-    context.stats.reads.deadline_exhausted += u64::from(read.status.deadline_exhausted);
+    context.stats.reads.counts.child_reads += read.status.attempts;
+    context.stats.reads.health.cannot_complete += read.status.health.cannot_complete;
+    context.stats.reads.health.native_read_failures += read.status.health.native_read_failures;
+    context.stats.reads.health.deadline_exhausted += read.status.health.deadline_exhausted;
     context.stats.traversal.limits.child_count_changes += u64::from(read.status.count_changed);
     context
         .usage

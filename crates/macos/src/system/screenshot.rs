@@ -77,12 +77,14 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ImageBuffer, AdapterError> {
         ensure_budget(deadline)?;
-        let current = crate::system::display::display_at(index, deadline)?;
+        let (raw_index, current) = crate::system::display::capture_selection(expected, deadline)?;
         ensure_budget(deadline)?;
         verify_display_identity(index, expected, &current)?;
-        let captured = capture(current.scale, deadline, |path| display_args(index, path))?;
+        let captured = capture(current.scale, deadline, |path| {
+            display_args(raw_index, path)
+        })?;
         ensure_budget(deadline)?;
-        let after = crate::system::display::display_at(index, deadline)?;
+        let after = crate::system::display::display_at_capture_index(raw_index, deadline)?;
         ensure_budget(deadline)?;
         verify_display_identity(index, &current, &after)?;
         Ok(captured)

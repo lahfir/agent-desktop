@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AppError,
-    adapter::PlatformAdapter,
+    AppError, PlatformAdapter,
     commands::{
         dismiss_all_notifications, dismiss_notification, list_notifications, notification_action,
     },

@@ -19,17 +19,13 @@ pub(crate) fn wait_for_event(
     let requested = parse_event_kind(&input.event)?;
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, input.timeout_ms)?;
-    let process = input
-        .app
-        .as_deref()
-        .map(|app| crate::commands::helpers::resolve_app(Some(app), adapter, deadline))
-        .transpose()?
-        .map(|app| crate::commands::helpers::process_identity(&app))
-        .transpose()?;
-    let filter = SignalFilter {
-        app: input.app.clone(),
-        process,
-    };
+    let filter = signal_filter(
+        &input,
+        &requested,
+        seeded_baseline.as_ref(),
+        adapter,
+        deadline,
+    )?;
     let (mut baseline, mut last_error) = match seeded_baseline {
         Some(Ok(baseline)) => {
             validate_signal_scope(&filter, &baseline)?;
@@ -103,6 +99,60 @@ pub(crate) fn wait_for_event(
         }
         std::thread::sleep(remaining.min(Duration::from_millis(200)));
     }
+}
+
+fn signal_filter(
+    input: &EventWaitInput,
+    requested: &EventKind,
+    seeded_baseline: Option<&Result<SignalBaseline, AdapterError>>,
+    adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
+) -> Result<SignalFilter, AppError> {
+    let Some(app) = input.app.as_deref() else {
+        return Ok(SignalFilter::default());
+    };
+    if matches!(requested, EventKind::AppLaunched) {
+        return Ok(SignalFilter {
+            app: input.app.clone(),
+            process: None,
+        });
+    }
+    let successful_seed = seeded_baseline.and_then(|baseline| baseline.as_ref().ok());
+    let seeded_process = successful_seed
+        .map(|baseline| process_from_baseline(baseline, app))
+        .transpose()?
+        .flatten();
+    let process = match seeded_process {
+        Some(process) => Some(process),
+        None if successful_seed.is_some() && matches!(requested, EventKind::AppTerminated) => None,
+        None => Some(crate::commands::helpers::process_identity(
+            &crate::commands::helpers::resolve_app(Some(app), adapter, deadline)?,
+        )?),
+    };
+    Ok(SignalFilter {
+        app: input.app.clone(),
+        process,
+    })
+}
+
+fn process_from_baseline(
+    baseline: &SignalBaseline,
+    app: &str,
+) -> Result<Option<crate::ProcessIdentity>, AppError> {
+    let mut matches = baseline
+        .apps
+        .iter()
+        .filter(|candidate| candidate.name.eq_ignore_ascii_case(app));
+    let Some(first) = matches.next() else {
+        return Ok(None);
+    };
+    if matches.next().is_some() {
+        return Err(AdapterError::ambiguous_target(format!(
+            "Multiple application instances matched '{app}' in the event baseline"
+        ))
+        .into());
+    }
+    crate::commands::helpers::process_identity(first).map(Some)
 }
 
 fn validate_signal_scope(filter: &SignalFilter, baseline: &SignalBaseline) -> Result<(), AppError> {

@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    Action, AdapterError, Deadline, ElementState, ErrorCode, EvidenceRequirements, LiveIdentity,
-    LocatorField, ObservationBudget, Rect, adapter::LiveElement,
+    Action, AdapterError, Deadline, ElementState, ErrorCode, EvidenceRequirements, LiveElement,
+    LiveIdentity, LocatorField, ObservationBudget, Rect,
 };
 use std::time::{Duration, Instant};
 

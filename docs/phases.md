@@ -122,7 +122,7 @@ agent-desktop/
 │   │   └── src/
 │   │       ├── lib.rs          # public re-exports only
 │   │       ├── node.rs         # AccessibilityNode, Rect, WindowInfo
-│   │       ├── adapter.rs      # PlatformAdapter trait
+│   │       ├── adapter/        # capability traits + composed PlatformAdapter
 │   │       ├── action.rs       # Action enum
 │   │       ├── action_request.rs / action_result.rs / action_step*.rs
 │   │       ├── actionability/  # Live actionability checks and reports
@@ -155,7 +155,7 @@ agent-desktop/
 
 ### PlatformAdapter Trait
 
-The single most important abstraction. Every platform-specific operation goes through this trait. Core never imports platform crates. The canonical definition is `crates/core/src/adapter.rs`; this roadmap lists representative method groups only, because the trait grows additively as reliability and platform parity work lands.
+The single most important abstraction. Every platform-specific operation goes through this trait. Core never imports platform crates. The composed trait is defined in `crates/core/src/adapter/mod.rs`, its capability traits live in `actions.rs`, `input.rs`, `observation.rs`, and `system.rs`, and `crates/core/src/lib.rs` owns their public re-exports. This roadmap lists representative method groups only, because the traits grow additively as reliability and platform parity work lands.
 
 ```rust
 pub trait PlatformAdapter: Send + Sync {
@@ -217,7 +217,7 @@ pub trait PlatformAdapter: Send + Sync {
 - `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`
 - `MouseEvent`, `DragParams`, `KeyCombo` — dedicated types (not unified under an `InputEvent` enum)
 - `WindowOp` — Resize{w,h}, Move{x,y}, Minimize, Maximize, Restore, Close
-- `ScreenshotTarget` — Screen(usize), Window(pid), FullScreen
+- `ScreenshotTarget` — Screen(usize), Display { index, expected }, ExactWindow(WindowInfo), FullScreen
 - `NotificationInfo` — index, app_name, title, body, actions: Vec<String>
 - `NotificationIdentity` — expected_app, expected_title (used for NC-reorder-safe `notification_action`)
 - `SurfaceInfo` — kind, label, bounds (for `list-surfaces` command)
@@ -701,7 +701,7 @@ Cross-platform core extensions (new, landed alongside Windows):
 
 ### Cross-Platform Trait Extensions
 
-All methods land as `#[non_exhaustive]` additions in `crates/core/src/adapter.rs` with default implementations returning `AdapterError::not_supported(method)`. Windows implements them natively. macOS backfills in the same PR pair. Linux (Phase 3) adds the AT-SPI2 implementations.
+New methods land in the appropriate capability trait under `crates/core/src/adapter/`, with default implementations returning `AdapterError::not_supported(method)`. Windows implements them natively. macOS backfills in the same PR pair. Linux (Phase 3) adds the AT-SPI2 implementations; public trait access remains through the crate-root re-exports in `crates/core/src/lib.rs`.
 
 ```rust
 impl PlatformAdapter for … {

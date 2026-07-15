@@ -170,10 +170,10 @@ fn record_child_read(
     read: &crate::tree::query::child_read::ChildRead,
     stats: &mut agent_desktop_core::LocatorStats,
 ) -> Result<(), agent_desktop_core::AdapterError> {
-    stats.reads.child_reads += read.status.attempts;
-    stats.reads.cannot_complete += read.status.cannot_complete;
-    stats.reads.native_read_failures += read.status.native_read_failures;
-    stats.reads.deadline_exhausted += u64::from(read.status.deadline_exhausted);
+    stats.reads.counts.child_reads += read.status.attempts;
+    stats.reads.health.cannot_complete += read.status.health.cannot_complete;
+    stats.reads.health.native_read_failures += read.status.health.native_read_failures;
+    stats.reads.health.deadline_exhausted += read.status.health.deadline_exhausted;
     stats.traversal.limits.child_count_changes += u64::from(read.status.count_changed);
     stats.traversal.limits.child_label_hits += u64::from(read.truncated());
     stats.traversal.limits.child_hits += u64::from(read.status.cursor_stalled);

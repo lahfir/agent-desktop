@@ -216,7 +216,7 @@ fn validate_child_status(
             accessibility_sys::kAXErrorInvalidUIElement,
         ));
     }
-    if read.status.cannot_complete > 0 || read.status.deadline_exhausted {
+    if read.status.health.cannot_complete > 0 || read.status.health.deadline_exhausted > 0 {
         return Err(read_error(
             "AXChildren",
             accessibility_sys::kAXErrorCannotComplete,

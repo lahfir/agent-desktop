@@ -1,6 +1,4 @@
-use agent_desktop_core::{
-    AdapterError, AppInfo, ErrorCode, ProcessId, WindowInfo, adapter::WindowFilter,
-};
+use agent_desktop_core::{AdapterError, AppInfo, ErrorCode, ProcessId, WindowFilter, WindowInfo};
 use std::time::Instant;
 
 use crate::system::{process_apps, window_inventory, workspace_apps};

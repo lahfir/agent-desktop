@@ -1,6 +1,4 @@
-use super::{
-    check::ActionabilityCheck, requirements::PointerDelivery, status::ActionabilityStatus,
-};
+use super::{PointerDelivery, check::ActionabilityCheck, status::ActionabilityStatus};
 use crate::{ErrorCode, Point};
 use serde::Serialize;
 

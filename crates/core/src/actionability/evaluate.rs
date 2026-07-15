@@ -108,10 +108,7 @@ pub(super) fn check_with_stability(
             ActionabilityReport::from_checks(checks, verified_point, pointer_delivery),
         );
     }
-    if matches!(
-        pointer_delivery,
-        super::requirements::PointerDelivery::Physical
-    ) {
+    if matches!(pointer_delivery, super::PointerDelivery::Physical) {
         match hit_test {
             Some((handle, adapter)) => {
                 let (check, point) =

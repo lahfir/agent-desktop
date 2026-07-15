@@ -1,3 +1,4 @@
+mod adapter;
 pub(crate) mod app_inventory;
 pub(crate) mod app_ops;
 pub(crate) mod appkit_bridge;

@@ -147,8 +147,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-    use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
     use agent_desktop_core::launch_options::LaunchOptions;
+    use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
     use agent_desktop_core::{
         AdapterError, Deadline, InteractionLease, ProcessId, WindowInfo, WindowState,
     };

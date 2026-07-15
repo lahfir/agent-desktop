@@ -58,8 +58,8 @@ pub(super) fn selected_matches(
             &ObservationRequest::selected_hydration(query, request, hydration_root, deadline)
                 .validate()?,
         )?;
-        hydrated.stats.reads.observation_attempts =
-            hydrated.stats.reads.observation_attempts.max(1);
+        hydrated.stats.reads.counts.observation_attempts =
+            hydrated.stats.reads.counts.observation_attempts.max(1);
         resolution.stats.merge_observation(&hydrated.stats);
         if hydrated.roots.len() != 1 {
             return Err(evidence_incomplete(&hydrated, None, query).into());

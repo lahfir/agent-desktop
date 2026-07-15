@@ -8,6 +8,7 @@ raw_bin_sha=""
 fixture_app=""
 app="AgentDeskFixture"
 fixture_pid=""
+fixture_owned=0
 fixture_started=0
 contaminated=0
 ffi_dylib=""
@@ -258,7 +259,7 @@ running() {
 }
 
 cleanup() {
-    if [ "$fixture_started" -eq 1 ] && [ -x "$bin" ]; then
+    if [ "$fixture_owned" -eq 1 ] && [ -x "$bin" ]; then
         "$bin" close-app "$app" --force >/dev/null 2>&1 || true
     fi
     for file in "${cleanup_files[@]}"; do

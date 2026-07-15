@@ -50,8 +50,8 @@ pub(crate) enum Surface {
 }
 
 impl Surface {
-    pub(crate) fn to_core(&self) -> agent_desktop_core::adapter::SnapshotSurface {
-        use agent_desktop_core::adapter::SnapshotSurface;
+    pub(crate) fn to_core(&self) -> agent_desktop_core::SnapshotSurface {
+        use agent_desktop_core::SnapshotSurface;
         match self {
             Self::Window => SnapshotSurface::Window,
             Self::Focused => SnapshotSurface::Focused,

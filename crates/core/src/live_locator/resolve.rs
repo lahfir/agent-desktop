@@ -37,8 +37,8 @@ pub fn resolve_query(
             &mut aggregate,
         ) {
             Ok(mut resolution) => {
-                resolution.stats.reads.observation_attempts =
-                    resolution.stats.reads.observation_attempts.max(1);
+                resolution.stats.reads.counts.observation_attempts =
+                    resolution.stats.reads.counts.observation_attempts.max(1);
                 if !resolution.meta.selection_complete && has_deterministic_limit(&resolution.stats)
                 {
                     return Err(deterministic_limit_error(&resolution).into());
@@ -120,8 +120,8 @@ fn has_deterministic_limit(stats: &LocatorStats) -> bool {
 
 fn has_transient_incompleteness(stats: &LocatorStats) -> bool {
     stats.traversal.limits.child_count_changes > 0
-        || stats.reads.cannot_complete > 0
-        || stats.reads.deadline_exhausted > 0
+        || stats.reads.health.cannot_complete > 0
+        || stats.reads.health.deadline_exhausted > 0
 }
 
 fn deterministic_limit_error(resolution: &LocatorResolution) -> AdapterError {
@@ -146,8 +146,8 @@ fn incomplete_evidence(resolution: &LocatorResolution) -> serde_json::Value {
     json!({
         "observed_matches": resolution.meta.total_matches,
         "child_count_changes": resolution.stats.traversal.limits.child_count_changes,
-        "cannot_complete": resolution.stats.reads.cannot_complete,
-        "deadline_exhausted": resolution.stats.reads.deadline_exhausted,
+        "cannot_complete": resolution.stats.reads.health.cannot_complete,
+        "deadline_exhausted": resolution.stats.reads.health.deadline_exhausted,
     })
 }
 
@@ -164,7 +164,7 @@ fn transient_incomplete_timeout(
             "kind": "locator_transient_incomplete",
             "retryable": true,
             "timeout_ms": deadline.timeout_ms(),
-            "observation_attempts": stats.reads.observation_attempts,
+            "observation_attempts": stats.reads.counts.observation_attempts,
             "last_incomplete": last_incomplete,
             "query_stats": stats,
         }))
@@ -183,7 +183,8 @@ fn resolve_query_attempt(
         ObservationRequest::locator_for_root(query, request, root, deadline).validate()?;
     let tree = crate::renderer_accessibility::observe_tree(adapter, root, &observation_request)?;
     let mut tree = tree;
-    tree.stats.reads.observation_attempts = tree.stats.reads.observation_attempts.max(1);
+    tree.stats.reads.counts.observation_attempts =
+        tree.stats.reads.counts.observation_attempts.max(1);
     let evaluation_request = LocatorResolveRequest {
         materialization: match request.materialization {
             super::LocatorMaterialization::SelectedMatches => super::LocatorMaterialization::None,

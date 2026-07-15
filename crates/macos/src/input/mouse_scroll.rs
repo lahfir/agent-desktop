@@ -15,7 +15,7 @@ pub(crate) fn synthesize_scroll_at(
 
     crate::input::mouse::validate_point(&point)?;
     let chunks = scroll_chunks(delta)?;
-    let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+    let mut delivery = crate::actions::DeliveryTracker::default();
     crate::input::mouse::ensure_budget(deadline, delivery)?;
     crate::input::mouse_move::preposition_pointer(&point, modifiers, deadline, &mut delivery)?;
     let source = crate::input::mouse::event_source().map_err(|error| delivery.annotate(error))?;

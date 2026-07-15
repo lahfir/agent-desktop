@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, ErrorCode, InteractionLease, WindowInfo, WindowOp, WindowState,
-    adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
+    ActionOps, AdapterError, Deadline, ErrorCode, InputOps, InteractionLease, ObservationOps,
+    SystemOps, WindowInfo, WindowOp, WindowState,
 };
 use std::sync::Mutex;
 

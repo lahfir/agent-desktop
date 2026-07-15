@@ -36,15 +36,15 @@ impl LocatorStats {
         self.traversal.web_wrapper_nodes += other.traversal.web_wrapper_nodes;
         self.traversal.cycles_skipped += other.traversal.cycles_skipped;
         self.traversal.limits.merge(&other.traversal.limits);
-        self.reads.observation_attempts += other.reads.observation_attempts;
-        self.reads.attribute_batches += other.reads.attribute_batches;
-        self.reads.attributes_requested += other.reads.attributes_requested;
-        self.reads.child_reads += other.reads.child_reads;
-        self.reads.action_reads += other.reads.action_reads;
-        self.reads.fallback_reads += other.reads.fallback_reads;
-        self.reads.cannot_complete += other.reads.cannot_complete;
-        self.reads.native_read_failures += other.reads.native_read_failures;
-        self.reads.deadline_exhausted += other.reads.deadline_exhausted;
+        self.reads.counts.observation_attempts += other.reads.counts.observation_attempts;
+        self.reads.counts.attribute_batches += other.reads.counts.attribute_batches;
+        self.reads.counts.attributes_requested += other.reads.counts.attributes_requested;
+        self.reads.counts.child_reads += other.reads.counts.child_reads;
+        self.reads.counts.action_reads += other.reads.counts.action_reads;
+        self.reads.counts.fallback_reads += other.reads.counts.fallback_reads;
+        self.reads.health.cannot_complete += other.reads.health.cannot_complete;
+        self.reads.health.native_read_failures += other.reads.health.native_read_failures;
+        self.reads.health.deadline_exhausted += other.reads.health.deadline_exhausted;
         self.identifiers.values_observed += other.identifiers.values_observed;
         self.identifiers.nodes_with_identifiers += other.identifiers.nodes_with_identifiers;
         self.identifiers.nodes_with_multiple_identifiers +=

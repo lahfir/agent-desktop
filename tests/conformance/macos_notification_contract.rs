@@ -1,4 +1,4 @@
-use agent_desktop_core::adapter::SystemOps;
+use agent_desktop_core::SystemOps;
 use agent_desktop_core::{
     Deadline, DeliverySemantics, DismissAllNotificationsRequest, DismissNotificationRequest,
     ErrorCode, InteractionLease, InteractionPolicy, NotificationActionRequest,

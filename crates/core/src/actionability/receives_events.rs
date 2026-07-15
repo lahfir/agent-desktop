@@ -1,9 +1,9 @@
 use super::{
+    PointerDelivery,
     check::ActionabilityCheck,
     check_result::{occluded, pass, unknown},
     hit_test_evidence::HitTestEvidence,
     report::ActionabilityReport,
-    requirements::PointerDelivery,
 };
 use crate::{
     AdapterError, ErrorCode, Point,

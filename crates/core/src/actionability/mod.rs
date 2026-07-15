@@ -6,6 +6,7 @@ mod gates;
 mod hit_test_evidence;
 mod live;
 mod occluder;
+mod pointer_delivery;
 mod receives_events;
 mod report;
 mod requirements;
@@ -24,8 +25,8 @@ pub(crate) use gates::states_are_enabled;
 #[cfg(test)]
 pub(crate) use live::check_live;
 pub(crate) use live::check_live_with_stability;
+pub(crate) use pointer_delivery::PointerDelivery;
 pub(crate) use receives_events::require_receives_events;
-pub(crate) use requirements::PointerDelivery;
 pub(crate) use requirements::requires_stability;
 pub(crate) use stability::StabilityExpectation;
 #[cfg(test)]

@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AppError,
-    adapter::PlatformAdapter,
+    AppError, PlatformAdapter,
     commands::{
         drag as drag_command, helpers, hover as hover_command, key_down as key_down_command,
         key_up as key_up_command, mouse_click as mouse_click_command,

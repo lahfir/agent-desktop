@@ -13,7 +13,7 @@ impl Default for MacOSAdapter {
 }
 
 pub(crate) fn ax_element(
-    handle: &agent_desktop_core::adapter::NativeHandle,
+    handle: &agent_desktop_core::NativeHandle,
 ) -> Result<&crate::tree::AXElement, agent_desktop_core::AdapterError> {
     handle
         .downcast_ref::<crate::tree::AXElement>()

@@ -100,7 +100,7 @@ mod tests {
         let selected = read_first_nonempty(&["AXChildren", "AXContents"], |attribute| {
             if attribute == "AXChildren" {
                 let mut failed = read(0, false, ChildSourceAvailability::Unknown);
-                failed.status.native_read_failures = 1;
+                failed.status.health.native_read_failures = 1;
                 failed
             } else {
                 read(1, true, ChildSourceAvailability::Available)
@@ -109,7 +109,7 @@ mod tests {
 
         assert_eq!(selected.elements.len(), 1);
         assert!(!selected.complete);
-        assert_eq!(selected.status.native_read_failures, 1);
+        assert_eq!(selected.status.health.native_read_failures, 1);
     }
 
     #[test]

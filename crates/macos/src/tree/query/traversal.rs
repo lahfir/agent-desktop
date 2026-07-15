@@ -40,7 +40,7 @@ impl LocatorTraversal {
         let renderer_ready = self.arena.stats.activation.ready;
         let stats = self.arena.finish()?;
         let root = root.ok_or_else(|| {
-            let code = if stats.reads.deadline_exhausted > 0 {
+            let code = if stats.reads.health.deadline_exhausted > 0 {
                 ErrorCode::Timeout
             } else {
                 ErrorCode::AppUnresponsive
@@ -222,7 +222,7 @@ impl LocatorTraversal {
     }
 
     fn note_deadline_exhausted(&mut self) {
-        self.arena.stats.reads.deadline_exhausted += 1;
+        self.arena.stats.reads.health.deadline_exhausted += 1;
         self.arena.mark_incomplete();
     }
 

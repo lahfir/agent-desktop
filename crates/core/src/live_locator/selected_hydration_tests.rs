@@ -119,14 +119,17 @@ fn role_only_selected_hydration_anchors_before_hydrating_without_rewalking_large
         resolution.stats.traversal.nodes_visited,
         INITIAL_NODE_COUNT + 1
     );
-    assert_eq!(resolution.stats.reads.child_reads, INITIAL_CHILD_READS);
     assert_eq!(
-        resolution.stats.reads.attributes_requested,
+        resolution.stats.reads.counts.child_reads,
+        INITIAL_CHILD_READS
+    );
+    assert_eq!(
+        resolution.stats.reads.counts.attributes_requested,
         INITIAL_ATTRIBUTES_REQUESTED + 23
     );
-    assert_eq!(resolution.stats.reads.action_reads, 1);
+    assert_eq!(resolution.stats.reads.counts.action_reads, 1);
     assert_eq!(resolution.stats.semantic_reads.child_label_reads, 0);
-    assert_eq!(resolution.stats.reads.observation_attempts, 2);
+    assert_eq!(resolution.stats.reads.counts.observation_attempts, 2);
 
     let matched = &resolution.matches[0];
     assert_eq!(matched.data.name, "Primary action");
@@ -230,18 +233,18 @@ fn hydrated_button_tree(root: ObservationRoot<'_>) -> ObservedTree {
     );
     tree.source = ObservationSource::from_root(&root);
     tree.stats.traversal.nodes_visited = 1;
-    tree.stats.reads.attribute_batches = 1;
-    tree.stats.reads.attributes_requested = 23;
-    tree.stats.reads.action_reads = 1;
+    tree.stats.reads.counts.attribute_batches = 1;
+    tree.stats.reads.counts.attributes_requested = 23;
+    tree.stats.reads.counts.action_reads = 1;
     tree
 }
 
 fn initial_stats() -> LocatorStats {
     let mut stats = LocatorStats::default();
     stats.traversal.nodes_visited = INITIAL_NODE_COUNT;
-    stats.reads.attribute_batches = INITIAL_NODE_COUNT;
-    stats.reads.attributes_requested = INITIAL_ATTRIBUTES_REQUESTED;
-    stats.reads.child_reads = INITIAL_CHILD_READS;
+    stats.reads.counts.attribute_batches = INITIAL_NODE_COUNT;
+    stats.reads.counts.attributes_requested = INITIAL_ATTRIBUTES_REQUESTED;
+    stats.reads.counts.child_reads = INITIAL_CHILD_READS;
     stats
 }
 

@@ -1,4 +1,4 @@
-use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
 
 pub struct WindowsAdapter;
 

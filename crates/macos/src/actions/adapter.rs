@@ -1,7 +1,6 @@
 use agent_desktop_core::{
-    Action, ActionResult, ActionStep, AdapterError, InteractionLease, StepMechanism,
-    action_request::ActionRequest,
-    adapter::{ActionOps, NativeHandle},
+    Action, ActionOps, ActionResult, ActionStep, AdapterError, InteractionLease, NativeHandle,
+    StepMechanism, action_request::ActionRequest,
 };
 
 use crate::adapter::{MacOSAdapter, ax_element};

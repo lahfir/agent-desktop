@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AdapterError, AppError, Deadline, DeliverySemantics, ErrorCode, PermissionReport,
-    SignalBaseline, SignalFilter, adapter::PlatformAdapter, context::CommandContext,
+    PlatformAdapter, SignalBaseline, SignalFilter, context::CommandContext,
 };
 use serde_json::{Value, json};
 

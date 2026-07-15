@@ -1,6 +1,6 @@
 use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
 use crate::types::{AdExactSurfaceInfo, AdSnapshotSurface, AdSurfaceInfo};
-use agent_desktop_core::{AdapterError, ErrorCode, SurfaceInfo, adapter::SnapshotSurface};
+use agent_desktop_core::{AdapterError, ErrorCode, SnapshotSurface, SurfaceInfo};
 use std::os::raw::c_char;
 use std::ptr;
 

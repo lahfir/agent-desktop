@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AdapterError, EvidenceRequirements, IdentityMatch, RefEntry,
-    adapter::NativeHandle,
+    AdapterError, EvidenceRequirements, IdentityMatch, NativeHandle, RefEntry,
     ref_identity::{has_stable_text_identity, identity_match},
 };
 use rustc_hash::FxHashSet;
@@ -76,8 +75,8 @@ fn element_at_path(
             context.stats.traversal.limits.node_hits += 1;
             return Err(incomplete_traversal_error("path_node_budget", 0));
         }
-        context.stats.reads.attribute_batches += 1;
-        context.stats.reads.attributes_requested += 1;
+        context.stats.reads.counts.attribute_batches += 1;
+        context.stats.reads.counts.attributes_requested += 1;
         let role = super::resolve_ax_read::read_string(&current, "AXRole", context.deadline)?;
         let mut read = crate::tree::query::child_read::read_child_at(
             &current,
@@ -119,10 +118,10 @@ fn record_path_child_read(
     read: &crate::tree::query::child_read::ChildRead,
     context: &mut ResolveReadContext,
 ) {
-    context.stats.reads.child_reads += read.status.attempts;
-    context.stats.reads.cannot_complete += read.status.cannot_complete;
-    context.stats.reads.native_read_failures += read.status.native_read_failures;
-    context.stats.reads.deadline_exhausted += u64::from(read.status.deadline_exhausted);
+    context.stats.reads.counts.child_reads += read.status.attempts;
+    context.stats.reads.health.cannot_complete += read.status.health.cannot_complete;
+    context.stats.reads.health.native_read_failures += read.status.health.native_read_failures;
+    context.stats.reads.health.deadline_exhausted += read.status.health.deadline_exhausted;
     context.stats.traversal.limits.child_count_changes += u64::from(read.status.count_changed);
     context.stats.traversal.limits.child_hits += u64::from(read.status.cursor_stalled);
 }

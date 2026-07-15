@@ -10,17 +10,17 @@ struct CountingAdapter {
     clears: AtomicUsize,
 }
 
-impl agent_desktop_core::adapter::ObservationOps for CountingAdapter {}
-impl agent_desktop_core::adapter::ActionOps for CountingAdapter {}
+impl agent_desktop_core::ObservationOps for CountingAdapter {}
+impl agent_desktop_core::ActionOps for CountingAdapter {}
 
-impl agent_desktop_core::adapter::InputOps for CountingAdapter {
+impl agent_desktop_core::InputOps for CountingAdapter {
     fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<(), AdapterError> {
         self.clears.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 }
 
-impl agent_desktop_core::adapter::SystemOps for CountingAdapter {
+impl agent_desktop_core::SystemOps for CountingAdapter {
     fn acquire_interaction_lease(
         &self,
         deadline: agent_desktop_core::Deadline,
@@ -206,11 +206,11 @@ fn entry_count_and_output_are_bounded() {
 
 struct SlowReadAdapter;
 
-impl agent_desktop_core::adapter::ObservationOps for SlowReadAdapter {}
-impl agent_desktop_core::adapter::ActionOps for SlowReadAdapter {}
-impl agent_desktop_core::adapter::InputOps for SlowReadAdapter {}
+impl agent_desktop_core::ObservationOps for SlowReadAdapter {}
+impl agent_desktop_core::ActionOps for SlowReadAdapter {}
+impl agent_desktop_core::InputOps for SlowReadAdapter {}
 
-impl agent_desktop_core::adapter::SystemOps for SlowReadAdapter {
+impl agent_desktop_core::SystemOps for SlowReadAdapter {
     fn list_displays(
         &self,
         deadline: agent_desktop_core::Deadline,

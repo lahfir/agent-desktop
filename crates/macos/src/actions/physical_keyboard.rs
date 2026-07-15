@@ -18,7 +18,7 @@ pub(crate) fn press_sequence(
     policy: InteractionPolicy,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
-    let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+    let mut delivery = crate::actions::DeliveryTracker::default();
     let identity =
         prepare_target(element, policy, deadline).map_err(|error| delivery.annotate(error))?;
     let pid = identity.pid();

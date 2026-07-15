@@ -125,7 +125,7 @@ mod imp {
     }
 
     fn after_delivery(error: AdapterError) -> AdapterError {
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        let mut delivery = crate::actions::DeliveryTracker::default();
         delivery.mark_delivered();
         delivery.annotate(error)
     }

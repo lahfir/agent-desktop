@@ -1,6 +1,6 @@
 # agent-desktop-ffi
 
-C-ABI cdylib over [`PlatformAdapter`](../../crates/core/src/adapter.rs). Exposes
+C-ABI cdylib over [`PlatformAdapter`](../../crates/core/src/adapter/mod.rs). Exposes
 `libagent_desktop_ffi.{dylib,so,dll}` to Python (ctypes), Swift, Go (cgo),
 Node (ffi-napi), and C++ consumers without spawning a CLI subprocess per call.
 

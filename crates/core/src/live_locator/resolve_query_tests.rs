@@ -69,7 +69,7 @@ fn churn_then_stable(attempt: usize) -> ObservedTree {
 
 fn always_cannot_complete(_: usize) -> ObservedTree {
     let mut stats = LocatorStats::default();
-    stats.reads.cannot_complete = 1;
+    stats.reads.health.cannot_complete = 1;
     observed_tree(false, stats)
 }
 
@@ -145,7 +145,7 @@ fn child_count_churn_retries_until_the_observation_is_stable() {
 
     assert!(resolution.meta.complete);
     assert_eq!(adapter.builds.load(Ordering::SeqCst), 2);
-    assert_eq!(resolution.stats.reads.observation_attempts, 2);
+    assert_eq!(resolution.stats.reads.counts.observation_attempts, 2);
     assert_eq!(resolution.stats.traversal.limits.child_count_changes, 1);
 }
 

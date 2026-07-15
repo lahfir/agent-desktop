@@ -17,7 +17,7 @@ mod imp {
         } else {
             ax_helpers::set_ax_string_or_err(element, attribute, value, deadline)?;
         }
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        let mut delivery = crate::actions::DeliveryTracker::default();
         delivery.mark_delivered();
         prepare(element, deadline).map_err(|error| delivery.annotate(error))?;
         let role = ax_helpers::element_role(element, deadline)
@@ -50,7 +50,7 @@ mod imp {
         };
         let start = current;
         let mut delivered = false;
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        let mut delivery = crate::actions::DeliveryTracker::default();
         for _ in 0..MAX_INCREMENT_STEPS {
             if (current - target).abs() < 0.5 {
                 return Ok(if delivered {
@@ -107,7 +107,7 @@ mod imp {
         if !delivered {
             return Ok(DeliveryOutcome::NotDelivered);
         }
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        let mut delivery = crate::actions::DeliveryTracker::default();
         delivery.mark_delivered();
         prepare(element, deadline).map_err(|error| delivery.annotate(error))?;
         let observed = crate::tree::copy_bool_attr(element, attribute, deadline);
@@ -133,7 +133,7 @@ mod imp {
 
     #[cfg(test)]
     pub(crate) fn verification_failure_after_write(error: AdapterError) -> AdapterError {
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        let mut delivery = crate::actions::DeliveryTracker::default();
         delivery.mark_delivered();
         delivery.annotate(error)
     }

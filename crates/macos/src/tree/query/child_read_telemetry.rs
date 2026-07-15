@@ -6,10 +6,10 @@ use accessibility_sys::{
 use super::child_read_status::ChildReadStatus;
 
 pub(crate) fn record_status(status: &mut ChildReadStatus, error: i32) {
-    status.cannot_complete += u64::from(error == kAXErrorCannotComplete);
+    status.health.cannot_complete += u64::from(error == kAXErrorCannotComplete);
     status.invalid_element |= error == kAXErrorInvalidUIElement;
     status.api_disabled |= error == kAXErrorAPIDisabled;
-    status.native_read_failures += u64::from(
+    status.health.native_read_failures += u64::from(
         error != kAXErrorSuccess
             && error != kAXErrorAttributeUnsupported
             && error != kAXErrorNoValue
@@ -32,8 +32,8 @@ pub(crate) fn record(
         phase,
         ax_error_code = error,
         child_count,
-        cannot_complete_count = status.cannot_complete,
-        native_read_failure_count = status.native_read_failures,
+        cannot_complete_count = status.health.cannot_complete,
+        native_read_failure_count = status.health.native_read_failures,
         invalid_element = status.invalid_element,
         api_disabled = status.api_disabled,
         "AX child read failed"

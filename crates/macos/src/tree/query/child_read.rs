@@ -221,8 +221,8 @@ mod imp {
             status.count_changed = true;
         }
         let expected = usize::from(index < initial_count);
-        let complete = !status.deadline_exhausted
-            && status.cannot_complete == 0
+        let complete = status.health.deadline_exhausted == 0
+            && status.health.cannot_complete == 0
             && !status.invalid_element
             && !status.api_disabled
             && !status.count_changed
@@ -328,7 +328,7 @@ mod imp {
         crate::tree::locator_deadline::prepare(element, deadline)
             .map(|_| ())
             .map_err(|_| {
-                status.deadline_exhausted = true;
+                status.health.deadline_exhausted = 1;
             })
     }
 

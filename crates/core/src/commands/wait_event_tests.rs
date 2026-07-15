@@ -4,6 +4,8 @@ use crate::{AppInfo, WindowInfo};
 
 struct SequenceAdapter {
     snapshots: Vec<SignalBaseline>,
+    apps: Vec<AppInfo>,
+    app_calls: std::sync::Mutex<usize>,
     calls: std::sync::Mutex<usize>,
     delay: std::time::Duration,
     remaining_at_call: std::sync::Mutex<Vec<std::time::Duration>>,
@@ -13,6 +15,8 @@ impl SequenceAdapter {
     fn new(snapshots: Vec<SignalBaseline>) -> Self {
         Self {
             snapshots,
+            apps: vec![app("TextEdit", "test-instance")],
+            app_calls: std::sync::Mutex::new(0),
             calls: std::sync::Mutex::new(0),
             delay: std::time::Duration::ZERO,
             remaining_at_call: std::sync::Mutex::new(Vec::new()),
@@ -23,11 +27,17 @@ impl SequenceAdapter {
         self.delay = delay;
         self
     }
+
+    fn with_apps(mut self, apps: Vec<AppInfo>) -> Self {
+        self.apps = apps;
+        self
+    }
 }
 
 impl ObservationOps for SequenceAdapter {
     fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<AppInfo>, AdapterError> {
-        Ok(vec![app("TextEdit", "test-instance")])
+        *self.app_calls.lock().unwrap() += 1;
+        Ok(self.apps.clone())
     }
 }
 impl ActionOps for SequenceAdapter {}
@@ -214,30 +224,6 @@ fn seeded_pre_action_baseline_observes_synchronous_event() {
 }
 
 #[test]
-fn seeded_baseline_from_reused_pid_is_rejected_before_polling() {
-    let adapter = SequenceAdapter::new(vec![empty_baseline()]);
-    let seeded = baseline_with_apps(vec![app("TextEdit", "old-generation")]);
-
-    let error = wait_for_event(
-        input("app-terminated", Some("TextEdit")),
-        &adapter,
-        Some(Ok(seeded)),
-    )
-    .expect_err("a stale seeded process generation must not become the event baseline");
-
-    let AppError::Adapter(error) = error else {
-        panic!("expected adapter error");
-    };
-    assert_eq!(error.code, ErrorCode::StaleRef);
-    assert_eq!(
-        error.disposition.delivery(),
-        crate::DeliveryDisposition::NotDelivered
-    );
-    assert_eq!(error.details.unwrap()["kind"], "process_changed");
-    assert_eq!(*adapter.calls.lock().unwrap(), 0);
-}
-
-#[test]
 fn process_generation_change_during_poll_is_terminal() {
     let current = baseline_with_windows(vec![WindowInfo {
         process_instance: Some("new-generation".into()),
@@ -358,3 +344,6 @@ fn failed_inventory_poll_never_reports_app_termination() {
 
 #[path = "wait_event_deadline_tests.rs"]
 mod deadline_tests;
+
+#[path = "wait_event_lifecycle_tests.rs"]
+mod lifecycle_tests;

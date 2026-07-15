@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, WindowInfo, adapter::WindowFilter};
+use agent_desktop_core::{AdapterError, WindowFilter, WindowInfo};
 use std::time::Instant;
 
 use crate::system::cg_window;

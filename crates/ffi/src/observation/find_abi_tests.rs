@@ -3,7 +3,7 @@ use crate::adapter::AdAdapter;
 use crate::types::{
     AdExactWindowInfo, AdFindQuery, AdFindSelectionKind, AdNativeHandle, AdRect, AdWindowInfo,
 };
-use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
 use agent_desktop_core::{
     IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence, ObservationRequest,
     ObservationRoot, ObservationSource, ObservedSubtree, ObservedTree,

@@ -1,9 +1,6 @@
 #[cfg(target_os = "macos")]
 use agent_desktop_core::ref_identity::has_meaningful_identity;
-use agent_desktop_core::{
-    AdapterError, ErrorCode, RefEntry,
-    adapter::{NativeHandle, SnapshotSurface},
-};
+use agent_desktop_core::{AdapterError, ErrorCode, NativeHandle, RefEntry, SnapshotSurface};
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]

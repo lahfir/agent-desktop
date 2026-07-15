@@ -27,10 +27,9 @@ class BoundedResult:
 
 
 def _terminate_group(process):
-    if process.poll() is not None:
-        return None
+    process_group = process.pid
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        os.killpg(process_group, signal.SIGTERM)
     except ProcessLookupError:
         return None
     except OSError as error:
@@ -39,13 +38,18 @@ def _terminate_group(process):
         except OSError:
             pass
         return f"process-group SIGTERM failed: {error}"
+    grace_deadline = time.monotonic() + 0.25
+    while time.monotonic() < grace_deadline:
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            process.poll()
+            return None
+        except OSError:
+            break
+        time.sleep(0.01)
     try:
-        process.wait(timeout=0.25)
-        return None
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
+        os.killpg(process_group, signal.SIGKILL)
     except ProcessLookupError:
         return None
     except OSError as error:

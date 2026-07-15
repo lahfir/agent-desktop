@@ -9,9 +9,7 @@ mod session;
 mod system;
 mod trace;
 
-use agent_desktop_core::{
-    AppError, PermissionReport, adapter::PlatformAdapter, context::CommandContext,
-};
+use agent_desktop_core::{AppError, PermissionReport, PlatformAdapter, context::CommandContext};
 use serde_json::Value;
 
 use crate::cli::Commands;

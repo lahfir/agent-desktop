@@ -1,7 +1,7 @@
 #[cfg(target_os = "macos")]
 mod imp {
     use accessibility_sys::AXUIElementRef;
-    use agent_desktop_core::adapter::NativeHandle;
+    use agent_desktop_core::NativeHandle;
     use core_foundation::base::{CFRelease, CFRetain, CFTypeRef};
 
     pub struct AXElement(pub(crate) AXUIElementRef);
@@ -32,7 +32,7 @@ mod imp {
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
-    use agent_desktop_core::adapter::NativeHandle;
+    use agent_desktop_core::NativeHandle;
 
     pub struct AXElement(pub(crate) *const std::ffi::c_void);
 

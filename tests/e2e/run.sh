@@ -68,6 +68,7 @@ guard_exec 10 1048576 open "$fixture_app" || {
     echo "fixture could not be opened" >&2
     exit 2
 }
+fixture_owned=1
 
 ready=""
 tries=0

@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, AppInfo, SignalBaseline, SignalCompleteness, SignalFilter, SurfaceSignal,
-    adapter::{SnapshotSurface, WindowFilter},
+    AdapterError, AppInfo, SignalBaseline, SignalCompleteness, SignalFilter, SnapshotSurface,
+    SurfaceSignal, WindowFilter,
 };
 use std::time::{Duration, Instant};
 

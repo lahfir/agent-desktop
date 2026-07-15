@@ -343,7 +343,7 @@ The `error` object may also carry optional `details` and `recovery` objects. Ver
 
 Core defines `PlatformAdapter`; platform crates implement it. Methods default to
 `not_supported()`, so an adapter only implements what it supports. Read the
-current signatures in `crates/core/src/adapter.rs` — notably strict resolution
+current signatures in `crates/core/src/adapter/mod.rs` and its `actions.rs`, `input.rs`, `observation.rs`, and `system.rs` capability fragments — notably strict resolution
 (`resolve_element_strict*` → STALE_REF on 0, AMBIGUOUS_TARGET on 2+), live reads
 for the actionability preflight (`get_live_*`), and `is_protected_process`
 (keeps platform-specific process names out of core).

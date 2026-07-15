@@ -15,7 +15,7 @@ pub(crate) fn post_key(
     deadline: Deadline,
     progress: (usize, usize),
 ) -> Result<(), AdapterError> {
-    let mut delivery = crate::delivery_tracker::DeliveryTracker::from_delivered_units(progress.0);
+    let mut delivery = crate::actions::DeliveryTracker::from_delivered_units(progress.0);
     ensure_budget(deadline, progress.1, delivery)?;
     let source = event_source().map_err(|error| delivery.annotate(error))?;
     let down = create_key_event(&source, key_code, true, flags)
@@ -34,7 +34,7 @@ pub(crate) fn post_text(
     preflight_text(text, deadline)?;
     let chunks = text_chunks(text)?;
     let total = chunks.len();
-    let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+    let mut delivery = crate::actions::DeliveryTracker::default();
     for chunk in chunks {
         ensure_budget(deadline, total, delivery)?;
         verify_target(deadline).map_err(|error| {
@@ -63,19 +63,15 @@ pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<(), Adapt
         .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "Text payload is too large"))?;
     let remaining = deadline.remaining();
     if remaining < required {
-        return Err(
-            crate::delivery_tracker::DeliveryTracker::default().annotate(
-                AdapterError::timeout(
-                    "Text cannot be delivered safely within the remaining deadline",
-                )
+        return Err(crate::actions::DeliveryTracker::default().annotate(
+            AdapterError::timeout("Text cannot be delivered safely within the remaining deadline")
                 .with_details(serde_json::json!({
                     "delivered_chunks": 0,
                     "total_chunks": chunks,
                     "required_ms": required.as_millis(),
                     "remaining_ms": remaining.as_millis(),
                 })),
-            ),
-        );
+        ));
     }
     Ok(())
 }
@@ -84,7 +80,7 @@ fn post_pair(
     events: (CGEvent, CGEvent),
     target_pid: Option<i32>,
     deadline: Deadline,
-    delivery: &mut crate::delivery_tracker::DeliveryTracker,
+    delivery: &mut crate::actions::DeliveryTracker,
     total: usize,
 ) -> Result<(), AdapterError> {
     let (down, up) = events;
@@ -145,7 +141,7 @@ fn post(event: &CGEvent, target_pid: Option<i32>) {
 fn sleep_bounded(
     deadline: Deadline,
     duration: Duration,
-    delivery: crate::delivery_tracker::DeliveryTracker,
+    delivery: crate::actions::DeliveryTracker,
     total: usize,
 ) -> Result<(), AdapterError> {
     let pause = deadline
@@ -162,7 +158,7 @@ fn sleep_bounded(
 fn ensure_budget(
     deadline: Deadline,
     total: usize,
-    delivery: crate::delivery_tracker::DeliveryTracker,
+    delivery: crate::actions::DeliveryTracker,
 ) -> Result<(), AdapterError> {
     if !deadline.is_expired() {
         return Ok(());

@@ -1,9 +1,9 @@
 use crate::convert::string::optional_adapter_string;
 use crate::error::{self, AdResult};
 use crate::ffi_try::{trap_panic, trap_panic_ptr, trap_panic_void};
-use agent_desktop_core::adapter::PlatformAdapter;
+use agent_desktop_core::PlatformAdapter;
 #[cfg(any(feature = "stub-adapter", test))]
-use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
 use agent_desktop_core::{
     AdapterError, AppError, PermissionState,
     context::{CommandContext, validate_session_id},

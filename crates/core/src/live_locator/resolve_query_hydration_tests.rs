@@ -86,7 +86,7 @@ fn hydration_retry_preserves_failed_attempt_statistics() {
 
     assert_eq!(adapter.window_observations.load(Ordering::SeqCst), 2);
     assert_eq!(adapter.hydration_observations.load(Ordering::SeqCst), 2);
-    assert_eq!(resolution.stats.reads.observation_attempts, 3);
+    assert_eq!(resolution.stats.reads.counts.observation_attempts, 3);
 }
 
 struct IncompleteHydrationAdapter {

@@ -1,8 +1,8 @@
 use crate::adapter::{MacOSAdapter, ax_element};
 use agent_desktop_core::{
-    AccessibilityNode, AdapterError, AppInfo, Deadline, ElementState, ObservationRequest,
-    ObservationRoot, ObservedTree, Rect, RefEntry, SurfaceInfo, WindowInfo,
-    adapter::{LiveElement, NativeHandle, ObservationOps, TreeOptions, WindowFilter},
+    AccessibilityNode, AdapterError, AppInfo, Deadline, ElementState, LiveElement, NativeHandle,
+    ObservationOps, ObservationRequest, ObservationRoot, ObservedTree, Rect, RefEntry, SurfaceInfo,
+    TreeOptions, WindowFilter, WindowInfo,
 };
 
 impl ObservationOps for MacOSAdapter {

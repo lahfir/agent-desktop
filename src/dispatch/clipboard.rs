@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AppError,
-    adapter::PlatformAdapter,
+    AppError, PlatformAdapter,
     commands::{clipboard_clear, clipboard_get, clipboard_set},
     context::CommandContext,
 };

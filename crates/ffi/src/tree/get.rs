@@ -92,7 +92,7 @@ unsafe fn get_core_tree(
             return AdResult::ErrInvalidArgs;
         }
     };
-    let core_opts = agent_desktop_core::adapter::TreeOptions {
+    let core_opts = agent_desktop_core::TreeOptions {
         max_depth: options.max_depth,
         include_bounds: options.include_bounds,
         interactive_only: options.interactive_only,

@@ -7,7 +7,7 @@ pub mod action_result;
 pub mod action_step;
 pub mod action_step_outcome;
 pub(crate) mod actionability;
-pub mod adapter;
+mod adapter;
 mod adapter_error;
 mod adapter_session;
 mod app_error;
@@ -152,7 +152,11 @@ pub use action_request::ActionRequest;
 pub use action_result::ActionResult;
 pub use action_step::ActionStep;
 pub use action_step_outcome::ActionStepOutcome;
-pub use adapter::{NativeHandle, PlatformAdapter, ScreenshotTarget, TreeOptions, WindowFilter};
+pub use adapter::PlatformAdapter;
+pub use adapter::actions::ActionOps;
+pub use adapter::input::InputOps;
+pub use adapter::observation::ObservationOps;
+pub use adapter::system::SystemOps;
 pub use adapter_error::AdapterError;
 pub use adapter_session::AdapterSession;
 pub use app_error::AppError;
@@ -191,11 +195,12 @@ pub use live_element::LiveElement;
 pub use live_identity::LiveIdentity;
 pub use live_locator::{
     EvidenceRequirements, IdentifierEvidence, LocatorCardinality, LocatorEvidence, LocatorField,
-    LocatorIdentifierStats, LocatorLimitStats, LocatorMaterialization, LocatorReadStats,
-    LocatorRefEvidence, LocatorResolution, LocatorResolveRequest, LocatorSelection,
-    LocatorSemanticReadStats, LocatorStats, LocatorTraversalStats, ObservationBudget,
-    ObservationRequest, ObservationRoot, ObservationSource, ObservedSubtree, ObservedTree,
-    classify_query_result, evaluate_locator_tree, find_first_entry, require_unique, resolve_query,
+    LocatorIdentifierStats, LocatorLimitStats, LocatorMaterialization, LocatorReadCounts,
+    LocatorReadHealth, LocatorReadStats, LocatorRefEvidence, LocatorResolution,
+    LocatorResolveRequest, LocatorSelection, LocatorSemanticReadStats, LocatorStats,
+    LocatorTraversalStats, ObservationBudget, ObservationRequest, ObservationRoot,
+    ObservationSource, ObservedSubtree, ObservedTree, classify_query_result, evaluate_locator_tree,
+    find_first_entry, require_unique, resolve_query,
 };
 pub use locator::{
     LocatorQuery, accessibility_node_matches, node_context, node_matches, role_matches,
@@ -206,6 +211,7 @@ pub use mouse_click_count::{MAX_MOUSE_CLICK_COUNT, validate_mouse_click_count};
 pub use mouse_event::MouseEvent;
 pub use mouse_event_kind::MouseEventKind;
 pub use name_evidence::NameEvidence;
+pub use native_handle::NativeHandle;
 pub use node::AccessibilityNode;
 pub use node_identity::NodeIdentity;
 pub use node_match_context::NodeMatchContext;
@@ -234,6 +240,7 @@ pub use refs::RefMap;
 pub use refs_store::RefStore;
 pub use retry_disposition::RetryDisposition;
 pub use role::Role;
+pub use screenshot_target::ScreenshotTarget;
 pub use session_affinity::SessionAffinity;
 pub use signal_baseline::SignalBaseline;
 pub use signal_completeness::SignalCompleteness;
@@ -245,8 +252,10 @@ pub use step_mechanism::StepMechanism;
 pub use surface_info::SurfaceInfo;
 pub use surface_signal::SurfaceSignal;
 pub use trace_sanitize::sanitize_trace_value;
+pub use tree_options::TreeOptions;
 pub use ui_event::UiEvent;
 pub use wait_budget::{MAX_WAIT_TIMEOUT_MS, wait_timeout_duration};
+pub use window_filter::WindowFilter;
 pub use window_info::WindowInfo;
 pub use window_op::WindowOp;
 pub use window_state::WindowState;

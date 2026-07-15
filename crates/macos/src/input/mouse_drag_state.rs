@@ -3,7 +3,7 @@ use agent_desktop_core::AdapterError;
 #[derive(Default)]
 pub(crate) struct DragDeliveryState {
     armed: bool,
-    delivery: crate::delivery_tracker::DeliveryTracker,
+    delivery: crate::actions::DeliveryTracker,
 }
 
 impl DragDeliveryState {
@@ -23,7 +23,7 @@ impl DragDeliveryState {
         self.armed
     }
 
-    pub(crate) fn delivery(&self) -> crate::delivery_tracker::DeliveryTracker {
+    pub(crate) fn delivery(&self) -> crate::actions::DeliveryTracker {
         self.delivery
     }
 

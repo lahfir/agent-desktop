@@ -1,4 +1,5 @@
 pub(crate) mod action_list;
+mod adapter;
 pub(crate) mod attributes;
 pub(crate) mod ax_element;
 pub(crate) mod ax_ipc;

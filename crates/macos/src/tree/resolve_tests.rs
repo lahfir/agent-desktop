@@ -11,7 +11,7 @@ use crate::tree::resolve_search::{
 };
 use agent_desktop_core::{
     RefCapabilities, RefEntryIdentity, RefGeometry, RefProcess, RefScope, RefSource,
-    adapter::SnapshotSurface,
+    SnapshotSurface,
 };
 
 pub(super) fn entry(

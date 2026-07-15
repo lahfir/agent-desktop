@@ -1,4 +1,4 @@
-use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
 
 /// Blanket-default `PlatformAdapter` test double: implements the four
 /// capability supertraits with zero overrides, so every call surfaces that

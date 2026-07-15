@@ -43,16 +43,13 @@ mod imp {
             event.modifiers
         );
         validate_point(&event.point)?;
-        ensure_budget(
-            deadline,
-            crate::delivery_tracker::DeliveryTracker::default(),
-        )?;
+        ensure_budget(deadline, crate::actions::DeliveryTracker::default())?;
         let point = CGPoint::new(event.point.x, event.point.y);
         let cg_button = to_cg_button(&event.button);
         let flags = event_flags(&event.modifiers);
         match event.kind {
             MouseEventKind::Move => {
-                let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+                let mut delivery = crate::actions::DeliveryTracker::default();
                 crate::input::mouse_move::post_move_events(
                     point,
                     cg_button,
@@ -139,7 +136,7 @@ mod imp {
     ) -> Result<(), AdapterError> {
         let down_ty = down_type(button);
         let up_ty = up_type(button);
-        let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+        let mut delivery = crate::actions::DeliveryTracker::default();
         crate::input::mouse_move::post_move_events(
             point,
             cg_button,
@@ -225,7 +222,7 @@ mod imp {
         source: &CGEventSource,
         event: (CGEventType, CGPoint, CGMouseButton, CGEventFlags),
         deadline: Deadline,
-        delivery: crate::delivery_tracker::DeliveryTracker,
+        delivery: crate::actions::DeliveryTracker,
     ) -> Result<(), AdapterError> {
         ensure_budget(deadline, delivery)?;
         let ev = create_event_with_source(source, event.0, event.1, event.2, event.3)
@@ -263,7 +260,7 @@ mod imp {
     pub(crate) fn sleep_bounded(
         deadline: Deadline,
         duration: std::time::Duration,
-        delivery: crate::delivery_tracker::DeliveryTracker,
+        delivery: crate::actions::DeliveryTracker,
     ) -> Result<(), AdapterError> {
         let pause = deadline
             .remaining_slice(duration)
@@ -278,7 +275,7 @@ mod imp {
 
     pub(crate) fn ensure_budget(
         deadline: Deadline,
-        delivery: crate::delivery_tracker::DeliveryTracker,
+        delivery: crate::actions::DeliveryTracker,
     ) -> Result<(), AdapterError> {
         if !deadline.is_expired() {
             return Ok(());

@@ -7,10 +7,13 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::time::Instant;
 
+mod session_scope;
+
+use session_scope::SessionScope;
+
 #[derive(Debug, Clone, Default)]
 pub struct CommandContext {
-    session_id: Option<String>,
-    session_lease: Option<session::SessionLivenessLease>,
+    session: Option<SessionScope>,
     inherited_deadline: Option<crate::Deadline>,
     trace: TraceConfig,
     artifacts_full: bool,
@@ -91,10 +94,9 @@ impl CommandContext {
         }
         let (segment_dir, artifacts_full) =
             session_trace_state(session_id.as_deref(), trace_path.is_some())?;
-        let session_lease = acquire_session_lease(session_id.as_deref(), None)?;
+        let session = acquire_session_scope(session_id, None)?;
         Ok(Self {
-            session_id,
-            session_lease,
+            session,
             inherited_deadline: None,
             trace: TraceConfig::build(trace_path, segment_dir, trace_strict)?,
             artifacts_full,
@@ -202,11 +204,12 @@ impl CommandContext {
     }
 
     pub fn for_batch_item(&self, session_id: Option<String>) -> Result<Self, AppError> {
-        let session_id = session_id.or_else(|| self.session_id.clone());
+        let session_id = session_id.or_else(|| self.session_id().map(str::to_owned));
         if let Some(id) = session_id.as_deref() {
             validate_session_id(id)?;
         }
-        let reuses_parent_trace = session_id == self.session_id
+        let reuses_parent_session = session_id.as_deref() == self.session_id();
+        let reuses_parent_trace = reuses_parent_session
             || (self.trace.pending_file_path().is_some() && self.trace.has_sink());
         let (trace, artifacts_full) = if reuses_parent_trace {
             (self.trace.clone(), self.artifacts_full)
@@ -217,14 +220,13 @@ impl CommandContext {
                 artifacts_full,
             )
         };
-        let session_lease = if session_id == self.session_id {
-            self.session_lease.clone()
+        let session = if reuses_parent_session {
+            self.session.clone()
         } else {
-            acquire_session_lease(session_id.as_deref(), self.inherited_deadline)?
+            acquire_session_scope(session_id, self.inherited_deadline)?
         };
         Ok(Self {
-            session_id,
-            session_lease,
+            session,
             inherited_deadline: self.inherited_deadline,
             trace,
             artifacts_full,
@@ -235,16 +237,15 @@ impl CommandContext {
     }
 
     pub fn trace(&self, event: &str, fields: Value) -> Result<(), AppError> {
-        self.trace.emit(event, self.session_id.as_deref(), fields)
+        self.trace.emit(event, self.session_id(), fields)
     }
 
     pub fn trace_lazy(&self, event: &str, fields: impl FnOnce() -> Value) -> Result<(), AppError> {
-        self.trace
-            .emit_lazy(event, self.session_id.as_deref(), fields)
+        self.trace.emit_lazy(event, self.session_id(), fields)
     }
 
     pub fn session_id(&self) -> Option<&str> {
-        self.session_id.as_deref()
+        self.session.as_ref().map(|session| session.id.as_str())
     }
 
     pub fn trace_enabled(&self) -> bool {
@@ -256,17 +257,21 @@ impl CommandContext {
     }
 }
 
-fn acquire_session_lease(
-    session_id: Option<&str>,
+fn acquire_session_scope(
+    session_id: Option<String>,
     deadline: Option<crate::Deadline>,
-) -> Result<Option<session::SessionLivenessLease>, AppError> {
+) -> Result<Option<SessionScope>, AppError> {
     let Some(session_id) = session_id else {
         return Ok(None);
     };
-    match deadline {
-        Some(deadline) => session::acquire_liveness_lease_with_deadline(session_id, deadline),
-        None => session::acquire_liveness_lease(session_id),
-    }
+    let lease = match deadline {
+        Some(deadline) => session::acquire_liveness_lease_with_deadline(&session_id, deadline),
+        None => session::acquire_liveness_lease(&session_id),
+    }?;
+    Ok(Some(SessionScope {
+        id: session_id,
+        lease,
+    }))
 }
 
 fn result_disposition(

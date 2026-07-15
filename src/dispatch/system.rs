@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AppError, PermissionReport,
-    adapter::PlatformAdapter,
+    AppError, PermissionReport, PlatformAdapter,
     commands::{
         permissions as permissions_command, skills as skills_command, status as status_command,
         version as version_command, wait as wait_command,

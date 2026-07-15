@@ -244,7 +244,7 @@ pub unsafe extern "C" fn ad_exact_surface_list_free(list: *mut AdExactSurfaceLis
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+    use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
     use agent_desktop_core::{AppInfo, SurfaceInfo};
 
     struct AppInventory(Vec<AppInfo>);

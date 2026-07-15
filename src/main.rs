@@ -188,7 +188,7 @@ fn validate_wait_for_command(cmd: &Commands, wait: &WaitSelector) -> Result<(), 
 
 fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) -> ExitCode {
     let adapter = build_adapter();
-    let adapter: &dyn agent_desktop_core::adapter::PlatformAdapter = &adapter;
+    let adapter: &dyn agent_desktop_core::PlatformAdapter = &adapter;
     let report = if command_policy::requires_permission_report(&cmd) {
         match agent_desktop_core::Deadline::standard()
             .map_err(AppError::from)
@@ -253,7 +253,7 @@ fn emit_response(response: &Response) -> std::io::Result<()> {
     writer.flush()
 }
 
-fn build_adapter() -> impl agent_desktop_core::adapter::PlatformAdapter {
+fn build_adapter() -> impl agent_desktop_core::PlatformAdapter {
     #[cfg(target_os = "macos")]
     {
         agent_desktop_macos::MacOSAdapter::new()

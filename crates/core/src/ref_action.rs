@@ -11,6 +11,7 @@ use crate::{
 use serde_json::json;
 
 const TRACE_CAPTURE_BUDGET_MS: u64 = 1_000;
+const PRE_CAPTURE_DISPATCH_RESERVE_MS: u64 = 100;
 
 /// A strictly resolved ref-action target plus the tracing identity for it.
 pub(crate) struct ResolvedRefAction<'a> {
@@ -136,12 +137,15 @@ pub(crate) fn capture_pre_artifact(
     entry: &RefEntry,
     deadline: crate::Deadline,
 ) -> crate::trace_artifacts::ArtifactOutcome {
+    let Some(capture_deadline) = pre_trace_capture_deadline(deadline) else {
+        return crate::trace_artifacts::ArtifactOutcome::Skipped("dispatch_budget".into());
+    };
     crate::trace_artifacts::capture_action_screenshot(
         context,
         adapter,
         entry,
         "pre",
-        trace_capture_deadline(deadline),
+        capture_deadline,
     )
 }
 
@@ -173,11 +177,19 @@ fn trace_error_after_delivery(error: AppError) -> AppError {
 }
 
 fn trace_capture_deadline(parent: crate::Deadline) -> crate::Deadline {
-    let remaining_ms = parent.remaining_ms();
-    if remaining_ms == 0 || remaining_ms <= TRACE_CAPTURE_BUDGET_MS {
-        return parent;
+    parent.capped(std::time::Duration::from_millis(TRACE_CAPTURE_BUDGET_MS))
+}
+
+fn pre_trace_capture_deadline(parent: crate::Deadline) -> Option<crate::Deadline> {
+    let remaining = parent.remaining();
+    let reserve = std::time::Duration::from_millis(PRE_CAPTURE_DISPATCH_RESERVE_MS);
+    if remaining <= reserve {
+        return None;
     }
-    crate::Deadline::after(TRACE_CAPTURE_BUDGET_MS).unwrap_or(parent)
+    let capture_budget = remaining
+        .saturating_sub(reserve)
+        .min(std::time::Duration::from_millis(TRACE_CAPTURE_BUDGET_MS));
+    Some(parent.capped(capture_budget))
 }
 
 fn stable_preflight(

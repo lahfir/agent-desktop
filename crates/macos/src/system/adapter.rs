@@ -1,9 +1,9 @@
 use agent_desktop_core::{
     ActionResult, AdapterError, Deadline, DismissAllNotificationsRequest,
     DismissNotificationRequest, ImageBuffer, InteractionLease, NotificationActionRequest,
-    NotificationFilter, NotificationInfo, PermissionReport, ProcessIdentity, SignalBaseline,
-    SignalFilter, WindowInfo, WindowOp,
-    adapter::{ObservationOps, ScreenshotTarget, SnapshotSurface, SystemOps, WindowFilter},
+    NotificationFilter, NotificationInfo, ObservationOps, PermissionReport, ProcessIdentity,
+    ScreenshotTarget, SignalBaseline, SignalFilter, SnapshotSurface, SystemOps, WindowFilter,
+    WindowInfo, WindowOp,
 };
 
 use crate::adapter::MacOSAdapter;

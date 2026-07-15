@@ -88,6 +88,10 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
             continue;
         }
 
+        if is_managed_artifact_dir(&entry, name) {
+            continue;
+        }
+
         let Some(parsed_name) = parse_segment_filename(name) else {
             if !name.starts_with('.') {
                 warnings.push(TraceWarning {
@@ -164,6 +168,13 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
         matched_events,
         truncated,
     })
+}
+
+fn is_managed_artifact_dir(entry: &std::fs::DirEntry, name: &str) -> bool {
+    matches!(name, "screens" | "refmaps")
+        && entry
+            .file_type()
+            .is_ok_and(|file_type| file_type.is_dir() && !file_type.is_symlink())
 }
 
 fn cap_list<T>(mut items: Vec<T>, cap: usize) -> (Vec<T>, bool) {

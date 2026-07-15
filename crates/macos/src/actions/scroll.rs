@@ -312,7 +312,7 @@ fn ensure_budget(deadline: Deadline, delivery_started: bool) -> Result<(), Adapt
     if !deadline.is_expired() {
         return Ok(());
     }
-    let mut delivery = crate::delivery_tracker::DeliveryTracker::default();
+    let mut delivery = crate::actions::DeliveryTracker::default();
     if delivery_started {
         delivery.mark_delivered();
     }

@@ -38,12 +38,15 @@ fn cursor_stall_is_preserved_when_statuses_merge() {
     let mut status = ChildReadStatus::default();
     status.merge(ChildReadStatus {
         cursor_stalled: true,
-        native_read_failures: 2,
+        health: agent_desktop_core::LocatorReadHealth {
+            native_read_failures: 2,
+            ..Default::default()
+        },
         ..ChildReadStatus::default()
     });
 
     assert!(status.cursor_stalled);
-    assert_eq!(status.native_read_failures, 2);
+    assert_eq!(status.health.native_read_failures, 2);
 }
 
 #[test]
@@ -124,8 +127,8 @@ fn unclassified_native_error_is_counted_explicitly() {
 
     record_error(&mut status, i32::MIN);
 
-    assert_eq!(status.native_read_failures, 1);
-    assert_eq!(status.cannot_complete, 0);
+    assert_eq!(status.health.native_read_failures, 1);
+    assert_eq!(status.health.cannot_complete, 0);
     assert!(!status.invalid_element);
     assert!(!status.api_disabled);
 }
@@ -136,6 +139,6 @@ fn ax_failure_remains_a_native_read_failure() {
 
     record_error(&mut status, kAXErrorFailure);
 
-    assert_eq!(status.native_read_failures, 1);
-    assert_eq!(status.cannot_complete, 0);
+    assert_eq!(status.health.native_read_failures, 1);
+    assert_eq!(status.health.cannot_complete, 0);
 }

@@ -39,16 +39,9 @@ pub(crate) fn read_node(
         deadline,
         usage,
     );
-    record_attribute_read(
-        stats,
-        read.metrics.batch_reads,
-        read.metrics.requested_count,
-        read.metrics.fallback_reads,
-        read.status.cannot_complete,
-        read.status.native_read_failures,
-    );
+    record_attribute_read(stats, &read.metrics, &read.status);
     stats.semantic_reads.settable_reads += read.metrics.settable_reads;
-    stats.reads.deadline_exhausted += u64::from(read.metrics.deadline_exhausted);
+    stats.reads.health.deadline_exhausted += u64::from(read.metrics.deadline_exhausted);
     stats.traversal.limits.text_hits += read.status.text_truncations;
     if read.status.api_disabled {
         return Err(permission_error("attributes"));
@@ -73,10 +66,10 @@ pub(crate) fn read_node(
         child_plan.max_elements(wrapper_candidate),
         deadline,
     );
-    stats.reads.child_reads += child_read.status.attempts;
-    stats.reads.cannot_complete += child_read.status.cannot_complete;
-    stats.reads.native_read_failures += child_read.status.native_read_failures;
-    stats.reads.deadline_exhausted += u64::from(child_read.status.deadline_exhausted);
+    stats.reads.counts.child_reads += child_read.status.attempts;
+    stats.reads.health.cannot_complete += child_read.status.health.cannot_complete;
+    stats.reads.health.native_read_failures += child_read.status.health.native_read_failures;
+    stats.reads.health.deadline_exhausted += child_read.status.health.deadline_exhausted;
     stats.traversal.limits.child_count_changes += u64::from(child_read.status.count_changed);
     stats.traversal.limits.child_hits += u64::from(child_read.status.cursor_stalled);
     if child_read.status.api_disabled {
@@ -153,9 +146,9 @@ pub(crate) fn read_node(
                 usage,
             )
         }) {
-        stats.reads.action_reads += 1;
-        stats.reads.cannot_complete += u64::from(actions.cannot_complete);
-        stats.reads.deadline_exhausted += u64::from(actions.deadline_exhausted);
+        stats.reads.counts.action_reads += 1;
+        stats.reads.health.cannot_complete += u64::from(actions.cannot_complete);
+        stats.reads.health.deadline_exhausted += u64::from(actions.deadline_exhausted);
         stats.semantic_reads.settable_reads += actions.settable_reads;
         if actions.api_disabled {
             return Err(permission_error("actions"));
@@ -217,7 +210,7 @@ pub(crate) fn read_node(
     };
     let evidence_complete = required_complete(&evidence, requirements)
         && !read.metrics.deadline_exhausted
-        && !child_read.status.deadline_exhausted;
+        && child_read.status.health.deadline_exhausted == 0;
     Ok(NodeRead {
         attrs,
         evidence,
@@ -243,17 +236,14 @@ fn permission_error(phase: &str) -> AdapterError {
 
 fn record_attribute_read(
     stats: &mut LocatorStats,
-    batch_reads: u64,
-    requested_count: u64,
-    fallback_reads: u64,
-    cannot_complete: bool,
-    native_read_failures: u64,
+    metrics: &crate::tree::node_attribute_metrics::NodeAttributeMetrics,
+    status: &crate::tree::node_attribute_status::NodeAttributeStatus,
 ) {
-    stats.reads.attribute_batches += batch_reads;
-    stats.reads.attributes_requested += requested_count;
-    stats.reads.fallback_reads += fallback_reads;
-    stats.reads.cannot_complete += u64::from(cannot_complete);
-    stats.reads.native_read_failures += native_read_failures;
+    stats.reads.counts.attribute_batches += metrics.batch_reads;
+    stats.reads.counts.attributes_requested += metrics.requested_count;
+    stats.reads.counts.fallback_reads += metrics.fallback_reads;
+    stats.reads.health.cannot_complete += u64::from(status.cannot_complete);
+    stats.reads.health.native_read_failures += status.native_read_failures;
 }
 
 #[cfg(test)]
@@ -263,22 +253,39 @@ mod tests {
     #[test]
     fn attribute_stats_record_actual_batch_and_field_counts() {
         let mut stats = LocatorStats::default();
+        let metrics = crate::tree::node_attribute_metrics::NodeAttributeMetrics {
+            batch_reads: 1,
+            requested_count: 22,
+            ..Default::default()
+        };
 
-        record_attribute_read(&mut stats, 1, 22, 0, false, 0);
+        record_attribute_read(
+            &mut stats,
+            &metrics,
+            &crate::tree::node_attribute_status::NodeAttributeStatus::default(),
+        );
 
-        assert_eq!(stats.reads.attribute_batches, 1);
-        assert_eq!(stats.reads.attributes_requested, 22);
-        assert_eq!(stats.reads.fallback_reads, 0);
+        assert_eq!(stats.reads.counts.attribute_batches, 1);
+        assert_eq!(stats.reads.counts.attributes_requested, 22);
+        assert_eq!(stats.reads.counts.fallback_reads, 0);
     }
 
     #[test]
     fn cannot_complete_keeps_missing_fields_unknown() {
         let mut stats = LocatorStats::default();
+        let metrics = crate::tree::node_attribute_metrics::NodeAttributeMetrics {
+            batch_reads: 1,
+            requested_count: 22,
+            fallback_reads: 22,
+            ..Default::default()
+        };
+        let mut status = crate::tree::node_attribute_status::NodeAttributeStatus::default();
+        status.record_batch_error(accessibility_sys::kAXErrorCannotComplete);
 
-        record_attribute_read(&mut stats, 1, 22, 22, true, 0);
+        record_attribute_read(&mut stats, &metrics, &status);
 
-        assert_eq!(stats.reads.cannot_complete, 1);
-        assert_eq!(stats.reads.fallback_reads, 22);
+        assert_eq!(stats.reads.health.cannot_complete, 1);
+        assert_eq!(stats.reads.counts.fallback_reads, 22);
         assert_eq!(option_field::<String>(None, true), LocatorField::Unknown);
         assert_eq!(
             option_field(Some("Save".to_string()), true),

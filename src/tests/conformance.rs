@@ -1,6 +1,4 @@
-use agent_desktop_core::adapter::{
-    ActionOps, InputOps, ObservationOps, PlatformAdapter, SystemOps,
-};
+use agent_desktop_core::{ActionOps, InputOps, ObservationOps, PlatformAdapter, SystemOps};
 use agent_desktop_core::{
     ActionRequest, ActionResult, AdapterError, Deadline, ElementState, ErrorCode,
     IdentifierEvidence, InteractionLease, LiveElement, LiveIdentity, LocatorField, NativeHandle,
@@ -204,7 +202,7 @@ fn platform_adapter_exposes_all_capability_methods() {
     fn exercise(adapter: &dyn PlatformAdapter) {
         let deadline = Deadline::standard().unwrap();
         let _ = adapter.list_windows(
-            &agent_desktop_core::adapter::WindowFilter {
+            &agent_desktop_core::WindowFilter {
                 focused_only: false,
                 app: None,
             },

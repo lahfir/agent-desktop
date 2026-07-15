@@ -3,10 +3,9 @@ use crate::{
     fixture_builder::{live_target_tree, live_tree},
 };
 use agent_desktop_core::{
-    AdapterError, Deadline, ElementIdentifier, ErrorCode, IdentifierKind, NativeHandle,
-    ObservationRequest, ObservationRoot, ObservationSource, ObservedTree, RefEntry, WindowFilter,
-    WindowInfo,
-    adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
+    ActionOps, AdapterError, Deadline, ElementIdentifier, ErrorCode, IdentifierKind, InputOps,
+    NativeHandle, ObservationOps, ObservationRequest, ObservationRoot, ObservationSource,
+    ObservedTree, RefEntry, SystemOps, WindowFilter, WindowInfo,
 };
 
 pub(crate) struct FixtureAdapter<'a> {

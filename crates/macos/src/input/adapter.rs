@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, ClipboardContent, ClipboardFormat, Deadline, DragParams, InteractionLease,
-    KeyCombo, MouseEvent, adapter::InputOps,
+    AdapterError, ClipboardContent, ClipboardFormat, Deadline, DragParams, InputOps,
+    InteractionLease, KeyCombo, MouseEvent,
 };
 
 use crate::adapter::MacOSAdapter;

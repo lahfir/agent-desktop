@@ -119,6 +119,45 @@ class HarnessContractTests(unittest.TestCase):
             source,
         )
 
+    def test_post_launch_readiness_failure_still_closes_owned_fixture(self):
+        run_source = (E2E_ROOT / "run.sh").read_text()
+        opened = run_source.index('guard_exec 10 1048576 open "$fixture_app"')
+        owned = run_source.index("fixture_owned=1", opened)
+        readiness = run_source.index('if [ -z "$ready" ]', owned)
+        self.assertLess(opened, owned)
+        self.assertLess(owned, readiness)
+
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "calls"
+            mock_bin = Path(directory) / "agent-desktop"
+            mock_bin.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$MOCK_CALLS"\n')
+            mock_bin.chmod(0o700)
+            script = r'''
+source "$1"
+bin="$2"
+fixture_owned=1
+fixture_started=0
+cleanup_isolated_environment() { :; }
+release_exclusive_lock() { :; }
+cleanup
+'''
+            environment = os.environ.copy()
+            environment["MOCK_CALLS"] = str(log)
+            subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    script,
+                    "cleanup-test",
+                    str(E2E_ROOT / "lib.sh"),
+                    str(mock_bin),
+                ],
+                check=True,
+                env=environment,
+            )
+
+            self.assertEqual(log.read_text().strip(), "close-app AgentDeskFixture --force")
+
     def test_success_checks_every_staged_native_artifact_before_returning(self):
         source = (E2E_ROOT / "lib.sh").read_text()
         finish = re.search(r"finish\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL)

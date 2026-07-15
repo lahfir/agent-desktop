@@ -118,7 +118,7 @@ pub(crate) fn capture_action_screenshot(
     );
     let path = screens.join(&filename);
     if let Err(reason) =
-        crate::trace_artifact_budget::write_screenshot(&trace_dir, &path, &buf.data)
+        crate::trace_artifact_budget::write_screenshot(&trace_dir, &path, &buf.data, deadline)
     {
         return ArtifactOutcome::Skipped(reason.into());
     }

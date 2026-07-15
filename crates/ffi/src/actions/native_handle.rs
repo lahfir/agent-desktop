@@ -2,7 +2,7 @@ use crate::AdAdapter;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::types::AdNativeHandle;
-use agent_desktop_core::{ProcessIdentity, adapter::NativeHandle};
+use agent_desktop_core::{NativeHandle, ProcessIdentity};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

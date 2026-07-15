@@ -61,7 +61,7 @@ fn classify(operation: &str, api: &str, error: i32) -> Result<bool, AdapterError
     } else {
         (ErrorCode::ActionFailed, "unclassified AXError")
     };
-    Err(crate::delivery_tracker::DeliveryTracker::uncertain(
+    Err(crate::actions::DeliveryTracker::uncertain(
         AdapterError::new(
             code,
             format!("{operation} returned {label}; mutation outcome is uncertain"),

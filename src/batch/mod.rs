@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    AppError, PermissionReport, adapter::PlatformAdapter, commands::batch::BatchCommand,
+    AppError, PermissionReport, PlatformAdapter, commands::batch::BatchCommand,
     context::CommandContext,
 };
 use serde::Deserialize;

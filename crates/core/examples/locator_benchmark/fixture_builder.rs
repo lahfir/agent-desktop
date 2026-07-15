@@ -1,9 +1,9 @@
 use crate::{fixture::Fixture, fixture_node::FixtureNode};
 use agent_desktop_core::{
     AdapterError, ElementIdentifier, EvidenceRequirements, IdentifierEvidence, IdentifierKind,
-    LocatorEvidence, LocatorField, LocatorIdentifierStats, LocatorReadStats, LocatorRefEvidence,
-    LocatorSemanticReadStats, LocatorStats, LocatorTraversalStats, ObservationRequest,
-    ObservationSource, ObservedSubtree, ObservedTree,
+    LocatorEvidence, LocatorField, LocatorIdentifierStats, LocatorReadCounts, LocatorReadStats,
+    LocatorRefEvidence, LocatorSemanticReadStats, LocatorStats, LocatorTraversalStats,
+    ObservationRequest, ObservationSource, ObservedSubtree, ObservedTree,
 };
 
 pub(crate) fn live_tree(
@@ -181,16 +181,19 @@ fn stats_for_reads(fixture: &Fixture, reads: &[(usize, EvidenceRequirements)]) -
             ..LocatorTraversalStats::default()
         },
         reads: LocatorReadStats {
-            attribute_batches: count,
-            attributes_requested: reads
-                .iter()
-                .map(|(_, requirements)| u64::from(attribute_count(*requirements)))
-                .sum(),
-            child_reads: count,
-            action_reads: reads
-                .iter()
-                .filter(|(_, requirements)| requirements.ref_evidence.actions)
-                .count() as u64,
+            counts: LocatorReadCounts {
+                attribute_batches: count,
+                attributes_requested: reads
+                    .iter()
+                    .map(|(_, requirements)| u64::from(attribute_count(*requirements)))
+                    .sum(),
+                child_reads: count,
+                action_reads: reads
+                    .iter()
+                    .filter(|(_, requirements)| requirements.ref_evidence.actions)
+                    .count() as u64,
+                ..LocatorReadCounts::default()
+            },
             ..LocatorReadStats::default()
         },
         semantic_reads: LocatorSemanticReadStats {

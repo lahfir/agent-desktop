@@ -12,7 +12,7 @@ pub(crate) fn post_move_events(
     button: CGMouseButton,
     flags: CGEventFlags,
     deadline: Deadline,
-    delivery: &mut crate::delivery_tracker::DeliveryTracker,
+    delivery: &mut crate::actions::DeliveryTracker,
 ) -> Result<(), AdapterError> {
     let source = crate::input::mouse::event_source().map_err(|error| delivery.annotate(error))?;
     for position in [approach_point(point), point] {
@@ -41,7 +41,7 @@ fn verify_position(
     source: core_graphics::event_source::CGEventSource,
     requested: CGPoint,
     deadline: Deadline,
-    delivery: &mut crate::delivery_tracker::DeliveryTracker,
+    delivery: &mut crate::actions::DeliveryTracker,
 ) -> Result<(), AdapterError> {
     let verification_end = std::time::Instant::now() + std::time::Duration::from_millis(100);
     loop {
@@ -67,7 +67,7 @@ fn verify_position(
 fn pointer_position_error(
     observed: CGPoint,
     requested: CGPoint,
-    delivery: &crate::delivery_tracker::DeliveryTracker,
+    delivery: &crate::actions::DeliveryTracker,
 ) -> AdapterError {
     delivery.annotate(
         AdapterError::new(
@@ -86,7 +86,7 @@ pub(crate) fn preposition_pointer(
     point: &Point,
     modifiers: &[Modifier],
     deadline: Deadline,
-    delivery: &mut crate::delivery_tracker::DeliveryTracker,
+    delivery: &mut crate::actions::DeliveryTracker,
 ) -> Result<(), AdapterError> {
     post_move_events(
         CGPoint::new(point.x, point.y),

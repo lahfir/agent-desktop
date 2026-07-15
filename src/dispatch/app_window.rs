@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AppError,
-    adapter::PlatformAdapter,
+    AppError, PlatformAdapter,
     commands::{
         close_app as close_app_command, focus_window as focus_window_command, helpers,
         launch as launch_command, list_apps as list_apps_command,

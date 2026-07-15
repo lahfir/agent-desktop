@@ -6,18 +6,12 @@ mod imp {
     use core_graphics::display::CGDisplay;
 
     pub fn list_displays_impl(deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
-        ensure_budget(deadline)?;
-        let displays = CGDisplay::active_displays()
-            .map_err(|_| AdapterError::internal("Failed to enumerate active displays"))?;
-        ensure_budget(deadline)?;
-        let main_id = CGDisplay::main().id;
-        displays
+        let mut displays = raw_display_inventory(deadline)?;
+        order_public_displays(&mut displays);
+        Ok(displays
             .into_iter()
-            .map(|display_id| {
-                ensure_budget(deadline)?;
-                display_info(&CGDisplay::new(display_id), main_id)
-            })
-            .collect()
+            .map(|(_, _, display)| display)
+            .collect())
     }
 
     pub fn display_at(index: usize, deadline: Deadline) -> Result<DisplayInfo, AdapterError> {
@@ -26,6 +20,22 @@ mod imp {
             .into_iter()
             .nth(index)
             .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "display index out of range"))
+    }
+
+    pub fn capture_selection(
+        expected: &DisplayInfo,
+        deadline: Deadline,
+    ) -> Result<(usize, DisplayInfo), AdapterError> {
+        capture_selection_in(raw_display_inventory(deadline)?, &expected.id)
+            .ok_or_else(|| missing_display_error(&expected.id))
+    }
+
+    pub fn display_at_capture_index(
+        raw_index: usize,
+        deadline: Deadline,
+    ) -> Result<DisplayInfo, AdapterError> {
+        display_at_capture_index_in(raw_display_inventory(deadline)?, raw_index)
+            .ok_or_else(|| missing_display_error(&raw_index.to_string()))
     }
 
     pub fn scale_for_bounds(bounds: Option<Rect>, deadline: Deadline) -> Result<f64, AdapterError> {
@@ -41,7 +51,7 @@ mod imp {
     }
 
     #[cfg(test)]
-    fn scale_for_bounds_in(
+    pub(super) fn scale_for_bounds_in(
         displays: &[DisplayInfo],
         bounds: Option<Rect>,
     ) -> Result<f64, AdapterError> {
@@ -67,7 +77,7 @@ mod imp {
             .ok_or_else(|| display_inventory_error("CoreGraphics returned no active displays"))
     }
 
-    fn intersection_area(left: Rect, right: Rect) -> f64 {
+    pub(super) fn intersection_area(left: Rect, right: Rect) -> f64 {
         let width = (left.x + left.width).min(right.x + right.width) - left.x.max(right.x);
         let height = (left.y + left.height).min(right.y + right.height) - left.y.max(right.y);
         width.max(0.0) * height.max(0.0)
@@ -92,7 +102,53 @@ mod imp {
         })
     }
 
-    fn scale_from_mode(point_width: f64, pixel_width: f64) -> Result<f64, AdapterError> {
+    fn raw_display_inventory(
+        deadline: Deadline,
+    ) -> Result<Vec<(u32, usize, DisplayInfo)>, AdapterError> {
+        ensure_budget(deadline)?;
+        let display_ids = CGDisplay::active_displays()
+            .map_err(|_| AdapterError::internal("Failed to enumerate active displays"))?;
+        ensure_budget(deadline)?;
+        let main_id = CGDisplay::main().id;
+        display_ids
+            .into_iter()
+            .enumerate()
+            .map(|(raw_index, display_id)| {
+                ensure_budget(deadline)?;
+                Ok((
+                    display_id,
+                    raw_index,
+                    display_info(&CGDisplay::new(display_id), main_id)?,
+                ))
+            })
+            .collect()
+    }
+
+    pub(super) fn order_public_displays(displays: &mut [(u32, usize, DisplayInfo)]) {
+        displays.sort_by_key(|(id, _, display)| (!display.is_primary, *id));
+    }
+
+    pub(super) fn capture_selection_in(
+        displays: Vec<(u32, usize, DisplayInfo)>,
+        expected_id: &str,
+    ) -> Option<(usize, DisplayInfo)> {
+        displays
+            .into_iter()
+            .find(|(_, _, display)| display.id == expected_id)
+            .map(|(_, raw_index, display)| (raw_index, display))
+    }
+
+    pub(super) fn display_at_capture_index_in(
+        displays: Vec<(u32, usize, DisplayInfo)>,
+        raw_index: usize,
+    ) -> Option<DisplayInfo> {
+        displays
+            .into_iter()
+            .find(|(_, index, _)| *index == raw_index)
+            .map(|(_, _, display)| display)
+    }
+
+    pub(super) fn scale_from_mode(point_width: f64, pixel_width: f64) -> Result<f64, AdapterError> {
         if !point_width.is_finite()
             || !pixel_width.is_finite()
             || point_width <= 0.0
@@ -118,90 +174,12 @@ mod imp {
             .with_suggestion("Retry after WindowServer finishes updating the display inventory")
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn intersection_area_selects_the_display_containing_most_of_a_window() {
-            let window = Rect {
-                x: 90.0,
-                y: 0.0,
-                width: 40.0,
-                height: 50.0,
-            };
-            let left = Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 100.0,
-                height: 100.0,
-            };
-            let right = Rect {
-                x: 100.0,
-                y: 0.0,
-                width: 100.0,
-                height: 100.0,
-            };
-
-            assert_eq!(intersection_area(window, left), 500.0);
-            assert_eq!(intersection_area(window, right), 1_500.0);
-        }
-
-        #[test]
-        fn window_capture_scale_comes_from_the_display_with_largest_overlap() {
-            let displays = vec![
-                DisplayInfo {
-                    id: "main".into(),
-                    bounds: Rect {
-                        x: 0.0,
-                        y: 0.0,
-                        width: 100.0,
-                        height: 100.0,
-                    },
-                    is_primary: true,
-                    scale: 2.0,
-                },
-                DisplayInfo {
-                    id: "external".into(),
-                    bounds: Rect {
-                        x: 100.0,
-                        y: 0.0,
-                        width: 100.0,
-                        height: 100.0,
-                    },
-                    is_primary: false,
-                    scale: 1.0,
-                },
-            ];
-            let window = Rect {
-                x: 90.0,
-                y: 0.0,
-                width: 40.0,
-                height: 50.0,
-            };
-
-            assert_eq!(
-                scale_for_bounds_in(&displays, Some(window)).expect("window display"),
-                1.0
-            );
-            assert_eq!(
-                scale_for_bounds_in(&displays, None).expect("primary display"),
-                2.0
-            );
-        }
-
-        #[test]
-        fn missing_display_inventory_is_not_silently_scaled() {
-            let error = scale_for_bounds_in(&[], None).expect_err("missing displays");
-
-            assert_eq!(error.code, ErrorCode::AppUnresponsive);
-        }
-
-        #[test]
-        fn mode_scale_is_orientation_independent() {
-            assert_eq!(scale_from_mode(1440.0, 2880.0).unwrap(), 2.0);
-            assert_eq!(scale_from_mode(900.0, 1800.0).unwrap(), 2.0);
-        }
+    fn missing_display_error(id: &str) -> AdapterError {
+        AdapterError::new(
+            ErrorCode::InvalidArgs,
+            format!("Display '{id}' is no longer active"),
+        )
+        .with_suggestion("Run 'list-displays' to refresh display indexes, then retry.")
     }
 }
 
@@ -214,6 +192,20 @@ mod imp {
     }
 
     pub fn display_at(_index: usize, _deadline: Deadline) -> Result<DisplayInfo, AdapterError> {
+        Err(AdapterError::not_supported("list_displays"))
+    }
+
+    pub fn capture_selection(
+        _expected: &DisplayInfo,
+        _deadline: Deadline,
+    ) -> Result<(usize, DisplayInfo), AdapterError> {
+        Err(AdapterError::not_supported("list_displays"))
+    }
+
+    pub fn display_at_capture_index(
+        _raw_index: usize,
+        _deadline: Deadline,
+    ) -> Result<DisplayInfo, AdapterError> {
         Err(AdapterError::not_supported("list_displays"))
     }
 
@@ -232,4 +224,11 @@ mod imp {
     }
 }
 
-pub(crate) use imp::{display_at, display_for_bounds, list_displays_impl, scale_for_bounds};
+pub(crate) use imp::{
+    capture_selection, display_at, display_at_capture_index, display_for_bounds,
+    list_displays_impl, scale_for_bounds,
+};
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "display_tests.rs"]
+mod tests;
