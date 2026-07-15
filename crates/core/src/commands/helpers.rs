@@ -331,7 +331,7 @@ pub(crate) fn load_ref_entry(
 
 #[cfg(test)]
 #[path = "helpers_test_support.rs"]
-mod test_support;
+pub(super) mod test_support;
 
 #[cfg(test)]
 #[path = "helpers_tests.rs"]

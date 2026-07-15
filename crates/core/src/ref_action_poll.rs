@@ -82,7 +82,7 @@ fn handle_resolve_failure(
     error: AdapterError,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
-    if is_permanent_error(&error.code) || !is_retryable_resolve_error(&error) {
+    if !error.is_retryable_resolution_failure() {
         trace_resolve_error(context.context, context.ref_id, &error);
         return Err(error);
     }
@@ -123,16 +123,6 @@ fn is_permanent_error(code: &ErrorCode) -> bool {
 
 fn is_permanent_actionability_error(code: &ErrorCode) -> bool {
     is_permanent_error(code) || matches!(code, ErrorCode::StaleRef | ErrorCode::AmbiguousTarget)
-}
-
-fn is_retryable_resolve_error(error: &AdapterError) -> bool {
-    matches!(
-        error.code,
-        ErrorCode::StaleRef
-            | ErrorCode::AmbiguousTarget
-            | ErrorCode::Timeout
-            | ErrorCode::AppUnresponsive
-    ) && error.is_explicitly_retryable()
 }
 
 fn timeout(state: &RefActionPollState, deadline: Deadline) -> AdapterError {

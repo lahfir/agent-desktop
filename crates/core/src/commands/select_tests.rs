@@ -1,13 +1,9 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use crate::commands::helpers::test_support::save_one_ref_snapshot;
 use crate::{
-    AdapterError,
-    action_request::ActionRequest,
-    action_result::ActionResult,
-    adapter::NativeHandle,
-    commands::stale_retry_test_support::StaleRetryCounter,
-    refs::{RefEntry, RefMap},
-    refs_store::RefStore,
+    AdapterError, action_request::ActionRequest, action_result::ActionResult,
+    adapter::NativeHandle, commands::stale_retry_test_support::StaleRetryCounter, refs::RefEntry,
     refs_test_support::HomeGuard,
 };
 
@@ -52,47 +48,7 @@ impl SystemOps for StaleThenOkAdapter {
 }
 
 fn snapshot_id() -> String {
-    let mut refmap = RefMap::new();
-    let bounds = crate::Rect {
-        x: 1.0,
-        y: 1.0,
-        width: 20.0,
-        height: 20.0,
-    };
-    refmap.allocate(RefEntry {
-        process: crate::RefProcess {
-            pid: crate::ProcessId::new(1),
-            process_instance: Some("test-instance".into()),
-        },
-        identity: crate::RefEntryIdentity {
-            role: "combobox".into(),
-            name: Some("Target".into()),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: crate::RefGeometry {
-            bounds: Some(bounds),
-            bounds_hash: bounds.bounds_hash(),
-        },
-        capabilities: crate::RefCapabilities {
-            states: vec![],
-            available_actions: vec!["Select".into()],
-        },
-        source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: crate::adapter::SnapshotSurface::Window,
-        },
-        scope: crate::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: smallvec::SmallVec::new(),
-        },
-    });
-    RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
+    save_one_ref_snapshot("combobox", "Select")
 }
 
 /// Regression for the F2 fix: before it, `select::execute` always built its

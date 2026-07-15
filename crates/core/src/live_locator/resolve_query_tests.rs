@@ -1,9 +1,10 @@
+use super::test_support::window;
 use super::{
     LocatorMaterialization, LocatorResolveRequest, LocatorSelection, LocatorStats,
     ObservationRequest, ObservationRoot, ObservedTree, resolve_query,
 };
 use crate::{
-    AdapterError, AppError, ErrorCode, WindowInfo,
+    AdapterError, AppError, ErrorCode,
     adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
     locator::{LocatorQuery, StatePredicate},
 };
@@ -82,21 +83,6 @@ fn child_label_cap(_: usize) -> ObservedTree {
     let mut stats = LocatorStats::default();
     stats.traversal.limits.child_label_hits = 1;
     observed_tree(true, stats)
-}
-
-pub(super) fn window() -> WindowInfo {
-    WindowInfo {
-        id: "w-1".into(),
-        title: "Fixture".into(),
-        app: "FixtureApp".into(),
-        pid: crate::ProcessId::new(42),
-        process_instance: Some("test-instance".into()),
-        bounds: None,
-        state: crate::WindowState {
-            is_focused: true,
-            ..Default::default()
-        },
-    }
 }
 
 #[test]

@@ -48,3 +48,16 @@ pub(super) fn text_entry() -> RefEntry {
     entry.capabilities.available_actions = vec!["SetValue".into()];
     entry
 }
+
+pub(in crate::commands) fn save_one_ref_snapshot(role: &str, available_action: &str) -> String {
+    let mut entry = entry();
+    entry.identity.role = role.into();
+    entry.identity.name = Some("Target".into());
+    entry.capabilities.available_actions = vec![available_action.into()];
+    let mut refmap = crate::refs::RefMap::new();
+    refmap.allocate(entry);
+    crate::refs_store::RefStore::new()
+        .unwrap()
+        .save_new_snapshot(&refmap)
+        .unwrap()
+}

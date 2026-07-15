@@ -17,6 +17,7 @@ struct DragCaptureAdapter {
     captured: Mutex<Option<DragParams>>,
     focused_pids: Mutex<Vec<crate::ProcessId>>,
     resolve_calls: AtomicU32,
+    focused_bounds: Option<Rect>,
 }
 
 impl DragCaptureAdapter {
@@ -25,7 +26,13 @@ impl DragCaptureAdapter {
             captured: Mutex::new(None),
             focused_pids: Mutex::new(Vec::new()),
             resolve_calls: AtomicU32::new(0),
+            focused_bounds: None,
         }
+    }
+
+    fn with_focused_bounds(mut self, bounds: Rect) -> Self {
+        self.focused_bounds = Some(bounds);
+        self
     }
 }
 
@@ -44,6 +51,11 @@ impl ObservationOps for DragCaptureAdapter {
         _handle: &NativeHandle,
         _deadline: crate::Deadline,
     ) -> Result<Option<Rect>, AdapterError> {
+        if !self.focused_pids.lock().unwrap().is_empty()
+            && let Some(bounds) = self.focused_bounds
+        {
+            return Ok(Some(bounds));
+        }
         Ok(Some(Rect {
             x: 10.0,
             y: 20.0,
@@ -202,31 +214,6 @@ fn cross_app_args(snapshot_id: String) -> DragArgs {
 }
 
 #[test]
-fn drag_resolves_ref_bounds_to_center_point() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-    let mut refmap = RefMap::new();
-    refmap.allocate(ref_entry(1));
-    let snapshot_id = store.save_new_snapshot(&refmap).unwrap();
-    let adapter = DragCaptureAdapter::new();
-
-    let args = DragArgs {
-        from_ref: Some("@e1".into()),
-        from_xy: None,
-        to_ref: None,
-        to_xy: Some((100.0, 200.0)),
-        snapshot_id: Some(snapshot_id),
-        duration_ms: None,
-        drop_delay_ms: Some(300),
-        timeout_ms: None,
-    };
-    execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
-
-    let captured = adapter.captured.lock().unwrap().clone().unwrap();
-    assert_eq!((captured.from.x, captured.from.y), (30.0, 50.0));
-}
-
-#[test]
 fn headless_ref_drag_is_policy_denied_before_cursor_move() {
     let _guard = HomeGuard::new();
     let snapshot_id = cross_app_snapshot();
@@ -248,7 +235,12 @@ fn headless_ref_drag_is_policy_denied_before_cursor_move() {
 fn headed_ref_drag_focuses_only_the_from_app_once() {
     let _guard = HomeGuard::new();
     let snapshot_id = cross_app_snapshot();
-    let adapter = DragCaptureAdapter::new();
+    let adapter = DragCaptureAdapter::new().with_focused_bounds(Rect {
+        x: 100.0,
+        y: 200.0,
+        width: 40.0,
+        height: 60.0,
+    });
 
     let value = execute(
         cross_app_args(snapshot_id),
@@ -258,7 +250,9 @@ fn headed_ref_drag_focuses_only_the_from_app_once() {
     .unwrap();
 
     assert_eq!(*adapter.focused_pids.lock().unwrap(), vec![1]);
-    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 6);
+    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 4);
+    let captured = adapter.captured.lock().unwrap().clone().unwrap();
+    assert_eq!((captured.from.x, captured.from.y), (120.0, 230.0));
     assert_eq!(value["focused"], true);
 }
 

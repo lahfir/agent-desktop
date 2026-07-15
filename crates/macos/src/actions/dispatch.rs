@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    Action, ActionResult, ActionStep, AdapterError, Deadline, ElementState, ErrorCode,
-    StepMechanism, action_request::ActionRequest, action_step_outcome::ActionStepOutcome,
+    Action, ActionResult, ActionStep, AdapterError, Deadline, ErrorCode, StepMechanism,
+    action_request::ActionRequest, action_step_outcome::ActionStepOutcome,
 };
 
 #[cfg(target_os = "macos")]
@@ -193,22 +193,13 @@ mod imp {
             }
         }
 
-        if !delivery_occurred(&steps) {
-            return Ok(ActionResult::satisfied_without_delivery(label).with_steps(steps));
-        }
-        let verified = delivery_was_verified(&steps);
-        let mut result = ActionResult::delivered_unverified(label).with_steps(steps);
-        if verified {
-            result = result.with_verified_delivery();
-        }
-        if !deadline.is_expired()
-            && let Some(state) = crate::actions::post_state::read_post_state(el, action, deadline)
+        let post_state = if delivery_occurred(&steps) && !deadline.is_expired() {
+            crate::actions::post_state::read_post_state(el, action, deadline)
                 .map_err(after_delivery)?
-        {
-            verify_post_state(action, &state).map_err(after_delivery)?;
-            result = result.with_state(state);
-        }
-        Ok(result)
+        } else {
+            None
+        };
+        ActionResult::from_execution(action, steps, post_state)
     }
 
     fn run_chain(
@@ -230,100 +221,14 @@ mod imp {
         )
     }
 
-    fn delivery_was_verified(steps: &[ActionStep]) -> bool {
-        let delivered = steps
-            .iter()
-            .filter(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
-            .filter_map(ActionStep::verified)
-            .collect::<Vec<_>>();
-        !delivered.is_empty() && delivered.into_iter().all(|verified| verified)
+    fn after_delivery(error: AdapterError) -> AdapterError {
+        error.with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified())
     }
 
     fn delivery_occurred(steps: &[ActionStep]) -> bool {
         steps
             .iter()
             .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
-    }
-
-    fn after_delivery(error: AdapterError) -> AdapterError {
-        error.with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified())
-    }
-
-    fn verify_post_state(action: &Action, state: &ElementState) -> Result<(), AdapterError> {
-        if matches!(action, Action::Clear)
-            && state
-                .value
-                .as_deref()
-                .is_some_and(|value| !value.is_empty())
-        {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                "Clear reported success but element value is still non-empty",
-            )
-            .with_suggestion("Retry 'clear', or use 'press cmd+a' then 'press delete'."));
-        }
-        Ok(())
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        use agent_desktop_core::element_state::ElementState;
-
-        #[test]
-        fn clear_post_state_fails_when_value_remains() {
-            let err = verify_post_state(
-                &Action::Clear,
-                &ElementState {
-                    role: "textfield".into(),
-                    states: vec![],
-                    value: Some("still here".into()),
-                    enabled: None,
-                    hidden: None,
-                    offscreen: None,
-                },
-            )
-            .unwrap_err();
-
-            assert_eq!(err.code, ErrorCode::ActionFailed);
-        }
-
-        #[test]
-        fn clear_post_state_accepts_empty_value() {
-            verify_post_state(
-                &Action::Clear,
-                &ElementState {
-                    role: "textfield".into(),
-                    states: vec![],
-                    value: Some(String::new()),
-                    enabled: None,
-                    hidden: None,
-                    offscreen: None,
-                },
-            )
-            .unwrap();
-        }
-
-        #[test]
-        fn result_delivery_is_derived_from_verified_steps() {
-            let verified = ActionStep::succeeded("AXValue")
-                .with_mechanism(StepMechanism::SemanticApi)
-                .with_verified(true);
-            let unverified = ActionStep::succeeded("AXPress")
-                .with_mechanism(StepMechanism::SemanticApi)
-                .with_verified(false);
-
-            assert!(delivery_was_verified(&[verified]));
-            assert!(!delivery_was_verified(&[unverified]));
-        }
-
-        #[test]
-        fn skipped_verified_step_does_not_claim_delivery() {
-            let skipped = ActionStep::skipped("AlreadyInState").with_verified(true);
-
-            assert!(!delivery_occurred(std::slice::from_ref(&skipped)));
-            assert!(!delivery_was_verified(&[skipped]));
-        }
     }
 }
 

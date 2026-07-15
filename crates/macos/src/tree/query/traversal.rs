@@ -84,7 +84,6 @@ impl LocatorTraversal {
             return Ok(None);
         }
         self.note_visit(logical_depth, raw_depth);
-        crate::tree::attributes::set_messaging_timeout(&element, self.deadline)?;
         let requirements = self.request.evidence_for_raw_depth(raw_depth);
         let boundary_elements = if raw_depth == 0 && self.request.hydrates_root_name_from_children()
         {

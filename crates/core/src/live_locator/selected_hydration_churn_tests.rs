@@ -1,10 +1,11 @@
+use super::test_support::window;
 use super::{
     IdentifierEvidence, LocatorField, LocatorMaterialization, LocatorResolveRequest,
     LocatorSelection, ObservationRequest, ObservationRoot, ObservationSource, ObservedTree,
     resolve_query,
 };
 use crate::{
-    AdapterError, ElementIdentifier, IdentifierKind, LocatorQuery, NativeHandle, Rect, WindowInfo,
+    AdapterError, ElementIdentifier, IdentifierKind, LocatorQuery, NativeHandle, Rect,
     adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -277,20 +278,5 @@ fn moved_bounds() -> Rect {
     Rect {
         x: 40.0,
         ..button_bounds()
-    }
-}
-
-fn window() -> WindowInfo {
-    WindowInfo {
-        id: "w-1".into(),
-        title: "Fixture".into(),
-        app: "FixtureApp".into(),
-        pid: crate::ProcessId::new(42),
-        process_instance: Some("test-instance".into()),
-        bounds: None,
-        state: crate::WindowState {
-            is_focused: true,
-            ..Default::default()
-        },
     }
 }

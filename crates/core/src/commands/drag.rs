@@ -44,17 +44,7 @@ pub fn execute(
         missing_input_message: "Provide --to <ref> or --to-xy x,y",
         headed_requirement: crate::HeadedRequirement::None,
     };
-    let initial_from = resolve_point_with_deadline(from_args, deadline, &lease, adapter, context)?;
-    let from = resolve_point_with_deadline(
-        PointResolveArgs {
-            headed_requirement: crate::HeadedRequirement::None,
-            ..from_args
-        },
-        deadline,
-        &lease,
-        adapter,
-        context,
-    )?;
+    let from = resolve_point_with_deadline(from_args, deadline, &lease, adapter, context)?;
     let to = resolve_point_with_deadline(to_args, deadline, &lease, adapter, context)?;
     ensure_point_deadline(
         deadline,
@@ -80,12 +70,12 @@ pub fn execute(
     if let Some(drop_delay_ms) = args.drop_delay_ms {
         response["drop_delay_ms"] = json!(drop_delay_ms);
     }
-    if initial_from.focused {
+    if from.focused {
         response["focused"] = json!(true);
     }
     apply_post_action_wait(
         response,
-        initial_from.source_entry.as_ref(),
+        from.source_entry.as_ref(),
         adapter,
         context,
         &lease,

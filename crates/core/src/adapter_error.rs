@@ -56,6 +56,16 @@ impl AdapterError {
         self.retryability == crate::retryability::Retryability::Retryable
     }
 
+    pub(crate) fn is_retryable_resolution_failure(&self) -> bool {
+        matches!(
+            self.code,
+            ErrorCode::StaleRef
+                | ErrorCode::AmbiguousTarget
+                | ErrorCode::Timeout
+                | ErrorCode::AppUnresponsive
+        ) && self.is_explicitly_retryable()
+    }
+
     pub fn permits_retry_by_default(&self) -> bool {
         self.retryability != crate::retryability::Retryability::NonRetryable
     }
@@ -220,5 +230,41 @@ mod tests {
 
         assert!(!error.is_explicitly_retryable());
         assert!(!error.permits_retry_by_default());
+    }
+
+    #[test]
+    fn retryable_resolution_failure_characterizes_every_error_code() {
+        let all = [
+            ErrorCode::PermDenied,
+            ErrorCode::ElementNotFound,
+            ErrorCode::AppNotFound,
+            ErrorCode::ActionFailed,
+            ErrorCode::ActionNotSupported,
+            ErrorCode::StaleRef,
+            ErrorCode::AmbiguousTarget,
+            ErrorCode::WindowNotFound,
+            ErrorCode::PlatformNotSupported,
+            ErrorCode::Timeout,
+            ErrorCode::InvalidArgs,
+            ErrorCode::NotificationNotFound,
+            ErrorCode::SnapshotNotFound,
+            ErrorCode::PolicyDenied,
+            ErrorCode::AppUnresponsive,
+            ErrorCode::Internal,
+        ];
+        let retryable = [
+            ErrorCode::StaleRef,
+            ErrorCode::AmbiguousTarget,
+            ErrorCode::Timeout,
+            ErrorCode::AppUnresponsive,
+        ];
+
+        for code in all {
+            let expected = retryable.contains(&code);
+            let error = AdapterError::new(code.clone(), "failure")
+                .with_details(serde_json::json!({ "retryable": true }));
+            assert_eq!(error.is_retryable_resolution_failure(), expected);
+            assert!(!AdapterError::new(code, "failure").is_retryable_resolution_failure());
+        }
     }
 }
