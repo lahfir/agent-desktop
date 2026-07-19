@@ -16,6 +16,7 @@ cargo fmt --all -- --check                     # Format check
 cargo fmt --all                                # Auto-format
 cargo tree -p agent-desktop-core               # Verify no platform crate leaks (CI enforces)
 bash tests/e2e/run.sh                          # E2E: real binary vs fixture app, verify by observation (needs --release + AX permission)
+bash scripts/perf-baseline-compare.sh          # Perf A/B vs merge-base -> report.html (add --apps "Slack,Google Chrome" for Electron coverage)
 ```
 
 Run the binary: `./target/release/agent-desktop snapshot --app Finder -i`
@@ -397,3 +398,7 @@ same surface. Adding a command: see the Extensibility Pattern above.
 - PRD v2.0: `docs/agent_desktop_prd_v2.pdf`
 - Architecture Brainstorm: `docs/brainstorms/2026-02-19-architecture-validation-brainstorm.md`
 - Phase 1 Plan: `docs/plans/2026-02-19-feat-agent-desktop-phase1-foundation-plan.md`
+
+## Definition of Done: Performance Baseline
+
+Every substantive change ends with a performance baseline check before merge: run `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) and review the generated `report.html` against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
