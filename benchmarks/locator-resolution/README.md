@@ -24,17 +24,10 @@ role-dependent action and settable probes make that model inaccurate. Native
 Slack/Electron IPC measurements require Accessibility permission and belong in
 the privileged macOS integration suite.
 
-Generate the standalone sanitized report from the synthetic and paired live
-evidence:
-
-```bash
-python3 benchmarks/locator-resolution/generate_performance_report.py \
-  --synthetic /private/tmp/agent-desktop-locator-synthetic.json \
-  --live /private/tmp/agent-desktop-electron-slack-paired-final.json \
-  --output /private/tmp/agent-desktop-locator-performance-report.html
-```
-
-Benchmark outputs are generated evidence, not source. Keep them outside the repository.
+This synthetic benchmark JSON is consumed by the repo-wide performance report:
+run `bash scripts/perf-baseline-compare.sh` (optionally with `--apps "Slack,Google
+Chrome"`) to produce `report.html`, covering the HEAD-vs-main fixture A/B,
+optional real-app read-only probes, and this synthetic benchmark.
 
 For privileged Electron/Chromium runs, the macOS adapter first asks whether the
 application root exposes `AXManualAccessibility` as settable, reads its current
