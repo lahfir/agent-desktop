@@ -528,7 +528,7 @@ The `ErrorCode` enum in `crates/core/src/error_code.rs` (`AdapterError` lives in
 
 Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/parse error.
 
-> Codes the earlier draft listed but that **do not exist** in the codebase: `TREE_TIMEOUT` (use `TIMEOUT`), `CLIPBOARD_EMPTY` (no special code; empty clipboard returns an empty string / `None` content), `NOTIFICATION_UNSUPPORTED` (use `PLATFORM_NOT_SUPPORTED`), `TRAY_NOT_FOUND` / `TRAY_UNSUPPORTED` (tray commands never shipped). `AX_MESSAGING_TIMEOUT` and `APP_UNRESPONSIVE` are no longer deferred — the liveness enrichment shipped in Phase 1.6 (a failed read-only liveness probe upgrades a hang to `APP_UNRESPONSIVE` via `ProcessState::Unresponsive`; ordinary AX messaging exhaustion still reports plain `TIMEOUT`). Remaining future-candidate codes: `PERMISSION_REVOKED` (TCC yanked mid-session, distinct from `PERM_DENIED`), `RESOURCE_EXHAUSTED` (refmap >1MB, tree node-count cap).
+> Codes the earlier draft listed but that **do not exist** in the codebase: `TREE_TIMEOUT` (use `TIMEOUT`), `CLIPBOARD_EMPTY` (no special code; empty clipboard returns an empty string / `None` content), `NOTIFICATION_UNSUPPORTED` (use `PLATFORM_NOT_SUPPORTED`), `TRAY_NOT_FOUND` / `TRAY_UNSUPPORTED` (tray commands never shipped). The liveness enrichment shipped in Phase 1.6: `APP_UNRESPONSIVE` is now a real code (a failed read-only liveness probe upgrades a hang via `ProcessState::Unresponsive`), while ordinary AX messaging exhaustion still reports plain `TIMEOUT` — the once-mooted `AX_MESSAGING_TIMEOUT` was never added as a variant, and `AUTOMATION_PERMISSION_DENIED` folded into `PERM_DENIED` with platform detail. Remaining future-candidate codes: `PERMISSION_REVOKED` (TCC yanked mid-session, distinct from `PERM_DENIED`), `RESOURCE_EXHAUSTED` (refmap >1MB, tree node-count cap).
 
 ### Testing
 
@@ -638,7 +638,7 @@ Phase 1.5 ships `crates/ffi/` as a first-class distribution target. The CLI stay
 crates/ffi/
 ├── Cargo.toml           # crate-type = ["cdylib", "rlib"]
 ├── cbindgen.toml        # maintainer-only header regeneration config
-├── build.rs             # 6 lines: bakes install_name = @rpath/libagent_desktop_ffi.dylib on macOS only — no codegen step
+├── build.rs             # 5 lines: bakes install_name = @rpath/libagent_desktop_ffi.dylib on macOS only — no codegen step
 ├── codegen_templates/   # empty, untracked — reserved for the P2-O16 build.rs codegen migration, not wired up today
 ├── include/
 │   └── agent_desktop.h  # committed, drift-checked against the OUT_DIR output; AD_ABI_VERSION_MAJOR = 3
@@ -736,7 +736,7 @@ There is no `ffi-codegen-drift` job. An earlier draft of this document described
 - `ad_snapshot`, `ad_execute_by_ref`, `ad_wait`, `ad_version`, and `ad_status` are exported, joined since by `ad_execute_by_ref_timeout`, `ad_trace_export`, and `ad_trace_show`.
 - `ad_set_log_callback(fn(level, msg))` ships; in-process consumers can install a tracing layer for debug output.
 
-**Correction (this section previously claimed the opposite):** all 8 command-backed wrappers under `crates/ffi/src/commands/` are **hand-written today**, not generated. `crates/ffi/build.rs` is 6 lines and only emits the macOS linker `-install_name` argument. `crates/ffi/codegen_templates/` and `crates/ffi/src/commands/generated/` both exist but are empty and untracked, and `crates/ffi/src/lib.rs` has no `mod generated;` — that directory is not compiled. No `src/commands/generated.rs` file exists anywhere in the repository. The deterministic `build.rs`-driven codegen migration remains open work — see P2-O16.
+**Correction (this section previously claimed the opposite):** all 8 command-backed wrappers under `crates/ffi/src/commands/` are **hand-written today**, not generated. `crates/ffi/build.rs` is 5 lines and only emits the macOS linker `-install_name` argument. `crates/ffi/codegen_templates/` and `crates/ffi/src/commands/generated/` both exist but are empty and untracked, and `crates/ffi/src/lib.rs` has no `mod generated;` — that directory is not compiled. No `src/commands/generated.rs` file exists anywhere in the repository. The deterministic `build.rs`-driven codegen migration remains open work — see P2-O16.
 
 **Still open:**
 
