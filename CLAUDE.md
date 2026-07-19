@@ -161,12 +161,15 @@ Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries i
 
 ### Additive Phase Model
 
-- **Phase 1:** Foundation + macOS MVP (58 commands, core engine, macOS adapter)
-- **Phase 2:** Windows + Linux adapters, 10+ new commands — core untouched
-- **Phase 3:** MCP server mode via `--mcp` flag — wraps existing commands
-- **Phase 4:** Daemon, sessions, enterprise quality gates
+Numbering follows `docs/phases.md` (the source of truth for phase scope):
 
-Phases 2–4 add adapters, transports, and production readiness work. Nothing in core is rebuilt.
+- **Phase 1 / 1.5 / 1.6 (completed):** Foundation + macOS MVP, FFI cdylib distribution, and the Playwright-grade foundation contract (capability supertraits, auto-wait, occlusion gate, live locator, ProcessState, envelope 2.1)
+- **Phase 2:** Windows adapter — delivered as sub-phases 2.0–2.14, each a <=2,000-LOC PR into the `feat/windows-adapter` integration branch
+- **Phase 3:** Linux adapter — same sub-phase template onto `feat/linux-adapter`
+- **Phase 4:** MCP server mode via `--mcp` flag — wraps existing commands
+- **Phase 5:** Daemon, sessions, enterprise quality gates
+
+Later phases add adapters, transports, and production readiness work. Nothing in core is rebuilt; platform work implements into the settled contract.
 
 ## Coding Standards
 
