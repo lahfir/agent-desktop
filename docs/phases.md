@@ -38,7 +38,7 @@ Most recent shipments against this roadmap:
 - v0.4.0 – v0.4.7 complete the FFI C-ABI surface (load-time handshake, session-scoped adapter, JSON-envelope entrypoints), then land session-first tracing and a trace viewer.
 - Foundation reliability contract (Playwright-grade, U0–U19) completed on `feat/foundation-playwright-grade-contract` — see [Phase 1.6](#phase-16--playwright-grade-foundation-contract-completed).
 - Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms); the FFI C-ABI surface itself (`ad_snapshot` / `ad_execute_by_ref` / `ad_wait` / `ad_version` / `ad_status` / `ad_init` / `ad_abi_version`) completed in v0.4.1.
-- Phase 2: planned. Delivered as dependency-ordered sub-phases 2.0–2.14 into the `feat/windows-adapter` integration branch — see [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches) and the Phase 2 section below.
+- Phase 2: planned. Delivered as dependency-ordered sub-phases 2.0–2.15 into the `feat/windows-adapter` integration branch — see [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches) and the Phase 2 section below.
 - Phase 3+: planned. See each phase section below for the additive platform work and trait defaults that later phases backfill.
 
 ---
@@ -50,8 +50,8 @@ Most recent shipments against this roadmap:
 | 1 | Foundation + macOS MVP | **Completed** (v0.1.0 – v0.1.14) | macOS |
 | 1.5 | FFI Distribution (C-ABI cdylib) | **Completed** (v0.1.13; C-ABI surface completed v0.4.1) | macOS, Windows, Linux |
 | 1.6 | Playwright-grade Foundation Contract | **Completed** (PR #93) | macOS (contract in core) |
-| 2 | Windows Adapter | Planned — sub-phases 2.0–2.14 | macOS, Windows |
-| 3 | Linux Adapter | Planned — sub-phases 3.0–3.14 | macOS, Windows, Linux |
+| 2 | Windows Adapter | Planned — sub-phases 2.0–2.15 | macOS, Windows |
+| 3 | Linux Adapter | Planned — sub-phases 3.0–3.15 | macOS, Windows, Linux |
 | 4 | MCP Server Mode | Planned | All |
 | 5 | Production Readiness | Planned | All |
 
@@ -796,7 +796,8 @@ Phase 2 (Windows) and Phase 3 (Linux) do not ship as one monolithic implementati
 - Each sub-phase is one PR into the integration branch, sized at or under 2,000 changed lines (excluding `Cargo.lock`, the generated FFI header, and vendored fixtures), reviewed on its own.
 - **Lifecycle per sub-phase:** plan (via `ce-plan`, written to `docs/plans/`) → implement → per-sub-phase review → merge to the integration branch. There is explicitly **no brainstorming stage** — this document is the finalized product contract; sub-phase planning documents implementation, not product scope.
 - **The workspace stays green at every merge.** Unimplemented capabilities return `not_supported()`; the CLI ships honest `PLATFORM_NOT_SUPPORTED` envelopes on the target OS until the capability lands. No sub-phase merge may regress `main`'s CI.
-- **Evidence-first rule:** adapter decisions are anchored in committed probe outputs — raw UIA / AT-SPI dumps checked in alongside the sub-phase plan — never docs-only assumptions about how a platform API behaves.
+- **Evidence-first rule:** adapter decisions are anchored in committed probe outputs — raw UIA / AT-SPI dumps checked in alongside the sub-phase plan — never docs-only assumptions about how a platform API behaves. The exploration sub-phases (2.0, 3.0) build the initial corpus; later sub-phases extend it.
+- **Source-of-truth feedback rule:** this document was authored from documentation research in a single pass; the exploration sub-phases (2.0, 3.0) exist because platform reality outranks documentation. When a committed probe proves a documented approach behaves differently on the real platform — an API that answers differently, a pattern that is unavailable, an event that never fires — the finding ledger entry and the amendment to this document land **in the same PR**. The source of truth tracks proven platform behavior; it is never defended against evidence.
 - **Integration branch → main:** only after every sub-phase for that platform has merged. Promotion to `main` runs a full multi-agent review of the whole branch, live e2e (both headless and headed) on the platform runner, a performance-baseline comparison against `main`, and the standard verification contract. It lands as one release-noted `feat!` merge — the same conventional-commit discipline as PR #93.
 - **Windows first.** Phase 2 (2.x) completes before Phase 3 (3.x) starts; Linux reuses the same sub-phase template with AT-SPI2/D-Bus substituted for UIA.
 
@@ -806,13 +807,13 @@ Every sub-phase below follows the same rendering shape: **Goal** (one or two sen
 
 ## Phase 2 — Windows Adapter
 
-**Status: Planned** — delivered as sub-phases 2.0–2.14 into the `feat/windows-adapter` integration branch per the [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches). This section is the public objective catalogue, the sub-phase implementation contract, and the preserved research (API mappings, capability maps, notification/tray approaches, Electron guidance) that grounds it.
+**Status: Planned** — delivered as sub-phases 2.0–2.15 into the `feat/windows-adapter` integration branch per the [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches). This section is the public objective catalogue, the sub-phase implementation contract, and the preserved research (API mappings, capability maps, notification/tray approaches, Electron guidance) that grounds it.
 
 ### Core invariants (research-driven — from the Phase 2 plan's Headless-First Invariant)
 
 1. **Headless-first inside the active desktop session.** Every command — existing and Phase 2 — must run without an agent-desktop GUI, foreground activation, focus steal, or physical cursor movement unless `--headed` explicitly opts into cursor input. Windows, macOS, and Linux still require the target app to exist in the current user's interactive desktop/display session for accessibility and capture APIs. Session 0, Server Core, secure desktops, locked desktops, and other-user sessions return `PLATFORM_NOT_SUPPORTED`, `PERM_DENIED`, or `WINDOW_NOT_FOUND` with `platform_detail`, not silent best effort. The invariant is enforced by integration tests: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for headless commands.
 2. **Skeleton traversal is platform-agnostic.** The novel progressive skeleton pattern (depth-3 clamp + `children_count` annotation + drill-down via `--root @ref` + scoped invalidation via `RefMap::remove_by_root_ref`) lives entirely in `crates/core/src/snapshot_ref.rs`. Windows adapter contributes ~50 LOC glue: `ControlViewWalker` (NOT `RawViewWalker` or `ContentViewWalker`) + `FindAll(TreeScope_Children, TrueCondition)` for `children_count` + fresh `UICacheRequest` per drill-down.
-3. **Asymmetric event threading.** The future push-based `watch` command (P2-O11) uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery). This is distinct from the already-shipped `wait --event`, which is an in-invocation `SignalBaseline` diff, not a subscription — see the naming note under 2.10 below.
+3. **Asymmetric event threading.** The future push-based `watch` command (P2-O11) uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery). This is distinct from the already-shipped `wait --event`, which is an in-invocation `SignalBaseline` diff, not a subscription — see the naming note under 2.11 below.
 4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Any future registry uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The repository's "one command per file" rule becomes the codegen contract when that migration (P2-O16) lands.
 5. **FFI compatibility gates: shipped.** The ABI handshake (`ad_abi_version()`, `ad_init(expected_major)`) shipped in Phase 1.6; `AD_ABI_VERSION_MAJOR` is currently `3` and evolves append-only. Any new cross-platform ABI surface Phase 2 adds must preserve that handshake, not re-invent it.
 6. **`DeliverFiles` replaces `FileDrop`.** Headless-first forbids `NSDraggingSession` on macOS; the new action uses a 4-tier fallback (URL scheme → `NSWorkspace.open` with `activates: false` → pasteboard + `Cmd-V` → AppleScript). Windows primary delivery is app/shell delivery (`ShellExecuteEx`, app URI handlers, `IFileOperation` for filesystem destinations, and `CF_HDROP` clipboard paste where accepted). `IDataObject + DoDragDrop` is an explicit policy-gated fallback/spike for targets that require drag semantics; it is never the default headless path.
@@ -859,17 +860,17 @@ Cross-platform core extensions (new, landed alongside Windows — each restated 
 
 | ID | Objective | Metric | Shipped in 1.6 / Remaining |
 |----|-----------|--------|------------------------------|
-| P2-O8 | Stable-selector expansion | `AccessibilityNode.native_id` remains the portable stable-ID field. Platform adapters preserve their strongest developer ID there (Windows UIA `AutomationId`, macOS `AXIdentifier` or `AXDOMIdentifier`, Linux AT-SPI `accessible-id`), while live locator traversal may retain both native IDs internally for strict matching. Phase 2 may add separately named `subrole`, `role_description`, `placeholder`, and `dom_classes` evidence without renaming or duplicating `native_id`. Resolver tests require controls with explicit IDs to survive re-drills; controls without one continue through the fingerprint fallback | Core contract + macOS `native_id` (`AXIdentifier`) shipped (U5). **Remaining:** Windows `AutomationId` implementation (sub-phase 2.2) |
+| P2-O8 | Stable-selector expansion | `AccessibilityNode.native_id` remains the portable stable-ID field. Platform adapters preserve their strongest developer ID there (Windows UIA `AutomationId`, macOS `AXIdentifier` or `AXDOMIdentifier`, Linux AT-SPI `accessible-id`), while live locator traversal may retain both native IDs internally for strict matching. Phase 2 may add separately named `subrole`, `role_description`, `placeholder`, and `dom_classes` evidence without renaming or duplicating `native_id`. Resolver tests require controls with explicit IDs to survive re-drills; controls without one continue through the fingerprint fallback | Core contract + macOS `native_id` (`AXIdentifier`) shipped (U5). **Remaining:** Windows `AutomationId` implementation (sub-phase 2.3) |
 | P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Core invariant 6), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch` is a new **command**, not an `Action` variant. Each has a macOS AX API mapping (all AX calls on main thread), a Windows UIA pattern mapping, a new CLI subcommand, FFI conversion coverage where applicable, and exhaustive platform-dispatch tests in the same change | **Remaining in full** — none of these variants exist yet; still Phase 2 scope |
 | P2-O10 | `ErrorCode` expansion | Consider `PermissionRevoked` (distinct from `PermDenied` — TCC yanked mid-session) and `ResourceExhausted` (refmap >1 MB, tree node-count cap) | `APP_UNRESPONSIVE` shipped (U14) — a failed read-only liveness probe upgrades a hang to `APP_UNRESPONSIVE`; ordinary AX messaging exhaustion still reports plain `TIMEOUT`. **Remaining:** `PermissionRevoked`, `ResourceExhausted` |
-| P2-O11 | Event-subscription primitive (push, not poll) | New **command** `watch --event <kind> --ref @s8f3k2p9:e5 --timeout 3000`, backed by a new adapter method distinct from `capture_signal_baseline`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource`. Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals | `wait --event <kind>` (baseline-diff desktop-signal wait, U17) shipped and is **not** this objective — see the naming note under sub-phase 2.10. **Remaining in full:** the push `watch` command itself |
+| P2-O11 | Event-subscription primitive (push, not poll) | New **command** `watch --event <kind> --ref @s8f3k2p9:e5 --timeout 3000`, backed by a new adapter method distinct from `capture_signal_baseline`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource`. Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals | `wait --event <kind>` (baseline-diff desktop-signal wait, U17) shipped and is **not** this objective — see the naming note under sub-phase 2.11. **Remaining in full:** the push `watch` command itself |
 | P2-O12 | Text range primitives | Read caret, read selection, select a range by offsets, read text at range, insert at caret. macOS: `kAXSelectedTextRangeAttribute` (settable), `AXStringForRangeParameterizedAttribute`, `AXBoundsForRangeParameterizedAttribute`, `AXRangeForLineParameterizedAttribute`, `AXValueCreate(kAXValueCFRangeType, …)`. Windows: `TextPattern.GetSelection`, `TextPattern.DocumentRange`, `TextRange.Select`, `TextRange.Move`, `TextRange.GetText`, `TextRange.GetBoundingRectangles`. Commands: `text get-selection`, `text select-range <ref> <start> <len>`, `text insert-at-caret <ref> <string>`, `text at-offset <ref> <start> <len>` | **Remaining in full** — still Phase 2 scope |
 | P2-O13 | Modern per-window screenshot APIs | macOS: replace `/usr/sbin/screencapture` subprocess with `SCScreenshotManager.captureImage(contentFilter:config:)` filtered to a specific `CGWindowID` from `SCShareableContent.windows`. Windows: `Windows.Graphics.Capture` via `GraphicsCaptureItem.CreateFromWindowHandle(HWND)` + `Direct3D11CaptureFramePool` when supported by the OS/session. No subprocess on the modern path, explicit fallback to legacy capture when unavailable, and permission/support failures map to structured `PERM_DENIED` / `PLATFORM_NOT_SUPPORTED` with `platform_detail` | `list_displays` + honest `--screen` targeting + `scale_factor` shipped (U3). **Remaining:** ScreenCaptureKit modern macOS capture, `Windows.Graphics.Capture` Windows capture |
 | P2-O14 | Toolbar and missing surfaces | Implement the core-predeclared surface vocabulary without changing core: `Toolbar` on both platforms; `Spotlight`, `Dock`, and `MenuBarExtras` on macOS; `Taskbar`, `SystemTray`, `SystemTrayOverflow`, `StartMenu`, `ActionCenter`, and `QuickSettings` on Windows where the current build/session exposes them. `NotificationCenter` remains the portable notification surface while `ActionCenter` names the distinct Windows shell entry point | `supported_surfaces()` introspection shipped (U12) — `SnapshotSurface` is ratified as genuinely platform-neutral, and every variant above already exists as a predeclared enum member. **Remaining:** the Windows shell surface implementations themselves |
-| P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override | **Remaining in full** on Windows — macOS depth-skip already exists from Phase 1; the Windows implementation is sub-phase 2.3 |
+| P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override | **Remaining in full** on Windows — macOS depth-skip already exists from Phase 1; the Windows implementation is sub-phase 2.4 |
 | P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks a compile-time command registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry and the same descriptor metadata can feed JSON Schema / MCP generation in Phase 4. Marshaling helpers stay in `crates/ffi/src/convert/` — per-type, not per-command | **Remaining in full.** The ABI handshake (`ad_abi_version`, `ad_init`) and 8 command-backed entrypoints (`ad_snapshot`, `ad_execute_by_ref`, `ad_execute_by_ref_timeout`, `ad_wait`, `ad_version`, `ad_status`, `ad_trace_export`, `ad_trace_show`) shipped, but all 8 are hand-written — see Phase 1.5 Gap Status. This objective is exactly the codegen migration that turns those hand-written files into generated output |
 | P2-O17 | Screen Recording / Automation permission detection | macOS exposes `PermissionReport { accessibility, screen_recording, automation }`. Automation is probed noninteractively for the remaining System Events-backed Notification Center opener; Accessibility and Screen Recording retain explicit preflight states | **Shipped** (U4 truthful Automation permission) |
-| P2-O18 | Windows shell surface coverage | Add explicit shell coverage for Start menu/search, taskbar, system tray/overflow, Action Center/notification center, Quick Settings, multi-monitor/DPI, virtual desktop detection, UAC/elevated targets, RDP/locked-session behavior, and Explorer-specific file destinations. New commands are added only where a ref-based `snapshot --surface …` loop cannot expose the surface first; Windows-only behavior still routes through core command files and adapter trait defaults | **Remaining in full** — sub-phase 2.13, explicitly deferrable stretch scope |
+| P2-O18 | Windows shell surface coverage | Add explicit shell coverage for Start menu/search, taskbar, system tray/overflow, Action Center/notification center, Quick Settings, multi-monitor/DPI, virtual desktop detection, UAC/elevated targets, RDP/locked-session behavior, and Explorer-specific file destinations. New commands are added only where a ref-based `snapshot --surface …` loop cannot expose the surface first; Windows-only behavior still routes through core command files and adapter trait defaults | **Remaining in full** — sub-phase 2.14, explicitly deferrable stretch scope |
 
 ### Cross-Platform Trait Extensions
 
@@ -937,7 +938,7 @@ New supporting types (land in `crates/core/src/`):
 
 ### Cross-cutting sub-phase DoD
 
-Every sub-phase 2.0–2.14 below is held to the same definition of done, stated once here rather than repeated per sub-phase:
+Every sub-phase 2.0–2.15 below is held to the same definition of done, stated once here rather than repeated per sub-phase:
 
 - `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --lib --workspace`, and the relevant conformance suites (role/state vocabulary, contract tests) are green.
 - Probe evidence — raw UIA dumps of the target app — is committed alongside the sub-phase's plan doc under `docs/plans/`.
@@ -947,7 +948,21 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 - `scripts/perf-baseline-compare.sh` runs on any sub-phase that touches a hot path (tree traversal, resolution, action dispatch).
 - Commits follow the repository's Conventional Commits requirement.
 
-### 2.0 — Toolchain, CI & COM Bootstrap
+### 2.0 — Platform Exploration & Raw Scripting (pre-Rust)
+
+**Goal:** empirically map Windows accessibility reality with raw, no-Rust scripts before any adapter code exists, producing a committed evidence corpus the Rust sub-phases implement against — and feeding every contradiction back into this document.
+
+**Scope:** a `probes/windows/` directory of raw scripts — PowerShell using .NET managed UIA (`System.Windows.Automation`, preinstalled with .NET Framework 4.8) plus small C# programs compiled with `csc.exe` where UIA3 COM specifics differ from the managed wrapper. The corpus must cover, each as a runnable script with captured JSON/text output committed beside it: (1) full-tree dumps of Notepad, Explorer, Settings, and one Electron app (VS Code or Slack) including every property read per node; (2) a pattern-availability census per ControlType (Invoke, Toggle, Value, RangeValue, ExpandCollapse, SelectionItem, Scroll, ScrollItem, Text, Window, LegacyIAccessible); (3) every interaction exercised raw — invoke, toggle, set value, select, expand/collapse, scroll via pattern AND wheel, text get/selection/caret/insert, focus; (4) SendInput synthesis experiments — keyboard incl. modifier chords and UTF-16 chunking limits, mouse click/move/wheel/drag; (5) `ElementFromPoint` hit-testing incl. deliberately occluded and zero-size targets; (6) `CacheRequest` batched reads timed against per-property reads; (7) AutomationId coverage census across Win32 / WinForms / WPF / Electron; (8) event-handler observations (which UIA events actually fire, ordering, MTA threading behavior); (9) elevation/UIPI behavior against an elevated process; (10) RDP-session and DPI/multi-monitor bounds behavior. Alongside the scripts: `probes/windows/FINDINGS.md` — a findings ledger mapping every experiment to observed behavior and a doc-alignment verdict (confirms this document / contradicts it / new edge case).
+
+**Key APIs:** System.Windows.Automation, UIA3 COM (IUIAutomation) via csc.exe shims, SendInput, ElementFromPoint, CacheRequest.
+
+**Depends on:** nothing — this is the entry point; the dev VM needs only its preinstalled .NET, PowerShell, and git.
+
+**Exit criteria:** the script corpus and captured outputs are committed and re-runnable on the dev VM; the findings ledger covers tree, patterns, interactions, input, hit-testing, batching, identity, events, elevation, and session behavior with no open "unknown" rows; every ledger entry that contradicts this document has a matching amendment to this document landed in the same PR (see the source-of-truth feedback rule in the Platform Delivery Model); no Rust adapter sub-phase (2.2 onward) starts until this exit gate is green.
+
+**Est. PR size:** ~1.5k lines (scripts + ledger; no Rust).
+
+### 2.1 — Toolchain, CI & COM Bootstrap
 
 **Goal:** Stand up the Windows build/CI/session substrate so every later sub-phase lands on green CI and a constructible (if functionally empty) `WindowsAdapter`.
 
@@ -967,7 +982,7 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Est. PR size:** ~0.8k LOC
 
-### 2.1 — UIA Element Wrapper & Tree Walk
+### 2.2 — UIA Element Wrapper & Tree Walk
 
 **Goal:** Own an `AXElement`-equivalent wrapper for UIA elements and prove raw tree traversal against a real Windows app before any semantics land on top.
 
@@ -980,13 +995,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** `IUIAutomation.ElementFromHandle()`, `IUIAutomationTreeWalker.GetFirstChild`/`GetNextSibling`, `CacheRequest` (`uiautomation` crate 0.24+ wrapping the `windows` crate's COM bindings)
 
-**Depends on:** 2.0
+**Depends on:** 2.1
 
 **Exit criteria:** an internal tree-dump binary prints Notepad and Explorer trees with batched reads; `CacheRequest` attribute-batching correctness is unit-tested.
 
 **Est. PR size:** ~2k LOC
 
-### 2.2 — Vocabulary: Roles, States, native_id, Name Evidence
+### 2.3 — Vocabulary: Roles, States, native_id, Name Evidence
 
 **Goal:** Map UIA's vocabulary onto the canonical role/state contract Phase 1.6 (U1/U2) already established, and wire `native_id` end-to-end for Windows.
 
@@ -998,13 +1013,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** UIA `ControlType` enum, UIA property IDs for state, `AutomationId`, `Name`/`LabeledBy`/`HelpText` properties
 
-**Depends on:** 2.1
+**Depends on:** 2.2
 
 **Exit criteria:** vocabulary conformance tests span every UIA `ControlType` (complete mapping coverage, not a sample) and accname tests pass on Windows.
 
 **Est. PR size:** ~1.5k LOC
 
-### 2.3 — Observation: Snapshot, Windows, Apps, Displays
+### 2.4 — Observation: Snapshot, Windows, Apps, Displays
 
 **Goal:** Land the full read path — `snapshot`, `list-windows`, `list-apps`, `list-displays`, `focused_window` — including the Electron/WebView2 web-wrapper depth-skip that makes dense apps usable.
 
@@ -1021,13 +1036,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** `ControlViewWalker`, `FindAll`, `UICacheRequest`, `Chrome_WidgetWin_1` class match, `IVirtualDesktopManager` (read-only, for diagnostics)
 
-**Depends on:** 2.2
+**Depends on:** 2.3
 
 **Exit criteria:** `snapshot --app Notepad -i` and Explorer return reffed trees on the runner; skeleton drill-down works; a VS Code snapshot at default depth finds 50+ refs through web-aware depth-skip alone (no force flag), and ≥100 refs with `--force-electron-a11y`; an Electron file-picker dialog is detected as a sheet surface.
 
 **Est. PR size:** ~2k LOC
 
-### 2.4 — Resolution & Live Locator
+### 2.5 — Resolution & Live Locator
 
 **Goal:** Make refs and the live `find`/`get`/`is` commands (U7) work on Windows with the same strict-resolution guarantees macOS ships.
 
@@ -1039,13 +1054,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** `AutomationId` lookup, `CacheRequest`-scoped re-reads, UIA property read failure classification (COM HRESULT vs "element gone")
 
-**Depends on:** 2.3
+**Depends on:** 2.4
 
 **Exit criteria:** `find`/`get`/`is` are live on Windows; `STALE_REF`/`AMBIGUOUS_TARGET` semantics are proven with committed probe evidence (0/1/N candidate cases).
 
 **Est. PR size:** ~2k LOC
 
-### 2.5 — Actionability & Occlusion
+### 2.6 — Actionability & Occlusion
 
 **Goal:** Port the Phase 1.6 auto-wait/occlusion gate (U8/U9) onto Windows so every ref action gets the same actionability guarantees before it fires.
 
@@ -1057,13 +1072,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** `ElementFromPoint`, `ScrollItemPattern.ScrollIntoView`
 
-**Depends on:** 2.4
+**Depends on:** 2.5
 
 **Exit criteria:** zero-bounds / disabled / occluded fixture cases produce the same envelopes as macOS (same error codes, same `disposition`).
 
 **Est. PR size:** ~1.2k LOC
 
-### 2.6 — Semantic Action Tier
+### 2.7 — Semantic Action Tier
 
 **Goal:** Land the UIA pattern-based semantic action dispatch, with the same typed `ActionStep` delivery reporting (U13) macOS already produces.
 
@@ -1074,13 +1089,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** `InvokePattern.Invoke()`, `TogglePattern.Toggle()`, `ValuePattern.SetValue()`, `ExpandCollapsePattern.Expand()/.Collapse()`, `SelectionItemPattern.Select()`, `ScrollPattern.Scroll()`/`.SetScrollPercent()`
 
-**Depends on:** 2.5
+**Depends on:** 2.6
 
-**Exit criteria:** click / set-value / clear / select / toggle / expand / collapse work headless on the fixture app via the e2e analog (sub-phase 2.11 supplies the fixture; this sub-phase's own tests use ad hoc Notepad/Explorer targets until then).
+**Exit criteria:** click / set-value / clear / select / toggle / expand / collapse work headless on the fixture app via the e2e analog (sub-phase 2.12 supplies the fixture; this sub-phase's own tests use ad hoc Notepad/Explorer targets until then).
 
 **Est. PR size:** ~2k LOC
 
-#### Windows API Mapping (reference table for sub-phases 2.1–2.9)
+#### Windows API Mapping (reference table for sub-phases 2.2–2.10)
 
 | Capability | Technology | Details |
 |------------|-----------|---------|
@@ -1101,15 +1116,15 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 | App close | `WM_CLOSE` / `TerminateProcess` | Graceful close first, force kill with `--force`; verified via `ProcessState` |
 | Window ops | `SetWindowPos` / `ShowWindow` | Resize, move, minimize (`SW_MINIMIZE`), maximize (`SW_MAXIMIZE`), restore (`SW_RESTORE`) |
 | Permissions | COM security / UAC | Detect elevation requirements; return `PERM_DENIED` if UIA access blocked |
-| Notifications | UserNotificationListener + UIA Action Center fallback | See Notification Management approach under 2.13 |
-| System tray | UIA + Shell_TrayWnd | See System Tray approach under 2.13 |
-| Start menu / search | UIA + explicit shell open command | See Windows-specific command surface under 2.13 |
-| Taskbar | UIA + Shell_TrayWnd task list | See Windows-specific command surface under 2.13 |
-| Quick Settings | UIA shell flyout | See Windows-specific command surface under 2.13 |
+| Notifications | UserNotificationListener + UIA Action Center fallback | See Notification Management approach under 2.14 |
+| System tray | UIA + Shell_TrayWnd | See System Tray approach under 2.14 |
+| Start menu / search | UIA + explicit shell open command | See Windows-specific command surface under 2.14 |
+| Taskbar | UIA + Shell_TrayWnd task list | See Windows-specific command surface under 2.14 |
+| Quick Settings | UIA shell flyout | See Windows-specific command surface under 2.14 |
 | Virtual desktops | `IVirtualDesktopManager` detection | Public COM detection for "current desktop" filtering and diagnostics only. Moving windows between virtual desktops is deferred unless a stable public API path is validated |
 | Multi-monitor / DPI | Per-monitor DPI + Win32 monitor APIs | All bounds are physical pixels normalized by the same DPI-aware process mode; tests cover mixed-DPI monitor layouts before any coordinate fallback ships |
 
-### 2.7 — Input Synthesis
+### 2.8 — Input Synthesis
 
 **Goal:** Land raw OS input (keyboard, mouse, drag) matching the macOS delivery-tracking and headed/headless policy contract.
 
@@ -1122,13 +1137,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** `SendInput` (`INPUT_KEYBOARD` / `INPUT_MOUSE`), `GetTokenInformation`
 
-**Depends on:** 2.6
+**Depends on:** 2.7
 
-**Exit criteria:** headed e2e gesture cases pass (once 2.11's fixture exists; interim coverage via Notepad/Explorer).
+**Exit criteria:** headed e2e gesture cases pass (once 2.12's fixture exists; interim coverage via Notepad/Explorer).
 
 **Est. PR size:** ~2k LOC
 
-### 2.8 — System Lifecycle
+### 2.9 — System Lifecycle
 
 **Goal:** Land process/window lifecycle — launch, close, resize/move/minimize/maximize/restore — with the same `ProcessState` liveness contract (U14) macOS ships.
 
@@ -1142,30 +1157,30 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** `CreateProcess`, `TerminateProcess`, `SetWindowPos`, `ShowWindow`, `IsHungAppWindow`, `SendMessageTimeout`
 
-**Depends on:** 2.3 (window identity), 2.7 (input for `press_key_for_app`)
+**Depends on:** 2.4 (window identity), 2.8 (input for `press_key_for_app`)
 
 **Exit criteria:** lifecycle e2e (launch → interact → close) passes; `APP_UNRESPONSIVE` is reachable against a deliberately hung fixture window.
 
 **Est. PR size:** ~1.8k LOC
 
-### 2.9 — Capture & Clipboard
+### 2.10 — Capture & Clipboard
 
 **Goal:** Ship screenshot and typed clipboard, with the modern-capture-first / legacy-fallback split P2-O13 specifies.
 
 **Scope:**
 - `ScreenshotBackend::Legacy` first (`PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` — mitigates DWM black frames), then `ScreenshotBackend::Modern` via `windows-capture`/WGC where the session supports it (P2-O13)
-- `screenshot --screen` honest display targeting (pairs with `list_displays` from 2.3)
-- Typed clipboard: `CF_UNICODETEXT` → `ClipboardContent::Text`, image via `CF_DIB`/PNG → `ClipboardContent::Image`, `CF_HDROP` file lists → `ClipboardContent::FileUrls`, all written through 0600-equivalent private files (see 2.0's ACL fix)
+- `screenshot --screen` honest display targeting (pairs with `list_displays` from 2.4)
+- Typed clipboard: `CF_UNICODETEXT` → `ClipboardContent::Text`, image via `CF_DIB`/PNG → `ClipboardContent::Image`, `CF_HDROP` file lists → `ClipboardContent::FileUrls`, all written through 0600-equivalent private files (see 2.1's ACL fix)
 
 **Key APIs:** `PrintWindow`, `windows-capture`/`Windows.Graphics.Capture`, `OpenClipboard`/`GetClipboardData`/`SetClipboardData`
 
-**Depends on:** 2.0 (private-file ACL fix), 2.3 (displays)
+**Depends on:** 2.1 (private-file ACL fix), 2.4 (displays)
 
 **Exit criteria:** screenshot + clipboard e2e pass (clipboard tests hermetic, no real-desktop clipboard pollution); WGC gracefully degrades (falls back to `Legacy`, does not fail) in RDP-limited sessions.
 
 **Est. PR size:** ~1.8k LOC
 
-### 2.10 — Signals & Wait Parity
+### 2.11 — Signals & Wait Parity
 
 **Goal:** Port `SignalBaseline`/`diff_signals`/`wait --event` (U17) to Windows so the existing `wait` command works identically cross-platform — this is explicitly NOT the future push-based `watch` command (P2-O11).
 
@@ -1178,13 +1193,13 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** UIA property snapshots for baseline capture (no event handlers yet — that's `watch`, still future)
 
-**Depends on:** 2.3 (windows/apps/displays), 2.8 (process lifecycle for app-launched/terminated signals)
+**Depends on:** 2.4 (windows/apps/displays), 2.9 (process lifecycle for app-launched/terminated signals)
 
 **Exit criteria:** an AE6-analog e2e passes — an unnamed dialog is discovered purely by baseline diff.
 
 **Est. PR size:** ~1k LOC
 
-### 2.11 — Fixture App & Live E2E Harness
+### 2.12 — Fixture App & Live E2E Harness
 
 **Goal:** Give Windows the same verify-by-observation live e2e discipline the macOS SwiftUI fixture already provides.
 
@@ -1193,17 +1208,17 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 - `AutomationId` set on every interactive target from day one (unlike macOS, which had to retrofit `AXIdentifier` — Windows gets this right from the start)
 - Fixture targets mirroring `AgentDeskFixture.swift`: delayed-enable, zero-bounds, duplicate-title, occlusion, disclosure
 - Harness port (bash via Git-Bash, or a PowerShell driver) asserting every effect by independent re-observation, never the command's own `ok:true` — same contract as `tests/e2e/run.sh`
-- `windows-e2e` workflow_dispatch job on the self-hosted interactive Windows runner (registered in 2.0)
+- `windows-e2e` workflow_dispatch job on the self-hosted interactive Windows runner (registered in 2.1)
 
 **Key APIs:** `csc.exe`, WinForms `AutomationProperties.AutomationId`
 
-**Depends on:** 2.6, 2.7, 2.8, 2.9, 2.10 (everything the harness exercises)
+**Depends on:** 2.7, 2.8, 2.9, 2.10, 2.11 (everything the harness exercises)
 
 **Exit criteria:** the full Windows live gate is green in both headless and headed tiers.
 
 **Est. PR size:** ~2k LOC (mostly C#/scripts, not adapter Rust)
 
-### 2.12 — FFI, npm, Release
+### 2.13 — FFI, npm, Release
 
 **Goal:** Make the Windows adapter reachable through every distribution channel that already ships for macOS.
 
@@ -1216,21 +1231,21 @@ Every sub-phase 2.0–2.14 below is held to the same definition of done, stated 
 
 **Key APIs:** none new — this sub-phase is packaging, not adapter code
 
-**Depends on:** 2.1 through 2.10 (needs a working adapter to package)
+**Depends on:** 2.2 through 2.11 (needs a working adapter to package)
 
 **Exit criteria:** `npm install -g` works on Windows; release dry-run artifacts verified.
 
 **Est. PR size:** ~1.2k LOC
 
-### 2.13 — Shell Surfaces & Notifications Spike (stretch, explicitly deferrable)
+### 2.14 — Shell Surfaces & Notifications Spike (stretch, explicitly deferrable)
 
 **Goal:** Cover the Windows-only shell surface (P2-O18) and notification/tray (P2-O14 Windows half) scope that has no macOS analogue to backfill against.
 
-**Scope:** P2-O18 shell coverage, notification management, and system tray — all three folded in below rather than duplicated. This sub-phase **may ship after the 2.14 integration merge as its own follow-up `feat`** without blocking Phase 3 — it is explicitly the stretch/deferrable sub-phase in the sequence.
+**Scope:** P2-O18 shell coverage, notification management, and system tray — all three folded in below rather than duplicated. This sub-phase **may ship after the 2.15 integration merge as its own follow-up `feat`** without blocking Phase 3 — it is explicitly the stretch/deferrable sub-phase in the sequence.
 
 **Key APIs:** see the three subsections immediately below.
 
-**Depends on:** 2.3 (observation), 2.6 (semantic actions)
+**Depends on:** 2.4 (observation), 2.7 (semantic actions)
 
 **Exit criteria:** `open-system-surface --surface <kind>` + `snapshot --surface <kind>` round-trips for Start menu, taskbar, Quick Settings, and Action Center where the current shell exposes them, with explicit `PLATFORM_NOT_SUPPORTED` assertions (clear `platform_detail`) where it does not; notification list/dismiss/action work through at least one of the two documented paths; tray list/click work through SNI-equivalent UIA traversal.
 
@@ -1266,7 +1281,7 @@ System tray interaction is built from scratch here.
 - **Click:** `InvokePattern` on tray items, falling back to coordinate-based `SendInput` for items that don't expose UIA patterns.
 - **Open menu:** after clicking a tray item, detect the resulting popup menu via UIA focus-changed events and expose it for ref-based interaction.
 
-### 2.14 — Hardening & Integration Review
+### 2.15 — Hardening & Integration Review
 
 **Goal:** Prove the assembled `feat/windows-adapter` branch is production-grade as a whole, then merge it.
 
@@ -1280,7 +1295,7 @@ System tray interaction is built from scratch here.
 
 **Key APIs:** none — verification and merge only
 
-**Depends on:** 2.0 through 2.13 (2.13 may lag as a follow-up per its own note; 2.14 does not have to wait on it if 2.13 explicitly ships later)
+**Depends on:** 2.0 through 2.14 (2.14 may lag as a follow-up per its own note; 2.15 does not have to wait on it if 2.14 explicitly ships later)
 
 **Exit criteria:** every item in the Cross-cutting sub-phase DoD holds for the whole branch; `main` gains Windows support in one commit.
 
@@ -1304,7 +1319,7 @@ System tray interaction is built from scratch here.
 | `screencapturekit` | 1.5 (crates.io) | macOS | Published crates.io canonical crate — the doom-fish fork is the maintained successor, NOT a git-SHA pin |
 | `objc2` | 0.6 | macOS (new for P2-O13 / O17) | Safe bridging to `SCScreenshotManager`, `CGPreflightScreenCaptureAccess`, and AppKit/Foundation calls scoped to screenshot/permissions code |
 
-All five pins above were recorded at research time (2026-04); re-verify each against crates.io and the repository's supply-chain policy at the opening sub-phase of the consuming platform (2.0 for Windows, 3.0 for Linux) before adding them to `Cargo.toml`.
+All five pins above were recorded at research time (2026-04); re-verify each against crates.io and the repository's supply-chain policy at the opening sub-phase of the consuming platform (2.1 for Windows, 3.1 for Linux) before adding them to `Cargo.toml`.
 
 Added as target-gated dependencies in the owning platform crates. The binary crate only depends on the platform crate for the current target.
 ```toml
@@ -1352,9 +1367,9 @@ screencapturekit = "1.5"
 - Every new `Action` variant round-trips through the `AdAction.kind` i32 → Rust enum conversion without UB on arbitrary bit patterns (extends the existing `fuzz_arbitrary_bit_patterns_never_panic_across_all_enums` suite)
 - After the P2-O16 codegen migration: adding a command file automatically produces its `ad_<name>` wrapper — a regression test asserts the generated wrapper count matches the command registry count
 
-Integration-level tests (Explorer/Notepad/Settings snapshots, click/type/clipboard/wait/lifecycle round-trips, Chromium detection, notification/tray list-and-act) are covered as exit criteria on their owning sub-phase above (2.3, 2.4, 2.6, 2.8, 2.9, 2.10, 2.13) rather than repeated here.
+Integration-level tests (Explorer/Notepad/Settings snapshots, click/type/clipboard/wait/lifecycle round-trips, Chromium detection, notification/tray list-and-act) are covered as exit criteria on their owning sub-phase above (2.4, 2.5, 2.7, 2.9, 2.10, 2.11, 2.14) rather than repeated here.
 
-### Release, Skill & Docs (folds into 2.12 / 2.14)
+### Release, Skill & Docs (folds into 2.13 / 2.15)
 
 **Release:**
 - [ ] Prebuilt Windows `.exe` binary added to the existing `.github/workflows/release.yml` `build` matrix (alongside the macOS CLI targets), using the same tarball + sha256 + attestation pipeline Phase 1.5 ships
@@ -1378,7 +1393,7 @@ Integration-level tests (Explorer/Notepad/Settings snapshots, click/type/clipboa
 
 ## Phase 3 — Linux Adapter
 
-**Status: Planned** — delivered as sub-phases 3.0–3.14 into the `feat/linux-adapter` integration branch, mirroring the Windows sub-phase template ([Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches)) one-to-one with AT-SPI2/D-Bus specifics substituted for UIA. Phase 3 begins only after Phase 2 (2.0–2.14) has merged to `main`.
+**Status: Planned** — delivered as sub-phases 3.0–3.15 into the `feat/linux-adapter` integration branch, mirroring the Windows sub-phase template ([Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches)) one-to-one with AT-SPI2/D-Bus specifics substituted for UIA. Phase 3 begins only after Phase 2 (2.0–2.15) has merged to `main`.
 
 Phase 3 completes the three-platform story. The Linux adapter implements the original adapter surface **plus** every cross-platform extension landed in Phase 2 (event subscriptions via `watch`, text ranges, modern screenshot, stable-selector fields, the predeclared toolbar and shell-surface vocabulary, new Action variants, new ErrorCode variants). Each has a canonical AT-SPI2 / D-Bus / Wayland-portal implementation. Core engine, trait contract, command-registry, CLI dispatch, FFI wrappers, and MCP transport are all untouched — per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, Phase 3 is **pure `PlatformAdapter` trait implementation code**, nothing else. No new command files, no CLI dispatch changes, no FFI wrappers, no MCP tool registrations. "Foundation contract" below means Phase 1 + Phase 1.6 + whatever Phase 2 landed on the trait — Phase 3 implements against that settled contract, it does not renegotiate it.
 
@@ -1401,24 +1416,38 @@ Cross-platform extensions (Linux implementations of Phase 2 primitives):
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P3-O8 | Stable-selector fields on Linux | `AccessibilityNode.native_id` populated from AT-SPI2 `accessible-id` (standard since AT-SPI 2.18) with GTK `gtk-id` / Qt `objectName` fallback; `dom_classes` may be populated from AT-SPI2 `object-attributes` HTML keys on `WebKitGTK` / `Chromium-Content` embeds |
-| P3-O9 | AT-SPI2 event subscriptions (`watch`, P2-O11 parity) | `watch_element` implemented via `zbus::Proxy::receive_signal` on AT-SPI2 signals: `org.a11y.atspi.Event.Object.PropertyChange`, `ChildrenChanged`, `StateChanged:focused`, `Window:Create`, `Window:Destroy`. Same `watch --event` CLI shape as macOS/Windows (see the `wait --event` vs `watch` naming note carried over from sub-phase 2.10). Replaces polling in `crates/linux/src/system/wait.rs` before it's even written |
+| P3-O9 | AT-SPI2 event subscriptions (`watch`, P2-O11 parity) | `watch_element` implemented via `zbus::Proxy::receive_signal` on AT-SPI2 signals: `org.a11y.atspi.Event.Object.PropertyChange`, `ChildrenChanged`, `StateChanged:focused`, `Window:Create`, `Window:Destroy`. Same `watch --event` CLI shape as macOS/Windows (see the `wait --event` vs `watch` naming note carried over from sub-phase 2.11). Replaces polling in `crates/linux/src/system/wait.rs` before it's even written |
 | P3-O10 | AT-SPI2 Text interface (P2-O12 parity) | Text range primitives via `org.a11y.atspi.Text` D-Bus methods: `GetText(start, end)`, `GetCaretOffset`, `SetCaretOffset`, `GetNSelections`, `GetSelection(n)`, `AddSelection(start, end)`, `RemoveSelection(n)`. `InsertAtCaret` uses `org.a11y.atspi.EditableText.InsertText(position, text, length)` |
 | P3-O11 | PipeWire modern screenshot (P2-O13 parity) | `screenshot --window <id>` via `org.freedesktop.portal.ScreenCast` (Wayland) + `org.freedesktop.portal.RemoteDesktop` for capture permission flow. XDG desktop portal handles the user consent dialog exactly like `SCScreenshotManager` does on macOS. X11 fallback uses `XGetImage` for the lowest-permission path |
-| P3-O12 | Toolbar + surfaces (P2-O14 parity) | `SnapshotSurface::Toolbar` via AT-SPI2 `Role::ToolBar` — already predeclared core-side (U12), same as Windows. Dock / taskbar surface via per-DE panel process walk (GNOME Shell process for gnome-shell extensions, Plasma `plasmashell` for KDE). StatusNotifierWatcher already scoped in the original Phase 3 tray spec (3.13) |
+| P3-O12 | Toolbar + surfaces (P2-O14 parity) | `SnapshotSurface::Toolbar` via AT-SPI2 `Role::ToolBar` — already predeclared core-side (U12), same as Windows. Dock / taskbar surface via per-DE panel process walk (GNOME Shell process for gnome-shell extensions, Plasma `plasmashell` for KDE). StatusNotifierWatcher already scoped in the original Phase 3 tray spec (3.14) |
 | P3-O13 | Action variants on Linux (P2-O9 parity) | `Action::LongPress` via timed `xdotool/ydotool` button-hold; `Action::ShowMenu` via `org.a11y.atspi.Action.DoAction("popup")`; `Action::Cancel` via `Action.DoAction("cancel")` or Escape synthesis; `Action::DeliverFiles` via portal/native file-transfer where available with XDND as a researched fallback; `Action::ForceClick` returns `ActionNotSupported` on Linux (no pressure input primitive) |
 | P3-O14 | FFI cdylib continues to ship | Phase 1.5 already publishes Linux FFI for x86_64 + aarch64; Phase 3 adds each new `ad_*` entrypoint's Linux implementation and extends the header drift check. No new FFI bindings to design — implementations only; the same P2-O16 registry migration applies once it lands |
 | P3-O15 | Flatpak / Snap compatibility note | AT-SPI2 requires `--talk-name=org.a11y.Bus` permission inside sandboxed runtimes. Skill docs include the exact Flatpak override and Snap plug grants, so sandboxed consumers aren't silently empty-tree |
 
-### Sub-phase decomposition (3.0–3.14, mirrors Phase 2 one-to-one)
+### Sub-phase decomposition (3.0–3.15, mirrors Phase 2 one-to-one)
 
 Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phase-dod) as Phase 2 — restated once here rather than per sub-phase: fmt/clippy/`-D warnings`/lib tests/conformance green; probe evidence (AT-SPI2 D-Bus introspection dumps, not screenshots) committed with the plan; adapters keep `not_supported()` defaults for everything not yet landed; no core rewrites; per-sub-phase review; perf baseline on perf-touching sub-phases; Conventional Commits. Every "foundation contract" reference below means Phase 1 + 1.6 + Phase 2's settled trait surface.
 
-### 3.0 — Toolchain, CI & Bus Bootstrap
+### 3.0 — Platform Exploration & Raw Scripting (pre-Rust)
+
+**Goal:** empirically map Linux/AT-SPI2 accessibility reality with raw, no-Rust scripts before any adapter code exists, producing a committed evidence corpus the Rust sub-phases implement against — and feeding every contradiction back into this document. Mirror of 2.0 for Linux/AT-SPI2.
+
+**Scope:** a `probes/linux/` directory of raw scripts in Python (direct D-Bus via python-dbus/`busctl`, and pyatspi2 where it clarifies) on GNOME (X11 and Wayland sessions both): full-tree dumps (GNOME Files, Terminal, Text Editor, one Electron app), interface census per Role (Action, Text, EditableText, Value, Selection, Component, StateSet), every interaction exercised raw (DoAction by index/name, text get/caret/insert, value set, selection), input-synthesis experiments via xdotool (X11) and ydotool (Wayland), `Component.Contains`/bounds hit-testing incl. occlusion, event-signal observations over the a11y bus, an accessible-id coverage census (GTK3/GTK4/Qt/Electron), the portal screenshot consent flow, a Flatpak sandbox probe (`--talk-name=org.a11y.Bus` on/off), and bus-bootstrap behavior when at-spi is cold. Alongside the scripts: `probes/linux/FINDINGS.md` — the same findings-ledger shape as 2.0, mapping every experiment to observed behavior and a doc-alignment verdict (confirms this document / contradicts it / new edge case).
+
+**Key APIs:** python-dbus, `busctl`, pyatspi2, `Component.Contains`, xdotool, ydotool.
+
+**Depends on:** completion of Phase 2 (Windows ships first).
+
+**Exit criteria:** the script corpus and captured outputs are committed and re-runnable on the dev VM; the findings ledger covers tree, interfaces, interactions, input, hit-testing, identity, events, portal-consent, sandbox, and bus-bootstrap behavior with no open "unknown" rows; every ledger entry that contradicts this document has a matching amendment to this document landed in the same PR (see the source-of-truth feedback rule in the Platform Delivery Model); no Rust adapter sub-phase (3.2 onward) starts until the ledger is complete and every contradiction has amended this document.
+
+**Est. PR size:** ~1.5k lines (scripts + ledger; no Rust).
+
+### 3.1 — Toolchain, CI & Bus Bootstrap
 
 **Goal:** Stand up the Linux build/CI/session substrate, including the async runtime the rest of Phase 3 depends on.
 
 **Scope:**
-- `ubuntu-latest` CI job promoted to a real Linux test lane (build + clippy + lib tests, core-isolation, size), mirroring 2.0's Windows promotion
+- `ubuntu-latest` CI job promoted to a real Linux test lane (build + clippy + lib tests, core-isolation, size), mirroring 2.1's Windows promotion
 - AT-SPI2 `org.a11y.Bus` session-bus availability detection at adapter construction
 - `zbus` (5.x) / `atspi` (0.28+) / `tokio` (1.x) dependency pins re-verified against crates.io + supply-chain policy (pinned at 2026-04 research time, same policy as Windows)
 - `LinuxAdapterSession` implementing `AdapterSession` via `open_session` — owns the D-Bus connection state so later sub-phases share one connection rather than reconnecting per call
@@ -1440,7 +1469,7 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
   - Other DEs: "Install `at-spi2-core` and ensure `at-spi-bus-launcher` is running"
   - Flatpak/Snap: "Ensure the app has `--talk-name=org.a11y.Bus` permission" (P3-O15)
 
-### 3.1 — Accessible Wrapper & Tree Walk
+### 3.2 — Accessible Wrapper & Tree Walk
 
 **Goal:** Own an `AXElement`-equivalent async wrapper for AT-SPI2 `Accessible` objects and prove raw tree traversal against a real Linux app.
 
@@ -1451,13 +1480,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `org.a11y.atspi.Accessible.GetChildren`, `atspi` crate (v0.28+) + `zbus` (5.x) — pure Rust, no libatspi/GLib dependency
 
-**Depends on:** 3.0
+**Depends on:** 3.1
 
 **Exit criteria:** an internal async tree-dump binary prints GNOME Files and Terminal trees with the batching strategy in place.
 
 **Est. PR size:** ~2k LOC
 
-### 3.2 — Vocabulary: Role, StateSet, native_id, Name Evidence
+### 3.3 — Vocabulary: Role, StateSet, native_id, Name Evidence
 
 **Goal:** Map AT-SPI2's vocabulary onto the canonical role/state contract (U1/U2), completing `native_id` (P2-O8/P3-O8) on the third platform.
 
@@ -1469,13 +1498,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** AT-SPI `Role` enum, `StateSet`, `accessible-id`, `Name`/`LabelledBy`/`Description`
 
-**Depends on:** 3.1
+**Depends on:** 3.2
 
 **Exit criteria:** vocabulary conformance tests span every AT-SPI `Role` (complete mapping coverage, not a sample) and accname tests pass on Linux.
 
 **Est. PR size:** ~1.5k LOC
 
-### 3.3 — Observation: Snapshot, Windows, Apps, Displays
+### 3.4 — Observation: Snapshot, Windows, Apps, Displays
 
 **Goal:** Land the full read path via portals/randr and the web-wrapper depth-skip for Electron/WebKitGTK content.
 
@@ -1490,13 +1519,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `org.a11y.atspi.Window`, XRandR / portal display enumeration, `wmctrl` (fallback)
 
-**Depends on:** 3.2
+**Depends on:** 3.3
 
 **Exit criteria:** `snapshot --app "GNOME Files"` and GNOME Terminal return reffed trees; a VS Code snapshot at default depth finds 50+ refs through web-aware depth-skip alone (no force flag); an Electron file-picker dialog is detected as a sheet surface.
 
 **Est. PR size:** ~2k LOC
 
-### 3.4 — Resolution & Live Locator
+### 3.5 — Resolution & Live Locator
 
 **Goal:** Make refs and the live `find`/`get`/`is` commands (U7) work on Linux with the same strict-resolution guarantees.
 
@@ -1508,13 +1537,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `accessible-id` lookup, AT-SPI2 D-Bus error classification (`org.freedesktop.DBus.Error.UnknownObject` vs timeout)
 
-**Depends on:** 3.3
+**Depends on:** 3.4
 
 **Exit criteria:** `find`/`get`/`is` are live on Linux; `STALE_REF`/`AMBIGUOUS_TARGET` semantics proven with committed probe evidence.
 
 **Est. PR size:** ~2k LOC
 
-### 3.5 — Actionability & Occlusion
+### 3.6 — Actionability & Occlusion
 
 **Goal:** Port the auto-wait/occlusion gate (U8/U9) onto Linux using AT-SPI2's `Component` interface.
 
@@ -1526,13 +1555,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `org.a11y.atspi.Component.ContainsPoint`, `Component.GetExtents`
 
-**Depends on:** 3.4
+**Depends on:** 3.5
 
 **Exit criteria:** zero-bounds/disabled/occluded fixture cases produce the same envelopes as macOS/Windows.
 
 **Est. PR size:** ~1.2k LOC
 
-### 3.6 — Semantic Action Tier
+### 3.7 — Semantic Action Tier
 
 **Goal:** Land AT-SPI2 `Action`/`EditableText`-based semantic dispatch with the same typed `ActionStep` delivery reporting.
 
@@ -1543,13 +1572,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `Action.DoAction`, `Selection.SelectChild`, `EditableText.InsertText`
 
-**Depends on:** 3.5
+**Depends on:** 3.6
 
-**Exit criteria:** click/set-value/clear/select/toggle/expand/collapse work headless on the fixture app via the e2e analog (3.11 supplies the fixture; interim coverage via GNOME Files/Terminal).
+**Exit criteria:** click/set-value/clear/select/toggle/expand/collapse work headless on the fixture app via the e2e analog (3.12 supplies the fixture; interim coverage via GNOME Files/Terminal).
 
 **Est. PR size:** ~2k LOC
 
-#### Linux API Mapping (reference table for sub-phases 3.1–3.9)
+#### Linux API Mapping (reference table for sub-phases 3.2–3.10)
 
 | Capability | Technology | Details |
 |------------|-----------|---------|
@@ -1570,10 +1599,10 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 | App close | `SIGTERM` / `SIGKILL` | Graceful close first, force with `--force`; verified via `ProcessState` |
 | Window ops | `xdotool` / `wmctrl` | Window resize, move, minimize, maximize, restore |
 | Permissions | AT-SPI2 bus availability | Check for `org.a11y.Bus` on the D-Bus session bus. Return `PLATFORM_NOT_SUPPORTED` with enable instructions if missing |
-| Notifications | D-Bus `org.freedesktop.Notifications` | See Notification Management approach under 3.13 |
-| System tray | D-Bus `org.kde.StatusNotifierWatcher` | See System Tray approach under 3.13 |
+| Notifications | D-Bus `org.freedesktop.Notifications` | See Notification Management approach under 3.14 |
+| System tray | D-Bus `org.kde.StatusNotifierWatcher` | See System Tray approach under 3.14 |
 
-### 3.7 — Input Synthesis
+### 3.8 — Input Synthesis
 
 **Goal:** Land raw OS input across the X11/Wayland split, matching the delivery-tracking and headed/headless policy contract.
 
@@ -1586,13 +1615,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `xdotool`, `ydotool` (subprocess), `libei` (documented, not used)
 
-**Depends on:** 3.6
+**Depends on:** 3.7
 
-**Exit criteria:** headed e2e gesture cases pass on at least GNOME/X11 and GNOME/Wayland (once 3.11's fixture exists).
+**Exit criteria:** headed e2e gesture cases pass on at least GNOME/X11 and GNOME/Wayland (once 3.12's fixture exists).
 
 **Est. PR size:** ~2k LOC
 
-### 3.8 — System Lifecycle
+### 3.9 — System Lifecycle
 
 **Goal:** Land process/window lifecycle with the same `ProcessState` liveness contract.
 
@@ -1606,47 +1635,47 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `xdg-open`, `std::process::Command`, `xdotool`/`wmctrl`, `/proc/<pid>/stat`
 
-**Depends on:** 3.3 (window identity), 3.7 (input for `press_key_for_app`)
+**Depends on:** 3.4 (window identity), 3.8 (input for `press_key_for_app`)
 
 **Exit criteria:** lifecycle e2e (launch → interact → close) passes.
 
 **Est. PR size:** ~1.8k LOC
 
-### 3.9 — Capture & Clipboard
+### 3.10 — Capture & Clipboard
 
 **Goal:** Ship screenshot and typed clipboard across the Wayland-portal / X11 split.
 
 **Scope:**
 - `screenshot` via `org.freedesktop.portal.ScreenCast` (Wayland, P3-O11) with `org.freedesktop.portal.RemoteDesktop` for the permission flow, falling back to `XGetImage` (X11) for the lowest-permission path
-- `screenshot --screen` honest display targeting (pairs with `list_displays` from 3.3)
+- `screenshot --screen` honest display targeting (pairs with `list_displays` from 3.4)
 - Typed clipboard: `wl-clipboard` (Wayland) / `xclip` (X11) subprocess calls, marshaled into `ClipboardContent::Text`/`Image`/`FileUrls`, written through 0600-equivalent private files
 
 **Key APIs:** `org.freedesktop.portal.ScreenCast`, `org.freedesktop.portal.RemoteDesktop`, `XGetImage`, `wl-clipboard`/`xclip`
 
-**Depends on:** 3.0 (private-file handling — Unix permissions already real, unlike the Windows ACL gap), 3.3 (displays)
+**Depends on:** 3.1 (private-file handling — Unix permissions already real, unlike the Windows ACL gap), 3.4 (displays)
 
 **Exit criteria:** screenshot + clipboard e2e pass (clipboard tests hermetic); the PipeWire portal flow is proven — the user approves via the XDG portal dialog once, subsequent calls bypass the dialog within the session grant window.
 
 **Est. PR size:** ~1.8k LOC
 
-### 3.10 — Signals & Wait Parity
+### 3.11 — Signals & Wait Parity
 
-**Goal:** Port `SignalBaseline`/`diff_signals`/`wait --event` (U17) to Linux, with the same naming distinction from `watch` as Windows 2.10.
+**Goal:** Port `SignalBaseline`/`diff_signals`/`wait --event` (U17) to Linux, with the same naming distinction from `watch` as Windows 2.11.
 
 **Scope:**
 - Linux `SignalBaseline` producers: windows/apps/focus/surfaces via AT-SPI2 polling snapshots
 - `wait --event` parity including `surface-appeared`
 - Wait utilities operating within `Deadline` budgets
 
-**Key APIs:** AT-SPI2 property snapshots for baseline capture (no signal subscription yet — that's `watch`, P3-O9; sub-phase 3.1's D-Bus infrastructure feeds it but the command itself is still future scope beyond this sub-phase's baseline-diff wait)
+**Key APIs:** AT-SPI2 property snapshots for baseline capture (no signal subscription yet — that's `watch`, P3-O9; sub-phase 3.2's D-Bus infrastructure feeds it but the command itself is still future scope beyond this sub-phase's baseline-diff wait)
 
-**Depends on:** 3.3 (windows/apps/displays), 3.8 (process lifecycle)
+**Depends on:** 3.4 (windows/apps/displays), 3.9 (process lifecycle)
 
 **Exit criteria:** an AE6-analog e2e passes — an unnamed dialog is discovered purely by baseline diff.
 
 **Est. PR size:** ~1k LOC
 
-### 3.11 — GTK4 Fixture App & Live E2E Harness
+### 3.12 — GTK4 Fixture App & Live E2E Harness
 
 **Goal:** Give Linux the same verify-by-observation live e2e discipline, with explicit per-desktop-environment notes since Linux fragments more than macOS/Windows.
 
@@ -1659,13 +1688,13 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** GTK4 `Accessible` widget properties (`accessible-id`)
 
-**Depends on:** 3.6, 3.7, 3.8, 3.9, 3.10
+**Depends on:** 3.7, 3.8, 3.9, 3.10, 3.11
 
 **Exit criteria:** the full Linux live gate is green on GNOME, both headless and headed tiers.
 
 **Est. PR size:** ~2k LOC (mostly fixture app + scripts, not adapter Rust)
 
-### 3.12 — FFI, npm, Release
+### 3.13 — FFI, npm, Release
 
 **Goal:** Make the Linux adapter reachable through every distribution channel already shipping for macOS/Windows.
 
@@ -1678,21 +1707,21 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** none new — packaging only
 
-**Depends on:** 3.1 through 3.10
+**Depends on:** 3.2 through 3.11
 
 **Exit criteria:** `npm install -g` works on Ubuntu; release dry-run artifacts verified for both architectures.
 
 **Est. PR size:** ~1.2k LOC
 
-### 3.13 — Shell Surfaces & Notifications Spike (stretch, explicitly deferrable)
+### 3.14 — Shell Surfaces & Notifications Spike (stretch, explicitly deferrable)
 
 **Goal:** Cover the Linux-only shell surface, notification, and tray scope — the DE-specific half of parity that has no single canonical implementation across GNOME/KDE/other DEs.
 
-**Scope:** notification management and system tray, folded in below. Same stretch/deferrable status as Windows 2.13 — **may ship after the 3.14 integration merge as its own follow-up `feat`.**
+**Scope:** notification management and system tray, folded in below. Same stretch/deferrable status as Windows 2.14 — **may ship after the 3.15 integration merge as its own follow-up `feat`.**
 
 **Key APIs:** see the two subsections immediately below.
 
-**Depends on:** 3.3 (observation), 3.6 (semantic actions)
+**Depends on:** 3.4 (observation), 3.7 (semantic actions)
 
 **Exit criteria:** notification list/dismiss/action work on at least GNOME via `org.gnome.Shell.Notifications`; tray list/click work via `StatusNotifierWatcher` on a DE that supports SNI (KDE, or GNOME + AppIndicator extension); unsupported DEs assert `PLATFORM_NOT_SUPPORTED` with daemon/DE-specific guidance rather than silently passing.
 
@@ -1722,7 +1751,7 @@ System tray interaction is built from scratch here.
 - **Context menu:** call `ContextMenu(x, y)`, or read the `Menu` property to get the `com.canonical.dbusmenu` path and traverse the menu tree
 - **Edge case:** GNOME does not natively support SNI (requires the AppIndicator extension); detect and report via an error suggestion if no tray is available
 
-### 3.14 — Hardening & Integration Review
+### 3.15 — Hardening & Integration Review
 
 **Goal:** Prove the assembled `feat/linux-adapter` branch is production-grade as a whole, then merge it — closing out the three-platform story.
 
@@ -1736,7 +1765,7 @@ System tray interaction is built from scratch here.
 
 **Key APIs:** none — verification and merge only
 
-**Depends on:** 3.0 through 3.13 (3.13 may lag as a follow-up per its own note)
+**Depends on:** 3.0 through 3.14 (3.14 may lag as a follow-up per its own note)
 
 **Exit criteria:** every item in the Cross-cutting sub-phase DoD holds for the whole branch; `main` gains Linux support in one commit, completing the three-platform matrix.
 
@@ -1777,7 +1806,7 @@ Runtime detection required for input, clipboard, and screenshot since Linux runs
 | `zbus` | 5.x | D-Bus connection | MIT/Apache-2.0 |
 | `tokio` | 1.x | Async runtime (required by atspi/zbus for async D-Bus) | MIT |
 
-All three pins above were recorded at research time (2026-04); re-verify against crates.io and the repository's supply-chain policy at sub-phase 3.0 before adding them to `Cargo.toml` — same policy as the Windows dependency pins.
+All three pins above were recorded at research time (2026-04); re-verify against crates.io and the repository's supply-chain policy at sub-phase 3.1 before adding them to `Cargo.toml` — same policy as the Windows dependency pins.
 
 Added to `Cargo.toml` as a target-gated dependency:
 ```toml
@@ -1803,9 +1832,9 @@ agent-desktop-linux = { path = "crates/linux" }
 - Toolbar surface: Firefox toolbar + GNOME Files toolbar both enumerate via `Role::ToolBar`
 - Flatpak compatibility: a Flatpak-packaged GNOME Text Editor snapshot is non-empty when `--talk-name=org.a11y.Bus` is granted; returns a clear diagnostic otherwise
 
-Integration-level tests (Files/Terminal/Settings snapshots, click/type/clipboard/wait/lifecycle round-trips, bus-not-running error path, notification/tray list-and-act) are covered as exit criteria on their owning sub-phase above (3.3, 3.4, 3.6, 3.8, 3.9, 3.10, 3.13) rather than repeated here.
+Integration-level tests (Files/Terminal/Settings snapshots, click/type/clipboard/wait/lifecycle round-trips, bus-not-running error path, notification/tray list-and-act) are covered as exit criteria on their owning sub-phase above (3.4, 3.5, 3.7, 3.9, 3.10, 3.11, 3.14) rather than repeated here.
 
-### Release, Skill & Docs (folds into 3.12 / 3.14)
+### Release, Skill & Docs (folds into 3.13 / 3.15)
 
 **Release:**
 - [ ] Prebuilt Linux CLI binary added to `.github/workflows/release.yml` matrix for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` (Phase 1.5 already builds the FFI cdylib for both triples on the same runners — Phase 3 reuses those runners)
@@ -2020,7 +2049,7 @@ On receiving MCP `initialize`:
 | `schemars` | 1.2+ | JSON Schema generation for tool parameter definitions | MIT/Apache-2.0 |
 | `tokio` | 1.x | Async runtime (required by rmcp for MCP server event loop) | MIT |
 
-`tokio` enters the workspace no later than Phase 3 (Linux, sub-phase 3.0); by Phase 4 it is already available.
+`tokio` enters the workspace no later than Phase 3 (Linux, sub-phase 3.1); by Phase 4 it is already available.
 
 ### Binary Crate Changes
 
@@ -2445,8 +2474,8 @@ See [Command Surface Architecture](#command-surface-architecture-dry-invariant) 
 | Phase 1 | `macos-latest` (tests + CLI build) + `ubuntu-latest` (`fmt` job) |
 | Phase 1.5 | Same as Phase 1 on PRs; release workflow fans out to `macos-latest` × 2 darwin arches + `ubuntu-22.04` + `ubuntu-22.04-arm` + `windows-latest` for the FFI matrix |
 | Phase 1.6 (current) | `ci.yml`: `fmt` (ubuntu-latest), `msrv` (ubuntu-latest, Rust 1.89.0), `platform-check` (matrix Linux/Windows/macOS, `cargo check` only — proves the stub crates compile before any adapter lands), `test` (macos-latest, full suite), `ffi-python-smoke`, `ffi-header-drift`, `ffi-panic-guard`, `ffi-passthrough` (ubuntu-latest). Outside `ci.yml`: `native-e2e.yml` (self-hosted macOS, workflow_dispatch), `codeql.yml`, `supply-chain.yml`. `scripts/perf-baseline-compare.sh` is currently a per-PR Definition-of-Done review step, not yet a blocking CI job |
-| Phase 2 | `platform-check`'s Windows leg is promoted to a real `windows-latest` test lane (build, clippy, lib tests) at sub-phase 2.0; a self-hosted interactive Windows runner is added for UIA/shell integration tests at 2.11 |
-| Phase 3 | `platform-check`'s Linux leg is promoted to a real `ubuntu-latest` test lane at sub-phase 3.0; an interactive Ubuntu GNOME runner is added for AT-SPI2/shell integration tests at 3.11 |
+| Phase 2 | `platform-check`'s Windows leg is promoted to a real `windows-latest` test lane (build, clippy, lib tests) at sub-phase 2.1; a self-hosted interactive Windows runner is added for UIA/shell integration tests at 2.12 |
+| Phase 3 | `platform-check`'s Linux leg is promoted to a real `ubuntu-latest` test lane at sub-phase 3.1; an interactive Ubuntu GNOME runner is added for AT-SPI2/shell integration tests at 3.12 |
 | Phase 4 | macOS + Windows + Ubuntu (+ MCP protocol tests) |
 | Phase 5 | macOS + Windows + Ubuntu (+ daemon tests, package build verification) |
 
@@ -2487,7 +2516,7 @@ All Phase 2/3 pins above were recorded at 2026-04 research time; re-verify again
 |------------|-------|---------|-------|
 | Tree root | `AXUIElementCreateApp(pid)` | `IUIAutomation.ElementFromHandle()` | `atspi Accessible` on bus |
 | Children | `kAXChildrenAttribute` | `TreeWalker.GetFirstChild` | `GetChildren` D-Bus |
-| Stable ID | `AXIdentifier` / `AXDOMIdentifier` (shipped, U5) | UIA `AutomationId` (Phase 2, sub-phase 2.2) | AT-SPI2 `accessible-id` (Phase 3, sub-phase 3.2) |
+| Stable ID | `AXIdentifier` / `AXDOMIdentifier` (shipped, U5) | UIA `AutomationId` (Phase 2, sub-phase 2.3) | AT-SPI2 `accessible-id` (Phase 3, sub-phase 3.3) |
 | Click | `AXPress` | `InvokePattern.Invoke()` | `Action.DoAction(0)` |
 | Set text | `AXValue = val` | `ValuePattern.SetValue()` | `Text.InsertText` |
 | Keyboard | `CGEventCreateKeyboard` | `SendInput` | `xdotool` / `ydotool` |
@@ -2514,6 +2543,6 @@ All Phase 2/3 pins above were recorded at 2026-04 research time; re-verify again
 | R9 | Headless operation requirement | High | Critical | Phase 1 introduced `ActionRequest`/`InteractionPolicy`, default no focus steal/cursor movement, and explicit physical/headed policy paths; Phase 1.6 added default-on auto-wait and the occlusion gate on top. Phase 2/3 preserve the same contract for Windows/Linux. |
 | R10 | Command registry link-GC | Medium | High | Research Topic B confirmed `inventory`/`linkme` are unreliable across linkers for cdylib consumers. Resolved by pure `build.rs` filesystem enumeration — zero linker magic, once that registry migration (P2-O16) lands. |
 | R11 | Skeleton traversal cross-platform | Low | High | Core is already platform-agnostic (`crates/core/src/snapshot_ref.rs`); Windows needs ~50 LOC glue (`ControlViewWalker` + `FindAll(TreeScope_Children, TrueCondition)` + fresh `UICacheRequest` per drill-down). Research Topic 4 confirmed `ElementFromHandle(hwnd)` is headless-safe. |
-| R12 | RDP / session-isolation blocks Windows dev and CI | Medium | High | UIA requires an interactive session — an RDP disconnect can drop the console session to a non-interactive state. Document the `tscon` console-reattach workaround for the self-hosted runner (sub-phase 2.0); mirrors the macOS exclusive-desktop gate (`AGENT_DESKTOP_E2E_EXCLUSIVE=1` + `interaction_lock.py`) that already serializes native e2e runs. |
+| R12 | RDP / session-isolation blocks Windows dev and CI | Medium | High | UIA requires an interactive session — an RDP disconnect can drop the console session to a non-interactive state. Document the `tscon` console-reattach workaround for the self-hosted runner (sub-phase 2.1); mirrors the macOS exclusive-desktop gate (`AGENT_DESKTOP_E2E_EXCLUSIVE=1` + `interaction_lock.py`) that already serializes native e2e runs. |
 | R13 | UIA event handler MTA lifecycle leaks | Medium | Medium | `RemoveAutomationEventHandler` races the final in-flight callback dispatch on the MTA worker thread if torn down naively. Use the post-remove-barrier pattern (`Arc<Handler>` outlives the final callback) documented in the Windows Engineering Invariants — apply it from the first sub-phase that registers a handler (`watch`, once P2-O11 lands), not retrofitted after a leak is observed. |
-| R14 | Merge-train discipline: integration branch drifts from `main` | Medium | Medium | 15 sub-phases landing serially into `feat/windows-adapter` (then `feat/linux-adapter`) is a long-lived branch by construction. Mitigate with a rebase cadence (rebase onto `main` at the start of each sub-phase, not just before the final merge) and treat each sub-phase's own review as a checkpoint rather than deferring all review to the 2.14/3.14 hardening pass. |
+| R14 | Merge-train discipline: integration branch drifts from `main` | Medium | Medium | 16 sub-phases landing serially into `feat/windows-adapter` (then `feat/linux-adapter`) is a long-lived branch by construction. Mitigate with a rebase cadence (rebase onto `main` at the start of each sub-phase, not just before the final merge) and treat each sub-phase's own review as a checkpoint rather than deferring all review to the 2.15/3.15 hardening pass. |
