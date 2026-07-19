@@ -1,4 +1,6 @@
-use super::{NcSession, closed_center_policy_error, merge_session_result, nc_pid_from_output};
+use super::{
+    NcSession, NcSessionOps, closed_center_policy_error, merge_session_result, nc_pid_from_output,
+};
 use agent_desktop_core::{AdapterError, ErrorCode, ProcessIdentity};
 
 #[test]
@@ -152,18 +154,20 @@ fn partial_open_failure_closes_center_and_restores_previous_app() {
     let result = NcSession::open_with(
         Some(previous.clone()),
         agent_desktop_core::Deadline::after(0).unwrap(),
-        |_| Ok(()),
-        |_| Err(AdapterError::timeout("readiness failed")),
-        |deadline| {
-            assert!(!deadline.is_expired());
-            close_attempts += 1;
-            Ok(())
-        },
-        |app, deadline| {
-            assert_eq!(app, &previous);
-            assert!(!deadline.is_expired());
-            restore_attempts += 1;
-            Ok(())
+        NcSessionOps {
+            open: |_| Ok(()),
+            wait_until_ready: |_| Err(AdapterError::timeout("readiness failed")),
+            close: |deadline| {
+                assert!(!deadline.is_expired());
+                close_attempts += 1;
+                Ok(())
+            },
+            reactivate: |app, deadline| {
+                assert_eq!(app, &previous);
+                assert!(!deadline.is_expired());
+                restore_attempts += 1;
+                Ok(())
+            },
         },
     );
     let error = match result {

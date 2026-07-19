@@ -139,7 +139,7 @@ fn menu_closed_wait_requests_closed_state_and_reports_found() {
     let value = execute(
         WaitArgs {
             mode: WaitModeArgs {
-                menu_closed: true,
+                surface: Some(SurfaceWait::MenuClosed),
                 ..wait_args().mode
             },
             app: Some("MenuApp".into()),

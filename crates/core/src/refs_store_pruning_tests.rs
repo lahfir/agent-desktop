@@ -30,14 +30,14 @@ fn save_new_snapshot_prunes_old_snapshots_without_removing_latest() {
 }
 
 #[test]
-fn save_existing_refuses_to_recreate_a_missing_snapshot() {
+fn update_existing_refuses_to_recreate_a_missing_snapshot() {
     let _guard = HomeGuard::new();
     let store = RefStore::new().unwrap();
     let snapshot_id = store.save_new_snapshot(&map_with("Original")).unwrap();
     std::fs::remove_dir_all(store.snapshots_dir().join(&snapshot_id)).unwrap();
 
     let err = store
-        .save_existing_snapshot(&snapshot_id, &map_with("Recreated"))
+        .update_existing_snapshot(&snapshot_id, "@e1", &entry("Original"), |_| Ok(()))
         .unwrap_err();
 
     assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");

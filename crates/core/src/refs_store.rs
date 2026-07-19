@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 const LATEST_SNAPSHOT_FILE: &str = "latest_snapshot_id";
 const MAX_SAVED_SNAPSHOTS: usize = 512;
-const STALE_TMP_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(60);
+pub(crate) const STALE_TMP_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct RefStore {
@@ -58,22 +58,6 @@ impl RefStore {
 
     pub fn save_snapshot(&self, snapshot_id: &str, refmap: &RefMap) -> Result<(), AppError> {
         self.with_write_lock(|| self.save_snapshot_unlocked(snapshot_id, refmap))
-    }
-
-    pub fn save_existing_snapshot(
-        &self,
-        snapshot_id: &str,
-        refmap: &RefMap,
-    ) -> Result<(), AppError> {
-        validate_snapshot_id(snapshot_id)?;
-        self.with_write_lock(|| {
-            if !self.snapshot_path(snapshot_id).is_file() {
-                return Err(AppError::Adapter(AdapterError::snapshot_not_found(
-                    snapshot_id,
-                )));
-            }
-            self.save_snapshot_unlocked(snapshot_id, refmap)
-        })
     }
 
     pub(crate) fn update_existing_snapshot<T>(
@@ -243,11 +227,12 @@ impl RefStore {
 }
 
 /// Pruning logic is a sibling `#[path]` module rather than a separate crate
-/// module so it can access `base_dir`/`snapshots_dir` directly. Exposing them
-/// as `pub(crate)` would widen the visibility surface to every module in the
-/// crate; the path declaration keeps them private to this module tree.
+/// module so it can access `base_dir`/`snapshots_dir` directly, without
+/// widening those fields' visibility beyond this module tree. The module
+/// itself is `pub(crate)` so its standalone, non-`RefStore` age-based-prune
+/// helper is reachable from other commands that need the same TTL sweep.
 #[path = "refs_store_prune.rs"]
-mod prune;
+pub(crate) mod prune;
 
 #[cfg(test)]
 #[path = "refs_store_tests.rs"]

@@ -28,14 +28,7 @@ pub fn resolve_query(
             return Err(transient_incomplete_timeout(deadline, &aggregate, last_incomplete).into());
         }
         let attempt_request = LocatorResolveRequest { ..*request };
-        match resolve_query_attempt(
-            adapter,
-            query,
-            root,
-            &attempt_request,
-            deadline,
-            &mut aggregate,
-        ) {
+        match resolve_query_attempt(adapter, query, root, &attempt_request, &mut aggregate) {
             Ok(mut resolution) => {
                 resolution.stats.reads.counts.observation_attempts =
                     resolution.stats.reads.counts.observation_attempts.max(1);
@@ -176,11 +169,10 @@ fn resolve_query_attempt(
     query: &LocatorQuery,
     root: ObservationRoot<'_>,
     request: &LocatorResolveRequest,
-    deadline: crate::Deadline,
     aggregate: &mut LocatorStats,
 ) -> Result<LocatorResolution, AppError> {
     let observation_request =
-        ObservationRequest::locator_for_root(query, request, root, deadline).validate()?;
+        ObservationRequest::locator_for_root(query, request, root, request.deadline).validate()?;
     let tree = crate::renderer_accessibility::observe_tree(adapter, root, &observation_request)?;
     let mut tree = tree;
     tree.stats.reads.counts.observation_attempts =

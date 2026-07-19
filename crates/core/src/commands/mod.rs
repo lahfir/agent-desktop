@@ -75,6 +75,7 @@ pub(crate) mod wait_event_input;
 pub(crate) mod wait_mode;
 pub(crate) mod wait_predicate;
 pub mod wait_selector;
+pub mod wait_surface;
 pub(crate) mod wait_text_match;
 pub(crate) mod wait_timeout;
 mod window_target;

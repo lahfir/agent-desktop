@@ -1,6 +1,13 @@
 use crate::types::{AdWaitMode, AdWaitPredicate, AdWaitScope};
 
-/// Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs`.
+/// Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs` for
+/// the pause/element/text/surface wait modes and predicates.
+///
+/// The core event-wait mode (`--event` / `--window-id`) is intentionally not
+/// exposed over FFI in this release; `wait_args_from_ffi` always forwards
+/// `event: None` and `window_id: None` to core. `mode.window` here is a
+/// title-appearance wait (poll until a window with the given title exists),
+/// which is a distinct semantic from the deferred event-wait mode.
 ///
 /// Mode, predicate, and scope fields are grouped into named PODs. Optional
 /// numbers use `AdOptional*`; optional strings are nullable pointers.

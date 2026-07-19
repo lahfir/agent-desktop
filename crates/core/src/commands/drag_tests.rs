@@ -110,10 +110,14 @@ impl SystemOps for DragCaptureAdapter {
 
 fn xy_args(drop_delay_ms: Option<u64>) -> DragArgs {
     DragArgs {
-        from_ref: None,
-        from_xy: Some((1.0, 2.0)),
-        to_ref: None,
-        to_xy: Some((3.0, 4.0)),
+        from: DragEndpoint {
+            ref_id: None,
+            xy: Some((1.0, 2.0)),
+        },
+        to: DragEndpoint {
+            ref_id: None,
+            xy: Some((3.0, 4.0)),
+        },
         snapshot_id: None,
         duration_ms: None,
         drop_delay_ms,
@@ -202,10 +206,14 @@ fn cross_app_snapshot() -> String {
 
 fn cross_app_args(snapshot_id: String) -> DragArgs {
     DragArgs {
-        from_ref: Some("@e1".into()),
-        from_xy: None,
-        to_ref: Some("@e2".into()),
-        to_xy: None,
+        from: DragEndpoint {
+            ref_id: Some("@e1".into()),
+            xy: None,
+        },
+        to: DragEndpoint {
+            ref_id: Some("@e2".into()),
+            xy: None,
+        },
         snapshot_id: Some(snapshot_id),
         duration_ms: None,
         drop_delay_ms: None,

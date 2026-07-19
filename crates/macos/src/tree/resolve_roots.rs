@@ -122,11 +122,13 @@ fn source_window_scoped_roots(
         }
         crate::system::window_resolve::verify_window_identity_until(
             id,
-            crate::system::process_identity::to_pid_t(entry.process.pid)?,
-            entry.source.source_app.as_deref(),
-            entry.process.process_instance.as_deref(),
-            entry.source.source_window_title.as_deref(),
-            entry.source.source_window_bounds_hash,
+            crate::system::window_resolve::WindowIdentityEvidence {
+                pid: crate::system::process_identity::to_pid_t(entry.process.pid)?,
+                app: entry.source.source_app.as_deref(),
+                process_instance: entry.process.process_instance.as_deref(),
+                title: entry.source.source_window_title.as_deref(),
+                bounds_hash: entry.source.source_window_bounds_hash,
+            },
             deadline,
         )?;
     }

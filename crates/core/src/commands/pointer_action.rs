@@ -8,16 +8,33 @@ use crate::{
 };
 use serde_json::{Value, json};
 
-fn resolve_point_from_entry(
-    target: (&str, &RefEntry),
+struct EntryPointResolve<'a> {
+    ref_id: &'a str,
+    entry: &'a RefEntry,
     stability: Option<Option<u64>>,
-    deadline: crate::Deadline,
-    lease: Option<&crate::InteractionLease>,
+    lease: Option<&'a crate::InteractionLease>,
     verify_receives_events: bool,
+}
+
+pub(crate) struct PointResolveAttempt<'a> {
+    pub args: crate::commands::point_resolve::PointResolveArgs<'a>,
+    pub stability: Option<Option<u64>>,
+    pub allow_scroll: bool,
+}
+
+fn resolve_point_from_entry(
+    request: EntryPointResolve<'_>,
+    deadline: crate::Deadline,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
-    let (ref_id, entry) = target;
+    let EntryPointResolve {
+        ref_id,
+        entry,
+        stability,
+        lease,
+        verify_receives_events,
+    } = request;
     let mut handle =
         resolve_handle_within_deadline(adapter, entry, deadline).inspect_err(|err| {
             let _ = context.trace_lazy("ref.resolve.error", || {
@@ -150,11 +167,14 @@ pub(crate) fn wait_for_point_with_deadline<'a>(
             return Err(point_actionability_timeout(last_report));
         }
         match resolve_point_from_entry(
-            (ref_id, &entry),
-            stability,
+            EntryPointResolve {
+                ref_id,
+                entry: &entry,
+                stability,
+                lease: None,
+                verify_receives_events: false,
+            },
             deadline,
-            None,
-            false,
             adapter,
             context,
         ) {
@@ -208,11 +228,7 @@ pub(crate) fn focus_point_under_lease(
 }
 
 pub(crate) fn resolve_point_under_lease<'a>(
-    target: (
-        crate::commands::point_resolve::PointResolveArgs<'a>,
-        Option<Option<u64>>,
-    ),
-    allow_scroll: bool,
+    attempt: PointResolveAttempt<'a>,
     deadline: crate::Deadline,
     lease: &crate::InteractionLease,
     adapter: &dyn PlatformAdapter,
@@ -220,17 +236,24 @@ pub(crate) fn resolve_point_under_lease<'a>(
 ) -> Result<crate::commands::point_resolve::ResolvedPoint, AppError> {
     use crate::commands::point_resolve::resolve_point_from_ref_or_xy_with_context;
 
-    let (args, stability) = target;
+    let PointResolveAttempt {
+        args,
+        stability,
+        allow_scroll,
+    } = attempt;
     let Some(ref_id) = args.ref_id else {
         return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, lease);
     };
     let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
     resolve_point_from_entry(
-        (ref_id, &entry),
-        stability,
+        EntryPointResolve {
+            ref_id,
+            entry: &entry,
+            stability,
+            lease: allow_scroll.then_some(lease),
+            verify_receives_events: true,
+        },
         deadline,
-        allow_scroll.then_some(lease),
-        true,
         adapter,
         context,
     )

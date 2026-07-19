@@ -27,6 +27,10 @@ impl DragDeliveryState {
         self.delivery
     }
 
+    pub(crate) fn delivery_mut(&mut self) -> &mut crate::actions::DeliveryTracker {
+        &mut self.delivery
+    }
+
     pub(crate) fn enrich_error(&self, mut error: AdapterError) -> AdapterError {
         error = self.delivery.annotate(error);
         if self.delivery.delivered_units() == 0 {
@@ -75,6 +79,9 @@ mod tests {
         let mut state = DragDeliveryState::default();
         state.arm();
         state.mark_down_posted();
+        for _ in 0..3 {
+            state.delivery_mut().mark_delivered();
+        }
         let error = state.enrich_error(AdapterError::timeout("deadline"));
         assert_eq!(
             error.disposition,
@@ -82,7 +89,7 @@ mod tests {
         );
         let details = error.details.unwrap();
 
-        assert_eq!(details["delivered_events"], 1);
+        assert_eq!(details["delivered_events"], 4);
         assert_eq!(details["emergency_release_posted"], true);
     }
 }

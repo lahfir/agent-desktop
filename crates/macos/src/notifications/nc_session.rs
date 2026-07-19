@@ -31,6 +31,19 @@ pub(crate) struct NcSession {
     cleanup_on_drop: bool,
 }
 
+struct NcSessionOps<Open, WaitUntilReady, Close, Reactivate>
+where
+    Open: FnMut(Deadline) -> Result<(), AdapterError>,
+    WaitUntilReady: FnMut(Deadline) -> Result<i32, AdapterError>,
+    Close: FnMut(Deadline) -> Result<(), AdapterError>,
+    Reactivate: FnMut(&ProcessIdentity, Deadline) -> Result<(), AdapterError>,
+{
+    open: Open,
+    wait_until_ready: WaitUntilReady,
+    close: Close,
+    reactivate: Reactivate,
+}
+
 impl NcSession {
     pub(crate) fn open(
         policy: InteractionPolicy,
@@ -54,35 +67,40 @@ impl NcSession {
         Self::open_with(
             previous_app,
             deadline,
-            open_nc,
-            wait_for_nc_ready,
-            close_nc,
-            reactivate_app,
+            NcSessionOps {
+                open: open_nc,
+                wait_until_ready: wait_for_nc_ready,
+                close: close_nc,
+                reactivate: reactivate_app,
+            },
         )
     }
 
-    fn open_with(
+    fn open_with<Open, WaitUntilReady, Close, Reactivate>(
         previous_app: Option<ProcessIdentity>,
         deadline: Deadline,
-        mut open: impl FnMut(Deadline) -> Result<(), AdapterError>,
-        mut wait_until_ready: impl FnMut(Deadline) -> Result<i32, AdapterError>,
-        close: impl FnMut(Deadline) -> Result<(), AdapterError>,
-        reactivate: impl FnMut(&ProcessIdentity, Deadline) -> Result<(), AdapterError>,
-    ) -> Result<Self, AdapterError> {
+        mut ops: NcSessionOps<Open, WaitUntilReady, Close, Reactivate>,
+    ) -> Result<Self, AdapterError>
+    where
+        Open: FnMut(Deadline) -> Result<(), AdapterError>,
+        WaitUntilReady: FnMut(Deadline) -> Result<i32, AdapterError>,
+        Close: FnMut(Deadline) -> Result<(), AdapterError>,
+        Reactivate: FnMut(&ProcessIdentity, Deadline) -> Result<(), AdapterError>,
+    {
         let mut session = Self {
             pid: 0,
             close_pending: true,
             previous_app,
             cleanup_on_drop: true,
         };
-        let result = open(deadline).and_then(|()| wait_until_ready(deadline));
+        let result = (ops.open)(deadline).and_then(|()| (ops.wait_until_ready)(deadline));
         match result {
             Ok(pid) => {
                 session.pid = pid;
                 Ok(session)
             }
             Err(error) => {
-                let cleanup = session.cleanup_with(close, reactivate);
+                let cleanup = session.cleanup_with(ops.close, ops.reactivate);
                 merge_session_result(Err(error), cleanup)
             }
         }

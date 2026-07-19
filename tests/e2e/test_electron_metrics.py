@@ -13,6 +13,7 @@ from electron_metrics import (
     ensure_distinct_comparison,
     order_for,
     read_trace_events,
+    run_sample,
     verify_exact_namespace,
 )
 from electron_metrics_report import build_report, paired_summary, summarize_run
@@ -61,6 +62,46 @@ def command_result(data):
         stdout=json.dumps({"ok": True, "data": data}),
         stderr="",
         returncode=0,
+    )
+
+
+def timed_command_result(data, wall_ms=12.5, cpu_ms=3.4):
+    result = command_result(data)
+    result.wall_ms = wall_ms
+    result.cpu_ms = cpu_ms
+    return result
+
+
+def failed_command_result(
+    termination_error=None,
+    timed_out=False,
+    output_limited=False,
+    stdout="",
+    stderr="",
+    returncode=1,
+    wall_ms=5.0,
+    cpu_ms=1.0,
+):
+    return types.SimpleNamespace(
+        termination_error=termination_error,
+        timed_out=timed_out,
+        output_limited=output_limited,
+        stdout=stdout,
+        stderr=stderr,
+        returncode=returncode,
+        wall_ms=wall_ms,
+        cpu_ms=cpu_ms,
+    )
+
+
+def sample_runner(require_stats=False):
+    return types.SimpleNamespace(
+        binary="agent-desktop",
+        label="current",
+        environment={},
+        trace_path="/tmp/agent-desktop-run-sample-test.jsonl",
+        trace_offset=0,
+        require_stats=require_stats,
     )
 
 
@@ -203,6 +244,88 @@ class MetricsIntegrityTests(unittest.TestCase):
         }
         with self.assertRaises(MeasurementError):
             ensure_distinct_comparison(runners)
+
+
+class RunSampleTests(unittest.TestCase):
+    def test_command_failure_sets_failure_kind_and_error_code(self):
+        result = failed_command_result(termination_error="killed by signal")
+        runner = sample_runner(require_stats=True)
+
+        with patch("electron_metrics.run_bounded", return_value=result), \
+                patch("electron_metrics.read_trace_events", return_value=([], 0)):
+            sample = run_sample(runner, arguments(), "w-1")
+
+        self.assertFalse(sample["command_success"])
+        self.assertEqual(sample["failure_kind"], "termination_failure")
+        self.assertEqual(sample["error_code"], "killed by signal")
+        self.assertFalse(sample["addressable"])
+        self.assertFalse(sample["correct"])
+
+    def test_not_addressable_branch_when_match_is_missing(self):
+        result = timed_command_result({"snapshot_id": "s-1"})
+        runner = sample_runner(require_stats=False)
+
+        with patch("electron_metrics.run_bounded", return_value=result), \
+                patch("electron_metrics.read_trace_events", return_value=([], 0)):
+            sample = run_sample(runner, arguments(), "w-1")
+
+        self.assertTrue(sample["command_success"])
+        self.assertFalse(sample["addressable"])
+        self.assertEqual(sample["failure_kind"], "not_addressable")
+        self.assertFalse(sample["correct"])
+
+    def test_incomplete_traversal_marks_failure_even_when_reresolution_succeeds(self):
+        data = {"snapshot_id": "s-1", "match": {"ref_id": "@e1", "role": "button"}}
+        result = timed_command_result(data)
+        events = [{"event": "locator.resolve", "complete": False, "query_stats": {"nodes": 4}}]
+        runner = sample_runner(require_stats=True)
+
+        with patch("electron_metrics.run_bounded", return_value=result), \
+                patch("electron_metrics.read_trace_events", return_value=(events, 42)), \
+                patch("electron_metrics.verify_exact_namespace", return_value=True):
+            sample = run_sample(runner, arguments(), "w-1")
+
+        self.assertTrue(sample["addressable"])
+        self.assertTrue(sample["exact_reresolution"])
+        self.assertFalse(sample["correct"])
+        self.assertEqual(sample["failure_kind"], "incomplete_traversal")
+        self.assertEqual(sample["stats"], {"nodes": 4})
+        self.assertEqual(runner.trace_offset, 42)
+
+    def test_reresolution_branch_marks_failure_when_namespace_check_fails(self):
+        data = {"snapshot_id": "s-1", "match": {"ref_id": "@e1", "role": "button"}}
+        result = timed_command_result(data)
+        runner = sample_runner(require_stats=False)
+
+        with patch("electron_metrics.run_bounded", return_value=result), \
+                patch("electron_metrics.read_trace_events", return_value=([], 0)), \
+                patch("electron_metrics.verify_exact_namespace", return_value=False):
+            sample = run_sample(runner, arguments(), "w-1")
+
+        self.assertTrue(sample["addressable"])
+        self.assertFalse(sample["exact_reresolution"])
+        self.assertFalse(sample["correct"])
+        self.assertEqual(sample["failure_kind"], "reresolution")
+
+    def test_success_path_reports_correct_result_and_strips_identity_fields(self):
+        data = {"snapshot_id": "s-1", "match": {"ref_id": "@e1", "role": "button"}}
+        result = timed_command_result(data)
+        events = [{"event": "locator.resolve", "complete": True, "query_stats": {"nodes": 6}}]
+        runner = sample_runner(require_stats=True)
+
+        with patch("electron_metrics.run_bounded", return_value=result), \
+                patch("electron_metrics.read_trace_events", return_value=(events, 7)), \
+                patch("electron_metrics.verify_exact_namespace", return_value=True):
+            sample = run_sample(runner, arguments(), "w-1")
+
+        self.assertTrue(sample["addressable"])
+        self.assertTrue(sample["exact_reresolution"])
+        self.assertTrue(sample["correct"])
+        self.assertIsNone(sample["failure_kind"])
+        self.assertEqual(sample["stats"], {"nodes": 6})
+        self.assertNotIn("ref_id", sample)
+        self.assertNotIn("snapshot_id", sample)
+        self.assertNotIn("role", sample)
 
 
 if __name__ == "__main__":

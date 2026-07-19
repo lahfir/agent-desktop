@@ -206,10 +206,14 @@ fn drag_none_scrolls_once_then_dispatches_revalidated_endpoints_once() {
     let adapter = SingleShotScrollAdapter::new();
     let value = drag::execute(
         drag::DragArgs {
-            from_ref: Some("@e1".into()),
-            from_xy: None,
-            to_ref: Some("@e2".into()),
-            to_xy: None,
+            from: drag::DragEndpoint {
+                ref_id: Some("@e1".into()),
+                xy: None,
+            },
+            to: drag::DragEndpoint {
+                ref_id: Some("@e2".into()),
+                xy: None,
+            },
             snapshot_id: Some(snapshot(2)),
             duration_ms: None,
             drop_delay_ms: None,

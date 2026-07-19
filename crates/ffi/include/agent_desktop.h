@@ -813,7 +813,14 @@ typedef struct AdWaitScope {
 } AdWaitScope;
 
 /**
- * Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs`.
+ * Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs` for
+ * the pause/element/text/surface wait modes and predicates.
+ *
+ * The core event-wait mode (`--event` / `--window-id`) is intentionally not
+ * exposed over FFI in this release; `wait_args_from_ffi` always forwards
+ * `event: None` and `window_id: None` to core. `mode.window` here is a
+ * title-appearance wait (poll until a window with the given title exists),
+ * which is a distinct semantic from the deferred event-wait mode.
  *
  * Mode, predicate, and scope fields are grouped into named PODs. Optional
  * numbers use `AdOptional*`; optional strings are nullable pointers.
@@ -1060,9 +1067,9 @@ AdResult ad_init(uint32_t expected_major);
  * `action` must be a non-null pointer to a valid `AdAction`.
  * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
  *
- * This legacy entrypoint cannot express process-generation or typed native-id
- * evidence and therefore fails closed. Use
- * ad_execute_ref_action_exact_with_policy.
+ * Handles come from exact resolvers and already carry process-generation
+ * evidence, so this executes under the same policy as
+ * `ad_execute_action_with_policy`.
  */
 AdResult ad_execute_action(const struct AdAdapter *adapter,
                            const struct AdNativeHandle *handle,

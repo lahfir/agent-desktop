@@ -2,19 +2,23 @@ use crate::tree::AXElement;
 
 pub(crate) const MAX_LABEL_ELEMENTS: usize = 5;
 
+pub(crate) struct NameEvidenceSinks<'a> {
+    pub(crate) stats: &'a mut agent_desktop_core::LocatorStats,
+    pub(crate) usage: &'a mut crate::tree::observation_usage::ObservationUsage,
+}
+
 pub(crate) fn complete_name_evidence_with_deadline(
     attrs: &crate::tree::NodeAttrs,
     role: &str,
     children: &[AXElement],
     deadline: std::time::Instant,
-    stats: &mut agent_desktop_core::LocatorStats,
-    usage: &mut crate::tree::observation_usage::ObservationUsage,
+    mut sinks: NameEvidenceSinks<'_>,
 ) -> Result<(agent_desktop_core::NameEvidence, bool), agent_desktop_core::AdapterError> {
     let mut evidence = attrs.name_evidence.clone();
     if !should_read_child_label(role, &evidence) {
         return Ok((evidence, true));
     }
-    let (label, complete) = label_from_children(children, deadline, stats, usage)?;
+    let (label, complete) = label_from_children(children, deadline, &mut sinks)?;
     evidence.child_label = label;
     Ok((evidence, complete))
 }
@@ -43,27 +47,25 @@ fn has_name_without_child_content(evidence: &agent_desktop_core::NameEvidence) -
 fn label_from_children(
     children: &[AXElement],
     deadline: std::time::Instant,
-    stats: &mut agent_desktop_core::LocatorStats,
-    usage: &mut crate::tree::observation_usage::ObservationUsage,
+    sinks: &mut NameEvidenceSinks<'_>,
 ) -> Result<(Option<String>, bool), agent_desktop_core::AdapterError> {
     let mut labels = Vec::new();
-    note_label_limit(children.len(), stats);
+    note_label_limit(children.len(), sinks.stats);
     let mut complete = children.len() <= MAX_LABEL_ELEMENTS;
     for child in children.iter().take(MAX_LABEL_ELEMENTS) {
-        let (role, role_complete) = timed_string(child, "AXRole", deadline, stats, usage)?;
+        let (role, role_complete) = timed_string(child, "AXRole", deadline, sinks)?;
         complete &= role_complete;
         match role.as_deref() {
             Some("AXStaticText") => {
                 let (subrole, subrole_complete) =
-                    timed_string(child, "AXSubrole", deadline, stats, usage)?;
+                    timed_string(child, "AXSubrole", deadline, sinks)?;
                 complete &= subrole_complete;
                 if subrole.as_deref() != Some("AXSecureTextField") {
-                    complete &= push_static_text(&mut labels, child, deadline, stats, usage)?;
+                    complete &= push_static_text(&mut labels, child, deadline, sinks)?;
                 }
             }
             Some("AXCell") | Some("AXGroup") => {
-                let (title, title_complete) =
-                    timed_string(child, "AXTitle", deadline, stats, usage)?;
+                let (title, title_complete) = timed_string(child, "AXTitle", deadline, sinks)?;
                 complete &= title_complete;
                 if let Some(title) = title {
                     labels.push(title);
@@ -74,19 +76,21 @@ fn label_from_children(
                     MAX_LABEL_ELEMENTS,
                     deadline,
                 );
-                record_child_read(&grandchildren, stats)?;
-                complete &= grandchildren.complete && !grandchildren.truncated();
+                record_child_read(&grandchildren, sinks.stats)?;
+                complete &= grandchildren.complete
+                    && !grandchildren.truncated()
+                    && !grandchildren.status.invalid_element;
                 for grandchild in grandchildren.elements {
                     let (role, role_complete) =
-                        timed_string(&grandchild, "AXRole", deadline, stats, usage)?;
+                        timed_string(&grandchild, "AXRole", deadline, sinks)?;
                     complete &= role_complete;
                     if role.as_deref() == Some("AXStaticText") {
                         let (subrole, subrole_complete) =
-                            timed_string(&grandchild, "AXSubrole", deadline, stats, usage)?;
+                            timed_string(&grandchild, "AXSubrole", deadline, sinks)?;
                         complete &= subrole_complete;
                         if subrole.as_deref() != Some("AXSecureTextField") {
                             complete &=
-                                push_static_text(&mut labels, &grandchild, deadline, stats, usage)?;
+                                push_static_text(&mut labels, &grandchild, deadline, sinks)?;
                         }
                     }
                 }
@@ -94,7 +98,7 @@ fn label_from_children(
             _ => {}
         }
     }
-    let (label, join_complete) = join_unique_labels(labels, usage);
+    let (label, join_complete) = join_unique_labels(labels, sinks.usage);
     Ok((label, complete && join_complete))
 }
 
@@ -102,8 +106,7 @@ fn label_from_children(
 fn label_from_children(
     _children: &[AXElement],
     _deadline: std::time::Instant,
-    _stats: &mut agent_desktop_core::LocatorStats,
-    _usage: &mut crate::tree::observation_usage::ObservationUsage,
+    _sinks: &mut NameEvidenceSinks<'_>,
 ) -> Result<(Option<String>, bool), agent_desktop_core::AdapterError> {
     Ok((None, true))
 }
@@ -113,16 +116,19 @@ fn timed_string(
     element: &AXElement,
     attribute: &str,
     deadline: std::time::Instant,
-    stats: &mut agent_desktop_core::LocatorStats,
-    usage: &mut crate::tree::observation_usage::ObservationUsage,
+    sinks: &mut NameEvidenceSinks<'_>,
 ) -> Result<(Option<String>, bool), agent_desktop_core::AdapterError> {
-    crate::tree::locator_deadline::prepare(element, deadline)?;
-    stats.semantic_reads.child_label_reads += 1;
-    let value = crate::tree::attributes::copy_string_attr_bounded_result(
-        element, attribute, deadline, usage,
-    )
-    .map_err(|error| crate::tree::query::read_error::semantic_read(error, "child_label.text"))?;
-    Ok(complete_text(value, stats))
+    sinks.stats.semantic_reads.child_label_reads += 1;
+    let read = crate::tree::attributes::copy_string_attr_bounded_result(
+        element,
+        attribute,
+        deadline,
+        sinks.usage,
+    );
+    match read {
+        Ok(value) => Ok(complete_text(value, sinks.stats)),
+        Err(error) => degrade_transient_read(error, "child_label.text", sinks.stats),
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -130,18 +136,21 @@ fn push_static_text(
     labels: &mut Vec<String>,
     element: &AXElement,
     deadline: std::time::Instant,
-    stats: &mut agent_desktop_core::LocatorStats,
-    usage: &mut crate::tree::observation_usage::ObservationUsage,
+    sinks: &mut NameEvidenceSinks<'_>,
 ) -> Result<bool, agent_desktop_core::AdapterError> {
-    crate::tree::locator_deadline::prepare(element, deadline)?;
-    stats.semantic_reads.child_label_reads += 1;
-    let value = crate::tree::attributes::copy_value_typed_bounded_result(element, deadline, usage)
-        .map_err(|error| {
-            crate::tree::query::read_error::semantic_read(error, "child_label.value")
-        })?;
-    let (mut text, mut complete) = complete_text(value, stats);
+    sinks.stats.semantic_reads.child_label_reads += 1;
+    let read =
+        crate::tree::attributes::copy_value_typed_bounded_result(element, deadline, sinks.usage);
+    let value = match read {
+        Ok(value) => value,
+        Err(error) => {
+            return degrade_transient_read(error, "child_label.value", sinks.stats)
+                .map(|(_, complete)| complete);
+        }
+    };
+    let (mut text, mut complete) = complete_text(value, sinks.stats);
     if text.is_none() && complete {
-        let (title, title_complete) = timed_string(element, "AXTitle", deadline, stats, usage)?;
+        let (title, title_complete) = timed_string(element, "AXTitle", deadline, sinks)?;
         text = title;
         complete &= title_complete;
     }
@@ -149,6 +158,24 @@ fn push_static_text(
         labels.push(text);
     }
     Ok(complete)
+}
+
+#[cfg(target_os = "macos")]
+fn degrade_transient_read(
+    error: i32,
+    phase: &str,
+    stats: &mut agent_desktop_core::LocatorStats,
+) -> Result<(Option<String>, bool), agent_desktop_core::AdapterError> {
+    if error == accessibility_sys::kAXErrorAPIDisabled {
+        return Err(crate::tree::query::read_error::semantic_read(error, phase));
+    }
+    stats.reads.health.cannot_complete +=
+        u64::from(error == accessibility_sys::kAXErrorCannotComplete);
+    stats.reads.health.native_read_failures += u64::from(
+        error != accessibility_sys::kAXErrorCannotComplete
+            && error != accessibility_sys::kAXErrorInvalidUIElement,
+    );
+    Ok((None, false))
 }
 
 fn complete_text(
@@ -180,12 +207,6 @@ fn record_child_read(
     if read.status.api_disabled {
         return Err(crate::tree::query::read_error::semantic_read(
             accessibility_sys::kAXErrorAPIDisabled,
-            "child_label.children",
-        ));
-    }
-    if read.status.invalid_element {
-        return Err(crate::tree::query::read_error::semantic_read(
-            accessibility_sys::kAXErrorInvalidUIElement,
             "child_label.children",
         ));
     }
@@ -234,95 +255,5 @@ fn join_unique_labels(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use agent_desktop_core::ObservationBudget;
-
-    fn usage(max_field_bytes: usize) -> crate::tree::observation_usage::ObservationUsage {
-        crate::tree::observation_usage::ObservationUsage::new(ObservationBudget {
-            max_field_bytes,
-            max_text_bytes: max_field_bytes,
-            ..ObservationBudget::default()
-        })
-    }
-
-    #[test]
-    fn child_label_cap_is_reported_as_incomplete_traversal() {
-        let mut stats = agent_desktop_core::LocatorStats::default();
-
-        note_label_limit(MAX_LABEL_ELEMENTS + 1, &mut stats);
-
-        assert_eq!(stats.traversal.limits.child_label_hits, 1);
-    }
-
-    #[test]
-    fn labels_are_normalized_deduplicated_and_joined_in_document_order() {
-        let mut usage = usage(256);
-        let labels = vec![
-            "  Save\n".to_string(),
-            "Save".to_string(),
-            " Draft   title ".to_string(),
-        ];
-
-        assert_eq!(
-            join_unique_labels(labels, &mut usage),
-            (Some("Save Draft title".into()), true)
-        );
-    }
-
-    #[test]
-    fn label_budget_truncation_is_explicit_and_utf8_safe() {
-        let mut usage = usage(4);
-
-        let (label, complete) = join_unique_labels(["a🙂z".into()], &mut usage);
-
-        assert_eq!(label.as_deref(), Some("a"));
-        assert!(!complete);
-    }
-
-    #[test]
-    fn description_only_name_skips_child_content_fallback() {
-        let evidence = agent_desktop_core::NameEvidence {
-            description: Some("scroll-area".into()),
-            ..Default::default()
-        };
-
-        assert!(!should_read_child_label("button", &evidence));
-    }
-
-    #[test]
-    fn unnamed_elements_still_use_bounded_child_content_fallback() {
-        assert!(should_read_child_label(
-            "button",
-            &agent_desktop_core::NameEvidence::default()
-        ));
-    }
-
-    #[test]
-    fn container_roles_never_derive_names_from_children() {
-        for role in [
-            "scrollarea",
-            "group",
-            "window",
-            "list",
-            "table",
-            "outline",
-            "toolbar",
-        ] {
-            assert!(
-                !should_read_child_label(role, &agent_desktop_core::NameEvidence::default()),
-                "container role {role} must not name itself from descendants"
-            );
-        }
-    }
-
-    #[test]
-    fn direct_names_skip_child_label_reads_for_every_role() {
-        let evidence = agent_desktop_core::NameEvidence {
-            explicit_label: Some("scroll-area".into()),
-            ..Default::default()
-        };
-
-        assert!(!should_read_child_label("button", &evidence));
-    }
-}
+#[path = "child_labels_tests.rs"]
+mod tests;

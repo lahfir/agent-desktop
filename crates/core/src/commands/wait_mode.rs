@@ -1,6 +1,6 @@
 use crate::{
     AppError,
-    commands::{wait::WaitArgs, wait_predicate},
+    commands::{wait::WaitArgs, wait_predicate, wait_surface::SurfaceWait},
     refs::validate_ref_id,
 };
 
@@ -39,17 +39,26 @@ impl WaitMode {
         if let Some(ms) = args.mode.ms {
             return Ok(Self::Sleep(ms));
         }
-        if args.mode.menu || args.mode.menu_closed {
-            return Ok(Self::Menu {
-                app: args.app,
-                open: args.mode.menu,
-            });
-        }
-        if args.mode.notification {
-            return Ok(Self::Notification {
-                app: args.app,
-                text: args.mode.text,
-            });
+        match args.mode.surface {
+            Some(SurfaceWait::Menu) => {
+                return Ok(Self::Menu {
+                    app: args.app,
+                    open: true,
+                });
+            }
+            Some(SurfaceWait::MenuClosed) => {
+                return Ok(Self::Menu {
+                    app: args.app,
+                    open: false,
+                });
+            }
+            Some(SurfaceWait::Notification) => {
+                return Ok(Self::Notification {
+                    app: args.app,
+                    text: args.mode.text,
+                });
+            }
+            None => {}
         }
         if let Some(event) = args.mode.event {
             return Ok(Self::Event {
@@ -103,7 +112,8 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
             "Use --element <ref> --predicate value --value <expected>.",
         ));
     }
-    if args.predicate.count.is_some() && (args.mode.text.is_none() || args.mode.notification) {
+    let waits_for_notification = matches!(args.mode.surface, Some(SurfaceWait::Notification));
+    if args.predicate.count.is_some() && (args.mode.text.is_none() || waits_for_notification) {
         return Err(AppError::invalid_input_with_suggestion(
             "--count is only valid for --text waits",
             "Use --text <text> --count <expected> without --notification, or remove --count.",
@@ -114,10 +124,8 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
         args.mode.ms.is_some(),
         args.mode.element.is_some(),
         args.mode.window.is_some() && args.mode.event.is_none(),
-        args.mode.text.is_some() && !args.mode.notification,
-        args.mode.menu,
-        args.mode.menu_closed,
-        args.mode.notification,
+        args.mode.text.is_some() && !waits_for_notification,
+        args.mode.surface.is_some(),
         args.mode.event.is_some(),
     ]
     .into_iter()
@@ -129,10 +137,14 @@ pub(crate) fn validate_wait_mode(args: &WaitArgs) -> Result<(), AppError> {
     if selected == 0 {
         return Err(missing_wait_mode());
     }
-    Err(AppError::invalid_input_with_suggestion(
+    Err(ambiguous_wait_mode())
+}
+
+pub(crate) fn ambiguous_wait_mode() -> AppError {
+    AppError::invalid_input_with_suggestion(
         "wait accepts exactly one mode",
         "Use one of: ms, --element, --window, --text, --menu, --menu-closed, --notification, or --event.",
-    ))
+    )
 }
 
 fn validate_event_filters(args: &WaitArgs) -> Result<(), AppError> {

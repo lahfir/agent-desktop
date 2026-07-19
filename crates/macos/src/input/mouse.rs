@@ -62,11 +62,13 @@ mod imp {
             MouseEventKind::Click { count } => {
                 agent_desktop_core::validate_mouse_click_count(count)?;
                 synthesize_click(
-                    point,
-                    cg_button,
-                    &event.button,
-                    count,
-                    flags,
+                    ClickSpec {
+                        point,
+                        cg_button,
+                        button: &event.button,
+                        count,
+                        flags,
+                    },
                     deadline,
                     verify_target,
                 )
@@ -125,30 +127,34 @@ mod imp {
         Ok(rounded as i32)
     }
 
-    fn synthesize_click(
+    struct ClickSpec<'a> {
         point: CGPoint,
         cg_button: CGMouseButton,
-        button: &MouseButton,
+        button: &'a MouseButton,
         count: u32,
         flags: CGEventFlags,
+    }
+
+    fn synthesize_click(
+        spec: ClickSpec,
         deadline: Deadline,
         verify_target: &mut dyn FnMut() -> Result<(), AdapterError>,
     ) -> Result<(), AdapterError> {
-        let down_ty = down_type(button);
-        let up_ty = up_type(button);
+        let down_ty = down_type(spec.button);
+        let up_ty = up_type(spec.button);
         let mut delivery = crate::actions::DeliveryTracker::default();
         crate::input::mouse_move::post_move_events(
-            point,
-            cg_button,
-            flags,
+            spec.point,
+            spec.cg_button,
+            spec.flags,
             deadline,
             &mut delivery,
         )?;
-        for i in 1..=count {
+        for i in 1..=spec.count {
             ensure_budget(deadline, delivery)?;
-            let down = create_event(down_ty, point, cg_button, flags)
+            let down = create_event(down_ty, spec.point, spec.cg_button, spec.flags)
                 .map_err(|error| delivery.annotate(error))?;
-            let up = create_event(up_ty, point, cg_button, flags)
+            let up = create_event(up_ty, spec.point, spec.cg_button, spec.flags)
                 .map_err(|error| delivery.annotate(error))?;
             set_click_count(&down, i as i64);
             set_click_count(&up, i as i64);
@@ -167,7 +173,7 @@ mod imp {
                 .map_err(|error| delivery.annotate(error))?;
             up.post(CGEventTapLocation::HID);
             ensure_budget(deadline, delivery)?;
-            if i < count {
+            if i < spec.count {
                 sleep_bounded(deadline, std::time::Duration::from_millis(30), delivery)?;
             }
         }
@@ -222,15 +228,14 @@ mod imp {
         source: &CGEventSource,
         event: (CGEventType, CGPoint, CGMouseButton, CGEventFlags),
         deadline: Deadline,
-        delivery: crate::actions::DeliveryTracker,
+        delivery: &mut crate::actions::DeliveryTracker,
     ) -> Result<(), AdapterError> {
-        ensure_budget(deadline, delivery)?;
+        ensure_budget(deadline, *delivery)?;
         let ev = create_event_with_source(source, event.0, event.1, event.2, event.3)
             .map_err(|error| delivery.annotate(error))?;
         ev.post(CGEventTapLocation::HID);
-        let mut delivery = delivery;
         delivery.mark_delivered();
-        ensure_budget(deadline, delivery)
+        ensure_budget(deadline, *delivery)
     }
 
     fn to_cg_button(button: &MouseButton) -> CGMouseButton {

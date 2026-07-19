@@ -22,9 +22,7 @@ fn mode() -> WaitModeArgs {
         element: None,
         window: None,
         text: None,
-        menu: false,
-        menu_closed: false,
-        notification: false,
+        surface: None,
         event: None,
         window_id: None,
     }
@@ -81,6 +79,48 @@ fn from_args_threads_window_title_into_event_mode() {
         }
         _ => panic!("expected WaitMode::Event, got a different mode"),
     }
+}
+
+#[test]
+fn from_args_maps_surface_variants_to_menu_open_state() {
+    let open = WaitMode::from_args(args(WaitModeArgs {
+        surface: Some(SurfaceWait::Menu),
+        ..mode()
+    }))
+    .unwrap();
+    assert!(matches!(open, WaitMode::Menu { open: true, .. }));
+
+    let closed = WaitMode::from_args(args(WaitModeArgs {
+        surface: Some(SurfaceWait::MenuClosed),
+        ..mode()
+    }))
+    .unwrap();
+    assert!(matches!(closed, WaitMode::Menu { open: false, .. }));
+}
+
+#[test]
+fn from_args_threads_text_filter_into_notification_mode() {
+    let parsed = WaitMode::from_args(args(WaitModeArgs {
+        surface: Some(SurfaceWait::Notification),
+        text: Some("done".into()),
+        ..mode()
+    }))
+    .unwrap();
+    match parsed {
+        WaitMode::Notification { text, .. } => assert_eq!(text.as_deref(), Some("done")),
+        _ => panic!("expected WaitMode::Notification, got a different mode"),
+    }
+}
+
+#[test]
+fn surface_and_element_together_remain_ambiguous() {
+    let result = validate_wait_mode(&args(WaitModeArgs {
+        surface: Some(SurfaceWait::Menu),
+        element: Some("@e1".into()),
+        ..mode()
+    }));
+
+    assert_eq!(result.unwrap_err().code(), "INVALID_ARGS");
 }
 
 #[test]

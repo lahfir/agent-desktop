@@ -24,7 +24,7 @@ pub(crate) use gates::bounds_are_visible;
 pub(crate) use gates::states_are_enabled;
 #[cfg(test)]
 pub(crate) use live::check_live;
-pub(crate) use live::check_live_with_stability;
+pub(crate) use live::{LiveCheckTarget, check_live_with_stability};
 pub(crate) use pointer_delivery::PointerDelivery;
 pub(crate) use receives_events::require_receives_events;
 pub(crate) use requirements::requires_stability;

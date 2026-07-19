@@ -23,14 +23,7 @@ pub(crate) fn execute_with_auto_wait(
     let (result, lease, pre, deadline, _lease_started) =
         execute_with_auto_wait_and_lease(context, request, dispatch)?;
     drop(lease);
-    crate::ref_action::finish_artifacts(
-        context.context,
-        context.adapter,
-        context.entry,
-        context.ref_id,
-        &pre,
-        deadline,
-    );
+    crate::ref_action::finish_artifacts(RefActionContext::new(context, deadline), &pre);
     Ok(result)
 }
 
@@ -108,14 +101,7 @@ fn execute_with_deadline(
         Ok(result) => result,
         Err(error) => {
             drop(lease);
-            crate::ref_action::finish_artifacts(
-                context.context,
-                context.adapter,
-                context.entry,
-                context.ref_id,
-                &pre,
-                deadline,
-            );
+            crate::ref_action::finish_artifacts(RefActionContext::new(context, deadline), &pre);
             return Err(error);
         }
     };

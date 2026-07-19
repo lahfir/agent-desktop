@@ -108,6 +108,69 @@ fn private_write_rejects_an_intermediate_directory_symlink() {
 }
 
 #[test]
+fn user_write_overwrites_an_existing_group_readable_file() {
+    let directory = directory("user-overwrite");
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = directory.join("out.png");
+    std::fs::write(&path, b"old").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    write_user_atomic(&path, b"new").unwrap();
+
+    assert_eq!(std::fs::read(&path).unwrap(), b"new");
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn user_write_refuses_symlink_and_directory_destinations() {
+    let directory = directory("user-refuse");
+    let target = directory.join("target");
+    std::fs::write(&target, b"kept").unwrap();
+    let symlink = directory.join("symlink");
+    std::os::unix::fs::symlink(&target, &symlink).unwrap();
+    let subdirectory = directory.join("subdirectory");
+    std::fs::create_dir(&subdirectory).unwrap();
+
+    assert_eq!(
+        write_user_atomic(&symlink, b"new").unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        write_user_atomic(&subdirectory, b"new").unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert_eq!(std::fs::read(&target).unwrap(), b"kept");
+
+    let error = crate::refs::write_user_file(&symlink, b"new").unwrap_err();
+    assert_eq!(error.code(), "INVALID_ARGS");
+    assert!(
+        error
+            .suggestion()
+            .unwrap()
+            .contains(&symlink.display().to_string())
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn private_write_still_rejects_a_group_readable_destination() {
+    let directory = directory("private-loose-destination");
+    let path = directory.join("data");
+    std::fs::write(&path, b"old").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let error = write_atomic(&path, b"new").unwrap_err();
+
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(std::fs::read(&path).unwrap(), b"old");
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn user_write_allows_the_system_temporary_directory() {
     let path = Path::new("/tmp").join(format!(
         "agent-desktop-user-output-{}",

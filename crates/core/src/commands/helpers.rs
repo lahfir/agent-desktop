@@ -122,11 +122,22 @@ pub(crate) fn execute_ref_action_with_context(
     let value = serde_json::to_value(result).map_err(|error| {
         post_delivery_error(AppError::Json(error), json!({ "action": "delivered" }))
     })?;
-    let mut outcome = apply_post_action_wait(value, Some(&entry), adapter, context, &lease);
     let lease_hold_ms = u64::try_from(lease_started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    update_lease_hold_ms(&mut outcome, lease_hold_ms);
     drop(lease);
-    crate::ref_action::finish_artifacts(context, adapter, &entry, &args.ref_id, &pre, deadline);
+    let mut outcome = apply_post_action_wait(value, Some(&entry), adapter, context);
+    update_lease_hold_ms(&mut outcome, lease_hold_ms);
+    crate::ref_action::finish_artifacts(
+        crate::ref_action_context::RefActionContext::new(
+            RefActionWaitContext {
+                adapter,
+                entry: &entry,
+                ref_id: &args.ref_id,
+                context,
+            },
+            deadline,
+        ),
+        &pre,
+    );
     outcome
 }
 
@@ -148,7 +159,6 @@ pub(crate) fn apply_post_action_wait(
     entry: Option<&RefEntry>,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-    _lease: &crate::InteractionLease,
 ) -> Result<Value, AppError> {
     let Some(wait) = context.wait_selector() else {
         return Ok(result);

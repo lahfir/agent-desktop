@@ -74,6 +74,7 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         bytes,
         crate::private_file_parent::ensure_private,
         sync_directory,
+        validate_private_destination,
     )
 }
 
@@ -83,6 +84,7 @@ pub(crate) fn write_user_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()
         bytes,
         crate::private_file_parent::ensure_user,
         sync_user_directory,
+        validate_user_destination,
     )
 }
 
@@ -91,16 +93,13 @@ fn write_atomic_with(
     bytes: &[u8],
     ensure_parent: fn(&Path) -> std::io::Result<()>,
     sync_parent: fn(&Path) -> std::io::Result<()>,
+    validate_destination: fn(&Path) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| invalid_input("private file path has no parent"))?;
     ensure_parent(parent)?;
-    match open_private_read(path) {
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
+    validate_destination(path)?;
     let (temporary, mut file) = create_temporary(path)?;
     let result = (|| {
         file.write_all(bytes)?;
@@ -116,6 +115,28 @@ fn write_atomic_with(
         let _ = std::fs::remove_file(&temporary);
     }
     result
+}
+
+fn validate_private_destination(path: &Path) -> std::io::Result<()> {
+    match open_private_read(path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn validate_user_destination(path: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(invalid_input("user output path is a symlink"))
+        }
+        Ok(metadata) if !metadata.is_file() => {
+            Err(invalid_input("user output path is not a regular file"))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 pub(crate) fn validate_private_regular(file: &File) -> std::io::Result<std::fs::Metadata> {

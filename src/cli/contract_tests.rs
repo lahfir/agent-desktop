@@ -21,6 +21,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "wait_latest_ref_cache",
     "wait_mode",
     "wait_predicate",
+    "wait_surface",
     "wait_test_support",
     "wait_text_match",
     "wait_timeout",

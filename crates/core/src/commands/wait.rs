@@ -5,6 +5,7 @@ use crate::{
         helpers::resolve_app,
         wait_element::{ElementWaitInput, wait_for_element},
         wait_mode::WaitMode,
+        wait_surface::SurfaceWait,
         wait_text_match, wait_timeout,
     },
     context::CommandContext,
@@ -33,9 +34,7 @@ pub struct WaitModeArgs {
     pub element: Option<String>,
     pub window: Option<String>,
     pub text: Option<String>,
-    pub menu: bool,
-    pub menu_closed: bool,
-    pub notification: bool,
+    pub surface: Option<SurfaceWait>,
     pub event: Option<String>,
     pub window_id: Option<String>,
 }

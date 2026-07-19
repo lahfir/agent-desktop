@@ -107,11 +107,13 @@ fn source_identity_survives_window_move_and_resize() {
 
     assert!(window_record_matches_source(
         &live,
-        pid,
-        Some("TextEdit"),
-        Some(process_instance.as_str()),
-        Some("Untitled"),
-        original_hash,
+        &WindowIdentityEvidence {
+            pid,
+            app: Some("TextEdit"),
+            process_instance: Some(process_instance.as_str()),
+            title: Some("Untitled"),
+            bounds_hash: original_hash,
+        },
     ));
 }
 
@@ -122,19 +124,23 @@ fn source_identity_still_rejects_pid_and_application_mismatch() {
 
     assert!(!window_record_matches_source(
         &live,
-        pid + 1,
-        Some("TextEdit"),
-        Some(instance(pid).as_str()),
-        Some("Untitled"),
-        None,
+        &WindowIdentityEvidence {
+            pid: pid + 1,
+            app: Some("TextEdit"),
+            process_instance: Some(instance(pid).as_str()),
+            title: Some("Untitled"),
+            bounds_hash: None,
+        },
     ));
     assert!(!window_record_matches_source(
         &live,
-        pid,
-        Some("DifferentApp"),
-        Some(instance(pid).as_str()),
-        Some("Untitled"),
-        None,
+        &WindowIdentityEvidence {
+            pid,
+            app: Some("DifferentApp"),
+            process_instance: Some(instance(pid).as_str()),
+            title: Some("Untitled"),
+            bounds_hash: None,
+        },
     ));
 }
 
@@ -145,19 +151,23 @@ fn source_identity_rejects_missing_or_changed_process_generation() {
 
     assert!(!window_record_matches_source(
         &live,
-        pid,
-        Some("TextEdit"),
-        None,
-        Some("Untitled"),
-        None,
+        &WindowIdentityEvidence {
+            pid,
+            app: Some("TextEdit"),
+            process_instance: None,
+            title: Some("Untitled"),
+            bounds_hash: None,
+        },
     ));
     assert!(!window_record_matches_source(
         &live,
-        pid,
-        Some("TextEdit"),
-        Some("different-generation"),
-        Some("Untitled"),
-        None,
+        &WindowIdentityEvidence {
+            pid,
+            app: Some("TextEdit"),
+            process_instance: Some("different-generation"),
+            title: Some("Untitled"),
+            bounds_hash: None,
+        },
     ));
 }
 

@@ -149,14 +149,14 @@ fn explicit_snapshot_id_remains_in_its_session_namespace() {
 }
 
 #[test]
-fn save_existing_snapshot_cannot_cross_session_namespaces() {
+fn update_existing_snapshot_cannot_cross_session_namespaces() {
     let _guard = HomeGuard::new();
     let default_store = RefStore::new().unwrap();
     let session_a = RefStore::for_session(Some("agent-a")).unwrap();
 
     let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
     let err = default_store
-        .save_existing_snapshot(&snapshot_id, &map_with("Updated"))
+        .update_existing_snapshot(&snapshot_id, "@e1", &entry("Session A"), |_| Ok(()))
         .unwrap_err();
 
     assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
@@ -266,16 +266,19 @@ fn read_latest_rejects_symlinked_pointer() {
 }
 
 #[test]
-fn save_existing_snapshot_does_not_promote_latest_pointer() {
+fn update_existing_snapshot_does_not_promote_latest_pointer() {
     let _guard = HomeGuard::new();
     let store = RefStore::new().unwrap();
 
-    let mut first = map_with("First");
-    let first_id = store.save_new_snapshot(&first).unwrap();
+    let first_id = store.save_new_snapshot(&map_with("First")).unwrap();
     let second_id = store.save_new_snapshot(&map_with("Second")).unwrap();
 
-    first.allocate(entry("First Child"));
-    store.save_existing_snapshot(&first_id, &first).unwrap();
+    store
+        .update_existing_snapshot(&first_id, "@e1", &entry("First"), |map| {
+            map.allocate(entry("First Child"));
+            Ok(())
+        })
+        .unwrap();
 
     assert_eq!(
         store.latest_snapshot_id().unwrap().as_deref(),

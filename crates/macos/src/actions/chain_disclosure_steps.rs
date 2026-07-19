@@ -32,10 +32,9 @@ mod imp {
         let action = if expanded { "AXExpand" } else { "AXCollapse" };
         prepare(element, deadline)?;
         if crate::actions::ax_helpers::try_ax_action_or_err(element, action, deadline)? {
-            if verify_disclosure(element, expanded, deadline).map_err(after_delivery)?
-                == DeliveryOutcome::DeliveredVerified
-            {
-                return Ok(DeliveryOutcome::DeliveredVerified);
+            let outcome = verify_disclosure(element, expanded, deadline).map_err(after_delivery)?;
+            if let Some(delivered) = stop_if_delivered(outcome) {
+                return Ok(delivered);
             }
         }
         prepare(element, deadline)?;
@@ -47,24 +46,28 @@ mod imp {
                 expanded,
                 deadline,
             )? {
-                if verify_disclosure(element, expanded, deadline).map_err(after_delivery)?
-                    == DeliveryOutcome::DeliveredVerified
-                {
-                    return Ok(DeliveryOutcome::DeliveredVerified);
+                let outcome =
+                    verify_disclosure(element, expanded, deadline).map_err(after_delivery)?;
+                if let Some(delivered) = stop_if_delivered(outcome) {
+                    return Ok(delivered);
                 }
             }
         }
         if allow_toggle && disclosed_state(element, deadline)? == Some(!expanded) {
             prepare(element, deadline)?;
             if crate::actions::ax_helpers::try_ax_action_or_err(element, "AXPress", deadline)? {
-                if verify_disclosure(element, expanded, deadline).map_err(after_delivery)?
-                    == DeliveryOutcome::DeliveredVerified
-                {
-                    return Ok(DeliveryOutcome::DeliveredVerified);
+                let outcome =
+                    verify_disclosure(element, expanded, deadline).map_err(after_delivery)?;
+                if let Some(delivered) = stop_if_delivered(outcome) {
+                    return Ok(delivered);
                 }
             }
         }
         Ok(DeliveryOutcome::NotDelivered)
+    }
+
+    fn stop_if_delivered(outcome: DeliveryOutcome) -> Option<DeliveryOutcome> {
+        outcome.was_delivered().then_some(outcome)
     }
 
     fn disclosure_plan(current: Option<bool>, desired: bool) -> (bool, bool) {
@@ -132,7 +135,7 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
-        use super::{DeliveryOutcome, disclosure_plan, unobserved_delivery};
+        use super::{DeliveryOutcome, disclosure_plan, stop_if_delivered, unobserved_delivery};
 
         #[test]
         fn disclosure_plan_never_blindly_toggles_unknown_state() {
@@ -154,6 +157,25 @@ mod imp {
                 unobserved_delivery(None, true).expect("unreadable state after delivery"),
                 DeliveryOutcome::DeliveredUnverified
             );
+            assert_eq!(
+                stop_if_delivered(
+                    unobserved_delivery(None, true).expect("unreadable state after delivery")
+                ),
+                Some(DeliveryOutcome::DeliveredUnverified)
+            );
+        }
+
+        #[test]
+        fn delivered_outcomes_halt_further_mutation_strategies() {
+            assert_eq!(
+                stop_if_delivered(DeliveryOutcome::DeliveredUnverified),
+                Some(DeliveryOutcome::DeliveredUnverified)
+            );
+            assert_eq!(
+                stop_if_delivered(DeliveryOutcome::DeliveredVerified),
+                Some(DeliveryOutcome::DeliveredVerified)
+            );
+            assert_eq!(stop_if_delivered(DeliveryOutcome::NotDelivered), None);
         }
     }
 }

@@ -2,7 +2,7 @@ use agent_desktop_core::{
     AppError, PermissionReport, PlatformAdapter,
     commands::{
         permissions as permissions_command, skills as skills_command, status as status_command,
-        version as version_command, wait as wait_command,
+        version as version_command, wait as wait_command, wait_surface::SurfaceWait,
     },
     context::CommandContext,
 };
@@ -29,9 +29,11 @@ pub(super) fn wait(
                 element: args.mode.element,
                 window: args.mode.window,
                 text: args.mode.text,
-                menu: args.mode.menu,
-                menu_closed: args.mode.menu_closed,
-                notification: args.mode.notification,
+                surface: SurfaceWait::from_flags(
+                    args.mode.menu,
+                    args.mode.menu_closed,
+                    args.mode.notification,
+                )?,
                 event: args.event.event,
                 window_id: args.event.window_id,
             },

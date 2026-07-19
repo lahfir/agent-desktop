@@ -206,7 +206,19 @@ pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), AppErr
 }
 
 pub(crate) fn write_user_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
-    crate::private_file::write_user_atomic(path, bytes).map_err(AppError::from)
+    crate::private_file::write_user_atomic(path, bytes).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::InvalidData {
+            AppError::invalid_input_with_suggestion(
+                format!("Cannot write output file: {error}"),
+                format!(
+                    "Pass an output path that is not '{}' or remove the conflicting entry there",
+                    path.display()
+                ),
+            )
+        } else {
+            AppError::from(error)
+        }
+    })
 }
 
 pub(crate) fn is_symlink(path: &Path) -> bool {

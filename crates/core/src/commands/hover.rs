@@ -5,7 +5,7 @@ use crate::{
         helpers::{apply_post_action_wait, validate_post_action_wait},
         point_resolve::{PointResolveArgs, require_cursor_policy},
         pointer_action::{
-            ensure_point_deadline, focus_point_under_lease, point_deadline,
+            PointResolveAttempt, ensure_point_deadline, focus_point_under_lease, point_deadline,
             resolve_point_under_lease, retry_leased_point_phase, wait_for_point_with_deadline,
         },
     },
@@ -50,16 +50,22 @@ pub fn execute(
         let lease = adapter.acquire_interaction_lease(deadline)?;
         let focused = focus_point_under_lease(point_args, &lease, adapter, context)?;
         let first = resolve_point_under_lease(
-            (point_args, None),
-            !auto_wait,
+            PointResolveAttempt {
+                args: point_args,
+                stability: None,
+                allow_scroll: !auto_wait,
+            },
             deadline,
             &lease,
             adapter,
             context,
         )?;
         let mut resolved = resolve_point_under_lease(
-            (point_args, Some(first.bounds_hash)),
-            false,
+            PointResolveAttempt {
+                args: point_args,
+                stability: Some(first.bounds_hash),
+                allow_scroll: false,
+            },
             deadline,
             &lease,
             adapter,
@@ -88,13 +94,8 @@ pub fn execute(
     if resolved.focused {
         response["focused"] = json!(true);
     }
-    apply_post_action_wait(
-        response,
-        resolved.source_entry.as_ref(),
-        adapter,
-        context,
-        &lease,
-    )
+    drop(lease);
+    apply_post_action_wait(response, resolved.source_entry.as_ref(), adapter, context)
 }
 
 #[cfg(test)]

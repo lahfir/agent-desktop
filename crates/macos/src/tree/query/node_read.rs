@@ -101,8 +101,10 @@ pub(crate) fn read_node(
             &role,
             &child_read.elements,
             deadline,
-            stats,
-            usage,
+            crate::tree::child_labels::NameEvidenceSinks {
+                stats: &mut *stats,
+                usage: &mut *usage,
+            },
         )?
     } else {
         (attrs.name_evidence.clone(), true)

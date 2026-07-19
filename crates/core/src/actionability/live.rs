@@ -10,6 +10,18 @@ use crate::{
     refs::RefEntry,
 };
 
+/// Groups the read-only coordinates of a live element check: which element,
+/// which handle to read it through, which adapter to read with, and the
+/// deadline that bounds the read. Kept separate from the `request` (what
+/// action to check against) and `stability` (how settled the element must
+/// be) parameters, which vary independently per call.
+pub(crate) struct LiveCheckTarget<'a> {
+    pub(crate) entry: &'a RefEntry,
+    pub(crate) handle: &'a NativeHandle,
+    pub(crate) adapter: &'a dyn PlatformAdapter,
+    pub(crate) deadline: crate::Deadline,
+}
+
 #[cfg(test)]
 pub(crate) fn check_live(
     entry: &RefEntry,
@@ -19,30 +31,34 @@ pub(crate) fn check_live(
 ) -> Result<ActionabilityReport, AdapterError> {
     let deadline = crate::Deadline::standard()?;
     check_live_with_stability(
-        entry,
-        handle,
-        adapter,
+        &LiveCheckTarget {
+            entry,
+            handle,
+            adapter,
+            deadline,
+        },
         request,
         StabilityExpectation::permissive(entry.geometry.bounds_hash),
-        deadline,
     )
 }
 
 pub(crate) fn check_live_with_stability(
-    entry: &RefEntry,
-    handle: &NativeHandle,
-    adapter: &dyn PlatformAdapter,
+    target: &LiveCheckTarget<'_>,
     request: &ActionRequest,
     stability: StabilityExpectation,
-    deadline: crate::Deadline,
 ) -> Result<ActionabilityReport, AdapterError> {
-    let evidence = observe(entry, adapter.get_live_element(handle, deadline))?;
+    let evidence = observe(
+        target.entry,
+        target
+            .adapter
+            .get_live_element(target.handle, target.deadline),
+    )?;
     check_with_stability(
         stability,
         &evidence,
         request,
-        Some((handle, adapter)),
-        deadline,
+        Some((target.handle, target.adapter)),
+        target.deadline,
     )
 }
 

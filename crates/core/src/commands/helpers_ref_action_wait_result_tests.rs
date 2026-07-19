@@ -6,11 +6,7 @@ fn post_action_wait_without_flag_returns_action_only() {
     let mut refmap = RefMap::new();
     refmap.allocate(entry());
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-    let adapter = ScopedWaitAdapter {
-        request: Mutex::new(None),
-        polled_app: Mutex::new(None),
-        lease_held: Arc::new(AtomicBool::new(false)),
-    };
+    let adapter = ScopedWaitAdapter::new();
     let args = RefArgs {
         ref_id: "@e1".into(),
         snapshot_id: Some(snapshot_id),
@@ -37,11 +33,7 @@ fn post_action_wait_timeout_embeds_action_result_in_details() {
     entry.source.source_app = Some("TargetApp".into());
     refmap.allocate(entry);
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-    let adapter = ScopedWaitAdapter {
-        request: Mutex::new(None),
-        polled_app: Mutex::new(None),
-        lease_held: Arc::new(AtomicBool::new(false)),
-    };
+    let adapter = ScopedWaitAdapter::new();
     let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
         query_raw: ":never-appears".into(),
         gone: false,

@@ -3,6 +3,14 @@ use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo};
 use crate::system::cg_window::WindowRecord;
 use crate::tree::{AXElement, attributes::set_messaging_timeout, element_for_pid};
 
+pub(crate) struct WindowIdentityEvidence<'a> {
+    pub pid: i32,
+    pub app: Option<&'a str>,
+    pub process_instance: Option<&'a str>,
+    pub title: Option<&'a str>,
+    pub bounds_hash: Option<u64>,
+}
+
 pub(crate) fn window_element_for_info(
     win: &WindowInfo,
     deadline: agent_desktop_core::Deadline,
@@ -55,24 +63,20 @@ fn locate_verified_record_until(
 
 pub(crate) fn verify_window_identity_until(
     id: &str,
-    pid: i32,
-    app: Option<&str>,
-    process_instance: Option<&str>,
-    title: Option<&str>,
-    bounds_hash: Option<u64>,
+    evidence: WindowIdentityEvidence<'_>,
     deadline: std::time::Instant,
 ) -> Result<(), AdapterError> {
     let window_number = parse_window_number(id).ok_or_else(|| invalid_window_id(id))?;
     let record =
         crate::system::cg_window_exact::exact_window_record_until(window_number, deadline)?
             .ok_or_else(|| window_not_found(id))?;
-    if !window_record_matches_source(&record, pid, app, process_instance, title, bounds_hash) {
+    if !window_record_matches_source(&record, &evidence) {
         return Err(window_identity_mismatch(id));
     }
-    let Some(process_instance) = process_instance else {
+    let Some(process_instance) = evidence.process_instance else {
         return Err(window_identity_mismatch(id));
     };
-    if !crate::system::process_identity::matches_instance(pid, process_instance)? {
+    if !crate::system::process_identity::matches_instance(evidence.pid, process_instance)? {
         return Err(window_identity_mismatch(id));
     }
     Ok(())
@@ -80,20 +84,18 @@ pub(crate) fn verify_window_identity_until(
 
 fn window_record_matches_source(
     record: &WindowRecord,
-    pid: i32,
-    app: Option<&str>,
-    process_instance: Option<&str>,
-    title: Option<&str>,
-    bounds_hash: Option<u64>,
+    evidence: &WindowIdentityEvidence<'_>,
 ) -> bool {
-    if record.pid != pid
-        || app.is_some_and(|app| !app.is_empty() && record.app_name != app)
-        || process_instance.is_none()
-        || record.process_instance.as_deref() != process_instance
+    if record.pid != evidence.pid
+        || evidence
+            .app
+            .is_some_and(|app| !app.is_empty() && record.app_name != app)
+        || evidence.process_instance.is_none()
+        || record.process_instance.as_deref() != evidence.process_instance
     {
         return false;
     }
-    let bounds_changed = bounds_hash.is_some_and(|expected| {
+    let bounds_changed = evidence.bounds_hash.is_some_and(|expected| {
         record
             .bounds
             .bounds_hash()
@@ -101,17 +103,17 @@ fn window_record_matches_source(
     });
     if bounds_changed {
         tracing::debug!(
-            expected_bounds_hash = ?bounds_hash,
+            expected_bounds_hash = ?evidence.bounds_hash,
             actual_bounds_hash = ?record.bounds.bounds_hash(),
             "window moved or resized while immutable source identity remained valid"
         );
     }
-    let title_changed = title.is_some_and(|title| {
+    let title_changed = evidence.title.is_some_and(|title| {
         !title.is_empty() && record.title.as_deref().unwrap_or(record.app_name.as_str()) != title
     });
     if title_changed {
         tracing::debug!(
-            expected_title = ?title,
+            expected_title = ?evidence.title,
             actual_title = ?record.title,
             "window title changed while immutable source identity remained valid"
         );

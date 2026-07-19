@@ -52,9 +52,25 @@ mod imp {
         tracing::debug!("chain: all {total} steps exhausted");
         Err(
             AdapterError::new(ErrorCode::ActionFailed, "All chain steps exhausted")
-                .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
+                .with_disposition(exhaustion_disposition(&steps))
                 .with_suggestion(def.suggestion),
         )
+    }
+
+    pub(crate) fn exhaustion_disposition(
+        steps: &[ActionStep],
+    ) -> agent_desktop_core::DeliverySemantics {
+        let delivered = steps.iter().any(|step| {
+            matches!(
+                step.outcome,
+                agent_desktop_core::ActionStepOutcome::Succeeded
+            )
+        });
+        if delivered {
+            agent_desktop_core::DeliverySemantics::delivered_unverified()
+        } else {
+            agent_desktop_core::DeliverySemantics::not_delivered()
+        }
     }
 
     pub(crate) fn step_mechanism(step: &ChainStep) -> StepMechanism {
@@ -115,7 +131,9 @@ mod imp {
 }
 
 #[cfg(all(test, target_os = "macos"))]
-pub(crate) use imp::{build_step, record_step_outcome, step_allowed, step_mechanism};
+pub(crate) use imp::{
+    build_step, exhaustion_disposition, record_step_outcome, step_allowed, step_mechanism,
+};
 
 #[cfg(test)]
 #[path = "chain_tests.rs"]

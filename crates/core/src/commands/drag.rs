@@ -5,7 +5,7 @@ use crate::{
         helpers::{apply_post_action_wait, validate_post_action_wait},
         point_resolve::{PointResolveArgs, require_cursor_policy},
         pointer_action::{
-            ensure_point_deadline, focus_point_under_lease, point_deadline,
+            PointResolveAttempt, ensure_point_deadline, focus_point_under_lease, point_deadline,
             resolve_point_under_lease, retry_leased_point_phase, wait_for_point_with_deadline,
         },
     },
@@ -13,11 +13,14 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+pub struct DragEndpoint {
+    pub ref_id: Option<String>,
+    pub xy: Option<(f64, f64)>,
+}
+
 pub struct DragArgs {
-    pub from_ref: Option<String>,
-    pub from_xy: Option<(f64, f64)>,
-    pub to_ref: Option<String>,
-    pub to_xy: Option<(f64, f64)>,
+    pub from: DragEndpoint,
+    pub to: DragEndpoint,
     pub snapshot_id: Option<String>,
     pub duration_ms: Option<u64>,
     pub drop_delay_ms: Option<u64>,
@@ -33,15 +36,15 @@ pub fn execute(
     validate_post_action_wait(context)?;
     let deadline = point_deadline(args.timeout_ms)?;
     let from_args = PointResolveArgs {
-        ref_id: args.from_ref.as_deref(),
-        xy: args.from_xy,
+        ref_id: args.from.ref_id.as_deref(),
+        xy: args.from.xy,
         snapshot_id: args.snapshot_id.as_deref(),
         missing_input_message: "Provide --from <ref> or --from-xy x,y",
         headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
     };
     let to_args = PointResolveArgs {
-        ref_id: args.to_ref.as_deref(),
-        xy: args.to_xy,
+        ref_id: args.to.ref_id.as_deref(),
+        xy: args.to.xy,
         snapshot_id: args.snapshot_id.as_deref(),
         missing_input_message: "Provide --to <ref> or --to-xy x,y",
         headed_requirement: crate::HeadedRequirement::None,
@@ -55,32 +58,44 @@ pub fn execute(
         let lease = adapter.acquire_interaction_lease(deadline)?;
         let focused = focus_point_under_lease(from_args, &lease, adapter, context)?;
         let from = resolve_point_under_lease(
-            (from_args, None),
-            !auto_wait,
+            PointResolveAttempt {
+                args: from_args,
+                stability: None,
+                allow_scroll: !auto_wait,
+            },
             deadline,
             &lease,
             adapter,
             context,
         )?;
         let to = resolve_point_under_lease(
-            (to_args, None),
-            !auto_wait,
+            PointResolveAttempt {
+                args: to_args,
+                stability: None,
+                allow_scroll: !auto_wait,
+            },
             deadline,
             &lease,
             adapter,
             context,
         )?;
         let mut from = resolve_point_under_lease(
-            (from_args, Some(from.bounds_hash)),
-            false,
+            PointResolveAttempt {
+                args: from_args,
+                stability: Some(from.bounds_hash),
+                allow_scroll: false,
+            },
             deadline,
             &lease,
             adapter,
             context,
         )?;
         let to = resolve_point_under_lease(
-            (to_args, Some(to.bounds_hash)),
-            false,
+            PointResolveAttempt {
+                args: to_args,
+                stability: Some(to.bounds_hash),
+                allow_scroll: false,
+            },
             deadline,
             &lease,
             adapter,
@@ -116,13 +131,8 @@ pub fn execute(
     if from.focused {
         response["focused"] = json!(true);
     }
-    apply_post_action_wait(
-        response,
-        from.source_entry.as_ref(),
-        adapter,
-        context,
-        &lease,
-    )
+    drop(lease);
+    apply_post_action_wait(response, from.source_entry.as_ref(), adapter, context)
 }
 
 #[cfg(test)]

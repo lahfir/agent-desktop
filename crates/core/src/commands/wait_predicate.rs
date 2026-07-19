@@ -174,7 +174,14 @@ fn actionable(
     stability: crate::actionability::StabilityExpectation,
 ) -> Result<Value, AdapterError> {
     match crate::actionability::check_live_with_stability(
-        entry, handle, adapter, request, stability, deadline,
+        &crate::actionability::LiveCheckTarget {
+            entry,
+            handle,
+            adapter,
+            deadline,
+        },
+        request,
+        stability,
     ) {
         Ok(report) => Ok(json!(report)),
         Err(err) if err.code == ErrorCode::ActionFailed => match err.details {

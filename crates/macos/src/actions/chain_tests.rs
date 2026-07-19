@@ -1,4 +1,7 @@
-use super::{ChainStep, build_step, record_step_outcome, step_allowed, step_mechanism};
+use super::{
+    ChainStep, build_step, exhaustion_disposition, record_step_outcome, step_allowed,
+    step_mechanism,
+};
 use crate::actions::chain_delivery::DeliveryOutcome;
 use agent_desktop_core::MouseButton;
 use agent_desktop_core::step_mechanism::StepMechanism;
@@ -195,4 +198,46 @@ fn non_idempotent_chain_stops_after_unverified_delivery() {
         DeliveryOutcome::DeliveredUnverified,
         false,
     ));
+}
+
+#[test]
+fn exhaustion_after_unverified_delivery_reports_delivered_unverified() {
+    let mut steps = Vec::new();
+    assert!(!record_step_outcome(
+        &mut steps,
+        &ChainStep::FocusThenClearByKeyboard,
+        DeliveryOutcome::DeliveredUnverified,
+        true,
+    ));
+    assert!(!record_step_outcome(
+        &mut steps,
+        &ChainStep::SetDynamic { attr: "AXValue" },
+        DeliveryOutcome::NotDelivered,
+        true,
+    ));
+
+    assert_eq!(
+        exhaustion_disposition(&steps),
+        agent_desktop_core::DeliverySemantics::delivered_unverified()
+    );
+}
+
+#[test]
+fn exhaustion_without_any_delivery_reports_not_delivered() {
+    let mut steps = Vec::new();
+    assert!(!record_step_outcome(
+        &mut steps,
+        &ChainStep::Action("AXPress"),
+        DeliveryOutcome::NotDelivered,
+        false,
+    ));
+
+    assert_eq!(
+        exhaustion_disposition(&steps),
+        agent_desktop_core::DeliverySemantics::not_delivered()
+    );
+    assert_eq!(
+        exhaustion_disposition(&[]),
+        agent_desktop_core::DeliverySemantics::not_delivered()
+    );
 }

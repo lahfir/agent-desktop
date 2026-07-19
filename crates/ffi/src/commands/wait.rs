@@ -8,6 +8,7 @@ use crate::pointer_guard::guard_non_null;
 use crate::types::wait_args::AdWaitArgs;
 use agent_desktop_core::AdapterError;
 use agent_desktop_core::commands::wait::{WaitArgs, WaitModeArgs, WaitPredicateArgs};
+use agent_desktop_core::commands::wait_surface::SurfaceWait;
 use std::ffi::c_char;
 use std::ptr;
 
@@ -52,7 +53,8 @@ pub unsafe extern "C" fn ad_wait(
     trap_panic(|| {
         guard_non_null!(adapter, c"adapter is null");
 
-        let wait_args = match wait_args_from_ffi(unsafe { &*args }) {
+        let ffi_args = unsafe { &*args };
+        let mut wait_args = match wait_args_from_ffi(ffi_args) {
             Ok(args) => args,
             Err(err) => {
                 error::set_last_error(&err);
@@ -72,11 +74,15 @@ pub unsafe extern "C" fn ad_wait(
 
         let scope = crate::commands::command_scope!(ctx, "wait");
 
-        let result = agent_desktop_core::commands::wait::execute(
-            wait_args,
-            adapter_ref.inner.as_ref(),
-            &ctx,
-        );
+        let result = SurfaceWait::from_flags(
+            ffi_args.mode.surfaces.menu,
+            ffi_args.mode.surfaces.menu_closed,
+            ffi_args.mode.surfaces.notification,
+        )
+        .and_then(|surface| {
+            wait_args.mode.surface = surface;
+            agent_desktop_core::commands::wait::execute(wait_args, adapter_ref.inner.as_ref(), &ctx)
+        });
         crate::commands::complete_scope!(scope, &result);
 
         unsafe { write_command_envelope("wait", result, out) }
@@ -90,9 +96,7 @@ fn wait_args_from_ffi(args: &AdWaitArgs) -> Result<WaitArgs, AdapterError> {
             element: optional_adapter_string(args.mode.element, "mode.element")?,
             window: optional_adapter_string(args.mode.window, "mode.window")?,
             text: optional_adapter_string(args.mode.text, "mode.text")?,
-            menu: args.mode.surfaces.menu,
-            menu_closed: args.mode.surfaces.menu_closed,
-            notification: args.mode.surfaces.notification,
+            surface: None,
             event: None,
             window_id: None,
         },

@@ -23,9 +23,9 @@ use agent_desktop_core::{Action, ActionRequest};
 /// `action` must be a non-null pointer to a valid `AdAction`.
 /// `out` must be a non-null pointer to an `AdActionResult` to write the result into.
 ///
-/// This legacy entrypoint cannot express process-generation or typed native-id
-/// evidence and therefore fails closed. Use
-/// ad_execute_ref_action_exact_with_policy.
+/// Handles come from exact resolvers and already carry process-generation
+/// evidence, so this executes under the same policy as
+/// `ad_execute_action_with_policy`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_execute_action(
     adapter: *const AdAdapter,

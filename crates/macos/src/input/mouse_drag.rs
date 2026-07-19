@@ -73,7 +73,7 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
                     CGEventFlags::empty(),
                 ),
                 deadline,
-                release.delivery(),
+                release.delivery_mut(),
             )?;
             crate::input::mouse::sleep_bounded(deadline, step_delay, release.delivery())?;
         }
@@ -83,7 +83,7 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
             to,
             params.drop_delay_ms.unwrap_or(DEFAULT_DROP_DELAY_MS),
             deadline,
-            release.delivery(),
+            release.delivery_mut(),
         )?;
         release.release_at_destination(deadline)
     })();
@@ -142,6 +142,10 @@ impl DragReleaseGuard {
         self.delivery.delivery()
     }
 
+    fn delivery_mut(&mut self) -> &mut crate::actions::DeliveryTracker {
+        self.delivery.delivery_mut()
+    }
+
     fn release_at_destination(&mut self, deadline: Deadline) -> Result<(), AdapterError> {
         crate::input::mouse::ensure_budget(deadline, self.delivery())?;
         let event = self.destination_up.take().ok_or_else(|| {
@@ -171,7 +175,7 @@ fn dwell_over_destination(
     destination: CGPoint,
     delay_ms: u64,
     deadline: Deadline,
-    delivery: crate::actions::DeliveryTracker,
+    delivery: &mut crate::actions::DeliveryTracker,
 ) -> Result<(), AdapterError> {
     if delay_ms == 0 {
         return Ok(());
@@ -190,7 +194,7 @@ fn dwell_over_destination(
             delivery,
         )?;
         let tick_ms = remaining_ms.min(DWELL_TICK_MS);
-        crate::input::mouse::sleep_bounded(deadline, Duration::from_millis(tick_ms), delivery)?;
+        crate::input::mouse::sleep_bounded(deadline, Duration::from_millis(tick_ms), *delivery)?;
         remaining_ms -= tick_ms;
     }
     Ok(())

@@ -3,12 +3,16 @@ use crate::{
     adapter::PlatformAdapter,
     context::CommandContext,
     refs::{write_private_file, write_user_file},
+    refs_store::{
+        STALE_TMP_MAX_AGE,
+        prune::{is_orphaned_tmp_file, remove_stale_files_in_dir},
+    },
     session,
 };
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub struct ClipboardGetArgs {
     pub format: Option<ClipboardFormat>,
@@ -16,6 +20,8 @@ pub struct ClipboardGetArgs {
 }
 
 static IMAGE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+const CLIPBOARD_IMAGE_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 
 pub fn execute(
     args: ClipboardGetArgs,
@@ -62,7 +68,11 @@ fn write_image(
 fn default_clipboard_image_path(context: &CommandContext) -> Result<PathBuf, AppError> {
     let dir = match context.session_id() {
         Some(id) => session::session_dir(id)?.join("clipboard"),
-        None => session::agent_desktop_dir()?.join("tmp"),
+        None => {
+            let dir = session::agent_desktop_dir()?.join("tmp");
+            prune_sessionless_clipboard_tmp_dir(&dir);
+            dir
+        }
     };
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -73,6 +83,17 @@ fn default_clipboard_image_path(context: &CommandContext) -> Result<PathBuf, App
         "clipboard-{}-{nanos}-{seq}.png",
         std::process::id()
     )))
+}
+
+fn prune_sessionless_clipboard_tmp_dir(dir: &Path) {
+    remove_stale_files_in_dir(dir, STALE_TMP_MAX_AGE, is_orphaned_tmp_file);
+    remove_stale_files_in_dir(dir, CLIPBOARD_IMAGE_MAX_AGE, is_clipboard_image_file);
+}
+
+fn is_clipboard_image_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("clipboard-") && name.ends_with(".png"))
 }
 
 #[cfg(test)]

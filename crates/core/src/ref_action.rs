@@ -150,22 +150,20 @@ pub(crate) fn capture_pre_artifact(
 }
 
 pub(crate) fn finish_artifacts(
-    context: &CommandContext,
-    adapter: &dyn PlatformAdapter,
-    entry: &RefEntry,
-    ref_id: &str,
+    target: RefActionContext<'_>,
     pre: &crate::trace_artifacts::ArtifactOutcome,
-    deadline: crate::Deadline,
 ) {
     let post = crate::trace_artifacts::capture_action_screenshot(
-        context,
-        adapter,
-        entry,
+        target.context,
+        target.adapter,
+        target.entry,
         "post",
-        trace_capture_deadline(deadline),
+        trace_capture_deadline(target.deadline),
     );
-    if let Err(error) = crate::trace_artifacts::emit_action_artifacts(context, ref_id, pre, &post) {
-        tracing::warn!(error = %error, ref_id, "action artifact emission failed");
+    if let Err(error) =
+        crate::trace_artifacts::emit_action_artifacts(target.context, target.ref_id, pre, &post)
+    {
+        tracing::warn!(error = %error, ref_id = target.ref_id, "action artifact emission failed");
     }
 }
 
@@ -257,13 +255,8 @@ pub(crate) fn execute_resolved(
     let stability =
         actionability::StabilityExpectation::permissive(target.entry.geometry.bounds_hash);
     preflight_resolved(&target, &request, stability)?;
-    let context = target.context;
-    let adapter = target.adapter;
-    let entry = target.entry;
-    let ref_id = target.ref_id;
-    let deadline = target.deadline;
     let result = dispatch_resolved(target.target, request, lease);
-    finish_artifacts(context, adapter, entry, ref_id, &pre, deadline);
+    finish_artifacts(target.target, &pre);
     result
 }
 
@@ -277,12 +270,14 @@ fn check_actionability_with_trace(
         || json!({ "ref": target.ref_id, "action": request.action.name() }),
     )?;
     let report = actionability::check_live_with_stability(
-        target.entry,
-        target.handle,
-        target.adapter,
+        &actionability::LiveCheckTarget {
+            entry: target.entry,
+            handle: target.handle,
+            adapter: target.adapter,
+            deadline: target.deadline,
+        },
         request,
         stability,
-        target.deadline,
     )
     .inspect_err(|err| {
         let _ = target.context.trace_lazy("actionability.check.error", || {

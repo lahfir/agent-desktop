@@ -157,7 +157,7 @@ fn notification(index: usize, title: &str) -> NotificationInfo {
 fn notification_wait_args(timeout_ms: u64) -> WaitArgs {
     WaitArgs {
         mode: WaitModeArgs {
-            notification: true,
+            surface: Some(SurfaceWait::Notification),
             ..wait_args().mode
         },
         timeout_ms,
@@ -188,7 +188,7 @@ fn notification_wait_propagates_adapter_error() {
     let err = execute(
         WaitArgs {
             mode: WaitModeArgs {
-                notification: true,
+                surface: Some(SurfaceWait::Notification),
                 ..wait_args().mode
             },
             ..wait_args()
@@ -372,7 +372,7 @@ fn notification_wait_allows_text_filter() {
     let result = validate_wait_mode(&WaitArgs {
         mode: WaitModeArgs {
             text: Some("done".into()),
-            notification: true,
+            surface: Some(SurfaceWait::Notification),
             ..wait_args().mode
         },
         ..wait_args()

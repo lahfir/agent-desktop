@@ -81,10 +81,14 @@ pub(super) fn drag(
 ) -> Result<Value, AppError> {
     drag_command::execute(
         drag_command::DragArgs {
-            from_ref: args.target.from,
-            from_xy: parse_xy_opt(args.target.from_xy.as_deref())?,
-            to_ref: args.target.to,
-            to_xy: parse_xy_opt(args.target.to_xy.as_deref())?,
+            from: drag_command::DragEndpoint {
+                ref_id: args.target.from,
+                xy: parse_xy_opt(args.target.from_xy.as_deref())?,
+            },
+            to: drag_command::DragEndpoint {
+                ref_id: args.target.to,
+                xy: parse_xy_opt(args.target.to_xy.as_deref())?,
+            },
             snapshot_id: args.snapshot,
             duration_ms: args.duration,
             drop_delay_ms: args.drop_delay,

@@ -9,7 +9,7 @@ use crate::{AccessibilityNode, WindowInfo};
 use crate::{action::Action, action_result::ActionResult};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU32, Ordering},
 };
 
 struct LeaseGuard(Arc<AtomicBool>);
@@ -24,6 +24,18 @@ struct ScopedWaitAdapter {
     request: Mutex<Option<ActionRequest>>,
     polled_app: Mutex<Option<String>>,
     lease_held: Arc<AtomicBool>,
+    lease_free_polls: AtomicU32,
+}
+
+impl ScopedWaitAdapter {
+    fn new() -> Self {
+        Self {
+            request: Mutex::new(None),
+            polled_app: Mutex::new(None),
+            lease_held: Arc::new(AtomicBool::new(false)),
+            lease_free_polls: AtomicU32::new(0),
+        }
+    }
 }
 
 impl ObservationOps for ScopedWaitAdapter {
@@ -32,11 +44,12 @@ impl ObservationOps for ScopedWaitAdapter {
         root: crate::live_locator::ObservationRoot<'_>,
         _request: &crate::live_locator::ObservationRequest,
     ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
-        if !self.lease_held.load(Ordering::SeqCst) {
+        if self.lease_held.load(Ordering::SeqCst) {
             return Err(AdapterError::internal(
-                "post-action wait escaped the interaction lease",
+                "post-action wait must poll with the interaction lease released",
             ));
         }
+        self.lease_free_polls.fetch_add(1, Ordering::SeqCst);
         crate::adapter::observed_tree(
             &root,
             AccessibilityNode {
@@ -110,6 +123,7 @@ impl ActionOps for ScopedWaitAdapter {
         request: ActionRequest,
         _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
+        assert!(self.lease_held.load(Ordering::SeqCst));
         *self.request.lock().unwrap() = Some(request);
         Ok(ActionResult::delivered_unverified("ok"))
     }
@@ -137,11 +151,7 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
     entry.source.source_app = Some("TargetApp".into());
     refmap.allocate(entry);
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-    let adapter = ScopedWaitAdapter {
-        request: Mutex::new(None),
-        polled_app: Mutex::new(None),
-        lease_held: Arc::new(AtomicBool::new(false)),
-    };
+    let adapter = ScopedWaitAdapter::new();
     let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
         query_raw: ":saved!".into(),
         gone: false,
@@ -166,6 +176,7 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
         Some("TargetApp")
     );
     assert!(!adapter.lease_held.load(Ordering::SeqCst));
+    assert!(adapter.lease_free_polls.load(Ordering::SeqCst) >= 1);
     assert_eq!(value["after_action"]["action"], "ok");
     assert_eq!(value["matched_selector"], ":saved!");
 }
