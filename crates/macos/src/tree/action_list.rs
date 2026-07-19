@@ -116,10 +116,30 @@ fn read_settable(
 
 #[cfg(target_os = "macos")]
 fn record_error(read: &mut AvailableActionsRead, error: i32) {
+    if is_definitive_absence(error) {
+        return;
+    }
     read.complete = false;
     read.cannot_complete |= error == accessibility_sys::kAXErrorCannotComplete;
     read.invalid_element |= error == accessibility_sys::kAXErrorInvalidUIElement;
     read.api_disabled |= error == accessibility_sys::kAXErrorAPIDisabled;
+}
+
+/// AppKit's NSAccessibility bridge answers these codes when an element simply
+/// does not implement the probed attribute or action list — including
+/// `kAXErrorFailure`, which it returns for synthetic `NSAccessibilityElement`s
+/// with no action support. They are complete "none present" answers, not
+/// transport failures, so they must not mark the read incomplete.
+#[cfg(target_os = "macos")]
+fn is_definitive_absence(error: i32) -> bool {
+    matches!(
+        error,
+        accessibility_sys::kAXErrorAttributeUnsupported
+            | accessibility_sys::kAXErrorNoValue
+            | accessibility_sys::kAXErrorNotImplemented
+            | accessibility_sys::kAXErrorActionUnsupported
+            | accessibility_sys::kAXErrorFailure
+    )
 }
 
 fn role_may_bear_value(role: &str) -> bool {
@@ -264,5 +284,37 @@ mod tests {
         assert!(!read.complete);
         assert!(read.cannot_complete);
         assert!(read.actions.is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn definitive_absence_codes_are_complete_empty_answers() {
+        for error in [
+            accessibility_sys::kAXErrorAttributeUnsupported,
+            accessibility_sys::kAXErrorNoValue,
+            accessibility_sys::kAXErrorNotImplemented,
+            accessibility_sys::kAXErrorActionUnsupported,
+            accessibility_sys::kAXErrorFailure,
+        ] {
+            let mut read = AvailableActionsRead::default();
+            record_error(&mut read, error);
+            assert!(read.complete, "code {error} must stay complete");
+            assert!(!read.cannot_complete);
+            assert!(read.actions.is_empty());
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn transport_failures_are_never_classified_as_absence() {
+        for error in [
+            accessibility_sys::kAXErrorCannotComplete,
+            accessibility_sys::kAXErrorInvalidUIElement,
+            accessibility_sys::kAXErrorAPIDisabled,
+        ] {
+            let mut read = AvailableActionsRead::default();
+            record_error(&mut read, error);
+            assert!(!read.complete, "code {error} must mark the read incomplete");
+        }
     }
 }
