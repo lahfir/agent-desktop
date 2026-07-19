@@ -16,9 +16,11 @@ struct AsyncFixtureCard: View {
                 }
             }
             .accessibilityLabel("enable-later")
+            .accessibilityIdentifier("enable-later")
             Button("Delayed Button") { delayedActionCount += 1 }
                 .disabled(!delayedEnabled)
                 .accessibilityLabel("delayed-button")
+                .accessibilityIdentifier("delayed-button")
             StatusReadout(name: "delayed-text", value: delayedText)
             StatusReadout(name: "delayed-action-status", value: String(delayedActionCount))
 
@@ -28,6 +30,7 @@ struct AsyncFixtureCard: View {
                 delayedActionCount = 0
             }
             .accessibilityLabel("reset-delayed-button")
+            .accessibilityIdentifier("reset-delayed-button")
 
             Button("Permanently Disabled") { delayedActionCount += 100 }
                 .disabled(true)
