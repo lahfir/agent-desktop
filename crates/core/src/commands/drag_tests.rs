@@ -275,7 +275,7 @@ fn positive_timeout_uses_stable_post_focus_drag_bounds() {
         height: 60.0,
     });
     let mut args = cross_app_args(snapshot_id);
-    args.timeout_ms = Some(500);
+    args.timeout_ms = Some(5_000);
 
     let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 

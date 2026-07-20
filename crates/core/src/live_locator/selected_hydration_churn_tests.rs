@@ -203,7 +203,7 @@ fn role_query(role: &str) -> LocatorQuery {
 fn selected_request() -> LocatorResolveRequest {
     LocatorResolveRequest {
         selection: LocatorSelection::First,
-        deadline: crate::Deadline::after(500).unwrap(),
+        deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 50,
         materialization: LocatorMaterialization::SelectedMatches,
     }

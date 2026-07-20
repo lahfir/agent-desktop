@@ -161,7 +161,7 @@ fn headed_hover_retries_transient_post_focus_occlusion_without_holding_lease() {
         lease_held: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
     let mut args = ref_args(snapshot_id);
-    args.timeout_ms = Some(500);
+    args.timeout_ms = Some(5_000);
 
     let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 

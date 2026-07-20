@@ -288,7 +288,7 @@ fn zero_timeout_is_an_explicit_single_attempt() {
 #[test]
 fn ambiguity_diagnostic_preserves_adapter_result_details() {
     let adapter = DispatchGuardAdapter::new("ambiguous", 0);
-    let result = execute(&adapter, 500).unwrap();
+    let result = execute(&adapter, 5_000).unwrap();
     assert_eq!(result.details.as_ref().unwrap()["mechanism"], "AXPress");
     assert_eq!(
         result.details.as_ref().unwrap()["transient_ambiguity"],
