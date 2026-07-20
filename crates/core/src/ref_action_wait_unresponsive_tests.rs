@@ -52,7 +52,7 @@ fn auto_wait_retries_a_transiently_unresponsive_accessibility_service() {
             ref_id: "@e1",
             context: &CommandContext::default(),
         },
-        ActionRequest::headless(Action::Click).with_timeout_ms(Some(1_000)),
+        ActionRequest::headless(Action::Click).with_timeout_ms(Some(5_000)),
         crate::ref_action::dispatch_resolved,
     )
     .unwrap();

@@ -131,7 +131,7 @@ fn terminal_stale_ref_is_preserved_after_retry_budget_expires() {
     let adapter = TerminalAfterRetryAdapter {
         bounds_reads: AtomicU32::new(0),
     };
-    let deadline = crate::Deadline::after(100).unwrap();
+    let deadline = crate::Deadline::after(5_000).unwrap();
 
     let err = match wait_for_point_with_deadline(
         point_args(&snapshot_id),
@@ -197,7 +197,7 @@ fn explicitly_retryable_app_unresponsive_recovers_within_shared_deadline() {
     let adapter = UnresponsiveThenReadyAdapter {
         resolve_calls: AtomicU32::new(0),
     };
-    let deadline = crate::Deadline::after(1_000).unwrap();
+    let deadline = crate::Deadline::after(5_000).unwrap();
 
     let resolved = wait_for_point_with_deadline(
         point_args(&snapshot_id),

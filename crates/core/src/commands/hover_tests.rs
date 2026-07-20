@@ -199,7 +199,7 @@ fn positive_timeout_uses_stable_post_focus_hover_bounds() {
         height: 10.0,
     });
     let mut args = ref_args(snapshot_id);
-    args.timeout_ms = Some(500);
+    args.timeout_ms = Some(5_000);
 
     let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 

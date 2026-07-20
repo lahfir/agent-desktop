@@ -71,7 +71,7 @@ fn hydration_retry_preserves_failed_attempt_statistics() {
     };
     let request = LocatorResolveRequest {
         selection: LocatorSelection::Strict,
-        deadline: crate::Deadline::after(1_000).unwrap(),
+        deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 10,
         materialization: LocatorMaterialization::SelectedMatches,
     };

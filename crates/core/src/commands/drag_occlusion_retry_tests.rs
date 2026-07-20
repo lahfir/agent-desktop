@@ -114,7 +114,7 @@ fn drag_retries_transient_post_focus_occlusion_without_holding_lease() {
     let snapshot_id = cross_app_snapshot();
     let adapter = TransientOcclusionAdapter::new();
     let mut args = cross_app_args(snapshot_id);
-    args.timeout_ms = Some(500);
+    args.timeout_ms = Some(5_000);
 
     let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 

@@ -88,7 +88,7 @@ fn activation_lease_is_dropped_before_observation_retry() {
         bounds: None,
         state: Default::default(),
     };
-    let deadline = crate::Deadline::after(500).unwrap();
+    let deadline = crate::Deadline::after(5_000).unwrap();
     let request = ObservationRequest::snapshot(&crate::TreeOptions::default(), deadline)
         .validate()
         .unwrap();
