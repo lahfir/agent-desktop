@@ -1,10 +1,23 @@
 # Changelog
 
-## Unreleased
+## [0.5.0](https://github.com/lahfir/agent-desktop/compare/v0.4.7...v0.5.0) (2026-07-20)
 
-### Refactor
 
-* make sessions the first-class trace container: `session start/end/list/gc`, manifest-gated automatic JSONL segments under `sessions/<id>/trace/`, and `--trace <path>` override preserved ([#89](https://github.com/lahfir/agent-desktop/pull/89))
+### ⚠ BREAKING CHANGES
+
+* default-on auto-wait changes the timing of every previously-untouched ref-action call (bounded 5000 ms default; `--timeout-ms 0` restores single-shot). `ENVELOPE_VERSION` is now `2.1` (adds the `APP_UNRESPONSIVE` code and process state in error details). FFI ABI major is `3` (append-only struct evolution; `wait --event` is intentionally not exposed over FFI). The legacy string clipboard API is removed in favor of typed content. `key-down`/`key-up` fail closed until daemon-owned held input exists. `close-app` verifies termination and the osascript fallback path is removed. `--text` matching is subtree containment: `find --text X --first` returns the outermost matching container.
+
+### Features
+
+* implement Playwright-grade foundation contract ([3f32272](https://github.com/lahfir/agent-desktop/commit/3f322728b44548d2e22f4ee6ef4e6853af4e4550))
+  * default-on auto-wait: every ref action waits for actionability (visible, enabled, stable, unoccluded) before dispatching, under a bounded budget
+  * live `find` locator plus a serializable `LocatorQuery`, and honest `is --property visible`
+  * three-way `hit_test` occlusion gate and core `scroll_into_view` before element actions
+  * `list-displays` and honest `--screen` with per-display scale factor; `native_id` identity spine; window-id-first resolution
+  * `ProcessState` classification with the `APP_UNRESPONSIVE` code (envelope `2.1`); typed `ActionStep` delivery tier
+  * `LaunchOptions` (`--arg`/`--env`/`--cwd`/`--no-attach`); baseline-diff desktop signals via `wait --event`
+  * typed clipboard (`Text`/`Image`/`FileUrls`); mouse modifier chords and a `mouse-wheel` primitive
+  * capability-supertrait `PlatformAdapter` split with `not_supported()` defaults, so Windows and Linux inherit the contract
 
 ## [0.4.7](https://github.com/lahfir/agent-desktop/compare/v0.4.6...v0.4.7) (2026-07-02)
 
