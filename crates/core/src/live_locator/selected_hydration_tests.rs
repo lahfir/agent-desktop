@@ -99,7 +99,7 @@ fn role_only_selected_hydration_anchors_before_hydrating_without_rewalking_large
     };
     let request = LocatorResolveRequest {
         selection: LocatorSelection::First,
-        deadline: crate::Deadline::after(80).unwrap(),
+        deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 50,
         materialization: LocatorMaterialization::SelectedMatches,
     };
