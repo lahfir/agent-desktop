@@ -1,11 +1,8 @@
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::{PlatformAdapter, WindowFilter},
-    context::CommandContext,
-    error::{AdapterError, ErrorCode},
-    node::{AccessibilityNode, WindowInfo},
-    refs_store::RefStore,
-    refs_test_support::HomeGuard,
+    AccessibilityNode, AdapterError, ErrorCode, WindowInfo, adapter::WindowFilter,
+    context::CommandContext, refs_store::RefStore, refs_test_support::HomeGuard,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -13,13 +10,11 @@ fn window_node(children: Vec<AccessibilityNode>) -> AccessibilityNode {
     AccessibilityNode {
         ref_id: None,
         role: "window".into(),
-        name: Some("Doc".into()),
-        value: None,
-        description: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: Some("Doc".into()),
+            ..Default::default()
+        },
+        presentation: Default::default(),
         children_count: None,
         children,
     }
@@ -29,13 +24,11 @@ fn button_node(label: &str) -> AccessibilityNode {
     AccessibilityNode {
         ref_id: None,
         role: "button".into(),
-        name: Some(label.into()),
-        value: None,
-        description: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: Some(label.into()),
+            ..Default::default()
+        },
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
     }
@@ -45,15 +38,31 @@ struct StaticTreeAdapter {
     tree: AccessibilityNode,
 }
 
-impl PlatformAdapter for StaticTreeAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+impl ObservationOps for StaticTreeAdapter {
+    fn observe_tree(
+        &self,
+        root: crate::live_locator::ObservationRoot<'_>,
+        _request: &crate::live_locator::ObservationRequest,
+    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        crate::adapter::observed_tree(&root, self.tree.clone())
+    }
+
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![WindowInfo {
             id: "w-1".into(),
             title: "Doc".into(),
             app: "TestApp".into(),
-            pid: 1,
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
             bounds: None,
-            is_focused: true,
+            state: crate::WindowState {
+                is_focused: true,
+                ..Default::default()
+            },
         }])
     }
 
@@ -61,10 +70,17 @@ impl PlatformAdapter for StaticTreeAdapter {
         &self,
         _win: &WindowInfo,
         _opts: &crate::adapter::TreeOptions,
+        _deadline: crate::Deadline,
     ) -> Result<AccessibilityNode, AdapterError> {
         Ok(self.tree.clone())
     }
 }
+
+impl ActionOps for StaticTreeAdapter {}
+
+impl InputOps for StaticTreeAdapter {}
+
+impl SystemOps for StaticTreeAdapter {}
 
 struct FlippingTreeAdapter {
     calls: AtomicUsize,
@@ -72,15 +88,37 @@ struct FlippingTreeAdapter {
     after: AccessibilityNode,
 }
 
-impl PlatformAdapter for FlippingTreeAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+impl ObservationOps for FlippingTreeAdapter {
+    fn observe_tree(
+        &self,
+        root: crate::live_locator::ObservationRoot<'_>,
+        _request: &crate::live_locator::ObservationRequest,
+    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        let tree = if call == 0 {
+            self.before.clone()
+        } else {
+            self.after.clone()
+        };
+        crate::adapter::observed_tree(&root, tree)
+    }
+
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Ok(vec![WindowInfo {
             id: "w-1".into(),
             title: "Doc".into(),
             app: "TestApp".into(),
-            pid: 1,
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
             bounds: None,
-            is_focused: true,
+            state: crate::WindowState {
+                is_focused: true,
+                ..Default::default()
+            },
         }])
     }
 
@@ -88,6 +126,7 @@ impl PlatformAdapter for FlippingTreeAdapter {
         &self,
         _win: &WindowInfo,
         _opts: &crate::adapter::TreeOptions,
+        _deadline: crate::Deadline,
     ) -> Result<AccessibilityNode, AdapterError> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         if call == 0 {
@@ -98,23 +137,49 @@ impl PlatformAdapter for FlippingTreeAdapter {
     }
 }
 
+impl ActionOps for FlippingTreeAdapter {}
+
+impl InputOps for FlippingTreeAdapter {}
+
+impl SystemOps for FlippingTreeAdapter {}
+
 struct ErrorThenTreeAdapter;
 
-impl PlatformAdapter for ErrorThenTreeAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+impl ObservationOps for ErrorThenTreeAdapter {
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::new(ErrorCode::AppNotFound, "app missing"))
     }
 }
+
+impl ActionOps for ErrorThenTreeAdapter {}
+
+impl InputOps for ErrorThenTreeAdapter {}
+
+impl SystemOps for ErrorThenTreeAdapter {}
 
 struct CodeErrorAdapter {
     code: ErrorCode,
 }
 
-impl PlatformAdapter for CodeErrorAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+impl ObservationOps for CodeErrorAdapter {
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::new(self.code.clone(), "poll error"))
     }
 }
+
+impl ActionOps for CodeErrorAdapter {}
+
+impl InputOps for CodeErrorAdapter {}
+
+impl SystemOps for CodeErrorAdapter {}
 
 fn base_input(query_raw: &str, gone: bool) -> WaitSelectorInput {
     WaitSelectorInput {
@@ -218,7 +283,7 @@ fn gone_true_when_never_present_returns_immediately() {
 }
 
 #[test]
-fn timeout_includes_last_snapshot_id() {
+fn timeout_persists_the_last_diagnostic_snapshot() {
     let _guard = HomeGuard::new();
     let adapter = StaticTreeAdapter {
         tree: window_node(vec![button_node("other")]),
@@ -239,7 +304,10 @@ fn timeout_includes_last_snapshot_id() {
     };
     assert_eq!(details["kind"], "wait_timeout");
     assert_eq!(details["predicate"], "selector");
-    assert!(details["snapshot_id"].as_str().is_some());
+    let snapshot_id = details["snapshot_id"]
+        .as_str()
+        .expect("diagnostic snapshot id");
+    assert!(RefStore::new().unwrap().load(Some(snapshot_id)).is_ok());
     assert!(
         details.get("last_error").is_none(),
         "last_error must be omitted when no poll error occurred, got {details}"
@@ -300,54 +368,5 @@ fn gone_true_with_window_not_found_returns_immediately() {
     assert_eq!(value["target_absent"], true);
 }
 
-#[test]
-fn appearance_window_not_found_swallowed_until_timeout() {
-    let _guard = HomeGuard::new();
-    let err = execute(
-        WaitSelectorInput {
-            timeout_ms: 50,
-            ..base_input("button:saved", false)
-        },
-        &CodeErrorAdapter {
-            code: ErrorCode::WindowNotFound,
-        },
-        &CommandContext::default(),
-    )
-    .unwrap_err();
-    assert_eq!(err.code(), "TIMEOUT");
-}
-
-#[test]
-fn appearance_element_not_found_swallowed_until_timeout() {
-    let _guard = HomeGuard::new();
-    let err = execute(
-        WaitSelectorInput {
-            timeout_ms: 50,
-            ..base_input("button:saved", false)
-        },
-        &CodeErrorAdapter {
-            code: ErrorCode::ElementNotFound,
-        },
-        &CommandContext::default(),
-    )
-    .unwrap_err();
-    assert_eq!(err.code(), "TIMEOUT");
-}
-
-#[test]
-fn persisted_snapshot_is_loadable() {
-    let _guard = HomeGuard::new();
-    let adapter = StaticTreeAdapter {
-        tree: window_node(vec![button_node("saved")]),
-    };
-    let value = execute(
-        base_input("button:saved", false),
-        &adapter,
-        &CommandContext::default(),
-    )
-    .unwrap();
-    let snapshot_id = value["snapshot_id"].as_str().unwrap();
-    let store = RefStore::new().unwrap();
-    let refmap = store.load(Some(snapshot_id)).unwrap();
-    assert!(!refmap.is_empty());
-}
+#[path = "wait_selector_retry_tests.rs"]
+mod retry_tests;

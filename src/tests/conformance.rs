@@ -1,18 +1,21 @@
+use agent_desktop_core::{ActionOps, InputOps, ObservationOps, PlatformAdapter, SystemOps};
 use agent_desktop_core::{
-    action_request::ActionRequest,
-    action_result::ActionResult,
-    adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
-    capability,
-    element_state::ElementState,
-    error::{AdapterError, ErrorCode},
-    node::Rect,
-    refs::RefEntry,
+    ActionRequest, ActionResult, AdapterError, Deadline, ElementState, ErrorCode,
+    IdentifierEvidence, InteractionLease, LiveElement, LiveIdentity, LocatorField, NativeHandle,
+    Rect, RefCapabilities, RefEntry, RefEntryIdentity, RefGeometry, RefProcess, RefScope,
+    RefSource, SnapshotSurface, capability,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
 
 #[path = "../../tests/conformance/ref_action_contract.rs"]
 mod ref_action_contract;
+
+#[path = "../../tests/conformance/window_identity_contract.rs"]
+mod window_identity_contract;
+
+#[cfg(target_os = "macos")]
+#[path = "../../tests/conformance/macos_notification_contract.rs"]
+mod macos_notification_contract;
 
 struct ContractAdapter {
     resolve: ResolveMode,
@@ -28,50 +31,109 @@ enum ResolveMode {
     Ambiguous,
 }
 
-impl PlatformAdapter for ContractAdapter {
-    fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        self.resolve()
-    }
-
-    fn resolve_element_strict_with_timeout(
+impl ObservationOps for ContractAdapter {
+    fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
-        _timeout: Duration,
+        _deadline: Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         self.resolve()
     }
 
-    fn get_live_element(&self, _handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<LiveElement, AdapterError> {
         Ok(LiveElement {
-            state: Some(ElementState {
+            identity: LiveIdentity {
+                name: LocatorField::Known("OK".into()),
+                description: LocatorField::Absent,
+                identifiers: IdentifierEvidence::absent(),
+            },
+            state: ElementState {
                 role: "button".into(),
                 states: vec![],
                 value: self.live_value.clone(),
-            }),
+                enabled: Some(true),
+                hidden: Some(false),
+                offscreen: Some(false),
+            },
+            states_complete: true,
             bounds: self.live_bounds,
-            available_actions: Some(vec![capability::CLICK.into()]),
+            available_actions: vec![capability::CLICK.into()],
         })
     }
 
-    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+    fn get_live_state(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
         Ok(Some(ElementState {
             role: "button".into(),
             states: vec![],
             value: self.live_value.clone(),
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
         }))
     }
 
-    fn get_live_value(&self, _handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
+    fn get_live_value(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
         Ok(self.live_value.clone())
     }
 
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        Ok(self.live_bounds)
+    }
+
+    fn get_live_actions(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        Ok(Some(vec![capability::CLICK.into()]))
+    }
+
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: agent_desktop_core::Point,
+        _deadline: Deadline,
+    ) -> Result<agent_desktop_core::HitTestResult, AdapterError> {
+        Ok(agent_desktop_core::HitTestResult::ReachesTarget)
+    }
+}
+
+impl ActionOps for ContractAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
         _request: ActionRequest,
+        _lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         self.dispatches.fetch_add(1, Ordering::SeqCst);
-        Ok(ActionResult::new("click"))
+        Ok(ActionResult::delivered_unverified("click"))
+    }
+}
+
+impl InputOps for ContractAdapter {}
+
+impl SystemOps for ContractAdapter {
+    fn acquire_interaction_lease(
+        &self,
+        deadline: Deadline,
+    ) -> Result<InteractionLease, AdapterError> {
+        InteractionLease::guarded(deadline, ())
     }
 }
 
@@ -101,23 +163,78 @@ impl ContractAdapter {
 
 fn entry(bounds: Rect) -> RefEntry {
     RefEntry {
-        pid: 1,
-        role: "button".into(),
-        name: Some("OK".into()),
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: Some(bounds),
-        bounds_hash: Some(bounds.bounds_hash()),
-        available_actions: vec![capability::CLICK.into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: true,
-        path: Default::default(),
+        process: RefProcess {
+            pid: agent_desktop_core::ProcessId::new(1),
+            process_instance: Some("contract-process".into()),
+        },
+        identity: RefEntryIdentity {
+            role: "button".into(),
+            name: Some("OK".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: RefCapabilities {
+            states: vec![],
+            available_actions: vec![capability::CLICK.into()],
+        },
+        source: RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: SnapshotSurface::Window,
+        },
+        scope: RefScope {
+            root_ref: None,
+            path_is_absolute: true,
+            path: Default::default(),
+        },
     }
+}
+
+#[test]
+fn platform_adapter_exposes_all_capability_methods() {
+    fn exercise(adapter: &dyn PlatformAdapter) {
+        let deadline = Deadline::standard().unwrap();
+        let _ = adapter.list_windows(
+            &agent_desktop_core::WindowFilter {
+                focused_only: false,
+                app: None,
+            },
+            deadline,
+        );
+        let _ = adapter.list_apps(deadline);
+        let _ = adapter.permission_report(deadline);
+        let _ = adapter.get_clipboard_content(agent_desktop_core::ClipboardFormat::Text, deadline);
+        let handle = adapter
+            .resolve_element_strict(&entry(Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            }), deadline)
+            .expect("ObservationOps::resolve_element_strict must be reachable through &dyn PlatformAdapter");
+        let lease = adapter.acquire_interaction_lease(deadline).unwrap();
+        let _ = adapter.execute_action(
+            &handle,
+            ActionRequest::headless(agent_desktop_core::Action::Click),
+            &lease,
+        );
+    }
+    exercise(&ContractAdapter::new(
+        ResolveMode::Ok,
+        Some(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+        }),
+    ));
 }
 
 #[test]

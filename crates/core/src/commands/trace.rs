@@ -1,6 +1,6 @@
 use crate::{
+    AppError,
     context::CommandContext,
-    error::AppError,
     refs_store::RefStore,
     session::resolve_active_session,
     trace_read::{ExportOptions, ReadOptions, export_html, read_merged},

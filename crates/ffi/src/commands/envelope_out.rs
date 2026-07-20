@@ -1,8 +1,8 @@
 use crate::commands::app_error_to_adapter;
 use crate::convert::string::string_to_c;
 use crate::error::{AdResult, set_last_error};
-use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
 use agent_desktop_core::output::{ErrorPayload, Response};
+use agent_desktop_core::{AdapterError, AppError, ErrorCode};
 use serde_json::Value;
 use std::ffi::c_char;
 
@@ -91,7 +91,7 @@ mod tests {
     use super::*;
     use crate::convert::string::free_c_string;
     use crate::error::{clear_last_error, last_error_code};
-    use agent_desktop_core::error::AdapterError;
+    use agent_desktop_core::AdapterError;
     use std::ffi::CStr;
 
     unsafe fn read_and_free(out: *mut c_char) -> String {

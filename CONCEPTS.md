@@ -11,7 +11,7 @@ A structured representation of an application's user interface exposed by the op
 An observation of an accessibility tree at a point in time, persisted with the element refs allocated from that observation.
 
 ### Snapshot ID
-A compact identifier for one persisted snapshot. Explicit snapshot IDs are direct handles; callers do not need the original session when they pass the ID.
+A compact identifier for one persisted snapshot. Lookup is confined to the selected session namespace, so an ID created in a session is not a cross-session handle.
 
 ### Surface
 A scoped UI layer that can be observed separately from the whole window, such as an open menu, sheet, popover, alert, or focused area.
@@ -24,7 +24,7 @@ A snapshot operation that starts from an existing ref to observe that element's 
 ### Ref
 A short element identifier assigned by agent-desktop to an actionable or drillable node in a snapshot.
 
-Refs are deterministic inside one snapshot but are not stable across UI changes. Callers either pass the snapshot ID that produced the ref or intentionally use the session's latest snapshot pointer.
+Refs are deterministic inside one snapshot but are not stable across UI changes. Snapshot and find output qualify each ref with its snapshot ID. Legacy bare refs require the producing snapshot ID as a separate argument.
 
 ### RefMap
 The persisted mapping from refs to the identity evidence needed to re-identify elements later.
@@ -47,9 +47,9 @@ Strict ref resolution rejects missing, stale, and ambiguous matches instead of g
 ### Session
 An on-disk container under `~/.agent-desktop/sessions/<id>/` that owns snapshot refmaps, an optional trace directory, and a `session.json` manifest.
 
-`session start` writes the manifest (`trace: on` unless `--no-trace`), pre-creates `trace/` when tracing is on, and sets `~/.agent-desktop/current_session`. Activating a session (via pointer, `AGENT_DESKTOP_SESSION`, or `--session`) relocates the latest-snapshot namespace as well as the trace sink. Bare `--session <id>` without a manifest remains snapshot-namespace-only for backward compatibility.
+`session start` writes the manifest (`trace: on` unless `--no-trace`) and pre-creates `trace/` when tracing is on. It returns the new ID but does not activate it for later processes. Explicit `--session` takes precedence over `AGENT_DESKTOP_SESSION`; with neither, commands use the global, non-session namespace. Bare `--session <id>` without a manifest remains snapshot-namespace-only for backward compatibility.
 
-Use sessions when callers intentionally omit `--snapshot` and want a shared latest observation — typically after `session start` for a coordinated run. Explicit snapshot IDs remain the deterministic path for pinned actions and can be resolved without also passing the session.
+Use sessions when callers want a coordinated snapshot namespace and trace sink. Every lookup is confined to its selected namespace, so a snapshot created under a session requires that same `--session` or `AGENT_DESKTOP_SESSION` scope later. Qualified refs remain the deterministic path for pinned actions inside that namespace.
 
 ### Session Manifest
 The `session.json` file describing one session: id, optional name, created/ended timestamps, and `trace: on|off`.
@@ -84,7 +84,9 @@ The platform-neutral set of supported action names that core uses to compare com
 Each adapter maps native primitives into this shared vocabulary before core evaluates actionability. New commands should extend the central vocabulary first, then reuse it from actionability, ref allocation, predicates, FFI tests, and platform adapters.
 
 ### Interaction Policy
-The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input fallbacks. Ref commands expose exactly two modes: **headless** (the default — accessibility-only, no cursor, fails closed when the AX path is unavailable) and **headed** (opt-in via the global `--headed` flag — permits focus stealing and cursor movement so the action chain's physical fallbacks can complete). The AX path is always tried first, so headed never regresses headless-capable elements. The `headed` upgrade applies uniformly to every ref command; each command still declares its own headless base policy (most are pure-AX; `type` uses a focus-fallback base because typing requires focus but never moves the cursor).
+The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input. Ref commands expose exactly two modes: **headless** (the default — accessibility-only, no cursor, fails closed when the semantic path is unavailable) and **headed** (opt-in via the global `--headed` flag — authorizes the action's declared focus and cursor preconditions).
+
+Core owns those preconditions through `HeadedRequirement`: `FocusedWindow` for keyboard or focus-sensitive work, and `FocusedWindowAndCursor` for pointer delivery. For ref actions, core focuses the exact source window before dispatch and resolves a verified target point for pointer work; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. On macOS, headed `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and the remaining semantic actions stay semantic after the core focus precondition.
 
 ### Headless Ref Action
 A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
@@ -92,7 +94,7 @@ A ref-based action that uses semantic accessibility operations without implicit 
 Headless ref actions may still fail when the native accessibility API cannot perform the requested semantic operation; they fail closed with structured actionability or policy errors rather than silently substituting physical input. The broader **headed** policy must be selected explicitly with `--headed`.
 
 ### Action Chain
-The ordered ladder of strategies a ref action walks to perform one intent — semantic accessibility actions first, then settable attributes, then policy-gated physical input — with each step verified against the element's observed state before it counts as success.
+The ordered ladder of strategies a ref action walks to perform one intent, with each step gated by policy and its delivery evidence recorded. The order is action-specific: natural input may put a headed physical step first, while semantic state changes use accessibility actions or settable attributes only.
 
 The chain pins one execution deadline at its start (distinct from the Resolver Deadline, which budgets re-identification) and every step observes it. Expiry while a step may have partially mutated the element surfaces as a structured timeout carrying the observed state, never as a plain step failure — the caller must be able to tell "nothing happened" from "something may have happened".
 
@@ -105,11 +107,11 @@ The remaining time budget carried through strict ref resolution so every native 
 ### Coordinate Fallback
 An explicit opt-in path that uses screen coordinates or physical input when semantic accessibility operations cannot perform the requested action.
 
-Physical input lands on the topmost window at the target point, so the fallback first ensures the target element's own window is frontmost — the app being frontmost is not sufficient when the element lives in a background window of that app.
+Ref-targeted physical input lands on the topmost window at the resolved point, so core first ensures the target element's exact window is frontmost — the app being frontmost is not sufficient when the element lives in a background window of that app. Raw `--xy` input carries no window identity and therefore moves/clicks at the requested coordinates without focusing any application.
 
 ### FFI Ref-Action Parity
 The requirement that language bindings using refs follow the same strict resolution, actionability, and interaction-policy semantics as CLI ref commands.
 
 ## Relationships
 
-A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected directly by snapshot ID. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch, and the action chain executes that dispatch under its own deadline with the interaction policy gating its physical steps. FFI ref-action parity keeps that same relationship true for language bindings.
+A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected by ID within that same namespace. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether the action can safely dispatch. In headed mode, core applies the action's focus/cursor requirement before the platform adapter executes the action-specific chain under its own deadline. FFI ref-action parity keeps that same relationship true for language bindings.

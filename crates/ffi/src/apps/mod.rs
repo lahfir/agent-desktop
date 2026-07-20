@@ -2,7 +2,7 @@ pub(crate) mod close;
 pub(crate) mod launch;
 pub(crate) mod list;
 
-use agent_desktop_core::error::AdapterError;
+use agent_desktop_core::AdapterError;
 use std::os::raw::c_char;
 
 fn decode_app_id(id: *const c_char) -> Result<String, AdapterError> {

@@ -1,6 +1,8 @@
 use clap::{Args, Parser};
 use serde::Deserialize;
 
+use super::WindowScope;
+
 fn default_launch_timeout() -> u64 {
     30000
 }
@@ -21,6 +23,27 @@ pub(crate) struct LaunchArgs {
     )]
     #[serde(default = "default_launch_timeout")]
     pub timeout: u64,
+    #[arg(
+        long = "arg",
+        help = "Command-line argument passed to the launched app"
+    )]
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[arg(
+        long = "env",
+        value_name = "KEY=VALUE",
+        help = "Environment variable for the launched process"
+    )]
+    #[serde(default)]
+    pub env: Vec<String>,
+    #[arg(long, help = "Working directory for the launched process")]
+    pub cwd: Option<std::path::PathBuf>,
+    #[arg(
+        long = "no-attach",
+        help = "Require a fresh instance; fail if the app is already running"
+    )]
+    #[serde(default)]
+    pub no_attach: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -64,8 +87,9 @@ pub(crate) struct FocusWindowArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ResizeWindowCliArgs {
-    #[arg(long, help = "Application name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[arg(long, help = "New window width in pixels")]
     pub width: f64,
     #[arg(long, help = "New window height in pixels")]
@@ -75,8 +99,9 @@ pub(crate) struct ResizeWindowCliArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MoveWindowCliArgs {
-    #[arg(long, help = "Application name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[arg(long, help = "New window X position")]
     pub x: f64,
     #[arg(long, help = "New window Y position")]
@@ -86,23 +111,70 @@ pub(crate) struct MoveWindowCliArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AppRefArgs {
-    #[arg(long, help = "Application name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
+}
+
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ClipboardGetArgs {
+    #[arg(
+        long,
+        value_name = "FORMAT",
+        help = "Clipboard format to read: text (default), auto, image, file-urls"
+    )]
+    pub format: Option<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Where to write image content; defaults to a private temp file under the session dir"
+    )]
+    pub out: Option<std::path::PathBuf>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ClipboardSetArgs {
-    #[arg(value_name = "TEXT", help = "Text to write to the clipboard")]
-    pub text: String,
+    #[arg(
+        value_name = "TEXT",
+        help = "Text to write to the clipboard (ignored if --image or --file-url is given)"
+    )]
+    pub text: Option<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Path to a PNG file to write to the clipboard"
+    )]
+    pub image: Option<std::path::PathBuf>,
+    #[arg(
+        long = "file-url",
+        value_name = "PATH",
+        help = "File path to write to the clipboard as a file reference; repeatable"
+    )]
+    #[serde(default)]
+    pub file_url: Vec<String>,
 }
 
+/// `event`/`window_id` flatten in as a sibling of `mode`/`predicate` here
+/// (not nested inside [`WaitModeArgs`]) even though they are conceptually
+/// part of the wait mode: serde does not support `#[serde(deny_unknown_fields)]`
+/// on a struct that is both a flatten *target* and a flatten *owner*, and
+/// every struct in this file needs `deny_unknown_fields` to keep rejecting
+/// typoed batch-JSON keys. Keeping the flatten nesting at exactly one level
+/// (three flatten fields side by side, mirroring the existing `mode`/
+/// `predicate` split) sidesteps that limitation; the CLI surface is
+/// unaffected since `#[command(flatten)]` merges flags regardless of Rust
+/// struct nesting depth.
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WaitArgs {
     #[command(flatten)]
     #[serde(flatten)]
     pub mode: WaitModeArgs,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub event: WaitEventArgs,
     #[command(flatten)]
     #[serde(flatten)]
     pub predicate: WaitPredicateArgs,
@@ -117,6 +189,25 @@ pub(crate) struct WaitArgs {
     pub app: Option<String>,
 }
 
+/// The `--event`/`--window-id` pair, grouped out of [`WaitModeArgs`] to keep
+/// it under the repo's field-count limit. `window_id` only ever narrows an
+/// `--event` wait, so the two travel together.
+#[derive(Args, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WaitEventArgs {
+    #[arg(
+        long,
+        help = "Block until a desktop lifecycle signal, detected by baseline diff without needing to know the id/title up front: window-opened, window-closed, app-launched, app-terminated, focus-changed, surface-appeared, surface-dismissed"
+    )]
+    pub event: Option<String>,
+    #[arg(
+        long,
+        name = "window-id",
+        help = "Optional: narrow --event window-opened/window-closed/focus-changed to one window ID"
+    )]
+    pub window_id: Option<String>,
+}
+
 #[derive(Args, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WaitModeArgs {
@@ -124,7 +215,10 @@ pub(crate) struct WaitModeArgs {
     pub ms: Option<u64>,
     #[arg(long, help = "Block until this element ref appears in the tree")]
     pub element: Option<String>,
-    #[arg(long, help = "Block until a window with this title appears")]
+    #[arg(
+        long,
+        help = "Block until a window with this title appears; with --event, narrows the event wait to that window title instead of selecting a mode"
+    )]
     pub window: Option<String>,
     #[arg(
         long,
@@ -148,7 +242,7 @@ pub(crate) struct WaitPredicateArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID for --element waits; omit to use active session latest"
+        help = "Snapshot ID required when --element is a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -180,15 +274,14 @@ pub(crate) struct WaitPredicateArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PermissionsArgs {
-    #[arg(long, help = "Trigger the system accessibility permission dialog")]
+    #[arg(
+        long,
+        help = "Request missing permissions in the bounded isolated helper"
+    )]
     #[serde(default)]
     pub request: bool,
 }
 
-#[derive(Parser, Debug)]
-pub(crate) struct BatchArgs {
-    #[arg(value_name = "JSON", help = "JSON array of {command, args} objects")]
-    pub commands_json: String,
-    #[arg(long, help = "Halt the batch on the first failed command")]
-    pub stop_on_error: bool,
-}
+#[cfg(test)]
+#[path = "system_tests.rs"]
+mod tests;

@@ -286,3 +286,101 @@ fn failed_writer_reports_no_sink() {
         "a trace writer whose open failed must not report an active sink"
     );
 }
+
+#[test]
+fn cross_process_writer_helper() {
+    let Some(path) = std::env::var_os("AGENT_DESKTOP_TRACE_HELPER_PATH") else {
+        return;
+    };
+    let config = TraceConfig::build(Some(path.into()), None, true).unwrap();
+    for index in 0..25 {
+        config
+            .emit("child.event", None, json!({ "index": index }))
+            .unwrap();
+    }
+}
+
+#[test]
+fn explicit_trace_appends_are_cross_process_atomic_with_one_meta() {
+    let path = std::env::temp_dir().join(format!(
+        "agent-desktop-cross-process-trace-{}.jsonl",
+        crate::refs::new_snapshot_id()
+    ));
+    let mut children = Vec::new();
+    for _ in 0..2 {
+        children.push(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("--exact")
+                .arg("trace::tests::cross_process_writer_helper")
+                .arg("--nocapture")
+                .env("AGENT_DESKTOP_TRACE_HELPER_PATH", &path)
+                .spawn()
+                .unwrap(),
+        );
+    }
+    for child in &mut children {
+        assert!(child.wait().unwrap().success());
+    }
+
+    let body = fs::read_to_string(&path).unwrap();
+    let records = body
+        .lines()
+        .map(serde_json::from_str::<serde_json::Value>)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(records.len(), 51);
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| record["event"] == "trace.meta")
+            .count(),
+        1
+    );
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| record["event"] == "child.event")
+            .count(),
+        50
+    );
+    let child_records = records
+        .iter()
+        .filter(|record| record["event"] == "child.event")
+        .collect::<Vec<_>>();
+    assert!(child_records.iter().all(|record| {
+        record["writer_pid"].as_u64().is_some() && record["writer_proc_start_ms"].as_u64().is_some()
+    }));
+    let identities = child_records
+        .iter()
+        .map(|record| {
+            (
+                record["writer_pid"].as_u64().unwrap(),
+                record["writer_proc_start_ms"].as_u64().unwrap(),
+                record["seq"].as_u64().unwrap(),
+            )
+        })
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(identities.len(), 50);
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn oversized_event_is_rejected_before_line_allocation() {
+    let path = std::env::temp_dir().join(format!(
+        "agent-desktop-oversized-event-{}.jsonl",
+        crate::refs::new_snapshot_id()
+    ));
+    let config = TraceConfig::build(Some(path.clone()), None, true).unwrap();
+
+    let error = config
+        .emit(
+            "event",
+            None,
+            json!({ "value": "x".repeat(MAX_TRACE_EVENT_BYTES) }),
+        )
+        .unwrap_err();
+
+    assert_eq!(error.code(), "INVALID_ARGS");
+    assert!(fs::metadata(&path).unwrap().len() < MAX_TRACE_EVENT_BYTES as u64);
+    fs::remove_file(path).unwrap();
+}

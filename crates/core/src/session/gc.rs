@@ -1,10 +1,7 @@
-use super::{
-    SessionManifest, TRACE_LIVENESS_WINDOW, list_sessions, now_millis,
-    read_current_session_pointer, read_manifest,
-};
+use super::{SessionManifest, TRACE_LIVENESS_WINDOW, list_sessions, now_millis, read_manifest};
 use crate::{
+    AppError,
     context::validate_session_id,
-    error::AppError,
     refs_lock::{RefStoreLock, lock_holder_is_live},
     refs_store::RefStore,
 };
@@ -21,17 +18,13 @@ pub struct GcReport {
     pub removed: Vec<String>,
 }
 
-pub fn pointer_references_live_session() -> Result<bool, AppError> {
-    let Some(id) = read_current_session_pointer()? else {
-        return Ok(false);
-    };
-    is_live(&id)
-}
-
 pub fn is_live(session_id: &str) -> Result<bool, AppError> {
     validate_session_id(session_id)?;
     let store = RefStore::for_session(Some(session_id))?;
     if lock_holder_is_live(&store.base_dir().join("refstore.lock")) {
+        return Ok(true);
+    }
+    if super::liveness::any_held(store.base_dir()) {
         return Ok(true);
     }
     let manifest = read_manifest(session_id)?;
@@ -51,12 +44,8 @@ fn has_recent_activity(store: &RefStore, manifest: Option<&SessionManifest>) -> 
 }
 
 pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
-    let pointer = read_current_session_pointer()?;
     let mut removed = Vec::new();
     for manifest in list_sessions()? {
-        if pointer.as_deref() == Some(manifest.id.as_str()) {
-            continue;
-        }
         if is_live(&manifest.id)? {
             continue;
         }
@@ -78,7 +67,7 @@ pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
             Ok(lock) => lock,
             Err(_) => continue,
         };
-        if has_recent_activity(&store, Some(&manifest)) {
+        if super::liveness::any_held(&dir) || has_recent_activity(&store, Some(&manifest)) {
             drop(lock);
             continue;
         }

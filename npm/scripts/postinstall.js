@@ -1,8 +1,19 @@
 #!/usr/bin/env node
 
-const { existsSync, mkdirSync, chmodSync, unlinkSync, renameSync, writeFileSync, symlinkSync, lstatSync } = require('fs');
-const { readFileSync } = require('fs');
-const { join } = require('path');
+const {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} = require('fs');
+const { dirname, isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
 const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
@@ -13,6 +24,8 @@ const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), '
 const version = packageJson.version;
 
 const GITHUB_REPO = 'lahfir/agent-desktop';
+const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
+const MACOS_HELPER_PATH_ENV = 'AGENT_DESKTOP_MACOS_HELPER_PATH';
 
 const TARGET_MAP = {
   'darwin-arm64': 'aarch64-apple-darwin',
@@ -36,6 +49,18 @@ function log(msg) {
   process.stderr.write(`agent-desktop: ${msg}\n`);
 }
 
+function trashRecoverably(path, trashCommand = 'trash') {
+  try {
+    execFileSync(trashCommand, [path], { stdio: 'pipe', timeout: 30000 });
+  } catch (err) {
+    if (!existsSync(path)) return;
+    const reason = err.code === 'ENOENT'
+      ? `trash command is unavailable: ${trashCommand}`
+      : `trash exited with status ${err.status ?? 'unknown'}`;
+    log(`Could not move cleanup artifact to Trash; retained at ${path}: ${reason}`);
+  }
+}
+
 function getPlatformKey() {
   return `${platform()}-${arch()}`;
 }
@@ -55,9 +80,86 @@ function download(url, dest) {
 }
 
 function verifyChecksum(filePath, expectedHash) {
-  const fileBuffer = readFileSync(filePath);
-  const hash = createHash('sha256').update(fileBuffer).digest('hex');
-  return hash === expectedHash;
+  return sha256(filePath) === expectedHash.toLowerCase();
+}
+
+function sha256(filePath) {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+}
+
+function checksumFor(contents, fileName) {
+  for (const line of contents.split('\n')) {
+    const match = line.trim().match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/);
+    if (match && match[2] === fileName) {
+      return match[1].toLowerCase();
+    }
+  }
+  throw new Error(`Checksum entry missing for ${fileName}`);
+}
+
+function installExecutable(source, destination) {
+  const temporary = `${destination}.install-${process.pid}`;
+  try {
+    writeFileSync(temporary, readFileSync(source), { mode: 0o755 });
+    chmodSync(temporary, 0o755);
+    if (sha256(source) !== sha256(temporary)) {
+      throw new Error(`Executable copy verification failed for ${destination}`);
+    }
+    renameSync(temporary, destination);
+  } finally {
+    try { unlinkSync(temporary); } catch {}
+  }
+}
+
+function customHelperPath(customBinaryPath) {
+  const override = process.env[MACOS_HELPER_PATH_ENV];
+  if (override) {
+    if (!isAbsolute(override)) {
+      throw new Error(`${MACOS_HELPER_PATH_ENV} must be an absolute path`);
+    }
+    return override;
+  }
+  return join(dirname(customBinaryPath), MACOS_HELPER_NAME);
+}
+
+function validateArchive(tarballPath) {
+  const listing = execFileSync('tar', ['-tzf', tarballPath], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 30000,
+  })
+    .split('\n')
+    .filter(Boolean)
+    .sort();
+  const expected = ['agent-desktop', MACOS_HELPER_NAME].sort();
+  if (JSON.stringify(listing) !== JSON.stringify(expected)) {
+    throw new Error(`Release archive has unexpected entries: ${listing.join(', ')}`);
+  }
+}
+
+function installArchive(tarballPath, binaryPath, helperPath, trashCommand = 'trash') {
+  validateArchive(tarballPath);
+  const staging = mkdtempSync(join(binDir, '.extract-'));
+  try {
+    execFileSync('tar', ['-xzf', tarballPath, '-C', staging], {
+      stdio: 'pipe',
+      timeout: 30000,
+    });
+    const entries = readdirSync(staging).sort();
+    const expected = ['agent-desktop', MACOS_HELPER_NAME].sort();
+    if (JSON.stringify(entries) !== JSON.stringify(expected)) {
+      throw new Error(`Extracted archive has unexpected entries: ${entries.join(', ')}`);
+    }
+    const extractedBinary = join(staging, 'agent-desktop');
+    const extractedHelper = join(staging, MACOS_HELPER_NAME);
+    if (!lstatSync(extractedBinary).isFile() || !lstatSync(extractedHelper).isFile()) {
+      throw new Error('Release archive executables must be regular files');
+    }
+    installExecutable(extractedHelper, helperPath);
+    installExecutable(extractedBinary, binaryPath);
+  } finally {
+    trashRecoverably(staging, trashCommand);
+  }
 }
 
 function fixGlobalInstallBin() {
@@ -129,33 +231,41 @@ function main() {
   }
 
   const binaryPath = join(binDir, binaryName);
-
-  if (process.env.AGENT_DESKTOP_BINARY_PATH) {
-    const customPath = process.env.AGENT_DESKTOP_BINARY_PATH;
-    if (existsSync(customPath)) {
-      try {
-        writeFileSync(binaryPath, readFileSync(customPath));
-        chmodSync(binaryPath, 0o755);
-        log(`Using binary from AGENT_DESKTOP_BINARY_PATH: ${customPath}`);
-        fixGlobalInstallBin();
-        promptSkillInstall();
-        return;
-      } catch (err) {
-        log(`Failed to copy from AGENT_DESKTOP_BINARY_PATH: ${err.message}`);
-      }
-    }
-  }
-
-  if (existsSync(binaryPath)) {
-    chmodSync(binaryPath, 0o755);
-    log(`Native binary ready: ${binaryName}`);
-    fixGlobalInstallBin();
-    promptSkillInstall();
-    return;
-  }
+  const helperPath = join(binDir, MACOS_HELPER_NAME);
 
   if (!existsSync(binDir)) {
     mkdirSync(binDir, { recursive: true });
+  }
+
+  if (process.env.AGENT_DESKTOP_BINARY_PATH) {
+    const customPath = process.env.AGENT_DESKTOP_BINARY_PATH;
+    try {
+      if (!existsSync(customPath) || !lstatSync(customPath).isFile()) {
+        throw new Error(`binary is not a regular file: ${customPath}`);
+      }
+      const sourceHelper = customHelperPath(customPath);
+      if (!existsSync(sourceHelper) || !lstatSync(sourceHelper).isFile()) {
+        throw new Error(`macOS helper not found at ${sourceHelper}`);
+      }
+      installExecutable(sourceHelper, helperPath);
+      installExecutable(customPath, binaryPath);
+      log(`Using binary from AGENT_DESKTOP_BINARY_PATH: ${customPath}`);
+      fixGlobalInstallBin();
+      promptSkillInstall();
+    } catch (err) {
+      log(`Failed to install from AGENT_DESKTOP_BINARY_PATH: ${err.message}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (existsSync(binaryPath) && existsSync(helperPath)) {
+    chmodSync(binaryPath, 0o755);
+    chmodSync(helperPath, 0o755);
+    log(`Native executables ready: ${binaryName}, ${MACOS_HELPER_NAME}`);
+    fixGlobalInstallBin();
+    promptSkillInstall();
+    return;
   }
 
   const tarball = `agent-desktop-v${version}-${target}.tar.gz`;
@@ -171,33 +281,23 @@ function main() {
     download(tarballUrl, tarballPath);
     download(checksumsUrl, checksumsPath);
     const checksums = readFileSync(checksumsPath, 'utf8');
-    const expectedLine = checksums.split('\n').find((line) => line.includes(tarball));
-    if (!expectedLine) {
-      throw new Error(`Checksum entry missing for ${tarball}`);
-    }
-    const expectedHash = expectedLine.split(/\s+/)[0];
+    const expectedHash = checksumFor(checksums, tarball);
     if (!verifyChecksum(tarballPath, expectedHash)) {
       throw new Error('Checksum verification failed');
     }
     unlinkSync(checksumsPath);
     log('Checksum verified');
 
-    execFileSync('tar', ['-xzf', tarballPath, '-C', binDir], { stdio: 'pipe' });
-
-    const extractedBinary = join(binDir, 'agent-desktop');
-    if (existsSync(extractedBinary) && extractedBinary !== binaryPath) {
-      renameSync(extractedBinary, binaryPath);
-    }
-
-    chmodSync(binaryPath, 0o755);
+    installArchive(tarballPath, binaryPath, helperPath);
     unlinkSync(tarballPath);
-    log(`Installed native binary: ${binaryName}`);
+    log(`Installed native executables: ${binaryName}, ${MACOS_HELPER_NAME}`);
   } catch (err) {
     log(`Could not download native binary: ${err.message}`);
     log('');
     log('Download manually from:');
     log(`  ${tarballUrl}`);
-    log(`Then place at: ${binaryPath}`);
+    log(`Then place agent-desktop at: ${binaryPath}`);
+    log(`And ${MACOS_HELPER_NAME} at: ${helperPath}`);
 
     try { if (existsSync(tarballPath)) unlinkSync(tarballPath); } catch {}
     try { if (existsSync(checksumsPath)) unlinkSync(checksumsPath); } catch {}
@@ -210,4 +310,14 @@ function main() {
   promptSkillInstall();
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  checksumFor,
+  customHelperPath,
+  installArchive,
+  trashRecoverably,
+  validateArchive,
+};

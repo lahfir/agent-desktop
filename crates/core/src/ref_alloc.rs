@@ -1,39 +1,56 @@
-use crate::adapter::SnapshotSurface;
-use crate::node::AccessibilityNode;
+use crate::AccessibilityNode;
 use crate::refs::{RefEntry, RefMap};
+
+pub(crate) use crate::ref_alloc_config::RefAllocConfig;
 
 pub(crate) use crate::roles::INTERACTIVE_ROLES;
 
 pub(crate) fn ref_entry_from_node(
     node: &AccessibilityNode,
-    pid: i32,
-    source_app: Option<&str>,
-    source_window_id: Option<&str>,
-    source_window_title: Option<&str>,
+    source: &crate::ref_alloc_source::RefAllocSource<'_>,
     root_ref: Option<String>,
     path: &[usize],
 ) -> RefEntry {
+    let bounds = node
+        .presentation
+        .bounds
+        .filter(|bounds| bounds.validate().is_ok());
     RefEntry {
-        pid,
-        role: node.role.clone(),
-        name: meaningful_string(node.name.clone()),
-        value: meaningful_string(node.value.clone()),
-        description: meaningful_string(node.description.clone()),
-        states: node.states.clone(),
-        bounds: node.bounds,
-        bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
-        available_actions: if node.available_actions.is_empty() {
-            crate::capability::defaults_for_role(&node.role)
-        } else {
-            node.available_actions.clone()
+        process: crate::RefProcess {
+            pid: source.pid,
+            process_instance: source.process_instance.map(str::to_string),
         },
-        source_app: source_app.map(str::to_string),
-        source_window_id: source_window_id.map(str::to_string),
-        source_window_title: source_window_title.map(str::to_string),
-        source_surface: SnapshotSurface::Window,
-        root_ref,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::from_slice(path),
+        identity: crate::RefEntryIdentity {
+            role: node.role.clone(),
+            name: meaningful_string(node.identity.name.clone()),
+            value: meaningful_string(node.identity.value.clone()),
+            description: meaningful_string(node.identity.description.clone()),
+            native_id: node
+                .identity
+                .native_id
+                .clone()
+                .filter(|id| !id.value.trim().is_empty()),
+        },
+        geometry: crate::RefGeometry {
+            bounds,
+            bounds_hash: bounds.and_then(|bounds| bounds.bounds_hash()),
+        },
+        capabilities: crate::RefCapabilities {
+            states: node.presentation.states.clone(),
+            available_actions: node.presentation.available_actions.clone(),
+        },
+        source: crate::RefSource {
+            source_app: source.app.map(str::to_string),
+            source_window_id: source.window_id.map(str::to_string),
+            source_window_title: source.window_title.map(str::to_string),
+            source_window_bounds_hash: source.window_bounds_hash,
+            source_surface: source.surface,
+        },
+        scope: crate::RefScope {
+            root_ref,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::from_slice(path),
+        },
     }
 }
 
@@ -42,25 +59,52 @@ pub(crate) fn ref_entry_from_node(
 /// role. Container roles like `scrollarea` (Scroll) and `disclosure`
 /// (Expand/Collapse) are not "interactive" by role but are genuinely
 /// actionable, and `scroll` / `expand` / `collapse` need a ref to target
-/// them — so action-bearing elements must be ref-able. A bare `SetFocus`
-/// affordance does not qualify on its own: focusability is not a primary
-/// action and would ref-allocate large numbers of inert containers.
+/// them — so action-bearing elements must be ref-able even when their current
+/// bounds are zero-sized. Visibility remains a live actionability concern. A
+/// bare `SetFocus` affordance does not qualify on its own: focusability is not
+/// a primary action and would ref-allocate large numbers of inert containers.
 pub(crate) fn is_ref_able(node: &AccessibilityNode) -> bool {
-    INTERACTIVE_ROLES.contains(&node.role.as_str()) || advertises_primary_action(node)
+    is_ref_able_role_actions(&node.role, &node.presentation.available_actions)
 }
 
-fn advertises_primary_action(node: &AccessibilityNode) -> bool {
-    node.available_actions
+pub(crate) fn is_ref_able_role_actions(role: &str, available_actions: &[String]) -> bool {
+    INTERACTIVE_ROLES.contains(&role) || advertises_primary_action(available_actions)
+}
+
+fn advertises_primary_action(available_actions: &[String]) -> bool {
+    available_actions
         .iter()
         .any(|action| action != crate::capability::SET_FOCUS)
 }
 
 pub(crate) fn is_collapsible(node: &AccessibilityNode) -> bool {
-    node.ref_id.is_none()
-        && node.name.as_deref().is_none_or(str::is_empty)
-        && node.value.as_deref().is_none_or(str::is_empty)
-        && node.description.as_deref().is_none_or(str::is_empty)
-        && node.states.is_empty()
+    crate::Role::from_token(&node.role).is_transparent_wrapper()
+        && node.ref_id.is_none()
+        && node
+            .identity
+            .name
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        && node
+            .identity
+            .value
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        && node
+            .identity
+            .description
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        && node.identity.native_id.is_none()
+        && node
+            .presentation
+            .hint
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        && node.presentation.states.is_empty()
+        && node.presentation.available_actions.is_empty()
+        && node.presentation.bounds.is_none()
+        && node.children_count.is_none()
         && node.children.len() == 1
 }
 
@@ -82,20 +126,17 @@ pub fn transform_tree(
     interactive_only: bool,
     compact: bool,
 ) -> AccessibilityNode {
-    if !include_bounds {
-        node.bounds = None;
-    }
-
     node.children = node
         .children
         .into_iter()
         .filter_map(|child| {
+            let collapsible = compact && is_collapsible(&child);
             let child = transform_tree(child, include_bounds, interactive_only, compact);
-            if compact && is_collapsible(&child) {
+            if collapsible {
                 return child.children.into_iter().next();
             }
             if interactive_only
-                && !INTERACTIVE_ROLES.contains(&child.role.as_str())
+                && !is_ref_able(&child)
                 && child.children.is_empty()
                 && child.children_count.is_none()
             {
@@ -106,28 +147,19 @@ pub fn transform_tree(
         })
         .collect();
 
-    node
-}
+    if !include_bounds {
+        node.presentation.bounds = None;
+    }
 
-pub(crate) struct RefAllocConfig<'a> {
-    pub include_bounds: bool,
-    pub interactive_only: bool,
-    pub compact: bool,
-    pub pid: i32,
-    pub source_app: Option<&'a str>,
-    pub source_window_id: Option<&'a str>,
-    pub source_window_title: Option<&'a str>,
-    pub source_surface: SnapshotSurface,
-    pub root_ref_id: Option<&'a str>,
-    pub path_prefix: &'a [usize],
+    node
 }
 
 pub(crate) fn allocate_refs(
     node: AccessibilityNode,
     refmap: &mut RefMap,
     config: &RefAllocConfig,
-) -> AccessibilityNode {
-    allocate_refs_at_path(node, refmap, config, &mut config.path_prefix.to_vec())
+) -> Result<AccessibilityNode, crate::AppError> {
+    allocate_refs_at_path(node, refmap, config, &mut config.scope.path_prefix.to_vec())
 }
 
 fn allocate_refs_at_path(
@@ -135,79 +167,87 @@ fn allocate_refs_at_path(
     refmap: &mut RefMap,
     config: &RefAllocConfig,
     path: &mut Vec<usize>,
-) -> AccessibilityNode {
-    let is_ref_able = is_ref_able(&node);
+) -> Result<AccessibilityNode, crate::AppError> {
+    let node_is_ref_able = is_ref_able(&node);
 
-    if is_ref_able {
+    if node_is_ref_able {
         let mut entry = ref_entry_from_node(
             &node,
-            config.pid,
-            config.source_app,
-            config.source_window_id,
-            config.source_window_title,
-            config.root_ref_id.map(str::to_string),
+            &config.source,
+            config.scope.root_ref_id.map(str::to_string),
             path,
         );
-        entry.source_surface = config.source_surface;
-        entry.path_is_absolute = config.root_ref_id.is_some();
-        if !config.include_bounds {
-            entry.bounds = None;
+        entry.scope.path_is_absolute = config.scope.root_ref_id.is_some();
+        if !config.options.include_bounds {
+            entry.geometry.bounds = None;
         }
-        node.ref_id = Some(refmap.allocate(entry));
+        node.ref_id = allocate_observed_ref(refmap, entry)?;
     }
 
-    let has_label = node.name.as_deref().is_some_and(|n| !n.is_empty())
-        || node.description.as_deref().is_some_and(|d| !d.is_empty());
-    let is_skeleton_anchor =
-        !is_ref_able && node.children_count.is_some() && has_label && config.root_ref_id.is_none();
+    let has_label = node
+        .identity
+        .name
+        .as_deref()
+        .is_some_and(|name| !name.is_empty())
+        || node
+            .identity
+            .description
+            .as_deref()
+            .is_some_and(|description| !description.is_empty());
+    let is_skeleton_anchor = !node_is_ref_able
+        && node.children_count.is_some()
+        && has_label
+        && config.scope.root_ref_id.is_none();
 
     if is_skeleton_anchor {
-        let mut entry = ref_entry_from_node(
-            &node,
-            config.pid,
-            config.source_app,
-            config.source_window_id,
-            config.source_window_title,
-            None,
-            path,
-        );
-        entry.source_surface = config.source_surface;
-        entry.available_actions = vec![];
-        if !config.include_bounds {
-            entry.bounds = None;
+        let mut entry = ref_entry_from_node(&node, &config.source, None, path);
+        entry.capabilities.available_actions = vec![];
+        if !config.options.include_bounds {
+            entry.geometry.bounds = None;
         }
-        node.ref_id = Some(refmap.allocate(entry));
+        node.ref_id = allocate_observed_ref(refmap, entry)?;
     }
 
-    if !config.include_bounds {
-        node.bounds = None;
+    if !config.options.include_bounds {
+        node.presentation.bounds = None;
     }
 
-    node.children = node
-        .children
-        .into_iter()
-        .enumerate()
-        .filter_map(|child| {
-            let (idx, child) = child;
-            path.push(idx);
-            let child = allocate_refs_at_path(child, refmap, config, path);
-            path.pop();
-            if config.compact && is_collapsible(&child) {
-                return child.children.into_iter().next();
+    let mut children = Vec::new();
+    for (idx, child) in node.children.into_iter().enumerate() {
+        let collapsible = config.options.compact && is_collapsible(&child);
+        path.push(idx);
+        let child = allocate_refs_at_path(child, refmap, config, path)?;
+        path.pop();
+        if collapsible {
+            if let Some(child) = child.children.into_iter().next() {
+                children.push(child);
             }
-            if config.interactive_only
-                && child.ref_id.is_none()
-                && child.children.is_empty()
-                && child.children_count.is_none()
-            {
-                None
-            } else {
-                Some(child)
-            }
-        })
-        .collect();
+            continue;
+        }
+        if config.options.interactive_only
+            && child.ref_id.is_none()
+            && !is_ref_able(&child)
+            && child.children.is_empty()
+            && child.children_count.is_none()
+        {
+            continue;
+        }
+        children.push(child);
+    }
+    node.children = children;
 
-    node
+    Ok(node)
+}
+
+fn allocate_observed_ref(
+    refmap: &mut RefMap,
+    entry: RefEntry,
+) -> Result<Option<String>, crate::AppError> {
+    match refmap.try_allocate_observed(entry)? {
+        crate::ref_allocation::RefAllocation::Allocated(ref_id) => Ok(Some(ref_id)),
+        crate::ref_allocation::RefAllocation::SkippedInvalidRole
+        | crate::ref_allocation::RefAllocation::SkippedInvalidEntry => Ok(None),
+    }
 }
 
 fn meaningful_string(value: Option<String>) -> Option<String> {

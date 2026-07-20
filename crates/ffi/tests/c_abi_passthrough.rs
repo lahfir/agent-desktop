@@ -30,18 +30,6 @@
 /// both `ErrPermDenied` and `ErrPlatformNotSupported` as "adapter not
 /// operational here".
 ///
-/// # Main-thread tolerance
-///
-/// `ad_snapshot`, `ad_wait`, and `ad_execute_by_ref` each call
-/// `require_main_thread()` before touching the adapter. The libtest harness
-/// spawns each `#[test]` on a worker thread, so on macOS those guards fire
-/// first and return `ErrInternal` with no JSON envelope. The tests accept
-/// either outcome:
-///   - `ErrInternal` (off-main-thread on macOS, no envelope produced) — ok.
-///   - `ErrPlatformNotSupported` + valid JSON envelope — ok.
-///
-/// Both outcomes are correct; neither is a regression.
-///
 /// Commands gated by `#[cfg(feature = "stub-adapter")]` so they compile only
 /// when the feature is active. The normal test build (`cargo test -p
 /// agent-desktop-ffi --tests`) never compiles or runs this file.
@@ -51,20 +39,16 @@ mod common;
 #[cfg(feature = "stub-adapter")]
 use common::{
     AdResult, AdWaitArgs, CStr, ad_adapter_create, ad_adapter_destroy, ad_check_permissions,
-    ad_execute_by_ref, ad_free_string, ad_last_error_code, ad_last_error_message, ad_snapshot,
-    ad_status, ad_version, ad_wait, default_action, with_adapter,
+    ad_clear_clipboard, ad_execute_by_ref, ad_free_string, ad_get_clipboard, ad_last_error_code,
+    ad_last_error_message, ad_list_apps, ad_set_clipboard, ad_snapshot, ad_status, ad_version,
+    ad_wait, default_action, with_adapter,
 };
 
 /// A helper that parses the JSON envelope written to `*out` and asserts
-/// `PLATFORM_NOT_SUPPORTED` shape. Returns `true` when the envelope was
-/// present and verified; `false` when `*out` is null (meaning the function
-/// returned early — e.g. due to the macOS off-main-thread guard firing before
-/// the adapter was reached).
+/// `PLATFORM_NOT_SUPPORTED` shape.
 #[cfg(feature = "stub-adapter")]
-unsafe fn assert_platform_not_supported_envelope(out: *mut std::os::raw::c_char) -> bool {
-    if out.is_null() {
-        return false;
-    }
+unsafe fn assert_platform_not_supported_envelope(out: *mut std::os::raw::c_char) {
+    assert!(!out.is_null(), "command failure must produce an envelope");
     let json_str = unsafe { CStr::from_ptr(out) }
         .to_str()
         .expect("envelope must be valid UTF-8");
@@ -85,7 +69,6 @@ unsafe fn assert_platform_not_supported_envelope(out: *mut std::os::raw::c_char)
         !suggestion.is_empty(),
         "error.suggestion must be non-empty — got: {json_str}"
     );
-    true
 }
 
 /// `ad_version` has no adapter dependency and must always succeed even on a
@@ -134,8 +117,8 @@ fn stub_ad_check_permissions_returns_err_perm_denied() {
     });
 }
 
-/// `ad_status` is not main-thread gated. Under the stub adapter it returns a
-/// valid JSON envelope with `ok:true` because `execute_with_report_with_context`
+/// Under the stub adapter `ad_status` returns a valid JSON envelope with
+/// `ok:true` because `execute_with_report_with_context`
 /// reports the Denied permission state as a valid (non-error) status payload.
 ///
 /// This test asserts the envelope is produced and is valid JSON — the specific
@@ -169,45 +152,23 @@ fn stub_ad_status_returns_valid_envelope() {
     });
 }
 
-/// `ad_snapshot` calls `require_main_thread()` before reaching the adapter.
-/// On macOS the libtest worker thread fires the guard first, returning
-/// `ErrInternal` with no envelope. On non-macOS the call proceeds to the stub
-/// adapter and must produce a `PLATFORM_NOT_SUPPORTED` error envelope.
+/// The stub adapter must produce a `PLATFORM_NOT_SUPPORTED` error envelope.
 #[cfg(feature = "stub-adapter")]
 #[test]
-fn stub_ad_snapshot_platform_not_supported_or_off_main_thread() {
+fn stub_ad_snapshot_returns_platform_not_supported_envelope() {
     with_adapter(|adapter| unsafe {
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_snapshot(adapter, std::ptr::null(), 0, 6, false, false, &mut out);
-        match rc {
-            AdResult::ErrInternal => {
-                assert!(
-                    out.is_null(),
-                    "ErrInternal (off-main-thread guard) must leave out null"
-                );
-            }
-            AdResult::ErrPlatformNotSupported => {
-                let had_envelope = assert_platform_not_supported_envelope(out);
-                assert!(
-                    had_envelope,
-                    "ErrPlatformNotSupported must be accompanied by an error envelope"
-                );
-                ad_free_string(out);
-            }
-            other => {
-                panic!(
-                    "stub ad_snapshot must return ErrInternal (macOS off-main-thread) or \
-                     ErrPlatformNotSupported, got {other:?}"
-                );
-            }
-        }
+        assert_eq!(rc, AdResult::ErrPlatformNotSupported);
+        assert_platform_not_supported_envelope(out);
+        ad_free_string(out);
     });
 }
 
 /// `ad_wait` is exercised in its adapter-free `ms` mode: it sleeps for `ms`
 /// and returns an Ok envelope without touching the adapter, proving the
-/// entrypoint is callable and structured under the stub without crashing (or
-/// `ErrInternal` off the main thread on macOS). ad_wait's adapter-dependent
+/// entrypoint is callable and structured under the stub without crashing.
+/// ad_wait's adapter-dependent
 /// element/predicate modes need a real refmap from a successful snapshot,
 /// which the stub cannot produce, so PLATFORM_NOT_SUPPORTED parity for those
 /// modes is covered by the real E2E harness rather than this stub gate.
@@ -216,55 +177,50 @@ fn stub_ad_snapshot_platform_not_supported_or_off_main_thread() {
 fn stub_ad_wait_ms_mode_callable_under_stub() {
     with_adapter(|adapter| unsafe {
         let args = AdWaitArgs {
-            ms: 1,
-            has_ms: true,
-            element: std::ptr::null(),
-            window: std::ptr::null(),
-            text: std::ptr::null(),
-            menu: false,
-            menu_closed: false,
-            notification: false,
-            snapshot_id: std::ptr::null(),
-            predicate: std::ptr::null(),
-            value: std::ptr::null(),
-            action: std::ptr::null(),
-            count: 0,
-            has_count: false,
-            timeout_ms: 200,
-            app: std::ptr::null(),
+            mode: common::AdWaitMode {
+                pause: common::AdOptionalU64 {
+                    value: 1,
+                    present: true,
+                },
+                element: std::ptr::null(),
+                window: std::ptr::null(),
+                text: std::ptr::null(),
+                surfaces: common::AdWaitSurfaceModes {
+                    menu: false,
+                    menu_closed: false,
+                    notification: false,
+                },
+            },
+            predicate: common::AdWaitPredicate {
+                snapshot_id: std::ptr::null(),
+                predicate: std::ptr::null(),
+                value: std::ptr::null(),
+                action: std::ptr::null(),
+                count: common::AdOptionalUsize {
+                    value: 0,
+                    present: false,
+                },
+            },
+            scope: common::AdWaitScope {
+                timeout_ms: 200,
+                app: std::ptr::null(),
+            },
         };
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_wait(adapter, &args, &mut out);
-        match rc {
-            AdResult::Ok => {
-                if !out.is_null() {
-                    ad_free_string(out);
-                }
-            }
-            AdResult::ErrInternal => {
-                assert!(
-                    out.is_null(),
-                    "ErrInternal (off-main-thread guard) must leave out null"
-                );
-            }
-            other => {
-                panic!(
-                    "stub ad_wait (ms mode) must return Ok (adapter-free timer) or \
-                     ErrInternal (macOS off-main-thread), got {other:?}"
-                );
-            }
-        }
+        assert_eq!(rc, AdResult::Ok);
+        assert!(!out.is_null());
+        ad_free_string(out);
     });
 }
 
-/// `ad_execute_by_ref` calls `require_main_thread()` before reaching the
-/// adapter. Same main-thread tolerance applies. Uses a syntactically valid
-/// ref-id so arg-decode succeeds before the thread check.
+/// A qualified ref reaches the ref-store path without relying on ambient
+/// snapshot state.
 #[cfg(feature = "stub-adapter")]
 #[test]
-fn stub_ad_execute_by_ref_platform_not_supported_or_off_main_thread() {
+fn stub_ad_execute_by_ref_returns_structured_ref_error() {
     with_adapter(|adapter| unsafe {
-        let ref_id = std::ffi::CString::new("@e1").unwrap();
+        let ref_id = std::ffi::CString::new("@stub-snapshot:e1").unwrap();
         let action = default_action();
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_execute_by_ref(
@@ -276,29 +232,22 @@ fn stub_ad_execute_by_ref_platform_not_supported_or_off_main_thread() {
             &mut out,
         );
         match rc {
-            AdResult::ErrInternal => {
-                assert!(
-                    out.is_null(),
-                    "ErrInternal (off-main-thread guard) must leave out null"
-                );
-            }
             AdResult::ErrPlatformNotSupported
             | AdResult::ErrSnapshotNotFound
             | AdResult::ErrStaleRef => {
-                if !out.is_null() {
-                    let json_str = CStr::from_ptr(out)
-                        .to_str()
-                        .expect("envelope must be valid UTF-8");
-                    let parsed: serde_json::Value =
-                        serde_json::from_str(json_str).expect("envelope must be valid JSON");
-                    assert_eq!(parsed["ok"].as_bool(), Some(false));
-                    assert!(!parsed["error"]["code"].as_str().unwrap_or("").is_empty());
-                    ad_free_string(out);
-                }
+                assert!(!out.is_null());
+                let json_str = CStr::from_ptr(out)
+                    .to_str()
+                    .expect("envelope must be valid UTF-8");
+                let parsed: serde_json::Value =
+                    serde_json::from_str(json_str).expect("envelope must be valid JSON");
+                assert_eq!(parsed["ok"].as_bool(), Some(false));
+                assert!(!parsed["error"]["code"].as_str().unwrap_or("").is_empty());
+                ad_free_string(out);
             }
             other => {
                 panic!(
-                    "stub ad_execute_by_ref must return ErrInternal, ErrPlatformNotSupported, \
+                    "stub ad_execute_by_ref must return ErrPlatformNotSupported, \
                      ErrSnapshotNotFound, or ErrStaleRef, got {other:?}"
                 );
             }
@@ -319,4 +268,35 @@ fn stub_adapter_create_and_destroy_round_trip() {
         );
         ad_adapter_destroy(adapter);
     }
+}
+
+/// AppKit-backed platform implementations remain callable from worker threads;
+/// the macOS adapter supplies its own autorelease pools. The stub proves that
+/// the FFI boundary reaches the adapter rather than rejecting the thread.
+#[cfg(feature = "stub-adapter")]
+#[test]
+fn app_and_clipboard_families_reach_stub_from_worker_thread() {
+    let results = std::thread::spawn(|| unsafe {
+        let adapter = ad_adapter_create();
+        assert!(!adapter.is_null());
+
+        let mut apps = std::ptr::null_mut();
+        let list_apps = ad_list_apps(adapter, &mut apps);
+        assert!(apps.is_null());
+
+        let mut clipboard = std::ptr::null_mut();
+        let get_clipboard = ad_get_clipboard(adapter, &mut clipboard);
+        assert!(clipboard.is_null());
+
+        let text = std::ffi::CString::new("worker-thread").unwrap();
+        let set_clipboard = ad_set_clipboard(adapter, text.as_ptr());
+        let clear_clipboard = ad_clear_clipboard(adapter);
+
+        ad_adapter_destroy(adapter);
+        [list_apps, get_clipboard, set_clipboard, clear_clipboard]
+    })
+    .join()
+    .unwrap();
+
+    assert_eq!(results, [AdResult::ErrPlatformNotSupported; 4]);
 }

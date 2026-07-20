@@ -1,187 +1,108 @@
-#[cfg(target_os = "macos")]
 use agent_desktop_core::{
-    error::{AdapterError, ErrorCode},
-    interaction_policy::InteractionPolicy,
+    ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
+    StepMechanism,
 };
 
-#[cfg(target_os = "macos")]
 use crate::tree::AXElement;
 
-#[cfg(target_os = "macos")]
 pub(crate) fn execute_type(
-    el: &AXElement,
+    element: &AXElement,
     text: &str,
     policy: InteractionPolicy,
-) -> Result<(), AdapterError> {
-    match type_via_ax_value(el, text) {
-        Ok(()) => return Ok(()),
-        Err(err) if !policy.allow_focus_steal => return Err(err),
-        Err(_) => {}
-    }
-
-    if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
-        let _ = crate::system::app_ops::ensure_app_focused(pid);
-    }
-    crate::actions::ax_helpers::ax_focus_or_err(el)?;
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    if !text.is_ascii() {
-        return type_via_clipboard_paste(el, text);
-    }
-    crate::input::keyboard::synthesize_text(text)
-}
-
-/// Restores the user's clipboard on every scope exit — success, error, or
-/// panic — so a failure or early return mid-paste cannot leave the pasted text
-/// behind. (A SIGKILL between set and restore is unpreventable in any process.)
-#[cfg(target_os = "macos")]
-struct ClipboardRestore {
-    previous: crate::input::clipboard::ClipboardSnapshot,
-}
-
-#[cfg(target_os = "macos")]
-impl Drop for ClipboardRestore {
-    fn drop(&mut self) {
-        if let Err(e) = self.previous.restore() {
-            tracing::warn!(error = %e, "clipboard restore failed after type_text; prior clipboard may not be restored");
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn type_via_clipboard_paste(el: &AXElement, text: &str) -> Result<(), AdapterError> {
-    let before = readable_value(el);
-    let previous = crate::input::clipboard::ClipboardSnapshot::capture()?;
-    let _restore = ClipboardRestore { previous };
-    crate::input::clipboard::set(text)?;
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    let combo = agent_desktop_core::action::KeyCombo {
-        key: "v".into(),
-        modifiers: vec![agent_desktop_core::action::Modifier::Cmd],
-    };
-    crate::input::keyboard::synthesize_key(&combo)?;
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    verify_paste_effect(before.as_deref(), readable_value(el).as_deref())
-}
-
-#[cfg(target_os = "macos")]
-fn type_via_ax_value(el: &AXElement, text: &str) -> Result<(), AdapterError> {
-    if !is_text_target(el) || !crate::actions::ax_helpers::is_attr_settable(el, "AXValue") {
-        return Err(AdapterError::policy_denied(
-            "Headless typing requires a settable text value; use set-value or an explicit focus command",
+    deadline: Deadline,
+) -> Result<ActionStep, AdapterError> {
+    if !is_text_target(element, deadline)? {
+        return Err(AdapterError::new(
+            ErrorCode::ActionNotSupported,
+            "Type requires a text field, secure text field, or combo box",
         ));
     }
+    if policy.is_headed() {
+        crate::actions::physical_keyboard::type_text(element, text, policy, deadline)?;
+        return Ok(ActionStep::succeeded("PIDTargetedUnicodeText")
+            .with_mechanism(StepMechanism::PhysicalSynthetic)
+            .with_verified(false));
+    }
+    insert_selected_text(element, text, deadline)?;
+    Ok(ActionStep::succeeded("AXSelectedText")
+        .with_mechanism(StepMechanism::SemanticApi)
+        .with_verified(false))
+}
 
-    let current = if is_secure_text_field(el) {
-        String::new()
-    } else {
-        crate::tree::copy_value_typed(el).unwrap_or_default()
-    };
-    let next = typed_value(&current, text);
-    crate::actions::ax_helpers::ax_set_value(el, &next)?;
-    if is_secure_text_field(el) {
-        return Ok(());
+fn insert_selected_text(
+    element: &AXElement,
+    text: &str,
+    deadline: Deadline,
+) -> Result<(), AdapterError> {
+    prepare(element, deadline)?;
+    write_selected_text(text, |attribute, value| {
+        crate::actions::ax_helpers::set_ax_string_or_err(element, attribute, value, deadline)
+    })?;
+    if deadline.is_expired() {
+        return Err(deadline
+            .timeout_error()
+            .with_details(serde_json::json!({ "operation": "AXSelectedText" }))
+            .with_disposition(DeliverySemantics::delivered_unverified()));
     }
-    let after = crate::tree::copy_value_typed(el).unwrap_or_default();
-    if after == next {
-        return Ok(());
+    Ok(())
+}
+
+fn write_selected_text(
+    text: &str,
+    write: impl FnOnce(&str, &str) -> Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
+    write("AXSelectedText", text)
+}
+
+fn is_text_target(element: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
+    prepare(element, deadline)?;
+    let result = crate::tree::attributes::copy_string_attr_result(element, "AXRole", deadline);
+    if deadline.is_expired() {
+        return Err(deadline.timeout_error());
     }
-    Err(AdapterError::new(
-        ErrorCode::ActionFailed,
-        "AX value write reported success but the element value did not change",
-    )
-    .with_suggestion(
-        "Use explicit keyboard input for web-backed fields that ignore AXValue writes",
+    let role = result.map_err(|error| {
+        AdapterError::new(
+            ErrorCode::ActionFailed,
+            "Could not read keyboard target role",
+        )
+        .with_details(serde_json::json!({ "ax_error": error }))
+    })?;
+    Ok(matches!(
+        role.as_deref(),
+        Some("AXTextField" | "AXTextArea" | "AXSecureTextField" | "AXComboBox")
     ))
+}
+
+fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
+    crate::tree::attributes::set_messaging_timeout(element, deadline)
 }
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn execute_type(
-    _el: &crate::tree::AXElement,
+    _element: &crate::tree::AXElement,
     _text: &str,
-    _policy: agent_desktop_core::interaction_policy::InteractionPolicy,
-) -> Result<(), agent_desktop_core::error::AdapterError> {
-    Err(agent_desktop_core::error::AdapterError::new(
-        agent_desktop_core::error::ErrorCode::PlatformNotSupported,
-        "type_text is not supported on this platform",
-    ))
-}
-
-#[cfg(target_os = "macos")]
-fn is_text_target(el: &AXElement) -> bool {
-    matches!(
-        crate::actions::ax_helpers::element_role(el).as_deref(),
-        Some("textfield" | "combobox")
-    )
-}
-
-#[cfg(target_os = "macos")]
-fn is_secure_text_field(el: &AXElement) -> bool {
-    crate::tree::copy_string_attr(el, "AXRole").as_deref() == Some("AXSecureTextField")
-}
-
-#[cfg(target_os = "macos")]
-fn readable_value(el: &AXElement) -> Option<String> {
-    if is_secure_text_field(el) {
-        None
-    } else {
-        crate::tree::copy_value_typed(el)
-    }
-}
-
-/// Checks whether a clipboard paste changed the element's visible value.
-///
-/// When `before` was readable but `after` is `None`, returns `Ok(())` rather
-/// than an error: the post-paste read reuses the same element handle, which
-/// can go stale after a successful paste in re-rendering UIs (Electron/web —
-/// documented targets). Failing here would cause false-failure → agent retry
-/// → double-paste corruption. The unverifiable case is therefore treated as
-/// success; revisit only by re-resolving the element before failing.
-#[cfg(target_os = "macos")]
-fn verify_paste_effect(before: Option<&str>, after: Option<&str>) -> Result<(), AdapterError> {
-    if before.is_none() {
-        return Ok(());
-    }
-    if after.is_none() {
-        tracing::warn!("paste could not be verified: post-paste field value is unreadable");
-        return Ok(());
-    }
-    if before != after {
-        return Ok(());
-    }
-    Err(AdapterError::new(
-        ErrorCode::ActionFailed,
-        "Clipboard paste completed but the target value did not change",
-    )
-    .with_suggestion(
-        "Use set-value for fields that expose AXValue, or retry with physical keyboard input.",
-    ))
-}
-
-#[cfg(target_os = "macos")]
-fn typed_value(current: &str, text: &str) -> String {
-    let mut value = String::with_capacity(current.len() + text.len());
-    value.push_str(current);
-    value.push_str(text);
-    value
+    _policy: agent_desktop_core::InteractionPolicy,
+    _deadline: Deadline,
+) -> Result<agent_desktop_core::ActionStep, AdapterError> {
+    Err(AdapterError::not_supported("type_text"))
 }
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn typed_value_appends_without_losing_existing_text() {
-        assert_eq!(super::typed_value("abc", "123"), "abc123");
-    }
+    use std::cell::RefCell;
 
     #[test]
-    fn paste_verification_rejects_readable_no_change() {
-        let err = super::verify_paste_effect(Some("before"), Some("before")).unwrap_err();
-        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::ActionFailed);
-    }
+    fn type_writes_the_current_selection_instead_of_the_whole_value() {
+        let observed = RefCell::new(None);
+        super::write_selected_text("inserted", |attribute, value| {
+            observed.replace(Some((attribute.to_owned(), value.to_owned())));
+            Ok(())
+        })
+        .unwrap();
 
-    #[test]
-    fn paste_verification_accepts_unreadable_or_changed_values() {
-        assert!(super::verify_paste_effect(None, Some("after")).is_ok());
-        assert!(super::verify_paste_effect(Some("before"), None).is_ok());
-        assert!(super::verify_paste_effect(Some("before"), Some("after")).is_ok());
+        assert_eq!(
+            observed.into_inner(),
+            Some(("AXSelectedText".into(), "inserted".into()))
+        );
     }
 }

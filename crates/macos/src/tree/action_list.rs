@@ -1,61 +1,147 @@
 use super::AXElement;
-use super::capabilities::{copy_action_names, is_attr_settable};
+use super::capabilities::{copy_action_names_with_status, is_attr_settable_with_status};
 use agent_desktop_core::capability;
 
 #[cfg(target_os = "macos")]
 use accessibility_sys::{kAXFocusedAttribute, kAXValueAttribute};
 
+pub(crate) struct AvailableActionsRead {
+    pub(crate) actions: Vec<String>,
+    pub(crate) complete: bool,
+    pub(crate) cannot_complete: bool,
+    pub(crate) invalid_element: bool,
+    pub(crate) api_disabled: bool,
+    pub(crate) deadline_exhausted: bool,
+    pub(crate) settable_reads: u64,
+}
+
+impl Default for AvailableActionsRead {
+    fn default() -> Self {
+        Self {
+            actions: Vec::new(),
+            complete: true,
+            cannot_complete: false,
+            invalid_element: false,
+            api_disabled: false,
+            deadline_exhausted: false,
+            settable_reads: 0,
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
-pub(crate) fn platform_available_actions(
+pub(crate) fn read_platform_available_actions(
     el: &AXElement,
     role: &str,
     has_scrollbars: bool,
-) -> Vec<String> {
-    let ax_actions = copy_action_names(el);
+    deadline: std::time::Instant,
+    usage: &mut crate::tree::observation_usage::ObservationUsage,
+) -> AvailableActionsRead {
+    let mut read = AvailableActionsRead::default();
+    if crate::tree::locator_deadline::prepare(el, deadline).is_err() {
+        read.complete = false;
+        read.deadline_exhausted = true;
+        return read;
+    }
+    let native_actions = copy_action_names_with_status(el, deadline, usage);
+    if let Some(error) = native_actions.error {
+        record_error(&mut read, error);
+    }
+    let ax_actions = native_actions.value.unwrap_or_default();
     let has = |name: &str| ax_actions.iter().any(|a| a == name);
-    let mut actions = Vec::new();
 
     if has("AXPress") {
-        push_unique(&mut actions, capability::CLICK);
+        push_unique(&mut read.actions, capability::CLICK);
         if crate::tree::roles::is_toggleable_role(role) {
-            push_unique(&mut actions, capability::TOGGLE);
-        }
-        if matches!(role, "combobox" | "menuitem" | "tab") {
-            push_unique(&mut actions, capability::SELECT);
+            push_unique(&mut read.actions, capability::TOGGLE);
         }
     }
     if has("AXShowMenu") && role_allows_context_menu_action(role) {
-        push_unique(&mut actions, capability::RIGHT_CLICK);
+        push_unique(&mut read.actions, capability::RIGHT_CLICK);
     }
     if has("AXScrollToVisible") {
-        push_unique(&mut actions, capability::SCROLL);
-        push_unique(&mut actions, capability::SCROLL_TO);
+        push_unique(&mut read.actions, capability::SCROLL_TO);
     }
-    if has_scroll_mechanism(role, &has, has_scrollbars) {
-        push_unique(&mut actions, capability::SCROLL);
+    if has_scroll_mechanism(&has, has_scrollbars) {
+        push_unique(&mut read.actions, capability::SCROLL);
     }
-    if has("AXIncrement")
-        || has("AXDecrement")
-        || (role_may_bear_value(role) && is_attr_settable(el, kAXValueAttribute))
+    let value_settable = role_may_bear_value(role)
+        && read_settable(el, kAXValueAttribute, deadline, &mut read).unwrap_or(false);
+    if has("AXIncrement") || has("AXDecrement") || value_settable {
+        push_unique(&mut read.actions, capability::SET_VALUE);
+    }
+    if (role == "combobox" && value_settable) || role_supports_collection_select(role) {
+        push_unique(&mut read.actions, capability::SELECT);
+    }
+    if role_may_accept_focus(role)
+        && read_settable(el, kAXFocusedAttribute, deadline, &mut read).unwrap_or(false)
     {
-        push_unique(&mut actions, capability::SET_VALUE);
+        push_unique(&mut read.actions, capability::SET_FOCUS);
     }
-    if role_may_accept_focus(role) && is_attr_settable(el, kAXFocusedAttribute) {
-        push_unique(&mut actions, capability::SET_FOCUS);
+    if role_may_insert_text(role)
+        && read_settable(el, "AXSelectedText", deadline, &mut read).unwrap_or(false)
+    {
+        push_unique(&mut read.actions, capability::TYPE_TEXT);
     }
-    if (role_may_expand(role) && is_attr_settable(el, "AXExpanded"))
+    if (role_may_expand(role)
+        && read_settable(el, "AXExpanded", deadline, &mut read).unwrap_or(false))
         || (has("AXPress") && agent_desktop_core::roles::is_expandable_role(role))
     {
-        push_unique(&mut actions, capability::EXPAND);
-        push_unique(&mut actions, capability::COLLAPSE);
+        push_unique(&mut read.actions, capability::EXPAND);
+        push_unique(&mut read.actions, capability::COLLAPSE);
     }
 
-    actions
+    read
 }
 
-/// Whether a role could carry a settable `AXValue`, so the `is_settable` probe
-/// is worth an IPC. Click/navigation-only roles never do; `unknown` always
-/// probes so an unmapped role never loses a capability.
+#[cfg(target_os = "macos")]
+fn read_settable(
+    element: &AXElement,
+    attribute: &str,
+    deadline: std::time::Instant,
+    read: &mut AvailableActionsRead,
+) -> Option<bool> {
+    if crate::tree::locator_deadline::prepare(element, deadline).is_err() {
+        read.complete = false;
+        read.deadline_exhausted = true;
+        return None;
+    }
+    read.settable_reads += 1;
+    let result = is_attr_settable_with_status(element, attribute, deadline);
+    if let Some(error) = result.error {
+        record_error(read, error);
+    }
+    result.value
+}
+
+#[cfg(target_os = "macos")]
+fn record_error(read: &mut AvailableActionsRead, error: i32) {
+    if is_definitive_absence(error) {
+        return;
+    }
+    read.complete = false;
+    read.cannot_complete |= error == accessibility_sys::kAXErrorCannotComplete;
+    read.invalid_element |= error == accessibility_sys::kAXErrorInvalidUIElement;
+    read.api_disabled |= error == accessibility_sys::kAXErrorAPIDisabled;
+}
+
+/// AppKit's NSAccessibility bridge answers these codes when an element simply
+/// does not implement the probed attribute or action list — including
+/// `kAXErrorFailure`, which it returns for synthetic `NSAccessibilityElement`s
+/// with no action support. They are complete "none present" answers, not
+/// transport failures, so they must not mark the read incomplete.
+#[cfg(target_os = "macos")]
+fn is_definitive_absence(error: i32) -> bool {
+    matches!(
+        error,
+        accessibility_sys::kAXErrorAttributeUnsupported
+            | accessibility_sys::kAXErrorNoValue
+            | accessibility_sys::kAXErrorNotImplemented
+            | accessibility_sys::kAXErrorActionUnsupported
+            | accessibility_sys::kAXErrorFailure
+    )
+}
+
 fn role_may_bear_value(role: &str) -> bool {
     matches!(
         role,
@@ -70,48 +156,42 @@ fn role_may_bear_value(role: &str) -> bool {
             | "switch"
             | "colorwell"
             | "scrollbar"
-            | "valueindicator"
-            | "unknown"
+            | "handle"
     )
 }
 
-/// Whether a role could carry a settable `AXFocused`, so the `is_settable`
-/// probe is worth an IPC. Interactive controls and focus-holding containers
-/// (tables, outlines, web areas) can; static/decorative roles never do.
-/// `unknown` always probes so an unmapped role never loses a capability.
 fn role_may_accept_focus(role: &str) -> bool {
     agent_desktop_core::roles::is_interactive_role(role)
         || matches!(
             role,
-            "table"
-                | "outline"
-                | "list"
-                | "browser"
-                | "webarea"
-                | "scrollarea"
-                | "group"
-                | "row"
-                | "unknown"
+            "table" | "outline" | "list" | "browser" | "webarea" | "scrollarea" | "group" | "row"
         )
 }
 
-/// Whether a role could expose a settable `AXExpanded`. Leaf/interactive roles
-/// never expand; `unknown` always probes.
 fn role_may_expand(role: &str) -> bool {
     agent_desktop_core::roles::is_expandable_role(role)
         || matches!(
             role,
-            "group" | "outline" | "row" | "browser" | "table" | "list" | "cell" | "unknown"
+            "group" | "outline" | "row" | "browser" | "table" | "list" | "cell"
         )
 }
 
+fn role_may_insert_text(role: &str) -> bool {
+    matches!(role, "textfield" | "combobox")
+}
+
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn platform_available_actions(
+pub(crate) fn read_platform_available_actions(
     _el: &AXElement,
     _role: &str,
     _has_scrollbars: bool,
-) -> Vec<String> {
-    Vec::new()
+    _deadline: std::time::Instant,
+    _usage: &mut crate::tree::observation_usage::ObservationUsage,
+) -> AvailableActionsRead {
+    AvailableActionsRead {
+        complete: false,
+        ..AvailableActionsRead::default()
+    }
 }
 
 fn push_unique(actions: &mut Vec<String>, action: &str) {
@@ -124,49 +204,38 @@ fn role_allows_context_menu_action(role: &str) -> bool {
     !matches!(role, "combobox" | "menubutton")
 }
 
-fn has_scroll_mechanism(role: &str, has: &impl Fn(&str) -> bool, has_scrollbars: bool) -> bool {
-    role_supports_scroll(role)
-        || has("AXScrollDownByPage")
+fn role_supports_collection_select(role: &str) -> bool {
+    matches!(role, "list" | "table" | "outline")
+}
+
+fn has_scroll_mechanism(has: &impl Fn(&str) -> bool, has_scrollbars: bool) -> bool {
+    has("AXScrollDownByPage")
         || has("AXScrollUpByPage")
         || has("AXScrollLeftByPage")
         || has("AXScrollRightByPage")
-        || (role_may_own_scrollbars(role) && has_scrollbars)
-}
-
-fn role_supports_scroll(role: &str) -> bool {
-    matches!(
-        role,
-        "scrollarea" | "browser" | "table" | "outline" | "list"
-    )
-}
-
-fn role_may_own_scrollbars(role: &str) -> bool {
-    matches!(
-        role,
-        "application"
-            | "window"
-            | "sheet"
-            | "dialog"
-            | "group"
-            | "splitter"
-            | "webarea"
-            | "grid"
-            | "unknown"
-    )
+        || has_scrollbars
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    use super::{AvailableActionsRead, record_error};
     use super::{
-        role_allows_context_menu_action, role_may_accept_focus, role_may_own_scrollbars,
-        role_supports_scroll,
+        has_scroll_mechanism, role_allows_context_menu_action, role_may_accept_focus,
+        role_may_bear_value, role_may_insert_text, role_supports_collection_select,
     };
+
+    #[test]
+    fn canonical_handle_role_is_probed_for_settable_value() {
+        assert!(role_may_bear_value("handle"));
+        assert!(!role_may_bear_value("valueindicator"));
+    }
 
     #[test]
     fn focus_probe_is_limited_to_focus_bearing_roles() {
         assert!(role_may_accept_focus("textfield"));
         assert!(role_may_accept_focus("webarea"));
-        assert!(role_may_accept_focus("unknown"));
+        assert!(!role_may_accept_focus("unknown"));
         assert!(!role_may_accept_focus("statictext"));
         assert!(!role_may_accept_focus("image"));
     }
@@ -180,17 +249,72 @@ mod tests {
     }
 
     #[test]
-    fn scroll_container_roles_advertise_scroll_without_scroll_to() {
-        assert!(role_supports_scroll("scrollarea"));
-        assert!(role_supports_scroll("browser"));
-        assert!(!role_supports_scroll("button"));
+    fn collection_containers_advertise_the_restored_select_contract() {
+        assert!(role_supports_collection_select("list"));
+        assert!(role_supports_collection_select("table"));
+        assert!(role_supports_collection_select("outline"));
+        assert!(!role_supports_collection_select("group"));
     }
 
     #[test]
-    fn scrollbar_probe_is_limited_to_container_like_roles() {
-        assert!(role_may_own_scrollbars("group"));
-        assert!(role_may_own_scrollbars("webarea"));
-        assert!(!role_may_own_scrollbars("button"));
-        assert!(!role_may_own_scrollbars("cell"));
+    fn scroll_requires_native_directional_actions_or_concrete_scrollbars() {
+        assert!(has_scroll_mechanism(
+            &|name| name == "AXScrollDownByPage",
+            false
+        ));
+        assert!(has_scroll_mechanism(&|_| false, true));
+        assert!(!has_scroll_mechanism(&|_| false, false));
+    }
+
+    #[test]
+    fn text_insertion_probe_is_limited_to_editable_text_roles() {
+        assert!(role_may_insert_text("textfield"));
+        assert!(role_may_insert_text("combobox"));
+        assert!(!role_may_insert_text("unknown"));
+        assert!(!role_may_insert_text("button"));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn failed_native_action_reads_remain_incomplete() {
+        let mut read = AvailableActionsRead::default();
+
+        record_error(&mut read, accessibility_sys::kAXErrorCannotComplete);
+
+        assert!(!read.complete);
+        assert!(read.cannot_complete);
+        assert!(read.actions.is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn definitive_absence_codes_are_complete_empty_answers() {
+        for error in [
+            accessibility_sys::kAXErrorAttributeUnsupported,
+            accessibility_sys::kAXErrorNoValue,
+            accessibility_sys::kAXErrorNotImplemented,
+            accessibility_sys::kAXErrorActionUnsupported,
+            accessibility_sys::kAXErrorFailure,
+        ] {
+            let mut read = AvailableActionsRead::default();
+            record_error(&mut read, error);
+            assert!(read.complete, "code {error} must stay complete");
+            assert!(!read.cannot_complete);
+            assert!(read.actions.is_empty());
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn transport_failures_are_never_classified_as_absence() {
+        for error in [
+            accessibility_sys::kAXErrorCannotComplete,
+            accessibility_sys::kAXErrorInvalidUIElement,
+            accessibility_sys::kAXErrorAPIDisabled,
+        ] {
+            let mut read = AvailableActionsRead::default();
+            record_error(&mut read, error);
+            assert!(!read.complete, "code {error} must mark the read incomplete");
+        }
     }
 }

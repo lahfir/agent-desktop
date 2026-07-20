@@ -1,10 +1,6 @@
 use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
-use crate::types::{AdSnapshotSurface, AdSurfaceInfo};
-use agent_desktop_core::{
-    adapter::SnapshotSurface,
-    error::{AdapterError, ErrorCode},
-    node::SurfaceInfo,
-};
+use crate::types::{AdExactSurfaceInfo, AdSnapshotSurface, AdSurfaceInfo};
+use agent_desktop_core::{AdapterError, ErrorCode, SnapshotSurface, SurfaceInfo};
 use std::os::raw::c_char;
 use std::ptr;
 
@@ -14,6 +10,30 @@ pub(crate) fn surface_info_to_c(s: &SurfaceInfo) -> AdSurfaceInfo {
         title: opt_string_to_c(s.title.as_deref()),
         item_count: s.item_count.map(|c| c as i64).unwrap_or(-1),
     }
+}
+
+pub(crate) fn exact_surface_info_to_c(surface: &SurfaceInfo) -> AdExactSurfaceInfo {
+    AdExactSurfaceInfo {
+        version: crate::types::exact_surface_info::AD_EXACT_SURFACE_INFO_VERSION,
+        size: crate::types::exact_surface_info::AD_EXACT_SURFACE_INFO_SIZE as u32,
+        id: string_to_c_lossy(&surface.id),
+        surface: surface_info_to_c(surface),
+    }
+}
+
+pub(crate) fn validate_surface_info(surface: &SurfaceInfo) -> Result<(), AdapterError> {
+    if surface.id.is_empty() {
+        return Err(AdapterError::new(
+            ErrorCode::Internal,
+            "Surface id is empty",
+        ));
+    }
+    crate::resource::validate_output_string(&surface.id, "Surface id")?;
+    crate::resource::validate_output_string(&surface.kind, "Surface kind")?;
+    if let Some(title) = &surface.title {
+        crate::resource::validate_output_string(title, "Surface title")?;
+    }
+    Ok(())
 }
 
 pub(crate) fn snapshot_surface_from_c(
@@ -29,6 +49,18 @@ pub(crate) fn snapshot_surface_from_c(
             AdSnapshotSurface::Sheet => SnapshotSurface::Sheet,
             AdSnapshotSurface::Popover => SnapshotSurface::Popover,
             AdSnapshotSurface::Alert => SnapshotSurface::Alert,
+            AdSnapshotSurface::Desktop => SnapshotSurface::Desktop,
+            AdSnapshotSurface::Taskbar => SnapshotSurface::Taskbar,
+            AdSnapshotSurface::SystemTray => SnapshotSurface::SystemTray,
+            AdSnapshotSurface::QuickSettings => SnapshotSurface::QuickSettings,
+            AdSnapshotSurface::NotificationCenter => SnapshotSurface::NotificationCenter,
+            AdSnapshotSurface::Toolbar => SnapshotSurface::Toolbar,
+            AdSnapshotSurface::Dock => SnapshotSurface::Dock,
+            AdSnapshotSurface::Spotlight => SnapshotSurface::Spotlight,
+            AdSnapshotSurface::MenuBarExtras => SnapshotSurface::MenuBarExtras,
+            AdSnapshotSurface::SystemTrayOverflow => SnapshotSurface::SystemTrayOverflow,
+            AdSnapshotSurface::StartMenu => SnapshotSurface::StartMenu,
+            AdSnapshotSurface::ActionCenter => SnapshotSurface::ActionCenter,
         })
         .ok_or_else(|| {
             AdapterError::new(
@@ -47,6 +79,14 @@ pub(crate) unsafe fn free_surface_info_fields(s: &mut AdSurfaceInfo) {
     }
 }
 
+pub(crate) unsafe fn free_exact_surface_info_fields(surface: &mut AdExactSurfaceInfo) {
+    unsafe {
+        free_c_string(surface.id as *mut c_char);
+        free_surface_info_fields(&mut surface.surface);
+        surface.id = ptr::null();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,6 +95,7 @@ mod tests {
     #[test]
     fn test_surface_info_no_title() {
         let s = SurfaceInfo {
+            id: "menu-1".into(),
             kind: "menu".into(),
             title: None,
             item_count: Some(3),
@@ -65,6 +106,39 @@ mod tests {
         assert_eq!(c.item_count, 3);
         let mut c = c;
         unsafe { free_surface_info_fields(&mut c) };
+    }
+
+    #[test]
+    fn exact_surface_info_preserves_id_and_releases_every_string() {
+        let surface = SurfaceInfo {
+            id: "ax-window:42".into(),
+            kind: "window".into(),
+            title: Some("Preferences".into()),
+            item_count: Some(8),
+        };
+        let mut exact = exact_surface_info_to_c(&surface);
+
+        assert_eq!(
+            exact.version,
+            crate::types::exact_surface_info::AD_EXACT_SURFACE_INFO_VERSION
+        );
+        assert_eq!(
+            exact.size as usize,
+            crate::types::exact_surface_info::AD_EXACT_SURFACE_INFO_SIZE
+        );
+        assert_eq!(
+            unsafe { c_to_string(exact.id) }.as_deref(),
+            Some("ax-window:42")
+        );
+        assert_eq!(
+            unsafe { c_to_string(exact.surface.title) }.as_deref(),
+            Some("Preferences")
+        );
+
+        unsafe { free_exact_surface_info_fields(&mut exact) };
+        assert!(exact.id.is_null());
+        assert!(exact.surface.kind.is_null());
+        assert!(exact.surface.title.is_null());
     }
 
     #[test]
@@ -82,6 +156,7 @@ mod tests {
     #[test]
     fn item_count_none_maps_to_sentinel_minus_one() {
         let s = SurfaceInfo {
+            id: "menu-1".into(),
             kind: "menu".into(),
             title: None,
             item_count: None,
@@ -95,6 +170,7 @@ mod tests {
     #[test]
     fn item_count_some_zero_maps_to_zero_not_to_absent_sentinel() {
         let s = SurfaceInfo {
+            id: "popover-1".into(),
             kind: "popover".into(),
             title: None,
             item_count: Some(0),
@@ -111,6 +187,7 @@ mod tests {
     #[test]
     fn title_some_maps_to_non_null_c_string_with_correct_value() {
         let s = SurfaceInfo {
+            id: "sheet-1".into(),
             kind: "sheet".into(),
             title: Some("Save Panel".into()),
             item_count: None,
@@ -126,8 +203,8 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_surface_from_c_maps_all_seven_variants_exactly() {
-        let cases: [(i32, SnapshotSurface); 7] = [
+    fn snapshot_surface_from_c_maps_all_variants_exactly() {
+        let cases: [(i32, SnapshotSurface); 19] = [
             (0, SnapshotSurface::Window),
             (1, SnapshotSurface::Focused),
             (2, SnapshotSurface::Menu),
@@ -135,6 +212,18 @@ mod tests {
             (4, SnapshotSurface::Sheet),
             (5, SnapshotSurface::Popover),
             (6, SnapshotSurface::Alert),
+            (7, SnapshotSurface::Desktop),
+            (8, SnapshotSurface::Taskbar),
+            (9, SnapshotSurface::SystemTray),
+            (10, SnapshotSurface::QuickSettings),
+            (11, SnapshotSurface::NotificationCenter),
+            (12, SnapshotSurface::Toolbar),
+            (13, SnapshotSurface::Dock),
+            (14, SnapshotSurface::Spotlight),
+            (15, SnapshotSurface::MenuBarExtras),
+            (16, SnapshotSurface::SystemTrayOverflow),
+            (17, SnapshotSurface::StartMenu),
+            (18, SnapshotSurface::ActionCenter),
         ];
         for (raw, expected) in cases {
             assert_eq!(

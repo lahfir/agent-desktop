@@ -1,31 +1,28 @@
 use crate::{
-    action::{MouseButton, MouseEvent, MouseEventKind, Point},
-    adapter::PlatformAdapter,
-    commands::point_resolve::require_cursor_policy,
-    context::CommandContext,
-    error::AppError,
+    AppError, Modifier, MouseButton, adapter::PlatformAdapter,
+    commands::point_resolve::require_cursor_policy, context::CommandContext,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub struct MouseUpArgs {
     pub x: f64,
     pub y: f64,
     pub button: MouseButton,
+    pub modifiers: Vec<Modifier>,
 }
 
 pub fn execute(
-    args: MouseUpArgs,
-    adapter: &dyn PlatformAdapter,
+    _args: MouseUpArgs,
+    _adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "mouse-up")?;
-    adapter.mouse_event(MouseEvent {
-        kind: MouseEventKind::Up,
-        point: Point {
-            x: args.x,
-            y: args.y,
-        },
-        button: args.button,
-    })?;
-    Ok(json!({ "released": true, "x": args.x, "y": args.y }))
+    Err(crate::commands::input_hold_policy::reject(
+        "mouse-up",
+        "mouse-click or drag",
+    ))
 }
+
+#[cfg(test)]
+#[path = "mouse_up_tests.rs"]
+mod tests;

@@ -8,9 +8,9 @@ pub(crate) struct SessionArgs {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum SessionAction {
-    #[command(about = "Create a session directory, manifest, and current-session pointer")]
+    #[command(about = "Create a session directory and manifest")]
     Start(SessionStartArgs),
-    #[command(about = "Seal the session manifest and clear the current-session pointer")]
+    #[command(about = "Seal a session manifest")]
     End(SessionEndArgs),
     #[command(about = "List session manifests")]
     List,
@@ -29,16 +29,11 @@ pub(crate) struct SessionStartArgs {
         help = "Capture pre/post-action screenshots and refmap copies (requires tracing; sensitive)"
     )]
     pub screenshots: bool,
-    #[arg(
-        long,
-        help = "Override the current-session pointer even when it references a live session"
-    )]
-    pub force: bool,
 }
 
 #[derive(Args, Debug)]
 pub(crate) struct SessionEndArgs {
-    #[arg(help = "Session id to end; defaults to the current-session pointer")]
+    #[arg(help = "Session id to end; defaults to global --session or AGENT_DESKTOP_SESSION")]
     pub id: Option<String>,
 }
 

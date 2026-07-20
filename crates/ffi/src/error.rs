@@ -1,4 +1,5 @@
-use agent_desktop_core::error::{AdapterError, ErrorCode};
+use crate::types::AdDeliverySemantics;
+use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char};
 
@@ -23,6 +24,7 @@ pub enum AdResult {
     ErrSnapshotNotFound = -13,
     ErrPolicyDenied = -14,
     ErrAmbiguousTarget = -15,
+    ErrAppUnresponsive = -16,
 }
 
 const _: () = assert!(AdResult::ErrPermDenied as i32 == -1);
@@ -40,6 +42,7 @@ const _: () = assert!(AdResult::ErrInternal as i32 == -12);
 const _: () = assert!(AdResult::ErrSnapshotNotFound as i32 == -13);
 const _: () = assert!(AdResult::ErrPolicyDenied as i32 == -14);
 const _: () = assert!(AdResult::ErrAmbiguousTarget as i32 == -15);
+const _: () = assert!(AdResult::ErrAppUnresponsive as i32 == -16);
 
 enum MessageSource {
     Owned(CString),
@@ -69,12 +72,22 @@ struct StoredError {
     suggestion: Option<CString>,
     platform_detail: Option<CString>,
     details: Option<CString>,
+    disposition: DeliverySemantics,
 }
 
 static NUL_BYTE_FALLBACK: &CStr = c"(message contained null byte)";
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<StoredError>> = const { RefCell::new(None) };
+}
+
+fn replace_last_error(error: StoredError) {
+    let mut error = Some(error);
+    let _ = LAST_ERROR.try_with(|cell| {
+        if let Ok(mut slot) = cell.try_borrow_mut() {
+            *slot = error.take();
+        }
+    });
 }
 
 /// Maps a core `ErrorCode` to its stable C-ABI `AdResult`. `ErrorCode` and the
@@ -100,6 +113,7 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
         ErrorCode::Internal => AdResult::ErrInternal,
         ErrorCode::SnapshotNotFound => AdResult::ErrSnapshotNotFound,
         ErrorCode::PolicyDenied => AdResult::ErrPolicyDenied,
+        ErrorCode::AppUnresponsive => AdResult::ErrAppUnresponsive,
     }
 }
 
@@ -119,45 +133,66 @@ pub(crate) fn set_last_error(err: &AdapterError) {
         .as_ref()
         .and_then(|details| serde_json::to_string(details).ok())
         .and_then(|details| CString::new(details).ok());
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = Some(StoredError {
-            code,
-            message,
-            suggestion,
-            platform_detail,
-            details,
-        });
+    replace_last_error(StoredError {
+        code,
+        message,
+        suggestion,
+        platform_detail,
+        details,
+        disposition: err.disposition,
     });
 }
 
 #[cfg(test)]
 pub(crate) fn clear_last_error() {
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = None;
+    let _ = LAST_ERROR.try_with(|cell| {
+        if let Ok(mut slot) = cell.try_borrow_mut() {
+            *slot = None;
+        }
     });
+}
+
+#[cfg(test)]
+pub(crate) fn with_last_error_mutably_borrowed<R>(body: impl FnOnce() -> R) -> R {
+    LAST_ERROR.with(|cell| {
+        let _borrow = cell.borrow_mut();
+        body()
+    })
 }
 
 /// Sets the last-error using a `'static CStr` message. Never allocates,
 /// never panics — safe to call from a panic handler.
 pub(crate) fn set_last_error_static(code: AdResult, message: &'static CStr) {
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = Some(StoredError {
-            code,
-            message: MessageSource::Static(message),
-            suggestion: None,
-            platform_detail: None,
-            details: None,
-        });
+    replace_last_error(StoredError {
+        code,
+        message: MessageSource::Static(message),
+        suggestion: None,
+        platform_detail: None,
+        details: None,
+        disposition: DeliverySemantics::unknown(),
     });
 }
 
 pub(crate) fn last_error_code() -> AdResult {
-    LAST_ERROR.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map(|e| e.code)
-            .unwrap_or(AdResult::Ok)
-    })
+    LAST_ERROR
+        .try_with(|cell| {
+            cell.try_borrow()
+                .ok()
+                .and_then(|error| error.as_ref().map(|error| error.code))
+                .unwrap_or(AdResult::Ok)
+        })
+        .unwrap_or(AdResult::Ok)
+}
+
+fn last_error_disposition() -> DeliverySemantics {
+    LAST_ERROR
+        .try_with(|cell| {
+            cell.try_borrow()
+                .ok()
+                .and_then(|error| error.as_ref().map(|error| error.disposition))
+                .unwrap_or_else(DeliverySemantics::unknown)
+        })
+        .unwrap_or_else(|_| DeliverySemantics::unknown())
 }
 
 /// Last-error lifetime — errno-style.
@@ -189,12 +224,14 @@ pub extern "C" fn ad_last_error_code() -> AdResult {
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_message() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {
-        LAST_ERROR.with(|cell| {
-            cell.borrow()
-                .as_ref()
-                .map(|e| e.message.as_ptr())
-                .unwrap_or(std::ptr::null())
-        })
+        LAST_ERROR
+            .try_with(|cell| {
+                cell.try_borrow()
+                    .ok()
+                    .and_then(|error| error.as_ref().map(|error| error.message.as_ptr()))
+                    .unwrap_or(std::ptr::null())
+            })
+            .unwrap_or(std::ptr::null())
     })
 }
 
@@ -204,12 +241,18 @@ pub extern "C" fn ad_last_error_message() -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_suggestion() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {
-        LAST_ERROR.with(|cell| {
-            cell.borrow()
-                .as_ref()
-                .and_then(|e| e.suggestion.as_ref().map(|s| s.as_ptr()))
-                .unwrap_or(std::ptr::null())
-        })
+        LAST_ERROR
+            .try_with(|cell| {
+                cell.try_borrow()
+                    .ok()
+                    .and_then(|error| {
+                        error
+                            .as_ref()
+                            .and_then(|error| error.suggestion.as_ref().map(|value| value.as_ptr()))
+                    })
+                    .unwrap_or(std::ptr::null())
+            })
+            .unwrap_or(std::ptr::null())
     })
 }
 
@@ -220,12 +263,18 @@ pub extern "C" fn ad_last_error_suggestion() -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {
-        LAST_ERROR.with(|cell| {
-            cell.borrow()
-                .as_ref()
-                .and_then(|e| e.platform_detail.as_ref().map(|s| s.as_ptr()))
-                .unwrap_or(std::ptr::null())
-        })
+        LAST_ERROR
+            .try_with(|cell| {
+                cell.try_borrow()
+                    .ok()
+                    .and_then(|error| {
+                        error.as_ref().and_then(|error| {
+                            error.platform_detail.as_ref().map(|value| value.as_ptr())
+                        })
+                    })
+                    .unwrap_or(std::ptr::null())
+            })
+            .unwrap_or(std::ptr::null())
     })
 }
 
@@ -237,12 +286,36 @@ pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_details() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {
-        LAST_ERROR.with(|cell| {
-            cell.borrow()
-                .as_ref()
-                .and_then(|e| e.details.as_ref().map(|s| s.as_ptr()))
-                .unwrap_or(std::ptr::null())
-        })
+        LAST_ERROR
+            .try_with(|cell| {
+                cell.try_borrow()
+                    .ok()
+                    .and_then(|error| {
+                        error
+                            .as_ref()
+                            .and_then(|error| error.details.as_ref().map(|value| value.as_ptr()))
+                    })
+                    .unwrap_or(std::ptr::null())
+            })
+            .unwrap_or(std::ptr::null())
+    })
+}
+
+/// Writes the delivery and retry semantics associated with the calling
+/// thread's last error. If no error has been recorded, both values are
+/// `UNKNOWN`. This successful read does not clear or replace last-error state.
+///
+/// # Safety
+///
+/// `out` must point to writable `AdDeliverySemantics` storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_last_error_delivery_semantics(
+    out: *mut AdDeliverySemantics,
+) -> AdResult {
+    crate::ffi_try::trap_panic(|| unsafe {
+        crate::pointer_guard::guard_non_null!(out, c"out is null");
+        *out = AdDeliverySemantics::from_core(last_error_disposition());
+        AdResult::Ok
     })
 }
 

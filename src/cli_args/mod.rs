@@ -1,16 +1,20 @@
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, ValueEnum};
 use serde::Deserialize;
 
 pub(crate) mod actions;
+pub(crate) mod batch;
+pub(crate) mod drag;
+pub(crate) mod drag_target;
+pub(crate) mod mouse_wheel;
 pub(crate) mod notifications;
 pub(crate) mod session;
 pub(crate) mod skills;
+mod snapshot;
+pub(crate) mod snapshot_tree;
 pub(crate) mod system;
 pub(crate) mod trace;
 
-fn default_max_depth() -> u8 {
-    10
-}
+pub(crate) use snapshot::SnapshotArgs;
 
 fn default_get_property() -> String {
     "text".to_string()
@@ -31,11 +35,23 @@ pub(crate) enum Surface {
     Sheet,
     Popover,
     Alert,
+    Desktop,
+    Taskbar,
+    SystemTray,
+    QuickSettings,
+    NotificationCenter,
+    Toolbar,
+    Dock,
+    Spotlight,
+    MenuBarExtras,
+    SystemTrayOverflow,
+    StartMenu,
+    ActionCenter,
 }
 
 impl Surface {
-    pub(crate) fn to_core(&self) -> agent_desktop_core::adapter::SnapshotSurface {
-        use agent_desktop_core::adapter::SnapshotSurface;
+    pub(crate) fn to_core(&self) -> agent_desktop_core::SnapshotSurface {
+        use agent_desktop_core::SnapshotSurface;
         match self {
             Self::Window => SnapshotSurface::Window,
             Self::Focused => SnapshotSurface::Focused,
@@ -44,65 +60,47 @@ impl Surface {
             Self::Sheet => SnapshotSurface::Sheet,
             Self::Popover => SnapshotSurface::Popover,
             Self::Alert => SnapshotSurface::Alert,
+            Self::Desktop => SnapshotSurface::Desktop,
+            Self::Taskbar => SnapshotSurface::Taskbar,
+            Self::SystemTray => SnapshotSurface::SystemTray,
+            Self::QuickSettings => SnapshotSurface::QuickSettings,
+            Self::NotificationCenter => SnapshotSurface::NotificationCenter,
+            Self::Toolbar => SnapshotSurface::Toolbar,
+            Self::Dock => SnapshotSurface::Dock,
+            Self::Spotlight => SnapshotSurface::Spotlight,
+            Self::MenuBarExtras => SnapshotSurface::MenuBarExtras,
+            Self::SystemTrayOverflow => SnapshotSurface::SystemTrayOverflow,
+            Self::StartMenu => SnapshotSurface::StartMenu,
+            Self::ActionCenter => SnapshotSurface::ActionCenter,
         }
     }
 }
 
-#[derive(Parser, Debug, Deserialize)]
+/// Window-targeting scope shared by the read/capture commands that choose which
+/// window to operate on (`snapshot`, `find`, `screenshot`). Ref-based commands
+/// (`click`/`type`/`get`/`is`) deliberately omit it — a ref already carries its
+/// source window through its `RefEntry` — and keyboard input targets the focused
+/// window, so neither needs an explicit window selector.
+#[derive(Args, Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SnapshotArgs {
+pub(crate) struct WindowScope {
     #[arg(long, help = "Filter to application by name")]
+    #[serde(default)]
     pub app: Option<String>,
     #[arg(
         long,
         name = "window-id",
-        help = "Filter to window ID (from list-windows)"
+        help = "Scope to a single window ID (from list-windows)"
     )]
+    #[serde(default)]
     pub window_id: Option<String>,
-    #[arg(long, default_value = "10", help = "Maximum tree depth")]
-    #[serde(default = "default_max_depth")]
-    pub max_depth: u8,
-    #[arg(long, help = "Include element bounds (x, y, width, height)")]
-    #[serde(default)]
-    pub include_bounds: bool,
-    #[arg(long, short = 'i', help = "Include interactive elements only")]
-    #[serde(default)]
-    pub interactive_only: bool,
-    #[arg(
-        long,
-        help = "Collapse single-child unnamed nodes to reduce tree depth"
-    )]
-    #[serde(default)]
-    pub compact: bool,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = Surface::Window,
-        help = "Surface to snapshot"
-    )]
-    #[serde(default)]
-    pub surface: Surface,
-    #[arg(
-        long,
-        help = "Shallow overview with children_count on truncated containers"
-    )]
-    #[serde(default)]
-    pub skeleton: bool,
-    #[arg(long, help = "Start traversal from this ref instead of window root")]
-    pub root: Option<String>,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID to use when resolving --root"
-    )]
-    pub snapshot: Option<String>,
 }
 
-#[derive(Parser, Debug, Deserialize)]
+/// Match-criteria fields, grouped out of [`FindArgs`] to keep it under the
+/// repo's field-count limit. Mirrors `core::commands::find::FindFilterArgs`.
+#[derive(Args, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FindArgs {
-    #[arg(long, help = "Filter to application by name")]
-    pub app: Option<String>,
+pub(crate) struct FindFilterArgs {
     #[arg(
         long,
         help = "Match by accessibility role (button, textfield, checkbox ...)"
@@ -114,6 +112,25 @@ pub(crate) struct FindArgs {
     pub value: Option<String>,
     #[arg(long, help = "Match by text in name, value, title, or description")]
     pub text: Option<String>,
+    #[arg(long, help = "Match by accessible description")]
+    pub description: Option<String>,
+    #[arg(long, help = "Match by native automation id (AXIdentifier)")]
+    pub native_id: Option<String>,
+    #[arg(
+        long,
+        help = "Require exact (case-insensitive) name/description/value matches"
+    )]
+    #[serde(default)]
+    pub exact: bool,
+}
+
+/// Result-shaping fields, grouped out of [`FindArgs`] to keep it under the
+/// repo's field-count limit. Mutually exclusive at the CLI layer (enforced
+/// via `conflicts_with_all` on each field, unaffected by the grouping since
+/// clap arg ids stay global across `#[command(flatten)]` boundaries).
+#[derive(Args, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FindSelectionArgs {
     #[arg(
         long,
         help = "Return match count only",
@@ -151,15 +168,36 @@ pub(crate) struct FindArgs {
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct FindArgs {
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub filter: FindFilterArgs,
+    #[arg(
+        long = "state",
+        value_name = "TOKEN[=BOOL]",
+        help = "Filter by state token (repeatable); append =true or =false"
+    )]
+    #[serde(default)]
+    pub states: Vec<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub selection: FindSelectionArgs,
+}
+
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ScreenshotArgs {
-    #[arg(long, help = "Filter to application by name")]
-    pub app: Option<String>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub scope: WindowScope,
     #[arg(
         long,
-        name = "window-id",
-        help = "Filter to window ID (from list-windows)"
+        help = "Capture display by index (from list-displays; 0 = primary)"
     )]
-    pub window_id: Option<String>,
+    pub screen: Option<usize>,
     #[arg(value_name = "PATH", help = "Save to file instead of returning base64")]
     pub output_path: Option<std::path::PathBuf>,
 }
@@ -167,12 +205,15 @@ pub(crate) struct ScreenshotArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct GetArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -187,12 +228,15 @@ pub(crate) struct GetArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IsArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -207,15 +251,29 @@ pub(crate) struct IsArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RefArgs {
-    #[arg(value_name = "REF", help = "Element ref from snapshot (@e1, @e2 ...)")]
+    #[arg(
+        value_name = "REF",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+    )]
     pub ref_id: String,
     #[arg(
         long = "snapshot",
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use active session latest"
+        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     #[serde(rename = "snapshot", alias = "snapshot_id")]
     pub snapshot_id: Option<String>,
+    #[arg(
+        long = "timeout-ms",
+        default_value_t = 5000,
+        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
+    )]
+    #[serde(default = "default_ref_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_ref_timeout_ms() -> u64 {
+    5000
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -224,3 +282,7 @@ pub(crate) struct ListSurfacesArgs {
     #[arg(long, help = "Filter to application by name")]
     pub app: Option<String>,
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod mod_tests;

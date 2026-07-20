@@ -6,6 +6,10 @@ Commands for reading UI state without modifying it.
 
 Capture the accessibility tree as structured JSON with `@ref` IDs.
 
+Output refs are qualified as `@<snapshot_id>:e<N>`. Use that value directly on
+later commands. Legacy bare `@eN` input remains valid only with the matching
+explicit `--snapshot <snapshot_id>` and inside the same session namespace.
+
 ```bash
 agent-desktop snapshot --app "System Settings" -i
 agent-desktop snapshot --app "Finder" --max-depth 5 --include-bounds
@@ -28,12 +32,12 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 | `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
 | `--skeleton` | false | Clamp traversal to depth 3 and add `children_count` to truncated containers |
 | `--root <REF>` | | Drill down from a ref discovered in a previous snapshot. Cannot be combined with `--surface` |
-| `--snapshot <snapshot_id>` | latest | Snapshot ID to use when resolving `--root` |
+| `--snapshot <snapshot_id>` | embedded in qualified root | Required only when `--root` is a legacy bare ref |
 
 **Output structure:**
 ```json
 {
-  "version": "2.0",
+  "version": "2.1",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -46,7 +50,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
       "name": "General",
       "children": [
         {
-          "ref_id": "@e1",
+          "ref_id": "@s8f3k2p9:e1",
           "role": "button",
           "name": "About",
           "states": ["focused"]
@@ -56,7 +60,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
           "name": "Appearance",
           "children": [
             {
-              "ref_id": "@e2",
+              "ref_id": "@s8f3k2p9:e2",
               "role": "checkbox",
               "name": "Dark Mode",
               "value": "0",
@@ -114,6 +118,10 @@ agent-desktop find --app "Safari" --text "Sign In" --first
 agent-desktop find --app "App" --role checkbox --count
 agent-desktop find --app "App" --role button --nth 2
 agent-desktop find --app "App" --role button --limit 20
+agent-desktop find --app "App" --role button --name "OK" --exact
+agent-desktop find --app "App" --description "Closes the dialog"
+agent-desktop find --app "App" --native-id "submitButton"
+agent-desktop find --app "App" --state enabled --state focused=false
 ```
 
 | Flag | Description |
@@ -123,6 +131,10 @@ agent-desktop find --app "App" --role button --limit 20
 | `--name` | Accessible name or label |
 | `--value` | Current value |
 | `--text` | Fuzzy match across name, value, title, and description |
+| `--description` | Match by accessible description |
+| `--native-id` | Match by native automation id (`AXIdentifier`) |
+| `--exact` | Require exact (case-insensitive) matches for `--name`/`--description`/`--value` instead of fuzzy/substring matching |
+| `--state TOKEN[=BOOL]` | Filter by state token; repeatable. Bare `TOKEN` requires the state present, `TOKEN=true`/`TOKEN=false` asserts its value (e.g. `--state enabled --state focused=false`) |
 | `--first` | Return first match only |
 | `--last` | Return last match only |
 | `--nth N` | Return Nth match (0-indexed) |
@@ -133,13 +145,15 @@ agent-desktop find --app "App" --role button --limit 20
 ```json
 {
   "data": {
+    "snapshot_id": "s8f3k2p9",
     "matches": [
-      { "ref_id": "@e5", "role": "button", "name": "OK", "states": ["enabled"] }
-    ],
-    "count": 1
+      { "ref_id": "@s8f3k2p9:e5", "role": "button", "name": "OK", "states": ["enabled"] }
+    ]
   }
 }
 ```
+
+Every non-count `find` response returns the `snapshot_id` that owns its refs. Pass that exact ID to later ref actions instead of relying on the mutable latest-snapshot pointer, especially when interleaving automation across apps or windows. Count-only responses create no ref namespace and omit `snapshot_id`.
 
 **Output (no match — `roles_present` hint):** when a `--role` filter matches nothing, `roles_present` lists the roles actually in the searched tree so you can tell a wrong role name from "none on screen"; this applies to all non-count selection modes — an empty match list, or a `--first`/`--last`/`--nth` miss — whenever a role filter was active, making it a role-vocabulary hint for retries.
 ```json
@@ -157,13 +171,13 @@ agent-desktop find --app "App" --role button --limit 20
 Read a specific property from an element.
 
 ```bash
-agent-desktop get @e1 --property text
+agent-desktop get @s8f3k2p9:e1 --property text
 agent-desktop get @e1 --snapshot <snapshot_id> --property text
-agent-desktop get @e2 --property value
-agent-desktop get @e3 --property bounds
-agent-desktop get @e4 --property role
-agent-desktop get @e5 --property states
-agent-desktop get @e1 --property title
+agent-desktop get @s8f3k2p9:e2 --property value
+agent-desktop get @s8f3k2p9:e3 --property bounds
+agent-desktop get @s8f3k2p9:e4 --property role
+agent-desktop get @s8f3k2p9:e5 --property states
+agent-desktop get @s8f3k2p9:e1 --property title
 ```
 
 | Property | Returns |
@@ -180,12 +194,12 @@ agent-desktop get @e1 --property title
 Check a boolean state on an element.
 
 ```bash
-agent-desktop is @e1 --property visible
+agent-desktop is @s8f3k2p9:e1 --property visible
 agent-desktop is @e1 --snapshot <snapshot_id> --property visible
-agent-desktop is @e2 --property enabled
-agent-desktop is @e3 --property checked
-agent-desktop is @e4 --property focused
-agent-desktop is @e5 --property expanded
+agent-desktop is @s8f3k2p9:e2 --property enabled
+agent-desktop is @s8f3k2p9:e3 --property checked
+agent-desktop is @s8f3k2p9:e4 --property focused
+agent-desktop is @s8f3k2p9:e5 --property expanded
 ```
 
 | Property | Checks |
@@ -198,7 +212,7 @@ agent-desktop is @e5 --property expanded
 
 **Output:**
 ```json
-{ "data": { "ref": "@e3", "property": "checked", "result": true } }
+{ "data": { "ref": "@s8f3k2p9:e3", "property": "checked", "result": true } }
 ```
 
 ## screenshot
@@ -209,17 +223,39 @@ Capture a PNG screenshot of an application window.
 agent-desktop screenshot --app "Finder"
 agent-desktop screenshot --app "Finder" output.png
 agent-desktop screenshot --window-id "w-1234" capture.png
+agent-desktop screenshot --screen 0 display.png
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
 | `--window-id` | Specific window ID |
+| `--screen` | Capture display by index instead of an app window (from `list-displays`; `0` = primary) |
 | (positional) | File path to save PNG (omit for base64 in JSON) |
 
 When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field.
 
 Screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
+
+## list-displays
+
+List connected displays with bounds and scale factor.
+
+```bash
+agent-desktop list-displays
+```
+
+Returns an array of `{ id, bounds: { x, y, width, height }, is_primary, scale }`, sorted primary-first. Use the array index (not `id`) with `screenshot --screen <index>` — `0` is always the primary display after sorting.
+
+**Output:**
+```json
+{
+  "data": [
+    { "id": "1", "bounds": { "x": 0, "y": 0, "width": 2560, "height": 1440 }, "is_primary": true, "scale": 2.0 },
+    { "id": "2", "bounds": { "x": 2560, "y": 0, "width": 1920, "height": 1080 }, "is_primary": false, "scale": 1.0 }
+  ]
+}
+```
 
 ## list-surfaces
 

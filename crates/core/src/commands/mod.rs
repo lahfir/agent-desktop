@@ -20,11 +20,15 @@ pub mod focus_window;
 pub mod get;
 pub mod helpers;
 pub mod hover;
+mod input_hold_policy;
 pub mod is_check;
 pub mod key_down;
 pub mod key_up;
 pub mod launch;
 pub mod list_apps;
+pub mod list_displays;
+#[cfg(test)]
+mod list_displays_tests;
 pub mod list_notifications;
 pub mod list_surfaces;
 pub mod list_windows;
@@ -34,16 +38,22 @@ pub mod mouse_click;
 pub mod mouse_down;
 pub mod mouse_move;
 pub mod mouse_up;
+pub mod mouse_wheel;
 pub mod move_window;
 pub mod notification_action;
+pub(crate) mod notification_identity;
+pub(crate) mod notification_policy;
 pub mod permissions;
 pub(crate) mod point_resolve;
+pub(crate) mod pointer_action;
 pub mod press;
 pub mod query;
 pub mod resize_window;
 pub mod restore;
 pub mod right_click;
 pub mod screenshot;
+#[cfg(test)]
+mod screenshot_tests;
 pub mod scroll;
 pub mod scroll_to;
 pub mod select;
@@ -60,12 +70,18 @@ pub mod uncheck;
 pub mod version;
 pub mod wait;
 pub(crate) mod wait_element;
-pub(crate) mod wait_latest_ref_cache;
+pub(crate) mod wait_event;
+pub(crate) mod wait_event_input;
 pub(crate) mod wait_mode;
 pub(crate) mod wait_predicate;
 pub mod wait_selector;
+pub mod wait_surface;
 pub(crate) mod wait_text_match;
 pub(crate) mod wait_timeout;
+mod window_target;
 
 #[cfg(test)]
 mod ref_policy_tests;
+
+#[cfg(test)]
+mod stale_retry_test_support;

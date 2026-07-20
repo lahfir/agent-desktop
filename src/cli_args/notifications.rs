@@ -20,6 +20,18 @@ pub(crate) struct DismissNotificationCliArgs {
     pub index: u64,
     #[arg(long, help = "Filter notifications by app before selecting index")]
     pub app: Option<String>,
+    #[arg(
+        long,
+        help = "Expected app name at INDEX; one expected identity field is required",
+        value_name = "APP"
+    )]
+    pub expected_app: Option<String>,
+    #[arg(
+        long,
+        help = "Expected title at INDEX; one expected identity field is required",
+        value_name = "TITLE"
+    )]
+    pub expected_title: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -42,13 +54,13 @@ pub(crate) struct NotificationActionCliArgs {
     pub action: String,
     #[arg(
         long,
-        help = "Expected app name of the notification at INDEX. If set and NC reordered, the action is refused with NOTIFICATION_NOT_FOUND instead of pressing the wrong notification.",
+        help = "Expected app name at INDEX; one expected identity field is required",
         value_name = "APP"
     )]
     pub expected_app: Option<String>,
     #[arg(
         long,
-        help = "Expected title of the notification at INDEX. Same reorder-safety behavior as --expected-app.",
+        help = "Expected title at INDEX; one expected identity field is required",
         value_name = "TITLE"
     )]
     pub expected_title: Option<String>,

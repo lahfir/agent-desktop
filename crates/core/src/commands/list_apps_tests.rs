@@ -1,24 +1,33 @@
 use super::*;
-use crate::{adapter::PlatformAdapter, error::AdapterError, node::AppInfo};
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use crate::{AdapterError, AppInfo};
 
 struct AppsAdapter;
 
-impl PlatformAdapter for AppsAdapter {
-    fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
+impl ObservationOps for AppsAdapter {
+    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<AppInfo>, AdapterError> {
         Ok(vec![
             AppInfo {
                 name: "Finder".into(),
-                pid: 1,
+                pid: crate::ProcessId::new(1),
                 bundle_id: Some("com.apple.finder".into()),
+                process_instance: Some("test-instance".into()),
             },
             AppInfo {
                 name: "TextEdit".into(),
-                pid: 2,
+                pid: crate::ProcessId::new(2),
                 bundle_id: Some("com.apple.TextEdit".into()),
+                process_instance: Some("test-instance".into()),
             },
         ])
     }
 }
+
+impl ActionOps for AppsAdapter {}
+
+impl InputOps for AppsAdapter {}
+
+impl SystemOps for AppsAdapter {}
 
 #[test]
 fn app_filter_matches_by_name_case_insensitively() {

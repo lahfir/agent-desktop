@@ -16,6 +16,10 @@ impl HomeGuard {
         let prev = crate::refs::set_home_override(Some(dir.path().to_path_buf()));
         Self { _dir: dir, prev }
     }
+
+    pub(crate) fn path(&self) -> &Path {
+        self._dir.path()
+    }
 }
 
 impl Drop for HomeGuard {

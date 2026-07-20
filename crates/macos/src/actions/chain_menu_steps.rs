@@ -1,234 +1,251 @@
-#[cfg(target_os = "macos")]
-mod imp {
-    use crate::actions::ax_helpers;
-    use crate::tree::AXElement;
-    use agent_desktop_core::error::AdapterError;
+use agent_desktop_core::{AdapterError, Deadline};
 
-    pub(crate) fn show_menu(el: &AXElement) -> Result<bool, AdapterError> {
-        show_menu_on_element(el)
-    }
+use crate::actions::chain_delivery::DeliveryOutcome;
+use crate::tree::AXElement;
 
-    pub(crate) fn show_menu_on_ancestors(el: &AXElement) -> Result<bool, AdapterError> {
-        let mut current = crate::tree::copy_element_attr(el, "AXParent");
-        for _ in 0..3 {
-            let Some(parent) = current else {
-                return Ok(false);
-            };
-            if show_menu_on_element(&parent)? {
-                return Ok(true);
-            }
-            current = crate::tree::copy_element_attr(&parent, "AXParent");
+const MAX_MENU_SEARCH_NODES: usize = 2_048;
+
+pub(crate) fn show_menu(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<DeliveryOutcome, AdapterError> {
+    show_menu_on_element(element, deadline)
+}
+
+pub(crate) fn show_menu_on_ancestors(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<DeliveryOutcome, AdapterError> {
+    let mut current = parent(element, deadline)?;
+    for _ in 0..3 {
+        let Some(ancestor) = current else {
+            return Ok(DeliveryOutcome::NotDelivered);
+        };
+        let outcome = show_menu_on_element(&ancestor, deadline)?;
+        if outcome.terminates_chain() {
+            return Ok(outcome);
         }
-        Ok(false)
+        current = parent(&ancestor, deadline)?;
     }
+    Ok(DeliveryOutcome::NotDelivered)
+}
 
-    pub(crate) fn show_menu_on_children(el: &AXElement) -> Result<bool, AdapterError> {
-        for child in crate::tree::copy_ax_array(el, "AXChildren")
-            .unwrap_or_default()
-            .iter()
-            .take(5)
+pub(crate) fn show_menu_on_children(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<DeliveryOutcome, AdapterError> {
+    let instant = instant(deadline)?;
+    for child in crate::tree::surface_read::elements(element, "AXChildren", instant)?
+        .into_iter()
+        .take(5)
+    {
+        let outcome = show_menu_on_element(&child, deadline)?;
+        if outcome.terminates_chain() {
+            return Ok(outcome);
+        }
+    }
+    Ok(DeliveryOutcome::NotDelivered)
+}
+
+pub(crate) fn select_then_show_menu(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<DeliveryOutcome, AdapterError> {
+    if !select_containing_item(element, deadline)? {
+        return Ok(DeliveryOutcome::NotDelivered);
+    }
+    show_menu_on_element(element, deadline)
+}
+
+pub(crate) fn select_then_selected_items_menu(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<DeliveryOutcome, AdapterError> {
+    if !select_containing_item(element, deadline)? {
+        return Ok(DeliveryOutcome::NotDelivered);
+    }
+    let Some(window) = window_ancestor(element, deadline)? else {
+        return Ok(DeliveryOutcome::NotDelivered);
+    };
+    let Some(menu_button) = selected_items_menu_button(&window, deadline)? else {
+        return Ok(DeliveryOutcome::NotDelivered);
+    };
+    show_menu_or_press(&menu_button, deadline)
+}
+
+fn show_menu_on_element(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<DeliveryOutcome, AdapterError> {
+    let Some(pid) = crate::system::app_ops::pid_from_element(element, deadline) else {
+        return Ok(DeliveryOutcome::NotDelivered);
+    };
+    if menu_is_open(pid, deadline)? {
+        return Ok(DeliveryOutcome::NotDelivered);
+    }
+    prepare(element, deadline)?;
+    let delivered =
+        crate::actions::ax_helpers::try_ax_action_or_err(element, "AXShowMenu", deadline)?;
+    if !delivered {
+        return Ok(DeliveryOutcome::NotDelivered);
+    }
+    Ok(DeliveryOutcome::from_delivery(
+        true,
+        wait_for_new_menu(pid, deadline)?,
+    ))
+}
+
+fn show_menu_or_press(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<DeliveryOutcome, AdapterError> {
+    let Some(pid) = crate::system::app_ops::pid_from_element(element, deadline) else {
+        return Ok(DeliveryOutcome::NotDelivered);
+    };
+    if menu_is_open(pid, deadline)? {
+        return Ok(DeliveryOutcome::NotDelivered);
+    }
+    for action in ["AXShowMenu", "AXPress"] {
+        prepare(element, deadline)?;
+        if crate::actions::ax_helpers::try_ax_action_or_err(element, action, deadline)? {
+            return Ok(DeliveryOutcome::from_delivery(
+                true,
+                wait_for_new_menu(pid, deadline)?,
+            ));
+        }
+    }
+    Ok(DeliveryOutcome::NotDelivered)
+}
+
+fn wait_for_new_menu(pid: i32, deadline: Deadline) -> Result<bool, AdapterError> {
+    let local_end = std::time::Instant::now() + std::time::Duration::from_millis(600);
+    loop {
+        if menu_is_open(pid, deadline)? {
+            return Ok(true);
+        }
+        if deadline.is_expired() || std::time::Instant::now() >= local_end {
+            return Ok(false);
+        }
+        let pause = deadline.remaining_slice(std::time::Duration::from_millis(25))?;
+        std::thread::sleep(pause.min(std::time::Duration::from_millis(25)));
+    }
+}
+
+fn menu_is_open(pid: i32, deadline: Deadline) -> Result<bool, AdapterError> {
+    crate::tree::surfaces::is_menu_open(pid, instant(deadline)?)
+}
+
+fn select_containing_item(element: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
+    let mut current = Some(element.clone());
+    for _ in 0..4 {
+        let Some(candidate) = current else {
+            return Ok(false);
+        };
+        prepare(&candidate, deadline)?;
+        if crate::actions::ax_helpers::is_attr_settable(&candidate, "AXSelected", deadline)? {
+            prepare(&candidate, deadline)?;
+            if crate::actions::ax_helpers::set_ax_bool_or_err(
+                &candidate,
+                "AXSelected",
+                true,
+                deadline,
+            )? {
+                return selected(&candidate, deadline);
+            }
+        }
+        current = parent(&candidate, deadline)?;
+    }
+    Ok(false)
+}
+
+fn selected(element: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
+    Ok(
+        crate::tree::surface_read::boolean(element, "AXSelected", instant(deadline)?)?
+            == Some(true),
+    )
+}
+
+fn window_ancestor(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<Option<AXElement>, AdapterError> {
+    let mut current = parent(element, deadline)?;
+    for _ in 0..20 {
+        let Some(ancestor) = current else {
+            return Ok(None);
+        };
+        if crate::tree::surface_read::string(&ancestor, "AXRole", instant(deadline)?)?.as_deref()
+            == Some("AXWindow")
         {
-            if show_menu_on_element(child)? {
-                return Ok(true);
-            }
+            return Ok(Some(ancestor));
         }
-        Ok(false)
+        current = parent(&ancestor, deadline)?;
     }
+    Ok(None)
+}
 
-    pub(crate) fn select_then_show_menu(el: &AXElement) -> Result<bool, AdapterError> {
-        if !select_containing_item(el)? {
-            return Ok(false);
+fn selected_items_menu_button(
+    root: &AXElement,
+    deadline: Deadline,
+) -> Result<Option<AXElement>, AdapterError> {
+    let mut stack = vec![(root.clone(), 0_u8)];
+    let mut visited = 0_usize;
+    while let Some((candidate, depth)) = stack.pop() {
+        visited = visited.saturating_add(1);
+        if visited > MAX_MENU_SEARCH_NODES {
+            return Err(AdapterError::new(
+                agent_desktop_core::ErrorCode::AppUnresponsive,
+                "Selected-items menu search exceeded its accessibility-node budget",
+            )
+            .with_details(serde_json::json!({
+                "kind": "selected_items_menu_node_limit",
+                "limit": MAX_MENU_SEARCH_NODES,
+                "complete": false,
+            })));
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        show_menu_on_element(el)
-    }
-
-    pub(crate) fn select_then_selected_items_menu(el: &AXElement) -> Result<bool, AdapterError> {
-        if !select_containing_item(el)? {
-            tracing::debug!("selected-items menu: could not select containing item");
-            return Ok(false);
+        if is_selected_items_control(&candidate, deadline)? {
+            return Ok(Some(candidate));
         }
-        let selected_name = crate::tree::resolve_element_name(el);
-        let Some(window) = window_ancestor(el) else {
-            tracing::debug!("selected-items menu: no window ancestor");
-            return Ok(false);
-        };
-        let Some(menu_button) = selected_items_menu_button(&window) else {
-            tracing::debug!("selected-items menu: no selected-items menu button");
-            return Ok(false);
-        };
-        show_menu_or_press_selected(&menu_button, selected_name.as_deref())
-    }
-
-    fn show_menu_on_element(el: &AXElement) -> Result<bool, AdapterError> {
-        let Some(pid) = crate::system::app_ops::pid_from_element(el) else {
-            return Ok(false);
-        };
-        let was_open = is_menu_open(pid);
-        if !ax_helpers::try_ax_action_retried_or_err(el, "AXShowMenu")? {
-            return Ok(false);
+        if depth >= 8 {
+            continue;
         }
-        Ok(wait_for_new_menu(pid, was_open))
+        stack.extend(
+            crate::tree::surface_read::elements(&candidate, "AXChildren", instant(deadline)?)?
+                .into_iter()
+                .rev()
+                .map(|child| (child, depth.saturating_add(1))),
+        );
     }
+    Ok(None)
+}
 
-    fn show_menu_or_press_selected(
-        el: &AXElement,
-        selected_name: Option<&str>,
-    ) -> Result<bool, AdapterError> {
-        let Some(pid) = crate::system::app_ops::pid_from_element(el) else {
-            return Ok(false);
-        };
-        if ax_helpers::try_ax_action_retried_or_err(el, "AXShowMenu")?
-            && wait_for_selected_menu(pid, selected_name)
+fn is_selected_items_control(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<bool, AdapterError> {
+    if crate::tree::surface_read::string(element, "AXRole", instant(deadline)?)?.as_deref()
+        != Some("AXMenuButton")
+    {
+        return Ok(false);
+    }
+    for attribute in ["AXHelp", "AXDescription", "AXTitle"] {
+        if crate::tree::surface_read::string(element, attribute, instant(deadline)?)?
+            .is_some_and(|value| value.to_ascii_lowercase().contains("selected item"))
         {
             return Ok(true);
         }
-        Ok(ax_helpers::try_ax_action_retried_or_err(el, "AXPress")?
-            && wait_for_selected_menu(pid, selected_name))
     }
-
-    fn wait_for_new_menu(pid: i32, was_open: bool) -> bool {
-        if was_open {
-            return false;
-        }
-        crate::system::wait::wait_for_menu(pid, true, crate::system::wait::menu_timeout_ms())
-            .is_ok()
-    }
-
-    fn is_menu_open(pid: i32) -> bool {
-        crate::system::wait::wait_for_menu(pid, true, 0).is_ok()
-    }
-
-    fn wait_for_selected_menu(pid: i32, selected_name: Option<&str>) -> bool {
-        let deadline = std::time::Instant::now()
-            + std::time::Duration::from_millis(crate::system::wait::menu_timeout_ms());
-        loop {
-            if menu_matches_selection(pid, selected_name) {
-                return true;
-            }
-            if std::time::Instant::now() >= deadline {
-                return false;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-    }
-
-    fn menu_matches_selection(pid: i32, selected_name: Option<&str>) -> bool {
-        let Some(menu) = crate::tree::surfaces::menu_element_for_pid(pid) else {
-            return false;
-        };
-        selected_name
-            .filter(|name| !name.is_empty())
-            .is_none_or(|name| element_text_contains(&menu, name, 0))
-    }
-
-    fn element_text_contains(el: &AXElement, needle: &str, depth: usize) -> bool {
-        find_descendant_value(el, depth, &|candidate| {
-            element_own_text_contains(candidate, needle).then_some(())
-        })
-        .is_some()
-    }
-
-    fn element_own_text_contains(el: &AXElement, needle: &str) -> bool {
-        ["AXTitle", "AXDescription", "AXValue", "AXHelp"]
-            .into_iter()
-            .filter_map(|attr| crate::tree::copy_string_attr(el, attr))
-            .any(|value| value.contains(needle))
-    }
-
-    fn select_containing_item(el: &AXElement) -> Result<bool, AdapterError> {
-        Ok(ax_helpers::set_ax_bool_or_err(el, "AXSelected", true)?
-            || crate::actions::chain_steps::try_select_containing_item(el)?)
-    }
-
-    fn window_ancestor(el: &AXElement) -> Option<AXElement> {
-        let mut current = crate::tree::copy_element_attr(el, "AXParent");
-        for _ in 0..20 {
-            let ancestor = current?;
-            if crate::tree::copy_string_attr(&ancestor, "AXRole").as_deref() == Some("AXWindow") {
-                return Some(ancestor);
-            }
-            current = crate::tree::copy_element_attr(&ancestor, "AXParent");
-        }
-        None
-    }
-
-    fn selected_items_menu_button(root: &AXElement) -> Option<AXElement> {
-        find_descendant_value(root, 0, &|el| {
-            (crate::tree::copy_string_attr(el, "AXRole").as_deref() == Some("AXMenuButton")
-                && is_selected_items_control(el))
-            .then(|| el.clone())
-        })
-    }
-
-    fn is_selected_items_control(el: &AXElement) -> bool {
-        ["AXHelp", "AXDescription", "AXTitle"]
-            .into_iter()
-            .filter_map(|attr| crate::tree::copy_string_attr(el, attr))
-            .any(|value| {
-                let matches = selected_items_text(&value);
-                if matches {
-                    tracing::debug!(
-                        text_chars = value.chars().count(),
-                        "selected-items menu: matched control text"
-                    );
-                }
-                matches
-            })
-    }
-
-    fn selected_items_text(value: &str) -> bool {
-        let value = value.to_ascii_lowercase();
-        value.contains("selected item")
-    }
-
-    fn find_descendant_value<T>(
-        el: &AXElement,
-        depth: usize,
-        mapper: &impl Fn(&AXElement) -> Option<T>,
-    ) -> Option<T> {
-        if depth > 8 {
-            return None;
-        }
-        if let Some(value) = mapper(el) {
-            return Some(value);
-        }
-        for child in crate::tree::copy_ax_array(el, "AXChildren").unwrap_or_default() {
-            if let Some(found) = find_descendant_value(&child, depth + 1, mapper) {
-                return Some(found);
-            }
-        }
-        None
-    }
+    Ok(false)
 }
 
-#[cfg(not(target_os = "macos"))]
-mod imp {
-    use crate::tree::AXElement;
-    use agent_desktop_core::error::AdapterError;
-
-    pub(crate) fn show_menu(_el: &AXElement) -> Result<bool, AdapterError> {
-        Ok(false)
-    }
-
-    pub(crate) fn show_menu_on_ancestors(_el: &AXElement) -> Result<bool, AdapterError> {
-        Ok(false)
-    }
-
-    pub(crate) fn show_menu_on_children(_el: &AXElement) -> Result<bool, AdapterError> {
-        Ok(false)
-    }
-
-    pub(crate) fn select_then_show_menu(_el: &AXElement) -> Result<bool, AdapterError> {
-        Ok(false)
-    }
-
-    pub(crate) fn select_then_selected_items_menu(_el: &AXElement) -> Result<bool, AdapterError> {
-        Ok(false)
-    }
+fn parent(element: &AXElement, deadline: Deadline) -> Result<Option<AXElement>, AdapterError> {
+    crate::tree::surface_read::element(element, "AXParent", instant(deadline)?)
 }
 
-pub(crate) use imp::{
-    select_then_selected_items_menu, select_then_show_menu, show_menu, show_menu_on_ancestors,
-    show_menu_on_children,
-};
+fn instant(deadline: Deadline) -> Result<std::time::Instant, AdapterError> {
+    crate::tree::locator_deadline::from_operation(deadline)
+}
+
+fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
+    crate::tree::attributes::set_messaging_timeout(element, deadline)
+}

@@ -1,37 +1,15 @@
-use crate::error::AppError;
+use crate::AppError;
 use crate::trace_sanitize::sanitize_trace_value;
+use crate::trace_state::{TracePending, TraceState, TraceWriterState};
 use serde_json::{Map, Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
-
+pub(crate) const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_TRACE_EVENT_BYTES: usize = 1024 * 1024;
 static EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
-
-#[derive(Debug, Clone, Default)]
-enum TracePending {
-    #[default]
-    None,
-    File(PathBuf),
-    SegmentDir(PathBuf),
-}
-
-#[derive(Debug, Clone, Default)]
-enum WriterState {
-    #[default]
-    Unopened,
-    Open(Arc<Mutex<std::fs::File>>),
-    Failed,
-}
-
-#[derive(Debug, Default)]
-struct TraceState {
-    pending: TracePending,
-    writer: Arc<Mutex<WriterState>>,
-    meta_written: AtomicBool,
-}
 
 #[derive(Debug, Clone, Default)]
 pub struct TraceConfig {
@@ -55,17 +33,17 @@ impl TraceConfig {
             Some(path) => match open_trace_file(&path) {
                 Ok(file) => (
                     TracePending::File(path),
-                    WriterState::Open(Arc::new(Mutex::new(file))),
+                    TraceWriterState::Open(Arc::new(Mutex::new(file))),
                 ),
                 Err(err) if strict || err.code() == "INVALID_ARGS" => return Err(err),
                 Err(err) => {
                     tracing::warn!("trace open failed: {err}");
-                    (TracePending::File(path), WriterState::Failed)
+                    (TracePending::File(path), TraceWriterState::Failed)
                 }
             },
             None => match session_segment_dir {
-                Some(dir) => (TracePending::SegmentDir(dir), WriterState::Unopened),
-                None => (TracePending::None, WriterState::Unopened),
+                Some(dir) => (TracePending::SegmentDir(dir), TraceWriterState::Unopened),
+                None => (TracePending::None, TraceWriterState::Unopened),
             },
         };
         Ok(Self {
@@ -97,12 +75,15 @@ impl TraceConfig {
             Some(writer) => writer,
             None => return Ok(()),
         };
-        self.ensure_meta_if_needed(&writer, session_id)?;
         match writer
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))
-            .and_then(|mut file| write_event(&mut file, event, session_id, fields()))
-        {
+            .and_then(|mut file| {
+                with_exclusive_file(&mut file, |file| {
+                    self.ensure_meta_if_needed(file, session_id)?;
+                    write_event_locked(file, event, session_id, fields())
+                })
+            }) {
             Ok(()) => Ok(()),
             Err(err) if self.strict => Err(err),
             Err(err) => {
@@ -119,13 +100,13 @@ impl TraceConfig {
             .lock()
             .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
         match &*writer {
-            WriterState::Open(file) => return Ok(Some(file.clone())),
-            WriterState::Failed => return Ok(None),
-            WriterState::Unopened => {}
+            TraceWriterState::Open(file) => return Ok(Some(file.clone())),
+            TraceWriterState::Failed => return Ok(None),
+            TraceWriterState::Unopened => {}
         }
         let open_result = match &self.state.pending {
             TracePending::None => {
-                *writer = WriterState::Failed;
+                *writer = TraceWriterState::Failed;
                 return Ok(None);
             }
             TracePending::File(path) => open_trace_file(path),
@@ -134,14 +115,14 @@ impl TraceConfig {
         match open_result {
             Ok(file) => {
                 let file = Arc::new(Mutex::new(file));
-                *writer = WriterState::Open(file.clone());
+                *writer = TraceWriterState::Open(file.clone());
                 Ok(Some(file))
             }
             Err(err) if self.strict => Err(err),
             Err(err) if err.code() == "INVALID_ARGS" => Err(err),
             Err(err) => {
                 tracing::warn!("trace open failed: {err}");
-                *writer = WriterState::Failed;
+                *writer = TraceWriterState::Failed;
                 Ok(None)
             }
         }
@@ -152,7 +133,7 @@ impl TraceConfig {
             return false;
         }
         match self.state.writer.lock() {
-            Ok(writer) => !matches!(*writer, WriterState::Failed),
+            Ok(writer) => !matches!(*writer, TraceWriterState::Failed),
             Err(_) => true,
         }
     }
@@ -182,20 +163,17 @@ impl TraceConfig {
 
     fn ensure_meta_if_needed(
         &self,
-        writer: &Arc<Mutex<std::fs::File>>,
+        file: &mut std::fs::File,
         session_id: Option<&str>,
     ) -> Result<(), AppError> {
         if self.state.meta_written.load(Ordering::Relaxed) {
             return Ok(());
         }
-        let mut file = writer
-            .lock()
-            .map_err(|_| AppError::Internal("trace writer lock poisoned".into()))?;
         if file.metadata()?.len() > 0 {
             self.state.meta_written.store(true, Ordering::Relaxed);
             return Ok(());
         }
-        write_meta_header(&mut file, session_id)?;
+        write_meta_header_locked(file, session_id)?;
         self.state.meta_written.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -231,8 +209,11 @@ pub(crate) fn process_start_ms() -> u64 {
     })
 }
 
-fn write_meta_header(file: &mut std::fs::File, session_id: Option<&str>) -> Result<(), AppError> {
-    write_event(
+fn write_meta_header_locked(
+    file: &mut std::fs::File,
+    session_id: Option<&str>,
+) -> Result<(), AppError> {
+    write_event_locked(
         file,
         "trace.meta",
         session_id,
@@ -272,27 +253,52 @@ pub(crate) fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
 }
 
 fn open_trace_file(path: &Path) -> Result<std::fs::File, AppError> {
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).append(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-        options.custom_flags(libc::O_NOFOLLOW);
-    }
-    let file = options.open(path).map_err(AppError::from)?;
-    reject_loose_trace_permissions(&file)?;
-    Ok(file)
+    crate::private_file::open_private_append(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            return AppError::invalid_input_with_suggestion(
+                "Trace path must be a private user-owned regular file with one link",
+                "Use a new --trace path or replace the existing unsafe file.",
+            );
+        }
+        AppError::from(error)
+    })
 }
 
+#[cfg(test)]
 fn write_event(
     file: &mut std::fs::File,
     event: &str,
     session_id: Option<&str>,
     fields: Value,
 ) -> Result<(), AppError> {
-    reject_oversized_trace(file)?;
-    let mut body = Map::new();
+    with_exclusive_file(file, |file| {
+        write_event_locked(file, event, session_id, fields)
+    })
+}
+
+fn write_event_locked(
+    file: &mut std::fs::File,
+    event: &str,
+    session_id: Option<&str>,
+    fields: Value,
+) -> Result<(), AppError> {
+    let envelope_bytes = event
+        .len()
+        .saturating_mul(6)
+        .saturating_add(session_id.map_or(0, |session| session.len().saturating_mul(6)))
+        .saturating_add(512);
+    if envelope_bytes >= MAX_TRACE_EVENT_BYTES
+        || !value_fits(&fields, MAX_TRACE_EVENT_BYTES - envelope_bytes)
+    {
+        return Err(AppError::invalid_input_with_suggestion(
+            "Trace event exceeds the maximum supported event size",
+            "Emit bounded metadata and omit raw application content from trace fields.",
+        ));
+    }
+    let mut body = match sanitize_trace_value(fields) {
+        Value::Object(fields) => fields,
+        _ => Map::new(),
+    };
     body.insert("event".to_string(), json!(event));
     body.insert(
         "ts_ms".to_string(),
@@ -307,23 +313,63 @@ fn write_event(
         "seq".to_string(),
         json!(EVENT_SEQ.fetch_add(1, Ordering::Relaxed)),
     );
-    if let Value::Object(fields) = sanitize_trace_value(fields) {
-        for (key, value) in fields {
-            body.insert(key, value);
-        }
-    }
+    body.insert("writer_pid".to_string(), json!(std::process::id()));
+    body.insert(
+        "writer_proc_start_ms".to_string(),
+        json!(process_start_ms()),
+    );
     if let Some(sid) = session_id {
         body.insert("session_id".to_string(), json!(sid));
     }
     let mut line = Vec::new();
     serde_json::to_writer(&mut line, &Value::Object(body))?;
     line.push(b'\n');
+    reject_oversized_trace(file, line.len() as u64)?;
     file.write_all(&line).map_err(AppError::from)
 }
 
-fn reject_oversized_trace(file: &std::fs::File) -> Result<(), AppError> {
+fn value_fits(value: &Value, max_bytes: usize) -> bool {
+    fn visit(value: &Value, remaining: &mut usize) -> bool {
+        let fixed = match value {
+            Value::Null => 4,
+            Value::Bool(_) => 5,
+            Value::Number(_) => 32,
+            Value::String(string) => string.len().saturating_mul(6),
+            Value::Array(values) => {
+                if !take(remaining, values.len()) {
+                    return false;
+                }
+                return values.iter().all(|value| visit(value, remaining));
+            }
+            Value::Object(values) => {
+                for (key, value) in values {
+                    if !take(remaining, key.len().saturating_mul(6).saturating_add(4))
+                        || !visit(value, remaining)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        };
+        take(remaining, fixed)
+    }
+
+    fn take(remaining: &mut usize, amount: usize) -> bool {
+        let Some(next) = remaining.checked_sub(amount) else {
+            return false;
+        };
+        *remaining = next;
+        true
+    }
+
+    let mut remaining = max_bytes;
+    visit(value, &mut remaining)
+}
+
+fn reject_oversized_trace(file: &std::fs::File, incoming: u64) -> Result<(), AppError> {
     let len = file.metadata()?.len();
-    if len < MAX_TRACE_FILE_BYTES {
+    if len.saturating_add(incoming) <= MAX_TRACE_FILE_BYTES {
         return Ok(());
     }
     Err(AppError::invalid_input_with_suggestion(
@@ -332,23 +378,20 @@ fn reject_oversized_trace(file: &std::fs::File) -> Result<(), AppError> {
     ))
 }
 
-#[cfg(unix)]
-fn reject_loose_trace_permissions(file: &std::fs::File) -> Result<(), AppError> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mode = file.metadata()?.permissions().mode() & 0o777;
-    if mode & 0o077 == 0 {
-        return Ok(());
+fn with_exclusive_file<T>(
+    file: &mut std::fs::File,
+    operation: impl FnOnce(&mut std::fs::File) -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    file.lock().map_err(AppError::from)?;
+    let result = operation(file);
+    let unlock = file.unlock().map_err(AppError::from);
+    match result {
+        Ok(value) => {
+            unlock?;
+            Ok(value)
+        }
+        Err(error) => Err(error),
     }
-    Err(AppError::invalid_input_with_suggestion(
-        "Trace file must not be readable or writable by group/other",
-        "Use a new --trace path or run chmod 600 on the existing trace file.",
-    ))
-}
-
-#[cfg(not(unix))]
-fn reject_loose_trace_permissions(_file: &std::fs::File) -> Result<(), AppError> {
-    Ok(())
 }
 
 #[cfg(test)]

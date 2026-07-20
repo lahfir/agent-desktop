@@ -1,98 +1,4 @@
-use agent_desktop_core::{
-    action::Modifier,
-    error::{AdapterError, ErrorCode},
-};
-
-pub(crate) fn modifier_keycode(m: &Modifier) -> u16 {
-    match m {
-        Modifier::Cmd => 55,
-        Modifier::Shift => 56,
-        Modifier::Alt => 58,
-        Modifier::Ctrl => 59,
-    }
-}
-
-pub(crate) fn is_shifted_char(ch: char) -> bool {
-    matches!(
-        ch,
-        '!' | '@'
-            | '#'
-            | '$'
-            | '%'
-            | '^'
-            | '&'
-            | '*'
-            | '('
-            | ')'
-            | '_'
-            | '+'
-            | '{'
-            | '}'
-            | '|'
-            | ':'
-            | '"'
-            | '<'
-            | '>'
-            | '?'
-            | '~'
-    )
-}
-
-pub(crate) fn char_to_keycode(ch: char) -> Option<u16> {
-    let lower = ch.to_ascii_lowercase();
-    Some(match lower {
-        'a' => 0,
-        'b' => 11,
-        'c' => 8,
-        'd' => 2,
-        'e' => 14,
-        'f' => 3,
-        'g' => 5,
-        'h' => 4,
-        'i' => 34,
-        'j' => 38,
-        'k' => 40,
-        'l' => 37,
-        'm' => 46,
-        'n' => 45,
-        'o' => 31,
-        'p' => 35,
-        'q' => 12,
-        'r' => 15,
-        's' => 1,
-        't' => 17,
-        'u' => 32,
-        'v' => 9,
-        'w' => 13,
-        'x' => 7,
-        'y' => 16,
-        'z' => 6,
-        '0' | ')' => 29,
-        '1' | '!' => 18,
-        '2' | '@' => 19,
-        '3' | '#' => 20,
-        '4' | '$' => 21,
-        '5' | '%' => 23,
-        '6' | '^' => 22,
-        '7' | '&' => 26,
-        '8' | '*' => 28,
-        '9' | '(' => 25,
-        ' ' => 49,
-        '-' | '_' => 27,
-        '=' | '+' => 24,
-        '[' | '{' => 33,
-        ']' | '}' => 30,
-        '\\' | '|' => 42,
-        ';' | ':' => 41,
-        '\'' | '"' => 39,
-        ',' | '<' => 43,
-        '.' | '>' => 47,
-        '/' | '?' => 44,
-        '`' | '~' => 50,
-        '\t' => 48,
-        _ => return None,
-    })
-}
+use agent_desktop_core::{AdapterError, ErrorCode};
 
 pub(crate) fn key_name_to_code(key: &str) -> Result<u16, AdapterError> {
     let code = match key {
@@ -175,44 +81,9 @@ pub(crate) fn key_name_to_code(key: &str) -> Result<u16, AdapterError> {
 
 #[cfg(test)]
 mod tests {
-    use agent_desktop_core::{action::Modifier, error::ErrorCode};
+    use agent_desktop_core::ErrorCode;
 
-    use super::{char_to_keycode, is_shifted_char, key_name_to_code, modifier_keycode};
-
-    #[test]
-    fn modifier_keycodes_match_macos_virtual_key_codes() {
-        assert_eq!(modifier_keycode(&Modifier::Cmd), 55);
-        assert_eq!(modifier_keycode(&Modifier::Shift), 56);
-        assert_eq!(modifier_keycode(&Modifier::Alt), 58);
-        assert_eq!(modifier_keycode(&Modifier::Ctrl), 59);
-    }
-
-    #[test]
-    fn shifted_chars_are_detected() {
-        assert!(is_shifted_char('!'));
-        assert!(is_shifted_char('@'));
-        assert!(is_shifted_char('~'));
-        assert!(is_shifted_char('_'));
-        assert!(!is_shifted_char('a'));
-        assert!(!is_shifted_char('1'));
-        assert!(!is_shifted_char('A'));
-        assert!(!is_shifted_char(' '));
-    }
-
-    #[test]
-    fn char_to_keycode_lowercases_before_lookup() {
-        assert_eq!(char_to_keycode('a'), Some(0));
-        assert_eq!(char_to_keycode('A'), Some(0));
-        assert_eq!(char_to_keycode('z'), Some(6));
-        assert_eq!(char_to_keycode(' '), Some(49));
-        assert_eq!(char_to_keycode('\t'), Some(48));
-    }
-
-    #[test]
-    fn char_to_keycode_returns_none_for_unmapped_chars() {
-        assert_eq!(char_to_keycode('€'), None);
-        assert_eq!(char_to_keycode('\n'), None);
-    }
+    use super::key_name_to_code;
 
     #[test]
     fn named_key_aliases_resolve_to_same_code() {

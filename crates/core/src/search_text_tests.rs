@@ -1,17 +1,17 @@
 use super::*;
-use crate::node::AccessibilityNode;
+use crate::AccessibilityNode;
 
 fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
         ref_id: None,
         role: "textfield".into(),
-        name: name.map(String::from),
-        value: value.map(String::from),
-        description: description.map(String::from),
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: name.map(String::from),
+            value: value.map(String::from),
+            description: description.map(String::from),
+            native_id: None,
+        },
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
     }

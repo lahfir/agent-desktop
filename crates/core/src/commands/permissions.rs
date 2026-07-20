@@ -1,4 +1,4 @@
-use crate::{PermissionReport, adapter::PlatformAdapter, error::AppError};
+use crate::{AppError, PermissionReport, adapter::PlatformAdapter};
 use serde_json::{Value, json};
 
 pub struct PermissionsArgs {
@@ -11,7 +11,8 @@ pub fn execute_with_report(
     report: &PermissionReport,
 ) -> Result<Value, AppError> {
     let report = if args.request {
-        adapter.request_permissions()
+        let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
+        adapter.request_permissions(&lease)?
     } else {
         report.clone()
     };

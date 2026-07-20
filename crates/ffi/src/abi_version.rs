@@ -12,7 +12,7 @@ use std::ffi::CStr;
 /// with the major compiled against the header to verify ABI compatibility; a
 /// mismatch means the header and dylib are incompatible and the consumer should
 /// refuse to proceed rather than risk undefined behaviour.
-pub const AD_ABI_VERSION_MAJOR: u32 = 1;
+pub const AD_ABI_VERSION_MAJOR: u32 = 3;
 
 static MISMATCH_MESSAGE: &CStr =
     c"ABI major version mismatch: recompile against the installed header";
@@ -48,3 +48,7 @@ pub extern "C" fn ad_init(expected_major: u32) -> AdResult {
         }
     })
 }
+
+#[cfg(test)]
+#[path = "abi_version_tests.rs"]
+mod tests;

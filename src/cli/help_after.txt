@@ -8,7 +8,7 @@ OBSERVATION
 
 INTERACTION
   click <ref>                Click element (kAXPress)
-  double-click <ref>         Open via AXOpen; physical double-click uses mouse-click
+  double-click <ref>         Physical double-click; requires --headed
   triple-click <ref>         Triple-click element; POLICY_DENIED if physical input is disabled
   right-click <ref>          Right-click; includes menu when verified
   type <ref> <text>          Insert text; may use focus fallback only for explicit policy paths
@@ -36,11 +36,13 @@ MOUSE
   mouse-click --xy x,y       Click at coordinates (--button, --count; requires --headed)
   mouse-down --xy x,y        Press mouse button at coordinates (requires --headed)
   mouse-up --xy x,y          Release mouse button at coordinates (requires --headed)
+  mouse-wheel --x X --y Y    Post wheel deltas at coordinates (--dx, --dy; requires --headed)
 
 APP & WINDOW
   launch <app>               Launch app and wait until window is visible
   close-app <app>            Quit app gracefully (--force to terminate)
   list-windows               All visible windows (--app to filter)
+  list-displays              Displays and screenshot indices
   list-apps                  All running GUI applications (--app substring filter)
   focus-window               Bring window to front and confirm focus
   resize-window              Resize window (--width, --height)
@@ -56,8 +58,8 @@ NOTIFICATIONS
   notification-action <n> <action>  Click action button on notification
 
 CLIPBOARD
-  clipboard-get              Read plain-text clipboard
-  clipboard-set <text>       Write text to clipboard
+  clipboard-get              Read text, image, or file URLs (--format; --out for binary data)
+  clipboard-set [text]       Write text, --image PATH, or repeatable --file-url URL
   clipboard-clear            Clear the clipboard
 
 WAIT
@@ -71,15 +73,16 @@ WAIT
   wait --menu --app <app>    Block until a menu surface is open
   wait --menu-closed --app <app>  Block until a menu surface is dismissed
   wait --notification        Block until a new notification arrives (--text filters it)
+  wait --event <kind>        Block on a baseline diff: window/app/focus/surface lifecycle
 
 SYSTEM
   status                     Adapter health, platform, permission, session, and tracing state
   permissions                Check nested permission states: {state,...}
   version                    Show version, target architecture, and OS
   skills                     Bundled skill docs for AI agents (list, get, path)
-  session start              Create a trace-enabled session and set the active pointer
+  session start              Create a trace-enabled session; pass its returned ID explicitly
   session start --screenshots  Opt in to screenshot/refmap replay artifacts (requires tracing)
-  session end                  Seal the session manifest and clear the active pointer
+  session end                  Seal a manifest (ID from argument, --session, or environment)
   session list                 List session manifests
   session gc                   Remove ended or provably-stale sessions
 
@@ -88,20 +91,18 @@ TRACE
   trace export               Export a self-contained HTML trace viewer (--limit defaults to 5000; 0 = all)
 
 BATCH
-  batch <json>               Run commands from a JSON array (--stop-on-error)
+  batch <json>               Run a bounded, sequential, non-atomic JSON command batch
   batch items may set "session": "id" to override the inherited --session
 
 REF IDs
-  snapshot assigns @e1, @e2, ... to interactive elements in depth-first order.
-  Use a ref wherever <ref> appears. Refs are snapshot-scoped. Pass
-  --snapshot <snapshot_id> to pin a command to a known snapshot; explicit
-  snapshot IDs do not require --session. When --snapshot is omitted, ref
-  commands use the active session's latest saved snapshot. Run snapshot again
-  after UI changes. Use `session start` once per run for automatic JSONL tracing
-  under ~/.agent-desktop/sessions/<id>/trace/, or pass --session <id> for
-  snapshot namespace only (no trace without a session manifest). Set
-  AGENT_DESKTOP_SESSION for concurrent independent sessions. Explicit --session
-  overrides the env var and current-session pointer.
+  snapshot emits qualified refs such as @s8f3k2p9:e1 in depth-first order.
+  Qualified refs embed their snapshot ID and need no --snapshot flag. Legacy
+  bare @eN input requires an explicit --snapshot <snapshot_id>. Snapshot lookup
+  stays inside the selected namespace: pass the same --session <id> or set
+  AGENT_DESKTOP_SESSION when the snapshot belongs to a session. Explicit
+  --session overrides the environment; with neither, commands use the global
+  non-session namespace. `session start` returns an ID but does not activate
+  later processes. Run snapshot again after UI changes.
   Ref actions use strict resolution: stale targets return STALE_REF; duplicate
   plausible targets return AMBIGUOUS_TARGET instead of choosing arbitrarily.
   Ref actions run actionability checks before dispatch. Use --trace <path> to
@@ -123,23 +124,24 @@ EXAMPLES
   agent-desktop check @e3 --snapshot <snapshot_id>
   agent-desktop type @e2 --snapshot <snapshot_id> "hello@example.com"
   agent-desktop press cmd+z
-  agent-desktop --headed drag --from @e1 --to @e5
-  agent-desktop --headed hover @e5
+  agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5
+  agent-desktop --headed hover @s8f3k2p9:e5
   agent-desktop minimize --app TextEdit
   agent-desktop resize-window --app TextEdit --width 800 --height 600
+  agent-desktop move-window --window-id w-4521 --x 100 --y 100
   agent-desktop --headed mouse-click --xy 500,300
   agent-desktop wait --text "Loading complete" --app Safari --timeout 5000
-  agent-desktop wait --element @e5 --predicate actionable --timeout 5000
+  agent-desktop wait --element @s8f3k2p9:e5 --predicate actionable --timeout 5000
   agent-desktop snapshot --app Finder -w "button:OK"
-  agent-desktop click @e5 -w ":Saved!"
-  agent-desktop session start --name run-a
-  agent-desktop click @e5
+  agent-desktop click @s8f3k2p9:e5 -w ":Saved!"
+  agent-desktop session start --name run-a       # note data.session_id
+  agent-desktop --session <session_id> click @s8f3k2p9:e5
   agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'
   agent-desktop --session run-b batch '[{"command":"status","session":"run-b","args":{}}]'
 
 AGENT LOOP
   1. Use `skills get desktop --full` when you need detailed guidance.
-  2. Run `session start` once per agent run (or set AGENT_DESKTOP_SESSION).
+  2. Run `session start`, then pass its returned ID via --session or AGENT_DESKTOP_SESSION.
   3. Observe with `snapshot -i` or `snapshot --skeleton -i --compact`.
   4. Keep `snapshot_id`; pass it to every ref-consuming action.
   5. Use `wait --predicate actionable`, `wait --text`, or `wait --window`

@@ -1,8 +1,8 @@
 use crate::convert::string::c_to_string;
 use crate::types::{AdAction, AdActionKind, AdDirection, AdKeyCombo, AdModifier};
-use agent_desktop_core::action::{Action, Direction, KeyCombo as CoreKeyCombo, Modifier};
+use agent_desktop_core::{Action, Direction, KeyCombo as CoreKeyCombo, Modifier};
 
-/// Four modifier keys exist (`AdModifier::{Cmd, Ctrl, Alt, Shift}`),
+/// Four modifier keys exist (`AdModifier::{Meta, Ctrl, Alt, Shift}`),
 /// so a combo can name at most four. Anything larger must be bogus
 /// input — bail out instead of trusting it into `from_raw_parts`.
 const MAX_MODIFIERS_PER_COMBO: u32 = 4;
@@ -24,7 +24,7 @@ pub(crate) unsafe fn key_combo_from_c(k: &AdKeyCombo) -> Result<CoreKeyCombo, &'
             for raw_modifier in slice {
                 let m = AdModifier::from_c(*raw_modifier).ok_or("invalid modifier discriminant")?;
                 let modifier = match m {
-                    AdModifier::Cmd => Modifier::Cmd,
+                    AdModifier::Meta => Modifier::Meta,
                     AdModifier::Ctrl => Modifier::Ctrl,
                     AdModifier::Alt => Modifier::Alt,
                     AdModifier::Shift => Modifier::Shift,
@@ -97,7 +97,7 @@ pub(crate) unsafe fn action_from_c(action: &AdAction) -> Result<Action, &'static
 mod tests {
     use super::*;
     use crate::convert::string::{free_c_string, string_to_c};
-    use crate::types::{AdDragParams, AdPoint, AdScrollParams};
+    use crate::{AdDragParams, AdPoint, AdScrollParams};
     use std::ptr;
 
     fn make_scroll_params() -> AdScrollParams {
@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn key_combo_accepts_valid_modifier_slice() {
         let key = string_to_c("s");
-        let mods: [i32; 2] = [AdModifier::Cmd as i32, AdModifier::Shift as i32];
+        let mods: [i32; 2] = [AdModifier::Meta as i32, AdModifier::Shift as i32];
         let combo = AdKeyCombo {
             key,
             modifiers: mods.as_ptr(),

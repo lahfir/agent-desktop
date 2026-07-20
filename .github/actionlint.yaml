@@ -1,0 +1,3 @@
+self-hosted-runner:
+  labels:
+    - agent-desktop-e2e

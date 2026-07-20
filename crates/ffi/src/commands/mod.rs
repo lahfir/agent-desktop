@@ -1,7 +1,15 @@
 pub(crate) mod envelope_out;
-pub(crate) mod generated;
+pub(crate) mod execute_by_ref;
+pub(crate) mod execute_by_ref_timeout;
+pub(crate) mod snapshot;
+pub(crate) mod status;
+pub(crate) mod timeout;
+pub(crate) mod trace_export;
+pub(crate) mod trace_show;
+pub(crate) mod version;
+pub(crate) mod wait;
 
-use agent_desktop_core::error::{AdapterError, AppError, ErrorCode};
+use agent_desktop_core::{AdapterError, AppError, ErrorCode};
 
 /// Converts a core `AppError` into an `AdapterError` for use with
 /// `set_last_error`. `AppError::Adapter` is already an `AdapterError`;
@@ -14,6 +22,46 @@ pub(crate) fn app_error_to_adapter(err: AppError) -> AdapterError {
         AppError::Internal(msg) => AdapterError::new(ErrorCode::Internal, msg),
     }
 }
+
+macro_rules! command_scope {
+    ($context:expr, $name:expr) => {{
+        match $context.command_scope($name) {
+            Ok(scope) => scope,
+            Err(error) => {
+                let error = $crate::commands::app_error_to_adapter(error);
+                $crate::error::set_last_error(&error);
+                return $crate::error::last_error_code();
+            }
+        }
+    }};
+}
+
+macro_rules! mutating_command_scope {
+    ($context:expr, $name:expr) => {{
+        match $context.mutating_command_scope($name) {
+            Ok(scope) => scope,
+            Err(error) => {
+                let error = $crate::commands::app_error_to_adapter(error);
+                $crate::error::set_last_error(&error);
+                return $crate::error::last_error_code();
+            }
+        }
+    }};
+}
+
+macro_rules! complete_scope {
+    ($scope:expr, $result:expr) => {{
+        if let Err(error) = $scope.complete($result) {
+            let error = $crate::commands::app_error_to_adapter(error);
+            $crate::error::set_last_error(&error);
+            return $crate::error::last_error_code();
+        }
+    }};
+}
+
+pub(crate) use command_scope;
+pub(crate) use complete_scope;
+pub(crate) use mutating_command_scope;
 
 #[cfg(test)]
 mod tests {

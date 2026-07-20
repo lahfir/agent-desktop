@@ -1,11 +1,21 @@
 use super::*;
 use crate::PermissionState;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 
 struct DeniedAdapter;
 
-impl PlatformAdapter for DeniedAdapter {
-    fn permission_report(&self) -> PermissionReport {
-        PermissionReport {
+impl ObservationOps for DeniedAdapter {}
+
+impl ActionOps for DeniedAdapter {}
+
+impl InputOps for DeniedAdapter {}
+
+impl SystemOps for DeniedAdapter {
+    fn permission_report(
+        &self,
+        _deadline: crate::Deadline,
+    ) -> Result<PermissionReport, crate::AdapterError> {
+        Ok(PermissionReport {
             accessibility: PermissionState::Denied {
                 suggestion: "should not be used".into(),
             },
@@ -13,12 +23,13 @@ impl PlatformAdapter for DeniedAdapter {
                 suggestion: "should not be used".into(),
             },
             automation: PermissionState::Unknown,
-        }
+        })
     }
 }
 
 #[test]
 fn status_uses_precomputed_permission_report() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
     let report = PermissionReport {
         accessibility: PermissionState::Granted,
         screen_recording: PermissionState::Granted,
@@ -41,7 +52,6 @@ fn status_reports_tracing_false_when_writer_failed() {
     let session = crate::session::start_session(crate::session::StartSessionOptions {
         name: None,
         trace: crate::session::SessionTraceMode::On,
-        force: true,
         ..Default::default()
     })
     .unwrap();

@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::AppError;
 use serde_json::{Value, json};
 
 pub fn execute() -> Result<Value, AppError> {

@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::AppError;
 use serde_json::{Value, json};
 
 const SKILL_DESKTOP_MAIN: &str = include_str!("../../../../skills/agent-desktop/SKILL.md");
@@ -38,37 +38,32 @@ struct Skill {
     refs: fn() -> &'static [SkillRef],
 }
 
-/// Returns the four platform-agnostic desktop refs, plus the macOS ref on macOS targets.
-/// Built once via OnceLock so the base entries are never duplicated.
+const SKILL_DESKTOP_REFS: &[SkillRef] = &[
+    SkillRef {
+        rel_path: "references/commands-observation.md",
+        body: SKILL_DESKTOP_REF_OBSERVATION,
+    },
+    SkillRef {
+        rel_path: "references/commands-interaction.md",
+        body: SKILL_DESKTOP_REF_INTERACTION,
+    },
+    SkillRef {
+        rel_path: "references/commands-system.md",
+        body: SKILL_DESKTOP_REF_SYSTEM,
+    },
+    SkillRef {
+        rel_path: "references/workflows.md",
+        body: SKILL_DESKTOP_REF_WORKFLOWS,
+    },
+    #[cfg(target_os = "macos")]
+    SkillRef {
+        rel_path: "references/macos.md",
+        body: SKILL_DESKTOP_REF_MACOS,
+    },
+];
+
 fn skill_desktop_refs() -> &'static [SkillRef] {
-    use std::sync::OnceLock;
-    static REFS: OnceLock<Vec<SkillRef>> = OnceLock::new();
-    REFS.get_or_init(|| {
-        let mut v = vec![
-            SkillRef {
-                rel_path: "references/commands-observation.md",
-                body: SKILL_DESKTOP_REF_OBSERVATION,
-            },
-            SkillRef {
-                rel_path: "references/commands-interaction.md",
-                body: SKILL_DESKTOP_REF_INTERACTION,
-            },
-            SkillRef {
-                rel_path: "references/commands-system.md",
-                body: SKILL_DESKTOP_REF_SYSTEM,
-            },
-            SkillRef {
-                rel_path: "references/workflows.md",
-                body: SKILL_DESKTOP_REF_WORKFLOWS,
-            },
-        ];
-        #[cfg(target_os = "macos")]
-        v.push(SkillRef {
-            rel_path: "references/macos.md",
-            body: SKILL_DESKTOP_REF_MACOS,
-        });
-        v
-    })
+    SKILL_DESKTOP_REFS
 }
 
 const SKILL_FFI_REFS: &[SkillRef] = &[
@@ -98,7 +93,7 @@ const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
-        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 56 commands including session lifecycle, observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
+        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 58 commands including session lifecycle, observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
         refs: skill_desktop_refs,
     },

@@ -38,6 +38,7 @@ struct ContentView: View {
     // async / dynamic
     @State private var delayedEnabled = false
     @State private var delayedText = "waiting"
+    @State private var delayedActionCount = 0
     @State private var removableVisible = true
     @State private var appearedText = ""
     // drag
@@ -55,7 +56,7 @@ struct ContentView: View {
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("AgentDesk Fixture")
                     .font(.title2)
                     .accessibilityLabel("fixture-title")
@@ -63,14 +64,14 @@ struct ContentView: View {
                 row2
                 row3
             }
-            .padding(20)
+            .padding(10)
         }
         .frame(minWidth: 980, minHeight: 720)
         .sheet(isPresented: $showSheet) { sheetContent }
     }
 
     private var row1: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             clicksCard
             textCard
             stateCard
@@ -78,7 +79,7 @@ struct ContentView: View {
     }
 
     private var row2: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             choiceCard
             collectionsCard
             asyncCard
@@ -86,7 +87,7 @@ struct ContentView: View {
     }
 
     private var row3: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             dragCard
             surfacesCard
             ScrollCard()
@@ -119,11 +120,11 @@ struct ContentView: View {
                 }
             StatusReadout(name: "right-status", value: rightStatus)
 
-            Text("Hover Target")
+            Button("Hover Target") { }
                 .padding(6)
                 .background(hoverStatus == "hovered" ? Color.yellow.opacity(0.4) : Color.clear)
                 .accessibilityLabel("hover-target")
-                .onHover { inside in if inside { hoverStatus = "hovered" } }
+                .onHover { inside in hoverStatus = inside ? "hovered" : "idle" }
             StatusReadout(name: "hover-status", value: hoverStatus)
 
             /// Two controls sharing role and name. Each records a distinct
@@ -190,6 +191,7 @@ struct ContentView: View {
                 Text("Gamma").tag("Gamma")
             }
             .accessibilityLabel("option-picker")
+            .accessibilityIdentifier("option-picker")
             StatusReadout(name: "picker-status", value: pickerChoice)
 
             Picker("Radio Group", selection: $radioChoice) {
@@ -235,32 +237,13 @@ struct ContentView: View {
     // MARK: async / dynamic
 
     private var asyncCard: some View {
-        Card(title: "Async & Dynamic") {
-            Button("Enable Later") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    delayedEnabled = true
-                    delayedText = "ready"
-                }
-            }
-            .accessibilityLabel("enable-later")
-            Button("Delayed Button") { }
-                .disabled(!delayedEnabled)
-                .accessibilityLabel("delayed-button")
-            StatusReadout(name: "delayed-text", value: delayedText)
-
-            Button("Appear Later") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { appearedText = "appeared-text" }
-            }
-            .accessibilityLabel("appear-later")
-            if !appearedText.isEmpty {
-                Text(appearedText).accessibilityLabel("appeared-text")
-            }
-
-            if removableVisible {
-                Button("Removable Row") { }.accessibilityLabel("removable-row")
-            }
-            Button("Remove Row") { removableVisible = false }.accessibilityLabel("remove-row")
-        }
+        AsyncFixtureCard(
+            delayedEnabled: $delayedEnabled,
+            delayedText: $delayedText,
+            delayedActionCount: $delayedActionCount,
+            appearedText: $appearedText,
+            removableVisible: $removableVisible
+        )
     }
 
     // MARK: drag (interactive row + non-interactive image)
@@ -364,11 +347,21 @@ struct AgentDeskFixtureApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var isBackgroundFixture: Bool {
+        ProcessInfo.processInfo.environment["AGENT_DESKTOP_FIXTURE_NO_ACTIVATE"] == "1"
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        if isBackgroundFixture {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if isBackgroundFixture {
+            return
+        }
         NSApp.setActivationPolicy(.regular)
-        // Bring the window up without forcibly stealing focus from other apps:
-        // the E2E harness drives focus explicitly via focus-window, and an
-        // unconditional steal could mask headless-policy focus violations.
         NSApp.activate(ignoringOtherApps: false)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

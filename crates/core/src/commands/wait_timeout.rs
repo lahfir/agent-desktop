@@ -1,7 +1,4 @@
-use crate::{
-    commands::wait_predicate,
-    error::{AdapterError, AppError},
-};
+use crate::{AdapterError, AppError, commands::wait_predicate};
 use serde_json::{Value, json};
 
 /// Builds the wait-loop TIMEOUT error. Every payload carries

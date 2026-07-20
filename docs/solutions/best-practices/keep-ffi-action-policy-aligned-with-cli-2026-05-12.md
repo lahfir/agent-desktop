@@ -1,55 +1,52 @@
 ---
-title: Keep FFI action policy aligned with CLI action policy
-date: 2026-05-12
-last_updated: 2026-06-10
+title: Make FFI ref actions share CLI policy semantics
+date: 2026-07-11
 category: best-practices
-module: crates/ffi
+module: crates/ffi action execution
 problem_type: best_practice
-component: ffi
+component: tooling
 severity: high
 applies_when:
-  - FFI exposes an action path that mirrors CLI ref commands
-  - A core action gains an InteractionPolicy or other side-effect gate
-  - A new FFI wrapper calls PlatformAdapter directly instead of command dispatch
-tags:
-  - ffi
-  - interaction-policy
-  - cli-parity
-  - abi
+  - "Adding an FFI action entrypoint"
+  - "Changing Action base policy or headed behavior"
+  - "Documenting a low-level native-handle escape hatch"
+tags: [ffi, interaction-policy, cli-parity, actions]
 ---
 
-# Keep FFI action policy aligned with CLI action policy
+# Make FFI ref actions share CLI policy semantics
 
 ## Context
 
-The CLI action path moved to `ActionRequest { action, policy }`, but the FFI
-`ad_execute_action` wrapper initially constructed the cursor/focus policy (then
-named `physical`, since renamed `ActionRequest::headed`) for every action. That
-meant C, Swift, Python, Go, and Node consumers received focus-stealing and
-cursor-moving behavior for actions that the CLI treats as headless by default.
+FFI exposes both high-level ref commands and low-level native-handle calls.
+They must not be described as having the same safety contract: only the
+high-level ref path can reproduce CLI observation-to-action behavior.
 
 ## Guidance
 
-FFI wrappers that mirror CLI actions must use the same default side-effect
-contract as the CLI. For direct action execution, the default is headless:
-no focus stealing and no cursor movement.
+`ad_execute_by_ref` and its timeout variant use the core command path. They
+load the ref map, resolve strictly, apply actionability, and compute policy
+through `Action::base_interaction_policy` joined with the caller's explicit
+policy. Ref actions, including `type`, have a headless base; explicit `press`
+retains its focus fallback. With the headless policy, natural-input commands
+use semantic accessibility delivery. A caller-selected headed policy makes
+`click`, `right-click`, `type`, `clear`, and `scroll` physical-first, matching
+the CLI `--headed` contract, while semantic-only commands remain semantic.
 
-When a lower-level FFI consumer intentionally wants broader behavior, expose the
-policy as an explicit ABI value. Do not hide it inside a wrapper default.
+`ad_execute_action` and struct-based direct action entrypoints are deliberately
+lower-level escape hatches. They operate on a caller-held native handle or
+entry, may apply supplied policy verbatim, and do not claim RefStore-backed CLI
+parity. Their safety docs must say so.
 
-## Review Rule
+## Prevention
 
-Any change to `ActionRequest`, `InteractionPolicy`, or command preflight must
-include a pass over `crates/ffi/src/actions/`. If the CLI and FFI can perform the
-same action, they must document the same default and expose any divergence as an
-explicit parameter.
-
-Behavioral parity is only half the FFI review: any structural change to a public
-`repr(C)` type — adding, removing, or reordering fields, or growing a struct that
-is embedded by value inside another — must also update the three-layer size pin
-(Rust const assert, header `_Static_assert`, layout integration test). Size drift
-in an embedded struct silently propagates to every outer struct that embeds it.
+- Route new language-binding equivalents of CLI commands through the high-level
+  core command path.
+- Test both the observed effect and reported mechanism for headed and headless
+  natural-input actions, plus every action with a non-headless base.
+- Make any skipped boundary—strict resolution, preflight, or base-policy
+  elevation—explicit in the public FFI documentation.
 
 ## Related
 
-- `best-practices/ffi-repr-c-struct-size-pinning.md` — the structural-parity companion: the full three-layer pinning protocol and the AdAction silent-growth incident that motivated it.
+- [FFI repr(C) struct size pinning](ffi-repr-c-struct-size-pinning.md)
+- [Build desktop actions as an observe-resolve-preflight-dispatch contract](playwright-grade-desktop-reliability-2026-06-02.md)

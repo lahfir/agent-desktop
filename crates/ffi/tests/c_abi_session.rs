@@ -2,53 +2,45 @@ mod common;
 
 use common::{
     AdResult, CStr, ad_adapter_create, ad_adapter_create_with_session, ad_adapter_destroy,
-    ad_last_error_code, ad_last_error_message,
+    ad_free_string, ad_last_error_code, ad_last_error_message, ad_status, with_isolated_home,
 };
 
 #[test]
-fn sessionless_adapter_has_no_session_id() {
-    unsafe {
-        let ptr = ad_adapter_create();
-        assert!(!ptr.is_null(), "ad_adapter_create must not return null");
-        let ctx = (*ptr)
-            .command_context()
-            .expect("command_context must succeed");
-        assert_eq!(ctx.session_id(), None);
-        ad_adapter_destroy(ptr);
-    }
-}
+fn adapter_creation_accepts_sessionless_null_and_valid_session_forms() {
+    with_isolated_home(|| unsafe {
+        let sessionless = ad_adapter_create();
+        assert!(!sessionless.is_null());
+        assert_eq!(status_session_id(sessionless), None);
+        ad_adapter_destroy(sessionless);
 
-#[test]
-fn session_adapter_carries_session_id() {
-    unsafe {
+        let null_session = ad_adapter_create_with_session(std::ptr::null());
+        assert!(!null_session.is_null());
+        assert_eq!(status_session_id(null_session), None);
+        ad_adapter_destroy(null_session);
+
         let session = std::ffi::CString::new("agent-a").unwrap();
         let ptr = ad_adapter_create_with_session(session.as_ptr());
         assert!(
             !ptr.is_null(),
             "ad_adapter_create_with_session must not return null"
         );
-        let ctx = (*ptr)
-            .command_context()
-            .expect("command_context must succeed");
-        assert_eq!(ctx.session_id(), Some("agent-a"));
+        assert_eq!(status_session_id(ptr).as_deref(), Some("agent-a"));
         ad_adapter_destroy(ptr);
-    }
+    });
 }
 
-#[test]
-fn null_session_adapter_is_sessionless() {
-    unsafe {
-        let ptr = ad_adapter_create_with_session(std::ptr::null());
-        assert!(
-            !ptr.is_null(),
-            "null session must yield a sessionless adapter"
-        );
-        let ctx = (*ptr)
-            .command_context()
-            .expect("command_context must succeed");
-        assert_eq!(ctx.session_id(), None);
-        ad_adapter_destroy(ptr);
-    }
+unsafe fn status_session_id(adapter: *const common::AdAdapter) -> Option<String> {
+    let mut out = std::ptr::null_mut();
+    assert_eq!(unsafe { ad_status(adapter, &mut out) }, AdResult::Ok);
+    assert!(!out.is_null());
+    let envelope: serde_json::Value = serde_json::from_str(
+        unsafe { CStr::from_ptr(out) }
+            .to_str()
+            .expect("status envelope must be UTF-8"),
+    )
+    .expect("status envelope must be JSON");
+    unsafe { ad_free_string(out) };
+    envelope["data"]["session_id"].as_str().map(str::to_owned)
 }
 
 #[test]

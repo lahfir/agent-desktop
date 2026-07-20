@@ -1,5 +1,14 @@
 use super::*;
 use crate::system::cg_window::WindowRecord;
+use agent_desktop_core::Rect;
+use rustc_hash::FxHashMap;
+
+fn ax_state(focused: FocusedWindowIdentity) -> crate::system::window_ax_state::WindowAxState {
+    crate::system::window_ax_state::WindowAxState {
+        focused,
+        minimized_by_id: FxHashMap::default(),
+    }
+}
 
 #[test]
 fn apps_from_window_records_deduplicates_by_pid() {
@@ -34,27 +43,6 @@ fn matches_app_filter_rejects_substring_match() {
 }
 
 #[test]
-fn retry_empty_skips_known_missing_app_filter() {
-    let filter = WindowFilter {
-        app: Some("Missing".to_string()),
-        focused_only: false,
-    };
-
-    assert!(!should_retry_empty(&filter, None));
-}
-
-#[test]
-fn retry_empty_allows_known_app_filter_for_ax_race() {
-    let filter = WindowFilter {
-        app: Some("Mail".to_string()),
-        focused_only: false,
-    };
-    let app = app("Mail", 42);
-
-    assert!(should_retry_empty(&filter, Some(&app)));
-}
-
-#[test]
 fn windows_from_records_marks_single_focused_window_once() {
     let windows = windows_from_records_with_focus(
         vec![
@@ -62,11 +50,13 @@ fn windows_from_records_marks_single_focused_window_once() {
             record("Mail", 10, "Inbox", 2),
         ],
         false,
-        |_| Some((Some("Inbox".to_string()), Some(2))),
-    );
+        |_| Ok(ax_state(Some((Some("Inbox".to_string()), Some(2))))),
+        |_, _| Ok(true),
+    )
+    .unwrap();
 
-    assert!(!windows[0].is_focused);
-    assert!(windows[1].is_focused);
+    assert!(!windows[0].state.is_focused);
+    assert!(windows[1].state.is_focused);
 }
 
 #[test]
@@ -77,11 +67,66 @@ fn windows_from_records_focus_only_filters_unfocused_windows() {
             record("Mail", 10, "Sent", 2),
         ],
         true,
-        |_| Some((Some("Sent".to_string()), Some(2))),
-    );
+        |_| Ok(ax_state(Some((Some("Sent".to_string()), Some(2))))),
+        |_, _| Ok(true),
+    )
+    .unwrap();
 
     assert_eq!(windows.len(), 1);
     assert_eq!(windows[0].title, "Sent");
+}
+
+#[test]
+fn windows_from_records_preserve_capture_bounds() {
+    let expected = Rect {
+        x: 12.0,
+        y: 34.0,
+        width: 800.0,
+        height: 600.0,
+    };
+    let mut source = record("Preview", 10, "Document", 7);
+    source.bounds = expected;
+
+    let windows = windows_from_records_with_focus(
+        vec![source],
+        false,
+        |_| Ok(ax_state(None)),
+        |_, _| Ok(true),
+    )
+    .unwrap();
+
+    assert_eq!(windows[0].bounds, Some(expected));
+}
+
+#[test]
+fn windows_from_records_never_publish_zero_window_ids() {
+    let windows = windows_from_records_with_focus(
+        vec![record("Preview", 10, "Unverified", 0)],
+        false,
+        |_| Ok(ax_state(None)),
+        |_, _| Ok(true),
+    )
+    .unwrap();
+
+    assert!(windows.is_empty());
+}
+
+#[test]
+fn window_inventory_rejects_owner_generation_change_around_focus_read() {
+    let mut checks = 0;
+    let error = windows_from_records_with_focus(
+        vec![record("Preview", 10, "Document", 7)],
+        false,
+        |_| Ok(ax_state(None)),
+        |_, _| {
+            checks += 1;
+            Ok(checks == 1)
+        },
+    )
+    .expect_err("owner changed after AX join");
+
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::AppUnresponsive);
+    assert_eq!(error.details.unwrap()["kind"], "window_identity_race");
 }
 
 #[test]
@@ -102,140 +147,15 @@ fn matches_focused_window_uses_unique_title_without_window_number() {
 }
 
 #[test]
-fn list_windows_retries_after_unfocused_ax_fallback_for_focused_filter() {
-    let filter = WindowFilter {
-        app: Some("Mail".to_string()),
-        focused_only: true,
-    };
-    let app = app("Mail", 42);
-    let mut visible_calls = 0;
-    let mut ax_calls = 0;
-
-    let windows = list_windows_with_sources(
-        &filter,
-        |_, _| Some(app.clone()),
-        || {
-            visible_calls += 1;
-            Vec::new()
-        },
-        |_| {
-            ax_calls += 1;
-            Some(window("Mail", 42, "Inbox", 7, ax_calls == 2))
-        },
-        |_| {},
-    );
-
-    assert_eq!(windows.len(), 1);
-    assert_eq!(windows[0].title, "Inbox");
-    assert_eq!(visible_calls, 2);
-    assert_eq!(ax_calls, 2);
-}
-
-#[test]
-fn list_windows_sleeps_between_unfocused_ax_fallback_retries() {
-    let filter = WindowFilter {
-        app: Some("Mail".to_string()),
-        focused_only: true,
-    };
-    let app = app("Mail", 42);
-    let mut sleep_calls = 0;
-
-    let windows = list_windows_with_sources(
-        &filter,
-        |_, _| Some(app.clone()),
-        Vec::new,
-        |_| Some(window("Mail", 42, "Inbox", 7, false)),
-        |_| sleep_calls += 1,
-    );
-
-    assert!(windows.is_empty());
-    assert_eq!(sleep_calls, 2);
-}
-
-#[test]
-fn list_windows_without_app_filter_retries_empty_records() {
+fn deadline_window_inventory_rejects_expiry_before_native_reads() {
     let filter = WindowFilter {
         app: None,
         focused_only: false,
     };
-    let mut visible_calls = 0;
-    let mut app_resolver_called = false;
 
-    let windows = list_windows_with_sources(
-        &filter,
-        |_, _| {
-            app_resolver_called = true;
-            None
-        },
-        || {
-            visible_calls += 1;
-            Vec::new()
-        },
-        |_| None,
-        |_| {},
-    );
+    let error = list_windows_until(&filter, Instant::now()).unwrap_err();
 
-    assert!(windows.is_empty());
-    assert_eq!(visible_calls, 3);
-    assert!(!app_resolver_called);
-}
-
-#[test]
-fn list_windows_stops_when_named_app_is_missing() {
-    let filter = WindowFilter {
-        app: Some("Missing".to_string()),
-        focused_only: true,
-    };
-    let mut visible_calls = 0;
-
-    let windows = list_windows_with_sources(
-        &filter,
-        |_, _| None,
-        || {
-            visible_calls += 1;
-            Vec::new()
-        },
-        |_| None,
-        |_| {},
-    );
-
-    assert!(windows.is_empty());
-    assert_eq!(visible_calls, 1);
-}
-
-#[test]
-fn ax_window_info_uses_resolved_app_identity() {
-    let app = app("Mail", 42);
-    let window = ax_window_info(&app, "Inbox".to_string(), 7, true);
-
-    assert_eq!(window.app, "Mail");
-    assert_eq!(window.pid, 42);
-    assert_eq!(window.id, "w-7");
-}
-
-#[test]
-fn child_bearing_window_index_prefers_first_window_with_children() {
-    let windows = [0, 7, 3];
-
-    assert_eq!(
-        child_bearing_window_index(&windows, |count| *count),
-        Some(1)
-    );
-}
-
-#[test]
-fn child_bearing_window_index_returns_none_when_all_windows_are_empty() {
-    let windows = [0, 0];
-
-    assert_eq!(child_bearing_window_index(&windows, |count| *count), None);
-}
-
-fn app(name: &str, pid: i32) -> AppInfo {
-    AppInfo {
-        name: name.to_string(),
-        pid,
-        bundle_id: None,
-    }
+    assert_eq!(error.code.as_str(), "TIMEOUT");
 }
 
 fn record(app_name: &str, pid: i32, title: &str, window_number: i64) -> WindowRecord {
@@ -244,23 +164,13 @@ fn record(app_name: &str, pid: i32, title: &str, window_number: i64) -> WindowRe
         pid,
         title: Some(title.to_string()),
         window_number,
-        area: 100.0,
-    }
-}
-
-fn window(
-    app_name: &str,
-    pid: i32,
-    title: &str,
-    window_number: i64,
-    is_focused: bool,
-) -> WindowInfo {
-    WindowInfo {
-        id: format!("w-{window_number}"),
-        title: title.to_string(),
-        app: app_name.to_string(),
-        pid,
-        bounds: None,
-        is_focused,
+        bounds: agent_desktop_core::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        },
+        visible: true,
+        process_instance: Some(format!("instance-{pid}")),
     }
 }

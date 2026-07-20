@@ -1,16 +1,12 @@
-use agent_desktop_core::{
-    adapter::WindowFilter,
-    node::{AppInfo, WindowInfo},
-};
-use std::time::Duration;
+use agent_desktop_core::{AdapterError, WindowFilter, WindowInfo};
+use std::time::Instant;
 
 use crate::system::cg_window;
 
-pub(crate) fn visible_apps() -> Vec<AppInfo> {
-    apps_from_window_records(&cg_window::visible_window_records())
-}
-
-fn apps_from_window_records(records: &[cg_window::WindowRecord]) -> Vec<AppInfo> {
+#[cfg(test)]
+fn apps_from_window_records(
+    records: &[cg_window::WindowRecord],
+) -> Vec<agent_desktop_core::AppInfo> {
     let mut seen_pids = rustc_hash::FxHashSet::default();
     let mut apps = Vec::new();
 
@@ -18,200 +14,166 @@ fn apps_from_window_records(records: &[cg_window::WindowRecord]) -> Vec<AppInfo>
         if !seen_pids.insert(record.pid) {
             continue;
         }
-        apps.push(AppInfo {
+        apps.push(agent_desktop_core::AppInfo {
             name: record.app_name.clone(),
-            pid: record.pid,
+            pid: agent_desktop_core::ProcessId::try_from(record.pid)
+                .expect("fixture pid must be positive"),
             bundle_id: None,
+            process_instance: record.process_instance.clone(),
         });
     }
 
     apps
 }
 
-pub(crate) fn list_windows(
+pub(crate) fn list_windows_until(
     filter: &WindowFilter,
-    app_for_name: impl FnMut(&str, &[AppInfo]) -> Option<AppInfo>,
-) -> Vec<WindowInfo> {
-    list_windows_with_sources(
-        filter,
-        app_for_name,
-        cg_window::visible_window_records,
-        ax_window_for_app,
-        std::thread::sleep,
+    deadline: Instant,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    let app_filter = filter.app.as_deref().unwrap_or("").to_ascii_lowercase();
+    if app_filter.is_empty() {
+        return crate::system::window_inventory_global::list_windows_until(
+            filter.focused_only,
+            deadline,
+        );
+    }
+    let scope = cg_window::WindowRecordScope::App(&app_filter);
+    let records = cg_window::window_records_until(deadline, scope)?;
+    let candidates = records;
+    windows_from_records_with_focus(
+        candidates,
+        filter.focused_only,
+        |pid| crate::system::window_ax_state::read_until(pid, deadline),
+        crate::system::process_identity::matches_instance,
     )
 }
 
-fn list_windows_with_sources(
-    filter: &WindowFilter,
-    mut app_for_name: impl FnMut(&str, &[AppInfo]) -> Option<AppInfo>,
-    mut visible_records: impl FnMut() -> Vec<cg_window::WindowRecord>,
-    mut ax_window_for_app: impl FnMut(&AppInfo) -> Option<WindowInfo>,
-    mut sleep: impl FnMut(Duration),
-) -> Vec<WindowInfo> {
-    let mut app = None;
-    let mut app_loaded = false;
-
-    for attempt in 0..3 {
-        let records = visible_records();
-        let windows = visible_windows_from_records(filter, &records);
-        if !windows.is_empty() {
-            return windows;
-        }
-
-        if let Some(app_name) = filter.app.as_deref() {
-            if !app_loaded {
-                let visible_apps = apps_from_window_records(&records);
-                app = app_for_name(app_name, &visible_apps);
-                app_loaded = true;
-            }
-            if let Some(app) = app.as_ref() {
-                if let Some(window) = ax_window_for_app(app) {
-                    if !filter.focused_only || window.is_focused {
-                        return vec![window];
-                    }
-                }
-            }
-        }
-
-        if attempt == 2 || !should_retry_empty(filter, app.as_ref()) {
-            break;
-        }
-
-        sleep(Duration::from_millis(50));
+pub(crate) fn exact_window_for_pid_until(
+    pid: i32,
+    deadline: Instant,
+) -> Result<WindowInfo, AdapterError> {
+    let records =
+        cg_window::window_records_until(deadline, cg_window::WindowRecordScope::Pid(pid))?;
+    let mut windows = windows_from_records_with_focus(
+        records,
+        false,
+        |owner_pid| crate::system::window_ax_state::read_until(owner_pid, deadline),
+        |owner_pid, instance| {
+            crate::system::process_identity::matches_instance(owner_pid, instance)
+        },
+    )?;
+    if windows.len() == 1 {
+        return Ok(windows.remove(0));
     }
-
-    Vec::new()
-}
-
-fn visible_windows_from_records(
-    filter: &WindowFilter,
-    records: &[cg_window::WindowRecord],
-) -> Vec<WindowInfo> {
-    let app_filter = filter.app.as_deref().unwrap_or("").to_ascii_lowercase();
-    let candidates = records
+    let mut focused = windows
         .iter()
-        .filter(|record| matches_app_filter(&record.app_name, &app_filter))
+        .filter(|window| window.state.is_focused)
         .cloned()
-        .collect();
-
-    windows_from_records_with_focus(candidates, filter.focused_only, focused_window_identity)
+        .collect::<Vec<_>>();
+    if focused.len() == 1 {
+        return Ok(focused.remove(0));
+    }
+    if windows.is_empty() {
+        return Err(AdapterError::new(
+            agent_desktop_core::ErrorCode::WindowNotFound,
+            format!("Process {pid} has no visible window"),
+        ));
+    }
+    Err(AdapterError::ambiguous_target(format!(
+        "Process {pid} has multiple visible windows and no exact focused window"
+    ))
+    .with_details(serde_json::json!({
+        "candidate_count": windows.len(),
+        "candidate_window_ids": windows.iter().map(|window| &window.id).collect::<Vec<_>>(),
+    })))
 }
 
 fn windows_from_records_with_focus(
     records: Vec<cg_window::WindowRecord>,
     focused_only: bool,
-    mut focused_identity: impl FnMut(i32) -> FocusedWindowIdentity,
-) -> Vec<WindowInfo> {
-    let candidates: Vec<_> = records
+    mut ax_state: impl FnMut(i32) -> Result<crate::system::window_ax_state::WindowAxState, AdapterError>,
+    mut verify_instance: impl FnMut(i32, &str) -> Result<bool, AdapterError>,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    let candidates = records
         .into_iter()
-        .map(|record| {
-            let title = record.title.unwrap_or_else(|| record.app_name.clone());
-            (record.app_name, title, record.pid, record.window_number)
-        })
-        .collect();
+        .filter(|record| record.window_number > 0)
+        .collect::<Vec<_>>();
     let mut title_counts = std::collections::HashMap::new();
-    for (_, title, pid, _) in &candidates {
-        *title_counts.entry((*pid, title.clone())).or_insert(0) += 1;
+    for record in &candidates {
+        *title_counts
+            .entry((record.pid, record.display_title().to_owned()))
+            .or_insert(0) += 1;
     }
 
-    let mut focus_cache = std::collections::HashMap::new();
+    let mut state_cache = std::collections::HashMap::new();
     let mut windows = Vec::new();
     let mut focused_seen = false;
 
-    for (app_name, title, pid, window_number) in candidates {
+    for record in candidates {
+        let process_instance = record.process_instance.as_deref().ok_or_else(|| {
+            identity_race_error(
+                record.pid,
+                "CoreGraphics record omitted its process instance",
+            )
+        })?;
+        if !verify_instance(record.pid, process_instance)? {
+            return Err(identity_race_error(
+                record.pid,
+                "window owner changed before accessibility focus read",
+            ));
+        }
         let title_count = title_counts
-            .get(&(pid, title.clone()))
+            .get(&(record.pid, record.display_title().to_owned()))
             .copied()
             .unwrap_or(0);
-        let identity = focus_cache
-            .entry(pid)
-            .or_insert_with(|| focused_identity(pid));
-        let is_focused =
-            !focused_seen && matches_focused_window(&title, window_number, identity, title_count);
+        let state = match state_cache.entry(record.pid) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(ax_state(record.pid)?),
+        };
+        if !verify_instance(record.pid, process_instance)? {
+            return Err(identity_race_error(
+                record.pid,
+                "window owner changed after accessibility focus read",
+            ));
+        }
+        let is_focused = !focused_seen
+            && matches_focused_window(
+                record.display_title(),
+                record.window_number,
+                &state.focused,
+                title_count,
+            );
         if focused_only && !is_focused {
             continue;
         }
         focused_seen |= is_focused;
-
-        windows.push(WindowInfo {
-            id: format!("w-{window_number}"),
-            title,
-            app: app_name,
-            pid,
-            bounds: None,
-            is_focused,
-        });
+        let minimized = state.minimized_by_id.get(&record.window_number).copied();
+        windows.push(record.into_window_info(is_focused, minimized)?);
     }
 
-    windows
+    Ok(windows)
 }
 
+#[cfg(test)]
 fn matches_app_filter(app_name: &str, app_filter: &str) -> bool {
     app_filter.is_empty() || app_name.eq_ignore_ascii_case(app_filter)
 }
 
-fn should_retry_empty(filter: &WindowFilter, app: Option<&AppInfo>) -> bool {
-    filter.app.is_none() || app.is_some()
-}
-
-fn ax_window_for_app(app_info: &AppInfo) -> Option<WindowInfo> {
-    let app = crate::tree::element_for_pid(app_info.pid);
-    let window = focused_window_element(&app)
-        .or_else(|| crate::tree::copy_element_attr(&app, "AXMainWindow"))
-        .or_else(|| {
-            let windows = crate::tree::copy_ax_array(&app, "AXWindows")?;
-            child_bearing_window_index(&windows, |window| {
-                crate::tree::element::count_children(window, None)
-            })
-            .map(|index| windows[index].clone())
-            .or_else(|| windows.into_iter().next())
-        })?;
-    if crate::tree::copy_string_attr(&window, "AXRole").as_deref() != Some("AXWindow") {
-        return None;
-    }
-    let title =
-        crate::tree::copy_string_attr(&window, "AXTitle").unwrap_or_else(|| app_info.name.clone());
-    let window_number = crate::tree::copy_i64_attr(&window, "AXWindowNumber").unwrap_or(0);
-    let is_focused = crate::tree::copy_bool_attr(&app, "AXFrontmost") == Some(true);
-    Some(ax_window_info(app_info, title, window_number, is_focused))
-}
-
-fn ax_window_info(
-    app_info: &AppInfo,
-    title: String,
-    window_number: i64,
-    is_focused: bool,
-) -> WindowInfo {
-    WindowInfo {
-        id: format!("w-{window_number}"),
-        title,
-        app: app_info.name.clone(),
-        pid: app_info.pid,
-        bounds: None,
-        is_focused,
-    }
-}
-
-fn child_bearing_window_index<T>(
-    windows: &[T],
-    mut count_children: impl FnMut(&T) -> u32,
-) -> Option<usize> {
-    windows.iter().position(|window| count_children(window) > 0)
+fn identity_race_error(pid: i32, phase: &str) -> AdapterError {
+    AdapterError::new(
+        agent_desktop_core::ErrorCode::AppUnresponsive,
+        "Window owner changed while exact window identity was being assembled",
+    )
+    .with_details(serde_json::json!({
+        "kind": "window_identity_race",
+        "pid": pid,
+        "phase": phase,
+        "complete": false,
+        "retryable": true,
+    }))
 }
 
 type FocusedWindowIdentity = Option<(Option<String>, Option<i64>)>;
-
-fn focused_window_identity(pid: i32) -> FocusedWindowIdentity {
-    let app = crate::tree::element_for_pid(pid);
-    if crate::tree::copy_bool_attr(&app, "AXFrontmost") != Some(true) {
-        return None;
-    }
-    let window = focused_window_element(&app)?;
-    Some((
-        crate::tree::copy_string_attr(&window, "AXTitle"),
-        crate::tree::copy_i64_attr(&window, "AXWindowNumber"),
-    ))
-}
 
 fn matches_focused_window(
     title: &str,
@@ -226,33 +188,6 @@ fn matches_focused_window(
         return *number == window_number;
     }
     focused_title.as_deref() == Some(title) && same_title_count == 1
-}
-
-fn focused_window_element(app: &crate::tree::AXElement) -> Option<crate::tree::AXElement> {
-    let focused = crate::tree::copy_element_attr(app, "AXFocusedWindow")?;
-    window_ancestor(focused, 4)
-}
-
-fn window_ancestor(
-    mut element: crate::tree::AXElement,
-    max_depth: usize,
-) -> Option<crate::tree::AXElement> {
-    for _ in 0..=max_depth {
-        if is_window_element(&element) {
-            return Some(element);
-        }
-        if let Some(window) = crate::tree::copy_element_attr(&element, "AXWindow") {
-            if is_window_element(&window) {
-                return Some(window);
-            }
-        }
-        element = crate::tree::copy_element_attr(&element, "AXParent")?;
-    }
-    None
-}
-
-fn is_window_element(element: &crate::tree::AXElement) -> bool {
-    crate::tree::copy_string_attr(element, "AXRole").as_deref() == Some("AXWindow")
 }
 
 #[cfg(test)]

@@ -10,4 +10,5 @@ pub struct AdImageBuffer {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) format: AdImageFormat,
+    pub(crate) scale_factor: f64,
 }

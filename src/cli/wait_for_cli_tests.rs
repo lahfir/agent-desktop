@@ -1,4 +1,4 @@
-use super::Cli;
+use super::{Cli, Commands};
 use agent_desktop_core::context::WaitSelector;
 use clap::{CommandFactory, Parser};
 
@@ -8,6 +8,15 @@ fn selector(query_raw: &str) -> WaitSelector {
         gone: false,
         timeout_ms: 30_000,
     }
+}
+
+fn command(arguments: &[&str]) -> Commands {
+    let mut argv = vec!["agent-desktop"];
+    argv.extend_from_slice(arguments);
+    Cli::try_parse_from(argv)
+        .expect("command parses")
+        .command
+        .expect("subcommand is present")
 }
 
 #[test]
@@ -46,8 +55,18 @@ fn short_w_flag_maps_to_wait_for() {
         "Finder",
     ])
     .expect("short -w should parse");
-    assert_eq!(cli.wait_for.as_deref(), Some("button:Submit"));
-    assert_eq!(cli.wait_timeout, 30_000);
+    assert_eq!(
+        cli.post_action_wait.wait_for.as_deref(),
+        Some("button:Submit")
+    );
+    assert_eq!(cli.post_action_wait.wait_timeout, None);
+    assert_eq!(
+        crate::build_wait_selector(&cli)
+            .expect("selector is valid")
+            .expect("selector is present")
+            .timeout_ms,
+        30_000
+    );
 }
 
 #[test]
@@ -61,41 +80,76 @@ fn wait_timeout_parses_custom_value() {
         "snapshot",
     ])
     .expect("custom wait timeout should parse");
-    assert_eq!(cli.wait_timeout, 5_000);
+    assert_eq!(cli.post_action_wait.wait_timeout, Some(5_000));
+}
+
+#[test]
+fn wait_timeout_without_selector_is_rejected_before_dispatch() {
+    let cli = Cli::try_parse_from(["agent-desktop", "--wait-timeout", "5000", "snapshot"])
+        .expect("syntax parses before semantic validation");
+
+    let error = crate::build_wait_selector(&cli)
+        .expect_err("an unused wait timeout must not be silently ignored");
+    assert_eq!(error.code(), "INVALID_ARGS");
 }
 
 #[test]
 fn validate_rejects_unsupported_command() {
-    let err = crate::validate_wait_for_command("find", &selector("button:OK"))
-        .expect_err("find must not accept --wait-for");
+    let err = crate::validate_wait_for_command(
+        &command(&["find", "--role", "button"]),
+        &selector("button:OK"),
+    )
+    .expect_err("find must not accept --wait-for");
     assert_eq!(err.code(), "INVALID_ARGS");
 }
 
 #[test]
 fn validate_rejects_match_everything_selector_before_dispatch() {
-    let err = crate::validate_wait_for_command("click", &selector(""))
+    let click = command(&["click", "@e1"]);
+    let err = crate::validate_wait_for_command(&click, &selector(""))
         .expect_err("empty selector must be rejected before the action runs");
     assert_eq!(err.code(), "INVALID_ARGS");
-    assert!(crate::validate_wait_for_command("click", &selector(":")).is_err());
+    assert!(crate::validate_wait_for_command(&click, &selector(":")).is_err());
 }
 
 #[test]
 fn validate_accepts_supported_command_with_constraining_selector() {
-    assert!(crate::validate_wait_for_command("click", &selector(":Saved!")).is_ok());
-    assert!(crate::validate_wait_for_command("snapshot", &selector("button")).is_ok());
+    for supported in [
+        command(&["snapshot"]),
+        command(&["click", "@e1"]),
+        command(&["hover", "@e1"]),
+        command(&["drag", "--from", "@e1", "--to", "@e2"]),
+    ] {
+        assert!(crate::validate_wait_for_command(&supported, &selector(":Saved!")).is_ok());
+    }
 }
 
 #[test]
-fn wait_supported_names_are_real_subcommands() {
-    let cmd = Cli::command();
-    let subcommands: Vec<String> = cmd
-        .get_subcommands()
-        .map(|sub| sub.get_name().to_string())
-        .collect();
-    for name in crate::WAIT_SUPPORTED {
-        assert!(
-            subcommands.iter().any(|sub| sub == name),
-            "WAIT_SUPPORTED entry '{name}' is not a real subcommand"
-        );
-    }
+fn typed_metadata_couples_name_and_wait_support_to_each_variant() {
+    let hover = command(&["hover", "@e1"]);
+    let drag = command(&["drag", "--from", "@e1", "--to", "@e2"]);
+    let find = command(&["find", "--role", "button"]);
+
+    assert_eq!(hover.name(), "hover");
+    assert!(hover.supports_post_action_wait());
+    assert_eq!(drag.name(), "drag");
+    assert!(drag.supports_post_action_wait());
+    assert_eq!(find.name(), "find");
+    assert!(!find.supports_post_action_wait());
+}
+
+#[test]
+fn mutation_metadata_distinguishes_read_only_and_file_writing_forms() {
+    assert!(command(&["click", "@e1"]).is_mutating());
+    assert!(!command(&["find", "--role", "button"]).is_mutating());
+    assert!(!command(&["screenshot"]).is_mutating());
+    assert!(command(&["screenshot", "/tmp/capture.png"]).is_mutating());
+    assert!(!command(&["clipboard-get"]).is_mutating());
+    assert!(command(&["clipboard-get", "--out", "/tmp/clipboard.png"]).is_mutating());
+    assert!(!command(&["permissions"]).is_mutating());
+    assert!(command(&["permissions", "--request"]).is_mutating());
+    assert!(!command(&["session", "list"]).is_mutating());
+    assert!(command(&["session", "start"]).is_mutating());
+    assert!(!command(&["trace", "show"]).is_mutating());
+    assert!(command(&["trace", "export"]).is_mutating());
 }

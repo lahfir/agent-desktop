@@ -52,6 +52,36 @@ fn foreign_file_produces_warning() {
 }
 
 #[test]
+fn managed_artifact_directories_do_not_produce_warnings() {
+    let dir = temp_dir("trace-mod-artifacts");
+    fs::create_dir_all(dir.join("screens")).unwrap();
+    fs::create_dir_all(dir.join("refmaps")).unwrap();
+
+    let result = read_merged(&dir, &ReadOptions::default()).unwrap();
+
+    assert!(result.warnings.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_managed_artifact_name_produces_warning() {
+    let dir = temp_dir("trace-mod-artifact-link");
+    let target = temp_dir("trace-mod-artifact-target");
+    fs::create_dir_all(&dir).unwrap();
+    fs::create_dir_all(&target).unwrap();
+    std::os::unix::fs::symlink(&target, dir.join("screens")).unwrap();
+
+    let result = read_merged(&dir, &ReadOptions::default()).unwrap();
+
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.kind == TraceWarningKind::ForeignFile)
+    );
+}
+
+#[test]
 fn tmp_file_is_silently_ignored() {
     let dir = temp_dir("trace-mod-tmp");
     fs::create_dir(&dir).unwrap();

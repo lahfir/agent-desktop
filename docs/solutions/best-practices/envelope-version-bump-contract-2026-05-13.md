@@ -34,7 +34,7 @@ pinned clients cannot distinguish an old response from a new one.
 
 ## Guidance
 
-Keep `crates/core/src/output.rs::ENVELOPE_VERSION` as the single source of
+Keep `ENVELOPE_VERSION` in `crates/core/src/output.rs` as the single source of
 truth. Bump it whenever a client that already parses successful JSON needs a
 different parser branch for the same command name.
 
@@ -59,4 +59,5 @@ the release note.
 ## Tests
 
 Tests should assert the version through `ENVELOPE_VERSION`, not string literals,
-so `main`, `batch`, and unit-level envelope tests stay aligned after a bump.
+so `main`, `batch`, FFI JSON-command tests, and unit-level envelope tests stay
+aligned after a bump.

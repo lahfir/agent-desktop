@@ -91,10 +91,40 @@ releases may add codes.
 | `AD_RESULT_ERR_TIMEOUT`               |  -9   | Wait exceeded deadline                     |
 | `AD_RESULT_ERR_INVALID_ARGS`          | -10   | Null pointer, bad enum, invalid UTF-8      |
 | `AD_RESULT_ERR_NOTIFICATION_NOT_FOUND`| -11   | Notification index out of range or reordered |
-| `AD_RESULT_ERR_INTERNAL`              | -12   | Internal failure, off-main-thread, or foreign-subscriber conflict |
+| `AD_RESULT_ERR_INTERNAL`              | -12   | Internal failure or foreign-subscriber conflict |
 | `AD_RESULT_ERR_SNAPSHOT_NOT_FOUND`    | -13   | Requested snapshot ref store is missing    |
 | `AD_RESULT_ERR_POLICY_DENIED`         | -14   | Current action policy blocks this fallback |
 | `AD_RESULT_ERR_AMBIGUOUS_TARGET`      | -15   | Strict re-identification found multiple candidates; re-snapshot |
+| `AD_RESULT_ERR_APP_UNRESPONSIVE`      | -16   | Read-only liveness probe failed after an uncertain mutation |
+
+## Ref token validation
+
+Ref-taking entrypoints accept two canonical forms:
+
+- `@<snapshot_id>:e<N>` is a qualified ref. `snapshot_id` may be null. If a
+  separate snapshot ID is supplied, it must match the embedded ID.
+- `@e<N>` is a legacy bare ref. It requires a non-null snapshot ID argument.
+
+`N` is a positive `u32` written without a sign and with at most 10 decimal
+digits. Snapshot IDs are 3–64 ASCII alphanumeric, `-`, or `_` characters.
+Malformed tokens, invalid UTF-8, a bare ref without a snapshot ID, or mismatched
+embedded and explicit snapshot IDs return `AD_RESULT_ERR_INVALID_ARGS` before
+dispatch. A well-formed token whose saved snapshot is absent returns
+`AD_RESULT_ERR_SNAPSHOT_NOT_FOUND`; a saved snapshot with no matching local ref
+returns `AD_RESULT_ERR_STALE_REF`.
+
+Snapshot lookup is confined to the adapter's namespace. An adapter created with
+`ad_adapter_create_with_session` never searches the global namespace or another
+session for a matching snapshot ID.
+
+## Off-main-thread migration
+
+ABI v3 removed the blanket macOS main-thread rejection. Adapter entrypoints may
+now run on any host thread, so callers must stop treating
+`AD_RESULT_ERR_INTERNAL` as an expected off-main-thread result. Native handles
+remain thread-affine capabilities: cross-thread, cross-adapter, released, or
+revoked handle use returns `AD_RESULT_ERR_INVALID_ARGS`. See
+[threading.md](threading.md) for the concurrency and ownership contract.
 
 ## Enum validation
 
@@ -108,15 +138,15 @@ enum slot. Affected fields: `AdAction.kind` (`AdActionKind`),
 `AdTreeOptions.surface` (`AdSnapshotSurface`), `AdScreenshotTarget.kind`
 (`AdScreenshotKind`), `AdWindowOp.kind` (`AdWindowOpKind`), and the
 `policy` parameter of `ad_execute_by_ref` / `ad_execute_action_with_policy`
-/ `ad_execute_ref_action_with_policy` (`AdPolicyKind`).
+/ `ad_execute_ref_action_exact_with_policy` (`AdPolicyKind`).
 
 ## Command-backed JSON entrypoints: dual-failure modes
 
 `ad_snapshot`, `ad_execute_by_ref`, `ad_wait`, `ad_status`, and
 `ad_version` have two distinct failure modes:
 
-- **Argument / infrastructure failure** (null adapter, off-main-thread,
-  invalid UTF-8, bad discriminant, context error): `*out` is set to null,
+- **Argument / infrastructure failure** (null adapter, invalid UTF-8,
+  bad discriminant, context error): `*out` is set to null,
   no allocation is made, and the last-error slot is the only failure
   indication.
 - **Command-level failure** (app not found, STALE_REF, TIMEOUT, etc.):

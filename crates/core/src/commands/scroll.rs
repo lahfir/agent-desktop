@@ -1,9 +1,8 @@
 use crate::{
-    action::{Action, Direction},
+    Action, AppError, Direction,
     adapter::PlatformAdapter,
     commands::helpers::{RefArgs, execute_ref_action_with_context},
     context::CommandContext,
-    error::AppError,
 };
 use serde_json::Value;
 
@@ -12,6 +11,7 @@ pub struct ScrollArgs {
     pub snapshot_id: Option<String>,
     pub direction: Direction,
     pub amount: u32,
+    pub timeout_ms: Option<u64>,
 }
 
 pub fn execute(
@@ -24,9 +24,14 @@ pub fn execute(
         RefArgs {
             ref_id: args.ref_id,
             snapshot_id: args.snapshot_id,
+            timeout_ms: args.timeout_ms,
         },
         adapter,
         request,
         context,
     )
 }
+
+#[cfg(test)]
+#[path = "scroll_tests.rs"]
+mod tests;

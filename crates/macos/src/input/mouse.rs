@@ -1,254 +1,241 @@
+#[cfg(not(target_os = "macos"))]
+use agent_desktop_core::DragParams;
 use agent_desktop_core::{
-    action::{DragParams, MouseButton, MouseEvent, MouseEventKind},
-    error::AdapterError,
+    AdapterError, Deadline, ErrorCode, Modifier, MouseButton, MouseEvent, MouseEventKind, Point,
 };
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
     use core_graphics::event::{
-        CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
+        CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use core_graphics::geometry::CGPoint;
 
-    pub fn synthesize_mouse(event: MouseEvent) -> Result<(), AdapterError> {
-        tracing::debug!(
-            "mouse: {:?} {:?} at ({:.0}, {:.0})",
-            event.kind,
-            event.button,
-            event.point.x,
-            event.point.y
-        );
-        let point = CGPoint::new(event.point.x, event.point.y);
-        let cg_button = to_cg_button(&event.button);
-        match event.kind {
-            MouseEventKind::Move => post_event(CGEventType::MouseMoved, point, cg_button),
-            MouseEventKind::Down => post_event(down_type(&event.button), point, cg_button),
-            MouseEventKind::Up => post_event(up_type(&event.button), point, cg_button),
-            MouseEventKind::Click { count } => {
-                synthesize_click(point, cg_button, &event.button, count)
-            }
-        }
-    }
-
-    pub fn synthesize_drag(params: DragParams) -> Result<(), AdapterError> {
-        drag_sequence(params).map_err(|err| {
-            if err.suggestion.is_some() {
-                return err;
-            }
-            err.with_suggestion(
-                "The drag was aborted: the button was released back at the origin (best-effort) and no drop was committed at the destination. The cursor ends at the origin. Re-check the source state before retrying.",
-            )
+    pub(crate) fn event_flags(modifiers: &[Modifier]) -> CGEventFlags {
+        modifiers.iter().fold(CGEventFlags::empty(), |flags, m| {
+            flags
+                | match m {
+                    Modifier::Meta => CGEventFlags::CGEventFlagCommand,
+                    Modifier::Shift => CGEventFlags::CGEventFlagShift,
+                    Modifier::Alt => CGEventFlags::CGEventFlagAlternate,
+                    Modifier::Ctrl => CGEventFlags::CGEventFlagControl,
+                }
         })
     }
 
-    fn drag_sequence(params: DragParams) -> Result<(), AdapterError> {
+    pub fn synthesize_mouse(event: MouseEvent, deadline: Deadline) -> Result<(), AdapterError> {
+        synthesize_mouse_after(event, deadline, &mut || Ok(()))
+    }
+
+    pub(crate) fn synthesize_mouse_after(
+        event: MouseEvent,
+        deadline: Deadline,
+        verify_target: &mut dyn FnMut() -> Result<(), AdapterError>,
+    ) -> Result<(), AdapterError> {
         tracing::debug!(
-            "mouse: drag ({:.0},{:.0}) -> ({:.0},{:.0}) duration={}ms",
-            params.from.x,
-            params.from.y,
-            params.to.x,
-            params.to.y,
-            params.duration_ms.unwrap_or(300)
+            "mouse: {:?} {:?} at ({:.0}, {:.0}) modifiers={:?}",
+            event.kind,
+            event.button,
+            event.point.x,
+            event.point.y,
+            event.modifiers
         );
-        use std::thread::sleep;
-        use std::time::Duration;
-
-        const PICKUP_DELAY_MS: u64 = 200;
-        const DEFAULT_DROP_DELAY_MS: u64 = 500;
-        const DWELL_TICK_MS: u64 = 16;
-
-        let from = CGPoint::new(params.from.x, params.from.y);
-        let to = CGPoint::new(params.to.x, params.to.y);
-        let duration_ms = params.duration_ms.unwrap_or(300);
-        let steps = (duration_ms / DWELL_TICK_MS).max(4) as usize;
-        let step_delay = Duration::from_millis(duration_ms / steps as u64);
-        let source = event_source()?;
-
-        post_event_with_source(
-            &source,
-            CGEventType::LeftMouseDown,
-            from,
-            CGMouseButton::Left,
-        )?;
-        let mut release = MouseUpGuard {
-            source: &source,
-            origin: from,
-            armed: true,
-        };
-        sleep(Duration::from_millis(PICKUP_DELAY_MS));
-
-        for i in 1..=steps {
-            let t = i as f64 / steps as f64;
-            let x = params.from.x + (params.to.x - params.from.x) * t;
-            let y = params.from.y + (params.to.y - params.from.y) * t;
-            post_event_with_source(
-                &source,
-                CGEventType::LeftMouseDragged,
-                CGPoint::new(x, y),
-                CGMouseButton::Left,
-            )?;
-            sleep(step_delay);
-        }
-
-        dwell_over_destination(
-            &source,
-            to,
-            params.drop_delay_ms.unwrap_or(DEFAULT_DROP_DELAY_MS),
-            DWELL_TICK_MS,
-        )?;
-        release.release_at(to)
-    }
-
-    /// Releases the left mouse button exactly once. Every fallible step between
-    /// `LeftMouseDown` and the final `LeftMouseUp` would otherwise leave the
-    /// button logically held down system-wide on error. The happy path calls
-    /// `release_at(to)`, which disarms only after the up event actually posts.
-    /// On any early return, `Drop` cancels the gesture by dragging back to the
-    /// origin and releasing there — never at the unreached destination, where
-    /// CGEvent's embedded coordinates would silently commit the aborted drag
-    /// as a completed drop. The cancel is best-effort twice over: the
-    /// corrective posts themselves can fail (typically the same systemic
-    /// CGEventSource failure that aborted the drag, leaving the button held
-    /// and the cursor wherever the last successful event put it), and a
-    /// drop target under the origin still sees a self-drop, which most
-    /// targets treat as a no-op.
-    struct MouseUpGuard<'a> {
-        source: &'a CGEventSource,
-        origin: CGPoint,
-        armed: bool,
-    }
-
-    impl MouseUpGuard<'_> {
-        fn release_at(&mut self, point: CGPoint) -> Result<(), AdapterError> {
-            post_event_with_source(
-                self.source,
-                CGEventType::LeftMouseUp,
-                point,
-                CGMouseButton::Left,
-            )?;
-            self.armed = false;
-            Ok(())
-        }
-    }
-
-    impl Drop for MouseUpGuard<'_> {
-        fn drop(&mut self) {
-            if self.armed {
-                let _ = post_event_with_source(
-                    self.source,
-                    CGEventType::LeftMouseDragged,
-                    self.origin,
-                    CGMouseButton::Left,
-                );
-                let _ = post_event_with_source(
-                    self.source,
-                    CGEventType::LeftMouseUp,
-                    self.origin,
-                    CGMouseButton::Left,
-                );
+        validate_point(&event.point)?;
+        ensure_budget(deadline, crate::actions::DeliveryTracker::default())?;
+        let point = CGPoint::new(event.point.x, event.point.y);
+        let cg_button = to_cg_button(&event.button);
+        let flags = event_flags(&event.modifiers);
+        match event.kind {
+            MouseEventKind::Move => {
+                let mut delivery = crate::actions::DeliveryTracker::default();
+                crate::input::mouse_move::post_move_events(
+                    point,
+                    cg_button,
+                    flags,
+                    deadline,
+                    &mut delivery,
+                )
+            }
+            MouseEventKind::Down | MouseEventKind::Up => Err(standalone_state_error()),
+            MouseEventKind::Click { count } => {
+                agent_desktop_core::validate_mouse_click_count(count)?;
+                synthesize_click(
+                    ClickSpec {
+                        point,
+                        cg_button,
+                        button: &event.button,
+                        count,
+                        flags,
+                    },
+                    deadline,
+                    verify_target,
+                )
+            }
+            MouseEventKind::Wheel { delta_x, delta_y } => {
+                crate::input::mouse_scroll::synthesize_scroll_at(
+                    event.point,
+                    (wheel_lines_to_i32(delta_y)?, wheel_lines_to_i32(delta_x)?),
+                    &event.modifiers,
+                    deadline,
+                )
             }
         }
     }
 
-    /// Holds the dragged item over the destination while the drop target
-    /// activates. Posting `LeftMouseDragged` on each tick (instead of a dead
-    /// sleep) keeps the destination engaged so the release registers as a
-    /// drop rather than a bare drag — macOS targets can drop the highlight if
-    /// no movement arrives. A zero delay still posts one settling event.
-    fn dwell_over_destination(
-        source: &CGEventSource,
-        to: CGPoint,
-        drop_delay_ms: u64,
-        tick_ms: u64,
-    ) -> Result<(), AdapterError> {
-        use std::thread::sleep;
-        use std::time::Duration;
+    pub(crate) fn standalone_state_error() -> AdapterError {
+        AdapterError::new(
+            ErrorCode::ActionNotSupported,
+            "Standalone mouse-down/mouse-up is unavailable in stateless mode",
+        )
+        .with_details(serde_json::json!({
+            "raw_input_emitted": false,
+            "requires_daemon_owned_transaction": true,
+        }))
+        .with_suggestion(
+            "Use atomic 'mouse-click' or 'drag'; spanning holds require a daemon-owned session that can release buttons after disconnect",
+        )
+    }
 
-        let ticks = drop_delay_ms.div_ceil(tick_ms).max(1);
-        for _ in 0..ticks {
-            post_event_with_source(
-                source,
-                CGEventType::LeftMouseDragged,
-                to,
-                CGMouseButton::Left,
-            )?;
-            sleep(Duration::from_millis(tick_ms));
+    pub(crate) fn validate_point(point: &Point) -> Result<(), AdapterError> {
+        const MAX_COORDINATE: f64 = 1_000_000.0;
+        if !point.x.is_finite()
+            || !point.y.is_finite()
+            || point.x.abs() > MAX_COORDINATE
+            || point.y.abs() > MAX_COORDINATE
+        {
+            return Err(AdapterError::new(
+                ErrorCode::InvalidArgs,
+                "Mouse coordinates must be finite and within -1000000..=1000000",
+            ));
         }
         Ok(())
+    }
+
+    pub(crate) fn wheel_lines_to_i32(delta: f64) -> Result<i32, AdapterError> {
+        if !delta.is_finite() || delta < f64::from(i32::MIN) || delta > f64::from(i32::MAX) {
+            return Err(AdapterError::new(
+                agent_desktop_core::ErrorCode::InvalidArgs,
+                "Wheel line delta must be a finite 32-bit value",
+            ));
+        }
+        let rounded = delta.round();
+        if rounded == 0.0 && delta != 0.0 {
+            return Ok(if delta.is_sign_positive() { 1 } else { -1 });
+        }
+        Ok(rounded as i32)
+    }
+
+    struct ClickSpec<'a> {
+        point: CGPoint,
+        cg_button: CGMouseButton,
+        button: &'a MouseButton,
+        count: u32,
+        flags: CGEventFlags,
     }
 
     fn synthesize_click(
-        point: CGPoint,
-        cg_button: CGMouseButton,
-        button: &MouseButton,
-        count: u32,
+        spec: ClickSpec,
+        deadline: Deadline,
+        verify_target: &mut dyn FnMut() -> Result<(), AdapterError>,
     ) -> Result<(), AdapterError> {
-        let down_ty = down_type(button);
-        let up_ty = up_type(button);
-        for i in 1..=count {
-            let down = create_event(down_ty, point, cg_button)?;
-            let up = create_event(up_ty, point, cg_button)?;
+        let down_ty = down_type(spec.button);
+        let up_ty = up_type(spec.button);
+        let mut delivery = crate::actions::DeliveryTracker::default();
+        crate::input::mouse_move::post_move_events(
+            spec.point,
+            spec.cg_button,
+            spec.flags,
+            deadline,
+            &mut delivery,
+        )?;
+        for i in 1..=spec.count {
+            ensure_budget(deadline, delivery)?;
+            let down = create_event(down_ty, spec.point, spec.cg_button, spec.flags)
+                .map_err(|error| delivery.annotate(error))?;
+            let up = create_event(up_ty, spec.point, spec.cg_button, spec.flags)
+                .map_err(|error| delivery.annotate(error))?;
             set_click_count(&down, i as i64);
             set_click_count(&up, i as i64);
+            ensure_budget(deadline, delivery)?;
+            verify_target().map_err(|error| delivery.annotate(error))?;
             down.post(CGEventTapLocation::HID);
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            delivery.mark_delivered();
+            let mut release = ClickReleaseGuard { event: Some(up) };
+            sleep_bounded(deadline, std::time::Duration::from_millis(10), delivery)?;
+            let up = release
+                .event
+                .take()
+                .ok_or_else(|| {
+                    AdapterError::internal("Mouse click release guard lost its pending event")
+                })
+                .map_err(|error| delivery.annotate(error))?;
             up.post(CGEventTapLocation::HID);
-            if i < count {
-                std::thread::sleep(std::time::Duration::from_millis(30));
+            ensure_budget(deadline, delivery)?;
+            if i < spec.count {
+                sleep_bounded(deadline, std::time::Duration::from_millis(30), delivery)?;
             }
         }
         Ok(())
+    }
+
+    struct ClickReleaseGuard {
+        event: Option<CGEvent>,
+    }
+
+    impl Drop for ClickReleaseGuard {
+        fn drop(&mut self) {
+            if let Some(event) = self.event.take() {
+                event.post(CGEventTapLocation::HID);
+            }
+        }
     }
 
     fn set_click_count(event: &CGEvent, count: i64) {
         event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, count);
     }
 
-    fn create_event(
+    pub(crate) fn create_event(
         event_type: CGEventType,
         point: CGPoint,
         button: CGMouseButton,
+        flags: CGEventFlags,
     ) -> Result<CGEvent, AdapterError> {
         let source = event_source()?;
-        create_event_with_source(&source, event_type, point, button)
+        create_event_with_source(&source, event_type, point, button, flags)
     }
 
-    fn create_event_with_source(
+    pub(crate) fn create_event_with_source(
         source: &CGEventSource,
         event_type: CGEventType,
         point: CGPoint,
         button: CGMouseButton,
+        flags: CGEventFlags,
     ) -> Result<CGEvent, AdapterError> {
-        CGEvent::new_mouse_event(source.clone(), event_type, point, button)
-            .map_err(|()| AdapterError::internal("CGEvent::new_mouse_event failed"))
+        let event = CGEvent::new_mouse_event(source.clone(), event_type, point, button)
+            .map_err(|()| AdapterError::internal("CGEvent::new_mouse_event failed"))?;
+        event.set_flags(flags);
+        Ok(event)
     }
 
-    fn event_source() -> Result<CGEventSource, AdapterError> {
+    pub(crate) fn event_source() -> Result<CGEventSource, AdapterError> {
         CGEventSource::new(CGEventSourceStateID::HIDSystemState)
             .map_err(|()| AdapterError::internal("Failed to create CGEventSource"))
     }
 
-    fn post_event(
-        event_type: CGEventType,
-        point: CGPoint,
-        button: CGMouseButton,
-    ) -> Result<(), AdapterError> {
-        let ev = create_event(event_type, point, button)?;
-        ev.post(CGEventTapLocation::HID);
-        Ok(())
-    }
-
-    fn post_event_with_source(
+    pub(crate) fn post_event_with_source(
         source: &CGEventSource,
-        event_type: CGEventType,
-        point: CGPoint,
-        button: CGMouseButton,
+        event: (CGEventType, CGPoint, CGMouseButton, CGEventFlags),
+        deadline: Deadline,
+        delivery: &mut crate::actions::DeliveryTracker,
     ) -> Result<(), AdapterError> {
-        let ev = create_event_with_source(source, event_type, point, button)?;
+        ensure_budget(deadline, *delivery)?;
+        let ev = create_event_with_source(source, event.0, event.1, event.2, event.3)
+            .map_err(|error| delivery.annotate(error))?;
         ev.post(CGEventTapLocation::HID);
-        Ok(())
+        delivery.mark_delivered();
+        ensure_budget(deadline, *delivery)
     }
 
     fn to_cg_button(button: &MouseButton) -> CGMouseButton {
@@ -275,34 +262,34 @@ mod imp {
         }
     }
 
-    pub fn synthesize_scroll_at(x: f64, y: f64, dy: i32, dx: i32) -> Result<(), AdapterError> {
-        tracing::debug!("mouse: scroll at ({x:.0},{y:.0}) dy={dy} dx={dx}");
-        use core_graphics::geometry::CGPoint;
+    pub(crate) fn sleep_bounded(
+        deadline: Deadline,
+        duration: std::time::Duration,
+        delivery: crate::actions::DeliveryTracker,
+    ) -> Result<(), AdapterError> {
+        let pause = deadline
+            .remaining_slice(duration)
+            .map_err(|error| delivery.annotate(error))?;
+        if pause < duration {
+            std::thread::sleep(pause);
+            return ensure_budget(deadline, delivery);
+        }
+        std::thread::sleep(duration);
+        ensure_budget(deadline, delivery)
+    }
 
-        unsafe extern "C" {
-            fn CGEventCreateScrollWheelEvent(
-                source: *const std::ffi::c_void,
-                units: u32,
-                wheel_count: u32,
-                wheel1: i32,
-                wheel2: i32,
-            ) -> *mut std::ffi::c_void;
-            fn CGEventSetLocation(event: *mut std::ffi::c_void, point: CGPoint);
-            fn CGEventPost(tap: u32, event: *mut std::ffi::c_void);
+    pub(crate) fn ensure_budget(
+        deadline: Deadline,
+        delivery: crate::actions::DeliveryTracker,
+    ) -> Result<(), AdapterError> {
+        if !deadline.is_expired() {
+            return Ok(());
         }
-
-        let event = unsafe {
-            CGEventCreateScrollWheelEvent(std::ptr::null(), ScrollEventUnit::LINE, 2, dy, dx)
-        };
-        if event.is_null() {
-            return Err(AdapterError::internal("scroll event creation failed"));
-        }
-        unsafe {
-            CGEventSetLocation(event, CGPoint::new(x, y));
-            CGEventPost(0, event);
-            core_foundation::base::CFRelease(event as _);
-        }
-        Ok(())
+        Err(
+            delivery.annotate(deadline.timeout_error().with_details(serde_json::json!({
+                "delivered_events": delivery.delivered_units(),
+            }))),
+        )
     }
 }
 
@@ -310,17 +297,43 @@ mod imp {
 mod imp {
     use super::*;
 
-    pub fn synthesize_mouse(_event: MouseEvent) -> Result<(), AdapterError> {
+    pub fn synthesize_mouse(_event: MouseEvent, _deadline: Deadline) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("mouse_event"))
     }
 
-    pub fn synthesize_drag(_params: DragParams) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("drag"))
+    pub(crate) fn synthesize_mouse_after(
+        _event: MouseEvent,
+        _deadline: Deadline,
+        _verify_target: &mut dyn FnMut() -> Result<(), AdapterError>,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("mouse_event"))
     }
 
-    pub fn synthesize_scroll_at(_x: f64, _y: f64, _dy: i32, _dx: i32) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("scroll"))
+    pub fn synthesize_drag(_params: DragParams, _deadline: Deadline) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("drag"))
     }
 }
 
-pub use imp::{synthesize_drag, synthesize_mouse, synthesize_scroll_at};
+pub(crate) use imp::{synthesize_mouse, synthesize_mouse_after};
+
+#[cfg(target_os = "macos")]
+pub(crate) use crate::input::mouse_drag::synthesize_drag;
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) use imp::synthesize_drag;
+
+#[cfg(target_os = "macos")]
+pub(crate) use imp::{
+    create_event_with_source, ensure_budget, event_flags, event_source, post_event_with_source,
+    sleep_bounded, validate_point,
+};
+
+#[cfg(all(test, target_os = "macos", feature = "interactive-tests"))]
+pub(crate) use imp::{create_event, standalone_state_error, wheel_lines_to_i32};
+
+#[cfg(all(test, target_os = "macos", not(feature = "interactive-tests")))]
+pub(crate) use imp::{standalone_state_error, wheel_lines_to_i32};
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "mouse_tests.rs"]
+mod tests;

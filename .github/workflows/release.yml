@@ -156,15 +156,19 @@ jobs:
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary
-        run: cargo build --locked --release --target ${{ matrix.target }}
+        run: |
+          cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
+          cargo build --locked --release -p agent-desktop-macos --bin agent-desktop-macos-helper --target ${{ matrix.target }}
 
       - name: Check binary size
         run: |
           SIZE=$(stat -f%z target/${{ matrix.target }}/release/agent-desktop)
+          HELPER_SIZE=$(stat -f%z target/${{ matrix.target }}/release/agent-desktop-macos-helper)
           LIMIT=$((15 * 1024 * 1024))
           echo "Binary size: $(du -sh target/${{ matrix.target }}/release/agent-desktop | cut -f1)"
-          if [ "$SIZE" -gt "$LIMIT" ]; then
-            echo "FAIL: binary exceeds 15MB limit (${SIZE} bytes)"
+          echo "Helper size: $(du -sh target/${{ matrix.target }}/release/agent-desktop-macos-helper | cut -f1)"
+          if [ "$SIZE" -gt "$LIMIT" ] || [ "$HELPER_SIZE" -gt "$LIMIT" ]; then
+            echo "FAIL: shipped executable exceeds 15MB limit (binary=${SIZE}, helper=${HELPER_SIZE} bytes)"
             exit 1
           fi
 
@@ -173,7 +177,16 @@ jobs:
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
           TARBALL="agent-desktop-v${VERSION}-${{ matrix.target }}.tar.gz"
-          tar -czf "${TARBALL}" -C target/${{ matrix.target }}/release agent-desktop
+          BINARY="target/${{ matrix.target }}/release/agent-desktop"
+          HELPER="target/${{ matrix.target }}/release/agent-desktop-macos-helper"
+          BINARY_SHA=$(shasum -a 256 "$BINARY" | awk '{print $1}')
+          HELPER_SHA=$(shasum -a 256 "$HELPER" | awk '{print $1}')
+          tar -czf "${TARBALL}" -C "$(dirname "$BINARY")" agent-desktop agent-desktop-macos-helper
+          if [ "$BINARY_SHA" != "$(shasum -a 256 "$BINARY" | awk '{print $1}')" ] || \
+             [ "$HELPER_SHA" != "$(shasum -a 256 "$HELPER" | awk '{print $1}')" ]; then
+            echo "Release executable changed while packaging" >&2
+            exit 1
+          fi
           shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256"
 
       - name: Upload artifact
@@ -245,7 +258,7 @@ jobs:
         shell: bash
         run: |
           # Co-occurrence of the release profile token and the stub flag on the same
-          # line is the discriminator. Legitimate stub uses in this file (codegen regen,
+          # line is the discriminator. Legitimate stub uses in this file (release gates,
           # passthrough test) omit the release-ffi profile, so they do not trigger.
           PROFILE_TOKEN="release-ffi"
           STUB_TOKEN="stub-adapter"
@@ -259,6 +272,10 @@ jobs:
 
       - name: Build FFI cdylib (release-ffi profile)
         run: cargo build --locked --profile release-ffi -p agent-desktop-ffi --target ${{ matrix.target }}
+
+      - name: Build macOS helper for FFI consumers
+        if: runner.os == 'macOS'
+        run: cargo build --locked --release -p agent-desktop-macos --bin agent-desktop-macos-helper --target ${{ matrix.target }}
 
       # build.rs bakes install_name=@rpath/... ; a regression here silently
       # breaks Swift/SPM consumers, so verify before shipping.
@@ -282,6 +299,10 @@ jobs:
           STAGE="agent-desktop-ffi-v${VERSION}-${{ matrix.target }}"
           mkdir -p "$STAGE/lib" "$STAGE/include"
           cp "target/${{ matrix.target }}/release-ffi/${{ matrix.lib_name }}" "$STAGE/lib/"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cp "target/${{ matrix.target }}/release/agent-desktop-macos-helper" "$STAGE/lib/"
+            chmod +x "$STAGE/lib/agent-desktop-macos-helper"
+          fi
           cp crates/ffi/include/agent_desktop.h "$STAGE/include/"
           cp LICENSE "$STAGE/"
           cat > "$STAGE/README.md" <<EOF
@@ -297,6 +318,13 @@ jobs:
           consumers need \`-rpath\` pointing at the dylib's directory; \`dlopen\` /
           ctypes callers resolve by path and need nothing.
           EOF
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # shellcheck disable=SC2016
+            echo '- `lib/agent-desktop-macos-helper` — required helper, colocated for dylib-image discovery' >> "$STAGE/README.md"
+          fi
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            (cd "$STAGE" && shasum -a 256 lib/* include/* LICENSE > SHA256SUMS)
+          fi
           echo "STAGE=$STAGE" >> "$GITHUB_ENV"
 
       - name: Create archive (Unix)
@@ -304,6 +332,10 @@ jobs:
         shell: bash
         run: |
           tar -czf "${STAGE}.tar.gz" "${STAGE}"
+          (cd "$STAGE" && shasum -a 256 -c SHA256SUMS)
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            tar -tzf "${STAGE}.tar.gz" | grep -Fx "${STAGE}/lib/agent-desktop-macos-helper"
+          fi
           shasum -a 256 "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
 
       - name: Create archive (Windows)
@@ -325,11 +357,8 @@ jobs:
             agent-desktop-ffi-v*.zip.sha256
           retention-days: 1
 
-  # Re-runs the three FFI integrity gates at release time so a hotfix or a PR
-  # that bypassed ci.yml cannot ship a dylib with a stale committed header or
-  # stale generated.rs. Gate 1 (header drift) must run on macos-latest because
-  # the committed header is macOS-generated and cbindgen may omit macOS-gated
-  # symbols on Linux. Gates 2 and 3 are consolidated here for a single job.
+  # Re-runs FFI integrity gates at release time. Header verification runs on
+  # macOS because cbindgen may omit macOS-gated symbols on Linux.
   ffi-release-gates:
     name: FFI Release Gates
     needs: release-please
@@ -359,9 +388,6 @@ jobs:
       - name: Install pinned cbindgen 0.29.4
         run: cargo install cbindgen --version 0.29.4 --locked
 
-      # Gate 1 — Header drift: committed crates/ffi/include/agent_desktop.h must
-      # match what cbindgen 0.29.4 generates from the current source. Exits
-      # non-zero when there is any diff.
       - name: Header drift check (cbindgen --verify)
         run: >
           cbindgen crates/ffi
@@ -369,32 +395,11 @@ jobs:
           --output crates/ffi/include/agent_desktop.h
           --verify
 
-      # Gate 2 — Codegen drift: build.rs must produce the exact same
-      # crates/ffi/src/commands/generated.rs that is committed.
-      - name: Regenerate FFI command wrappers via build.rs
-        run: cargo build --locked -p agent-desktop-ffi --features stub-adapter
-
-      - name: Codegen drift check (generated.rs)
-        run: |
-          if ! git diff --exit-code crates/ffi/src/commands/generated.rs; then
-            echo ""
-            echo "FAIL: crates/ffi/src/commands/generated.rs is out of sync with build.rs templates."
-            echo "      Run 'cargo build -p agent-desktop-ffi' locally and commit the updated file."
-            exit 1
-          fi
-          echo "OK: commands/generated.rs matches build.rs output"
-
-      # Gate 3 — Stub passthrough: command-backed entrypoints must return
-      # structured PLATFORM_NOT_SUPPORTED envelopes via the stub adapter.
       - name: Stub passthrough test
         run: >
-          cargo test --locked -p agent-desktop-ffi
+          scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-ffi
           --features stub-adapter --test c_abi_passthrough
 
-      # Gate 4 — Panic-boundary proof: mirrors ffi-panic-guard in ci.yml so a
-      # tag-only flip to panic=abort cannot slip past release gates. Two steps:
-      # (a) assert the Cargo.toml profile setting; (b) run the panic_spike example
-      # which exits 0 if catch_unwind caught the panic, SIGABRTs if panic=abort.
       - name: Assert release-ffi profile keeps panic=unwind
         run: |
           if ! grep -A5 '\[profile\.release-ffi\]' Cargo.toml | grep -q 'panic.*=.*"unwind"'; then
@@ -404,8 +409,8 @@ jobs:
           fi
           echo "OK: release-ffi profile retains panic=\"unwind\""
 
-      - name: Prove catch_unwind survives the release-ffi profile
-        run: cargo run --locked --profile release-ffi --example panic_spike -p agent-desktop-ffi
+      - name: Prove the shipped cdylib catches an exported-boundary panic
+        run: bash crates/ffi/tests/run_cdylib_panic_probe.sh
 
   publish-github:
     name: Publish to GitHub Release

@@ -1,21 +1,36 @@
+use super::test_support::wait_args;
 use super::*;
+use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    adapter::{PlatformAdapter, WindowFilter},
-    error::{AdapterError, ErrorCode},
-    node::WindowInfo,
-    notification::{NotificationFilter, NotificationInfo},
+    AdapterError, ErrorCode, NotificationFilter, NotificationInfo, WindowInfo,
+    adapter::WindowFilter,
 };
 
 struct NoopAdapter;
 
-impl PlatformAdapter for NoopAdapter {}
+impl ObservationOps for NoopAdapter {}
+
+impl ActionOps for NoopAdapter {}
+
+impl InputOps for NoopAdapter {}
+
+impl SystemOps for NoopAdapter {}
 
 struct NotificationErrorAdapter;
 
-impl PlatformAdapter for NotificationErrorAdapter {
+impl ObservationOps for NotificationErrorAdapter {}
+
+impl ActionOps for NotificationErrorAdapter {}
+
+impl InputOps for NotificationErrorAdapter {}
+
+impl SystemOps for NotificationErrorAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _policy: crate::InteractionPolicy,
+        _deadline: crate::Deadline,
+        _lease: Option<&crate::InteractionLease>,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         Err(AdapterError::new(
             ErrorCode::PlatformNotSupported,
@@ -38,16 +53,94 @@ impl FlakyNotificationAdapter {
     }
 }
 
-impl PlatformAdapter for FlakyNotificationAdapter {
+impl ObservationOps for FlakyNotificationAdapter {}
+
+impl ActionOps for FlakyNotificationAdapter {}
+
+impl InputOps for FlakyNotificationAdapter {}
+
+impl SystemOps for FlakyNotificationAdapter {
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
+        _policy: crate::InteractionPolicy,
+        _deadline: crate::Deadline,
+        _lease: Option<&crate::InteractionLease>,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
         self.responses
             .lock()
             .unwrap()
             .pop()
             .unwrap_or_else(|| Err(AdapterError::timeout("notification center unavailable")))
+    }
+}
+
+struct LeaseState {
+    active: std::sync::atomic::AtomicBool,
+    acquisitions: std::sync::atomic::AtomicUsize,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+struct LeaseRelease(std::sync::Arc<LeaseState>);
+
+impl Drop for LeaseRelease {
+    fn drop(&mut self) {
+        self.0
+            .active
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+struct LeaseTrackingNotificationAdapter {
+    state: std::sync::Arc<LeaseState>,
+}
+
+impl ObservationOps for LeaseTrackingNotificationAdapter {}
+impl ActionOps for LeaseTrackingNotificationAdapter {}
+impl InputOps for LeaseTrackingNotificationAdapter {}
+
+impl SystemOps for LeaseTrackingNotificationAdapter {
+    fn acquire_interaction_lease(
+        &self,
+        deadline: crate::Deadline,
+    ) -> Result<crate::InteractionLease, AdapterError> {
+        assert!(
+            self.state
+                .active
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok(),
+            "a wait poll retained the previous interaction lease"
+        );
+        self.state
+            .acquisitions
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        crate::InteractionLease::guarded(deadline, LeaseRelease(self.state.clone()))
+    }
+
+    fn list_notifications(
+        &self,
+        _filter: &NotificationFilter,
+        policy: crate::InteractionPolicy,
+        _deadline: crate::Deadline,
+        lease: Option<&crate::InteractionLease>,
+    ) -> Result<Vec<NotificationInfo>, AdapterError> {
+        assert!(policy.is_headed());
+        assert!(lease.is_some());
+        assert!(self.state.active.load(std::sync::atomic::Ordering::SeqCst));
+        let call = self
+            .state
+            .calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call == 0 {
+            Ok(vec![notification(0, "old")])
+        } else {
+            Ok(vec![notification(0, "old"), notification(1, "fresh")])
+        }
     }
 }
 
@@ -64,7 +157,7 @@ fn notification(index: usize, title: &str) -> NotificationInfo {
 fn notification_wait_args(timeout_ms: u64) -> WaitArgs {
     WaitArgs {
         mode: WaitModeArgs {
-            notification: true,
+            surface: Some(SurfaceWait::Notification),
             ..wait_args().mode
         },
         timeout_ms,
@@ -74,41 +167,28 @@ fn notification_wait_args(timeout_ms: u64) -> WaitArgs {
 
 struct WindowErrorAdapter;
 
-impl PlatformAdapter for WindowErrorAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+impl ObservationOps for WindowErrorAdapter {
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
         Err(AdapterError::permission_denied())
     }
 }
 
-fn wait_args() -> WaitArgs {
-    WaitArgs {
-        mode: WaitModeArgs {
-            ms: None,
-            element: None,
-            window: None,
-            text: None,
-            menu: false,
-            menu_closed: false,
-            notification: false,
-        },
-        predicate: WaitPredicateArgs {
-            snapshot_id: None,
-            predicate: None,
-            value: None,
-            action: None,
-            count: None,
-        },
-        timeout_ms: 1,
-        app: None,
-    }
-}
+impl ActionOps for WindowErrorAdapter {}
+
+impl InputOps for WindowErrorAdapter {}
+
+impl SystemOps for WindowErrorAdapter {}
 
 #[test]
 fn notification_wait_propagates_adapter_error() {
     let err = execute(
         WaitArgs {
             mode: WaitModeArgs {
-                notification: true,
+                surface: Some(SurfaceWait::Notification),
                 ..wait_args().mode
             },
             ..wait_args()
@@ -138,6 +218,32 @@ fn notification_wait_retries_transient_baseline_errors() {
 
     assert_eq!(value["matched"], true);
     assert_eq!(value["notification"]["title"], "fresh");
+}
+
+#[test]
+fn headed_notification_wait_leases_each_poll_without_holding_across_sleep() {
+    let state = std::sync::Arc::new(LeaseState {
+        active: std::sync::atomic::AtomicBool::new(false),
+        acquisitions: std::sync::atomic::AtomicUsize::new(0),
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let adapter = LeaseTrackingNotificationAdapter {
+        state: state.clone(),
+    };
+
+    let value = execute(
+        notification_wait_args(5_000),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+
+    assert_eq!(value["notification"]["title"], "fresh");
+    assert_eq!(
+        state.acquisitions.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+    assert!(!state.active.load(std::sync::atomic::Ordering::SeqCst));
 }
 
 #[test]
@@ -175,6 +281,21 @@ fn notification_wait_times_out_with_last_error_after_transient_failures() {
     assert_eq!(adapter_err.code, ErrorCode::Timeout);
     let details = adapter_err.details.expect("timeout should carry details");
     assert_eq!(details["last_error"]["code"], "TIMEOUT");
+}
+
+#[test]
+fn expired_notification_wait_does_not_start_an_adapter_read() {
+    let adapter = FlakyNotificationAdapter::with_responses(vec![Ok(Vec::new())]);
+
+    let error = execute(
+        notification_wait_args(0),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code(), "TIMEOUT");
+    assert_eq!(adapter.responses.lock().unwrap().len(), 1);
 }
 
 #[test]
@@ -251,7 +372,7 @@ fn notification_wait_allows_text_filter() {
     let result = validate_wait_mode(&WaitArgs {
         mode: WaitModeArgs {
             text: Some("done".into()),
-            notification: true,
+            surface: Some(SurfaceWait::Notification),
             ..wait_args().mode
         },
         ..wait_args()
@@ -272,111 +393,4 @@ fn predicate_requires_element_mode() {
     .unwrap_err();
 
     assert_eq!(err.code(), "INVALID_ARGS");
-}
-
-struct TextlessTreeAdapter;
-
-impl PlatformAdapter for TextlessTreeAdapter {
-    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
-        Ok(vec![WindowInfo {
-            id: "w-1".into(),
-            title: "Doc".into(),
-            app: "TestApp".into(),
-            pid: 1,
-            bounds: None,
-            is_focused: true,
-        }])
-    }
-
-    fn get_tree(
-        &self,
-        _win: &WindowInfo,
-        _opts: &crate::adapter::TreeOptions,
-    ) -> Result<crate::node::AccessibilityNode, AdapterError> {
-        Ok(crate::node::AccessibilityNode {
-            ref_id: None,
-            role: "window".into(),
-            name: Some("Doc".into()),
-            value: None,
-            description: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: None,
-            children_count: None,
-            children: vec![],
-        })
-    }
-}
-
-#[test]
-fn text_wait_with_count_zero_detects_absence() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
-
-    let value = execute(
-        WaitArgs {
-            mode: WaitModeArgs {
-                text: Some("Gone".into()),
-                ..wait_args().mode
-            },
-            predicate: WaitPredicateArgs {
-                count: Some(0),
-                ..wait_args().predicate
-            },
-            timeout_ms: 1_000,
-            app: Some("TestApp".into()),
-        },
-        &TextlessTreeAdapter,
-        &CommandContext::default(),
-    )
-    .unwrap();
-
-    assert_eq!(value["found"], true);
-    assert_eq!(value["count"], 0);
-}
-
-struct MenuWaitAdapter {
-    open_seen: std::sync::Mutex<Option<bool>>,
-}
-
-impl PlatformAdapter for MenuWaitAdapter {
-    fn list_apps(&self) -> Result<Vec<crate::node::AppInfo>, AdapterError> {
-        Ok(vec![crate::node::AppInfo {
-            name: "MenuApp".into(),
-            pid: 42,
-            bundle_id: None,
-        }])
-    }
-
-    fn wait_for_menu(&self, _pid: i32, open: bool, _timeout_ms: u64) -> Result<(), AdapterError> {
-        *self.open_seen.lock().unwrap() = Some(open);
-        Ok(())
-    }
-}
-
-#[test]
-fn menu_closed_wait_requests_closed_state_and_reports_found() {
-    let adapter = MenuWaitAdapter {
-        open_seen: std::sync::Mutex::new(None),
-    };
-    let value = execute(
-        WaitArgs {
-            mode: WaitModeArgs {
-                menu_closed: true,
-                ..wait_args().mode
-            },
-            app: Some("MenuApp".into()),
-            ..wait_args()
-        },
-        &adapter,
-        &CommandContext::default(),
-    )
-    .unwrap();
-
-    assert_eq!(value["found"], true);
-    assert_eq!(
-        *adapter.open_seen.lock().unwrap(),
-        Some(false),
-        "--menu-closed must wait for the menu to be closed (open=false)"
-    );
 }

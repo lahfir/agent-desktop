@@ -1,24 +1,29 @@
 use agent_desktop_core::{
-    PermissionReport,
-    adapter::PlatformAdapter,
-    commands::batch::BatchCommand,
+    AppError, PermissionReport, PlatformAdapter, commands::batch::BatchCommand,
     context::CommandContext,
-    error::AppError,
-    output::{ENVELOPE_VERSION, ErrorPayload},
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 
 use crate::{
     cli::Commands,
     cli_args::{
+        batch::BatchArgs,
         session::{SessionAction, SessionArgs, SessionEndArgs, SessionGcArgs, SessionStartArgs},
         skills::{SkillsAction, SkillsArgs, SkillsGetArgs},
-        system::BatchArgs,
         trace::{TraceAction, TraceArgs, TraceExportArgs, TraceShowArgs},
     },
 };
+
+mod bounded_json;
+mod execution;
+mod preparation;
+mod result_entry;
+
+#[cfg(test)]
+#[path = "baseline_tests.rs"]
+mod baseline_tests;
 
 pub(crate) fn execute(
     args: BatchArgs,
@@ -26,26 +31,7 @@ pub(crate) fn execute(
     permission_report: &PermissionReport,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let commands = agent_desktop_core::commands::batch::parse_commands(&args.commands_json)?;
-    let mut results = Vec::new();
-
-    for item in commands {
-        let command = item.command.clone();
-        let result = match context.for_batch_item(item.session.clone()) {
-            Ok(item_context) => parse_command(item).and_then(|typed| {
-                crate::command_policy::preflight(&typed, permission_report)?;
-                crate::dispatch::dispatch(typed, adapter, permission_report, &item_context)
-            }),
-            Err(err) => Err(err),
-        };
-        let ok = result.is_ok();
-        results.push(batch_entry(&command, result));
-        if !ok && args.stop_on_error {
-            break;
-        }
-    }
-
-    Ok(json!({ "results": results }))
+    execution::execute(args, adapter, permission_report, context)
 }
 
 pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
@@ -81,9 +67,11 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "mouse-click" => decode(command, item.args).map(Commands::MouseClick),
         "mouse-down" => decode(command, item.args).map(Commands::MouseDown),
         "mouse-up" => decode(command, item.args).map(Commands::MouseUp),
+        "mouse-wheel" => decode(command, item.args).map(Commands::MouseWheel),
         "launch" => decode(command, item.args).map(Commands::Launch),
         "close-app" => decode(command, item.args).map(Commands::CloseApp),
         "list-windows" => decode(command, item.args).map(Commands::ListWindows),
+        "list-displays" => no_args(command, item.args).map(|()| Commands::ListDisplays),
         "list-apps" => decode(command, item.args).map(Commands::ListApps),
         "focus-window" => decode(command, item.args).map(Commands::FocusWindow),
         "resize-window" => decode(command, item.args).map(Commands::ResizeWindow),
@@ -98,7 +86,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
             decode(command, item.args).map(Commands::DismissAllNotifications)
         }
         "notification-action" => decode(command, item.args).map(Commands::NotificationAction),
-        "clipboard-get" => no_args(command, item.args).map(|()| Commands::ClipboardGet),
+        "clipboard-get" => decode(command, item.args).map(Commands::ClipboardGet),
         "clipboard-set" => decode(command, item.args).map(Commands::ClipboardSet),
         "clipboard-clear" => no_args(command, item.args).map(|()| Commands::ClipboardClear),
         "wait" => decode(command, item.args).map(Commands::Wait),
@@ -113,20 +101,9 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
             "Flatten nested batches into one top-level batch array",
         )),
         other => Err(AppError::invalid_input(format!(
-            "Unknown batch command '{other}'"
+            "Unknown batch command {}",
+            crate::diagnostic::token_label(other)
         ))),
-    }
-}
-
-fn batch_entry(command: &str, result: Result<Value, AppError>) -> Value {
-    match result {
-        Ok(data) => {
-            json!({ "version": ENVELOPE_VERSION, "ok": true, "command": command, "data": data })
-        }
-        Err(err) => {
-            let error = ErrorPayload::from_app_error(&err);
-            json!({ "version": ENVELOPE_VERSION, "ok": false, "command": command, "error": error })
-        }
     }
 }
 
@@ -134,9 +111,10 @@ fn decode<T>(command: &str, args: Value) -> Result<T, AppError>
 where
     T: DeserializeOwned,
 {
-    serde_json::from_value(args_or_empty(args)).map_err(|e| {
+    serde_json::from_value(args_or_empty(args)).map_err(|error| {
+        let diagnostic = crate::diagnostic::bounded_text(&error.to_string(), 512);
         AppError::invalid_input_with_suggestion(
-            format!("Invalid batch args for '{command}': {e}"),
+            format!("Invalid batch args for '{command}': {diagnostic}"),
             "Use the same argument names and value types as the matching CLI command",
         )
     })
@@ -165,30 +143,47 @@ struct BatchSkillsArgs {
     action: Option<String>,
     name: Option<String>,
     reference: Option<String>,
-    #[serde(default)]
-    full: bool,
+    full: Option<bool>,
 }
 
 fn parse_skills(args: Value) -> Result<SkillsArgs, AppError> {
     let args: BatchSkillsArgs = decode("skills", args)?;
     let action = match args.action.as_deref() {
-        None if args.name.is_none() => Some(SkillsAction::List),
+        None if args.name.is_none() && args.reference.is_none() && args.full.is_none() => {
+            Some(SkillsAction::List)
+        }
         None | Some("get") => Some(SkillsAction::Get(SkillsGetArgs {
             name: args
                 .name
                 .ok_or_else(|| AppError::invalid_input("Batch skills get requires 'name'"))?,
             reference: args.reference,
-            full: args.full,
+            full: args.full.unwrap_or(false),
         })),
-        Some("list") => Some(SkillsAction::List),
-        Some("path") => Some(SkillsAction::Path),
+        Some("list") => {
+            reject_skills_extras(&args, "list")?;
+            Some(SkillsAction::List)
+        }
+        Some("path") => {
+            reject_skills_extras(&args, "path")?;
+            Some(SkillsAction::Path)
+        }
         Some(other) => {
             return Err(AppError::invalid_input(format!(
-                "Unknown skills action '{other}'"
+                "Unknown skills action {}",
+                crate::diagnostic::token_label(other)
             )));
         }
     };
     Ok(SkillsArgs { action })
+}
+
+fn reject_skills_extras(args: &BatchSkillsArgs, action: &str) -> Result<(), AppError> {
+    if args.name.is_some() || args.reference.is_some() || args.full.is_some() {
+        return Err(AppError::invalid_input(format!(
+            "Batch skills {action} does not accept name, reference, or full"
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -207,8 +202,6 @@ struct BatchSessionStartArgs {
     no_trace: bool,
     #[serde(default)]
     screenshots: bool,
-    #[serde(default)]
-    force: bool,
 }
 
 #[derive(Deserialize)]
@@ -239,7 +232,6 @@ fn parse_session(args: Value) -> Result<SessionArgs, AppError> {
                 name: args.name,
                 no_trace: args.no_trace,
                 screenshots: args.screenshots,
-                force: args.force,
             })
         }
         Some("end") => {
@@ -255,7 +247,8 @@ fn parse_session(args: Value) -> Result<SessionArgs, AppError> {
         }
         Some(other) => {
             return Err(AppError::invalid_input(format!(
-                "Unknown session action '{other}'"
+                "Unknown session action {}",
+                crate::diagnostic::token_label(other)
             )));
         }
     };
@@ -275,21 +268,36 @@ struct BatchTraceArgs {
 fn parse_trace(args: Value) -> Result<TraceArgs, AppError> {
     let args: BatchTraceArgs = decode("trace", args)?;
     let action = match args.action.as_str() {
-        "show" => TraceAction::Show(TraceShowArgs {
-            limit: args
-                .limit
-                .unwrap_or(agent_desktop_core::commands::trace::TRACE_SHOW_DEFAULT_LIMIT),
-            event: args.event,
-        }),
-        "export" => TraceAction::Export(TraceExportArgs {
-            limit: args
-                .limit
-                .unwrap_or(agent_desktop_core::trace_read::TRACE_EXPORT_DEFAULT_LIMIT),
-            out: args.out,
-        }),
+        "show" => {
+            if args.out.is_some() {
+                return Err(AppError::invalid_input(
+                    "Batch trace show does not accept out",
+                ));
+            }
+            TraceAction::Show(TraceShowArgs {
+                limit: args
+                    .limit
+                    .unwrap_or(agent_desktop_core::commands::trace::TRACE_SHOW_DEFAULT_LIMIT),
+                event: args.event,
+            })
+        }
+        "export" => {
+            if args.event.is_some() {
+                return Err(AppError::invalid_input(
+                    "Batch trace export does not accept event",
+                ));
+            }
+            TraceAction::Export(TraceExportArgs {
+                limit: args
+                    .limit
+                    .unwrap_or(agent_desktop_core::trace_read::TRACE_EXPORT_DEFAULT_LIMIT),
+                out: args.out,
+            })
+        }
         other => {
             return Err(AppError::invalid_input(format!(
-                "Unknown trace action '{other}'"
+                "Unknown trace action {}",
+                crate::diagnostic::token_label(other)
             )));
         }
     };

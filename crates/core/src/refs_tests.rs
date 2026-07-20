@@ -3,22 +3,37 @@ use crate::refs_test_support::HomeGuard;
 
 fn entry(role: &str, name: Option<&str>) -> RefEntry {
     RefEntry {
-        pid: 1,
-        role: role.into(),
-        name: name.map(String::from),
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec!["Click".into()],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: role.into(),
+            name: name.map(String::from),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec!["Click".into()],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -35,27 +50,48 @@ fn test_allocate_sequential() {
 #[test]
 fn test_get_existing() {
     let mut map = RefMap::new();
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     let ref_id = map.allocate(RefEntry {
-        pid: 42,
-        role: "textfield".into(),
-        name: None,
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: Some(12345),
-        available_actions: vec![],
-        source_app: Some("Finder".into()),
-        source_window_id: None,
-        source_window_title: Some("Documents".into()),
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(42),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "textfield".into(),
+            name: None,
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![],
+        },
+        source: crate::RefSource {
+            source_app: Some("Finder".into()),
+            source_window_id: None,
+            source_window_title: Some("Documents".into()),
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     let retrieved = map.get(&ref_id).unwrap();
-    assert_eq!(retrieved.pid, 42);
-    assert_eq!(retrieved.role, "textfield");
+    assert_eq!(retrieved.process.pid, 42);
+    assert_eq!(retrieved.identity.role, "textfield");
 }
 
 #[test]
@@ -89,10 +125,8 @@ fn test_remove_by_root_ref() {
 
     map.allocate(base.clone());
 
-    let drilled = RefEntry {
-        root_ref: Some("@e1".into()),
-        ..base
-    };
+    let mut drilled = base;
+    drilled.scope.root_ref = Some("@e1".into());
     map.allocate(drilled.clone());
     map.allocate(drilled);
     assert_eq!(map.len(), 3);
@@ -113,10 +147,8 @@ fn test_counter_continues_after_skeleton_into_drill_down() {
         .unwrap();
     assert_eq!(last_skeleton, "@e10");
 
-    let drilled = RefEntry {
-        root_ref: Some("@e3".into()),
-        ..skeleton_entry
-    };
+    let mut drilled = skeleton_entry;
+    drilled.scope.root_ref = Some("@e3".into());
 
     let first_drilled = map.allocate(drilled.clone());
     let second_drilled = map.allocate(drilled);
@@ -138,14 +170,12 @@ fn test_counter_continues_after_skeleton_into_drill_down() {
 
 #[test]
 fn test_root_ref_serde_roundtrip() {
-    let entry = RefEntry {
-        root_ref: Some("@e5".into()),
-        ..entry("button", None)
-    };
+    let mut entry = entry("button", None);
+    entry.scope.root_ref = Some("@e5".into());
     let json = serde_json::to_string(&entry).unwrap();
     assert!(json.contains("root_ref"));
     let back: RefEntry = serde_json::from_str(&json).unwrap();
-    assert_eq!(back.root_ref.as_deref(), Some("@e5"));
+    assert_eq!(back.scope.root_ref.as_deref(), Some("@e5"));
 }
 
 #[test]
@@ -181,31 +211,52 @@ fn test_serialize_with_size_check_accepts_normal() {
 fn test_save_load_roundtrip_with_home_override() {
     let _guard = HomeGuard::new();
     let mut map = RefMap::new();
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     map.allocate(RefEntry {
-        pid: 7,
-        role: "button".into(),
-        name: Some("Send".into()),
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: Some(42),
-        available_actions: vec!["Click".into()],
-        source_app: Some("TestApp".into()),
-        source_window_id: None,
-        source_window_title: Some("Test Window".into()),
-        source_surface: crate::adapter::SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(7),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some("Send".into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec!["Click".into()],
+        },
+        source: crate::RefSource {
+            source_app: Some("TestApp".into()),
+            source_window_id: None,
+            source_window_title: Some("Test Window".into()),
+            source_window_bounds_hash: None,
+            source_surface: crate::adapter::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     });
     map.save().expect("save should succeed under HomeGuard");
 
     let loaded = RefMap::load().expect("load should succeed");
     assert_eq!(loaded.len(), 1);
     let entry = loaded.get("@e1").unwrap();
-    assert_eq!(entry.pid, 7);
-    assert_eq!(entry.name.as_deref(), Some("Send"));
+    assert_eq!(entry.process.pid, 7);
+    assert_eq!(entry.identity.name.as_deref(), Some("Send"));
 }
 
 #[test]
@@ -261,7 +312,7 @@ fn test_save_oversize_preserves_previous_file() {
     let reloaded = RefMap::load().expect("previous file must still load");
     assert_eq!(reloaded.len(), 1);
     let entry = reloaded.get("@e1").unwrap();
-    assert_eq!(entry.name.as_deref(), Some("Original"));
+    assert_eq!(entry.identity.name.as_deref(), Some("Original"));
 }
 
 #[cfg(unix)]
@@ -275,6 +326,8 @@ fn test_write_private_file_ignores_stale_predictable_tmp_symlink() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&dir).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
     let path = dir.join("refmap.json");
     let target = dir.join("target.json");
     let stale = path.with_extension("tmp");

@@ -1,25 +1,47 @@
+#[cfg(test)]
+use crate::AccessibilityNode;
+#[cfg(test)]
+use crate::commands::query;
 use crate::{
-    adapter::PlatformAdapter, commands::query, context::CommandContext, error::AppError,
-    node::AccessibilityNode, roles, search_text, snapshot,
+    AppError, IdentityPredicate, LocatorQuery, StatePredicate, adapter::PlatformAdapter,
+    context::CommandContext, search_text,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
+#[cfg(test)]
 use std::collections::BTreeSet;
 
 const DEFAULT_LIMIT: usize = 50;
 
-pub use query::FindQuery;
-
-pub struct FindArgs {
-    pub app: Option<String>,
+/// Match-criteria fields: how a candidate element is identified. Grouped out
+/// of [`FindArgs`] to keep it under the repo's field-count limit.
+pub struct FindFilterArgs {
     pub role: Option<String>,
     pub name: Option<String>,
+    pub description: Option<String>,
+    pub native_id: Option<String>,
     pub value: Option<String>,
     pub text: Option<String>,
+    pub exact: bool,
+}
+
+/// Result-shaping fields: which of the matches to return. Mutually exclusive
+/// at the CLI/batch layer (enforced by [`validate_find_mode`]).
+pub struct FindSelectionArgs {
     pub count: bool,
     pub first: bool,
     pub last: bool,
     pub nth: Option<usize>,
     pub limit: Option<usize>,
+}
+
+pub struct FindArgs {
+    pub app: Option<String>,
+    pub window_id: Option<String>,
+    pub filter: FindFilterArgs,
+    pub states: Vec<StatePredicate>,
+    pub selection: FindSelectionArgs,
 }
 
 pub fn execute(
@@ -28,69 +50,63 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     validate_find_mode(&args)?;
-    let query = FindQuery::from_args(&args);
-    let opts = crate::adapter::TreeOptions::default();
-    let result = if args.count {
-        snapshot::build(adapter, &opts, args.app.as_deref(), None)?
-    } else {
-        snapshot::run_with_context(adapter, &opts, args.app.as_deref(), None, context)?
-    };
+    let query = locator_query_from_args(&args)?;
+    query.validate_states().map_err(AppError::Adapter)?;
 
-    if args.count {
-        return Ok(json!({ "count": count_matches(&result.tree, &query) }));
-    }
-
-    let mut matches = Vec::new();
-    let max_matches = max_matches_for_args(&args);
-    search_tree(
-        &result.tree,
-        &query,
-        &mut Vec::new(),
-        &mut matches,
-        max_matches,
-    );
-
-    if args.first {
-        return Ok(single_match_response(
-            matches.into_iter().next(),
-            &query,
-            &result.tree,
-        ));
-    }
-
-    if args.last {
-        return Ok(single_match_response(
-            matches.into_iter().last(),
-            &query,
-            &result.tree,
-        ));
-    }
-
-    if let Some(n) = args.nth {
-        return Ok(single_match_response(
-            matches.into_iter().nth(n),
-            &query,
-            &result.tree,
-        ));
-    }
-
-    let mut response = json!({ "matches": matches });
-    attach_roles_present_hint(&mut response, matches.is_empty(), &query, &result.tree);
-    Ok(response)
+    live::execute(&args, &query, adapter, context)
 }
 
-/// When a role-filtered search returns nothing, the caller cannot tell
-/// "no elements of this role are on screen" from "this role name does not
-/// exist." Listing the roles actually present in the searched tree answers
-/// that from live data — no hardcoded vocabulary, so a role any adapter
-/// newly emits shows up here automatically.
+pub fn parse_state_flag(raw: &str) -> Result<StatePredicate, AppError> {
+    let (token, expected) = match raw.split_once('=') {
+        Some((token, value)) => {
+            let expected = match value {
+                "true" | "1" => Some(true),
+                "false" | "0" => Some(false),
+                _ => {
+                    return Err(AppError::invalid_input_with_suggestion(
+                        format!("Invalid state flag value '{value}' in '{raw}'"),
+                        "Use TOKEN, TOKEN=true, or TOKEN=false.",
+                    ));
+                }
+            };
+            (token, expected)
+        }
+        None => (raw, None),
+    };
+    Ok(StatePredicate {
+        token: token.to_string(),
+        expected,
+    })
+}
+
+fn locator_query_from_args(args: &FindArgs) -> Result<LocatorQuery, AppError> {
+    Ok(LocatorQuery {
+        identity: IdentityPredicate {
+            role: args.filter.role.clone(),
+            name: args.filter.name.as_deref().map(search_text::normalize),
+            description: args
+                .filter
+                .description
+                .as_deref()
+                .map(search_text::normalize),
+            native_id: args.filter.native_id.clone(),
+            value: args.filter.value.as_deref().map(search_text::normalize),
+        },
+        has_text: args.filter.text.as_deref().map(search_text::normalize),
+        exact: args.filter.exact,
+        states: args.states.clone(),
+        ..LocatorQuery::default()
+    })
+}
+
+#[cfg(test)]
 fn attach_roles_present_hint(
     response: &mut Value,
     is_empty: bool,
-    query: &FindQuery,
+    query: &LocatorQuery,
     tree: &AccessibilityNode,
 ) {
-    if !is_empty || query.role.is_none() {
+    if !is_empty || query.identity.role.is_none() {
         return;
     }
     let mut present = BTreeSet::new();
@@ -103,9 +119,10 @@ fn attach_roles_present_hint(
     }
 }
 
+#[cfg(test)]
 fn single_match_response(
     found: Option<Value>,
-    query: &FindQuery,
+    query: &LocatorQuery,
     tree: &AccessibilityNode,
 ) -> Value {
     let is_empty = found.is_none();
@@ -114,6 +131,7 @@ fn single_match_response(
     response
 }
 
+#[cfg(test)]
 fn collect_roles(node: &AccessibilityNode, roles: &mut BTreeSet<String>) {
     roles.insert(node.role.clone());
     for child in &node.children {
@@ -121,28 +139,17 @@ fn collect_roles(node: &AccessibilityNode, roles: &mut BTreeSet<String>) {
     }
 }
 
-fn max_matches_for_args(args: &FindArgs) -> Option<usize> {
-    if args.count || args.last {
-        return None;
-    }
-    if args.first {
-        return Some(1);
-    }
-    if let Some(n) = args.nth {
-        return Some(n.saturating_add(1));
-    }
-    match args.limit.unwrap_or(DEFAULT_LIMIT) {
-        0 => None,
-        limit => Some(limit),
-    }
-}
-
 fn validate_find_mode(args: &FindArgs) -> Result<(), AppError> {
-    let selector_count = [args.count, args.first, args.last, args.nth.is_some()]
-        .into_iter()
-        .filter(|selected| *selected)
-        .count();
-    if selector_count > 1 || (selector_count == 1 && args.limit.is_some()) {
+    let selector_count = [
+        args.selection.count,
+        args.selection.first,
+        args.selection.last,
+        args.selection.nth.is_some(),
+    ]
+    .into_iter()
+    .filter(|selected| *selected)
+    .count();
+    if selector_count > 1 || (selector_count == 1 && args.selection.limit.is_some()) {
         return Err(AppError::invalid_input_with_suggestion(
             "find accepts only one result-shaping mode",
             "Use one of --count, --first, --last, --nth, or --limit.",
@@ -151,20 +158,10 @@ fn validate_find_mode(args: &FindArgs) -> Result<(), AppError> {
     Ok(())
 }
 
-impl FindQuery {
-    fn from_args(args: &FindArgs) -> Self {
-        Self {
-            role: args.role.as_deref().map(roles::normalize_role_query),
-            name: args.name.as_deref().map(search_text::normalize),
-            value: args.value.as_deref().map(search_text::normalize),
-            text: args.text.as_deref().map(search_text::normalize),
-        }
-    }
-}
-
-fn search_tree(
+#[cfg(test)]
+fn collect_snapshot_matches(
     node: &AccessibilityNode,
-    query: &FindQuery,
+    query: &LocatorQuery,
     path: &mut Vec<String>,
     matches: &mut Vec<Value>,
     max_matches: Option<usize>,
@@ -175,18 +172,19 @@ fn search_tree(
     if query::node_matches(node, query) {
         let interactive = node.ref_id.is_some();
         let display_name = node
+            .identity
             .name
             .as_deref()
-            .or(node.value.as_deref())
-            .or(node.description.as_deref())
+            .or(node.identity.value.as_deref())
+            .or(node.identity.description.as_deref())
             .map(String::from)
             .unwrap_or_else(|| format!("(unnamed {})", node.role));
         matches.push(json!({
             "ref_id": node.ref_id,
             "role": node.role,
             "name": display_name,
-            "value": node.value,
-            "states": node.states,
+            "value": node.identity.value,
+            "states": node.presentation.states,
             "interactive": interactive,
             "path": path.clone()
         }));
@@ -196,15 +194,16 @@ fn search_tree(
     }
 
     let label = node
+        .identity
         .name
         .as_deref()
-        .or(node.value.as_deref())
+        .or(node.identity.value.as_deref())
         .map(|label| format!("{}:{label}", node.role))
         .unwrap_or_else(|| node.role.clone());
     path.push(label);
 
     for child in &node.children {
-        if search_tree(child, query, path, matches, max_matches) {
+        if collect_snapshot_matches(child, query, path, matches, max_matches) {
             path.pop();
             return true;
         }
@@ -214,7 +213,8 @@ fn search_tree(
     false
 }
 
-fn count_matches(node: &AccessibilityNode, query: &FindQuery) -> usize {
+#[cfg(test)]
+fn count_matches(node: &AccessibilityNode, query: &LocatorQuery) -> usize {
     usize::from(query::node_matches(node, query))
         + node
             .children
@@ -223,6 +223,13 @@ fn count_matches(node: &AccessibilityNode, query: &FindQuery) -> usize {
             .sum::<usize>()
 }
 
+#[path = "find_live.rs"]
+mod live;
+
 #[cfg(test)]
 #[path = "find_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "find_live_tests.rs"]
+mod live_tests;

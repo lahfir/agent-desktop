@@ -3,22 +3,37 @@ use crate::adapter::SnapshotSurface;
 
 fn minimal_entry(role: &str) -> RefEntry {
     RefEntry {
-        pid: 1,
-        role: role.into(),
-        name: None,
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: None,
-        available_actions: vec![],
-        source_app: None,
-        source_window_id: None,
-        source_window_title: None,
-        source_surface: SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: role.into(),
+            name: None,
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![],
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: Some(0xA11C_E551),
+            source_surface: SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -85,20 +100,16 @@ fn ref_entry_source_surface_omitted_for_window_present_for_non_window() {
         "Window surface must be omitted as the default, json={window_json}"
     );
 
-    let alert_entry = RefEntry {
-        source_surface: SnapshotSurface::Alert,
-        ..minimal_entry("button")
-    };
+    let mut alert_entry = minimal_entry("button");
+    alert_entry.source.source_surface = SnapshotSurface::Alert;
     let alert_json = serde_json::to_string(&alert_entry).unwrap();
     assert!(
         alert_json.contains("\"source_surface\":\"alert\""),
         "Alert surface must serialize to 'alert', json={alert_json}"
     );
 
-    let menu_entry = RefEntry {
-        source_surface: SnapshotSurface::Menu,
-        ..minimal_entry("button")
-    };
+    let mut menu_entry = minimal_entry("button");
+    menu_entry.source.source_surface = SnapshotSurface::Menu;
     let menu_json = serde_json::to_string(&menu_entry).unwrap();
     assert!(
         menu_json.contains("\"source_surface\":\"menu\""),
@@ -119,6 +130,24 @@ fn snapshot_surface_serializes_to_snake_case_and_roundtrips() {
         (SnapshotSurface::Sheet, "\"sheet\""),
         (SnapshotSurface::Popover, "\"popover\""),
         (SnapshotSurface::Alert, "\"alert\""),
+        (SnapshotSurface::Desktop, "\"desktop\""),
+        (SnapshotSurface::Taskbar, "\"taskbar\""),
+        (SnapshotSurface::SystemTray, "\"system_tray\""),
+        (SnapshotSurface::QuickSettings, "\"quick_settings\""),
+        (
+            SnapshotSurface::NotificationCenter,
+            "\"notification_center\"",
+        ),
+        (SnapshotSurface::Toolbar, "\"toolbar\""),
+        (SnapshotSurface::Dock, "\"dock\""),
+        (SnapshotSurface::Spotlight, "\"spotlight\""),
+        (SnapshotSurface::MenuBarExtras, "\"menu_bar_extras\""),
+        (
+            SnapshotSurface::SystemTrayOverflow,
+            "\"system_tray_overflow\"",
+        ),
+        (SnapshotSurface::StartMenu, "\"start_menu\""),
+        (SnapshotSurface::ActionCenter, "\"action_center\""),
     ];
     for (variant, expected_json) in cases {
         let serialized = serde_json::to_string(&variant).unwrap();
@@ -136,39 +165,43 @@ fn snapshot_surface_serializes_to_snake_case_and_roundtrips() {
 #[test]
 fn ref_entry_full_roundtrip_preserves_all_fields() {
     let original = RefEntry {
-        pid: 99,
-        role: "textfield".into(),
-        name: Some("Email".into()),
-        value: Some("user@example.com".into()),
-        description: Some("Enter email".into()),
-        states: vec!["focused".into()],
-        bounds: None,
-        bounds_hash: Some(0xDEAD_BEEF),
-        available_actions: vec!["SetValue".into(), "Click".into()],
-        source_app: Some("Mail".into()),
-        source_window_id: Some("w-7".into()),
-        source_window_title: Some("Compose".into()),
-        source_surface: SnapshotSurface::Sheet,
-        root_ref: Some("@e5".into()),
-        path_is_absolute: true,
-        path: smallvec::SmallVec::from_slice(&[2, 0, 1]),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(99),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "textfield".into(),
+            name: Some("Email".into()),
+            value: Some("user@example.com".into()),
+            description: Some("Enter email".into()),
+            native_id: Some(crate::ElementIdentifier {
+                kind: crate::IdentifierKind::AxIdentifier,
+                value: "email-field".into(),
+            }),
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: Some(0xDEAD_BEEF),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec!["focused".into()],
+            available_actions: vec!["SetValue".into(), "Click".into()],
+        },
+        source: crate::RefSource {
+            source_app: Some("Mail".into()),
+            source_window_id: Some("w-7".into()),
+            source_window_title: Some("Compose".into()),
+            source_window_bounds_hash: None,
+            source_surface: SnapshotSurface::Sheet,
+        },
+        scope: crate::RefScope {
+            root_ref: Some("@e5".into()),
+            path_is_absolute: true,
+            path: smallvec::SmallVec::from_slice(&[2, 0, 1]),
+        },
     };
     let json = serde_json::to_string(&original).unwrap();
     let back: RefEntry = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(back.pid, original.pid);
-    assert_eq!(back.role, original.role);
-    assert_eq!(back.name, original.name);
-    assert_eq!(back.value, original.value);
-    assert_eq!(back.description, original.description);
-    assert_eq!(back.states, original.states);
-    assert_eq!(back.bounds_hash, original.bounds_hash);
-    assert_eq!(back.available_actions, original.available_actions);
-    assert_eq!(back.source_app, original.source_app);
-    assert_eq!(back.source_window_id, original.source_window_id);
-    assert_eq!(back.source_window_title, original.source_window_title);
-    assert_eq!(back.source_surface, original.source_surface);
-    assert_eq!(back.root_ref, original.root_ref);
-    assert_eq!(back.path_is_absolute, original.path_is_absolute);
-    assert_eq!(back.path.as_slice(), original.path.as_slice());
+    assert_eq!(back, original);
 }

@@ -35,15 +35,24 @@ pub unsafe extern "C" fn ad_dismiss_all_notifications(
         crate::pointer_guard::guard_non_null!(failed_out, c"failed_out is null");
         *dismissed_out = ptr::null_mut();
         *failed_out = ptr::null_mut();
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        let adapter = &*adapter;
         let filter = decode_optional_filter!(app_filter, "app_filter");
+        let adapter = crate::adapter::acquire_adapter!(adapter);
         let filter_ref = filter.as_deref();
-        match adapter.inner.dismiss_all_notifications(filter_ref) {
+        let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
+        let request = agent_desktop_core::DismissAllNotificationsRequest {
+            app_filter: filter_ref,
+            policy: agent_desktop_core::interaction_policy::InteractionPolicy::headless(),
+        };
+        match adapter.inner.dismiss_all_notifications(request, &lease) {
             Ok((dismissed, failed_messages)) => {
+                if let Err(error) = crate::resource::validate_list_len(
+                    dismissed.len().max(failed_messages.len()),
+                    "Notification mutation result",
+                ) {
+                    set_last_error(&error);
+                    return crate::error::last_error_code();
+                }
                 let dismissed_items: Vec<AdNotificationInfo> =
                     dismissed.iter().map(notification_info_to_c).collect();
                 let dismissed_list = Box::new(AdNotificationList {
@@ -55,7 +64,7 @@ pub unsafe extern "C" fn ad_dismiss_all_notifications(
                     .into_iter()
                     .enumerate()
                     .map(|(i, msg)| {
-                        let info = agent_desktop_core::notification::NotificationInfo {
+                        let info = agent_desktop_core::NotificationInfo {
                             index: i,
                             app_name: String::new(),
                             title: String::from("dismiss failed"),

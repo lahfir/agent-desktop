@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::AppError;
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::path::Path;

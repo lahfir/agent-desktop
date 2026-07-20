@@ -17,7 +17,7 @@ fn snapshot_null_out_returns_invalid_args() {
         assert_eq!(
             rc,
             AdResult::ErrInvalidArgs,
-            "null out is rejected by the outer guard before any adapter or thread check"
+            "null out is rejected before adapter work"
         );
     });
 }
@@ -35,10 +35,7 @@ fn snapshot_null_adapter_rejected() {
             false,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "null adapter must fail — got {rc:?} (ErrInternal on macOS off-main-thread is expected)"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on null-adapter failure");
     }
 }
@@ -57,10 +54,7 @@ fn snapshot_invalid_utf8_app_rejected() {
             false,
             &mut out,
         );
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "invalid UTF-8 app must fail — got {rc:?}"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(
             out.is_null(),
             "out must stay null on arg validation failure"
@@ -73,10 +67,7 @@ fn snapshot_invalid_surface_rejected() {
     with_adapter(|adapter| unsafe {
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_snapshot(adapter, std::ptr::null(), 99, 6, false, false, &mut out);
-        assert!(
-            matches!(rc, AdResult::ErrInvalidArgs | AdResult::ErrInternal),
-            "out-of-range surface must fail — got {rc:?}"
-        );
+        assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(out.is_null(), "out must stay null on invalid surface");
     });
 }

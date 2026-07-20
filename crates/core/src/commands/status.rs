@@ -1,11 +1,9 @@
 use crate::{
-    PermissionReport,
+    AppError, PermissionReport,
     adapter::PlatformAdapter,
     commands::permissions::{self, PermissionsArgs},
     context::CommandContext,
-    error::AppError,
     refs_store::RefStore,
-    session::read_current_session_pointer,
 };
 use serde_json::{Value, json};
 
@@ -17,16 +15,13 @@ pub fn execute_with_report_with_context(
     let permissions =
         permissions::execute_with_report(PermissionsArgs { request: false }, adapter, report)?;
 
-    let store = RefStore::for_session(context.session_id()).ok();
-    let ref_count = store
-        .as_ref()
-        .and_then(|s| s.load_latest().ok())
-        .map(|m| m.len());
-    let snapshot_id = store.and_then(|s| s.latest_snapshot_id());
-    let session_id = context
-        .session_id()
-        .map(str::to_string)
-        .or_else(|| read_current_session_pointer().ok().flatten());
+    let store = RefStore::for_session(context.session_id())?;
+    let snapshot_id = store.latest_snapshot_id()?;
+    let ref_count = match snapshot_id.as_deref() {
+        Some(snapshot_id) => Some(store.load_snapshot(snapshot_id)?.len()),
+        None => None,
+    };
+    let session_id = context.session_id().map(str::to_string);
     let tracing = context.trace_enabled();
     let artifacts = session_id
         .as_deref()
@@ -41,6 +36,11 @@ pub fn execute_with_report_with_context(
         "ref_count": ref_count,
         "session_id": session_id,
         "tracing": tracing,
+        "supported_surfaces": adapter
+            .supported_surfaces()
+            .into_iter()
+            .map(|surface| surface.as_str())
+            .collect::<Vec<_>>(),
     });
     if let Some(artifacts) = artifacts {
         body["artifacts"] = json!(artifacts);

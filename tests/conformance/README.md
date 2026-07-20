@@ -43,3 +43,18 @@ Add adapter-specific integration fixtures, but keep expected errors and JSON
 shapes identical. Prefer semantic platform actions first (`AXPress`, UIA
 Invoke/Value/Selection patterns, AT-SPI actions). Coordinate input is a lower
 confidence fallback and must remain explicit in policy or command choice.
+
+## Windows Private-Storage Runtime Gate
+
+Windows support must not be enabled from cross-compilation evidence alone. A
+native Windows integration suite must continuously rename or replace every
+ancestor of the private state directory while `open`, bounded read, append,
+lock, and atomic replace operations run. Each operation must either access the
+intended handle-bound file or fail closed; it must never follow a reparse point
+or escape the guarded ancestor chain.
+
+The same gate must verify owner-only protected DACL creation and rejection,
+hardlink rejection, local-versus-remote storage detection, drive and UNC
+verbatim path encoding beyond `MAX_PATH`, and atomic replacement durability.
+Static Windows target checks are required before this suite, but are not a
+substitute for the native race test.

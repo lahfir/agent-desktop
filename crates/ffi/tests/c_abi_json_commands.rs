@@ -62,6 +62,18 @@ fn ad_version_null_out_returns_invalid_args() {
 }
 
 #[test]
+fn ad_free_string_ignores_a_second_free() {
+    unsafe {
+        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
+        assert_eq!(ad_version(&mut out), AdResult::Ok);
+        assert!(!out.is_null());
+
+        ad_free_string(out);
+        ad_free_string(out);
+    }
+}
+
+#[test]
 fn ad_version_success_preserves_prior_last_error() {
     unsafe {
         let rc_fail = ad_version(std::ptr::null_mut());

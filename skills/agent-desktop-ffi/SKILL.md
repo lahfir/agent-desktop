@@ -38,9 +38,9 @@ Four reference topics, loaded as needed:
   for every `*mut T` the FFI hands back to the caller.
 - [error-handling.md](references/error-handling.md) — errno-style
   last-error contract, enum validation, panic boundary.
-- [threading.md](references/threading.md) — macOS main-thread rule,
-  AXIsProcessTrusted inheritance when Python/Node dlopens the cdylib,
-  and the single-owner handle invariant.
+- [threading.md](references/threading.md) — host-thread contract,
+  cross-process mutation serialization, AXIsProcessTrusted inheritance,
+  and adapter-bound native handles.
 - [build-and-link.md](references/build-and-link.md) — ABI handshake,
   struct size validation, minimal C and Python examples, observe-act
   workflow, and prebuilt archive locations.
@@ -51,19 +51,19 @@ Four reference topics, loaded as needed:
 ad_init(AD_ABI_VERSION_MAJOR)                    // verify header ↔ dylib match
 adapter = ad_adapter_create_with_session("s1")   // or ad_adapter_create()
 rc = ad_snapshot(adapter, "Finder", 0, 10, false, false, &json_out)
-// parse json_out: locate @e refs in data.tree, note data.snapshot_id
+// parse json_out: locate snapshot-qualified refs in data.tree
 ad_free_string(json_out)
 // build action:
 AdAction act = {0}; act.kind = AD_ACTION_KIND_CLICK;
-rc = ad_execute_by_ref(adapter, "@e5", snapshot_id, &act, 0, &result_out)
+rc = ad_execute_by_ref(adapter, "@s8f3k2p9:e5", NULL, &act, 0, &result_out)
 ad_free_string(result_out)
 ad_adapter_destroy(adapter)
 ```
 
 `ad_snapshot` returns a `{version, ok, command, data}` JSON envelope
-identical to the CLI output. The `data.tree` field contains `@e`-prefixed
-ref IDs for interactive elements. Pass a ref ID and the `snapshot_id`
-to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
+identical to the CLI output. The `data.tree` field contains snapshot-qualified
+ref IDs for interactive elements. Pass a qualified ref, or a legacy bare ref
+plus its explicit `snapshot_id`, to `ad_execute_by_ref` to drive the pipeline
 (RefStore load → strict resolution → actionability preflight → dispatch).
 
 ## Core constraints
@@ -77,9 +77,9 @@ to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
 
 - **Session adapters.** `ad_adapter_create_with_session("session-id")` associates
   the adapter with a session namespace for refmap persistence — the same as CLI
-  `--session <id>`. Passing the same session ID across adapter lifetimes lets
-  `ad_execute_by_ref` with `snapshot_id=NULL` target the latest snapshot from
-  that session. Session IDs: 1–64 chars, ASCII alphanumeric / `-` / `_`.
+  `--session <id>`. A null `snapshot_id` is valid only for a qualified ref;
+  legacy bare `@eN` refs require an explicit snapshot ID. Session IDs: 1–64
+  chars, ASCII alphanumeric / `-` / `_`.
   Invalid IDs return null (check `ad_last_error_*`).
 
 - **Structured session trace (no ABI change).** File-based JSONL tracing activates
@@ -91,16 +91,12 @@ to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
   reuses the same segment filename for all calls in that process. For unstructured
   diagnostics regardless of session manifest, use `ad_set_log_callback` (below).
 
-- **Main thread only (macOS).** Call every adapter-touching entrypoint
-  (`ad_snapshot`, `ad_execute_by_ref`, `ad_wait`, `ad_get_tree`, `ad_find`,
-  `ad_get`, `ad_is`, `ad_resolve_element`, `ad_execute_action`,
-  `ad_execute_action_with_policy`, `ad_execute_ref_action_with_policy`,
-  `ad_screenshot`, clipboard get/set/clear, mouse, drag, launch, close, focus,
-  window-op, list-apps/windows/surfaces, notification list/dismiss/action)
-  from the process's main thread. macOS accessibility and Cocoa APIs require
-  this. The FFI enforces this at runtime in every build profile — a worker-thread
-  call returns `AD_RESULT_ERR_INTERNAL` with a diagnostic last-error. On
-  non-macOS platforms the check is a compile-time true; there is no runtime cost.
+- **Threading and mutation leases.** Adapter entrypoints may be called from any
+  host thread. Native handles remain bound to their creating adapter and thread.
+  Desktop mutations acquire the same canonical cross-process interaction lease
+  as the CLI; reads carry finite deadlines without taking the mutation lock. See
+  [threading.md](references/threading.md) for the Apple documentation basis and
+  the read/read, read/mutation, and mutation/mutation ordering matrix.
 
 - **Release profile.** `cargo build --release` produces `panic = "abort"` —
   any Rust panic inside an `extern "C"` fn will `SIGABRT` the host. Use
@@ -119,7 +115,7 @@ to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
   titles from the user's screen — treat as sensitive diagnostics and avoid routing
   to shared log surfaces.
 
-- **Handle release.** Every `ad_resolve_element` / `ad_find` result must be
+- **Handle release.** Every `ad_resolve_element_exact` / `ad_find_exact` result must be
   released with `ad_free_handle(adapter, &handle)` on the same adapter that
   produced it, before that adapter is destroyed. On macOS this balances the
   internal `CFRetain`; on Windows/Linux the call is a no-op but safe to issue.
@@ -133,15 +129,26 @@ to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
   actions default to `headless`. Pass `AD_POLICY_KIND_HEADED` (2) to opt in to
   cursor-based fallbacks.
 
+- **Generation-safe direct APIs.** ABI-v3 legacy `AdRefEntry` and
+  `AdWindowInfo` layouts remain available for binary compatibility, but they do
+  not carry process-generation evidence and direct targeting functions fail
+  closed. Use `AdExactRefEntry`, `AdExactWindowInfo`,
+  `ad_list_windows_exact`, and the `*_exact` targeting symbols. Likewise,
+  `ad_list_surfaces_exact` preserves `SurfaceInfo.id`; the legacy surface list
+  is an observation-only projection that omits it.
+
+- **Display discovery.** Call `ad_list_displays` before using
+  `AdScreenshotTarget.screen_index`. List order is the screenshot index order;
+  inspect each `AdDisplayInfo` for its stable display ID, bounds, primary flag,
+  and scale, then release the handle with `ad_display_list_free`.
+
 - **Low-level action paths.** `ad_execute_action` (headless, no preflight) and
   `ad_execute_action_with_policy` are raw escape hatches for callers holding a live
-  `AdNativeHandle` from `ad_resolve_element` / `ad_find`. Use them when you need
-  to bypass the ref-action pipeline. `ad_execute_ref_action_with_policy` accepts a
-  pre-resolved `AdRefEntry` instead of a ref string — useful when you have
-  serialized an entry outside the RefStore pipeline.
+  `AdNativeHandle` from `ad_resolve_element_exact` / `ad_find_exact`. Use them when
+  you need to bypass the ref-action pipeline.
 
-- **Ref-action preflight.** `ad_execute_by_ref` and `ad_execute_ref_action_with_policy`
-  both resolve the element strictly and run the live actionability preflight
+- **Ref-action preflight.** `ad_execute_by_ref` and
+  `ad_execute_ref_action_exact_with_policy` both resolve the element strictly and run the live actionability preflight
   (visible, stable, enabled, supported action, policy, editable) before dispatching
   — a disabled or unsupported target fails before any platform call. On
   `AD_RESULT_ERR_ACTION_FAILED`, the structured check report is available as JSON
@@ -192,7 +199,7 @@ to `ad_execute_by_ref` to drive the CLI-semantics ref-action pipeline
   symbols, new error codes) do not bump it. Before 1.0, pin the exact version of
   libagent_desktop_ffi you link against.
 
-- **`ad_get_tree` vs `ad_snapshot`.** `ad_get_tree` returns a raw flat BFS tree
+- **`ad_get_tree_exact` vs `ad_snapshot`.** `ad_get_tree_exact` returns a raw flat BFS tree
   without `@e` refs, no refmap persistence, and no JSON envelope — use it for
   custom traversal or UI inspection. For observe-act agents that drive actions via
   `ad_execute_by_ref`, always start with `ad_snapshot`.

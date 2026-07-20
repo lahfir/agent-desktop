@@ -68,3 +68,16 @@ pub unsafe extern "C" fn ad_image_buffer_format(buf: *const AdImageBuffer) -> Ad
     let buf_ref: &AdImageBuffer = unsafe { &*buf };
     buf_ref.format
 }
+
+/// Point-to-pixel scale factor for the captured display or window.
+///
+/// # Safety
+/// `buf` must be null or returned by `ad_screenshot`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_image_buffer_scale_factor(buf: *const AdImageBuffer) -> f64 {
+    if buf.is_null() {
+        return 1.0;
+    }
+    let buf_ref: &AdImageBuffer = unsafe { &*buf };
+    buf_ref.scale_factor
+}

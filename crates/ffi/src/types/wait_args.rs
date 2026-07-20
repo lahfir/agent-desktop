@@ -1,57 +1,24 @@
-use std::os::raw::c_char;
+use crate::types::{AdWaitMode, AdWaitPredicate, AdWaitScope};
 
-/// Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs`.
+/// Arguments for `ad_wait`, mirroring `core::commands::wait::WaitArgs` for
+/// the pause/element/text/surface wait modes and predicates.
 ///
-/// Fields map as follows:
-/// - `Option<u64>` → `u64` value + `bool has_*` sentinel (ms, count).
-/// - `Option<String>` → nullable `*const c_char` (null = absent).
-/// - `bool` → `bool`.
+/// The core event-wait mode (`--event` / `--window-id`) is intentionally not
+/// exposed over FFI in this release; `wait_args_from_ffi` always forwards
+/// `event: None` and `window_id: None` to core. `mode.window` here is a
+/// title-appearance wait (poll until a window with the given title exists),
+/// which is a distinct semantic from the deferred event-wait mode.
+///
+/// Mode, predicate, and scope fields are grouped into named PODs. Optional
+/// numbers use `AdOptional*`; optional strings are nullable pointers.
 ///
 /// Callers must zero-initialize before use and verify layout via
 /// `AD_WAIT_ARGS_SIZE` / `ad_wait_args_size()`.
 #[repr(C)]
 pub struct AdWaitArgs {
-    /// Milliseconds to sleep (WaitMode::ms).
-    pub ms: u64,
-    pub has_ms: bool,
-
-    /// Element ref id to wait for (WaitMode::element).
-    pub element: *const c_char,
-
-    /// Window title to wait for (WaitMode::window).
-    pub window: *const c_char,
-
-    /// Text to wait for (WaitMode::text / WaitMode::notification text).
-    pub text: *const c_char,
-
-    /// Wait for menu to open (true) or close (false via menu_closed).
-    pub menu: bool,
-    /// Wait for menu to close.
-    pub menu_closed: bool,
-    /// Wait for a notification.
-    pub notification: bool,
-
-    /// Snapshot id for element predicate (WaitPredicateArgs::snapshot_id).
-    pub snapshot_id: *const c_char,
-
-    /// Predicate kind string (WaitPredicateArgs::predicate).
-    pub predicate: *const c_char,
-
-    /// Expected value for value-predicate (WaitPredicateArgs::value).
-    pub value: *const c_char,
-
-    /// Action name for actionability-predicate (WaitPredicateArgs::action).
-    pub action: *const c_char,
-
-    /// Expected match count for text waits (WaitPredicateArgs::count).
-    pub count: usize,
-    pub has_count: bool,
-
-    /// Timeout in milliseconds.
-    pub timeout_ms: u64,
-
-    /// App name filter (null = any). Maps to WaitArgs::app.
-    pub app: *const c_char,
+    pub mode: AdWaitMode,
+    pub predicate: AdWaitPredicate,
+    pub scope: AdWaitScope,
 }
 
 /// Pinned size of `AdWaitArgs` on 64-bit targets. The compile-time

@@ -1,90 +1,36 @@
 use super::*;
-use crate::cli::{Cli, Commands};
-use crate::cli_args::{RefArgs, ScreenshotArgs, SnapshotArgs};
+use crate::cli::Commands;
+use crate::cli_args::{
+    RefArgs, ScreenshotArgs, SnapshotArgs, WindowScope, snapshot_tree::SnapshotTreeArgs,
+};
 use agent_desktop_core::{PermissionReport, PermissionState};
-use clap::CommandFactory;
 
 const VALID_REF_ID: &str = "@e1";
 
 #[test]
-fn every_cli_subcommand_has_policy() {
-    for subcommand in Cli::command().get_subcommands() {
-        let name = subcommand.get_name();
-        assert!(
-            command_name_is_covered(name),
-            "missing permission policy coverage for {name}"
-        );
-    }
-}
+fn permission_report_is_collected_only_for_permission_consumers() {
+    let status = Commands::Status;
+    let list_displays = Commands::ListDisplays;
+    let batch = Commands::Batch(crate::cli_args::batch::BatchArgs {
+        commands_json: "[]".into(),
+        stop_on_error: false,
+        timeout_ms: 1,
+    });
 
-fn command_name_is_covered(name: &str) -> bool {
-    matches!(
-        name,
-        "snapshot"
-            | "find"
-            | "screenshot"
-            | "get"
-            | "is"
-            | "click"
-            | "double-click"
-            | "triple-click"
-            | "right-click"
-            | "type"
-            | "set-value"
-            | "clear"
-            | "focus"
-            | "select"
-            | "toggle"
-            | "check"
-            | "uncheck"
-            | "expand"
-            | "collapse"
-            | "scroll"
-            | "scroll-to"
-            | "press"
-            | "key-down"
-            | "key-up"
-            | "hover"
-            | "drag"
-            | "mouse-move"
-            | "mouse-click"
-            | "mouse-down"
-            | "mouse-up"
-            | "launch"
-            | "close-app"
-            | "list-windows"
-            | "list-apps"
-            | "focus-window"
-            | "resize-window"
-            | "move-window"
-            | "minimize"
-            | "maximize"
-            | "restore"
-            | "list-surfaces"
-            | "list-notifications"
-            | "dismiss-notification"
-            | "dismiss-all-notifications"
-            | "notification-action"
-            | "clipboard-get"
-            | "clipboard-set"
-            | "clipboard-clear"
-            | "wait"
-            | "status"
-            | "permissions"
-            | "version"
-            | "batch"
-            | "skills"
-            | "session"
-            | "trace"
-    )
+    assert!(requires_permission_report(&status));
+    assert!(requires_permission_report(&batch));
+    assert!(!requires_permission_report(&list_displays));
 }
 
 #[test]
 fn unknown_permission_does_not_mask_platform_errors() {
     let report = PermissionReport::default();
     let command = Commands::Screenshot(ScreenshotArgs {
-        app: None,
-        window_id: None,
+        scope: WindowScope {
+            app: None,
+            window_id: None,
+        },
+        screen: None,
         output_path: None,
     });
 
@@ -101,8 +47,11 @@ fn screen_recording_denial_is_preflighted() {
         automation: PermissionState::NotRequired,
     };
     let command = Commands::Screenshot(ScreenshotArgs {
-        app: None,
-        window_id: None,
+        scope: WindowScope {
+            app: None,
+            window_id: None,
+        },
+        screen: None,
         output_path: None,
     });
 
@@ -123,6 +72,7 @@ fn accessibility_denial_is_preflighted_for_ax_commands() {
     let command = Commands::Click(crate::cli_args::RefArgs {
         ref_id: VALID_REF_ID.into(),
         snapshot_id: None,
+        timeout_ms: 5000,
     });
 
     let err = preflight(&command, &report).expect_err("denied accessibility fails");
@@ -143,6 +93,7 @@ fn invalid_ref_args_are_rejected_before_permission_preflight() {
     let command = Commands::Click(RefArgs {
         ref_id: "bad-ref".into(),
         snapshot_id: None,
+        timeout_ms: 5000,
     });
 
     let err = preflight(&command, &report).expect_err("invalid ref fails first");
@@ -160,14 +111,18 @@ fn invalid_snapshot_root_is_rejected_before_permission_preflight() {
         automation: PermissionState::NotRequired,
     };
     let command = Commands::Snapshot(SnapshotArgs {
-        app: None,
-        window_id: None,
-        max_depth: 10,
-        include_bounds: false,
-        interactive_only: false,
-        compact: false,
+        scope: WindowScope {
+            app: None,
+            window_id: None,
+        },
+        tree: SnapshotTreeArgs {
+            max_depth: 10,
+            include_bounds: false,
+            interactive_only: false,
+            compact: false,
+            skeleton: false,
+        },
         surface: crate::cli_args::Surface::Window,
-        skeleton: false,
         root: Some("bad-root".into()),
         snapshot: None,
     });
@@ -175,6 +130,54 @@ fn invalid_snapshot_root_is_rejected_before_permission_preflight() {
     let err = preflight(&command, &report).expect_err("invalid root fails first");
 
     assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn notification_identity_is_required_before_permission_preflight() {
+    let report = PermissionReport {
+        accessibility: PermissionState::Denied {
+            suggestion: "grant accessibility".into(),
+        },
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+    let command =
+        Commands::NotificationAction(crate::cli_args::notifications::NotificationActionCliArgs {
+            index: 1,
+            action: "Reply".into(),
+            expected_app: None,
+            expected_title: None,
+        });
+
+    let error = preflight(&command, &report).unwrap_err();
+
+    assert_eq!(error.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn dismiss_notification_identity_is_required_before_permission_preflight() {
+    let report = PermissionReport {
+        accessibility: PermissionState::Denied {
+            suggestion: "grant accessibility".into(),
+        },
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+    for (expected_app, expected_title) in [(None, None), (Some(String::new()), None)] {
+        let command = Commands::DismissNotification(
+            crate::cli_args::notifications::DismissNotificationCliArgs {
+                index: 1,
+                app: None,
+                expected_app,
+                expected_title,
+            },
+        );
+
+        let error = preflight(&command, &report).expect_err("identity fails before permission");
+
+        assert_eq!(error.code(), "INVALID_ARGS");
+        assert!(error.to_string().contains("--expected-app"));
+    }
 }
 
 #[test]

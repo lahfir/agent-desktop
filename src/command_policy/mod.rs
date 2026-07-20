@@ -1,7 +1,5 @@
 use agent_desktop_core::{
-    PermissionReport,
-    error::{AdapterError, AppError, ErrorCode},
-    refs::validate_ref_id,
+    AdapterError, AppError, DeliverySemantics, ErrorCode, PermissionReport, refs::validate_ref_id,
 };
 
 use crate::cli::Commands;
@@ -19,8 +17,8 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
     match cmd {
         Commands::Version | Commands::Skills(_) | Commands::Session(_) | Commands::Trace(_) => None,
         Commands::Status | Commands::Permissions(_) => None,
-        Commands::ListWindows(_) | Commands::ListApps(_) => None,
-        Commands::ClipboardGet | Commands::ClipboardSet(_) | Commands::ClipboardClear => None,
+        Commands::ListWindows(_) | Commands::ListDisplays | Commands::ListApps(_) => None,
+        Commands::ClipboardGet(_) | Commands::ClipboardSet(_) | Commands::ClipboardClear => None,
         Commands::Batch(_) => None,
 
         Commands::Snapshot(_)
@@ -29,7 +27,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         | Commands::Wait(_)
         | Commands::ListNotifications(_) => Accessibility,
 
-        Commands::Screenshot(a) if a.app.is_some() || a.window_id.is_some() => {
+        Commands::Screenshot(a) if a.scope.app.is_some() || a.scope.window_id.is_some() => {
             AccessibilityAndScreenRecording
         }
         Commands::Screenshot(_) => ScreenRecording,
@@ -59,7 +57,8 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         | Commands::MouseMove(_)
         | Commands::MouseClick(_)
         | Commands::MouseDown(_)
-        | Commands::MouseUp(_) => Accessibility,
+        | Commands::MouseUp(_)
+        | Commands::MouseWheel(_) => Accessibility,
 
         Commands::Launch(_)
         | Commands::CloseApp(_)
@@ -87,7 +86,8 @@ pub(crate) fn preflight(cmd: &Commands, report: &PermissionReport) -> Result<(),
             report
                 .accessibility_suggestion()
                 .unwrap_or("Grant Accessibility permission and retry"),
-        );
+        )
+        .with_disposition(DeliverySemantics::not_delivered());
         return Err(AppError::Adapter(err));
     }
     if requires_screen_recording(permission) && report.screen_recording_denied() {
@@ -99,10 +99,19 @@ pub(crate) fn preflight(cmd: &Commands, report: &PermissionReport) -> Result<(),
             report
                 .screen_recording_suggestion()
                 .unwrap_or("Grant Screen Recording permission and retry"),
-        );
+        )
+        .with_disposition(DeliverySemantics::not_delivered());
         return Err(AppError::Adapter(err));
     }
     Ok(())
+}
+
+pub(crate) fn requires_permission_report(cmd: &Commands) -> bool {
+    policy_for(cmd) != PermissionNeed::None
+        || matches!(
+            cmd,
+            Commands::Status | Commands::Permissions(_) | Commands::Batch(_)
+        )
 }
 
 fn validate_args(cmd: &Commands) -> Result<(), AppError> {
@@ -149,10 +158,10 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
             }
         }
         Commands::Drag(args) => {
-            if let Some(ref_id) = &args.from {
+            if let Some(ref_id) = &args.target.from {
                 validate_ref_id(ref_id)?;
             }
-            if let Some(ref_id) = &args.to {
+            if let Some(ref_id) = &args.target.to {
                 validate_ref_id(ref_id)?;
             }
         }
@@ -160,6 +169,22 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
             if let Some(ref_id) = &args.mode.element {
                 validate_ref_id(ref_id)?;
             }
+        }
+        Commands::DismissNotification(args)
+            if args.expected_app.as_deref().is_none_or(str::is_empty)
+                && args.expected_title.as_deref().is_none_or(str::is_empty) =>
+        {
+            return Err(AppError::invalid_input(
+                "dismiss-notification requires --expected-app or --expected-title",
+            ));
+        }
+        Commands::NotificationAction(args)
+            if args.expected_app.as_deref().is_none_or(str::is_empty)
+                && args.expected_title.as_deref().is_none_or(str::is_empty) =>
+        {
+            return Err(AppError::invalid_input(
+                "notification-action requires --expected-app or --expected-title",
+            ));
         }
         Commands::Find(_)
         | Commands::Screenshot(_)
@@ -170,9 +195,11 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::MouseClick(_)
         | Commands::MouseDown(_)
         | Commands::MouseUp(_)
+        | Commands::MouseWheel(_)
         | Commands::Launch(_)
         | Commands::CloseApp(_)
         | Commands::ListWindows(_)
+        | Commands::ListDisplays
         | Commands::ListApps(_)
         | Commands::FocusWindow(_)
         | Commands::ResizeWindow(_)
@@ -185,7 +212,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::DismissNotification(_)
         | Commands::DismissAllNotifications(_)
         | Commands::NotificationAction(_)
-        | Commands::ClipboardGet
+        | Commands::ClipboardGet(_)
         | Commands::ClipboardSet(_)
         | Commands::ClipboardClear
         | Commands::Status

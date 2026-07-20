@@ -127,6 +127,8 @@ def main() -> None:
     # Adapter lifecycle
     ad_adapter_create  = bind(lib, "ad_adapter_create",  c_void_p, [])
     ad_adapter_destroy = bind(lib, "ad_adapter_destroy", None,     [c_void_p])
+    ad_get_clipboard = bind(lib, "ad_get_clipboard", c_int, [c_void_p, POINTER(c_char_p)])
+    ad_last_error_message = bind(lib, "ad_last_error_message", c_char_p, [])
 
     # Snapshot (adapter leg)
     ad_snapshot = bind(
@@ -247,7 +249,7 @@ def main() -> None:
             # Expected stub-adapter path: ok:false + PLATFORM_NOT_SUPPORTED.
             err = snap_env.get("error", {})
             code = err.get("code", "")
-            if code != "PLATFORM_NOT_SUPPORTED":
+            if expect_stub and code != "PLATFORM_NOT_SUPPORTED":
                 ad_adapter_destroy(adapter)
                 fail(
                     f"ad_snapshot() envelope error.code = {code!r}, "
@@ -264,6 +266,34 @@ def main() -> None:
 
     ad_adapter_destroy(adapter)
     ok("ad_adapter_destroy() — no crash, no leak")
+
+    if os.environ.get("AD_EXPECT_MACOS_HELPER") == "1":
+        print("\nLeg 5 — non-colocated Python host discovers the dylib-adjacent macOS helper")
+        adapter = ad_adapter_create()
+        if not adapter:
+            fail("ad_adapter_create() returned null for helper discovery leg")
+        clipboard = c_char_p()
+        rc = ad_get_clipboard(adapter, byref(clipboard))
+        if rc != 0:
+            message = ad_last_error_message()
+            helper_runtime_errors = {
+                b"System clipboard is unavailable",
+                b"System clipboard read access is denied",
+            }
+            if message in helper_runtime_errors:
+                ad_adapter_destroy(adapter)
+                ok(
+                    "ctypes host reached the authenticated packaged helper; "
+                    f"pasteboard access was unavailable in this host ({message!r})"
+                )
+                print("\nAll legs passed.")
+                return
+            ad_adapter_destroy(adapter)
+            fail(f"dylib-adjacent helper discovery failed rc={rc}: {message!r}")
+        if clipboard.value is not None:
+            ad_free_string(clipboard)
+        ad_adapter_destroy(adapter)
+        ok("ctypes host read clipboard through the packaged helper")
 
     print("\nAll legs passed.")
 

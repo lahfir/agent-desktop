@@ -185,7 +185,7 @@ install_name_tool -change \
 
 ## Observe-act workflow in C
 
-After parsing the snapshot JSON and extracting a ref ID (e.g. `"@e5"`):
+After parsing the snapshot JSON and extracting a qualified ref ID:
 
 ```c
 AdAction act = {0};              // zero-init before setting any field
@@ -194,8 +194,8 @@ act.kind = AD_ACTION_KIND_CLICK;
 char *result = NULL;
 AdResult rc = ad_execute_by_ref(
     adapter,
-    "@e5",        // ref ID from snapshot data.tree
-    NULL,         // snapshot_id — NULL = latest for this session
+    "@s8f3k2p9:e5", // qualified ref from snapshot data.tree
+    NULL,            // the qualified ref embeds its snapshot ID
     &act,
     0,            // policy = Headless
     &result
@@ -219,15 +219,16 @@ AdAction type_act = {0};
 type_act.kind = AD_ACTION_KIND_TYPE_TEXT;
 type_act.text = "hello";
 // TypeText defaults to focus_fallback via ad_execute_by_ref; explicit policy:
-rc = ad_execute_by_ref(adapter, "@e3", NULL, &type_act,
+rc = ad_execute_by_ref(adapter, "@s8f3k2p9:e3", NULL, &type_act,
                        AD_POLICY_KIND_FOCUS_FALLBACK, &result);
 ```
 
-## Call graph reminder
+## Threading reminder
 
-All adapter-touching FFI calls must run on the **main thread** on macOS.
-For Python that typically means the script's entry point, not a worker
-spawned via `threading`. See [threading.md](threading.md).
+Adapter entrypoints may be called from any host thread. Keep native handles on
+the thread that resolved them and use snapshot-qualified refs across async or
+worker boundaries. Mutations are serialized by a canonical cross-process
+interaction lease. See [threading.md](threading.md).
 
 ## Minimal Python ctypes example
 
@@ -240,7 +241,7 @@ lib = ctypes.CDLL("./target/release-ffi/libagent_desktop_ffi.dylib")
 # ABI handshake
 lib.ad_init.restype = c_int32
 lib.ad_init.argtypes = [ctypes.c_uint32]
-AD_ABI_VERSION_MAJOR = 1  # sync with header macro
+AD_ABI_VERSION_MAJOR = 3  # sync with header macro
 rc = lib.ad_init(AD_ABI_VERSION_MAJOR)
 assert rc == 0, f"ABI mismatch: rc={rc}"
 

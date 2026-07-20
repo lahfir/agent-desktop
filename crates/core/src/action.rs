@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::{Direction, DragParams, KeyCombo};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
     Click,
@@ -26,6 +28,32 @@ pub enum Action {
 }
 
 impl Action {
+    pub fn headed_requirement(&self) -> crate::HeadedRequirement {
+        match self {
+            Self::Click
+            | Self::DoubleClick
+            | Self::RightClick
+            | Self::TripleClick
+            | Self::Scroll(_, _)
+            | Self::Hover
+            | Self::Drag(_) => crate::HeadedRequirement::FocusedWindowAndCursor,
+            Self::SetValue(_)
+            | Self::SetFocus
+            | Self::Expand
+            | Self::Collapse
+            | Self::Select(_)
+            | Self::Toggle
+            | Self::Check
+            | Self::Uncheck
+            | Self::ScrollTo
+            | Self::PressKey(_)
+            | Self::KeyDown(_)
+            | Self::KeyUp(_)
+            | Self::TypeText(_)
+            | Self::Clear => crate::HeadedRequirement::FocusedWindow,
+        }
+    }
+
     pub fn name(&self) -> &'static str {
         match self {
             Self::Click => "click",
@@ -56,93 +84,51 @@ impl Action {
         matches!(self, Self::Hover | Self::Drag(_))
     }
 
+    pub fn requires_hit_test(&self) -> bool {
+        matches!(
+            self,
+            Self::Click
+                | Self::DoubleClick
+                | Self::RightClick
+                | Self::TripleClick
+                | Self::Hover
+                | Self::Drag(_)
+        )
+    }
+
+    pub fn requires_scroll_into_view(&self) -> bool {
+        matches!(
+            self,
+            Self::Click
+                | Self::DoubleClick
+                | Self::RightClick
+                | Self::TripleClick
+                | Self::SetValue(_)
+                | Self::Expand
+                | Self::Collapse
+                | Self::Select(_)
+                | Self::Toggle
+                | Self::Check
+                | Self::Uncheck
+                | Self::TypeText(_)
+                | Self::Clear
+                | Self::Hover
+                | Self::Drag(_)
+        )
+    }
+
     pub fn may_use_focus_fallback(&self) -> bool {
         matches!(self, Self::TypeText(_) | Self::PressKey(_))
     }
 
-    /// Returns the minimum `InteractionPolicy` the CLI uses for this action.
-    /// `TypeText` and `PressKey` require focus to land in the right field, so
-    /// their base is `focus_fallback`. Everything else is pure-AX and uses
-    /// `headless`. FFI callers join this base with their caller-supplied policy
-    /// so they can only elevate, never downgrade below CLI parity.
+    /// Returns the command's minimum interaction policy.
     pub fn base_interaction_policy(&self) -> crate::interaction_policy::InteractionPolicy {
-        if self.may_use_focus_fallback() {
+        if matches!(self, Self::PressKey(_)) {
             crate::interaction_policy::InteractionPolicy::focus_fallback()
         } else {
             crate::interaction_policy::InteractionPolicy::headless()
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MouseButton {
-    Left,
-    Right,
-    Middle,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DragParams {
-    pub from: Point,
-    pub to: Point,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u64>,
-    /// Time to hold over the destination before releasing. Some platforms require
-    /// a minimum dwell before the drop registers; `None` uses the adapter default.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub drop_delay_ms: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MouseEventKind {
-    Move,
-    Down,
-    Up,
-    Click { count: u32 },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MouseEvent {
-    pub kind: MouseEventKind,
-    pub point: Point,
-    pub button: MouseButton,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WindowOp {
-    Resize { width: f64, height: f64 },
-    Move { x: f64, y: f64 },
-    Minimize,
-    Maximize,
-    Restore,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyCombo {
-    pub key: String,
-    pub modifiers: Vec<Modifier>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Modifier {
-    Cmd,
-    Ctrl,
-    Alt,
-    Shift,
 }
 
 #[cfg(test)]

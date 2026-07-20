@@ -1,12 +1,19 @@
-use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use clap::Subcommand;
+
+mod post_action_wait;
+mod root;
+
+pub(crate) use root::Cli;
 
 use crate::cli_args::{
     FindArgs, GetArgs, IsArgs, ListSurfacesArgs, RefArgs, ScreenshotArgs, SnapshotArgs,
     actions::{
-        DragCliArgs, HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs,
-        PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
+        HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs, PressArgs,
+        ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
+    batch::BatchArgs,
+    drag::DragCliArgs,
+    mouse_wheel::MouseWheelArgs,
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
         NotificationActionCliArgs,
@@ -14,89 +21,12 @@ use crate::cli_args::{
     session::SessionArgs,
     skills::SkillsArgs,
     system::{
-        AppRefArgs, BatchArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
+        AppRefArgs, ClipboardGetArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
         ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
         WaitArgs,
     },
     trace::TraceArgs,
 };
-
-const BEFORE_HELP: &str = include_str!("help_before.txt");
-const AFTER_HELP: &str = include_str!("help_after.txt");
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "agent-desktop",
-    about = "Desktop automation CLI for AI agents",
-    long_about = None,
-    before_help = BEFORE_HELP,
-    after_help = AFTER_HELP,
-)]
-pub(crate) struct Cli {
-    #[arg(
-        long,
-        short = 'v',
-        global = true,
-        help = "Enable debug logging to stderr"
-    )]
-    pub verbose: bool,
-
-    #[arg(
-        long,
-        global = true,
-        help = "Select the latest-snapshot namespace; explicit --snapshot IDs do not require it"
-    )]
-    pub session: Option<String>,
-
-    #[arg(
-        long,
-        global = true,
-        help = "Append reliability trace JSONL to this path"
-    )]
-    pub trace: Option<PathBuf>,
-
-    #[arg(
-        long,
-        global = true,
-        help = "Fail on trace setup/pre-action write errors"
-    )]
-    pub trace_strict: bool,
-
-    #[arg(
-        long,
-        global = true,
-        help = "Permit cursor movement and focus stealing for physical input commands and fallbacks. Default is headless (AX-only, no cursor)."
-    )]
-    pub headed: bool,
-
-    #[arg(
-        long,
-        short = 'w',
-        global = true,
-        conflicts_with = "wait_for_gone",
-        help = "Poll until an element matching the role:text selector appears, then return the snapshot"
-    )]
-    pub wait_for: Option<String>,
-
-    #[arg(
-        long,
-        global = true,
-        conflicts_with = "wait_for",
-        help = "Poll until no element matches the role:text selector, then return the snapshot"
-    )]
-    pub wait_for_gone: Option<String>,
-
-    #[arg(
-        long,
-        global = true,
-        default_value_t = 30_000,
-        help = "Maximum wait time in milliseconds for --wait-for / --wait-for-gone (default: 30000)"
-    )]
-    pub wait_timeout: u64,
-
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-}
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Commands {
@@ -112,13 +42,13 @@ pub(crate) enum Commands {
     Is(IsArgs),
     #[command(about = "Click element via accessibility press action")]
     Click(RefArgs),
-    #[command(about = "Open element via AXOpen; physical double-click uses mouse-click")]
+    #[command(about = "Physically double-click element; requires --headed")]
     DoubleClick(RefArgs),
     #[command(
         about = "Triple-click element; returns POLICY_DENIED when physical input is disabled"
     )]
     TripleClick(RefArgs),
-    #[command(about = "Right-click and include menu/menu_probe details when available")]
+    #[command(about = "Open a context menu semantically, or physically with --headed")]
     RightClick(RefArgs),
     #[command(about = "Insert text into a text target")]
     Type(TypeArgs),
@@ -162,12 +92,16 @@ pub(crate) enum Commands {
     MouseDown(MousePointArgs),
     #[command(about = "Release mouse button at coordinates (requires --headed)")]
     MouseUp(MousePointArgs),
+    #[command(about = "Scroll the mouse wheel at absolute coordinates (requires --headed)")]
+    MouseWheel(MouseWheelArgs),
     #[command(about = "Launch application and wait until its window is visible")]
     Launch(LaunchArgs),
     #[command(about = "Quit an application gracefully (--force to terminate)")]
     CloseApp(CloseAppArgs),
     #[command(about = "List all visible windows (--app to filter by application)")]
     ListWindows(ListWindowsArgs),
+    #[command(about = "List connected displays with bounds and scale factor")]
+    ListDisplays,
     #[command(about = "List all running GUI applications (--app to filter)")]
     ListApps(ListAppsArgs),
     #[command(about = "Bring a window to front and confirm OS focus")]
@@ -192,8 +126,8 @@ pub(crate) enum Commands {
     DismissAllNotifications(DismissAllNotificationsCliArgs),
     #[command(about = "Click an action button on a notification")]
     NotificationAction(NotificationActionCliArgs),
-    #[command(about = "Read plain-text clipboard contents")]
-    ClipboardGet,
+    #[command(about = "Read plain-text or typed clipboard contents")]
+    ClipboardGet(ClipboardGetArgs),
     #[command(about = "Write text to the clipboard")]
     ClipboardSet(ClipboardSetArgs),
     #[command(about = "Clear the clipboard")]
@@ -208,7 +142,7 @@ pub(crate) enum Commands {
     Permissions(PermissionsArgs),
     #[command(about = "Show version, target architecture, and OS")]
     Version,
-    #[command(about = "Execute multiple commands from a JSON array (--stop-on-error)")]
+    #[command(about = "Execute a bounded, sequential, non-atomic JSON command batch")]
     Batch(BatchArgs),
     #[command(about = "Bundled skill docs for AI agents (list, get, path)")]
     Skills(SkillsArgs),
@@ -218,65 +152,159 @@ pub(crate) enum Commands {
     Trace(TraceArgs),
 }
 
+#[derive(Clone, Copy)]
+struct CommandMetadata {
+    name: &'static str,
+    post_action_wait: bool,
+}
+
+impl CommandMetadata {
+    const fn new(name: &'static str, post_action_wait: bool) -> Self {
+        Self {
+            name,
+            post_action_wait,
+        }
+    }
+}
+
 impl Commands {
-    pub(crate) fn name(&self) -> &'static str {
+    fn metadata(&self) -> CommandMetadata {
         match self {
-            Self::Snapshot(_) => "snapshot",
-            Self::Find(_) => "find",
-            Self::Screenshot(_) => "screenshot",
-            Self::Get(_) => "get",
-            Self::Is(_) => "is",
-            Self::Click(_) => "click",
-            Self::DoubleClick(_) => "double-click",
-            Self::TripleClick(_) => "triple-click",
-            Self::RightClick(_) => "right-click",
-            Self::Type(_) => "type",
-            Self::SetValue(_) => "set-value",
-            Self::Clear(_) => "clear",
-            Self::Focus(_) => "focus",
-            Self::Select(_) => "select",
-            Self::Toggle(_) => "toggle",
-            Self::Check(_) => "check",
-            Self::Uncheck(_) => "uncheck",
-            Self::Expand(_) => "expand",
-            Self::Collapse(_) => "collapse",
-            Self::Scroll(_) => "scroll",
-            Self::ScrollTo(_) => "scroll-to",
-            Self::Press(_) => "press",
-            Self::KeyDown(_) => "key-down",
-            Self::KeyUp(_) => "key-up",
-            Self::Hover(_) => "hover",
-            Self::Drag(_) => "drag",
-            Self::MouseMove(_) => "mouse-move",
-            Self::MouseClick(_) => "mouse-click",
-            Self::MouseDown(_) => "mouse-down",
-            Self::MouseUp(_) => "mouse-up",
-            Self::Launch(_) => "launch",
-            Self::CloseApp(_) => "close-app",
-            Self::ListWindows(_) => "list-windows",
-            Self::ListApps(_) => "list-apps",
-            Self::FocusWindow(_) => "focus-window",
-            Self::ResizeWindow(_) => "resize-window",
-            Self::MoveWindow(_) => "move-window",
-            Self::Minimize(_) => "minimize",
-            Self::Maximize(_) => "maximize",
-            Self::Restore(_) => "restore",
-            Self::ListSurfaces(_) => "list-surfaces",
-            Self::ListNotifications(_) => "list-notifications",
-            Self::DismissNotification(_) => "dismiss-notification",
-            Self::DismissAllNotifications(_) => "dismiss-all-notifications",
-            Self::NotificationAction(_) => "notification-action",
-            Self::ClipboardGet => "clipboard-get",
-            Self::ClipboardSet(_) => "clipboard-set",
-            Self::ClipboardClear => "clipboard-clear",
-            Self::Wait(_) => "wait",
-            Self::Status => "status",
-            Self::Permissions(_) => "permissions",
-            Self::Version => "version",
-            Self::Batch(_) => "batch",
-            Self::Skills(_) => "skills",
-            Self::Session(_) => "session",
-            Self::Trace(_) => "trace",
+            Self::Snapshot(_) => CommandMetadata::new("snapshot", true),
+            Self::Find(_) => CommandMetadata::new("find", false),
+            Self::Screenshot(_) => CommandMetadata::new("screenshot", false),
+            Self::Get(_) => CommandMetadata::new("get", false),
+            Self::Is(_) => CommandMetadata::new("is", false),
+            Self::Click(_) => CommandMetadata::new("click", true),
+            Self::DoubleClick(_) => CommandMetadata::new("double-click", true),
+            Self::TripleClick(_) => CommandMetadata::new("triple-click", true),
+            Self::RightClick(_) => CommandMetadata::new("right-click", true),
+            Self::Type(_) => CommandMetadata::new("type", true),
+            Self::SetValue(_) => CommandMetadata::new("set-value", true),
+            Self::Clear(_) => CommandMetadata::new("clear", true),
+            Self::Focus(_) => CommandMetadata::new("focus", true),
+            Self::Select(_) => CommandMetadata::new("select", true),
+            Self::Toggle(_) => CommandMetadata::new("toggle", true),
+            Self::Check(_) => CommandMetadata::new("check", true),
+            Self::Uncheck(_) => CommandMetadata::new("uncheck", true),
+            Self::Expand(_) => CommandMetadata::new("expand", true),
+            Self::Collapse(_) => CommandMetadata::new("collapse", true),
+            Self::Scroll(_) => CommandMetadata::new("scroll", true),
+            Self::ScrollTo(_) => CommandMetadata::new("scroll-to", true),
+            Self::Press(_) => CommandMetadata::new("press", false),
+            Self::KeyDown(_) => CommandMetadata::new("key-down", false),
+            Self::KeyUp(_) => CommandMetadata::new("key-up", false),
+            Self::Hover(_) => CommandMetadata::new("hover", true),
+            Self::Drag(_) => CommandMetadata::new("drag", true),
+            Self::MouseMove(_) => CommandMetadata::new("mouse-move", false),
+            Self::MouseClick(_) => CommandMetadata::new("mouse-click", false),
+            Self::MouseDown(_) => CommandMetadata::new("mouse-down", false),
+            Self::MouseUp(_) => CommandMetadata::new("mouse-up", false),
+            Self::MouseWheel(_) => CommandMetadata::new("mouse-wheel", false),
+            Self::Launch(_) => CommandMetadata::new("launch", false),
+            Self::CloseApp(_) => CommandMetadata::new("close-app", false),
+            Self::ListWindows(_) => CommandMetadata::new("list-windows", false),
+            Self::ListDisplays => CommandMetadata::new("list-displays", false),
+            Self::ListApps(_) => CommandMetadata::new("list-apps", false),
+            Self::FocusWindow(_) => CommandMetadata::new("focus-window", false),
+            Self::ResizeWindow(_) => CommandMetadata::new("resize-window", false),
+            Self::MoveWindow(_) => CommandMetadata::new("move-window", false),
+            Self::Minimize(_) => CommandMetadata::new("minimize", false),
+            Self::Maximize(_) => CommandMetadata::new("maximize", false),
+            Self::Restore(_) => CommandMetadata::new("restore", false),
+            Self::ListSurfaces(_) => CommandMetadata::new("list-surfaces", false),
+            Self::ListNotifications(_) => CommandMetadata::new("list-notifications", false),
+            Self::DismissNotification(_) => CommandMetadata::new("dismiss-notification", false),
+            Self::DismissAllNotifications(_) => {
+                CommandMetadata::new("dismiss-all-notifications", false)
+            }
+            Self::NotificationAction(_) => CommandMetadata::new("notification-action", false),
+            Self::ClipboardGet(_) => CommandMetadata::new("clipboard-get", false),
+            Self::ClipboardSet(_) => CommandMetadata::new("clipboard-set", false),
+            Self::ClipboardClear => CommandMetadata::new("clipboard-clear", false),
+            Self::Wait(_) => CommandMetadata::new("wait", false),
+            Self::Status => CommandMetadata::new("status", false),
+            Self::Permissions(_) => CommandMetadata::new("permissions", false),
+            Self::Version => CommandMetadata::new("version", false),
+            Self::Batch(_) => CommandMetadata::new("batch", false),
+            Self::Skills(_) => CommandMetadata::new("skills", false),
+            Self::Session(_) => CommandMetadata::new("session", false),
+            Self::Trace(_) => CommandMetadata::new("trace", false),
+        }
+    }
+
+    pub(crate) fn name(&self) -> &'static str {
+        self.metadata().name
+    }
+
+    pub(crate) fn supports_post_action_wait(&self) -> bool {
+        self.metadata().post_action_wait
+    }
+
+    pub(crate) fn is_mutating(&self) -> bool {
+        match self {
+            Self::Click(_)
+            | Self::DoubleClick(_)
+            | Self::TripleClick(_)
+            | Self::RightClick(_)
+            | Self::Type(_)
+            | Self::SetValue(_)
+            | Self::Clear(_)
+            | Self::Focus(_)
+            | Self::Select(_)
+            | Self::Toggle(_)
+            | Self::Check(_)
+            | Self::Uncheck(_)
+            | Self::Expand(_)
+            | Self::Collapse(_)
+            | Self::Scroll(_)
+            | Self::ScrollTo(_)
+            | Self::Press(_)
+            | Self::KeyDown(_)
+            | Self::KeyUp(_)
+            | Self::Hover(_)
+            | Self::Drag(_)
+            | Self::MouseMove(_)
+            | Self::MouseClick(_)
+            | Self::MouseDown(_)
+            | Self::MouseUp(_)
+            | Self::MouseWheel(_)
+            | Self::Launch(_)
+            | Self::CloseApp(_)
+            | Self::FocusWindow(_)
+            | Self::ResizeWindow(_)
+            | Self::MoveWindow(_)
+            | Self::Minimize(_)
+            | Self::Maximize(_)
+            | Self::Restore(_)
+            | Self::DismissNotification(_)
+            | Self::DismissAllNotifications(_)
+            | Self::NotificationAction(_)
+            | Self::ClipboardSet(_)
+            | Self::ClipboardClear
+            | Self::Batch(_) => true,
+            Self::Screenshot(args) => args.output_path.is_some(),
+            Self::ClipboardGet(args) => args.out.is_some(),
+            Self::Permissions(args) => args.request,
+            Self::Session(args) => {
+                !matches!(&args.action, crate::cli_args::session::SessionAction::List)
+            }
+            Self::Trace(args) => {
+                matches!(&args.action, crate::cli_args::trace::TraceAction::Export(_))
+            }
+            Self::Snapshot(_)
+            | Self::Find(_)
+            | Self::Get(_)
+            | Self::Is(_)
+            | Self::ListWindows(_)
+            | Self::ListDisplays
+            | Self::ListApps(_)
+            | Self::ListSurfaces(_)
+            | Self::ListNotifications(_)
+            | Self::Wait(_)
+            | Self::Status
+            | Self::Version
+            | Self::Skills(_) => false,
         }
     }
 }

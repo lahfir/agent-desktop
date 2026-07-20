@@ -6,23 +6,44 @@ use crate::{
 };
 
 fn entry(name: &str) -> RefEntry {
+    let bounds = crate::Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
     RefEntry {
-        pid: 7,
-        role: "button".into(),
-        name: Some(name.into()),
-        value: None,
-        description: None,
-        states: vec![],
-        bounds: None,
-        bounds_hash: Some(42),
-        available_actions: vec![crate::capability::CLICK.into()],
-        source_app: Some("TestApp".into()),
-        source_window_id: None,
-        source_window_title: Some("Test Window".into()),
-        source_surface: SnapshotSurface::Window,
-        root_ref: None,
-        path_is_absolute: false,
-        path: smallvec::SmallVec::new(),
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(7),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: "button".into(),
+            name: Some(name.into()),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: Some(bounds),
+            bounds_hash: bounds.bounds_hash(),
+        },
+        capabilities: crate::RefCapabilities {
+            states: vec![],
+            available_actions: vec![crate::capability::CLICK.into()],
+        },
+        source: crate::RefSource {
+            source_app: Some("TestApp".into()),
+            source_window_id: None,
+            source_window_title: Some("Test Window".into()),
+            source_window_bounds_hash: None,
+            source_surface: SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
+        },
     }
 }
 
@@ -33,7 +54,8 @@ fn map_with(name: &str) -> RefMap {
 }
 
 fn ref_name(map: &RefMap) -> Option<&str> {
-    map.get("@e1").and_then(|entry| entry.name.as_deref())
+    map.get("@e1")
+        .and_then(|entry| entry.identity.name.as_deref())
 }
 
 #[test]
@@ -45,7 +67,7 @@ fn snapshot_roundtrip_updates_latest_pointer() {
     let snapshot_id = store.save_new_snapshot(&map).unwrap();
 
     assert_eq!(
-        store.latest_snapshot_id().as_deref(),
+        store.latest_snapshot_id().unwrap().as_deref(),
         Some(snapshot_id.as_str())
     );
     assert_eq!(store.load(Some(&snapshot_id)).unwrap().len(), 1);
@@ -75,7 +97,7 @@ fn concurrent_writers_preserve_all_snapshots() {
     for id in &ids {
         assert_eq!(store.load_snapshot(id).unwrap().len(), 1);
     }
-    let latest = store.latest_snapshot_id().unwrap();
+    let latest = store.latest_snapshot_id().unwrap().unwrap();
     assert!(ids.iter().any(|id| id == &latest));
 }
 
@@ -102,13 +124,13 @@ fn sessions_are_isolated_from_default_store() {
     );
     assert!(session_b.load(None).is_err());
     assert_ne!(
-        default_store.latest_snapshot_id(),
-        session_a.latest_snapshot_id()
+        default_store.latest_snapshot_id().unwrap(),
+        session_a.latest_snapshot_id().unwrap()
     );
 }
 
 #[test]
-fn explicit_snapshot_id_loads_across_session_namespaces() {
+fn explicit_snapshot_id_remains_in_its_session_namespace() {
     let _guard = HomeGuard::new();
     let default_store = RefStore::new().unwrap();
     let session_a = RefStore::for_session(Some("agent-a")).unwrap();
@@ -116,12 +138,10 @@ fn explicit_snapshot_id_loads_across_session_namespaces() {
 
     let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
 
+    assert!(default_store.load(Some(&snapshot_id)).is_err());
+    assert!(session_b.load(Some(&snapshot_id)).is_err());
     assert_eq!(
-        ref_name(&default_store.load(Some(&snapshot_id)).unwrap()),
-        Some("Session A")
-    );
-    assert_eq!(
-        ref_name(&session_b.load(Some(&snapshot_id)).unwrap()),
+        ref_name(&session_a.load(Some(&snapshot_id)).unwrap()),
         Some("Session A")
     );
     assert!(default_store.load(None).is_err());
@@ -129,29 +149,30 @@ fn explicit_snapshot_id_loads_across_session_namespaces() {
 }
 
 #[test]
-fn save_existing_snapshot_updates_discovered_owner_without_promoting_latest() {
+fn update_existing_snapshot_cannot_cross_session_namespaces() {
     let _guard = HomeGuard::new();
     let default_store = RefStore::new().unwrap();
     let session_a = RefStore::for_session(Some("agent-a")).unwrap();
 
     let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
-    default_store
-        .save_existing_snapshot(&snapshot_id, &map_with("Updated"))
-        .unwrap();
+    let err = default_store
+        .update_existing_snapshot(&snapshot_id, "@e1", &entry("Session A"), |_| Ok(()))
+        .unwrap_err();
 
+    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
     assert_eq!(
         ref_name(&session_a.load(Some(&snapshot_id)).unwrap()),
-        Some("Updated")
+        Some("Session A")
     );
-    assert!(default_store.latest_snapshot_id().is_none());
+    assert!(default_store.latest_snapshot_id().unwrap().is_none());
     assert_eq!(
-        session_a.latest_snapshot_id().as_deref(),
+        session_a.latest_snapshot_id().unwrap().as_deref(),
         Some(snapshot_id.as_str())
     );
 }
 
 #[test]
-fn duplicate_explicit_snapshot_id_requires_session() {
+fn duplicate_explicit_snapshot_ids_remain_session_scoped() {
     let _guard = HomeGuard::new();
     let default_store = RefStore::new().unwrap();
     let session_a = RefStore::for_session(Some("agent-a")).unwrap();
@@ -166,16 +187,19 @@ fn duplicate_explicit_snapshot_id_requires_session() {
 
     let err = default_store.load(Some("sdup1")).unwrap_err();
 
-    assert_eq!(err.code(), "INVALID_ARGS");
-    assert!(err.suggestion().unwrap().contains("--session"));
+    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
     assert_eq!(
         ref_name(&session_a.load(Some("sdup1")).unwrap()),
         Some("Session A")
     );
+    assert_eq!(
+        ref_name(&session_b.load(Some("sdup1")).unwrap()),
+        Some("Session B")
+    );
 }
 
 #[test]
-fn discover_skips_invalid_session_names_when_detecting_collisions() {
+fn default_store_does_not_discover_session_snapshots() {
     let _guard = HomeGuard::new();
     let default_store = RefStore::new().unwrap();
     let session_a = RefStore::for_session(Some("agent-a")).unwrap();
@@ -192,8 +216,10 @@ fn discover_skips_invalid_session_names_when_detecting_collisions() {
     )
     .unwrap();
 
+    let err = default_store.load(Some("sdup2")).unwrap_err();
+    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
     assert_eq!(
-        ref_name(&default_store.load(Some("sdup2")).unwrap()),
+        ref_name(&session_a.load(Some("sdup2")).unwrap()),
         Some("Session A")
     );
 }
@@ -236,23 +262,26 @@ fn read_latest_rejects_symlinked_pointer() {
     let err = store.load_latest().unwrap_err();
 
     assert_eq!(err.code(), "INTERNAL");
-    assert!(store.latest_snapshot_id().is_none());
+    assert!(store.latest_snapshot_id().is_err());
 }
 
 #[test]
-fn save_existing_snapshot_does_not_promote_latest_pointer() {
+fn update_existing_snapshot_does_not_promote_latest_pointer() {
     let _guard = HomeGuard::new();
     let store = RefStore::new().unwrap();
 
-    let mut first = map_with("First");
-    let first_id = store.save_new_snapshot(&first).unwrap();
+    let first_id = store.save_new_snapshot(&map_with("First")).unwrap();
     let second_id = store.save_new_snapshot(&map_with("Second")).unwrap();
 
-    first.allocate(entry("First Child"));
-    store.save_existing_snapshot(&first_id, &first).unwrap();
+    store
+        .update_existing_snapshot(&first_id, "@e1", &entry("First"), |map| {
+            map.allocate(entry("First Child"));
+            Ok(())
+        })
+        .unwrap();
 
     assert_eq!(
-        store.latest_snapshot_id().as_deref(),
+        store.latest_snapshot_id().unwrap().as_deref(),
         Some(second_id.as_str())
     );
     assert_eq!(store.load(Some(&first_id)).unwrap().len(), 2);
@@ -267,7 +296,7 @@ fn default_store_migrates_legacy_latest_refmap() {
     let loaded = store.load_latest().unwrap();
 
     assert_eq!(loaded.len(), 1);
-    assert!(store.latest_snapshot_id().is_some());
+    assert!(store.latest_snapshot_id().unwrap().is_some());
 }
 
 #[test]
@@ -279,7 +308,7 @@ fn session_store_does_not_migrate_global_legacy_refmap() {
     let err = store.load(None).unwrap_err();
 
     assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
-    assert!(store.latest_snapshot_id().is_none());
+    assert!(store.latest_snapshot_id().unwrap().is_none());
 }
 
 #[test]
@@ -307,82 +336,5 @@ fn stale_tmp_files_are_swept_and_fresh_ones_kept() {
     assert!(base_tmp.exists());
 }
 
-#[test]
-fn save_new_snapshot_prunes_old_snapshots_without_removing_latest() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-    let first_id = store.save_new_snapshot(&map_with("First")).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(5));
-    let mut latest_id = first_id.clone();
-
-    for i in 0..=MAX_SAVED_SNAPSHOTS {
-        latest_id = store
-            .save_new_snapshot(&map_with(&format!("Snapshot {i}")))
-            .unwrap();
-    }
-
-    let count = std::fs::read_dir(store.snapshots_dir())
-        .unwrap()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-        .count();
-
-    assert!(count <= MAX_SAVED_SNAPSHOTS);
-    assert!(store.snapshot_path(&latest_id).is_file());
-    assert!(!store.snapshot_path(&first_id).exists());
-    assert_eq!(
-        store.latest_snapshot_id().as_deref(),
-        Some(latest_id.as_str())
-    );
-}
-
-#[test]
-fn save_existing_recreates_snapshot_pruned_from_every_store() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-    let snapshot_id = store.save_new_snapshot(&map_with("Original")).unwrap();
-    std::fs::remove_dir_all(store.snapshots_dir().join(&snapshot_id)).unwrap();
-
-    store
-        .save_existing_snapshot(&snapshot_id, &map_with("Recreated"))
-        .unwrap();
-
-    let reloaded = store.load_snapshot(&snapshot_id).unwrap();
-    assert_eq!(ref_name(&reloaded), Some("Recreated"));
-}
-
-#[test]
-fn duplicate_snapshot_id_across_sessions_is_rejected_on_load() {
-    let _guard = HomeGuard::new();
-    let store_a = RefStore::for_session(Some("agent-a")).unwrap();
-    let store_b = RefStore::for_session(Some("agent-b")).unwrap();
-    let snapshot_id = store_a.save_new_snapshot(&map_with("A")).unwrap();
-    store_b.save_snapshot(&snapshot_id, &map_with("B")).unwrap();
-
-    let err = RefStore::new()
-        .unwrap()
-        .load_snapshot(&snapshot_id)
-        .unwrap_err();
-
-    assert_eq!(err.code(), "INVALID_ARGS");
-    assert!(err.to_string().contains("more than one session"));
-}
-
-#[test]
-fn prune_never_removes_trace_segments() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::for_session(Some("trace-retention")).unwrap();
-    let trace_dir = store.trace_dir();
-    std::fs::create_dir_all(&trace_dir).unwrap();
-    let segment = trace_dir.join("1234-5678.jsonl");
-    std::fs::write(&segment, b"{}\n").unwrap();
-    for index in 0..=MAX_SAVED_SNAPSHOTS {
-        let snapshot_id = format!("snap-{index:04}");
-        store
-            .save_snapshot(&snapshot_id, &map_with(&snapshot_id))
-            .unwrap();
-        store.set_latest(&snapshot_id).unwrap();
-    }
-    assert!(segment.is_file());
-    assert!(trace_dir.is_dir());
-}
+#[path = "refs_store_pruning_tests.rs"]
+mod pruning_tests;

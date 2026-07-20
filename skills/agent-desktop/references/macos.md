@@ -22,9 +22,9 @@ The report contains:
 |-------|---------|
 | `accessibility` | Required for accessibility tree reads and most commands |
 | `screen_recording` | Required for screenshots |
-| `automation` | Reserved for future Apple Event automation paths; `{ "state": "not_required" }` for the current macOS command set |
+| `automation` | Apple Event Automation permission for System Events; plain `permissions` checks without prompting, `permissions --request` may prompt in the bounded isolated helper |
 
-Each field is an object: `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording, and `not_required` for Automation.
+Each field is an object: `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation may report `unknown` when macOS would need to prompt or System Events could not be probed.
 
 **To grant manually:**
 1. Open System Settings > Privacy & Security > Accessibility
@@ -52,38 +52,32 @@ agent-desktop uses the macOS Accessibility API (`AXUIElement`) to read and manip
 3. Attributes like `kAXRoleAttribute`, `kAXNameAttribute`, `kAXValueAttribute` provide element details
 4. Actions like `kAXPressAction`, `kAXConfirmAction` trigger element behavior
 
-### Smart Activation Chain
+### Action Chains
 
-When you run `click @ref`, agent-desktop doesn't just do a simple click. It runs a multi-step activation chain:
+Core resolves and validates a ref, applies its headed focus/cursor requirement, and then asks the macOS adapter to execute an action-specific chain. The chain records each attempted mechanism and never invents a generic fallback ladder:
 
-1. **AXScrollToVisible** — ensure element is on screen
-2. **AXPress** — standard press action
-3. **AXConfirm** — confirmation action
-4. **AXOpen** — open action (for links, files)
-5. **AXPick** — picker action
-6. **AXShowAlternateUI** — reveal hidden UI, then press child
-7. **Child activation** — try pressing child elements
-8. **AXSelected** — set selected attribute
-9. **Select via parent** — set parent's selected rows (for tables/lists)
-10. **Custom actions** — AXPerformCustomAction
-11. **Ancestor activation** — try pressing ancestor elements
-12. **Explicit physical path** — coordinate click only when the caller selected a policy that allows focus stealing and cursor movement
+- Headless `click` uses `AXPress`; headed `click` uses a verified-point `CGClick` first, then `AXPress` only if physical delivery was not attempted.
+- Headed `right-click` uses physical right-click first; headless uses the bounded `AXShowMenu` family.
+- Headed `type`, `clear`, and `scroll` use PID-targeted keyboard, keyboard clear, and wheel delivery respectively; their headless paths use AX semantics.
+- `expand` and `collapse` use a verified semantic disclosure mutation in both modes.
+- `set-value`, `select`, toggle/check/uncheck, focus, and `scroll-to` are semantic-only.
+- Double/triple-click, hover, and drag are physical gestures and require headed mode.
 
-For `right-click`, AXShowMenu and related semantic menu paths include a `menu` tree only after a real menu surface appears. If the action succeeds but the menu probe cannot verify a surface, the command still returns success with `menu_probe.ok: false`; callers should inspect that field instead of retrying blindly. Combo boxes and menu buttons use the same AX menu mechanism for their primary dropdown; use `select` for those controls. Coordinate right-click is blocked by the default headless policy.
+For `right-click`, `AXShowMenu` may enter modal menu tracking and return `kAXErrorCannotComplete` after the menu opened. The command reports this as `APP_UNRESPONSIVE` with `delivery: delivery_uncertain` and `retry: unsafe`; inspect the resulting menu or target effect instead of retrying blindly. Combo boxes and menu buttons use the same AX menu mechanism for their primary dropdown; use `select` for those controls. Coordinate right-click is blocked by the default headless policy.
 
-Menu verification intentionally requires a closed-to-open transition. If a menu is already open for the target app, `right-click` and `select` refuse to treat that existing menu as proof of success; dismiss the old menu and retry. This avoids acting on a stale sibling menu opened by a prior command.
+Menu verification for `select` intentionally requires a closed-to-open transition. If a menu is already open for the target app, dismiss it before selecting so an existing sibling menu is not treated as proof of success.
 
 The default activation-chain deadline is 10 seconds. Set `AGENT_DESKTOP_CHAIN_TIMEOUT_MS` to a positive millisecond value when diagnosing unusually slow AX targets; values are capped at 300000 ms. Menu verification waits use `AGENT_DESKTOP_MENU_TIMEOUT_MS` with a default of 750 ms and a 10000 ms cap. Toggle verification uses `AGENT_DESKTOP_TOGGLE_TIMEOUT_MS` with a default of 600 ms and a 10000 ms cap; changed toggle values must remain stable for `AGENT_DESKTOP_TOGGLE_STABLE_MS`, default 200 ms and cap 2000 ms.
 
 ### Headless Interaction Policy
 
-Ref commands use `ActionRequest { action, policy }`. The default policy forbids focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. macOS actions split semantic AX steps from explicit physical/headed paths:
+Ref commands use `ActionRequest { action, policy }`. The default policy forbids focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Core maps headed actions to `FocusedWindow` or `FocusedWindowAndCursor`, focuses the exact ref window, and resolves pointer coordinates before calling macOS. The adapter owns AppKit/AX/CGEvent delivery:
 
-- `click`, `right-click`, `scroll`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, and `scroll-to` try AX-first semantics and fail clearly when the headless path is unavailable.
-- `type` uses focus fallback in the CLI/ref-action path. It may focus the target field, never moves the cursor, and can use the pasteboard for non-ASCII insertion. Use `set-value` for pure headless value mutation when supported.
-- `focus`, `press`, `hover`, `drag`, and `mouse-*` are explicit physical/focus/cursor commands.
-- FFI ref-action callers should use focus fallback for `type` to match CLI behavior; direct-handle `ad_execute_action` is lower-level and defaults to headless.
-- Explicit focus/physical policy can use the clipboard briefly for non-ASCII text insertion. Use `set-value` for sensitive text when possible.
+- `click`, `right-click`, `type`, `clear`, and `scroll` use semantic AX delivery headlessly and physical-first delivery with `--headed`.
+- `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` remain semantic under `--headed` after any core focus precondition.
+- `press`, `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical input; cursor-moving commands require `--headed`.
+- Raw coordinates never trigger focus because they carry no window identity. Held-input commands are reserved and fail closed until a daemon owns their lifetime.
+- FFI ref-action callers get the same strict headless `type` default; direct-handle `ad_execute_action` is lower-level and applies the supplied policy verbatim.
 - If a command would need a forbidden physical path, it returns a structured error with a recovery hint.
 
 ### Surfaces
@@ -94,7 +88,7 @@ macOS apps can have multiple accessibility surfaces:
 |---------|-------------|-------------|
 | `window` | Main application window (default) | General UI interaction |
 | `focused` | Currently focused element's context | Inspecting active element |
-| `menu` | Open dropdown or context menu | After `select`, verified `right-click`, or explicit menu trigger |
+| `menu` | Open dropdown or context menu | After `select`, `right-click`, or an explicit menu trigger |
 | `menubar` | Application menu bar | Navigating File/Edit/View menus |
 | `sheet` | Modal sheet (Save dialog, etc.) | After triggering sheet dialogs |
 | `popover` | Popover/popup content | Inspecting tooltips, popovers |
@@ -127,18 +121,20 @@ agent-desktop interacts with macOS Notification Center via the accessibility API
 
 ### How It Works
 
-1. **NcSession** opens Notification Center by clicking the clock in ControlCenter (if not already open)
+1. **NcSession** reuses an already-open Notification Center headlessly, or opens it only when headed policy allows focus/cursor side effects
 2. Notifications are read from the AX tree under the NotificationCenter process
-3. After operations, NcSession closes NC and restores the previously focused app
+3. When NcSession opened the center, it closes it and restores the previously focused app afterward
 4. The `Drop` impl ensures cleanup even on errors
+
+All notification mutations require `--headed`. Listing and notification waits can remain headless only when Notification Center is already open.
 
 ### Dismiss Strategy
 
-Headless approach (no cursor movement from the default ref command path):
+Mutation chain under explicit headed policy:
 
 1. **AXDismiss** / **AXRemoveFromParent** — native accessibility actions
 2. **Close button** — find and press AXButton named "close", "clear", or "dismiss"
-3. **Hover + close button** — move cursor to reveal hidden close button, then press it
+3. **Hover + close button** — use the authorized pointer path to reveal a hidden close button, then press it
 4. If all fail, returns `ACTION_FAILED`
 
 **Important:** `AXPress` is intentionally excluded from dismiss — it "clicks" the notification body (opening the source app) without actually dismissing it.
@@ -237,7 +233,7 @@ Large apps (Xcode, Safari with many tabs) can have deep trees.
 
 ### Context Menu Doesn't Appear
 
-After `right-click @ref`, inspect `menu` first. If it is absent and `menu_probe.ok` is `false`:
+After `right-click @ref`, inspect the open menu or the target effect. If macOS returns `APP_UNRESPONSIVE` for `AXShowMenu` with unsafe retry semantics:
 1. The element may not support context menus
 2. If the target is a combo box or menu button, use `select @ref "Option"` instead
 3. Run `list-surfaces --app "App"` to confirm whether a menu surface exists

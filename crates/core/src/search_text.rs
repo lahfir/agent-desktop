@@ -1,32 +1,32 @@
 pub(crate) fn normalize(value: &str) -> String {
-    if value.is_ascii() {
-        value.to_ascii_lowercase()
-    } else {
-        value.to_lowercase()
+    let mut normalized = String::with_capacity(value.len());
+    let mut pending_space = false;
+    for character in value.chars() {
+        if character.is_whitespace() {
+            pending_space = !normalized.is_empty();
+            continue;
+        }
+        if pending_space {
+            normalized.push(' ');
+            pending_space = false;
+        }
+        normalized.extend(character.to_lowercase());
     }
+    normalized
 }
 
 pub(crate) fn contains(haystack: &str, normalized_needle: &str) -> bool {
     if normalized_needle.is_empty() {
         return true;
     }
-    if haystack.is_ascii() && normalized_needle.is_ascii() {
-        return haystack
-            .as_bytes()
-            .windows(normalized_needle.len())
-            .any(|chunk| chunk.eq_ignore_ascii_case(normalized_needle.as_bytes()));
-    }
     normalize(haystack).contains(normalized_needle)
 }
 
-pub(crate) fn node_contains(
-    node: &crate::node::AccessibilityNode,
-    normalized_needle: &str,
-) -> bool {
+pub(crate) fn node_contains(node: &crate::AccessibilityNode, normalized_needle: &str) -> bool {
     [
-        node.name.as_deref(),
-        node.value.as_deref(),
-        node.description.as_deref(),
+        node.identity.name.as_deref(),
+        node.identity.value.as_deref(),
+        node.identity.description.as_deref(),
     ]
     .into_iter()
     .flatten()

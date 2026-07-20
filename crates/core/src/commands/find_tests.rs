@@ -1,30 +1,64 @@
 use super::*;
+use crate::LocatorQuery;
+use crate::context::CommandContext;
+use crate::refs_test_support::HomeGuard;
 
 fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
         ref_id: Some("@e1".into()),
         role: "textfield".into(),
-        name: name.map(String::from),
-        value: value.map(String::from),
-        description: description.map(String::from),
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: crate::NodeIdentity {
+            name: name.map(String::from),
+            value: value.map(String::from),
+            description: description.map(String::from),
+            native_id: None,
+        },
+        presentation: Default::default(),
         children_count: None,
         children: vec![],
+    }
+}
+
+fn search_tree(
+    root: &AccessibilityNode,
+    query: &LocatorQuery,
+    path: &mut Vec<String>,
+    matches: &mut Vec<serde_json::Value>,
+    max_matches: Option<usize>,
+) {
+    collect_snapshot_matches(root, query, path, matches, max_matches);
+}
+
+fn query_from_args(args: &FindArgs) -> LocatorQuery {
+    locator_query_from_args(args).unwrap()
+}
+
+fn no_filter() -> FindFilterArgs {
+    FindFilterArgs {
+        role: None,
+        name: None,
+        description: None,
+        native_id: None,
+        value: None,
+        text: None,
+        exact: false,
+    }
+}
+
+fn no_selection() -> FindSelectionArgs {
+    FindSelectionArgs {
+        count: false,
+        first: false,
+        last: false,
+        nth: None,
+        limit: None,
     }
 }
 
 #[test]
 fn display_name_prefers_value_before_description() {
     let root = node(None, Some("current value"), Some("help text"));
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: None,
-    };
+    let query = LocatorQuery::default();
     let mut matches = Vec::new();
 
     search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
@@ -35,13 +69,8 @@ fn display_name_prefers_value_before_description() {
 #[test]
 fn search_tree_match_uses_ref_id_contract_and_includes_states() {
     let mut root = node(Some("Save"), None, None);
-    root.states = vec!["enabled".into()];
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: None,
-    };
+    root.presentation.states = vec!["enabled".into()];
+    let query = LocatorQuery::default();
     let mut matches = Vec::new();
 
     search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
@@ -54,11 +83,9 @@ fn search_tree_match_uses_ref_id_contract_and_includes_states() {
 #[test]
 fn search_tree_matches_text_across_fields() {
     let root = node(None, Some("Primary"), Some("Secondary"));
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: Some(search_text::normalize("secondary")),
+    let query = LocatorQuery {
+        has_text: Some(search_text::normalize("secondary")),
+        ..LocatorQuery::default()
     };
     let mut matches = Vec::new();
 
@@ -72,23 +99,16 @@ fn default_limit_caps_materialized_matches() {
     let root = AccessibilityNode {
         ref_id: None,
         role: "window".into(),
-        name: None,
-        value: None,
-        description: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: Default::default(),
+        presentation: Default::default(),
         children_count: None,
         children: (0..60)
             .map(|i| node(Some(&format!("Button {i}")), None, None))
             .collect(),
     };
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: Some(search_text::normalize("button")),
+    let query = LocatorQuery {
+        has_text: Some(search_text::normalize("button")),
+        ..LocatorQuery::default()
     };
     let mut matches = Vec::new();
 
@@ -107,15 +127,14 @@ fn default_limit_caps_materialized_matches() {
 fn limit_conflicts_with_single_result_modes_for_batch_too() {
     let err = validate_find_mode(&FindArgs {
         app: None,
-        role: None,
-        name: None,
-        value: None,
-        text: None,
-        count: false,
-        first: true,
-        last: false,
-        nth: None,
-        limit: Some(10),
+        window_id: None,
+        filter: no_filter(),
+        states: vec![],
+        selection: FindSelectionArgs {
+            first: true,
+            limit: Some(10),
+            ..no_selection()
+        },
     })
     .unwrap_err();
 
@@ -127,27 +146,20 @@ fn count_matches_does_not_build_result_json() {
     let root = AccessibilityNode {
         ref_id: None,
         role: "window".into(),
-        name: None,
-        value: None,
-        description: None,
-        hint: None,
-        states: vec![],
-        available_actions: vec![],
-        bounds: None,
+        identity: Default::default(),
+        presentation: Default::default(),
         children_count: None,
         children: vec![
             node(Some("Save"), None, None),
             node(Some("Cancel"), None, None),
         ],
     };
-    let query = FindQuery {
-        role: None,
-        name: None,
-        value: None,
-        text: Some(search_text::normalize("a")),
+    let query = LocatorQuery {
+        has_text: Some(search_text::normalize("a")),
+        ..LocatorQuery::default()
     };
 
-    assert_eq!(count_matches(&root, &query), 2);
+    assert_eq!(count_matches(&root, &query), 3);
 }
 
 fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
@@ -157,21 +169,19 @@ fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
 }
 
 #[test]
-fn textarea_alias_resolves_to_textfield_query() {
-    let query = FindQuery::from_args(&FindArgs {
+fn role_alias_is_preserved_until_live_validation() {
+    let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("textarea".into()),
-        name: None,
-        value: None,
-        text: None,
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        window_id: None,
+        filter: FindFilterArgs {
+            role: Some("textarea".into()),
+            ..no_filter()
+        },
+        states: vec![],
+        selection: no_selection(),
     });
 
-    assert_eq!(query.role.as_deref(), Some("textfield"));
+    assert_eq!(query.identity.role.as_deref(), Some("textarea"));
 
     let root = node(None, Some("doc body"), None);
     let mut matches = Vec::new();
@@ -180,21 +190,19 @@ fn textarea_alias_resolves_to_textfield_query() {
 }
 
 #[test]
-fn unknown_role_passes_through_and_matches_nothing() {
-    let query = FindQuery::from_args(&FindArgs {
+fn unknown_role_is_preserved_until_validation() {
+    let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("navbar".into()),
-        name: None,
-        value: None,
-        text: None,
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        window_id: None,
+        filter: FindFilterArgs {
+            role: Some("navbar".into()),
+            ..no_filter()
+        },
+        states: vec![],
+        selection: no_selection(),
     });
 
-    assert_eq!(query.role.as_deref(), Some("navbar"));
+    assert_eq!(query.identity.role.as_deref(), Some("navbar"));
 
     let root = role_node("textfield", Some("body"));
     let mut matches = Vec::new();
@@ -210,17 +218,15 @@ fn empty_role_filtered_result_reports_roles_present_from_tree() {
         role_node("textfield", None),
     ];
 
-    let query = FindQuery::from_args(&FindArgs {
+    let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("navbar".into()),
-        name: None,
-        value: None,
-        text: None,
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        window_id: None,
+        filter: FindFilterArgs {
+            role: Some("navbar".into()),
+            ..no_filter()
+        },
+        states: vec![],
+        selection: no_selection(),
     });
     let response = single_match_response(None, &query, &root);
 
@@ -235,17 +241,15 @@ fn empty_role_filtered_result_reports_roles_present_from_tree() {
 #[test]
 fn roles_present_hint_is_omitted_when_a_match_is_found() {
     let root = role_node("textfield", Some("body"));
-    let query = FindQuery::from_args(&FindArgs {
+    let query = query_from_args(&FindArgs {
         app: None,
-        role: Some("textfield".into()),
-        name: None,
-        value: None,
-        text: None,
-        count: false,
-        first: false,
-        last: false,
-        nth: None,
-        limit: None,
+        window_id: None,
+        filter: FindFilterArgs {
+            role: Some("textfield".into()),
+            ..no_filter()
+        },
+        states: vec![],
+        selection: no_selection(),
     });
 
     let mut matches = Vec::new();
@@ -255,4 +259,47 @@ fn roles_present_hint_is_omitted_when_a_match_is_found() {
     attach_roles_present_hint(&mut response, is_empty, &query, &root);
 
     assert!(response.get("roles_present").is_none());
+}
+
+fn find_args_scoped_to_window(window_id: &str) -> FindArgs {
+    FindArgs {
+        app: None,
+        window_id: Some(window_id.into()),
+        filter: FindFilterArgs {
+            name: Some("OnlyInWindowTwo".into()),
+            ..no_filter()
+        },
+        states: vec![],
+        selection: no_selection(),
+    }
+}
+
+#[test]
+fn find_scopes_matches_to_requested_window_id() {
+    let _guard = HomeGuard::new();
+    let context = CommandContext::default();
+    let adapter = super::live_tests::LiveFindAdapter::complete();
+
+    let from_window_two = execute(find_args_scoped_to_window("w-2"), &adapter, &context)
+        .expect("find scoped to w-2 should succeed");
+    let hits = from_window_two["matches"]
+        .as_array()
+        .expect("matches must be an array");
+    assert_eq!(
+        hits.len(),
+        1,
+        "window w-2's tree owns the only match, got: {from_window_two}"
+    );
+    assert_eq!(hits[0]["name"], "OnlyInWindowTwo");
+
+    let from_window_one = execute(find_args_scoped_to_window("w-1"), &adapter, &context)
+        .expect("find scoped to w-1 should succeed");
+    let misses = from_window_one["matches"]
+        .as_array()
+        .expect("matches must be an array");
+    assert!(
+        misses.is_empty(),
+        "window w-1 must not surface window w-2's element \
+         (window_id must not be ignored or swapped with app), got: {from_window_one}"
+    );
 }

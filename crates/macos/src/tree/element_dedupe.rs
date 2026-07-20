@@ -63,7 +63,9 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn current_process_element() -> AXElement {
         AXElement(unsafe {
-            accessibility_sys::AXUIElementCreateApplication(std::process::id() as i32)
+            accessibility_sys::AXUIElementCreateApplication(
+                i32::try_from(std::process::id()).expect("test pid fits macOS pid_t"),
+            )
         })
     }
 

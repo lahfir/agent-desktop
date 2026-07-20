@@ -13,6 +13,7 @@ struct StatusReadout: View {
         Text("\(name): \(value)")
             .accessibilityLabel(name)
             .accessibilityValue(value)
+            .accessibilityIdentifier(name)
     }
 }
 
@@ -64,6 +65,82 @@ final class NativeControlCoordinator: NSObject {
     let onChange: (Double) -> Void
     init(_ onChange: @escaping (Double) -> Void) { self.onChange = onChange }
     @objc func changed(_ sender: NSControl) { onChange(sender.doubleValue) }
+}
+
+struct ZeroBoundsButton: NSViewRepresentable {
+    func makeNSView(context: Context) -> ZeroBoundsAXHost { ZeroBoundsAXHost() }
+
+    func updateNSView(_ view: ZeroBoundsAXHost, context: Context) {}
+}
+
+final class ZeroBoundsAXHost: NSView {
+    private let visual = NSButton(title: "Zero Bounds", target: nil, action: nil)
+    private let zeroBoundsElement = NSAccessibilityElement()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        visual.setAccessibilityElement(false)
+        addSubview(visual)
+        setAccessibilityElement(false)
+        zeroBoundsElement.setAccessibilityRole(.button)
+        zeroBoundsElement.setAccessibilityLabel("zero-bounds-button")
+        zeroBoundsElement.setAccessibilityParent(self)
+        zeroBoundsElement.setAccessibilityFrame(.zero)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var intrinsicContentSize: NSSize { visual.intrinsicContentSize }
+
+    override func layout() {
+        super.layout()
+        visual.frame = bounds
+        zeroBoundsElement.setAccessibilityFrameInParentSpace(.zero)
+    }
+
+    override func accessibilityChildren() -> [Any]? { [zeroBoundsElement] }
+}
+
+final class DuplicateWindowController {
+    static let shared = DuplicateWindowController()
+
+    private var windows: [NSWindow] = []
+
+    func openWindows() {
+        closeWindows()
+        windows = (0..<2).map { index in
+            let window = NSWindow(
+                contentRect: NSRect(x: 160 + index * 380, y: 180, width: 320, height: 180),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.isReleasedWhenClosed = false
+            window.title = "Duplicate Window"
+            window.identifier = NSUserInterfaceItemIdentifier("duplicate-window-\(index)")
+            window.contentView = duplicateWindowBody(index: index)
+            window.orderFront(nil)
+            return window
+        }
+    }
+
+    func closeWindows() {
+        windows.forEach { $0.close() }
+        windows = []
+    }
+
+    private func duplicateWindowBody(index: Int) -> NSView {
+        let label = NSTextField(labelWithString: "duplicate-window-\(index)")
+        label.setAccessibilityLabel("duplicate-window-\(index)")
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+        return container
+    }
 }
 
 // A single view that tracks a mouse-drag gesture end to end (down, dragged,

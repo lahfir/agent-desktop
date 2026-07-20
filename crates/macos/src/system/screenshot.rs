@@ -1,51 +1,119 @@
 use agent_desktop_core::{
-    adapter::{ImageBuffer, ImageFormat},
-    error::{AdapterError, ErrorCode},
+    AdapterError, Deadline, DisplayInfo, ErrorCode, ImageBuffer, ImageFormat, WindowInfo,
+    parse_png_dimensions,
 };
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use std::os::unix::fs::DirBuilderExt;
+    use std::ffi::OsString;
+    use std::io::Read;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::Instant;
 
     const SCREENCAPTURE: &str = "/usr/sbin/screencapture";
-    #[cfg(not(test))]
-    const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
-    #[cfg(test)]
-    const SCREENSHOT_TIMEOUT: Duration = Duration::from_millis(20);
+    const MAX_PNG_BYTES: u64 = 64 * 1024 * 1024;
+    const MAX_IMAGE_PIXELS: u64 = 100_000_000;
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
-    fn capture(window_id: Option<u32>) -> Result<ImageBuffer, AdapterError> {
+    fn capture(
+        scale_factor: f64,
+        deadline: Deadline,
+        arguments: impl FnOnce(&Path) -> Result<Vec<OsString>, AdapterError>,
+    ) -> Result<ImageBuffer, AdapterError> {
+        ensure_budget(deadline)?;
         let temp = TempPng::new()?;
         let mut command = Command::new(SCREENCAPTURE);
-        command.args(["-x", "-t", "png"]);
-
-        if let Some(wid) = window_id {
-            command.args(["-l", &wid.to_string()]);
-        }
-
-        command.arg(temp.path());
-        let output = run_screencapture(&mut command)?;
-
+        command.args(arguments(temp.path())?);
+        let output = run_screencapture(&mut command, deadline)?;
         if !output.status.success() {
             return Err(map_screencapture_error(&output));
         }
-
-        read_png(temp.path())
+        let mut buffer = read_png(temp.path(), deadline)?;
+        buffer.scale_factor = scale_factor;
+        Ok(buffer)
     }
 
-    pub fn capture_app(pid: i32) -> Result<ImageBuffer, AdapterError> {
-        tracing::debug!("system: screenshot app pid={pid}");
-        capture(find_cg_window_id_for_pid(pid))
+    fn base_args() -> Vec<OsString> {
+        vec![
+            OsString::from("-x"),
+            OsString::from("-t"),
+            OsString::from("png"),
+        ]
     }
 
-    pub fn capture_screen(_idx: usize) -> Result<ImageBuffer, AdapterError> {
-        tracing::debug!("system: screenshot screen");
-        capture(None)
+    pub(super) fn display_args(index: usize, output: &Path) -> Result<Vec<OsString>, AdapterError> {
+        let display_number = index.checked_add(1).ok_or_else(|| {
+            AdapterError::new(ErrorCode::InvalidArgs, "display index is too large")
+        })?;
+        let mut args = base_args();
+        args.push(OsString::from("-D"));
+        args.push(OsString::from(display_number.to_string()));
+        args.push(output.as_os_str().to_owned());
+        Ok(args)
+    }
+
+    pub(super) fn window_args(window_id: u32, output: &Path) -> Vec<OsString> {
+        let mut args = base_args();
+        args.push(OsString::from("-l"));
+        args.push(OsString::from(window_id.to_string()));
+        args.push(output.as_os_str().to_owned());
+        args
+    }
+
+    pub fn capture_screen(index: usize, deadline: Deadline) -> Result<ImageBuffer, AdapterError> {
+        ensure_budget(deadline)?;
+        let expected = crate::system::display::display_at(index, deadline)?;
+        ensure_budget(deadline)?;
+        capture_display(index, &expected, deadline)
+    }
+
+    pub fn capture_display(
+        index: usize,
+        expected: &DisplayInfo,
+        deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        ensure_budget(deadline)?;
+        let (raw_index, current) = crate::system::display::capture_selection(expected, deadline)?;
+        ensure_budget(deadline)?;
+        verify_display_identity(index, expected, &current)?;
+        let captured = capture(current.scale, deadline, |path| {
+            display_args(raw_index, path)
+        })?;
+        ensure_budget(deadline)?;
+        let after = crate::system::display::display_at_capture_index(raw_index, deadline)?;
+        ensure_budget(deadline)?;
+        verify_display_identity(index, &current, &after)?;
+        Ok(captured)
+    }
+
+    pub fn capture_window(
+        window: &WindowInfo,
+        deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        if window.process_instance.is_none() {
+            return Err(AdapterError::new(
+                ErrorCode::InvalidArgs,
+                "Exact window screenshot requires a process instance token",
+            )
+            .with_suggestion("Refresh the target with 'list-windows', then retry"));
+        }
+        let verified = crate::system::window_resolve::resolve_window_strict(
+            window,
+            deadline_instant(deadline)?,
+        )?;
+        let window_id = parse_window_id(&verified.id)?;
+        let scale = crate::system::display::scale_for_bounds(verified.bounds, deadline)?;
+        ensure_budget(deadline)?;
+        let captured = capture(scale, deadline, |path| Ok(window_args(window_id, path)))?;
+        crate::system::window_resolve::resolve_window_strict(
+            &verified,
+            deadline_instant(deadline)?,
+        )?;
+        Ok(captured)
     }
 
     struct TempPng {
@@ -56,11 +124,17 @@ mod imp {
     impl TempPng {
         fn new() -> Result<Self, AdapterError> {
             let mut dir = std::env::temp_dir();
-            dir.push(format!("agent-desktop-screenshot-{}", unique_suffix()));
+            dir.push(format!(
+                "agent-desktop-screenshot-{}-{}",
+                std::process::id(),
+                NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+            ));
             std::fs::DirBuilder::new()
                 .mode(0o700)
                 .create(&dir)
-                .map_err(|e| AdapterError::internal(format!("create screenshot temp dir: {e}")))?;
+                .map_err(|error| {
+                    AdapterError::internal(format!("create screenshot temp dir: {error}"))
+                })?;
             let path = dir.join("capture.png");
             Ok(Self { dir, path })
         }
@@ -72,40 +146,105 @@ mod imp {
 
     impl Drop for TempPng {
         fn drop(&mut self) {
-            let _ = std::fs::remove_file(&self.path);
-            let _ = std::fs::remove_dir(&self.dir);
+            if let Err(error) = std::fs::remove_file(&self.path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::debug!(%error, path = %self.path.display(), "screenshot file cleanup failed");
+            }
+            if let Err(error) = std::fs::remove_dir(&self.dir)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::debug!(%error, path = %self.dir.display(), "screenshot directory cleanup failed");
+            }
         }
     }
 
-    fn unique_suffix() -> String {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let seq = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-        format!("{}-{nanos}-{seq}", std::process::id())
+    pub(super) fn run_screencapture(
+        command: &mut Command,
+        deadline: Deadline,
+    ) -> Result<Output, AdapterError> {
+        crate::system::process::run_with_deadline(
+            command,
+            "screencapture",
+            deadline_instant(deadline)?,
+        )
     }
 
-    fn run_screencapture(command: &mut Command) -> Result<Output, AdapterError> {
-        crate::system::process::run_with_timeout(command, "screencapture", SCREENSHOT_TIMEOUT)
-    }
-
-    fn read_png(path: &Path) -> Result<ImageBuffer, AdapterError> {
-        let data = std::fs::read(path)
-            .map_err(|e| AdapterError::internal(format!("read screenshot: {e}")))?;
-        let (width, height) = png_dimensions(&data);
+    fn read_png(path: &Path, deadline: Deadline) -> Result<ImageBuffer, AdapterError> {
+        ensure_budget(deadline)?;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            .open(path)
+            .map_err(|error| AdapterError::internal(format!("open screenshot: {error}")))?;
+        let metadata = file
+            .metadata()
+            .map_err(|error| AdapterError::internal(format!("stat screenshot: {error}")))?;
+        if !metadata.file_type().is_file() {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "screencapture output is not a regular file",
+            ));
+        }
+        validate_png_size(metadata.len())?;
+        let capacity = usize::try_from(metadata.len())
+            .map_err(|_| AdapterError::new(ErrorCode::ActionFailed, "screenshot is too large"))?;
+        let mut data = Vec::new();
+        data.try_reserve_exact(capacity).map_err(|_| {
+            AdapterError::new(ErrorCode::ActionFailed, "screenshot allocation failed")
+        })?;
+        file.take(MAX_PNG_BYTES + 1)
+            .read_to_end(&mut data)
+            .map_err(|error| AdapterError::internal(format!("read screenshot: {error}")))?;
+        validate_png_size(data.len() as u64)?;
+        ensure_budget(deadline)?;
+        let (width, height) = parse_png_dimensions(&data).ok_or_else(|| {
+            AdapterError::new(
+                ErrorCode::ActionFailed,
+                "screencapture returned an invalid PNG payload",
+            )
+        })?;
+        validate_pixel_count(width, height)?;
         Ok(ImageBuffer {
             data,
             format: ImageFormat::Png,
             width,
             height,
+            scale_factor: 1.0,
         })
     }
 
-    fn map_screencapture_error(output: &Output) -> AdapterError {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let combined = format!("{stderr}\n{stdout}");
+    pub(super) fn validate_png_size(bytes: u64) -> Result<(), AdapterError> {
+        if (24..=MAX_PNG_BYTES).contains(&bytes) {
+            Ok(())
+        } else {
+            Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "screenshot PNG size is outside the supported 24-byte to 64-MiB range",
+            ))
+        }
+    }
+
+    pub(super) fn validate_pixel_count(width: u32, height: u32) -> Result<(), AdapterError> {
+        let pixels = u64::from(width)
+            .checked_mul(u64::from(height))
+            .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "pixel count overflowed"))?;
+        if width > 0 && height > 0 && pixels <= MAX_IMAGE_PIXELS {
+            Ok(())
+        } else {
+            Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "screenshot exceeds the 100-megapixel image budget",
+            ))
+        }
+    }
+
+    pub(super) fn map_screencapture_error(output: &Output) -> AdapterError {
+        let combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
         let lower = combined.to_lowercase();
         if lower.contains("screen recording")
             || lower.contains("not authorized")
@@ -114,88 +253,62 @@ mod imp {
         {
             return AdapterError::new(ErrorCode::PermDenied, "Screen Recording permission denied")
                 .with_suggestion(
-                    "Open System Settings > Privacy & Security > Screen Recording and add the app that launches agent-desktop. If macOS lists the built binary separately, add that binary too.",
+                    "Open System Settings > Privacy & Security > Screen Recording and add the app that launches agent-desktop.",
                 )
                 .with_platform_detail(combined.trim());
         }
-
         let detail = combined.trim();
-        let detail = if detail.is_empty() {
-            "screencapture produced no diagnostic output"
+        AdapterError::internal("screencapture exited with error").with_platform_detail(
+            if detail.is_empty() {
+                "screencapture produced no diagnostic output"
+            } else {
+                detail
+            },
+        )
+    }
+
+    pub(super) fn verify_display_identity(
+        index: usize,
+        expected: &DisplayInfo,
+        current: &DisplayInfo,
+    ) -> Result<(), AdapterError> {
+        if expected.id == current.id {
+            return Ok(());
+        }
+        Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            format!(
+                "Display at index {index} changed from '{}' to '{}'",
+                expected.id, current.id
+            ),
+        )
+        .with_suggestion("Run 'list-displays' to refresh display indexes, then retry."))
+    }
+
+    fn parse_window_id(id: &str) -> Result<u32, AdapterError> {
+        crate::system::window_resolve::parse_window_number(id)
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|value| *value > 0)
+            .ok_or_else(|| {
+                AdapterError::new(ErrorCode::InvalidArgs, format!("Invalid window id: '{id}'"))
+            })
+    }
+
+    fn deadline_instant(deadline: Deadline) -> Result<Instant, AdapterError> {
+        let remaining = deadline.remaining();
+        if remaining.is_zero() {
+            return Err(deadline.timeout_error());
+        }
+        Instant::now()
+            .checked_add(remaining)
+            .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "deadline is out of range"))
+    }
+
+    fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
+        if deadline.is_expired() {
+            Err(deadline.timeout_error())
         } else {
-            detail
-        };
-        AdapterError::internal("screencapture exited with error").with_platform_detail(detail)
-    }
-
-    fn png_dimensions(data: &[u8]) -> (u32, u32) {
-        if data.len() < 24 {
-            return (0, 0);
-        }
-        let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-        let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
-        (w, h)
-    }
-
-    fn find_cg_window_id_for_pid(pid: i32) -> Option<u32> {
-        let mut best_id: Option<u32> = None;
-        let mut best_area: f64 = 0.0;
-
-        for record in crate::system::cg_window::visible_window_records() {
-            if record.pid != pid {
-                continue;
-            }
-
-            if record.area > best_area {
-                best_area = record.area;
-                best_id = Some(record.window_number as u32);
-            }
-        }
-
-        best_id
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        use std::os::unix::process::ExitStatusExt;
-        use std::process::ExitStatus;
-
-        fn output(stderr: &str) -> Output {
-            Output {
-                status: ExitStatus::from_raw(1 << 8),
-                stdout: Vec::new(),
-                stderr: stderr.as_bytes().to_vec(),
-            }
-        }
-
-        #[test]
-        fn maps_screen_recording_error_to_permission_denied() {
-            let err = map_screencapture_error(&output("Screen Recording is not authorized"));
-
-            assert_eq!(err.code, ErrorCode::PermDenied);
-            assert!(err.suggestion.is_some());
-        }
-
-        #[test]
-        fn maps_unknown_screencapture_error_to_internal() {
-            let err = map_screencapture_error(&output("display server unavailable"));
-
-            assert_eq!(err.code, ErrorCode::Internal);
-            assert_eq!(
-                err.platform_detail.as_deref(),
-                Some("display server unavailable")
-            );
-        }
-
-        #[test]
-        fn run_screencapture_kills_timed_out_process() {
-            let mut command = Command::new("/bin/sleep");
-            command.arg("10");
-
-            let err = run_screencapture(&mut command).unwrap_err();
-
-            assert_eq!(err.code, ErrorCode::Timeout);
+            Ok(())
         }
     }
 }
@@ -204,13 +317,28 @@ mod imp {
 mod imp {
     use super::*;
 
-    pub fn capture_app(_pid: i32) -> Result<ImageBuffer, AdapterError> {
-        Err(AdapterError::not_supported("capture_app"))
+    pub fn capture_screen(_index: usize, _deadline: Deadline) -> Result<ImageBuffer, AdapterError> {
+        Err(AdapterError::not_supported("capture_screen"))
     }
 
-    pub fn capture_screen(_idx: usize) -> Result<ImageBuffer, AdapterError> {
-        Err(AdapterError::not_supported("capture_screen"))
+    pub fn capture_display(
+        _index: usize,
+        _expected: &DisplayInfo,
+        _deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        Err(AdapterError::not_supported("capture_display"))
+    }
+
+    pub fn capture_window(
+        _window: &WindowInfo,
+        _deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        Err(AdapterError::not_supported("capture_window"))
     }
 }
 
-pub use imp::{capture_app, capture_screen};
+pub(crate) use imp::{capture_display, capture_screen, capture_window};
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "screenshot_tests.rs"]
+mod tests;

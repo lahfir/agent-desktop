@@ -1,36 +1,53 @@
-pub mod action_list;
+pub(crate) mod action_list;
+mod adapter;
 pub(crate) mod attributes;
-pub mod ax_element;
+pub(crate) mod ax_element;
+pub(crate) mod ax_ipc;
 pub(crate) mod ax_value;
-pub mod build_context;
-pub mod builder;
-pub mod capabilities;
-pub mod element;
-pub mod element_bounds;
+pub(crate) mod bounded_string;
+pub(crate) mod build_context;
+pub(crate) mod capabilities;
+pub(crate) mod child_labels;
+pub(crate) mod element;
+pub(crate) mod element_bounds;
 pub(crate) mod element_dedupe;
+pub(crate) mod element_name;
+pub(crate) mod hit_test;
+pub(crate) mod locator_deadline;
+pub(crate) mod native_id;
+pub(crate) mod node_attr_states;
+pub(crate) mod node_attribute_decode;
+pub(crate) mod node_attribute_fetch;
+pub(crate) mod node_attribute_metrics;
+pub(crate) mod node_attribute_names;
+pub(crate) mod node_attribute_read;
+pub(crate) mod node_attribute_status;
 pub(crate) mod node_attrs;
-pub mod resolve;
+pub(crate) mod node_control_states;
+pub(crate) mod node_identifiers;
+pub(crate) mod node_semantic_states;
+pub(crate) mod observation_usage;
+pub(crate) mod query;
+pub(crate) mod readonly;
+mod renderer_probe;
+pub(crate) mod resolve;
+pub(crate) mod resolve_ax_read;
 mod resolve_bounds;
 mod resolve_classify;
-mod resolve_deadline;
-mod resolve_identity;
+mod resolve_errors;
+mod resolve_read_context;
 mod resolve_roots;
 mod resolve_search;
-pub mod roles;
-pub mod surfaces;
+pub(crate) mod roles;
+pub(crate) mod state_reader;
+pub(crate) mod surface_inventory;
+pub(crate) mod surface_read;
+pub(crate) mod surfaces;
+pub(crate) mod text_attributes;
 
-pub(crate) use attributes::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_i64_attr, copy_string_attr,
-    copy_value_typed,
-};
-pub use ax_element::AXElement;
-pub use build_context::TreeBuildContext;
-pub use builder::{build_subtree, window_element_for};
-pub use capabilities::same_element;
-pub use element::{element_for_pid, resolve_element_name};
-pub use element_bounds::read_bounds;
+pub(crate) use attributes::{copy_bool_attr, copy_value_typed};
+pub(crate) use ax_element::AXElement;
+pub(crate) use build_context::TreeBuildContext;
+pub(crate) use capabilities::same_element;
+pub(crate) use element::element_for_pid;
 pub(crate) use node_attrs::NodeAttrs;
-pub use surfaces::{
-    alert_for_pid, focused_surface_for_pid, menu_element_for_pid, menubar_for_pid, popover_for_pid,
-    sheet_for_pid,
-};

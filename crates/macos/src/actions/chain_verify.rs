@@ -1,12 +1,8 @@
-use agent_desktop_core::error::AdapterError;
+use agent_desktop_core::AdapterError;
 
-/// Error for a chain deadline expiring mid-increment. Unlike a plain step
-/// "skip", expiry can leave the control at a half-applied value, so the
-/// error must be TIMEOUT (not ACTION_FAILED) and must carry the observed
-/// state — the caller cannot read post-state on the error path. `kind`
-/// discriminates this details schema from other TIMEOUT payloads.
 pub(crate) fn increment_deadline_error(start: f64, current: f64, target: f64) -> AdapterError {
-    AdapterError::timeout("Chain deadline expired while stepping the value toward the target")
+    partial_mutation_disposition(
+        AdapterError::timeout("Chain deadline expired while stepping the value toward the target")
         .with_suggestion(
             "Re-read the element value before retrying; increase the timeout or AGENT_DESKTOP_CHAIN_TIMEOUT_MS for slow controls.",
         )
@@ -16,12 +12,15 @@ pub(crate) fn increment_deadline_error(start: f64, current: f64, target: f64) ->
             "value_at_timeout": current,
             "target": target,
             "mutated": (current - start).abs() >= f64::EPSILON,
-        }))
+        })),
+        start,
+        current,
+    )
 }
 
 pub(crate) fn increment_step_limit_error(start: f64, current: f64, target: f64) -> AdapterError {
-    AdapterError::new(
-        agent_desktop_core::error::ErrorCode::ActionFailed,
+    partial_mutation_disposition(AdapterError::new(
+        agent_desktop_core::ErrorCode::ActionFailed,
         "Chain step limit was reached while stepping the value toward the target",
     )
         .with_suggestion(
@@ -33,26 +32,16 @@ pub(crate) fn increment_step_limit_error(start: f64, current: f64, target: f64) 
             "value_at_limit": current,
             "target": target,
             "mutated": (current - start).abs() >= f64::EPSILON,
-        }))
+        })), start, current)
 }
 
-/// Error for the chain deadline truncating a disclosure settle wait. The
-/// triggering action may still land after the truncated wait, so the
-/// outcome is unknown — TIMEOUT with the observed state, mirroring
-/// [`increment_deadline_error`], never a plain step failure.
-pub(crate) fn disclosure_deadline_error(
-    want_expanded: bool,
-    observed: Option<bool>,
-) -> AdapterError {
-    AdapterError::timeout("Chain deadline expired while waiting for the disclosure to settle")
-        .with_suggestion(
-            "Re-read the element's expanded state before retrying; increase the timeout or AGENT_DESKTOP_CHAIN_TIMEOUT_MS for slow apps.",
-        )
-        .with_details(serde_json::json!({
-            "kind": "chain_deadline",
-            "wanted_expanded": want_expanded,
-            "observed_expanded": observed,
-        }))
+fn partial_mutation_disposition(error: AdapterError, start: f64, current: f64) -> AdapterError {
+    let disposition = if (current - start).abs() >= f64::EPSILON {
+        agent_desktop_core::DeliverySemantics::delivered_unverified()
+    } else {
+        agent_desktop_core::DeliverySemantics::not_delivered()
+    };
+    error.with_disposition(disposition)
 }
 
 pub(crate) fn bool_write_had_effect(attr: &str, expected: bool, observed: Option<bool>) -> bool {
@@ -74,9 +63,6 @@ pub(crate) fn dynamic_write_had_effect(
     observed == Some(expected) || numbers_match(expected, observed)
 }
 
-/// Numeric controls report their value back in their own format (a slider
-/// set to `50` reads back as `50.00`), so compare numerically when both
-/// sides parse as numbers.
 fn numbers_match(expected: &str, observed: Option<&str>) -> bool {
     match (
         expected.parse::<f64>(),
@@ -101,7 +87,11 @@ mod tests {
     fn increment_deadline_error_is_timeout_and_reports_partial_mutation() {
         let err = increment_deadline_error(0.0, 37.0, 80.0);
 
-        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::Timeout);
+        assert_eq!(err.code, agent_desktop_core::ErrorCode::Timeout);
+        assert_eq!(
+            err.disposition,
+            agent_desktop_core::DeliverySemantics::delivered_unverified()
+        );
         let details = err.details.expect("details must carry the observed state");
         assert_eq!(details["value_before"], 0.0);
         assert_eq!(details["value_at_timeout"], 37.0);
@@ -114,6 +104,10 @@ mod tests {
     fn increment_deadline_error_reports_unmutated_state() {
         let err = increment_deadline_error(5.0, 5.0, 9.0);
 
+        assert_eq!(
+            err.disposition,
+            agent_desktop_core::DeliverySemantics::not_delivered()
+        );
         let details = err.details.unwrap();
         assert_eq!(details["mutated"], false);
         assert_eq!(details["kind"], "chain_deadline");
@@ -123,30 +117,15 @@ mod tests {
     fn increment_step_limit_error_reports_partial_mutation() {
         let err = increment_step_limit_error(0.0, 1024.0, 5000.0);
 
-        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::ActionFailed);
+        assert_eq!(err.code, agent_desktop_core::ErrorCode::ActionFailed);
+        assert_eq!(
+            err.disposition,
+            agent_desktop_core::DeliverySemantics::delivered_unverified()
+        );
         let details = err.details.unwrap();
         assert_eq!(details["kind"], "chain_step_limit");
         assert_eq!(details["value_at_limit"], 1024.0);
         assert_eq!(details["mutated"], true);
-    }
-
-    #[test]
-    fn disclosure_deadline_error_is_timeout_with_observed_state() {
-        let err = super::disclosure_deadline_error(true, Some(false));
-
-        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::Timeout);
-        let details = err.details.expect("details must carry the observed state");
-        assert_eq!(details["kind"], "chain_deadline");
-        assert_eq!(details["wanted_expanded"], true);
-        assert_eq!(details["observed_expanded"], false);
-        assert!(err.suggestion.is_some());
-    }
-
-    #[test]
-    fn disclosure_deadline_error_reports_unreadable_state_as_null() {
-        let err = super::disclosure_deadline_error(false, None);
-
-        assert!(err.details.unwrap()["observed_expanded"].is_null());
     }
 
     #[test]

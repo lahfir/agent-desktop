@@ -1,0 +1,143 @@
+use super::{
+    evaluate::check_with_stability, evidence::ActionabilityEvidence, report::ActionabilityReport,
+    stability::StabilityExpectation,
+};
+use crate::{
+    AdapterError, DeliverySemantics, ErrorCode, IdentityMatch, LocatorField,
+    action_request::ActionRequest,
+    adapter::{LiveElement, NativeHandle, PlatformAdapter},
+    ref_identity::{has_meaningful_identity, identity_match},
+    refs::RefEntry,
+};
+
+/// Groups the read-only coordinates of a live element check: which element,
+/// which handle to read it through, which adapter to read with, and the
+/// deadline that bounds the read. Kept separate from the `request` (what
+/// action to check against) and `stability` (how settled the element must
+/// be) parameters, which vary independently per call.
+pub(crate) struct LiveCheckTarget<'a> {
+    pub(crate) entry: &'a RefEntry,
+    pub(crate) handle: &'a NativeHandle,
+    pub(crate) adapter: &'a dyn PlatformAdapter,
+    pub(crate) deadline: crate::Deadline,
+}
+
+#[cfg(test)]
+pub(crate) fn check_live(
+    entry: &RefEntry,
+    handle: &NativeHandle,
+    adapter: &dyn PlatformAdapter,
+    request: &ActionRequest,
+) -> Result<ActionabilityReport, AdapterError> {
+    let deadline = crate::Deadline::standard()?;
+    check_live_with_stability(
+        &LiveCheckTarget {
+            entry,
+            handle,
+            adapter,
+            deadline,
+        },
+        request,
+        StabilityExpectation::permissive(entry.geometry.bounds_hash),
+    )
+}
+
+pub(crate) fn check_live_with_stability(
+    target: &LiveCheckTarget<'_>,
+    request: &ActionRequest,
+    stability: StabilityExpectation,
+) -> Result<ActionabilityReport, AdapterError> {
+    let evidence = observe(
+        target.entry,
+        target
+            .adapter
+            .get_live_element(target.handle, target.deadline),
+    )?;
+    check_with_stability(
+        stability,
+        &evidence,
+        request,
+        Some((target.handle, target.adapter)),
+        target.deadline,
+    )
+}
+
+fn observe(
+    entry: &RefEntry,
+    live: Result<LiveElement, AdapterError>,
+) -> Result<ActionabilityEvidence, AdapterError> {
+    let live = match live {
+        Ok(live) => live,
+        Err(err)
+            if matches!(
+                err.code,
+                ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
+            ) =>
+        {
+            return Err(AdapterError::new(
+                ErrorCode::ActionNotSupported,
+                "Live element evidence is required for actionability checks",
+            )
+            .with_details(serde_json::json!({ "source_code": err.code.as_str() }))
+            .with_disposition(DeliverySemantics::not_delivered()));
+        }
+        Err(err) => return Err(err),
+    };
+    validate_live_identity(entry, &live)?;
+    Ok(ActionabilityEvidence {
+        state: live.state,
+        states_complete: live.states_complete,
+        bounds: live.bounds,
+        available_actions: live.available_actions,
+    })
+}
+
+fn validate_live_identity(entry: &RefEntry, live: &LiveElement) -> Result<(), AdapterError> {
+    if live.state.role == "unknown" || live.state.role != entry.identity.role {
+        return Err(stale_live_element(
+            "Resolved element changed role before dispatch",
+        ));
+    }
+    if !has_meaningful_identity(entry) {
+        return Ok(());
+    }
+    let value = live
+        .state
+        .value
+        .clone()
+        .map(LocatorField::Known)
+        .unwrap_or(LocatorField::Absent);
+    match identity_match(
+        entry,
+        &live.identity.name,
+        &value,
+        &live.identity.description,
+        &live.identity.identifiers,
+    ) {
+        IdentityMatch::Match => Ok(()),
+        IdentityMatch::NoMatch => Err(stale_live_element(
+            "Resolved element changed identity before dispatch",
+        )),
+        IdentityMatch::Unknown => Err(AdapterError::app_unresponsive(
+            entry
+                .source
+                .source_app
+                .as_deref()
+                .unwrap_or("target application"),
+        )
+        .with_details(serde_json::json!({
+            "kind": "live_identity_evidence",
+            "complete": false,
+            "retryable": true,
+        }))),
+    }
+}
+
+fn stale_live_element(message: &'static str) -> AdapterError {
+    AdapterError::new(ErrorCode::StaleRef, message)
+        .with_suggestion(
+            "Re-run a snapshot to obtain fresh refs, then retry with the new ref (CLI: snapshot; FFI: ad_snapshot then ad_execute_by_ref with the returned snapshot_id)",
+        )
+        .with_details(serde_json::json!({ "retryable": true }))
+        .with_disposition(DeliverySemantics::not_delivered())
+}

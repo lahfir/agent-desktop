@@ -8,5 +8,5 @@
 pub struct AdScreenshotTarget {
     pub kind: i32,
     pub screen_index: u64,
-    pub pid: i32,
+    pub pid: u32,
 }

@@ -1,6 +1,6 @@
 mod common;
 
-use common::{AdResult, CStr, ad_set_log_callback};
+use common::{AdResult, CStr, ad_free_string, ad_set_log_callback, ad_snapshot, with_adapter};
 use std::os::raw::c_char;
 use std::sync::Mutex;
 
@@ -37,6 +37,14 @@ fn drain_recorder() -> Vec<Delivery> {
         .unwrap_or_default()
 }
 
+fn emit_scoped_ffi_event() {
+    with_adapter(|adapter| unsafe {
+        let mut out = std::ptr::null_mut();
+        let _ = ad_snapshot(adapter, std::ptr::null(), 0, 1, false, false, &mut out);
+        ad_free_string(out);
+    });
+}
+
 #[test]
 fn log_callback_register_delivers_event() {
     let _guard = LOG_TEST_LOCK.lock().unwrap();
@@ -47,10 +55,7 @@ fn log_callback_register_delivers_event() {
         assert_eq!(rc, AdResult::Ok, "register must succeed");
     }
 
-    tracing::error!(
-        test_marker = "deliver_event",
-        "log_callback_register_delivers_event"
-    );
+    emit_scoped_ffi_event();
 
     let deliveries = drain_recorder();
     assert!(
@@ -59,9 +64,9 @@ fn log_callback_register_delivers_event() {
     );
     let d = deliveries
         .iter()
-        .find(|d| d.message.contains("deliver_event"))
+        .find(|d| d.message.contains("tree: snapshot"))
         .unwrap_or(&deliveries[0]);
-    assert_eq!(d.level, 1, "ERROR maps to level 1");
+    assert_eq!(d.level, 4, "DEBUG maps to level 4");
     assert!(!d.message.is_empty(), "message must be non-empty");
 
     unsafe {
@@ -79,12 +84,7 @@ fn log_callback_spawned_thread_does_not_panic() {
         assert_eq!(rc, AdResult::Ok);
     }
 
-    let handle = std::thread::spawn(|| {
-        tracing::warn!(
-            source = "spawned_thread",
-            "log_callback_spawned_thread_does_not_panic"
-        );
-    });
+    let handle = std::thread::spawn(emit_scoped_ffi_event);
     handle.join().expect("spawned thread must not panic");
 
     let deliveries = drain_recorder();
@@ -110,7 +110,7 @@ fn log_callback_null_unregisters() {
     }
     clear_recorder();
 
-    tracing::error!(test_marker = "after_null", "log_callback_null_unregisters");
+    emit_scoped_ffi_event();
 
     let deliveries = drain_recorder();
     assert!(
@@ -121,7 +121,7 @@ fn log_callback_null_unregisters() {
 }
 
 #[test]
-fn log_callback_redacts_sensitive_fields() {
+fn log_callback_does_not_capture_host_global_events() {
     let _guard = LOG_TEST_LOCK.lock().unwrap();
     clear_recorder();
 
@@ -130,38 +130,10 @@ fn log_callback_redacts_sensitive_fields() {
         assert_eq!(rc, AdResult::Ok);
     }
 
-    tracing::error!(
-        password = "super_secret_password",
-        token = "bearer_xyz",
-        operation = "login_attempt",
-        "log_callback_redacts_sensitive_fields"
-    );
+    tracing::error!(operation = "host_global_event");
 
     let deliveries = drain_recorder();
-    assert!(!deliveries.is_empty(), "expected at least one delivery");
-
-    let combined: String = deliveries
-        .iter()
-        .map(|d| d.message.as_str())
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    assert!(
-        !combined.contains("super_secret_password"),
-        "raw password must not appear in callback message; got: {combined}"
-    );
-    assert!(
-        !combined.contains("bearer_xyz"),
-        "raw token must not appear in callback message; got: {combined}"
-    );
-    assert!(
-        combined.contains("redacted"),
-        "redaction marker must appear; got: {combined}"
-    );
-    assert!(
-        combined.contains("login_attempt"),
-        "non-sensitive field value must be preserved; got: {combined}"
-    );
+    assert!(deliveries.is_empty());
 
     unsafe {
         let _ = ad_set_log_callback(None);

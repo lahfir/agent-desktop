@@ -18,13 +18,15 @@ pub unsafe extern "C" fn ad_list_apps(
     trap_panic(|| unsafe {
         crate::pointer_guard::guard_non_null!(out, c"out is null");
         *out = ptr::null_mut();
-        if let Err(rc) = crate::main_thread::require_main_thread() {
-            return rc;
-        }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        let adapter = &*adapter;
-        match adapter.inner.list_apps() {
+        let adapter = crate::adapter::acquire_adapter!(adapter);
+        let deadline = crate::operation::operation_deadline!();
+        match adapter.inner.list_apps(deadline) {
             Ok(apps) => {
+                if let Err(error) = crate::resource::validate_list_len(apps.len(), "App list") {
+                    set_last_error(&error);
+                    return crate::error::last_error_code();
+                }
                 let items: Vec<AdAppInfo> = apps.iter().map(app_info_to_c).collect();
                 let list = Box::new(AdAppList {
                     items: items.into_boxed_slice(),

@@ -215,8 +215,8 @@ fn embed_budget_skips_later_screenshots() {
     let (_home, _lock, session_id, trace_dir) = setup_trace_session();
     fs::create_dir_all(trace_dir.join("screens")).unwrap();
     let big = vec![0u8; 60 * 1024 * 1024];
-    fs::write(trace_dir.join("screens/a.png"), &big).unwrap();
-    fs::write(trace_dir.join("screens/b.png"), &big).unwrap();
+    write_screenshot_fixture(&trace_dir.join("screens/a.png"), &big);
+    write_screenshot_fixture(&trace_dir.join("screens/b.png"), &big);
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -336,7 +336,7 @@ fn embedded_screenshot_uses_base64_data_uri() {
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
         0x52,
     ];
-    fs::write(trace_dir.join("screens/shot.png"), png).unwrap();
+    write_screenshot_fixture(&trace_dir.join("screens/shot.png"), &png);
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
@@ -353,4 +353,12 @@ fn embedded_screenshot_uses_base64_data_uri() {
     .unwrap();
     assert_eq!(stats.screenshots_embedded, 1);
     assert!(html.contains("data:image/png;base64,"));
+}
+fn write_screenshot_fixture(path: &std::path::Path, bytes: &[u8]) {
+    fs::write(path, bytes).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
+    }
 }
