@@ -6,6 +6,17 @@
 
 * make sessions the first-class trace container: `session start/end/list/gc`, manifest-gated automatic JSONL segments under `sessions/<id>/trace/`, and `--trace <path>` override preserved ([#89](https://github.com/lahfir/agent-desktop/pull/89))
 
+## [0.5.0](https://github.com/lahfir/agent-desktop/compare/v0.4.7...v0.5.0) (2026-07-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* default-on auto-wait changes the timing of every previously-untouched ref-action call (bounded 5000 ms default; `--timeout-ms 0` restores single-shot). `ENVELOPE_VERSION` is now `2.1` (adds the `APP_UNRESPONSIVE` code and process state in error details). FFI ABI major is `3` (append-only struct evolution; `wait --event` is intentionally not exposed over FFI). The legacy string clipboard API is removed in favor of typed content. `key-down`/`key-up` fail closed until daemon-owned held input exists. `close-app` verifies termination and the osascript fallback path is removed. `--text` matching is subtree containment: `find --text X --first` returns the outermost matching container.
+
+### Features
+
+* implement Playwright-grade foundation contract ([3f32272](https://github.com/lahfir/agent-desktop/commit/3f322728b44548d2e22f4ee6ef4e6853af4e4550))
+
 ## [0.4.7](https://github.com/lahfir/agent-desktop/compare/v0.4.6...v0.4.7) (2026-07-02)
 
 
