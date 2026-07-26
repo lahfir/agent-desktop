@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/lahfir/agent-desktop/compare/v0.5.0...v0.6.0) (2026-07-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove speculative Win32 private-file layer from core, add real Windows/Linux test lanes ([#106](https://github.com/lahfir/agent-desktop/issues/106))
+
+### Refactoring
+
+* remove speculative Win32 private-file layer from core, add real Windows/Linux test lanes ([#106](https://github.com/lahfir/agent-desktop/issues/106)) ([8ad66b8](https://github.com/lahfir/agent-desktop/commit/8ad66b8f2115704eed56e59e2709c4eddf3cffac))
+
 ## [0.5.0](https://github.com/lahfir/agent-desktop/compare/v0.4.7...v0.5.0) (2026-07-20)
 
 
