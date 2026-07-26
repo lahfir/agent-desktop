@@ -21,7 +21,6 @@ rustc-hash         = "2.1"
 libc               = "0.2"
 smallvec           = { version = "1.13", features = ["serde", "union"] }
 agent-desktop-core = { path = "crates/core" }
-windows-sys        = { version = "0.61.2" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"

@@ -1,5 +1,4 @@
 use std::fs::File;
-#[cfg(not(windows))]
 use std::fs::OpenOptions;
 use std::hash::{BuildHasher, RandomState};
 use std::io::{Read, Write};
@@ -8,44 +7,26 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[cfg(windows)]
-#[path = "private_file_windows.rs"]
-pub(crate) mod windows;
-
 pub(crate) fn open_private_lock(path: &Path, create: bool) -> std::io::Result<File> {
-    #[cfg(windows)]
-    {
-        windows::open_lock(path, create)
-    }
-    #[cfg(not(windows))]
-    {
-        let parent = path
-            .parent()
-            .ok_or_else(|| invalid_input("private file path has no parent"))?;
-        crate::private_file_parent::ensure_private(parent)?;
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create(create);
-        configure_unix(&mut options, 0o600);
-        let file = options.open(path)?;
-        validate_private_regular(&file)?;
-        Ok(file)
-    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_input("private file path has no parent"))?;
+    crate::private_file_parent::ensure_private(parent)?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(create);
+    configure_unix(&mut options, 0o600);
+    let file = options.open(path)?;
+    validate_private_regular(&file)?;
+    Ok(file)
 }
 
 pub(crate) fn open_private_append(path: &Path) -> std::io::Result<File> {
-    #[cfg(windows)]
-    {
-        windows::open_append(path)
-    }
-    #[cfg(not(windows))]
-    {
-        let mut options = OpenOptions::new();
-        options.create(true).append(true);
-        configure_unix(&mut options, 0o600);
-        let file = options.open(path)?;
-        validate_private_regular(&file)?;
-        Ok(file)
-    }
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    configure_unix(&mut options, 0o600);
+    let file = options.open(path)?;
+    validate_private_regular(&file)?;
+    Ok(file)
 }
 
 pub(crate) fn read_private_bounded(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
@@ -54,9 +35,6 @@ pub(crate) fn read_private_bounded(path: &Path, max_bytes: u64) -> std::io::Resu
 }
 
 pub(crate) fn read_regular_bounded(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
-    #[cfg(windows)]
-    let file = windows::open_regular_read(path)?;
-    #[cfg(not(windows))]
     let file = {
         let mut options = OpenOptions::new();
         options.read(true);
@@ -106,7 +84,7 @@ fn write_atomic_with(
         file.sync_all()?;
         #[cfg(test)]
         crash_before_rename_if_requested(path);
-        replace_atomic(&file, &temporary, path)?;
+        replace_atomic(&temporary, path)?;
         validate_private_regular(&open_private_read(path)?)?;
         sync_parent(parent)
     })();
@@ -158,8 +136,6 @@ pub(crate) fn validate_private_regular(file: &File) -> std::io::Result<std::fs::
             return Err(permission_denied("private file must not be hard-linked"));
         }
     }
-    #[cfg(windows)]
-    windows::validate_private(file)?;
     Ok(metadata)
 }
 
@@ -168,25 +144,16 @@ pub(crate) fn validate_regular(file: &File) -> std::io::Result<std::fs::Metadata
     if !metadata.is_file() {
         return Err(permission_denied("path is not a regular file"));
     }
-    #[cfg(windows)]
-    windows::validate_regular(file)?;
     Ok(metadata)
 }
 
 fn open_private_read(path: &Path) -> std::io::Result<File> {
-    #[cfg(windows)]
-    {
-        windows::open_read(path)
-    }
-    #[cfg(not(windows))]
-    {
-        let mut options = OpenOptions::new();
-        options.read(true);
-        configure_unix(&mut options, 0);
-        let file = options.open(path)?;
-        validate_private_regular(&file)?;
-        Ok(file)
-    }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    configure_unix(&mut options, 0);
+    let file = options.open(path)?;
+    validate_private_regular(&file)?;
+    Ok(file)
 }
 
 fn read_bounded(file: File, max_bytes: u64) -> std::io::Result<Vec<u8>> {
@@ -216,25 +183,16 @@ fn create_temporary(path: &Path) -> std::io::Result<(PathBuf, File)> {
             std::time::SystemTime::now(),
         ));
         let temporary = path.with_file_name(format!(".{file_name}.{nonce:016x}.tmp"));
-        #[cfg(windows)]
-        match windows::create_new(&temporary) {
-            Ok(file) => return Ok((temporary, file)),
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        configure_unix(&mut options, 0o600);
+        match options.open(&temporary) {
+            Ok(file) => {
+                validate_private_regular(&file)?;
+                return Ok((temporary, file));
+            }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
-        }
-        #[cfg(not(windows))]
-        {
-            let mut options = OpenOptions::new();
-            options.write(true).create_new(true);
-            configure_unix(&mut options, 0o600);
-            match options.open(&temporary) {
-                Ok(file) => {
-                    validate_private_regular(&file)?;
-                    return Ok((temporary, file));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error),
-            }
         }
     }
     Err(std::io::Error::new(
@@ -270,13 +228,7 @@ fn sync_user_directory(path: &Path) -> std::io::Result<()> {
     OpenOptions::new().read(true).open(path)?.sync_all()
 }
 
-#[cfg(windows)]
-fn replace_atomic(file: &File, source: &Path, destination: &Path) -> std::io::Result<()> {
-    windows::replace_atomic(file, source, destination)
-}
-
-#[cfg(not(windows))]
-fn replace_atomic(_file: &File, source: &Path, destination: &Path) -> std::io::Result<()> {
+fn replace_atomic(source: &Path, destination: &Path) -> std::io::Result<()> {
     std::fs::rename(source, destination)
 }
 
@@ -288,7 +240,7 @@ fn configure_unix(options: &mut OpenOptions, mode: u32) {
         .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK);
 }
 
-#[cfg(not(any(unix, windows)))]
+#[cfg(not(unix))]
 fn configure_unix(_options: &mut OpenOptions, _mode: u32) {}
 
 #[cfg(target_os = "macos")]
@@ -322,12 +274,7 @@ fn validate_local_filesystem(file: &File) -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(windows)]
-fn validate_local_filesystem(file: &File) -> std::io::Result<()> {
-    windows::validate_local(file)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn validate_local_filesystem(_file: &File) -> std::io::Result<()> {
     Ok(())
 }
