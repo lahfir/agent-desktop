@@ -90,10 +90,13 @@ fn absolute_screenshot_path_is_not_embedded() {
     write_segment(
         &trace_dir,
         "100-1000.jsonl",
-        &[&format!(
-            r#"{{"event":"action.artifacts","screenshot_pre":"{}","ts_ms":1,"seq":1}}"#,
-            sentinel.display()
-        )],
+        &[&serde_json::json!({
+            "event": "action.artifacts",
+            "screenshot_pre": sentinel.to_string_lossy(),
+            "ts_ms": 1,
+            "seq": 1,
+        })
+        .to_string()],
     );
     let (html, stats) = export_html(
         &trace_dir,
