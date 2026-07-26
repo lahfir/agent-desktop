@@ -30,7 +30,9 @@ fn get_full_inlines_references() {
     .expect("get full");
     let content = v["content"].as_str().expect("string");
     assert!(content.contains("--- references/workflows.md ---"));
-    assert!(content.contains("--- references/macos.md ---"));
+    if cfg!(target_os = "macos") {
+        assert!(content.contains("--- references/macos.md ---"));
+    }
     assert!(content.contains("@s8f3k2p9:e1"));
     assert!(content.contains("session start` does not activate later processes"));
     assert!(content.contains("session-owned ref still requires the same `--session`"));
