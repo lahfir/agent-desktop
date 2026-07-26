@@ -39,7 +39,6 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tracing",
- "windows-sys",
 ]
 
 [[package]]

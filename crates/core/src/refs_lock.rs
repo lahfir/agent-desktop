@@ -32,11 +32,13 @@ mod tests {
     use super::*;
 
     fn lock_path(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "agent-desktop-{name}-{}-{}.lock",
-            std::process::id(),
-            crate::refs::new_snapshot_id()
-        ))
+        std::env::temp_dir()
+            .join(format!(
+                "agent-desktop-{name}-{}-{}",
+                std::process::id(),
+                crate::refs::new_snapshot_id()
+            ))
+            .join("store.lock")
     }
 
     #[test]

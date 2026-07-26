@@ -1,53 +1,39 @@
 use std::path::Path;
 
 pub(super) fn ensure_private(path: &Path) -> std::io::Result<()> {
-    #[cfg(windows)]
-    {
-        super::private_file::windows::ensure_private_parent(path)
+    ensure_directory_path(path)?;
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(super::private_file::permission_denied(
+            "private file parent must be a real directory",
+        ));
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     {
-        ensure_directory_path(path)?;
-        let metadata = std::fs::symlink_metadata(path)?;
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() } {
             return Err(super::private_file::permission_denied(
-                "private file parent must be a real directory",
+                "private file parent is not owned by the effective user",
             ));
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if metadata.uid() != unsafe { libc::geteuid() } {
-                return Err(super::private_file::permission_denied(
-                    "private file parent is not owned by the effective user",
-                ));
-            }
-            if metadata.mode() & 0o077 != 0 {
-                return Err(super::private_file::permission_denied(
-                    "private file parent is accessible by group or other users",
-                ));
-            }
+        if metadata.mode() & 0o077 != 0 {
+            return Err(super::private_file::permission_denied(
+                "private file parent is accessible by group or other users",
+            ));
         }
-        Ok(())
     }
+    Ok(())
 }
 
 pub(super) fn ensure_user(path: &Path) -> std::io::Result<()> {
-    #[cfg(windows)]
-    {
-        super::private_file::windows::ensure_user_parent(path)
+    ensure_directory_path(path)?;
+    let metadata = std::fs::metadata(path)?;
+    if !metadata.is_dir() {
+        return Err(super::private_file::permission_denied(
+            "user output parent must be a directory",
+        ));
     }
-    #[cfg(not(windows))]
-    {
-        ensure_directory_path(path)?;
-        let metadata = std::fs::metadata(path)?;
-        if !metadata.is_dir() {
-            return Err(super::private_file::permission_denied(
-                "user output parent must be a directory",
-            ));
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -96,7 +82,7 @@ fn ensure_directory_path(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(any(unix, windows)))]
+#[cfg(not(unix))]
 fn ensure_directory_path(path: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
 }

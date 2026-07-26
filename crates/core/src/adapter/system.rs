@@ -15,11 +15,13 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("acquire_interaction_lease"))
     }
 
+    /// An adapter that never overrides this has not probed permissions at all,
+    /// which is not the same fact as a user denying one. `Unknown` routes through
+    /// `unknown_accessibility_means_unsupported` to `PLATFORM_NOT_SUPPORTED`
+    /// rather than the misleading `PERM_DENIED`.
     fn permission_report(&self, _deadline: Deadline) -> Result<PermissionReport, AdapterError> {
         Ok(PermissionReport {
-            accessibility: PermissionState::Denied {
-                suggestion: "Platform adapter not available".into(),
-            },
+            accessibility: PermissionState::Unknown,
             screen_recording: PermissionState::Unknown,
             automation: PermissionState::NotRequired,
         })

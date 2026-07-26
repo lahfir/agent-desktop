@@ -93,27 +93,27 @@ fn stub_ad_version_always_succeeds() {
     }
 }
 
-/// `ad_check_permissions` maps the stub adapter's `Denied` permission state
-/// to `ErrPermDenied (-1)`, not `ErrPlatformNotSupported (-8)`. This is the
-/// documented exception. Cross-platform callers must treat both codes as
-/// "adapter not operational here".
+/// `ad_check_permissions` reports `ErrPlatformNotSupported (-8)` on an adapter
+/// that never probes permissions. Not having measured a permission is a
+/// different fact from a user having denied one, and `ErrPermDenied (-1)` sends
+/// callers looking for a grant that does not exist on that platform.
 #[cfg(feature = "stub-adapter")]
 #[test]
-fn stub_ad_check_permissions_returns_err_perm_denied() {
+fn stub_ad_check_permissions_returns_err_platform_not_supported() {
     with_adapter(|adapter| unsafe {
         let rc = ad_check_permissions(adapter);
         assert_eq!(
             rc,
-            AdResult::ErrPermDenied,
-            "stub adapter permission_report() returns Denied → ErrPermDenied (-1), \
-             not ErrPlatformNotSupported (-8). Both mean the adapter is not operational."
+            AdResult::ErrPlatformNotSupported,
+            "an adapter that does not probe permissions reports Unknown, which must \
+             surface as ErrPlatformNotSupported (-8), never ErrPermDenied (-1)."
         );
         let msg = ad_last_error_message();
         assert!(
             !msg.is_null(),
-            "last-error message must be set on ErrPermDenied"
+            "last-error message must be set on ErrPlatformNotSupported"
         );
-        assert_eq!(ad_last_error_code(), AdResult::ErrPermDenied);
+        assert_eq!(ad_last_error_code(), AdResult::ErrPlatformNotSupported);
     });
 }
 

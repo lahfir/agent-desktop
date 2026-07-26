@@ -19,6 +19,17 @@ fn default_surfaces_fail_closed() {
 }
 
 #[test]
+fn default_permission_report_is_unknown_not_denied() {
+    let report = DefaultOnly
+        .permission_report(crate::Deadline::standard().unwrap())
+        .expect("default permission report must not error");
+
+    assert_eq!(report.accessibility, crate::PermissionState::Unknown);
+    assert!(!report.accessibility_denied());
+    assert!(DefaultOnly.unknown_accessibility_means_unsupported());
+}
+
+#[test]
 fn default_open_session_is_explicitly_unsupported() {
     let affinity = crate::SessionAffinity {
         session_id: Some("test-session".into()),

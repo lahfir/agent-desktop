@@ -7,10 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 cargo build                                    # Debug build
 cargo build --release                          # Release build (<15MB target)
-cargo test --lib --workspace                   # Run all unit tests
+cargo test --workspace                         # Run every test (lib, binary, and integration targets)
+cargo test --lib --workspace                   # Library unit tests only; SKIPS the agent-desktop binary crate
+cargo test -p agent-desktop                    # Binary crate tests (CLI contract, dispatch, batch, policy)
 cargo test --lib -p agent-desktop-core         # Test core crate only
 cargo test --lib -p agent-desktop-macos        # Test macOS crate only
 cargo test test_name                           # Run a single test by name
+cargo check -p agent-desktop-core --all-targets --target x86_64-pc-windows-msvc  # Core must cross-compile
+cargo check -p agent-desktop-core --all-targets --target x86_64-unknown-linux-gnu
 cargo clippy --all-targets -- -D warnings      # Lint (must pass, zero warnings)
 cargo fmt --all -- --check                     # Format check
 cargo fmt --all                                # Auto-format
@@ -375,10 +379,21 @@ for the actionability preflight (`get_live_*`), and `is_protected_process`
 ## CI Requirements
 
 - GitHub Actions macOS runner executes full test suite on every PR
+- Windows and Linux runners execute the core unit tests plus their native platform crate on every PR
 - `cargo tree -p agent-desktop-core` must not contain platform crate names
 - `cargo clippy --all-targets -- -D warnings`
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
+
+### Core platform-conditional code
+
+`agent-desktop-core` must stay executable on every supported OS. A `#[cfg]` branch in core
+that no CI lane runs is a hypothesis, not shipped code — either add a lane that executes
+it or keep it out of core. Platform hardening belongs behind `PlatformAdapter` or in the
+platform crate, written on that platform against a lane that runs it. Core carried 1,062
+LOC of never-executed Win32 file I/O into v0.5.0; it failed 225 of 940 tests on first
+contact with Windows and was deleted. See
+`docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`.
 
 ## Commands
 
