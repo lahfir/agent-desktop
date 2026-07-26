@@ -165,7 +165,7 @@ agent-desktop/
 │   │       ├── snapshot_surface.rs # SnapshotSurface (predeclared cross-platform surface vocabulary)
 │   │       ├── snapshot.rs      # SnapshotEngine (filter, allocate, serialize)
 │   │       ├── session/         # session start/end/list/gc, manifest, liveness
-│   │       ├── private_file*.rs # 0600-equivalent private artifact writing (Unix perms + Windows ACL family)
+│   │       ├── private_file*.rs # 0600-equivalent private artifact writing (portable std::fs on every target; Windows ACL hardening not yet built, see Phase 2.1)
 │   │       ├── trace.rs / trace_read/ # JSONL reliability trace, segment merge, HTML viewer
 │   │       ├── error_code.rs    # ErrorCode enum
 │   │       ├── adapter_error.rs / app_error.rs # AdapterError, AppError
@@ -952,13 +952,13 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 
 **Goal:** empirically map Windows accessibility reality with raw, no-Rust scripts before any adapter code exists, producing a committed evidence corpus the Rust sub-phases implement against — and feeding every contradiction back into this document.
 
-**Scope:** a `probes/windows/` directory of raw scripts — PowerShell using .NET managed UIA (`System.Windows.Automation`, preinstalled with .NET Framework 4.8) plus small C# programs compiled with `csc.exe` where UIA3 COM specifics differ from the managed wrapper. The corpus must cover, each as a runnable script with captured JSON/text output committed beside it: (1) full-tree dumps of Notepad, Explorer, Settings, and one Electron app (VS Code or Slack) including every property read per node; (2) a pattern-availability census per ControlType (Invoke, Toggle, Value, RangeValue, ExpandCollapse, SelectionItem, Scroll, ScrollItem, Text, Window, LegacyIAccessible); (3) every interaction exercised raw — invoke, toggle, set value, select, expand/collapse, scroll via pattern AND wheel, text get/selection/caret/insert, focus; (4) SendInput synthesis experiments — keyboard incl. modifier chords and UTF-16 chunking limits, mouse click/move/wheel/drag; (5) `ElementFromPoint` hit-testing incl. deliberately occluded and zero-size targets; (6) `CacheRequest` batched reads timed against per-property reads; (7) AutomationId coverage census across Win32 / WinForms / WPF / Electron; (8) event-handler observations (which UIA events actually fire, ordering, MTA threading behavior); (9) elevation/UIPI behavior against an elevated process; (10) RDP-session and DPI/multi-monitor bounds behavior. Alongside the scripts: `probes/windows/FINDINGS.md` — a findings ledger mapping every experiment to observed behavior and a doc-alignment verdict (confirms this document / contradicts it / new edge case).
+**Scope:** a `probes/windows/` directory of raw scripts — PowerShell using .NET managed UIA (`System.Windows.Automation`, preinstalled with .NET Framework 4.8) plus small C# programs compiled with `csc.exe` where UIA3 COM specifics differ from the managed wrapper. The corpus must cover, each as a runnable script with captured JSON/text output committed beside it: (1) full-tree dumps of Notepad, Explorer, Settings, and one Electron app (VS Code or Slack) including every property read per node; (2) a pattern-availability census per ControlType (Invoke, Toggle, Value, RangeValue, ExpandCollapse, SelectionItem, Scroll, ScrollItem, Text, Window, LegacyIAccessible); (3) every interaction exercised raw — invoke, toggle, set value, select, expand/collapse, scroll via pattern AND wheel, text get/selection/caret/insert, focus; (4) SendInput synthesis experiments — keyboard incl. modifier chords and UTF-16 chunking limits, mouse click/move/wheel/drag; (5) `ElementFromPoint` hit-testing incl. deliberately occluded and zero-size targets; (6) `CacheRequest` batched reads timed against per-property reads; (7) AutomationId coverage census across Win32 / WinForms / WPF / Electron; (8) event-handler observations (which UIA events actually fire, ordering, MTA threading behavior); (9) elevation/UIPI behavior against an elevated process; (10) RDP-session and DPI/multi-monitor bounds behavior; (11) private-file I/O primitives — whether atomic rename over a concurrently-open handle requires `FILE_SHARE_DELETE`, whether an elevated process owns new objects as `TokenOwner` (e.g. `BUILTIN\Administrators`) rather than `TokenUser`, whether `GetFileInformationByHandleEx(FileRemoteProtocolInfo)` reliably distinguishes local from remote volumes, and what ancestor-vs-leaf ACL validation contract parity with the unix leaf-only rule actually needs (see `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`). Alongside the scripts: `probes/windows/FINDINGS.md` — a findings ledger mapping every experiment to observed behavior and a doc-alignment verdict (confirms this document / contradicts it / new edge case).
 
 **Key APIs:** System.Windows.Automation, UIA3 COM (IUIAutomation) via csc.exe shims, SendInput, ElementFromPoint, CacheRequest.
 
 **Depends on:** nothing — this is the entry point; the dev VM needs only its preinstalled .NET, PowerShell, and git.
 
-**Exit criteria:** the script corpus and captured outputs are committed and re-runnable on the dev VM; the findings ledger covers tree, patterns, interactions, input, hit-testing, batching, identity, events, elevation, and session behavior with no open "unknown" rows; every ledger entry that contradicts this document has a matching amendment to this document landed in the same PR (see the source-of-truth feedback rule in the Platform Delivery Model); no Rust adapter sub-phase (2.2 onward) starts until this exit gate is green.
+**Exit criteria:** the script corpus and captured outputs are committed and re-runnable on the dev VM; the findings ledger covers tree, patterns, interactions, input, hit-testing, batching, identity, events, elevation, session, and private-file I/O behavior with no open "unknown" rows; every ledger entry that contradicts this document has a matching amendment to this document landed in the same PR (see the source-of-truth feedback rule in the Platform Delivery Model); no Rust adapter sub-phase (2.2 onward) starts until this exit gate is green.
 
 **Est. PR size:** ~1.5k lines (scripts + ledger; no Rust).
 
@@ -972,15 +972,15 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 - `CoInitializeEx(NULL, COINIT_MULTITHREADED)` + `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` bootstrap at process start
 - `WindowsAdapterSession` implementing `AdapterSession` via `open_session` — owns COM apartment state so later sub-phases don't reinvent COM lifecycle
 - Re-verify the dependency pins below against crates.io + supply-chain policy (pinned at 2026-04 research time — see New Dependencies)
-- Fix the `private_file_windows_security` `AceSize` validation gap (`crates/core/src/private_file_windows_security.rs`, currently cfg-gated dead code on non-Windows CI) so the private-artifact-writing path is real before any Windows code writes a refmap or trace file
+- Implement Windows private-file hardening from scratch, behind `PlatformAdapter` or as a Windows-gated dependency of the `agent-desktop-windows` crate — never as unconditional `agent-desktop-core` surface (see `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`) — satisfying, with evidence from 2.0's probes: `FILE_SHARE_DELETE` on every concurrently-open handle across an atomic replace; owner validation against `TokenOwner`, not `TokenUser`; no locality inference from `FileRemoteProtocolInfo`; and an ancestor-vs-leaf validation contract decided deliberately, matching or explicitly diverging from the unix leaf-only rule, so the private-artifact-writing path is real before any Windows code writes a refmap or trace file
 
-**Key APIs:** `CoInitializeEx`, `SetProcessDpiAwarenessContext`, Win32 ACL / `AceSize` validation (private-file security)
+**Key APIs:** `CoInitializeEx`, `SetProcessDpiAwarenessContext`, Win32 ACL / `TokenOwner` validation, `FILE_SHARE_DELETE` (private-file hardening)
 
 **Depends on:** nothing (opening sub-phase)
 
-**Exit criteria:** workspace green on Windows CI; `WindowsAdapter` constructs and satisfies the trait; every command returns honest `PLATFORM_NOT_SUPPORTED` on Windows; the permission probe is unit-tested against mocked COM security state.
+**Exit criteria:** workspace green on Windows CI; `WindowsAdapter` constructs and satisfies the trait; every command returns honest `PLATFORM_NOT_SUPPORTED` on Windows; the permission probe is unit-tested against mocked COM security state; private-file hardening is unit-tested on the `windows-latest` CI lane, not merely `cargo check`-clean.
 
-**Est. PR size:** ~0.8k LOC
+**Est. PR size:** ~1.3k LOC (bootstrap ~0.8k + from-scratch private-file hardening ~0.5k)
 
 ### 2.2 — UIA Element Wrapper & Tree Walk
 
@@ -1170,11 +1170,11 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 **Scope:**
 - `ScreenshotBackend::Legacy` first (`PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` — mitigates DWM black frames), then `ScreenshotBackend::Modern` via `windows-capture`/WGC where the session supports it (P2-O13)
 - `screenshot --screen` honest display targeting (pairs with `list_displays` from 2.4)
-- Typed clipboard: `CF_UNICODETEXT` → `ClipboardContent::Text`, image via `CF_DIB`/PNG → `ClipboardContent::Image`, `CF_HDROP` file lists → `ClipboardContent::FileUrls`, all written through 0600-equivalent private files (see 2.1's ACL fix)
+- Typed clipboard: `CF_UNICODETEXT` → `ClipboardContent::Text`, image via `CF_DIB`/PNG → `ClipboardContent::Image`, `CF_HDROP` file lists → `ClipboardContent::FileUrls`, all written through 0600-equivalent private files (see 2.1's private-file hardening)
 
 **Key APIs:** `PrintWindow`, `windows-capture`/`Windows.Graphics.Capture`, `OpenClipboard`/`GetClipboardData`/`SetClipboardData`
 
-**Depends on:** 2.1 (private-file ACL fix), 2.4 (displays)
+**Depends on:** 2.1 (private-file hardening), 2.4 (displays)
 
 **Exit criteria:** screenshot + clipboard e2e pass (clipboard tests hermetic, no real-desktop clipboard pollution); WGC gracefully degrades (falls back to `Legacy`, does not fail) in RDP-limited sessions.
 
@@ -1652,7 +1652,7 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Key APIs:** `org.freedesktop.portal.ScreenCast`, `org.freedesktop.portal.RemoteDesktop`, `XGetImage`, `wl-clipboard`/`xclip`
 
-**Depends on:** 3.1 (private-file handling — Unix permissions already real, unlike the Windows ACL gap), 3.4 (displays)
+**Depends on:** 3.1 (private-file handling — Unix permissions already real; Windows private-file hardening is still to be built from scratch in 2.1), 3.4 (displays)
 
 **Exit criteria:** screenshot + clipboard e2e pass (clipboard tests hermetic); the PipeWire portal flow is proven — the user approves via the XDG portal dialog once, subsequent calls bypass the dialog within the session grant window.
 
