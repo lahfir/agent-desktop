@@ -1,0 +1,72 @@
+{
+    "Probe":  "01-tree-dump",
+    "CapturedAtUtc":  "<timestamp>",
+    "Stack":  "managed",
+    "BaselineFocus":  {
+                          "Resolved":  true,
+                          "ControlType":  "ControlType.Window",
+                          "ClassName":  "org.wezfurlong.wezterm",
+                          "ProcessId":  <pid>,
+                          "NativeWindowHandle":  <hwnd>
+                      },
+    "FocusInterference":  [
+
+                          ],
+    "BoundsFloorPct":  95,
+    "BelowBoundsFloor":  [
+
+                         ],
+    "Targets":  [
+                    {
+                        "Target":  "notepad",
+                        "NodeCount":  3,
+                        "PctNonEmptyBounds":  100,
+                        "PctPositiveAreaBounds":  100,
+                        "NodesWithControlType":  3,
+                        "RefableNodeCount":  1,
+                        "FocusUnchanged":  true
+                    },
+                    {
+                        "Target":  "settings",
+                        "NodeCount":  49,
+                        "PctNonEmptyBounds":  95.92,
+                        "PctPositiveAreaBounds":  95.92,
+                        "NodesWithControlType":  49,
+                        "RefableNodeCount":  46,
+                        "FocusUnchanged":  true
+                    },
+                    {
+                        "Target":  "explorer",
+                        "NodeCount":  196,
+                        "PctNonEmptyBounds":  100,
+                        "PctPositiveAreaBounds":  100,
+                        "NodesWithControlType":  196,
+                        "RefableNodeCount":  168,
+                        "FocusUnchanged":  true
+                    },
+                    {
+                        "Target":  "obsidian",
+                        "NodeCount":  119,
+                        "PctNonEmptyBounds":  99.16,
+                        "PctPositiveAreaBounds":  99.16,
+                        "NodesWithControlType":  119,
+                        "RefableNodeCount":  119,
+                        "FocusUnchanged":  true
+                    }
+                ],
+    "MinimizedVsRestored":  {
+                                "RestoredNodeCount":  3,
+                                "MinimizedNodeCount":  3,
+                                "NodeCountDelta":  0,
+                                "RestoredPctNonEmptyBounds":  100,
+                                "MinimizedPctNonEmptyBounds":  66.67,
+                                "RestoredNodesAtOffscreenOrigin":  0,
+                                "MinimizedNodesAtOffscreenOrigin":  2,
+                                "Verdict":  "launch policy does not affect tree completeness; it affects geometry only"
+                            },
+    "NotepadVocabulary":  {
+                              "Verdict":  "NEW-EDGE",
+                              "Finding":  "classic Notepad\u0027s editor exposes as ControlType.Pane with ClassName Edit and AutomationId 15 to the managed client — not ControlType.Edit or ControlType.Document. 2.3\u0027s vocabulary map cannot key an editable text surface off ControlType alone."
+                          },
+    "StackDivergence":  "all counts here are managed ControlView. U7 measured classic Notepad at 26 nodes on the UIA3 COM stack against the 3 recorded here, so a low managed count on a Win32 target is evidence of client-stack divergence (KTD1), not of a missing tree."
+}
