@@ -1,0 +1,804 @@
+{
+    "stack":  "uia3-com",
+    "binding":  "hand-declared ComImport, no GAC UIAutomationClient reference",
+    "coclass":  "CUIAutomation8",
+    "mainThreadId":  2868,
+    "mainApartment":  "MTA",
+    "discoveredPatternAvailabilityProperties":  35,
+    "result":  {
+                   "mode":  "events",
+                   "repetitions":  20,
+                   "cheapCallbacks":  false,
+                   "driveActions":  "vcfw",
+                   "callbackWork":  "reads AutomationId+ControlType+ProcessId on sender inside the callback",
+                   "targetHwnd":  "0x1800e6",
+                   "targetProcessId":  6008,
+                   "workerThreadId":  7552,
+                   "workerApartment":  "MTA",
+                   "watchedProperties":  "Name=30005,ValuePattern.Value=30045,TogglePattern.ToggleState=30086,HasKeyboardFocus=30008,RangeValuePattern.Value=30047",
+                   "totalEvents":  557,
+                   "distinctEventThreadCount":  4,
+                   "eventThreadsDistinctFromMain":  true,
+                   "eventThreadsDistinctFromWorker":  false,
+                   "kindTotals":  {
+                                      "AutomationEvent:Window_WindowClosed":  10,
+                                      "AutomationEvent:Window_WindowOpened":  7,
+                                      "FocusChanged":  42,
+                                      "PropertyChanged:Name":  180,
+                                      "PropertyChanged:ValuePattern.Value":  318
+                                  },
+                   "orderingStableAcrossReps":  false,
+                   "distinctOrderingSignatures":  6,
+                   "orderingStableExcludingWindowEvents":  true,
+                   "distinctCoreOrderingSignatures":  1,
+                   "orderingPerRep":  [
+                                          {
+                                              "rep":  0,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged\u003eAutomationEvent:Window_WindowClosed\u003eAutomationEvent:Window_WindowOpened"
+                                          },
+                                          {
+                                              "rep":  1,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged\u003eAutomationEvent:Window_WindowClosed\u003eAutomationEvent:Window_WindowOpened"
+                                          },
+                                          {
+                                              "rep":  2,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged\u003eAutomationEvent:Window_WindowClosed\u003eAutomationEvent:Window_WindowOpened"
+                                          },
+                                          {
+                                              "rep":  3,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged\u003eAutomationEvent:Window_WindowClosed\u003eAutomationEvent:Window_WindowOpened"
+                                          },
+                                          {
+                                              "rep":  4,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged\u003eAutomationEvent:Window_WindowClosed"
+                                          },
+                                          {
+                                              "rep":  5,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eAutomationEvent:Window_WindowOpened\u003eFocusChanged\u003eFocusChanged\u003eAutomationEvent:Window_WindowClosed"
+                                          },
+                                          {
+                                              "rep":  6,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  7,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged\u003eAutomationEvent:Window_WindowOpened\u003eAutomationEvent:Window_WindowClosed"
+                                          },
+                                          {
+                                              "rep":  8,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  9,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  10,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  11,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  12,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  13,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  14,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  15,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  16,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  17,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  18,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eFocusChanged"
+                                          },
+                                          {
+                                              "rep":  19,
+                                              "sequence":  "PropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:Name\u003ePropertyChanged:Name\u003ePropertyChanged:ValuePattern.Value\u003ePropertyChanged:ValuePattern.Value\u003eFocusChanged\u003eAutomationEvent:Window_WindowOpened\u003eAutomationEvent:Window_WindowClosed\u003eFocusChanged"
+                                          }
+                                      ],
+                   "quiescentTeardownCompleted":  true,
+                   "quiescentTeardownElapsedMs":  86184.2359,
+                   "inflightTeardownCompletedUnderLoad":  true,
+                   "inflightTeardownCompletedOnlyAfterLoadStopped":  false,
+                   "inflightTeardownElapsedMs":  72.4894,
+                   "quiescentTeardownPerHandler":  [
+                                                       {
+                                                           "handler":  "Invoke_Invoked",
+                                                           "elapsedMs":  8487.4945
+                                                       },
+                                                       {
+                                                           "handler":  "Text_TextChanged",
+                                                           "elapsedMs":  9586.8329
+                                                       },
+                                                       {
+                                                           "handler":  "SelectionItem_ElementSelected",
+                                                           "elapsedMs":  10374.2025
+                                                       },
+                                                       {
+                                                           "handler":  "Window_WindowOpened",
+                                                           "elapsedMs":  21078.9415
+                                                       },
+                                                       {
+                                                           "handler":  "Window_WindowClosed",
+                                                           "elapsedMs":  26631.8655
+                                                       },
+                                                       {
+                                                           "handler":  "PropertyChanged",
+                                                           "elapsedMs":  9999.5944
+                                                       },
+                                                       {
+                                                           "handler":  "FocusChanged",
+                                                           "elapsedMs":  22.8593
+                                                       }
+                                                   ],
+                   "inflightTeardownPerHandler":  [
+                                                      {
+                                                          "handler":  "Invoke_Invoked",
+                                                          "elapsedMs":  16.061
+                                                      },
+                                                      {
+                                                          "handler":  "Text_TextChanged",
+                                                          "elapsedMs":  9.7971
+                                                      },
+                                                      {
+                                                          "handler":  "SelectionItem_ElementSelected",
+                                                          "elapsedMs":  8.9853
+                                                      },
+                                                      {
+                                                          "handler":  "Window_WindowOpened",
+                                                          "elapsedMs":  7.219
+                                                      },
+                                                      {
+                                                          "handler":  "Window_WindowClosed",
+                                                          "elapsedMs":  10.198
+                                                      },
+                                                      {
+                                                          "handler":  "PropertyChanged",
+                                                          "elapsedMs":  9.2494
+                                                      },
+                                                      {
+                                                          "handler":  "FocusChanged",
+                                                          "elapsedMs":  10.7618
+                                                      }
+                                                  ],
+                   "inflightEventBacklogAtTeardown":  296,
+                   "eventsDuringTeardownWindow":  300,
+                   "workerErrors":  "",
+                   "sample":  [
+                                  {
+                                      "seq":  0,
+                                      "rep":  0,
+                                      "label":  "FocusChanged",
+                                      "threadId":  7552,
+                                      "elapsedMs":  67.4963,
+                                      "senderAutomationId":  "ImmersiveBackground",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  false
+                                  },
+                                  {
+                                      "seq":  1,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  490.1137,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  2,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  494.1919,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  3,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  614.3486,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  4,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  618.5844,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  5,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  623.4841,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  6,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  627.1939,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  7,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  735.2428,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  8,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  739.2361,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  9,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  744.2327,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  10,
+                                      "rep":  0,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  748.1971,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  11,
+                                      "rep":  0,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  875.5431,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  12,
+                                      "rep":  0,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  961.8247,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  13,
+                                      "rep":  0,
+                                      "label":  "AutomationEvent:Window_WindowClosed",
+                                      "threadId":  4128,
+                                      "elapsedMs":  1088.459,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  14,
+                                      "rep":  0,
+                                      "label":  "AutomationEvent:Window_WindowOpened",
+                                      "threadId":  4128,
+                                      "elapsedMs":  1265.5937,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  15,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1505.3898,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  16,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1509.2421,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  17,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1632.2378,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  18,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1636.2579,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  19,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1641.7355,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  20,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1646.048,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  21,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1756.7018,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  22,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1760.3131,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  23,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1765.7302,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  24,
+                                      "rep":  1,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1770.3826,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  25,
+                                      "rep":  1,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1883.1211,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  26,
+                                      "rep":  1,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  1977.1086,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  27,
+                                      "rep":  1,
+                                      "label":  "AutomationEvent:Window_WindowClosed",
+                                      "threadId":  4128,
+                                      "elapsedMs":  2098.8285,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  28,
+                                      "rep":  1,
+                                      "label":  "AutomationEvent:Window_WindowOpened",
+                                      "threadId":  4128,
+                                      "elapsedMs":  2298.7174,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  29,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2530.6733,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  30,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2534.6218,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  31,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2659.1352,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  32,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2664.3413,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  33,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2670.6957,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  34,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2675.2406,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  35,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2781.5169,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  36,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2785.6152,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  37,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2790.5206,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  38,
+                                      "rep":  2,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2794.4832,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  39,
+                                      "rep":  2,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  2907.7323,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  40,
+                                      "rep":  2,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3002.2669,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  41,
+                                      "rep":  2,
+                                      "label":  "AutomationEvent:Window_WindowClosed",
+                                      "threadId":  4128,
+                                      "elapsedMs":  3123.6855,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  42,
+                                      "rep":  2,
+                                      "label":  "AutomationEvent:Window_WindowOpened",
+                                      "threadId":  4128,
+                                      "elapsedMs":  3371.1046,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  43,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3546.4762,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  44,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3550.5912,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  45,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3673.1608,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  46,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3677.3123,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  },
+                                  {
+                                      "seq":  47,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3682.663,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  48,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3686.991,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  49,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3798.1253,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  50,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3802.3073,
+                                      "senderAutomationId":  "chkToggle",
+                                      "senderControlType":  "CheckBox",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Enable feature"
+                                  },
+                                  {
+                                      "seq":  51,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3807.9026,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  52,
+                                      "rep":  3,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3811.8923,
+                                      "senderAutomationId":  "txtStatusMirror",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  53,
+                                      "rep":  3,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  3924.1694,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  54,
+                                      "rep":  3,
+                                      "label":  "FocusChanged",
+                                      "threadId":  6336,
+                                      "elapsedMs":  4019.1518,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  55,
+                                      "rep":  3,
+                                      "label":  "AutomationEvent:Window_WindowClosed",
+                                      "threadId":  4128,
+                                      "elapsedMs":  4151.8203,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  56,
+                                      "rep":  3,
+                                      "label":  "AutomationEvent:Window_WindowOpened",
+                                      "threadId":  4128,
+                                      "elapsedMs":  4527.8027,
+                                      "senderAutomationId":  "frmScratchMain",
+                                      "senderControlType":  "Window",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  57,
+                                      "rep":  4,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  4577.7505,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  58,
+                                      "rep":  4,
+                                      "label":  "PropertyChanged:ValuePattern.Value",
+                                      "threadId":  6336,
+                                      "elapsedMs":  4581.5118,
+                                      "senderAutomationId":  "txtValue",
+                                      "senderControlType":  "Edit",
+                                      "senderIsTarget":  true
+                                  },
+                                  {
+                                      "seq":  59,
+                                      "rep":  4,
+                                      "label":  "PropertyChanged:Name",
+                                      "threadId":  6336,
+                                      "elapsedMs":  4704.5109,
+                                      "senderAutomationId":  "btnAction",
+                                      "senderControlType":  "Button",
+                                      "senderIsTarget":  true,
+                                      "newValue":  "Do Action"
+                                  }
+                              ]
+               }
+}
