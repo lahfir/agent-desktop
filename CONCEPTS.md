@@ -112,6 +112,14 @@ Ref-targeted physical input lands on the topmost window at the resolved point, s
 ### FFI Ref-Action Parity
 The requirement that language bindings using refs follow the same strict resolution, actionability, and interaction-policy semantics as CLI ref commands.
 
+## Platform Evidence
+
+### Probe Corpus
+The committed, re-runnable set of raw platform scripts under `probes/<platform>/` that a platform exploration sub-phase (2.0, 3.0) uses to observe real OS behavior before any adapter code exists. Probes capture their outputs beside the scripts; they never modify product code.
+
+### Findings Ledger
+The `FINDINGS.md` file inside a probe corpus mapping every experiment to observed behavior and a doc-alignment verdict (confirms / contradicts / new edge) against `docs/phases.md`. A contradicts verdict obligates a same-PR correction of `docs/phases.md`; the ledger being complete is the gate that unblocks the platform's adapter sub-phases.
+
 ## Relationships
 
 A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected by ID within that same namespace. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether the action can safely dispatch. In headed mode, core applies the action's focus/cursor requirement before the platform adapter executes the action-specific chain under its own deadline. FFI ref-action parity keeps that same relationship true for language bindings.

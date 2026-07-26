@@ -10,7 +10,8 @@ Most recent shipments against this roadmap:
 
 | Version | Date | What shipped |
 |---------|------|---------------|
-| **Unreleased** | — | Foundation reliability contract (Playwright-grade, U0–U19) completed on `feat/foundation-playwright-grade-contract` (PR #93, `feat!`) — capability-supertrait `PlatformAdapter` split, canonical role/state vocabulary, live `is --property visible`, `list-displays` + honest `--screen` + scale factor, truthful Automation permission, `native_id` identity spine, window-id-first resolution, `LocatorQuery` + live `find`, default-on auto-wait, three-way occlusion gate, `scroll_into_view`, core accname computation, `supported_surfaces` introspection, typed `ActionStep` delivery tier, `ProcessState` + `APP_UNRESPONSIVE`, `LaunchOptions`, `SignalBaseline` + `wait --event`, typed clipboard, mouse modifiers/wheel, FFI ABI major 3, envelope 2.1. Will cut the next minor per pre-1.0 policy. See [Phase 1.6](#phase-16--playwright-grade-foundation-contract-completed). |
+| v0.6.0 | 2026-07-25 | **Breaking:** removed the speculative Win32 private-file layer from core (six `private_file_windows*` files, `windows-sys` dropped from core and the workspace — Windows now uses the same portable `std::fs` path as every other non-unix target) and added real `test-windows` / `test-linux` CI lanes that execute core's platform-conditional code on every PR instead of only type-checking it. Windows private-file hardening becomes from-scratch Phase 2.1 work behind the adapter boundary. See [2.1](#21--toolchain-ci--com-bootstrap) and `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md` |
+| v0.5.0 | 2026-07-24 | Foundation reliability contract (Playwright-grade, U0–U19) — capability-supertrait `PlatformAdapter` split, canonical role/state vocabulary, live `is --property visible`, `list-displays` + honest `--screen` + scale factor, truthful Automation permission, `native_id` identity spine, window-id-first resolution, `LocatorQuery` + live `find`, default-on auto-wait, three-way occlusion gate, `scroll_into_view`, core accname computation, `supported_surfaces` introspection, typed `ActionStep` delivery tier, `ProcessState` + `APP_UNRESPONSIVE`, `LaunchOptions`, `SignalBaseline` + `wait --event`, typed clipboard, mouse modifiers/wheel, FFI ABI major 3, envelope 2.1. See [Phase 1.6](#phase-16--playwright-grade-foundation-contract-completed). |
 | v0.4.7 | 2026-07-02 | Trace viewer and replay artifacts |
 | v0.4.6 | 2026-07-02 | Sessions promoted to the first-class trace container: `session start/end/list/gc`, manifest-gated automatic JSONL segments under `sessions/<id>/trace/` |
 | v0.4.5 | 2026-06-30 | `--wait-for` selector polling flags |
@@ -38,7 +39,7 @@ Most recent shipments against this roadmap:
 - v0.4.0 – v0.4.7 complete the FFI C-ABI surface (load-time handshake, session-scoped adapter, JSON-envelope entrypoints), then land session-first tracing and a trace viewer.
 - Foundation reliability contract (Playwright-grade, U0–U19) completed on `feat/foundation-playwright-grade-contract` — see [Phase 1.6](#phase-16--playwright-grade-foundation-contract-completed).
 - Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms); the FFI C-ABI surface itself (`ad_snapshot` / `ad_execute_by_ref` / `ad_wait` / `ad_version` / `ad_status` / `ad_init` / `ad_abi_version`) completed in v0.4.1.
-- Phase 2: planned. Delivered as dependency-ordered sub-phases 2.0–2.15 into the `feat/windows-adapter` integration branch — see [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches) and the Phase 2 section below.
+- Phase 2: in progress. The entire Windows implementation lands here as dependency-ordered sub-phases 2.0–2.15 into the `feat/windows-adapter` integration branch — nothing Windows defers to a later phase (see the no-convenience-deferral rule in the [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches)). v0.6.0 already put a real Windows test lane in place; 2.0 (probe corpus) is the first sub-phase PR.
 - Phase 3+: planned. See each phase section below for the additive platform work and trait defaults that later phases backfill.
 
 ---
@@ -50,7 +51,7 @@ Most recent shipments against this roadmap:
 | 1 | Foundation + macOS MVP | **Completed** (v0.1.0 – v0.1.14) | macOS |
 | 1.5 | FFI Distribution (C-ABI cdylib) | **Completed** (v0.1.13; C-ABI surface completed v0.4.1) | macOS, Windows, Linux |
 | 1.6 | Playwright-grade Foundation Contract | **Completed** (PR #93) | macOS (contract in core) |
-| 2 | Windows Adapter | Planned — sub-phases 2.0–2.15 | macOS, Windows |
+| 2 | Windows Adapter | **In progress** — sub-phases 2.0–2.15; all Windows scope lands here | macOS, Windows |
 | 3 | Linux Adapter | Planned — sub-phases 3.0–3.15 | macOS, Windows, Linux |
 | 4 | MCP Server Mode | Planned | All |
 | 5 | Production Readiness | Planned | All |
@@ -576,7 +577,9 @@ Current `.github/workflows/ci.yml` runs on push to main/master, pull_request, an
 |-----|--------|-----------------|
 | `fmt` | ubuntu-latest | `cargo fmt --all -- --check`; shellcheck + bash3-compat on e2e scripts; `py_compile` + unittest on `tests/e2e/*.py`; actionlint on workflow files |
 | `msrv` | ubuntu-latest | `cargo +1.89.0 check` (pinned MSRV) on core, linux, and the binary crate |
-| `platform-check` | matrix: Linux / Windows / macOS | `cargo check --all-targets` per platform crate + binary — proves the stub crates compile on their target before any adapter code lands |
+| `platform-check` | matrix: Linux / Windows / macOS | `cargo check --all-targets` per platform crate + binary — proves every crate compiles on its target |
+| `test-windows` | windows-latest | `cargo test -p agent-desktop-core -p agent-desktop-windows --lib` — added in v0.6.0; the first lane that ever executed core's `#[cfg(windows)]` code. Phase 2.1 extends it to clippy, binary-crate tests, and the size check |
+| `test-linux` | ubuntu-latest | `cargo test -p agent-desktop-core -p agent-desktop-linux --lib` — added in v0.6.0; Phase 3.1 extends it the same way |
 | `test` | macos-latest | Dependency isolation check (`cargo tree -p agent-desktop-core` has zero platform crate names), release-consistency check, file-size rule check, `cargo clippy --all-targets -- -D warnings`, core+macos unit tests, `locator_benchmark` example, `permission-contract.sh`, binary command tests, FFI integration tests, release binary build + version-flag check + 15MB size check, FFI cdylib build (`release-ffi` profile), FFI helper-discovery smoke, npm package tests + wrapper smoke |
 | `ffi-python-smoke` | macos-latest | Builds the FFI dylib with the `stub-adapter` feature, runs `tests/ffi-python/smoke.py` against it |
 | `ffi-header-drift` | macos-latest | `cbindgen 0.29.4 --verify` against the committed `crates/ffi/include/agent_desktop.h` |
@@ -792,13 +795,14 @@ Every command that emits or accepts a ref now uses the snapshot-qualified form `
 
 Phase 2 (Windows) and Phase 3 (Linux) do not ship as one monolithic implementation PR. Each platform ships as a sequence of dependency-ordered sub-phases against its own integration branch.
 
-- One integration branch per platform: `feat/windows-adapter`, later `feat/linux-adapter`.
-- Each sub-phase is one PR into the integration branch, sized at or under 2,000 changed lines (excluding `Cargo.lock`, the generated FFI header, and vendored fixtures), reviewed on its own.
+- One integration branch per platform: `feat/windows-adapter`, later `feat/linux-adapter`. **The integration branch is the base for everything that platform does.** Every sub-phase branch is cut from it and merges back into it — never from or into `main`. `main` stays the macOS-GA line for the entire duration of the platform's phase; it receives the platform only once, at the end, as the single promotion described below. Rebasing a sub-phase onto `main` mid-phase, or opening a sub-phase PR against `main`, is a process error.
+- Each sub-phase is one PR into the integration branch, sized at or under 2,000 changed lines (excluding `Cargo.lock`, the generated FFI header, and vendored fixtures), reviewed on its own. Sub-phase branches are named `feat/windows-<n.n>-<slug>` (e.g. `feat/windows-2.0-probes`) so the base relationship is legible from the branch name alone.
 - **Lifecycle per sub-phase:** plan (via `ce-plan`, written to `docs/plans/`) → implement → per-sub-phase review → merge to the integration branch. There is explicitly **no brainstorming stage** — this document is the finalized product contract; sub-phase planning documents implementation, not product scope.
 - **The workspace stays green at every merge.** Unimplemented capabilities return `not_supported()`; the CLI ships honest `PLATFORM_NOT_SUPPORTED` envelopes on the target OS until the capability lands. No sub-phase merge may regress `main`'s CI.
 - **Evidence-first rule:** adapter decisions are anchored in committed probe outputs — raw UIA / AT-SPI dumps checked in alongside the sub-phase plan — never docs-only assumptions about how a platform API behaves. The exploration sub-phases (2.0, 3.0) build the initial corpus; later sub-phases extend it.
 - **Source-of-truth feedback rule:** this document was authored from documentation research in a single pass; the exploration sub-phases (2.0, 3.0) exist because platform reality outranks documentation. When a committed probe proves a documented approach behaves differently on the real platform — an API that answers differently, a pattern that is unavailable, an event that never fires — the finding ledger entry and the amendment to this document land **in the same PR**. The source of truth tracks proven platform behavior; it is never defended against evidence.
-- **Integration branch → main:** only after every sub-phase for that platform has merged. Promotion to `main` runs a full multi-agent review of the whole branch, live e2e (both headless and headed) on the platform runner, a performance-baseline comparison against `main`, and the standard verification contract. It lands as one release-noted `feat!` merge — the same conventional-commit discipline as PR #93.
+- **No convenience deferral.** The whole platform implementation lands inside its own phase's sub-phases — Windows under Phase 2, Linux under Phase 3. Scope may move *between* sub-phases of that phase; it may not move out of the phase because it is hard, large, or late. The only sanctioned deferral is **proven impossibility**: the platform genuinely cannot do it, evidenced by a probe row in that platform's findings ledger, and the command then ships an honest structured `PLATFORM_NOT_SUPPORTED` (or the applicable code) with `platform_detail` rather than a silent gap. Core features — observation, interaction, input, lifecycle, capture, clipboard, waits, and the shell surfaces the OS does expose — are a must, never a stretch.
+- **Integration branch → main:** only after every sub-phase for that platform has merged **and the platform is production-solid as a whole** — not sub-phase-by-sub-phase, and not early because the branch has grown long-lived. Promotion to `main` runs a full multi-agent review of the whole branch, live e2e (both headless and headed) on the platform runner, a performance-baseline comparison against `main`, and the standard verification contract. It lands as one release-noted `feat!` merge — the same conventional-commit discipline as PR #93. Until that merge, `main` ships macOS only and makes no Windows claim.
 - **Windows first.** Phase 2 (2.x) completes before Phase 3 (3.x) starts; Linux reuses the same sub-phase template with AT-SPI2/D-Bus substituted for UIA.
 
 Every sub-phase below follows the same rendering shape: **Goal** (one or two sentences), **Scope** (what lands), **Key APIs** (platform surface touched), **Depends on** (prior sub-phase), **Exit criteria** (what proves it's done), **Est. PR size**.
@@ -807,7 +811,7 @@ Every sub-phase below follows the same rendering shape: **Goal** (one or two sen
 
 ## Phase 2 — Windows Adapter
 
-**Status: Planned** — delivered as sub-phases 2.0–2.15 into the `feat/windows-adapter` integration branch per the [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches). This section is the public objective catalogue, the sub-phase implementation contract, and the preserved research (API mappings, capability maps, notification/tray approaches, Electron guidance) that grounds it.
+**Status: In progress** — the entire Windows implementation is delivered as sub-phases 2.0–2.15 into the `feat/windows-adapter` integration branch per the [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches), under its no-convenience-deferral rule: scope moves between these sub-phases, never out of Phase 2. v0.6.0 landed the prerequisite Windows test lane and removed core's unexecutable Win32 layer. This section is the public objective catalogue, the sub-phase implementation contract, and the preserved research (API mappings, capability maps, notification/tray approaches, Electron guidance) that grounds it.
 
 ### Core invariants (research-driven — from the Phase 2 plan's Headless-First Invariant)
 
@@ -866,11 +870,11 @@ Cross-platform core extensions (new, landed alongside Windows — each restated 
 | P2-O11 | Event-subscription primitive (push, not poll) | New **command** `watch --event <kind> --ref @s8f3k2p9:e5 --timeout 3000`, backed by a new adapter method distinct from `capture_signal_baseline`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource`. Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals | `wait --event <kind>` (baseline-diff desktop-signal wait, U17) shipped and is **not** this objective — see the naming note under sub-phase 2.11. **Remaining in full:** the push `watch` command itself |
 | P2-O12 | Text range primitives | Read caret, read selection, select a range by offsets, read text at range, insert at caret. macOS: `kAXSelectedTextRangeAttribute` (settable), `AXStringForRangeParameterizedAttribute`, `AXBoundsForRangeParameterizedAttribute`, `AXRangeForLineParameterizedAttribute`, `AXValueCreate(kAXValueCFRangeType, …)`. Windows: `TextPattern.GetSelection`, `TextPattern.DocumentRange`, `TextRange.Select`, `TextRange.Move`, `TextRange.GetText`, `TextRange.GetBoundingRectangles`. Commands: `text get-selection`, `text select-range <ref> <start> <len>`, `text insert-at-caret <ref> <string>`, `text at-offset <ref> <start> <len>` | **Remaining in full** — still Phase 2 scope |
 | P2-O13 | Modern per-window screenshot APIs | macOS: replace `/usr/sbin/screencapture` subprocess with `SCScreenshotManager.captureImage(contentFilter:config:)` filtered to a specific `CGWindowID` from `SCShareableContent.windows`. Windows: `Windows.Graphics.Capture` via `GraphicsCaptureItem.CreateFromWindowHandle(HWND)` + `Direct3D11CaptureFramePool` when supported by the OS/session. No subprocess on the modern path, explicit fallback to legacy capture when unavailable, and permission/support failures map to structured `PERM_DENIED` / `PLATFORM_NOT_SUPPORTED` with `platform_detail` | `list_displays` + honest `--screen` targeting + `scale_factor` shipped (U3). **Remaining:** ScreenCaptureKit modern macOS capture, `Windows.Graphics.Capture` Windows capture |
-| P2-O14 | Toolbar and missing surfaces | Implement the core-predeclared surface vocabulary without changing core: `Toolbar` on both platforms; `Spotlight`, `Dock`, and `MenuBarExtras` on macOS; `Taskbar`, `SystemTray`, `SystemTrayOverflow`, `StartMenu`, `ActionCenter`, and `QuickSettings` on Windows where the current build/session exposes them. `NotificationCenter` remains the portable notification surface while `ActionCenter` names the distinct Windows shell entry point | `supported_surfaces()` introspection shipped (U12) — `SnapshotSurface` is ratified as genuinely platform-neutral, and every variant above already exists as a predeclared enum member. **Remaining:** the Windows shell surface implementations themselves |
-| P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override | **Remaining in full** on Windows — macOS depth-skip already exists from Phase 1; the Windows implementation is sub-phase 2.4 |
+| P2-O14 | Toolbar and missing surfaces | Implement the core-predeclared surface vocabulary without changing core: `Toolbar` on both platforms; `Spotlight`, `Dock`, and `MenuBarExtras` on macOS; `Taskbar`, `SystemTray`, `SystemTrayOverflow`, `StartMenu`, `ActionCenter`, and `QuickSettings` on Windows where the current build/session exposes them. `NotificationCenter` remains the portable notification surface while `ActionCenter` names the distinct Windows shell entry point (Win10's Action Center; Windows 11 split it into Notification Center on Win+N and the separate Quick Settings on Win+A, so on Win11 the `ActionCenter` kind maps to the Win+N Notification Center) | `supported_surfaces()` introspection shipped (U12) — `SnapshotSurface` is ratified as genuinely platform-neutral, and every variant above already exists as a predeclared enum member. **Remaining:** the Windows shell surface implementations themselves |
+| P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Chromium/WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` (class still current). Chromium 138+ (Chrome shipped native UIA on by default, Aug 2025) exposes a UIA tree to any UIA client with no flag, so the web-wrapper depth-skip is the primary lever on modern builds; `--force-renderer-accessibility` guidance applies to pre-138/pinned builds or still-thin trees. Both: new `--force-electron-a11y` CLI override | **Remaining in full** on Windows — macOS depth-skip already exists from Phase 1; the Windows implementation is sub-phase 2.4 |
 | P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks a compile-time command registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry and the same descriptor metadata can feed JSON Schema / MCP generation in Phase 4. Marshaling helpers stay in `crates/ffi/src/convert/` — per-type, not per-command | **Remaining in full.** The ABI handshake (`ad_abi_version`, `ad_init`) and 8 command-backed entrypoints (`ad_snapshot`, `ad_execute_by_ref`, `ad_execute_by_ref_timeout`, `ad_wait`, `ad_version`, `ad_status`, `ad_trace_export`, `ad_trace_show`) shipped, but all 8 are hand-written — see Phase 1.5 Gap Status. This objective is exactly the codegen migration that turns those hand-written files into generated output |
 | P2-O17 | Screen Recording / Automation permission detection | macOS exposes `PermissionReport { accessibility, screen_recording, automation }`. Automation is probed noninteractively for the remaining System Events-backed Notification Center opener; Accessibility and Screen Recording retain explicit preflight states | **Shipped** (U4 truthful Automation permission) |
-| P2-O18 | Windows shell surface coverage | Add explicit shell coverage for Start menu/search, taskbar, system tray/overflow, Action Center/notification center, Quick Settings, multi-monitor/DPI, virtual desktop detection, UAC/elevated targets, RDP/locked-session behavior, and Explorer-specific file destinations. New commands are added only where a ref-based `snapshot --surface …` loop cannot expose the surface first; Windows-only behavior still routes through core command files and adapter trait defaults | **Remaining in full** — sub-phase 2.14, explicitly deferrable stretch scope |
+| P2-O18 | Windows shell surface coverage | Add explicit shell coverage for Start menu/search, taskbar, system tray/overflow, Action Center/notification center, Quick Settings, multi-monitor/DPI, virtual desktop detection, UAC/elevated targets, RDP/locked-session behavior, and Explorer-specific file destinations. New commands are added only where a ref-based `snapshot --surface …` loop cannot expose the surface first; Windows-only behavior still routes through core command files and adapter trait defaults | **Remaining in full** — sub-phase 2.14, which ships inside Phase 2 before the 2.15 merge |
 
 ### Cross-Platform Trait Extensions
 
@@ -925,7 +929,7 @@ New supporting types (land in `crates/core/src/`):
 | Text range write | `AXSelectedTextRange = AXValueCreate(kAXValueCFRangeType, …)` | `TextRange.Select` + `TextRange.Move` | AT-SPI2 `EditableText.InsertText` + `Text.SetCaretOffset` |
 | Modern per-window screenshot | `SCScreenshotManager.captureImage(contentFilter:config:)` | `GraphicsCaptureItem.CreateFromWindowHandle` + `Direct3D11CaptureFramePool` | PipeWire `org.freedesktop.portal.ScreenCast` |
 | Toolbar surface — **predeclared in `SnapshotSurface` (U12)** | `AXRole == AXToolbar` or `AXUnifiedTitleAndToolbar` | UIA `ControlType.ToolBar` | AT-SPI2 `Role::ToolBar` |
-| Menu-bar extras surface | `SystemUIServer` + `ControlCenter` pid walk | UIA `Shell_TrayWnd` + `NotifyIconOverflowWindow` | AT-SPI2 `StatusNotifierWatcher` D-Bus |
+| Menu-bar extras surface | `SystemUIServer` + `ControlCenter` pid walk | UIA `Shell_TrayWnd` + overflow flyout (`TopLevelWindowForOverflowXamlIsland` on Win11 22H2+/build 22623+; `NotifyIconOverflowWindow` only before that) | AT-SPI2 `StatusNotifierWatcher` D-Bus |
 | Dock / taskbar surface | `Dock.app` pid walk | UIA `Shell_TrayWnd` `TaskListButton` children | AT-SPI2 per-DE panel walk |
 | `LongPress` | `CGEventCreateMouseEvent(…Down…)` + sleep + `…Up` | `SendInput` hold + release | Coordinate via `ydotool/xdotool` |
 | `ForceClick` | `CGEventSetIntegerValueField(kCGMouseEventPressure, …)` + `kCGEventMouseSubtypeTabletPoint` | Pen input `SendInput` with `PEN_FLAGS_BARREL` | Not natively supported — return `ActionNotSupported` |
@@ -952,7 +956,7 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 
 **Goal:** empirically map Windows accessibility reality with raw, no-Rust scripts before any adapter code exists, producing a committed evidence corpus the Rust sub-phases implement against — and feeding every contradiction back into this document.
 
-**Scope:** a `probes/windows/` directory of raw scripts — PowerShell using .NET managed UIA (`System.Windows.Automation`, preinstalled with .NET Framework 4.8) plus small C# programs compiled with `csc.exe` where UIA3 COM specifics differ from the managed wrapper. The corpus must cover, each as a runnable script with captured JSON/text output committed beside it: (1) full-tree dumps of Notepad, Explorer, Settings, and one Electron app (VS Code or Slack) including every property read per node; (2) a pattern-availability census per ControlType (Invoke, Toggle, Value, RangeValue, ExpandCollapse, SelectionItem, Scroll, ScrollItem, Text, Window, LegacyIAccessible); (3) every interaction exercised raw — invoke, toggle, set value, select, expand/collapse, scroll via pattern AND wheel, text get/selection/caret/insert, focus; (4) SendInput synthesis experiments — keyboard incl. modifier chords and UTF-16 chunking limits, mouse click/move/wheel/drag; (5) `ElementFromPoint` hit-testing incl. deliberately occluded and zero-size targets; (6) `CacheRequest` batched reads timed against per-property reads; (7) AutomationId coverage census across Win32 / WinForms / WPF / Electron; (8) event-handler observations (which UIA events actually fire, ordering, MTA threading behavior); (9) elevation/UIPI behavior against an elevated process; (10) RDP-session and DPI/multi-monitor bounds behavior; (11) private-file I/O primitives — whether atomic rename over a concurrently-open handle requires `FILE_SHARE_DELETE`, whether an elevated process owns new objects as `TokenOwner` (e.g. `BUILTIN\Administrators`) rather than `TokenUser`, whether `GetFileInformationByHandleEx(FileRemoteProtocolInfo)` reliably distinguishes local from remote volumes, and what ancestor-vs-leaf ACL validation contract parity with the unix leaf-only rule actually needs (see `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`). Alongside the scripts: `probes/windows/FINDINGS.md` — a findings ledger mapping every experiment to observed behavior and a doc-alignment verdict (confirms this document / contradicts it / new edge case).
+**Scope:** a `probes/windows/` directory of raw scripts — PowerShell using .NET managed UIA (`System.Windows.Automation`, preinstalled with .NET Framework 4.8) plus small C# programs compiled with `csc.exe` where UIA3 COM specifics differ from the managed wrapper. The corpus must cover, each as a runnable script with captured JSON/text output committed beside it: (1) full-tree dumps of Notepad, Explorer, Settings, and one Electron app (VS Code or Slack) including every property read per node — noting that "Notepad" is two different apps: Server SKUs ship the classic Win32 Edit-control Notepad while Windows 11 clients ship the Store/MSIX RichEdit Notepad, so tree expectations must name which variant they were captured against; (2) a pattern-availability census per ControlType (Invoke, Toggle, Value, RangeValue, ExpandCollapse, SelectionItem, Scroll, ScrollItem, Text, Window, LegacyIAccessible); (3) every interaction exercised raw — invoke, toggle, set value, select, expand/collapse, scroll via pattern AND wheel, text get/selection/caret/insert, focus; (4) SendInput synthesis experiments — keyboard incl. modifier chords and UTF-16 chunking limits, mouse click/move/wheel/drag; (5) `ElementFromPoint` hit-testing incl. deliberately occluded and zero-size targets; (6) `CacheRequest` batched reads timed against per-property reads; (7) AutomationId coverage census across Win32 / WinForms / WPF / Electron; (8) event-handler observations (which UIA events actually fire, ordering, MTA threading behavior); (9) elevation/UIPI behavior against an elevated process; (10) RDP-session and DPI/multi-monitor bounds behavior; (11) private-file I/O primitives — whether atomic rename over a concurrently-open handle requires `FILE_SHARE_DELETE`, whether an elevated process owns new objects as `TokenOwner` (e.g. `BUILTIN\Administrators`) rather than `TokenUser`, whether `GetFileInformationByHandleEx(FileRemoteProtocolInfo)` reliably distinguishes local from remote volumes, and what ancestor-vs-leaf ACL validation contract parity with the unix leaf-only rule actually needs (see `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`). Alongside the scripts: `probes/windows/FINDINGS.md` — a findings ledger mapping every experiment to observed behavior and a doc-alignment verdict (confirms this document / contradicts it / new edge case).
 
 **Key APIs:** System.Windows.Automation, UIA3 COM (IUIAutomation) via csc.exe shims, SendInput, ElementFromPoint, CacheRequest.
 
@@ -967,18 +971,18 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 **Goal:** Stand up the Windows build/CI/session substrate so every later sub-phase lands on green CI and a constructible (if functionally empty) `WindowsAdapter`.
 
 **Scope:**
-- `windows-latest` CI job: build + clippy + lib tests, core-isolation check, size check (mirrors the existing `platform-check` matrix job, promoted to a real Windows test lane)
+- Extend the existing `test-windows` lane (shipped v0.6.0, runs core + `agent-desktop-windows` lib tests) to the full adapter surface: clippy `-D warnings` over `agent-desktop-core`/`agent-desktop-windows`/`agent-desktop`/`agent-desktop-ffi`, binary-crate tests (`cargo test -p agent-desktop` — `--lib` alone skips it, that crate has no lib target), core-isolation check, and a Windows-native release-binary size check
 - Self-hosted interactive Windows runner registration for later UIA/shell integration tests, with RDP/session-isolation documented (an interactive session is required for UIA to see a real desktop; `tscon` is the documented console-reattach workaround — see Risk Register)
 - `CoInitializeEx(NULL, COINIT_MULTITHREADED)` + `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` bootstrap at process start
 - `WindowsAdapterSession` implementing `AdapterSession` via `open_session` — owns COM apartment state so later sub-phases don't reinvent COM lifecycle
-- Re-verify the dependency pins below against crates.io + supply-chain policy (pinned at 2026-04 research time — see New Dependencies)
+- Record the dependency pins below (re-verified against crates.io + supply-chain policy on 2026-07-25 during sub-phase 2.0 — see New Dependencies) without adding them; `uiautomation`/`windows-capture` are first consumed in 2.2/2.10
 - Implement Windows private-file hardening from scratch, behind `PlatformAdapter` or as a Windows-gated dependency of the `agent-desktop-windows` crate — never as unconditional `agent-desktop-core` surface (see `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`) — satisfying, with evidence from 2.0's probes: `FILE_SHARE_DELETE` on every concurrently-open handle across an atomic replace; owner validation against `TokenOwner`, not `TokenUser`; no locality inference from `FileRemoteProtocolInfo`; and an ancestor-vs-leaf validation contract decided deliberately, matching or explicitly diverging from the unix leaf-only rule, so the private-artifact-writing path is real before any Windows code writes a refmap or trace file
 
 **Key APIs:** `CoInitializeEx`, `SetProcessDpiAwarenessContext`, Win32 ACL / `TokenOwner` validation, `FILE_SHARE_DELETE` (private-file hardening)
 
 **Depends on:** nothing (opening sub-phase)
 
-**Exit criteria:** workspace green on Windows CI; `WindowsAdapter` constructs and satisfies the trait; every command returns honest `PLATFORM_NOT_SUPPORTED` on Windows; the permission probe is unit-tested against mocked COM security state; private-file hardening is unit-tested on the `windows-latest` CI lane, not merely `cargo check`-clean.
+**Exit criteria:** the Windows-relevant package set is green on Windows CI — `agent-desktop-macos` does not compile on Windows, so "workspace" invocations scope to `agent-desktop-core`, `agent-desktop-windows`, `agent-desktop`, and `agent-desktop-ffi`, exactly as the `test-windows` lane already scopes them; `WindowsAdapter` constructs and satisfies the trait; every command returns honest `PLATFORM_NOT_SUPPORTED` on Windows; the permission probe is unit-tested against mocked COM security state; private-file hardening is unit-tested on the `windows-latest` CI lane, not merely `cargo check`-clean.
 
 **Est. PR size:** ~1.3k LOC (bootstrap ~0.8k + from-scratch private-file hardening ~0.5k)
 
@@ -993,7 +997,7 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 - `CacheRequest` batched attribute reads (the UIA analogue of `AXUIElementCopyMultipleAttributeValues`)
 - Committed probe examples: raw UIA dumps of Notepad and Explorer, checked in as evidence alongside the sub-phase plan
 
-**Key APIs:** `IUIAutomation.ElementFromHandle()`, `IUIAutomationTreeWalker.GetFirstChild`/`GetNextSibling`, `CacheRequest` (`uiautomation` crate 0.24+ wrapping the `windows` crate's COM bindings)
+**Key APIs:** `IUIAutomation.ElementFromHandle()`, `IUIAutomationTreeWalker.GetFirstChild`/`GetNextSibling`, `CacheRequest` (`uiautomation` crate 0.25+ wrapping the `windows` crate's COM bindings)
 
 **Depends on:** 2.1
 
@@ -1029,7 +1033,7 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 - `list_windows` — HWND-first identity with recycled-window-id corroboration (mirrors the macOS U6 window-identity-as-primary-key pattern)
 - `list_apps`, `focused_window`, `list_displays` + per-monitor DPI `scale_factor`
 - **Web/Electron web-wrapper depth-skip** (Windows implementation of the pattern macOS already ships): non-semantic wrapper elements (`UIA_GroupControlTypeId` / `UIA_CustomControlTypeId`) with empty `Name` AND empty `Value` do not consume depth budget. Without this, default `--max-depth 10` finds ~3 refs in Slack; with it, 100+. Implement in `crates/windows/src/tree/builder.rs` as `is_web_wrapper`, matching the macOS logic
-- **Chromium detection:** detect Chromium-based windows via UIA process name or `Chrome_WidgetWin_1` window class; if the tree is empty/minimal, the error `platform_detail` guides toward `--force-renderer-accessibility`
+- **Chromium detection:** detect Chromium-based windows via UIA process name or `Chrome_WidgetWin_1` window class. Chromium 138+ (Aug 2025) enables native UIA automatically when a UIA client connects; when a tree is still empty/minimal (pre-138 or pinned builds, or embedders that suppress it), the error `platform_detail` guides toward `--force-renderer-accessibility`
 - **Resolver depth:** element re-identification searches to `ABSOLUTE_MAX_DEPTH` (50) — Electron elements commonly sit at depth 25+; implement in `crates/windows/src/tree/resolve.rs`
 - **Surface detection for Electron:** an Electron modal (file picker, dialog) may report as the focused window itself rather than a child; surface detection must check whether the focused window IS the target surface, checking both `ControlType` and `LocalizedControlType`/UIA patterns (analogous to macOS AXRole + AXSubrole); implement in `crates/windows/src/tree/surfaces.rs`
 - Progressive skeleton traversal (`--skeleton`, `--root`) needs no Windows-specific work beyond `get_subtree()` — core owns the flow
@@ -1099,7 +1103,7 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 
 | Capability | Technology | Details |
 |------------|-----------|---------|
-| Tree root | `IUIAutomation.ElementFromHandle()` | Via `uiautomation` crate (v0.24+) wrapping UIA COM APIs via `windows` crate |
+| Tree root | `IUIAutomation.ElementFromHandle()` | Via `uiautomation` crate (v0.25+) wrapping UIA COM APIs via `windows` crate |
 | Children | `IUIAutomationTreeWalker.GetFirstChild` / `GetNextSibling` | With `CacheRequest` for batch attribute retrieval (3-5x faster) |
 | Role mapping | `UIA ControlType` integers | Map to unified role enum in `tree/roles.rs` — e.g. `UIA_ButtonControlTypeId` → `button` |
 | Click | `InvokePattern.Invoke()` | Pattern-based; coordinate click via SendInput only under explicit physical policy |
@@ -1224,7 +1228,7 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 
 **Scope:**
 - FFI real-adapter path validated on Windows (non-stub tests — the stub-adapter tests already run cross-platform in CI, but the real `WindowsAdapter` behind the C ABI needs its own pass)
-- npm `postinstall.js` gains a `win32-x64` (+ `win32-arm64` once an ARM64 runner exists) branch
+- npm `postinstall.js` gains `win32-x64` and `win32-arm64` branches — hosted `windows-11-arm` runners have been GA for public repos since 2025-08-07, so ARM64 validation is no longer deferred
 - Release matrix: `.exe` zip + attestation, using the same tarball + sha256 + Sigstore pipeline Phase 1.5 already ships
 - `skills/agent-desktop-windows/SKILL.md` — see Skill Update below
 - README platform table: Windows column → **Yes**
@@ -1237,11 +1241,11 @@ Every sub-phase 2.0–2.15 below is held to the same definition of done, stated 
 
 **Est. PR size:** ~1.2k LOC
 
-### 2.14 — Shell Surfaces & Notifications Spike (stretch, explicitly deferrable)
+### 2.14 — Shell Surfaces & Notifications
 
 **Goal:** Cover the Windows-only shell surface (P2-O18) and notification/tray (P2-O14 Windows half) scope that has no macOS analogue to backfill against.
 
-**Scope:** P2-O18 shell coverage, notification management, and system tray — all three folded in below rather than duplicated. This sub-phase **may ship after the 2.15 integration merge as its own follow-up `feat`** without blocking Phase 3 — it is explicitly the stretch/deferrable sub-phase in the sequence.
+**Scope:** P2-O18 shell coverage, notification management, and system tray — all three folded in below rather than duplicated. This sub-phase ships **inside Phase 2, before the 2.15 integration merge**, under the no-convenience-deferral rule in the [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches).
 
 **Key APIs:** see the three subsections immediately below.
 
@@ -1258,7 +1262,7 @@ Windows-specific commands are allowed when the operating-system concept has no p
 | Command | Purpose | Platform behavior |
 |---------|---------|-------------------|
 | `open-system-surface --surface <kind>` | Opens an OS shell surface so agents can immediately call `snapshot --surface <kind>` and act by refs | Windows kinds: `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow`, `action-center`, `quick-settings`. macOS may support `spotlight`, `dock`, `menu-bar-extras`, `notification-center`. Unsupported kinds return `PLATFORM_NOT_SUPPORTED` |
-| `list-tray-items` / `click-tray-item` / `open-tray-menu` | Structured tray workflows where the shell surface is not attached to a normal app window | Windows implementation uses `Shell_TrayWnd` / `NotifyIconOverflowWindow`; macOS maps to menu bar extras. Linux maps to StatusNotifier in Phase 3 |
+| `list-tray-items` / `click-tray-item` / `open-tray-menu` | Structured tray workflows where the shell surface is not attached to a normal app window | Windows implementation uses `Shell_TrayWnd` plus the overflow flyout (`TopLevelWindowForOverflowXamlIsland` on Win11 22H2+; `NotifyIconOverflowWindow` before that); macOS maps to menu bar extras. Linux maps to StatusNotifier in Phase 3 |
 
 No Windows-specific command bypasses refs for ordinary app controls. If a Windows workflow can be represented as `snapshot --app`, `snapshot --surface`, `find`, `click`, `type`, `press`, or `wait`, it uses the existing command surface.
 
@@ -1277,7 +1281,7 @@ Windows notification management is built from scratch here. The macOS notificati
 
 System tray interaction is built from scratch here.
 
-- **List items:** UIA tree of the `Shell_TrayWnd` window class; tray items are children of the notification area. Overflow items live in `NotifyIconOverflowWindow`.
+- **List items:** UIA tree of the `Shell_TrayWnd` window class; tray items are children of the notification area. Overflow items live in `TopLevelWindowForOverflowXamlIsland` on Win11 22H2+ (build 22623+); `NotifyIconOverflowWindow` exists only on earlier builds.
 - **Click:** `InvokePattern` on tray items, falling back to coordinate-based `SendInput` for items that don't expose UIA patterns.
 - **Open menu:** after clicking a tray item, detect the resulting popup menu via UIA focus-changed events and expose it for ref-based interaction.
 
@@ -1295,7 +1299,7 @@ System tray interaction is built from scratch here.
 
 **Key APIs:** none — verification and merge only
 
-**Depends on:** 2.0 through 2.14 (2.14 may lag as a follow-up per its own note; 2.15 does not have to wait on it if 2.14 explicitly ships later)
+**Depends on:** 2.0 through 2.14 — all of them merged; no Windows sub-phase may lag past this gate
 
 **Exit criteria:** every item in the Cross-cutting sub-phase DoD holds for the whole branch; `main` gains Windows support in one commit.
 
@@ -1303,8 +1307,8 @@ System tray interaction is built from scratch here.
 
 ### Minimum OS Requirements
 
-- Windows 10 1809+ for the baseline UIA adapter, app/window operations, clipboard, and legacy screenshot fallback
-- Windows 10 1903+ for `Windows.Graphics.Capture` per-window modern screenshot
+- Windows 10 1809+ is the API floor for the baseline UIA adapter, app/window operations, clipboard, and legacy screenshot fallback. Servicing reality (2026): mainstream Windows 10 reached end of support 2025-10-14 (consumer ESU through 2027-10-12); the serviced 1809-vintage targets are Windows 10 Enterprise LTSC 2019 and Windows Server 2019 (extended support to 2029-01-09), so Windows 11 and Server 2019+ are the practical release targets
+- Windows 10 1903+ for `Windows.Graphics.Capture` per-window modern screenshot (cursor-capture toggle requires 19041+; border removal via `IsBorderRequired` requires 20348+)
 - Newer Windows 10/11 builds may expose richer Quick Settings / notification / shell UIA trees; commands report `PLATFORM_NOT_SUPPORTED` or degrade to the documented fallback when a shell surface is absent
 - UIA COM interfaces are available before Windows 10, but Phase 2 does not support pre-1809 as a release target
 - Session 0, Server Core, secure desktop, locked desktop, and other-user sessions are explicitly unsupported for observation/action/capture
@@ -1313,13 +1317,13 @@ System tray interaction is built from scratch here.
 
 | Crate | Version | Scope | Purpose |
 |-------|---------|-------|---------|
-| `uiautomation` | 0.24+ | Windows | UIA client wrapper, tree walker, patterns |
-| `windows` | 0.62.2 | Windows | Raw Win32 / WinRT bindings for SendInput, clipboard, `Windows.Graphics.Capture`, D3D11 frame pool. Pinned to 0.62.2 to match `windows-capture 1.5.x`'s own pin |
-| `windows-capture` | 1.5.4 | Windows | Modern per-window screenshot via `Windows.Graphics.Capture` in supported interactive sessions. Replaces `PrintWindow + PW_RENDERFULLCONTENT` as default, keeps legacy fallback |
+| `uiautomation` | 0.25 | Windows | UIA client wrapper, tree walker, patterns. Current stable 0.25.0 (2026-05-05); a `"0.24"` requirement will not auto-resolve to 0.25.x under 0.x semver, so the bump is explicit |
+| `windows` | 0.62.2 | Windows | Raw Win32 / WinRT bindings for SendInput, clipboard, `Windows.Graphics.Capture`, D3D11 frame pool. Still current (2025-10-06); `uiautomation 0.25.0` and `windows-capture 2.0.0` both pin `windows ^0.62.2` |
+| `windows-capture` | 2.0.0 | Windows | Modern per-window screenshot via `Windows.Graphics.Capture` in supported interactive sessions. Replaces `PrintWindow + PW_RENDERFULLCONTENT` as default, keeps legacy fallback. The previously recorded `1.5.4` was never published — the release line is 1.5.0 → 2.0.0 (2026-04-14, major bump, no upstream changelog); diff-audit 1.5.0→2.0.0 before first use in 2.10 |
 | `screencapturekit` | 1.5 (crates.io) | macOS | Published crates.io canonical crate — the doom-fish fork is the maintained successor, NOT a git-SHA pin |
 | `objc2` | 0.6 | macOS (new for P2-O13 / O17) | Safe bridging to `SCScreenshotManager`, `CGPreflightScreenCaptureAccess`, and AppKit/Foundation calls scoped to screenshot/permissions code |
 
-All five pins above were recorded at research time (2026-04); re-verify each against crates.io and the repository's supply-chain policy at the opening sub-phase of the consuming platform (2.1 for Windows, 3.1 for Linux) before adding them to `Cargo.toml`.
+The three Windows pins above were re-verified against crates.io on 2026-07-25 (sub-phase 2.0 evidence; no RUSTSEC advisories apply). The macOS pins (`screencapturekit`, `objc2`) still carry the 2026-04 recording. Re-verify any pin against crates.io and the repository's supply-chain policy at the opening sub-phase of the consuming platform before adding it to `Cargo.toml`.
 
 Added as target-gated dependencies in the owning platform crates. The binary crate only depends on the platform crate for the current target.
 ```toml
@@ -1332,9 +1336,9 @@ agent-desktop-macos = { path = "crates/macos" }
 
 # crates/windows/Cargo.toml
 [target.'cfg(target_os = "windows")'.dependencies]
-uiautomation = "0.24"
+uiautomation = "0.25"
 windows = { version = "0.62.2", features = ["Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Com", "Win32_System_DataExchange", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Graphics_Capture", "Win32_Graphics_Direct3D11"] }
-windows-capture = "1.5.4"
+windows-capture = "2.0.0"
 
 # crates/macos/Cargo.toml
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -1386,7 +1390,7 @@ Integration-level tests (Explorer/Notepad/Settings snapshots, click/type/clipboa
 **README Update:**
 - [ ] Platform Support table: Windows column → **Yes**
 - [ ] Windows installation instructions: npm (same command, auto-detects platform); direct `.exe` download from GitHub Releases; from source: `cargo build --release` on Windows (requires MSVC toolchain)
-- [ ] Windows permissions section: UIA works without special permissions for most apps; UAC elevation may be required for elevated processes; Chromium apps need `--force-renderer-accessibility`
+- [ ] Windows permissions section: UIA works without special permissions for most apps; UAC elevation may be required for elevated processes; pre-Chromium-138 apps may need `--force-renderer-accessibility` (Chromium 138+ auto-enables UIA)
 - [ ] "From source" section updated with Windows build requirements (Rust + MSVC)
 
 ---
@@ -1713,11 +1717,11 @@ Same rendering shape, same [Cross-cutting sub-phase DoD](#cross-cutting-sub-phas
 
 **Est. PR size:** ~1.2k LOC
 
-### 3.14 — Shell Surfaces & Notifications Spike (stretch, explicitly deferrable)
+### 3.14 — Shell Surfaces & Notifications
 
 **Goal:** Cover the Linux-only shell surface, notification, and tray scope — the DE-specific half of parity that has no single canonical implementation across GNOME/KDE/other DEs.
 
-**Scope:** notification management and system tray, folded in below. Same stretch/deferrable status as Windows 2.14 — **may ship after the 3.15 integration merge as its own follow-up `feat`.**
+**Scope:** notification management and system tray, folded in below. Ships inside Phase 3 before the 3.15 integration merge, under the same no-convenience-deferral rule as Windows 2.14.
 
 **Key APIs:** see the two subsections immediately below.
 
@@ -1765,7 +1769,7 @@ System tray interaction is built from scratch here.
 
 **Key APIs:** none — verification and merge only
 
-**Depends on:** 3.0 through 3.14 (3.14 may lag as a follow-up per its own note)
+**Depends on:** 3.0 through 3.14 — all of them merged; no Linux sub-phase may lag past this gate
 
 **Exit criteria:** every item in the Cross-cutting sub-phase DoD holds for the whole branch; `main` gains Linux support in one commit, completing the three-platform matrix.
 
@@ -2473,13 +2477,14 @@ See [Command Surface Architecture](#command-surface-architecture-dry-invariant) 
 |-------|-----------|
 | Phase 1 | `macos-latest` (tests + CLI build) + `ubuntu-latest` (`fmt` job) |
 | Phase 1.5 | Same as Phase 1 on PRs; release workflow fans out to `macos-latest` × 2 darwin arches + `ubuntu-22.04` + `ubuntu-22.04-arm` + `windows-latest` for the FFI matrix |
-| Phase 1.6 (current) | `ci.yml`: `fmt` (ubuntu-latest), `msrv` (ubuntu-latest, Rust 1.89.0), `platform-check` (matrix Linux/Windows/macOS, `cargo check` only — proves the stub crates compile before any adapter lands), `test` (macos-latest, full suite), `ffi-python-smoke`, `ffi-header-drift`, `ffi-panic-guard`, `ffi-passthrough` (ubuntu-latest). Outside `ci.yml`: `native-e2e.yml` (self-hosted macOS, workflow_dispatch), `codeql.yml`, `supply-chain.yml`. `scripts/perf-baseline-compare.sh` is currently a per-PR Definition-of-Done review step, not yet a blocking CI job |
-| Phase 2 | `platform-check`'s Windows leg is promoted to a real `windows-latest` test lane (build, clippy, lib tests) at sub-phase 2.1; a self-hosted interactive Windows runner is added for UIA/shell integration tests at 2.12 |
-| Phase 3 | `platform-check`'s Linux leg is promoted to a real `ubuntu-latest` test lane at sub-phase 3.1; an interactive Ubuntu GNOME runner is added for AT-SPI2/shell integration tests at 3.12 |
+| Phase 1.6 | `ci.yml`: `fmt` (ubuntu-latest), `msrv` (ubuntu-latest, Rust 1.89.0), `platform-check` (matrix Linux/Windows/macOS, `cargo check` only), `test` (macos-latest, full suite), `ffi-python-smoke`, `ffi-header-drift`, `ffi-panic-guard`, `ffi-passthrough` (ubuntu-latest). Outside `ci.yml`: `native-e2e.yml` (self-hosted macOS, workflow_dispatch), `codeql.yml`, `supply-chain.yml` |
+| v0.6.0 (current) | Real `test-windows` (`windows-latest`) and `test-linux` (`ubuntu-latest`) lanes execute `cargo test -p agent-desktop-core -p agent-desktop-{windows,linux} --lib` on every PR, alongside the macOS `test` job — core's platform-conditional code is now executed, not merely type-checked, on all three OSes. `scripts/perf-baseline-compare.sh` remains a per-PR Definition-of-Done review step, not a blocking job |
+| Phase 2 | The Windows test lane already exists as of v0.6.0; sub-phase 2.1 extends it to the adapter surface (clippy over `agent-desktop-windows`, binary-crate tests, size check) and registers the self-hosted interactive Windows runner whose UIA/shell integration lane lands at 2.12 |
+| Phase 3 | The Linux test lane already exists as of v0.6.0; sub-phase 3.1 extends it to the adapter surface; an interactive Ubuntu GNOME runner is added for AT-SPI2/shell integration tests at 3.12 |
 | Phase 4 | macOS + Windows + Ubuntu (+ MCP protocol tests) |
 | Phase 5 | macOS + Windows + Ubuntu (+ daemon tests, package build verification) |
 
-All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, `cargo tree -p agent-desktop-core` contains zero platform crate names, binary size <15MB. Every Phase 2/3 sub-phase additionally runs `scripts/perf-baseline-compare.sh` on hot-path changes — see the [Cross-cutting sub-phase DoD](#cross-cutting-sub-phase-dod).
+All runners enforce: `cargo clippy --all-targets -- -D warnings`, the tests for the packages that build on that OS (`cargo test --workspace` on macOS; the Windows and Linux lanes scope to `agent-desktop-core` plus their own platform crate, since `agent-desktop-macos` does not compile off macOS — and `--lib` alone never covers the `agent-desktop` binary crate, which has no lib target), `cargo tree -p agent-desktop-core` contains zero platform crate names, binary size <15MB. Every Phase 2/3 sub-phase additionally runs `scripts/perf-baseline-compare.sh` on hot-path changes — see the [Cross-cutting sub-phase DoD](#cross-cutting-sub-phase-dod).
 
 ### Dependency Introduction Schedule
 
@@ -2490,9 +2495,9 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | `accessibility-sys` 0.2.0, `core-foundation` 0.10.1, `core-foundation-sys` 0.8.7, `core-graphics` 0.25.0 | Phase 1 | macOS AX API FFI |
 | `cbindgen` maintainer tool, `libc` 0.2+ | Phase 1.5 | Explicit C header regeneration + macOS `pthread_main_np` for FFI main-thread guard |
 | *(no new external crates — a contract-hardening pass over existing dependencies)* | Phase 1.6 | — |
-| `uiautomation` 0.24+ | Phase 2 | Windows UIA wrapper |
-| `windows` 0.62.2 | Phase 2 | Win32 / WinRT bindings (pinned to match `windows-capture 1.5` pin) |
-| `windows-capture` 1.5.4 | Phase 2 | Modern `Windows.Graphics.Capture` screenshot |
+| `uiautomation` 0.25 | Phase 2 | Windows UIA wrapper |
+| `windows` 0.62.2 | Phase 2 | Win32 / WinRT bindings (`uiautomation 0.25` and `windows-capture 2.0.0` both pin `^0.62.2`) |
+| `windows-capture` 2.0.0 | Phase 2 | Modern `Windows.Graphics.Capture` screenshot (the once-recorded `1.5.4` was never published) |
 | `objc2` 0.6 | Phase 2 | macOS safe Objective-C bridging (scoped to `system/screenshot.rs` + `system/permissions.rs`; CI grep guard) |
 | `screencapturekit` 1.5 (crates.io) | Phase 2 | ScreenCaptureKit wrapper — published canonical crate, not a git fork |
 | `atspi` 0.28+ + `zbus` 5.x | Phase 3 | Linux AT-SPI2 client via D-Bus |
@@ -2533,7 +2538,7 @@ All Phase 2/3 pins above were recorded at 2026-04 research time; re-verify again
 | ID | Risk | Likelihood | Impact | Mitigation |
 |----|------|------------|--------|------------|
 | R1 | macOS TCC friction deters adoption | High | High | Clear first-run guidance. Detect before any op. One-command setup: `permissions --request`. |
-| R2 | Electron/Chrome no a11y tree by default | High | Medium | Detect Chromium windows. Print `--force-renderer-accessibility` guidance in error response. |
+| R2 | Electron/Chromium a11y tree gaps on legacy builds | Medium | Medium | Chromium 138+ (Aug 2025) auto-enables native UIA for UIA clients. Detect Chromium windows; print `--force-renderer-accessibility` guidance for pre-138/pinned builds or still-thin trees. |
 | R3 | Custom-rendered UIs invisible to a11y | Medium | High | Phase 5 stretch: vision fallback. Short-term: document limitation in README and skills. |
 | R4 | Wayland a11y gaps | Medium | Medium | Focus on GNOME (best AT-SPI2 support). Prefer AT-SPI actions over coordinate input. Document gaps. |
 | R5 | Rust a11y crate maintenance stalls | Low | High | Pin versions, maintain patches. `atspi` backed by the Odilia project. Fork-ready. |

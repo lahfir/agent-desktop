@@ -43,6 +43,16 @@ Cross-platform Rust CLI + MCP server enabling AI agents to observe and control d
 
 ## Git & Commits
 
+### Branching during a platform phase (Phase 2 = Windows, in progress)
+
+- **`feat/windows-adapter` is the base branch for all Windows work**, not `main`. Every sub-phase (2.0 → 2.15) is cut from it and merges back into it.
+- Sub-phase branches: `feat/windows-<n.n>-<slug>` (e.g. `feat/windows-2.0-probes`), PR'd into `feat/windows-adapter`.
+- **Never branch Windows work off `main`, never PR a sub-phase into `main`, never rebase a sub-phase onto `main`.**
+- `main` is the macOS-GA line for the whole phase. It gains Windows exactly once, at the end, when the adapter is production-solid as a whole — one release-noted `feat!` promotion after full-branch review, live e2e, and a perf baseline. Phase 3 repeats this with `feat/linux-adapter`.
+- Plan docs: historical plans and brainstorms are tracked on `main`. Every sub-phase's plan doc lands on
+  its own sub-phase branch, so each sub-phase PR reviews as one self-contained unit.
+- See `docs/phases.md` §Platform Delivery Model for the full rule.
+
 - All commits are authored by **Lahfir**
 - NEVER add `Co-Authored-By` lines, AI attribution badges, or "Generated with" footers
 - NEVER include co-committers of any kind
