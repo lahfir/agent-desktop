@@ -1,0 +1,84 @@
+title = "agent-desktop secret and privacy scanning"
+
+# Inherit gitleaks' built-in credential rules (API keys, tokens, private keys),
+# then add project-specific privacy rules below. This repo is public and ships
+# planning documents, probe evidence, and traces that are written on developer
+# machines, so operator identity and filesystem layout are treated as leaks
+# alongside conventional secrets.
+#
+# Regexes are Go RE2: no lookahead, no lookbehind, no backreferences. Anything
+# that would need a negative lookahead is expressed as an allowlist entry.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ad-home-directory-path"
+description = "Absolute home-directory path exposing an operator account name"
+# The first character after the home root must not be a dot, so relative
+# fragments like "$suite_root/home/.cache" are not mistaken for "/home/<user>".
+regex = '''(?i)(/Users/|/home/|[A-Za-z]:\\Users\\)[A-Za-z0-9_-][A-Za-z0-9._-]{1,}'''
+tags = ["privacy", "path", "identity"]
+
+[[rules]]
+id = "ad-windows-account-sid"
+description = "Windows account SID with machine-unique sub-authorities"
+regex = '''S-1-5-21-[0-9]{5,}-[0-9]{5,}-[0-9]{5,}-[0-9]{3,}'''
+tags = ["privacy", "identity"]
+
+[[rules]]
+id = "ad-personal-email"
+description = "Personal email address in tracked content"
+regex = '''[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'''
+tags = ["privacy", "identity"]
+
+[[rules]]
+id = "ad-machine-hostname"
+description = "Developer machine hostname captured from a probe or trace"
+# Case-sensitive on purpose: Windows default hostnames are uppercase
+# (DESKTOP-A1B2C3D). A case-insensitive form matches this project's own crate
+# names (agent-desktop-core, agent-desktop-ffi, ...) and is pure noise.
+regex = '''\b(DESKTOP|LAPTOP)-[A-Z0-9]{7}\b'''
+tags = ["privacy", "identity"]
+
+# ---------------------------------------------------------------------------
+# Allowlist: documentation placeholders, generated artifacts, and OS vocabulary.
+# The rules above intentionally match broadly; these entries keep the scan
+# usable on content that only *looks* like a leak.
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "Documentation placeholders and generated artifacts"
+# Match allowlist regexes against the whole line, not just the captured secret,
+# so a placeholder is recognised from its surrounding context.
+regexTarget = "line"
+paths = [
+  '''Cargo\.lock''',
+  '''package-lock\.json''',
+  '''(^|/)tests/fixtures/''',
+  # Never-committed local state and build output. Listed so a local
+  # `gitleaks dir .` scan matches what CI sees on tracked content.
+  '''(^|/)target/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)\.claude/''',
+]
+# Probe captures under probes/*/captures/ are deliberately NOT allowlisted:
+# they are UIA tree dumps taken on a developer desktop and are the most likely
+# place for a redaction failure, so gitleaks is the backstop behind the probe
+# corpus's own redaction gate.
+regexes = [
+  # Explicit redaction markers and angle-bracket placeholders.
+  '''<redacted[^>]*>''',
+  '''S-1-5-21-<[^>]*>''',
+  # Generic doc examples that teach path shape rather than expose one.
+  '''(?i)/Users/(name|user|username|you|youruser|me|someone)''',
+  '''(?i)/home/(name|user|username|you|youruser|runner|me|someone)''',
+  '''(?i)[A-Za-z]:\\Users\\(name|user|username|you|youruser|runner)''',
+  # CI runner home paths are not operator identity.
+  '''/Users/runner''',
+  '''/home/runner''',
+  # Well-known localized group principals are OS vocabulary, not identity.
+  '''(?i)BUILTIN\\Admin[a-z]*''',
+  # Addresses that are meant to be public.
+  '''(?i)[A-Za-z0-9._%+-]+@example\.(com|org|net)''',
+  '''(?i)noreply@''',
+  '''(?i)users\.noreply\.github\.com''',
+]

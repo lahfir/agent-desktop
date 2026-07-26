@@ -84,6 +84,14 @@ docs/*
 !docs/phases.md
 !docs/solutions/
 !docs/solutions/**
+!docs/plans/
+!docs/plans/**
+!docs/brainstorms/
+!docs/brainstorms/**
+
+# macOS resource forks — never commit
+._*
+.DS_Store
 todos/
 .cursor/
 .context/
