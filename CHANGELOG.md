@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0](https://github.com/lahfir/agent-desktop/compare/v0.5.0...v0.6.0) (2026-07-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* private artifacts on Windows are no longer written through ACL-hardened handles. That hardening guarded refmap, trace, and session files on a platform where no command can produce them, and it had never executed. It returns in Phase 2.1, built on Windows against a CI lane that runs it, under the constraints recorded in `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`.
+
+### Refactoring
+
+* remove speculative Win32 private-file layer from core, add real Windows/Linux test lanes ([#106](https://github.com/lahfir/agent-desktop/issues/106)) ([8ad66b8](https://github.com/lahfir/agent-desktop/commit/8ad66b8f2115704eed56e59e2709c4eddf3cffac))
+  * deleted 1,062 LOC of Windows-only `unsafe` Win32 file I/O from `agent-desktop-core` and dropped the `windows-sys` dependency; Windows now uses the same portable `std::fs` path as every other non-unix target
+  * this is a structural fix, not a downgrade: `std::fs::OpenOptions` defaults `share_mode` to `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`, precisely the flag the deleted code omitted and the cause of its sharing-violation failures
+  * `cargo test` now runs on windows-latest and ubuntu-latest, so every platform-conditional branch in core is executed on each PR instead of only compiled
+
+### Bug Fixes
+
+* the new platform lanes exposed four pre-existing defects that were unreachable while only macOS ran tests:
+  * trace files were opened append-only while `trace.rs` locks that handle; Windows `LockFileEx` rejects append-only handles, so all trace writing failed with `Access is denied`
+  * `refs_lock` tests placed lock files directly in `/tmp`, which is root-owned and world-writable, so the private-parent check correctly refused them
+  * a trace test interpolated a raw path into a JSON string literal, so Windows paths produced invalid escapes and the event was silently dropped instead of skipped
+  * the default `SystemOps::permission_report` returned `Denied`, so CLI preflight reported `PERM_DENIED` on Windows and Linux when the adapter is simply unimplemented; it now reports `Unknown` and surfaces the honest `PLATFORM_NOT_SUPPORTED`, including over the FFI
+* the pinned toolchain gained `clippy` and `rustfmt`, which `profile = "minimal"` had omitted
+
 ## [0.5.0](https://github.com/lahfir/agent-desktop/compare/v0.4.7...v0.5.0) (2026-07-20)
 
 
