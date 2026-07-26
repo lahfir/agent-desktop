@@ -195,6 +195,71 @@ jobs:
       - name: NPM wrapper smoke
         run: scripts/ci-npm-wrapper-smoke.sh
 
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Core and Linux unit tests
+        run: scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-core -p agent-desktop-linux --lib
+
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # Core resolves its data dir via HOME then USERPROFILE (crates/core/src/refs.rs
+      # fn home_dir), so pointing HOME at a fresh runner-temp directory is enough to
+      # keep tests off the real profile — the bash isolation script the macOS/Linux
+      # lanes use doesn't apply here since this step runs under pwsh. CARGO_HOME and
+      # RUSTUP_HOME must be resolved from the real USERPROFILE first (rustup/cargo
+      # default them to %USERPROFILE%\.rustup and %USERPROFILE%\.cargo) so repointing
+      # USERPROFILE at the empty test home doesn't strand the installed toolchain.
+      - name: Core and Windows unit tests (isolated HOME)
+        shell: pwsh
+        run: |
+          $env:CARGO_HOME  = if ($env:CARGO_HOME)  { $env:CARGO_HOME }  else { Join-Path $env:USERPROFILE '.cargo' }
+          $env:RUSTUP_HOME = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
+          $testHome = Join-Path $env:RUNNER_TEMP ("agent-desktop-test-home-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $testHome | Out-Null
+          $env:HOME = $testHome
+          $env:USERPROFILE = $testHome
+          cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
+
   ffi-python-smoke:
     name: FFI Python Smoke
     runs-on: macos-latest
