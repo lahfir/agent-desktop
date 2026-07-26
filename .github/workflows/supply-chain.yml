@@ -23,6 +23,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Full history so the secret scan below can walk commits, not just
+          # the final tree. A shallow clone would silently reduce it to a
+          # working-tree scan.
+          fetch-depth: 0
 
       - name: Check release metadata consistency
         run: scripts/check-release-consistency.sh
@@ -52,7 +57,10 @@ jobs:
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
           echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --status
           tar -xzf "$archive" gitleaks
-          ./gitleaks dir . --config .gitleaks.toml --redact --no-banner --exit-code 1
+          # Scan commit history, not just the checked-out tree: a value added
+          # in one commit and removed in a later one stays reachable in branch
+          # history, and a tree-only scan would pass it.
+          ./gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1
 
       - name: Workflow security audit
         uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
