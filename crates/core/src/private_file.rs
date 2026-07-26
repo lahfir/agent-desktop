@@ -20,9 +20,12 @@ pub(crate) fn open_private_lock(path: &Path, create: bool) -> std::io::Result<Fi
     Ok(file)
 }
 
+/// Read access is requested alongside append because callers lock the returned
+/// handle, and Windows `LockFileEx` fails with `ERROR_ACCESS_DENIED` on a handle
+/// opened for append only.
 pub(crate) fn open_private_append(path: &Path) -> std::io::Result<File> {
     let mut options = OpenOptions::new();
-    options.create(true).append(true);
+    options.read(true).create(true).append(true);
     configure_unix(&mut options, 0o600);
     let file = options.open(path)?;
     validate_private_regular(&file)?;
@@ -299,3 +302,7 @@ pub(super) fn permission_denied(message: &'static str) -> std::io::Error {
 #[cfg(test)]
 #[path = "private_file_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "private_file_lock_tests.rs"]
+mod lock_tests;

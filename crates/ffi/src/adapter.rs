@@ -81,9 +81,9 @@ pub(crate) use acquire_adapter;
 ///
 /// Every method delegates to the `PlatformAdapter` trait defaults, all of
 /// which return `not_supported()` errors. `permission_report()` returns
-/// `Denied` via the trait default, so `ad_check_permissions` yields
-/// `ErrPermDenied` on a stub build — the expected signal for a CI runner
-/// that has no OS accessibility permission.
+/// `Unknown` via the trait default, so `ad_check_permissions` yields
+/// `ErrPlatformNotSupported` on a stub build — the honest signal that the
+/// adapter never probed permissions, rather than that one was denied.
 #[cfg(feature = "stub-adapter")]
 struct StubAdapter;
 
