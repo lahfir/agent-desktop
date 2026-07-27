@@ -18,6 +18,7 @@ $SettingsRect = @{ X = 0; Y = 0; Width = 1620; Height = 700 }
 $ObsidianSettleMs = 8000
 $ExplorerWaitSec = 30
 $SettingsWaitSec = 45
+$SettingsWakeSec = 8
 $ContentControlTypes = @(
     'ControlType.Document', 'ControlType.Edit', 'ControlType.Text', 'ControlType.ListItem',
     'ControlType.DataItem', 'ControlType.TreeItem', 'ControlType.Hyperlink', 'ControlType.Image'
@@ -377,14 +378,21 @@ try {
     $settingsPreexisting = ($preSettings.Count -gt 0)
     if (-not $settingsPreexisting) { Start-Process 'ms-settings:' | Out-Null }
     $deadline = (Get-Date).AddSeconds($SettingsWaitSec)
+    $wakeDeadline = (Get-Date).AddSeconds($SettingsWakeSec)
+    $settingsWakeIssued = $false
     $settingsMatch = $null
     while ((Get-Date) -lt $deadline) {
         $pids = @(Get-Process -Name 'SystemSettings' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
         if ($pids.Count -gt 0) { $settingsMatch = Resolve-SettingsFrameWindow -SettingsPids $pids }
         if ($null -ne $settingsMatch) { break }
+        if ($settingsPreexisting -and -not $settingsWakeIssued -and (Get-Date) -gt $wakeDeadline) {
+            Start-Process 'ms-settings:' | Out-Null
+            $settingsWakeIssued = $true
+            Write-ProbeLog -Message 'preexisting SystemSettings presented no frame; issued ms-settings: to wake a PLM-suspended instance' -Level 'warn'
+        }
         Start-Sleep -Milliseconds 500
     }
-    if ($null -eq $settingsMatch) { throw 'no ApplicationFrameWindow hosts a Windows.UI.Core.CoreWindow owned by SystemSettings.exe' }
+    if ($null -eq $settingsMatch) { throw ('no ApplicationFrameWindow hosts a Windows.UI.Core.CoreWindow owned by SystemSettings.exe after ' + $SettingsWaitSec + 's (wake issued: ' + $settingsWakeIssued + '); a backgrounded UWP instance can stay PLM-suspended and never present its frame') }
     if (-not $settingsPreexisting) {
         $settingsPid = $settingsMatch.CoreProcessId
         Register-ScratchProcessId -ProcessId $settingsPid
