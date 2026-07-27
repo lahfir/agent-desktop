@@ -1,0 +1,23 @@
+{
+    "probe":  "05-interactions",
+    "question":  "does AutomationElement.SetFocus on a background window move the desktop foreground, or only keyboard focus inside that window",
+    "why":  "2.7 wants headless interaction. If SetFocus steals foreground, no interaction that needs focus can be headless; if it does not, focus-dependent actions are headless-safe and the design can rely on it.",
+    "method":  "a second probe-owned scratch window is brought forward with ShowWindow(SW_MINIMIZE) then ShowWindow(SW_RESTORE) - the sanctioned pattern, SetForegroundWindow is never called - then SetFocus is issued on an element of the OTHER probe-owned window and the foreground is re-read.",
+    "foregroundBefore":  {
+                             "windowTitle":  "AgentDesktop Scratch WinForms [u5-default]",
+                             "processId":  <pid>
+                         },
+    "foregroundAfter":  {
+                            "windowTitle":  "AgentDesktop Scratch WPF [u5]",
+                            "processId":  <pid>
+                        },
+    "foregroundChanged":  true,
+    "foregroundWasTheOtherScratchWindow":  true,
+    "setFocusTarget":  "wpf txtValue",
+    "setFocusError":  "",
+    "hadKeyboardFocusBefore":  false,
+    "hasKeyboardFocusAfter":  true,
+    "focusedElementAutomationIdAfter":  "txtValue",
+    "titleEvidenceNote":  "the two foreground observations are nested objects with a key named exactly processId, so the KTD9 normalizer canonicalizes the run-varying pid to \u003cpid\u003e. A flat foregroundPidBefore/foregroundPidAfter pair was tried first and does NOT match the normalizer\u0027s word-boundary rule: the raw pids survived into the twin and the capture failed to reproduce across runs. The probe-owned window titles are what carry the fact into the normalized twin.",
+    "verdict":  "SetFocus moved the desktop foreground"
+}
