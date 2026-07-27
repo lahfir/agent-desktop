@@ -58,6 +58,11 @@ fn run() -> ExitCode {
         return finish("unknown", Err(pre_dispatch_error(bootstrap_error.into())));
     }
 
+    #[cfg(target_os = "windows")]
+    let _ = agent_desktop_core::install_private_file_ops(Box::new(
+        agent_desktop_windows::WindowsPrivateFile,
+    ));
+
     let mut cli = match Cli::try_parse() {
         Ok(c) => c,
         Err(e) => {

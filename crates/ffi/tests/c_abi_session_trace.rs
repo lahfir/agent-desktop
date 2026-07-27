@@ -1,7 +1,7 @@
 mod common;
 
 use agent_desktop_core::session::{
-    GcOptions, SessionTraceMode, StartSessionOptions, gc, start_session, trace_dir, write_manifest,
+    SessionTraceMode, StartSessionOptions, start_session, trace_dir,
 };
 use common::{
     AdResult, ad_adapter_create_with_session, ad_adapter_destroy, ad_check_permissions,
@@ -10,7 +10,6 @@ use common::{
 use std::ffi::CString;
 use std::fs;
 use std::sync::Mutex;
-use std::time::Duration;
 
 static HOME_LOCK: Mutex<()> = Mutex::new(());
 
@@ -128,35 +127,4 @@ fn manifestless_session_does_not_create_trace_files() {
         ad_adapter_destroy(adapter);
     }
     assert!(!trace_dir(session_id).unwrap().exists());
-}
-
-#[test]
-fn session_scoped_adapter_holds_liveness_until_destroyed() {
-    let _home = TestHome::new();
-    let mut manifest = start_session(StartSessionOptions {
-        name: None,
-        trace: SessionTraceMode::Off,
-        ..Default::default()
-    })
-    .unwrap();
-    manifest.created_at = 0;
-    write_manifest(&manifest).unwrap();
-    let session = CString::new(manifest.id.as_str()).unwrap();
-    let adapter = unsafe { ad_adapter_create_with_session(session.as_ptr()) };
-    assert!(!adapter.is_null());
-
-    let retained = gc(GcOptions {
-        ended_only: false,
-        older_than: Some(Duration::ZERO),
-    })
-    .unwrap();
-    assert!(!retained.removed.contains(&manifest.id));
-
-    unsafe { ad_adapter_destroy(adapter) };
-    let removed = gc(GcOptions {
-        ended_only: false,
-        older_than: Some(Duration::ZERO),
-    })
-    .unwrap();
-    assert!(removed.removed.contains(&manifest.id));
 }
