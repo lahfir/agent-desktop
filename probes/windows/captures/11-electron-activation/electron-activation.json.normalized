@@ -1,0 +1,164 @@
+{
+    "question":  "does Chromium 138+ expose a UIA tree to any UIA client with no flag, and does --force-renderer-accessibility still change anything",
+    "gradedAgainst":  "the committed phases.md line that Chromium 138+ exposes a UIA tree to any UIA client with no flag (P2-O15 / 2.4)",
+    "stack":  "both: managed System.Windows.Automation and the U7 UIA3 COM shim (KTD1 - the COM rows are the authoritative ones)",
+    "scope":  "app/provider - specific to this Obsidian/Electron/Chromium build; the activation mechanism is Chromium behavior, not a Windows API contract",
+    "versions":  {
+                     "method":  "user-agent string scanned out of the shipped Obsidian.exe on this installation",
+                     "obsidianFileVersion":  "1.12.7.0",
+                     "chromiumVersion":  "142.0.7444.265",
+                     "electronVersion":  "39.8.3",
+                     "established":  true,
+                     "rejectedMethods":  [
+                                             "ELECTRON_RUN_AS_NODE=1 Obsidian.exe -p process.versions produced no output on this VM",
+                                             "framework DLL file versions carry component versions, not the Chromium version"
+                                         ]
+                 },
+    "obsidianPreexistingAtProbeStart":  false,
+    "method":  "one fresh Obsidian instance per (stack x flag) cell, because the first UIA client to touch a renderer activates accessibility for that process",
+    "placementHazards":  [
+                             "U3: an earlier revision that left other windows on top of Obsidian held it at its first-contact node count through a full 8s settle and a 16s instrumented hold, three runs running. Minimizing the covering windows fixed it. The mechanism was NOT isolated (Chromium native-window occlusion tracking is the obvious candidate, unproven). Carried here as a probe-placement hazard, explicitly not a product claim.",
+                             "U4: matching a bare Chrome_WidgetWin_1 window found an unrelated window and recorded 9 nodes / 0% coverage as if it were the Electron answer. This probe only accepts a window whose owning pid is one of the launched Obsidian pids, and reads the hosting pid back off the window."
+                         ],
+    "countStabilityNote":  "settled node counts are content-dependent (U7 measured RawView 172 on a bare walker run, U3 measured 119 through its probe). The stable fact is the growth ratio across the settle, not the absolute count.",
+    "cells":  [
+                  {
+                      "flagArm":  "no-flag",
+                      "stack":  "managed",
+                      "authoritative":  false,
+                      "windowClassName":  "Chrome_WidgetWin_1",
+                      "windowHandle":  <hwnd>,
+                      "windowHost":  {
+                                         "processId":  <pid>
+                                     },
+                      "latencyObsidianProcessCountAtWindowDiscovery":  <duration>,
+                      "foregroundOwner":  {
+                                              "processId":  <pid>
+                                          },
+                      "settleMs":  8000,
+                      "firstContact":  {
+                                           "latencyFirstContactRawViewNodes":  <duration>,
+                                           "latencyFirstContactRawViewRefableNodes":  <duration>,
+                                           "latencyFirstContactControlViewNodes":  <duration>,
+                                           "latencyFirstContactControlViewRefableNodes":  <duration>
+                                       },
+                      "afterSettle":  {
+                                          "settledRawViewNodes":  172,
+                                          "settledRawViewRefableNodes":  172,
+                                          "settledControlViewNodes":  133,
+                                          "settledControlViewRefableNodes":  133
+                                      },
+                      "latencyRawViewGrowthRatio":  <duration>,
+                      "activatedWithoutFlag":  true
+                  },
+                  {
+                      "flagArm":  "no-flag",
+                      "stack":  "uia3-com",
+                      "authoritative":  true,
+                      "windowClassName":  "Chrome_WidgetWin_1",
+                      "windowHandle":  <hwnd>,
+                      "windowHost":  {
+                                         "processId":  <pid>
+                                     },
+                      "latencyObsidianProcessCountAtWindowDiscovery":  <duration>,
+                      "foregroundOwner":  {
+                                              "processId":  <pid>
+                                          },
+                      "settleMs":  8000,
+                      "firstContact":  {
+                                           "latencyFirstContactRawViewNodes":  <duration>,
+                                           "latencyFirstContactControlViewNodes":  <duration>,
+                                           "latencyFirstContactContentViewNodes":  <duration>
+                                       },
+                      "afterSettle":  {
+                                          "settledRawViewNodes":  172,
+                                          "settledControlViewNodes":  133,
+                                          "settledContentViewNodes":  133,
+                                          "settledRefableNodesWithAnyPattern":  171,
+                                          "settledRefableNodesExcludingLegacy":  171
+                                      },
+                      "censusNote":  "census ran in a second shim process against the already-activated instance, so its counts are settled counts; per-element rows are deliberately not captured (R11: Obsidian note titles are content)",
+                      "latencyRawViewGrowthRatio":  <duration>,
+                      "activatedWithoutFlag":  true
+                  },
+                  {
+                      "flagArm":  "force-renderer-accessibility",
+                      "stack":  "managed",
+                      "authoritative":  false,
+                      "windowClassName":  "Chrome_WidgetWin_1",
+                      "windowHandle":  <hwnd>,
+                      "windowHost":  {
+                                         "processId":  <pid>
+                                     },
+                      "latencyObsidianProcessCountAtWindowDiscovery":  <duration>,
+                      "foregroundOwner":  {
+                                              "processId":  <pid>
+                                          },
+                      "settleMs":  8000,
+                      "firstContact":  {
+                                           "latencyFirstContactRawViewNodes":  <duration>,
+                                           "latencyFirstContactRawViewRefableNodes":  <duration>,
+                                           "latencyFirstContactControlViewNodes":  <duration>,
+                                           "latencyFirstContactControlViewRefableNodes":  <duration>
+                                       },
+                      "afterSettle":  {
+                                          "settledRawViewNodes":  172,
+                                          "settledRawViewRefableNodes":  172,
+                                          "settledControlViewNodes":  133,
+                                          "settledControlViewRefableNodes":  133
+                                      },
+                      "latencyRawViewGrowthRatio":  <duration>,
+                      "activatedWithoutFlag":  false
+                  },
+                  {
+                      "flagArm":  "force-renderer-accessibility",
+                      "stack":  "uia3-com",
+                      "authoritative":  true,
+                      "windowClassName":  "Chrome_WidgetWin_1",
+                      "windowHandle":  <hwnd>,
+                      "windowHost":  {
+                                         "processId":  <pid>
+                                     },
+                      "latencyObsidianProcessCountAtWindowDiscovery":  <duration>,
+                      "foregroundOwner":  {
+                                              "processId":  <pid>
+                                          },
+                      "settleMs":  8000,
+                      "firstContact":  {
+                                           "latencyFirstContactRawViewNodes":  <duration>,
+                                           "latencyFirstContactControlViewNodes":  <duration>,
+                                           "latencyFirstContactContentViewNodes":  <duration>
+                                       },
+                      "afterSettle":  {
+                                          "settledRawViewNodes":  172,
+                                          "settledControlViewNodes":  133,
+                                          "settledContentViewNodes":  133,
+                                          "settledRefableNodesWithAnyPattern":  172,
+                                          "settledRefableNodesExcludingLegacy":  172
+                                      },
+                      "censusNote":  "census ran in a second shim process against the already-activated instance, so its counts are settled counts; per-element rows are deliberately not captured (R11: Obsidian note titles are content)",
+                      "latencyRawViewGrowthRatio":  <duration>,
+                      "activatedWithoutFlag":  false
+                  }
+              ],
+    "findings":  {
+                     "managedActivatesWithoutFlag":  true,
+                     "comActivatesWithoutFlag":  true,
+                     "clientStackDivergence":  false,
+                     "latencyComRawViewNoFlagFirstContact":  <duration>,
+                     "latencyComRawViewWithFlagFirstContact":  <duration>,
+                     "latencyManagedRawViewNoFlagFirstContact":  <duration>,
+                     "latencyManagedRawViewWithFlagFirstContact":  <duration>,
+                     "settledComRawViewNoFlag":  172,
+                     "settledComRawViewWithFlag":  172,
+                     "settledManagedRawViewNoFlag":  172,
+                     "settledManagedRawViewWithFlag":  172,
+                     "settledCountsMatchAcrossFlagArms":  true,
+                     "firstContactCountsAreRunVarying":  "first-contact counts are a race against Chromium async tree construction and are named latency* so the KTD9 normalizer canonicalizes them; the raw samples stay in this capture, the settled counts are the stable evidence",
+                     "flagVerdict":  "partially useful - redundant for eventual tree exposure: on Chromium 142.0.7444.265 both client stacks reach the same settled RawView count with no flag, so the phases.md claim holds for exposure. It is not redundant for first-contact readiness: without the flag first contact is deterministically the small pre-activation shell on every run and both stacks, while with the flag first contact is a race against the async tree build and was observed anywhere from a fraction of the settled count to nearly all of it. Neither arm removes the need to settle before trusting a first snapshot.",
+                     "supersededPreFinding":  "the plan pre-finding (8 managed descendants, stable at 2/5/10s, candidate CONTRADICTS) is superseded: it was measured through an occluded window with a managed client, and neither the occlusion nor the settle window was controlled"
+                 },
+    "teardown":  {
+                     "allObsidianProcessesTerminated":  true
+                 }
+}
