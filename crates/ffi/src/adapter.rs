@@ -114,6 +114,7 @@ fn build_adapter() -> Result<Box<dyn PlatformAdapter>, AdapterError> {
 
     #[cfg(target_os = "windows")]
     {
+        agent_desktop_windows::ensure_hosted_library_mta_and_dpi()?;
         Ok(Box::new(agent_desktop_windows::WindowsAdapter::new()))
     }
 

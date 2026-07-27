@@ -53,6 +53,11 @@ fn run_permission_prompt_helper() -> Option<ExitCode> {
 }
 
 fn run() -> ExitCode {
+    #[cfg(target_os = "windows")]
+    if let Err(bootstrap_error) = agent_desktop_windows::ensure_owned_process_mta_and_dpi() {
+        return finish("unknown", Err(pre_dispatch_error(bootstrap_error.into())));
+    }
+
     let mut cli = match Cli::try_parse() {
         Ok(c) => c,
         Err(e) => {

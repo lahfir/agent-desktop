@@ -7,3 +7,7 @@ mod system;
 mod tree;
 
 pub use adapter::WindowsAdapter;
+pub use system::com_runtime::{
+    ensure_hosted_library_mta_and_dpi, ensure_owned_process_mta_and_dpi,
+    mta_established_for_new_threads,
+};
