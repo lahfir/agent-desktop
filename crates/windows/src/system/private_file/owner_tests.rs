@@ -31,8 +31,9 @@ fn a_freshly_created_files_owner_equals_the_process_token_owner() {
 
 #[test]
 fn a_fresh_profile_artifact_inherits_system_admins_and_user_classes_and_no_users_class() {
-    let profile = std::env::var_os("USERPROFILE").expect("USERPROFILE must exist on Windows");
-    let fresh = Scratch::adopt(Path::new(&profile).join(format!(
+    let local_app_data =
+        std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA must exist on Windows");
+    let fresh = Scratch::adopt(Path::new(&local_app_data).join("Temp").join(format!(
         ".agent-desktop-acl-pin-{}-{:016x}",
         std::process::id(),
         scratch_nonce()
@@ -76,9 +77,10 @@ fn a_fresh_profile_artifact_inherits_system_admins_and_user_classes_and_no_users
 
 fn inherited_ace_entries(path: &Path) -> Vec<(String, bool)> {
     let script = format!(
-        "(Get-Acl -LiteralPath '{}').Access | ForEach-Object {{ \
-         $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value \
-         + '|' + $_.IsInherited }}",
+        "$rules = [System.IO.FileInfo]::new('{}').GetAccessControl('Access')\
+         .GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]); \
+         foreach ($rule in $rules) {{ \
+         [Console]::WriteLine(($rule.IdentityReference.Value + '|' + $rule.IsInherited)) }}",
         path.display()
     );
     let output = std::process::Command::new("powershell.exe")
@@ -88,7 +90,7 @@ fn inherited_ace_entries(path: &Path) -> Vec<(String, bool)> {
         .expect("powershell must be spawnable");
     assert!(
         output.status.success(),
-        "Get-Acl must succeed: {}",
+        "the module-free acl read must succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout)
