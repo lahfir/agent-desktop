@@ -1,0 +1,893 @@
+{
+    "stack":  "uia3-com",
+    "binding":  "hand-declared ComImport, no GAC UIAutomationClient reference",
+    "coclass":  "CUIAutomation8",
+    "mainThreadId":  4424,
+    "mainApartment":  "MTA",
+    "discoveredPatternAvailabilityProperties":  35,
+    "result":  {
+                   "mode":  "ids",
+                   "propertyCount":  175,
+                   "properties":  [
+                                      {
+                                          "id":  30000,
+                                          "programmaticName":  "RuntimeId"
+                                      },
+                                      {
+                                          "id":  30001,
+                                          "programmaticName":  "BoundingRectangle"
+                                      },
+                                      {
+                                          "id":  30002,
+                                          "programmaticName":  "ProcessId"
+                                      },
+                                      {
+                                          "id":  30003,
+                                          "programmaticName":  "ControlType"
+                                      },
+                                      {
+                                          "id":  30004,
+                                          "programmaticName":  "LocalizedControlType"
+                                      },
+                                      {
+                                          "id":  30005,
+                                          "programmaticName":  "Name"
+                                      },
+                                      {
+                                          "id":  30006,
+                                          "programmaticName":  "AcceleratorKey"
+                                      },
+                                      {
+                                          "id":  30007,
+                                          "programmaticName":  "AccessKey"
+                                      },
+                                      {
+                                          "id":  30008,
+                                          "programmaticName":  "HasKeyboardFocus"
+                                      },
+                                      {
+                                          "id":  30009,
+                                          "programmaticName":  "IsKeyboardFocusable"
+                                      },
+                                      {
+                                          "id":  30010,
+                                          "programmaticName":  "IsEnabled"
+                                      },
+                                      {
+                                          "id":  30011,
+                                          "programmaticName":  "AutomationId"
+                                      },
+                                      {
+                                          "id":  30012,
+                                          "programmaticName":  "ClassName"
+                                      },
+                                      {
+                                          "id":  30013,
+                                          "programmaticName":  "HelpText"
+                                      },
+                                      {
+                                          "id":  30014,
+                                          "programmaticName":  "ClickablePoint"
+                                      },
+                                      {
+                                          "id":  30015,
+                                          "programmaticName":  "Culture"
+                                      },
+                                      {
+                                          "id":  30016,
+                                          "programmaticName":  "IsControlElement"
+                                      },
+                                      {
+                                          "id":  30017,
+                                          "programmaticName":  "IsContentElement"
+                                      },
+                                      {
+                                          "id":  30018,
+                                          "programmaticName":  "LabeledBy"
+                                      },
+                                      {
+                                          "id":  30019,
+                                          "programmaticName":  "IsPassword"
+                                      },
+                                      {
+                                          "id":  30020,
+                                          "programmaticName":  "NativeWindowHandle"
+                                      },
+                                      {
+                                          "id":  30021,
+                                          "programmaticName":  "ItemType"
+                                      },
+                                      {
+                                          "id":  30022,
+                                          "programmaticName":  "IsOffscreen"
+                                      },
+                                      {
+                                          "id":  30023,
+                                          "programmaticName":  "Orientation"
+                                      },
+                                      {
+                                          "id":  30024,
+                                          "programmaticName":  "FrameworkId"
+                                      },
+                                      {
+                                          "id":  30025,
+                                          "programmaticName":  "IsRequiredForForm"
+                                      },
+                                      {
+                                          "id":  30026,
+                                          "programmaticName":  "ItemStatus"
+                                      },
+                                      {
+                                          "id":  30027,
+                                          "programmaticName":  "IsDockPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30028,
+                                          "programmaticName":  "IsExpandCollapsePatternAvailable"
+                                      },
+                                      {
+                                          "id":  30029,
+                                          "programmaticName":  "IsGridItemPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30030,
+                                          "programmaticName":  "IsGridPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30031,
+                                          "programmaticName":  "IsInvokePatternAvailable"
+                                      },
+                                      {
+                                          "id":  30032,
+                                          "programmaticName":  "IsMultipleViewPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30033,
+                                          "programmaticName":  "IsRangeValuePatternAvailable"
+                                      },
+                                      {
+                                          "id":  30034,
+                                          "programmaticName":  "IsScrollPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30035,
+                                          "programmaticName":  "IsScrollItemPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30036,
+                                          "programmaticName":  "IsSelectionItemPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30037,
+                                          "programmaticName":  "IsSelectionPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30038,
+                                          "programmaticName":  "IsTablePatternAvailable"
+                                      },
+                                      {
+                                          "id":  30039,
+                                          "programmaticName":  "IsTableItemPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30040,
+                                          "programmaticName":  "IsTextPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30041,
+                                          "programmaticName":  "IsTogglePatternAvailable"
+                                      },
+                                      {
+                                          "id":  30042,
+                                          "programmaticName":  "IsTransformPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30043,
+                                          "programmaticName":  "IsValuePatternAvailable"
+                                      },
+                                      {
+                                          "id":  30044,
+                                          "programmaticName":  "IsWindowPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30045,
+                                          "programmaticName":  "ValuePattern.Value"
+                                      },
+                                      {
+                                          "id":  30046,
+                                          "programmaticName":  "ValuePattern.IsReadOnly"
+                                      },
+                                      {
+                                          "id":  30047,
+                                          "programmaticName":  "RangeValuePattern.Value"
+                                      },
+                                      {
+                                          "id":  30048,
+                                          "programmaticName":  "RangeValuePattern.IsReadOnly"
+                                      },
+                                      {
+                                          "id":  30049,
+                                          "programmaticName":  "RangeValuePattern.Minimum"
+                                      },
+                                      {
+                                          "id":  30050,
+                                          "programmaticName":  "RangeValuePattern.Maximum"
+                                      },
+                                      {
+                                          "id":  30051,
+                                          "programmaticName":  "RangeValuePattern.LargeChange"
+                                      },
+                                      {
+                                          "id":  30052,
+                                          "programmaticName":  "RangeValuePattern.SmallChange"
+                                      },
+                                      {
+                                          "id":  30053,
+                                          "programmaticName":  "ScrollPattern.HorizontalScrollPercent"
+                                      },
+                                      {
+                                          "id":  30054,
+                                          "programmaticName":  "ScrollPattern.HorizontalViewSize"
+                                      },
+                                      {
+                                          "id":  30055,
+                                          "programmaticName":  "ScrollPattern.VerticalScrollPercent"
+                                      },
+                                      {
+                                          "id":  30056,
+                                          "programmaticName":  "ScrollPattern.VerticalViewSize"
+                                      },
+                                      {
+                                          "id":  30057,
+                                          "programmaticName":  "ScrollPattern.HorizontallyScrollable"
+                                      },
+                                      {
+                                          "id":  30058,
+                                          "programmaticName":  "ScrollPattern.VerticallyScrollable"
+                                      },
+                                      {
+                                          "id":  30059,
+                                          "programmaticName":  "SelectionPattern.Selection"
+                                      },
+                                      {
+                                          "id":  30060,
+                                          "programmaticName":  "SelectionPattern.CanSelectMultiple"
+                                      },
+                                      {
+                                          "id":  30061,
+                                          "programmaticName":  "SelectionPattern.IsSelectionRequired"
+                                      },
+                                      {
+                                          "id":  30062,
+                                          "programmaticName":  "GridPattern.RowCount"
+                                      },
+                                      {
+                                          "id":  30063,
+                                          "programmaticName":  "GridPattern.ColumnCount"
+                                      },
+                                      {
+                                          "id":  30064,
+                                          "programmaticName":  "GridItemPattern.Row"
+                                      },
+                                      {
+                                          "id":  30065,
+                                          "programmaticName":  "GridItemPattern.Column"
+                                      },
+                                      {
+                                          "id":  30066,
+                                          "programmaticName":  "GridItemPattern.RowSpan"
+                                      },
+                                      {
+                                          "id":  30067,
+                                          "programmaticName":  "GridItemPattern.ColumnSpan"
+                                      },
+                                      {
+                                          "id":  30068,
+                                          "programmaticName":  "GridItemPattern.Parent"
+                                      },
+                                      {
+                                          "id":  30069,
+                                          "programmaticName":  "DockPattern.DockPosition"
+                                      },
+                                      {
+                                          "id":  30070,
+                                          "programmaticName":  "ExpandCollapsePattern.ExpandCollapseState"
+                                      },
+                                      {
+                                          "id":  30071,
+                                          "programmaticName":  "MultipleViewPattern.CurrentView"
+                                      },
+                                      {
+                                          "id":  30072,
+                                          "programmaticName":  "MultipleViewPattern.SupportedViews"
+                                      },
+                                      {
+                                          "id":  30073,
+                                          "programmaticName":  "WindowPattern.CanMaximize"
+                                      },
+                                      {
+                                          "id":  30074,
+                                          "programmaticName":  "WindowPattern.CanMinimize"
+                                      },
+                                      {
+                                          "id":  30075,
+                                          "programmaticName":  "WindowPattern.WindowVisualState"
+                                      },
+                                      {
+                                          "id":  30076,
+                                          "programmaticName":  "WindowPattern.WindowInteractionState"
+                                      },
+                                      {
+                                          "id":  30077,
+                                          "programmaticName":  "WindowPattern.IsModal"
+                                      },
+                                      {
+                                          "id":  30078,
+                                          "programmaticName":  "WindowPattern.IsTopmost"
+                                      },
+                                      {
+                                          "id":  30079,
+                                          "programmaticName":  "SelectionItemPattern.IsSelected"
+                                      },
+                                      {
+                                          "id":  30080,
+                                          "programmaticName":  "SelectionItemPattern.SelectionContainer"
+                                      },
+                                      {
+                                          "id":  30081,
+                                          "programmaticName":  "TablePattern.RowHeaders"
+                                      },
+                                      {
+                                          "id":  30082,
+                                          "programmaticName":  "TablePattern.ColumnHeaders"
+                                      },
+                                      {
+                                          "id":  30083,
+                                          "programmaticName":  "TablePattern.RowOrColumnMajor"
+                                      },
+                                      {
+                                          "id":  30084,
+                                          "programmaticName":  "TableItemPattern.RowHeaderItems"
+                                      },
+                                      {
+                                          "id":  30085,
+                                          "programmaticName":  "TableItemPattern.ColumnHeaderItems"
+                                      },
+                                      {
+                                          "id":  30086,
+                                          "programmaticName":  "TogglePattern.ToggleState"
+                                      },
+                                      {
+                                          "id":  30087,
+                                          "programmaticName":  "TransformPattern.CanMove"
+                                      },
+                                      {
+                                          "id":  30088,
+                                          "programmaticName":  "TransformPattern.CanResize"
+                                      },
+                                      {
+                                          "id":  30089,
+                                          "programmaticName":  "TransformPattern.CanRotate"
+                                      },
+                                      {
+                                          "id":  30090,
+                                          "programmaticName":  "IsLegacyIAccessiblePatternAvailable"
+                                      },
+                                      {
+                                          "id":  30091,
+                                          "programmaticName":  "LegacyIAccessiblePattern.ChildId"
+                                      },
+                                      {
+                                          "id":  30092,
+                                          "programmaticName":  "LegacyIAccessiblePattern.Name"
+                                      },
+                                      {
+                                          "id":  30093,
+                                          "programmaticName":  "LegacyIAccessiblePattern.Value"
+                                      },
+                                      {
+                                          "id":  30094,
+                                          "programmaticName":  "LegacyIAccessiblePattern.Description"
+                                      },
+                                      {
+                                          "id":  30095,
+                                          "programmaticName":  "LegacyIAccessiblePattern.Role"
+                                      },
+                                      {
+                                          "id":  30096,
+                                          "programmaticName":  "LegacyIAccessiblePattern.State"
+                                      },
+                                      {
+                                          "id":  30097,
+                                          "programmaticName":  "LegacyIAccessiblePattern.Help"
+                                      },
+                                      {
+                                          "id":  30098,
+                                          "programmaticName":  "LegacyIAccessiblePattern.KeyboardShortcut"
+                                      },
+                                      {
+                                          "id":  30099,
+                                          "programmaticName":  "LegacyIAccessiblePattern.Selection"
+                                      },
+                                      {
+                                          "id":  30100,
+                                          "programmaticName":  "LegacyIAccessiblePattern.DefaultAction"
+                                      },
+                                      {
+                                          "id":  30101,
+                                          "programmaticName":  "AriaRole"
+                                      },
+                                      {
+                                          "id":  30102,
+                                          "programmaticName":  "AriaProperties"
+                                      },
+                                      {
+                                          "id":  30103,
+                                          "programmaticName":  "IsDataValidForForm"
+                                      },
+                                      {
+                                          "id":  30104,
+                                          "programmaticName":  "ControllerFor"
+                                      },
+                                      {
+                                          "id":  30105,
+                                          "programmaticName":  "DescribedBy"
+                                      },
+                                      {
+                                          "id":  30106,
+                                          "programmaticName":  "FlowsTo"
+                                      },
+                                      {
+                                          "id":  30107,
+                                          "programmaticName":  "ProviderDescription"
+                                      },
+                                      {
+                                          "id":  30108,
+                                          "programmaticName":  "IsItemContainerPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30109,
+                                          "programmaticName":  "IsVirtualizedItemPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30110,
+                                          "programmaticName":  "IsSynchronizedInputPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30111,
+                                          "programmaticName":  "OptimizeForVisualContent"
+                                      },
+                                      {
+                                          "id":  30112,
+                                          "programmaticName":  "IsObjectModelPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30113,
+                                          "programmaticName":  "AnnotationPattern.AnnotationTypeId"
+                                      },
+                                      {
+                                          "id":  30114,
+                                          "programmaticName":  "AnnotationPattern.AnnotationTypeName"
+                                      },
+                                      {
+                                          "id":  30115,
+                                          "programmaticName":  "AnnotationPattern.Author"
+                                      },
+                                      {
+                                          "id":  30116,
+                                          "programmaticName":  "AnnotationPattern.DateTime"
+                                      },
+                                      {
+                                          "id":  30117,
+                                          "programmaticName":  "AnnotationPattern.Target"
+                                      },
+                                      {
+                                          "id":  30118,
+                                          "programmaticName":  "IsAnnotationPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30119,
+                                          "programmaticName":  "IsTextPattern2Available"
+                                      },
+                                      {
+                                          "id":  30120,
+                                          "programmaticName":  "StylesPattern.StyleId"
+                                      },
+                                      {
+                                          "id":  30121,
+                                          "programmaticName":  "StylesPattern.StyleName"
+                                      },
+                                      {
+                                          "id":  30122,
+                                          "programmaticName":  "StylesPattern.FillColor"
+                                      },
+                                      {
+                                          "id":  30123,
+                                          "programmaticName":  "StylesPattern.FillPatternStyle"
+                                      },
+                                      {
+                                          "id":  30124,
+                                          "programmaticName":  "StylesPattern.Shape"
+                                      },
+                                      {
+                                          "id":  30125,
+                                          "programmaticName":  "StylesPattern.FillPatternColor"
+                                      },
+                                      {
+                                          "id":  30126,
+                                          "programmaticName":  "StylesPattern.ExtendedProperties"
+                                      },
+                                      {
+                                          "id":  30127,
+                                          "programmaticName":  "IsStylesPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30128,
+                                          "programmaticName":  "IsSpreadsheetPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30129,
+                                          "programmaticName":  "SpreadsheetItemPattern.Formula"
+                                      },
+                                      {
+                                          "id":  30130,
+                                          "programmaticName":  "SpreadsheetItemPattern.AnnotationObjects"
+                                      },
+                                      {
+                                          "id":  30131,
+                                          "programmaticName":  "SpreadsheetItemPattern.AnnotationTypes"
+                                      },
+                                      {
+                                          "id":  30132,
+                                          "programmaticName":  "IsSpreadsheetItemPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30133,
+                                          "programmaticName":  "TransformPattern2.CanZoom"
+                                      },
+                                      {
+                                          "id":  30134,
+                                          "programmaticName":  "IsTransformPattern2Available"
+                                      },
+                                      {
+                                          "id":  30135,
+                                          "programmaticName":  "LiveSetting"
+                                      },
+                                      {
+                                          "id":  30136,
+                                          "programmaticName":  "IsTextChildPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30137,
+                                          "programmaticName":  "IsDragPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30138,
+                                          "programmaticName":  "Drag.IsGrabbed"
+                                      },
+                                      {
+                                          "id":  30139,
+                                          "programmaticName":  "Drag.DropEffect"
+                                      },
+                                      {
+                                          "id":  30140,
+                                          "programmaticName":  "Drag.DropEffects"
+                                      },
+                                      {
+                                          "id":  30141,
+                                          "programmaticName":  "IsDropTargetPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30142,
+                                          "programmaticName":  "DropTarget.DropTargetEffect"
+                                      },
+                                      {
+                                          "id":  30143,
+                                          "programmaticName":  "DropTarget.DropTargetEffects"
+                                      },
+                                      {
+                                          "id":  30144,
+                                          "programmaticName":  "Drag.GrabbedItems"
+                                      },
+                                      {
+                                          "id":  30145,
+                                          "programmaticName":  "TransformPattern2.ZoomLevel"
+                                      },
+                                      {
+                                          "id":  30146,
+                                          "programmaticName":  "TransformPattern2.ZoomMinimum"
+                                      },
+                                      {
+                                          "id":  30147,
+                                          "programmaticName":  "TransformPattern2.ZoomMaximum"
+                                      },
+                                      {
+                                          "id":  30148,
+                                          "programmaticName":  "FlowsFrom"
+                                      },
+                                      {
+                                          "id":  30149,
+                                          "programmaticName":  "IsTextEditPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30150,
+                                          "programmaticName":  "IsPeripheral"
+                                      },
+                                      {
+                                          "id":  30151,
+                                          "programmaticName":  "IsCustomNavigationPatternAvailable"
+                                      },
+                                      {
+                                          "id":  30152,
+                                          "programmaticName":  "PositionInSet"
+                                      },
+                                      {
+                                          "id":  30153,
+                                          "programmaticName":  "SizeOfSet"
+                                      },
+                                      {
+                                          "id":  30154,
+                                          "programmaticName":  "Level"
+                                      },
+                                      {
+                                          "id":  30155,
+                                          "programmaticName":  "AnnotationTypes"
+                                      },
+                                      {
+                                          "id":  30156,
+                                          "programmaticName":  "AnnotationObjects"
+                                      },
+                                      {
+                                          "id":  30157,
+                                          "programmaticName":  "LandmarkType"
+                                      },
+                                      {
+                                          "id":  30158,
+                                          "programmaticName":  "LocalizedLandmarkType"
+                                      },
+                                      {
+                                          "id":  30159,
+                                          "programmaticName":  "FullDescription"
+                                      },
+                                      {
+                                          "id":  30160,
+                                          "programmaticName":  "FillColor"
+                                      },
+                                      {
+                                          "id":  30161,
+                                          "programmaticName":  "OutlineColor"
+                                      },
+                                      {
+                                          "id":  30162,
+                                          "programmaticName":  "FillType"
+                                      },
+                                      {
+                                          "id":  30163,
+                                          "programmaticName":  "VisualEffects"
+                                      },
+                                      {
+                                          "id":  30164,
+                                          "programmaticName":  "OutlineThickness"
+                                      },
+                                      {
+                                          "id":  30165,
+                                          "programmaticName":  "CenterPoint"
+                                      },
+                                      {
+                                          "id":  30166,
+                                          "programmaticName":  "Rotation"
+                                      },
+                                      {
+                                          "id":  30167,
+                                          "programmaticName":  "Size"
+                                      },
+                                      {
+                                          "id":  30168,
+                                          "programmaticName":  "IsSelectionPattern2Available"
+                                      },
+                                      {
+                                          "id":  30169,
+                                          "programmaticName":  "Selection2.FirstSelectedItem"
+                                      },
+                                      {
+                                          "id":  30170,
+                                          "programmaticName":  "Selection2.LastSelectedItem"
+                                      },
+                                      {
+                                          "id":  30171,
+                                          "programmaticName":  "Selection2.CurrentSelectedItem"
+                                      },
+                                      {
+                                          "id":  30172,
+                                          "programmaticName":  "Selection2.ItemCount"
+                                      },
+                                      {
+                                          "id":  30173,
+                                          "programmaticName":  "HeadingLevel"
+                                      },
+                                      {
+                                          "id":  30174,
+                                          "programmaticName":  "IsDialog"
+                                      }
+                                  ],
+                   "patterns":  [
+                                    "10000=InvokePattern",
+                                    "10001=SelectionPattern",
+                                    "10002=ValuePattern",
+                                    "10003=RangeValuePattern",
+                                    "10004=ScrollPattern",
+                                    "10005=ExpandCollapsePattern",
+                                    "10006=GridPattern",
+                                    "10007=GridItemPattern",
+                                    "10008=MultipleViewPattern",
+                                    "10009=WindowPattern",
+                                    "10010=SelectionItemPattern",
+                                    "10011=DockPattern",
+                                    "10012=TablePattern",
+                                    "10013=TableItemPattern",
+                                    "10014=TextPattern",
+                                    "10015=TogglePattern",
+                                    "10016=TransformPattern",
+                                    "10017=ScrollItemPattern",
+                                    "10018=LegacyIAccessiblePattern",
+                                    "10019=ItemContainerPattern",
+                                    "10020=VirtualizedItemPattern",
+                                    "10021=SynchronizedInputPattern",
+                                    "10022=ObjectModelPattern",
+                                    "10023=AnnotationPattern",
+                                    "10024=TextPattern2",
+                                    "10025=StylesPattern",
+                                    "10026=SpreadsheetPattern",
+                                    "10027=SpreadsheetItemPattern",
+                                    "10028=TransformPattern2",
+                                    "10029=TextChildPattern",
+                                    "10030=DragPattern",
+                                    "10031=DropTargetPattern",
+                                    "10032=TextEditPattern",
+                                    "10033=CustomNavigationPattern",
+                                    "10034=SelectionPattern2"
+                                ],
+                   "patternAvailabilityProperties":  [
+                                                         {
+                                                             "pattern":  "Annotation",
+                                                             "availabilityPropertyId":  30118
+                                                         },
+                                                         {
+                                                             "pattern":  "CustomNavigation",
+                                                             "availabilityPropertyId":  30151
+                                                         },
+                                                         {
+                                                             "pattern":  "Dock",
+                                                             "availabilityPropertyId":  30027
+                                                         },
+                                                         {
+                                                             "pattern":  "Drag",
+                                                             "availabilityPropertyId":  30137
+                                                         },
+                                                         {
+                                                             "pattern":  "DropTarget",
+                                                             "availabilityPropertyId":  30141
+                                                         },
+                                                         {
+                                                             "pattern":  "ExpandCollapse",
+                                                             "availabilityPropertyId":  30028
+                                                         },
+                                                         {
+                                                             "pattern":  "Grid",
+                                                             "availabilityPropertyId":  30030
+                                                         },
+                                                         {
+                                                             "pattern":  "GridItem",
+                                                             "availabilityPropertyId":  30029
+                                                         },
+                                                         {
+                                                             "pattern":  "Invoke",
+                                                             "availabilityPropertyId":  30031
+                                                         },
+                                                         {
+                                                             "pattern":  "ItemContainer",
+                                                             "availabilityPropertyId":  30108
+                                                         },
+                                                         {
+                                                             "pattern":  "LegacyIAccessible",
+                                                             "availabilityPropertyId":  30090
+                                                         },
+                                                         {
+                                                             "pattern":  "MultipleView",
+                                                             "availabilityPropertyId":  30032
+                                                         },
+                                                         {
+                                                             "pattern":  "ObjectModel",
+                                                             "availabilityPropertyId":  30112
+                                                         },
+                                                         {
+                                                             "pattern":  "RangeValue",
+                                                             "availabilityPropertyId":  30033
+                                                         },
+                                                         {
+                                                             "pattern":  "Scroll",
+                                                             "availabilityPropertyId":  30034
+                                                         },
+                                                         {
+                                                             "pattern":  "ScrollItem",
+                                                             "availabilityPropertyId":  30035
+                                                         },
+                                                         {
+                                                             "pattern":  "Selection",
+                                                             "availabilityPropertyId":  30037
+                                                         },
+                                                         {
+                                                             "pattern":  "Selection2",
+                                                             "availabilityPropertyId":  30168
+                                                         },
+                                                         {
+                                                             "pattern":  "SelectionItem",
+                                                             "availabilityPropertyId":  30036
+                                                         },
+                                                         {
+                                                             "pattern":  "Spreadsheet",
+                                                             "availabilityPropertyId":  30128
+                                                         },
+                                                         {
+                                                             "pattern":  "SpreadsheetItem",
+                                                             "availabilityPropertyId":  30132
+                                                         },
+                                                         {
+                                                             "pattern":  "Styles",
+                                                             "availabilityPropertyId":  30127
+                                                         },
+                                                         {
+                                                             "pattern":  "SynchronizedInput",
+                                                             "availabilityPropertyId":  30110
+                                                         },
+                                                         {
+                                                             "pattern":  "Table",
+                                                             "availabilityPropertyId":  30038
+                                                         },
+                                                         {
+                                                             "pattern":  "TableItem",
+                                                             "availabilityPropertyId":  30039
+                                                         },
+                                                         {
+                                                             "pattern":  "Text",
+                                                             "availabilityPropertyId":  30040
+                                                         },
+                                                         {
+                                                             "pattern":  "Text2",
+                                                             "availabilityPropertyId":  30119
+                                                         },
+                                                         {
+                                                             "pattern":  "TextChild",
+                                                             "availabilityPropertyId":  30136
+                                                         },
+                                                         {
+                                                             "pattern":  "TextEdit",
+                                                             "availabilityPropertyId":  30149
+                                                         },
+                                                         {
+                                                             "pattern":  "Toggle",
+                                                             "availabilityPropertyId":  30041
+                                                         },
+                                                         {
+                                                             "pattern":  "Transform",
+                                                             "availabilityPropertyId":  30042
+                                                         },
+                                                         {
+                                                             "pattern":  "Transform2",
+                                                             "availabilityPropertyId":  30134
+                                                         },
+                                                         {
+                                                             "pattern":  "Value",
+                                                             "availabilityPropertyId":  30043
+                                                         },
+                                                         {
+                                                             "pattern":  "VirtualizedItem",
+                                                             "availabilityPropertyId":  30109
+                                                         },
+                                                         {
+                                                             "pattern":  "Window",
+                                                             "availabilityPropertyId":  30044
+                                                         }
+                                                     ]
+               }
+}
