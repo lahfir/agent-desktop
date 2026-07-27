@@ -14,28 +14,30 @@
 //! destination; an absent destination means no reader holds it, so that
 //! branch falls back to the `MoveFileExW`-backed `std::fs::rename`.
 //!
-//! Temp files live in a per-process lease directory inside the destination's
-//! parent, which inherits the same profile ACL. The lease handle is held for
-//! the life of the process with a share mode that deliberately omits
-//! `FILE_SHARE_DELETE`, making the directory undeletable while its owner
-//! lives; a sweeper probes stale lease directories with `DELETE` access and
-//! reclaims only those whose owning process is gone. That narrowed share
-//! mode applies exclusively to this internal lease handle — artifact opens
-//! keep Rust's default wide `FILE_SHARE_READ|WRITE|DELETE` mask, because any
-//! hardened open that narrows it re-introduces the measured sharing-failure
-//! cluster. The sweep runs lazily, once per parent per process on first
-//! write, never per write. Temp names reuse core's hashed-nonce scheme so
-//! they stay unpredictable to a same-privilege racer.
+//! Temp files live in a write-scoped lease directory inside the
+//! destination's parent, which inherits the same profile ACL. Each atomic
+//! write creates its own lease directory — named with the pid plus a
+//! per-write nonce, so concurrent same-parent writes in one process never
+//! collide — and holds its handle for the duration of the write with a share
+//! mode that deliberately omits `FILE_SHARE_DELETE`. That held handle is the
+//! live-writer guard: a sweep before each write probes lease directories
+//! with `DELETE` access and reclaims only those no live writer holds. The
+//! lease handle is dropped and the directory removed on every exit path, so
+//! a long-lived process retains no directory handle that would defeat
+//! same-process snapshot pruning. The narrowed share mode applies
+//! exclusively to this internal lease handle — artifact opens keep Rust's
+//! default wide `FILE_SHARE_READ|WRITE|DELETE` mask, because any hardened
+//! open that narrows it re-introduces the measured sharing-failure cluster.
+//! Temp names reuse core's hashed-nonce scheme so they stay unpredictable to
+//! a same-privilege racer.
 
-use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::hash::{BuildHasher, RandomState};
 use std::io::ErrorKind;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
 
 use windows_sys::Win32::Foundation::{
     ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND, ERROR_SHARING_VIOLATION,
@@ -48,14 +50,13 @@ use windows_sys::Win32::Storage::FileSystem::{
 use super::{invalid_input, locality, owner, path};
 
 const TEMP_LEASE_PREFIX: &str = ".agent-desktop-tmp-p";
+const LEASE_CREATE_ATTEMPTS: usize = 32;
 const TEMP_CREATE_ATTEMPTS: usize = 32;
 const MEASURED_REPLACE_FLAGS: u32 = 0;
 
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
 pub(super) struct TempDirLease {
     directory: PathBuf,
-    _liveness_handle: File,
+    liveness_handle: Option<File>,
 }
 
 impl TempDirLease {
@@ -64,64 +65,69 @@ impl TempDirLease {
     }
 }
 
-pub(super) fn lease_temp_directory(parent: &Path) -> std::io::Result<Arc<TempDirLease>> {
-    static ACTIVE_LEASES: OnceLock<Mutex<HashMap<PathBuf, Arc<TempDirLease>>>> = OnceLock::new();
-    let registry = ACTIVE_LEASES.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut leases = registry
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(lease) = leases.get(parent) {
-        return Ok(lease.clone());
+impl Drop for TempDirLease {
+    fn drop(&mut self) {
+        drop(self.liveness_handle.take());
+        let _ = std::fs::remove_dir_all(&self.directory);
     }
-    sweep_stale_lease_directories(parent);
-    let lease = Arc::new(establish_lease(parent)?);
-    leases.insert(parent.to_path_buf(), lease.clone());
-    Ok(lease)
 }
 
-fn establish_lease(parent: &Path) -> std::io::Result<TempDirLease> {
-    let directory = parent.join(own_lease_name());
-    match std::fs::create_dir(&directory) {
-        Ok(()) => {}
-        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-            let _ = std::fs::remove_dir_all(&directory);
-            match std::fs::create_dir(&directory) {
-                Ok(()) => {}
-                Err(retry) if retry.kind() == ErrorKind::AlreadyExists => {}
-                Err(retry) => return Err(retry),
+pub(super) fn acquire_write_lease(parent: &Path) -> std::io::Result<TempDirLease> {
+    sweep_stale_lease_directories(parent);
+    for _ in 0..LEASE_CREATE_ATTEMPTS {
+        let directory = parent.join(fresh_lease_name());
+        match std::fs::create_dir(&directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+        match open_verified_liveness_handle(&directory) {
+            Ok(handle) => {
+                return Ok(TempDirLease {
+                    directory,
+                    liveness_handle: Some(handle),
+                });
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&directory);
+                return Err(error);
             }
         }
-        Err(error) => return Err(error),
     }
-    let liveness_handle = OpenOptions::new()
+    Err(std::io::Error::new(
+        ErrorKind::AlreadyExists,
+        "could not allocate a private temp lease directory",
+    ))
+}
+
+fn open_verified_liveness_handle(directory: &Path) -> std::io::Result<File> {
+    let handle = OpenOptions::new()
         .read(true)
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(&directory)?;
-    path::require_verified_lease_directory(&liveness_handle)?;
-    owner::require_owned_by_token_owner(&liveness_handle, "the private temp directory")?;
-    locality::require_local_for_private_write(&liveness_handle, "the private temp directory")?;
-    Ok(TempDirLease {
-        directory,
-        _liveness_handle: liveness_handle,
-    })
+        .open(directory)?;
+    path::require_verified_lease_directory(&handle)?;
+    owner::require_owned_by_token_owner(&handle, "the private temp directory")?;
+    locality::require_local_for_private_write(&handle, "the private temp directory")?;
+    Ok(handle)
 }
 
-fn own_lease_name() -> String {
-    format!("{TEMP_LEASE_PREFIX}{}", std::process::id())
+fn fresh_lease_name() -> String {
+    let nonce = RandomState::new().hash_one(std::time::SystemTime::now());
+    format!("{TEMP_LEASE_PREFIX}{}-{nonce:016x}", std::process::id())
 }
 
 fn sweep_stale_lease_directories(parent: &Path) {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return;
     };
-    let own_name = own_lease_name();
     for entry in entries.flatten() {
         let name = entry.file_name();
         let Some(name_text) = name.to_str() else {
             continue;
         };
-        if !name_text.starts_with(TEMP_LEASE_PREFIX) || name_text == own_name {
+        if !name_text.starts_with(TEMP_LEASE_PREFIX) {
             continue;
         }
         let candidate = entry.path();
@@ -146,14 +152,11 @@ pub(super) fn create_private_temp_file(
     destination_name: &str,
 ) -> std::io::Result<(PathBuf, File)> {
     for _ in 0..TEMP_CREATE_ATTEMPTS {
-        let nonce = RandomState::new().hash_one((
-            std::process::id(),
-            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed),
-            std::time::SystemTime::now(),
-        ));
         let temporary = lease
             .directory()
-            .join(format!(".{destination_name}.{nonce:016x}.tmp"));
+            .join(agent_desktop_core::temporary_file_name(OsStr::new(
+                destination_name,
+            )));
         match OpenOptions::new()
             .write(true)
             .create_new(true)

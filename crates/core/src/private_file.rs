@@ -1,11 +1,7 @@
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::hash::{BuildHasher, RandomState};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn open_private_lock(path: &Path, create: bool) -> std::io::Result<File> {
     crate::private_file_ops::with_active_ops(|ops| ops.open_private_lock(path, create))
@@ -49,7 +45,7 @@ pub(crate) fn read_private_bounded_portable(
     max_bytes: u64,
 ) -> std::io::Result<Vec<u8>> {
     let file = open_private_read(path)?;
-    read_bounded(file, max_bytes)
+    crate::private_file_ops::bounded_read(file, max_bytes)
 }
 
 pub(crate) fn read_regular_bounded(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
@@ -61,7 +57,7 @@ pub(crate) fn read_regular_bounded(path: &Path, max_bytes: u64) -> std::io::Resu
     };
     validate_regular(&file)?;
     validate_local_filesystem(&file)?;
-    read_bounded(file, max_bytes)
+    crate::private_file_ops::bounded_read(file, max_bytes)
 }
 
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -177,33 +173,15 @@ fn open_private_read(path: &Path) -> std::io::Result<File> {
     Ok(file)
 }
 
-fn read_bounded(file: File, max_bytes: u64) -> std::io::Result<Vec<u8>> {
-    let metadata = file.metadata()?;
-    if metadata.len() > max_bytes {
-        return Err(invalid_input("file exceeds its read limit"));
-    }
-    let capacity = usize::try_from(metadata.len().min(max_bytes)).unwrap_or(usize::MAX);
-    let mut bytes = Vec::with_capacity(capacity);
-    file.take(max_bytes.saturating_add(1))
-        .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > max_bytes {
-        return Err(invalid_input("file grew beyond its read limit"));
-    }
-    Ok(bytes)
-}
-
 fn create_temporary(path: &Path) -> std::io::Result<(PathBuf, File)> {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| invalid_input("private file path has an invalid filename"))?;
     for _ in 0..32 {
-        let nonce = RandomState::new().hash_one((
-            std::process::id(),
-            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed),
-            std::time::SystemTime::now(),
+        let temporary = path.with_file_name(crate::private_file_ops::temporary_file_name(
+            std::ffi::OsStr::new(file_name),
         ));
-        let temporary = path.with_file_name(format!(".{file_name}.{nonce:016x}.tmp"));
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         configure_unix(&mut options, 0o600);

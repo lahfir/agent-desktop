@@ -7,48 +7,33 @@ const E_ACCESSDENIED: i32 = 0x8007_0005_u32 as i32;
 
 #[cfg(target_os = "windows")]
 mod imp {
-    use windows_sys::Win32::Foundation::{S_FALSE, S_OK};
     use windows_sys::Win32::System::Com::{
         CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
         CoUninitialize,
     };
-    use windows_sys::core::GUID;
+    use windows_sys::core::{GUID, IID_IUnknown, IUnknown_Vtbl};
+
+    use crate::system::com_runtime::classify_co_initialize_hresult;
 
     const CLSID_CUIAUTOMATION: GUID = GUID::from_u128(0xff48dba4_60ef_4201_aa87_54103eef594e);
-    const IID_IUNKNOWN: GUID = GUID::from_u128(0x00000000_0000_0000_c000_000000000046);
-    const RPC_E_CHANGED_MODE: i32 = 0x8001_0106_u32 as i32;
-
-    #[repr(C)]
-    struct ComObject {
-        vtable: *const ComVtable,
-    }
-
-    #[repr(C)]
-    struct ComVtable {
-        query_interface: usize,
-        add_ref: usize,
-        release: unsafe extern "system" fn(this: *mut core::ffi::c_void) -> u32,
-    }
-
-    const _: () = assert!(size_of::<ComVtable>() == 3 * size_of::<usize>());
 
     pub(super) fn probe_uia_access() -> i32 {
         unsafe {
             let init_status = CoInitializeEx(core::ptr::null(), COINIT_MULTITHREADED as u32);
-            if init_status < 0 && init_status != RPC_E_CHANGED_MODE {
-                return init_status;
-            }
-            let balance_apartment = init_status == S_OK || init_status == S_FALSE;
+            let apartment = match classify_co_initialize_hresult(init_status) {
+                Ok(apartment) => apartment,
+                Err(failure) => return failure,
+            };
             let mut instance: *mut core::ffi::c_void = core::ptr::null_mut();
             let create_status = CoCreateInstance(
                 &CLSID_CUIAUTOMATION,
                 core::ptr::null_mut(),
                 CLSCTX_INPROC_SERVER,
-                &IID_IUNKNOWN,
+                &IID_IUnknown,
                 &mut instance,
             );
             release_instance(instance);
-            if balance_apartment {
+            if apartment.permits_co_uninitialize() {
                 CoUninitialize();
             }
             create_status
@@ -59,9 +44,9 @@ mod imp {
         if instance.is_null() {
             return;
         }
-        let object = instance.cast::<ComObject>();
+        let vtable = unsafe { *instance.cast::<*const IUnknown_Vtbl>() };
         unsafe {
-            ((*(*object).vtable).release)(instance);
+            ((*vtable).Release)(instance);
         }
     }
 
@@ -85,23 +70,17 @@ mod imp {
 
 pub(crate) fn report(deadline: Deadline) -> Result<PermissionReport, AdapterError> {
     ensure_budget(deadline)?;
-    let report = PermissionReport {
-        accessibility: accessibility_report_state(),
-        screen_recording: screen_recording_report_state(),
-        automation: automation_report_state(),
-    };
-    ensure_budget(deadline)?;
-    Ok(report)
+    report_from_probed_uia(deadline, imp::probe_uia_access())
 }
 
 pub(crate) fn request_report(deadline: Deadline) -> Result<PermissionReport, AdapterError> {
-    request_report_with(deadline, imp::probe_uia_access, report)
+    request_report_with(deadline, imp::probe_uia_access, report_from_probed_uia)
 }
 
 fn request_report_with(
     deadline: Deadline,
     probe: impl FnOnce() -> i32,
-    report: impl FnOnce(Deadline) -> Result<PermissionReport, AdapterError>,
+    report: impl FnOnce(Deadline, i32) -> Result<PermissionReport, AdapterError>,
 ) -> Result<PermissionReport, AdapterError> {
     ensure_budget(deadline)?;
     let hresult = probe();
@@ -109,7 +88,20 @@ fn request_report_with(
     if matches!(map_uia_access(hresult), PermissionState::Denied { .. }) {
         return Err(uia_access_denied_error(hresult));
     }
-    report(deadline)
+    report(deadline, hresult)
+}
+
+fn report_from_probed_uia(
+    deadline: Deadline,
+    uia_hresult: i32,
+) -> Result<PermissionReport, AdapterError> {
+    let report = PermissionReport {
+        accessibility: map_uia_access(uia_hresult),
+        screen_recording: screen_recording_report_state(),
+        automation: automation_report_state(),
+    };
+    ensure_budget(deadline)?;
+    Ok(report)
 }
 
 pub(crate) fn map_uia_access(hresult: i32) -> PermissionState {
@@ -146,10 +138,6 @@ pub(crate) fn com_hresult_detail(hresult: i32) -> String {
     }
 }
 
-fn accessibility_report_state() -> PermissionState {
-    map_uia_access(imp::probe_uia_access())
-}
-
 fn screen_recording_report_state() -> PermissionState {
     map_capture_availability(imp::probe_capture_availability())
 }
@@ -158,7 +146,7 @@ fn automation_report_state() -> PermissionState {
     PermissionState::NotRequired
 }
 
-fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
+pub(crate) fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
     if deadline.is_expired() {
         Err(deadline.timeout_error())
     } else {

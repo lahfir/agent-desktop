@@ -1,6 +1,53 @@
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
+use std::hash::{BuildHasher, RandomState};
+use std::io::Read;
 use std::path::Path;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Reads `file` fully on behalf of a `PrivateFileOps` implementation,
+/// rejecting files larger than `max_bytes` before allocating and detecting
+/// growth past the limit during the read.
+pub fn bounded_read(file: File, max_bytes: u64) -> std::io::Result<Vec<u8>> {
+    let metadata = file.metadata()?;
+    if metadata.len() > max_bytes {
+        return Err(read_limit_error("file exceeds its read limit"));
+    }
+    let capacity = usize::try_from(metadata.len().min(max_bytes)).unwrap_or(usize::MAX);
+    let mut bytes = Vec::with_capacity(capacity);
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(read_limit_error("file grew beyond its read limit"));
+    }
+    Ok(bytes)
+}
+
+fn read_limit_error(message: &'static str) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message)
+}
+
+/// Produces one `.{name}.{nonce:016x}.tmp` candidate for a temporary that
+/// will be promoted over a destination whose leaf name is `name`.
+///
+/// The hashed nonce keeps the name unpredictable to a same-privilege racer;
+/// callers loop over fresh candidates when creation collides. Every
+/// `PrivateFileOps` implementation names its temporaries through this one
+/// scheme.
+pub fn temporary_file_name(name: &OsStr) -> OsString {
+    let nonce = RandomState::new().hash_one((
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed),
+        std::time::SystemTime::now(),
+    ));
+    let mut temporary = OsString::from(".");
+    temporary.push(name);
+    temporary.push(format!(".{nonce:016x}.tmp"));
+    temporary
+}
 
 /// Platform seam for the five private-file primitives.
 ///

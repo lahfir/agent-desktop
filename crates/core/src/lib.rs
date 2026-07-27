@@ -225,7 +225,9 @@ pub use output::{ErrorPayload, Response};
 pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use point::Point;
-pub use private_file_ops::{PrivateFileOps, install_private_file_ops};
+pub use private_file_ops::{
+    PrivateFileOps, bounded_read, install_private_file_ops, temporary_file_name,
+};
 pub use process_id::ProcessId;
 pub use process_identity::ProcessIdentity;
 pub use recovery_hint::RecoveryHint;

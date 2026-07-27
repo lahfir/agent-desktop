@@ -73,7 +73,7 @@ fn request_on_a_denied_probe_is_a_structured_error_not_a_prompt() {
     let error = request_report_with(
         Deadline::after(1_000).unwrap(),
         || 0x8007_0005_u32 as i32,
-        |_| panic!("a denied probe must not fall through to the report"),
+        |_, _| panic!("a denied probe must not fall through to the report"),
     )
     .unwrap_err();
 
@@ -82,9 +82,15 @@ fn request_on_a_denied_probe_is_a_structured_error_not_a_prompt() {
 }
 
 #[test]
-fn request_on_a_granted_probe_returns_the_probe_report() {
-    let report = request_report_with(Deadline::after(1_000).unwrap(), || 0, report).unwrap();
+fn request_on_a_granted_probe_reports_accessibility_from_that_single_probe() {
+    let report = request_report_with(
+        Deadline::after(1_000).unwrap(),
+        || 0,
+        report_from_probed_uia,
+    )
+    .unwrap();
 
+    assert_eq!(report.accessibility, PermissionState::Granted);
     assert_eq!(report.automation, PermissionState::NotRequired);
 }
 

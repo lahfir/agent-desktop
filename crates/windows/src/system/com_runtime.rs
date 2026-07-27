@@ -18,7 +18,7 @@ pub(crate) enum ComApartment {
 }
 
 impl ComApartment {
-    #[cfg(test)]
+    #[cfg(any(test, target_os = "windows"))]
     pub(crate) fn permits_co_uninitialize(self) -> bool {
         matches!(self, ComApartment::OwnedMta)
     }
@@ -118,7 +118,7 @@ pub(crate) fn apartment_probe_reports_mta(hresult: i32, apartment_type: i32) -> 
 
 fn com_bootstrap_failure(message: &str, hresult: i32) -> AdapterError {
     AdapterError::new(ErrorCode::Internal, message)
-        .with_platform_detail(format!("COM HRESULT 0x{:08X}", hresult as u32))
+        .with_platform_detail(crate::system::permissions::com_hresult_detail(hresult))
         .with_suggestion(
             "Verify the host process allows COM initialization, then rerun the command",
         )

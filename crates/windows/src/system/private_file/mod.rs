@@ -2,7 +2,7 @@
 //!
 //! Four measured behaviors drive four modules: per-component reparse-point
 //! rejection (`path`), `ReplaceFileW`-based atomic promotion with a
-//! per-process temp lease (`replace`), `TokenOwner` foreign-principal
+//! write-scoped temp lease (`replace`), `TokenOwner` foreign-principal
 //! detection (`owner`), and control-call-disciplined storage locality
 //! (`locality`). Each override mirrors the portable default's observable
 //! semantics — parent handling, create/append/lock open modes, the hashed
@@ -30,10 +30,10 @@ mod path;
 mod replace;
 
 use std::fs::{File, OpenOptions};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Write};
 use std::path::Path;
 
-use agent_desktop_core::PrivateFileOps;
+use agent_desktop_core::{PrivateFileOps, bounded_read};
 
 /// Windows implementation of core's private-file seam, installed once per
 /// process by the binary and FFI entry points.
@@ -58,16 +58,11 @@ impl PrivateFileOps for WindowsPrivateFile {
             .ok_or_else(|| invalid_input("private file path has an invalid filename"))?;
         path::ensure_private_directory_chain(parent)?;
         validate_destination_if_present(path)?;
-        let lease = replace::lease_temp_directory(parent)?;
+        let lease = replace::acquire_write_lease(parent)?;
         let (temporary, file) = replace::create_private_temp_file(&lease, destination_name)?;
-        let result = write_all_and_sync(file, bytes).and_then(|()| {
-            replace::promote_temp_to_destination(path, &temporary)?;
-            validate_written_destination(path)
-        });
-        if result.is_err() {
-            let _ = std::fs::remove_file(&temporary);
-        }
-        result
+        write_all_and_sync(file, bytes)?;
+        replace::promote_temp_to_destination(path, &temporary)?;
+        validate_written_destination(path)
     }
 
     fn open_private_append(&self, path: &Path) -> std::io::Result<File> {
@@ -100,7 +95,7 @@ impl PrivateFileOps for WindowsPrivateFile {
         options.read(true);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private file")?;
         owner::require_owned_by_token_owner(&file, "private file")?;
-        read_bounded(file, max_bytes)
+        bounded_read(file, max_bytes)
     }
 
     fn ensure_private(&self, path: &Path) -> std::io::Result<()> {
@@ -124,21 +119,6 @@ fn validate_written_destination(path: &Path) -> std::io::Result<()> {
 fn write_all_and_sync(mut file: File, bytes: &[u8]) -> std::io::Result<()> {
     file.write_all(bytes)?;
     file.sync_all()
-}
-
-fn read_bounded(file: File, max_bytes: u64) -> std::io::Result<Vec<u8>> {
-    let metadata = file.metadata()?;
-    if metadata.len() > max_bytes {
-        return Err(invalid_input("file exceeds its read limit"));
-    }
-    let capacity = usize::try_from(metadata.len().min(max_bytes)).unwrap_or(usize::MAX);
-    let mut bytes = Vec::with_capacity(capacity);
-    file.take(max_bytes.saturating_add(1))
-        .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > max_bytes {
-        return Err(invalid_input("file grew beyond its read limit"));
-    }
-    Ok(bytes)
 }
 
 fn invalid_input(message: &'static str) -> std::io::Error {

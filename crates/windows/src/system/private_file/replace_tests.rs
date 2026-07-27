@@ -186,8 +186,17 @@ fn write_atomic_replaces_a_destination_held_open_by_a_wide_share_reader() {
     );
 }
 
+fn temp_lease_entries(parent: &Path) -> Vec<String> {
+    std::fs::read_dir(parent)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with(".agent-desktop-tmp-"))
+        .collect()
+}
+
 #[test]
-fn the_first_write_into_a_parent_reclaims_a_dead_processes_lease_directory() {
+fn a_write_reclaims_an_orphan_lease_directory_no_live_writer_holds() {
     let scratch = Scratch::new("sweep-stale");
     let stale = scratch.path().join(".agent-desktop-tmp-p4294967295");
     std::fs::create_dir(&stale).unwrap();
@@ -199,16 +208,12 @@ fn the_first_write_into_a_parent_reclaims_a_dead_processes_lease_directory() {
 
     assert!(
         !stale.exists(),
-        "a lease directory with no live owner must be reclaimed"
+        "a lease directory with no live holder must be reclaimed"
     );
-    let own_lease = scratch
-        .path()
-        .join(format!(".agent-desktop-tmp-p{}", std::process::id()));
-    assert!(own_lease.is_dir(), "this process's lease must exist");
 }
 
 #[test]
-fn a_lease_directory_whose_owner_still_lives_survives_the_sweep() {
+fn a_lease_directory_held_without_share_delete_survives_a_concurrent_writes_sweep() {
     let scratch = Scratch::new("sweep-live");
     let foreign = scratch.path().join(".agent-desktop-tmp-p1");
     std::fs::create_dir(&foreign).unwrap();
@@ -231,27 +236,46 @@ fn a_lease_directory_whose_owner_still_lives_survives_the_sweep() {
 }
 
 #[test]
-fn temporaries_are_confined_to_the_lease_directory_and_consumed_on_success() {
+fn a_successful_write_consumes_its_temporary_and_its_lease_directory() {
     let scratch = Scratch::new("temp-confinement");
     let ops = WindowsPrivateFile::new();
 
     ops.write_atomic(&scratch.path().join("artifact.json"), b"payload")
         .unwrap();
 
-    let own_lease_name = format!(".agent-desktop-tmp-p{}", std::process::id());
-    for entry in std::fs::read_dir(scratch.path()).unwrap().flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        assert!(
-            name == "artifact.json" || name == own_lease_name,
-            "unexpected sibling {name}: temporaries must live inside the lease directory"
-        );
-    }
-    let leftovers: Vec<_> = std::fs::read_dir(scratch.path().join(&own_lease_name))
+    let siblings: Vec<String> = std::fs::read_dir(scratch.path())
         .unwrap()
         .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
-    assert!(
-        leftovers.is_empty(),
-        "a successful write must consume its temporary"
+    assert_eq!(
+        siblings,
+        vec!["artifact.json"],
+        "temporaries must live inside the lease directory and both must be consumed"
     );
+}
+
+#[test]
+fn write_atomic_leaves_no_temp_lease_residue_on_success_or_failure() {
+    let scratch = Scratch::new("no-residue");
+    let destination = scratch.path().join("artifact.json");
+    let ops = WindowsPrivateFile::new();
+
+    ops.write_atomic(&destination, b"first").unwrap();
+    assert_eq!(
+        temp_lease_entries(scratch.path()),
+        Vec::<String>::new(),
+        "a successful write must leave no .agent-desktop-tmp-* residue"
+    );
+
+    let held = open_reader_with_share(&destination, FILE_SHARE_READ);
+    ops.write_atomic(&destination, b"second")
+        .expect_err("promotion over a no-share-delete holder must fail");
+    drop(held);
+    assert_eq!(
+        temp_lease_entries(scratch.path()),
+        Vec::<String>::new(),
+        "a failed write must leave no .agent-desktop-tmp-* residue"
+    );
+    assert_eq!(std::fs::read(&destination).unwrap(), b"first");
 }

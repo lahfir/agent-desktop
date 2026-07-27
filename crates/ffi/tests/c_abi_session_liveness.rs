@@ -7,14 +7,13 @@ use common::{ad_adapter_create_with_session, ad_adapter_destroy, with_isolated_h
 use std::ffi::CString;
 use std::time::Duration;
 
-/// Runs alone in its own process because private-file install state is
-/// process-global: on Windows the first adapter construction installs
-/// `WindowsPrivateFile`, whose atomic writes hold a process-lifetime temp
-/// lease inside the written file's parent. If another adapter-creating test
-/// ran first in this process, the session writes below would plant that
-/// lease inside the session directory and the same-process gc removal would
-/// fail by design. In the product, session writes and `session gc` never
-/// share a process, so the isolation here models the real topology.
+/// Runs alone in its own process for env-var hygiene: the isolated HOME
+/// swap is process-wide, so a dedicated process keeps it from interleaving
+/// with adapter state other suites establish. The historical gc hazard is
+/// gone — on Windows the installed `WindowsPrivateFile` now scopes its temp
+/// lease to each atomic write, so no process-lifetime directory handle
+/// lingers inside the session directory and same-process gc removal (as
+/// exercised below) succeeds against everything this process wrote.
 #[test]
 fn session_scoped_adapter_holds_liveness_until_destroyed() {
     with_isolated_home(|| {

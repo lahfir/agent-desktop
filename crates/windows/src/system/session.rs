@@ -8,7 +8,7 @@
 use agent_desktop_core::{AdapterError, AdapterSession, Deadline, ErrorCode};
 
 use crate::system::com_runtime::classify_mta_usage_hresult;
-use crate::system::permissions::com_hresult_detail;
+use crate::system::permissions::{com_hresult_detail, ensure_budget};
 
 type MtaUsageRelease = Box<dyn FnOnce(usize) -> i32 + Send + Sync>;
 
@@ -103,14 +103,6 @@ fn mta_usage_release_failure(hresult: i32) -> AdapterError {
     .with_suggestion(
         "Treat the session as closed; the process retains one leaked MTA usage until exit",
     )
-}
-
-fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
-    if deadline.is_expired() {
-        Err(deadline.timeout_error())
-    } else {
-        Ok(())
-    }
 }
 
 #[cfg(target_os = "windows")]
