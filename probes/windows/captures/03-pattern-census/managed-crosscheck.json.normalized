@@ -1,0 +1,67 @@
+{
+    "Probe":  "03-pattern-census",
+    "Stack":  "managed-System.Windows.Automation",
+    "Authoritative":  false,
+    "Scope":  "app/provider",
+    "Method":  "fresh RawViewWalker sweep over the same four fixture shapes, calling AutomationElement.GetSupportedPatterns() per element and reducing each AutomationPattern ProgrammaticName by stripping the PatternIdentifiers.Pattern suffix",
+    "WhyNotAuthoritative":  "KTD1: recorded only so the COM-vs-managed pattern vocabulary can be diffed. Where a managed row disagrees with the COM matrix the COM row is the product-relevant one, because the Rust adapter wraps a UIA3 COM client.",
+    "SameRunCaveat":  "these windows are fresh instances launched by this probe, not the HWNDs U7 measured. That does not weaken the divergence row: the claim under test is which pattern names a client stack can express at all, which is a property of the client library, not of a window instance. U7 comparison.json already holds the same-run, same-HWND node-count comparison.",
+    "WpfPeerActivation":  {
+                              "Verdict":  "NEW-EDGE",
+                              "ClassNameShapeAfterActivation":  "Window",
+                              "timingPeerActivationLaunches":  <duration>,
+                              "Observation":  "if a UIA client reads the WPF window before WPF has built its automation peer, the client binds the generic HWND provider for that window and never re-resolves it. The window then reports ControlType.Window with ClassName HwndWrapper[\u003cappdomain\u003e;\u003cthread name\u003e;\u003cguid\u003e] and ZERO children, and stays that way. Measured: a 30 s poll loop in the same client process, including AutomationElement.FromHandle and a FindAll(Descendants, TrueCondition) forced traversal on every pass, never recovered the tree. The same fixture read for the first time 8 s after launch reports ClassName=Window with 8 children immediately.",
+                              "Consequence":  "a Windows snapshot taken immediately after launching a WPF app can return a permanently empty one-node tree, and retrying inside the same process cannot fix it - the adapter would have to re-resolve from a new HWND or a new client. This is a different failure mode from the Electron settle U3 measured: Electron under-reports and then grows, WPF binds the wrong provider and stays wrong.",
+                              "ProbePolicy":  "this probe launches the WPF fixture first, settles before its first UIA touch, verifies the root has children, and relaunches on a fresh HWND if it does not. timingPeerActivationLaunches records how many launches that took on this run.",
+                              "ClassNameCorollary":  "the two shapes ClassName takes (Window when the peer is bound, HwndWrapper[...;\u003cguid\u003e] when it is not) also disqualify ClassName as an element-identity component on WPF: one of them embeds a per-launch GUID."
+                          },
+    "MatrixRecordFormat":  "one row per line, space separated key=value fields in fixed order: target=\u003ccensus target label\u003e ct=\u003cUIA ControlType short name\u003e n=\u003celements of that ControlType in the RawView walk\u003e withpat=\u003chow many of them advertise at least one pattern\u003e pats=\u003cName:count comma separated, \"-\" when none\u003e. Counts are element occurrences, not distinct patterns.",
+    "Targets":  [
+                    {
+                        "Label":  "winforms-default",
+                        "RawViewNodes":  24,
+                        "ElementsWithAnyPattern":  1,
+                        "PatternTotals":  "Transform:1,Window:1"
+                    },
+                    {
+                        "Label":  "winforms-host-providers",
+                        "RawViewNodes":  26,
+                        "ElementsWithAnyPattern":  3,
+                        "PatternTotals":  "ExpandCollapse:1,Invoke:1,Transform:1,Value:1,Window:1"
+                    },
+                    {
+                        "Label":  "wpf",
+                        "RawViewNodes":  28,
+                        "ElementsWithAnyPattern":  28,
+                        "PatternTotals":  "ExpandCollapse:1,Invoke:2,ItemContainer:2,RangeValue:4,Scroll:5,ScrollItem:5,Selection:2,SelectionItem:5,SynchronizedInput:28,Text:2,Toggle:1,Transform:1,Value:2,Window:1"
+                    },
+                    {
+                        "Label":  "notepad",
+                        "RawViewNodes":  3,
+                        "ElementsWithAnyPattern":  1,
+                        "PatternTotals":  "Transform:1,Window:1"
+                    }
+                ],
+    "Rows":  [
+                 "target=winforms-default ct=Pane n=23 withpat=0 pats=-",
+                 "target=winforms-default ct=Window n=1 withpat=1 pats=Transform:1,Window:1",
+                 "target=winforms-host-providers ct=Button n=1 withpat=1 pats=Invoke:1",
+                 "target=winforms-host-providers ct=ComboBox n=1 withpat=1 pats=ExpandCollapse:1,Value:1",
+                 "target=winforms-host-providers ct=Pane n=17 withpat=0 pats=-",
+                 "target=winforms-host-providers ct=Text n=6 withpat=0 pats=-",
+                 "target=winforms-host-providers ct=Window n=1 withpat=1 pats=Transform:1,Window:1",
+                 "target=wpf ct=Button n=2 withpat=2 pats=Invoke:2,SynchronizedInput:2",
+                 "target=wpf ct=CheckBox n=1 withpat=1 pats=SynchronizedInput:1,Toggle:1",
+                 "target=wpf ct=ComboBox n=1 withpat=1 pats=ExpandCollapse:1,ItemContainer:1,Selection:1,SynchronizedInput:1",
+                 "target=wpf ct=Edit n=2 withpat=2 pats=Scroll:2,SynchronizedInput:2,Text:2,Value:2",
+                 "target=wpf ct=List n=1 withpat=1 pats=ItemContainer:1,Scroll:1,Selection:1,SynchronizedInput:1",
+                 "target=wpf ct=ListItem n=5 withpat=5 pats=ScrollItem:5,SelectionItem:5,SynchronizedInput:5",
+                 "target=wpf ct=Pane n=2 withpat=2 pats=Scroll:2,SynchronizedInput:2",
+                 "target=wpf ct=ScrollBar n=4 withpat=4 pats=RangeValue:4,SynchronizedInput:4",
+                 "target=wpf ct=Text n=9 withpat=9 pats=SynchronizedInput:9",
+                 "target=wpf ct=Window n=1 withpat=1 pats=SynchronizedInput:1,Transform:1,Window:1",
+                 "target=notepad ct=Pane n=2 withpat=0 pats=-",
+                 "target=notepad ct=Window n=1 withpat=1 pats=Transform:1,Window:1"
+             ],
+    "NodeBudget":  400
+}

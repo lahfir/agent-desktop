@@ -1,0 +1,351 @@
+{
+    "Probe":  "04-automationid-census",
+    "Question":  "when list content changes inside a live process, which per-node identity properties survive",
+    "Why":  "2.5 chooses the Windows RefEntry evidence set. The repo contract is pid, role, path, stable text identity and bounds hash; this arm is the one that shows what a content change does to path, text identity and bounds while pid and role are held constant.",
+    "ReRunStability":  "measured over three consecutive runs on this box: every field here reproduces exactly except the Explorer RuntimeId survival count, which moved between 59/82 and 60/82 - one DirectUI Edit node whose RuntimeId is regenerated or not depending on how the shell refresh lands. That is real platform nondeterminism in the property, not probe noise, and under KTD9 a non-empty normalized diff on this one number is the signal a later re-runner should see rather than something to smooth away. All other captures in this probe were byte-identical across runs.",
+    "WinFormsNotHere":  "the WinForms fixture has no in-process arm because no managed-visible affordance exists to drive it: in --host-providers mode the managed client sees the whole form as Panes with numeric control ids and btnMutateList advertises no InvokePattern, and in default mode the custom provider suppresses patterns entirely. Its list change is measured in identity-restart.json as the restart+mutation row against the pure restart row as control. Driving it any other way would need SendInput or PostMessage, which belongs to U6.",
+    "RuntimeIdHandling":  "RuntimeId is compared in memory and only survived/changed counts are written. The KTD9 normalizer rewrites any literal RuntimeId to \u003cruntimeid\u003e, so a capture holding raw ids would normalize away the exact evidence this arm produces.",
+    "NameHandling":  "Name is compared in memory and only equality counts are written. No Name value from any target reaches a capture, so the R11 content rule is satisfied by construction rather than by redaction.",
+    "Rows":  [
+                 {
+                     "Target":  "wpf",
+                     "Arm":  "mutation",
+                     "Change":  "InvokePattern on btnMutateList: same list change as the WinForms arm. The WPF fixture also derives each item AutomationId from the item text (lstItem-\u003cname\u003e), which is the interesting contrast.",
+                     "Stack":  "managed-System.Windows.Automation ControlView",
+                     "BeforeNodes":  26,
+                     "AfterNodes":  28,
+                     "PathMatchedPairs":  26,
+                     "PathsOnlyInBefore":  0,
+                     "PathsOnlyInAfter":  2,
+                     "PerPropertySurvival":  [
+                                                 {
+                                                     "Property":  "ControlType",
+                                                     "Matched":  26,
+                                                     "Survived":  26,
+                                                     "PctSurvived":  100
+                                                 },
+                                                 {
+                                                     "Property":  "AutomationId",
+                                                     "Matched":  26,
+                                                     "Survived":  22,
+                                                     "PctSurvived":  84.6
+                                                 },
+                                                 {
+                                                     "Property":  "ClassName",
+                                                     "Matched":  26,
+                                                     "Survived":  26,
+                                                     "PctSurvived":  100
+                                                 },
+                                                 {
+                                                     "Property":  "Name",
+                                                     "Matched":  26,
+                                                     "Survived":  17,
+                                                     "PctSurvived":  65.4
+                                                 },
+                                                 {
+                                                     "Property":  "RuntimeId",
+                                                     "Matched":  26,
+                                                     "Survived":  16,
+                                                     "PctSurvived":  61.5
+                                                 },
+                                                 {
+                                                     "Property":  "Bounds",
+                                                     "Matched":  26,
+                                                     "Survived":  22,
+                                                     "PctSurvived":  84.6
+                                                 }
+                                             ],
+                     "BoundsBucketed8pxSurvival":  {
+                                                       "Property":  "BoundsBucketed",
+                                                       "Matched":  26,
+                                                       "Survived":  23,
+                                                       "PctSurvived":  88.5
+                                                   },
+                     "AutomationIdKeyedMatch":  {
+                                                    "UniqueKeysBefore":  14,
+                                                    "KeysReFound":  13,
+                                                    "KeysLost":  1,
+                                                    "PathAlsoSurvived":  10,
+                                                    "RuntimeIdAlsoSurvived":  9,
+                                                    "KeysReFoundOnADifferentElement":  1,
+                                                    "KeysReFoundOnADifferentElementNote":  "the number of AutomationId keys that still resolve after the change but now land on an element whose Name differs. This is the silent-wrong-target count: a ref keyed on AutomationId alone would resolve successfully and act on the wrong element. Names are compared in memory only.",
+                                                    "Note":  "the key is ControlType|AutomationId; keys that are not unique within a dump are excluded from both sides rather than matched arbitrarily"
+                                                },
+                     "ByControlType":  [
+                                           {
+                                               "ControlType":  "Button",
+                                               "PathMatchedPairs":  2,
+                                               "AutomationIdSurvived":  2,
+                                               "NameSurvived":  2,
+                                               "RuntimeIdSurvived":  2,
+                                               "BoundsSurvived":  2
+                                           },
+                                           {
+                                               "ControlType":  "CheckBox",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "ComboBox",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "Edit",
+                                               "PathMatchedPairs":  2,
+                                               "AutomationIdSurvived":  2,
+                                               "NameSurvived":  2,
+                                               "RuntimeIdSurvived":  2,
+                                               "BoundsSurvived":  2
+                                           },
+                                           {
+                                               "ControlType":  "List",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "ListItem",
+                                               "PathMatchedPairs":  5,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  0,
+                                               "BoundsSurvived":  5
+                                           },
+                                           {
+                                               "ControlType":  "ScrollBar",
+                                               "PathMatchedPairs":  4,
+                                               "AutomationIdSurvived":  4,
+                                               "NameSurvived":  4,
+                                               "RuntimeIdSurvived":  4,
+                                               "BoundsSurvived":  4
+                                           },
+                                           {
+                                               "ControlType":  "Text",
+                                               "PathMatchedPairs":  9,
+                                               "AutomationIdSurvived":  9,
+                                               "NameSurvived":  4,
+                                               "RuntimeIdSurvived":  4,
+                                               "BoundsSurvived":  5
+                                           },
+                                           {
+                                               "ControlType":  "Window",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           }
+                                       ],
+                     "MutationVerifiedByObservation":  true,
+                     "StatusTextBefore":  "status:ready",
+                     "StatusTextAfter":  "list:mutated"
+                 },
+                 {
+                     "Target":  "explorer-folder-window",
+                     "Arm":  "mutation",
+                     "Change":  "the probe-owned folder loses item-bravo.txt and gains item-foxtrot.txt and item-golf.txt; Explorer refreshes itself from the file-system change notification, with no window, process or input change",
+                     "Stack":  "managed-System.Windows.Automation ControlView",
+                     "BeforeNodes":  82,
+                     "AfterNodes":  88,
+                     "PathMatchedPairs":  82,
+                     "PathsOnlyInBefore":  0,
+                     "PathsOnlyInAfter":  6,
+                     "PerPropertySurvival":  [
+                                                 {
+                                                     "Property":  "ControlType",
+                                                     "Matched":  82,
+                                                     "Survived":  82,
+                                                     "PctSurvived":  100
+                                                 },
+                                                 {
+                                                     "Property":  "AutomationId",
+                                                     "Matched":  82,
+                                                     "Survived":  82,
+                                                     "PctSurvived":  100
+                                                 },
+                                                 {
+                                                     "Property":  "ClassName",
+                                                     "Matched":  82,
+                                                     "Survived":  82,
+                                                     "PctSurvived":  100
+                                                 },
+                                                 {
+                                                     "Property":  "Name",
+                                                     "Matched":  82,
+                                                     "Survived":  77,
+                                                     "PctSurvived":  93.9
+                                                 },
+                                                 {
+                                                     "Property":  "RuntimeId",
+                                                     "Matched":  82,
+                                                     "Survived":  60,
+                                                     "PctSurvived":  73.2
+                                                 },
+                                                 {
+                                                     "Property":  "Bounds",
+                                                     "Matched":  82,
+                                                     "Survived":  82,
+                                                     "PctSurvived":  100
+                                                 }
+                                             ],
+                     "BoundsBucketed8pxSurvival":  {
+                                                       "Property":  "BoundsBucketed",
+                                                       "Matched":  82,
+                                                       "Survived":  82,
+                                                       "PctSurvived":  100
+                                                   },
+                     "AutomationIdKeyedMatch":  {
+                                                    "UniqueKeysBefore":  29,
+                                                    "KeysReFound":  29,
+                                                    "KeysLost":  0,
+                                                    "PathAlsoSurvived":  29,
+                                                    "RuntimeIdAlsoSurvived":  27,
+                                                    "KeysReFoundOnADifferentElement":  5,
+                                                    "KeysReFoundOnADifferentElementNote":  "the number of AutomationId keys that still resolve after the change but now land on an element whose Name differs. This is the silent-wrong-target count: a ref keyed on AutomationId alone would resolve successfully and act on the wrong element. Names are compared in memory only.",
+                                                    "Note":  "the key is ControlType|AutomationId; keys that are not unique within a dump are excluded from both sides rather than matched arbitrarily"
+                                                },
+                     "ByControlType":  [
+                                           {
+                                               "ControlType":  "Button",
+                                               "PathMatchedPairs":  8,
+                                               "AutomationIdSurvived":  8,
+                                               "NameSurvived":  8,
+                                               "RuntimeIdSurvived":  8,
+                                               "BoundsSurvived":  8
+                                           },
+                                           {
+                                               "ControlType":  "Edit",
+                                               "PathMatchedPairs":  21,
+                                               "AutomationIdSurvived":  21,
+                                               "NameSurvived":  21,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  21
+                                           },
+                                           {
+                                               "ControlType":  "Group",
+                                               "PathMatchedPairs":  2,
+                                               "AutomationIdSurvived":  2,
+                                               "NameSurvived":  2,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  2
+                                           },
+                                           {
+                                               "ControlType":  "Header",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "Image",
+                                               "PathMatchedPairs":  5,
+                                               "AutomationIdSurvived":  5,
+                                               "NameSurvived":  5,
+                                               "RuntimeIdSurvived":  5,
+                                               "BoundsSurvived":  5
+                                           },
+                                           {
+                                               "ControlType":  "List",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "ListItem",
+                                               "PathMatchedPairs":  5,
+                                               "AutomationIdSurvived":  5,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  5,
+                                               "BoundsSurvived":  5
+                                           },
+                                           {
+                                               "ControlType":  "MenuBar",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "MenuItem",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "Pane",
+                                               "PathMatchedPairs":  27,
+                                               "AutomationIdSurvived":  27,
+                                               "NameSurvived":  27,
+                                               "RuntimeIdSurvived":  27,
+                                               "BoundsSurvived":  27
+                                           },
+                                           {
+                                               "ControlType":  "RadioButton",
+                                               "PathMatchedPairs":  2,
+                                               "AutomationIdSurvived":  2,
+                                               "NameSurvived":  2,
+                                               "RuntimeIdSurvived":  2,
+                                               "BoundsSurvived":  2
+                                           },
+                                           {
+                                               "ControlType":  "SplitButton",
+                                               "PathMatchedPairs":  4,
+                                               "AutomationIdSurvived":  4,
+                                               "NameSurvived":  4,
+                                               "RuntimeIdSurvived":  4,
+                                               "BoundsSurvived":  4
+                                           },
+                                           {
+                                               "ControlType":  "StatusBar",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "Text",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  0,
+                                               "RuntimeIdSurvived":  0,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "TitleBar",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           },
+                                           {
+                                               "ControlType":  "Window",
+                                               "PathMatchedPairs":  1,
+                                               "AutomationIdSurvived":  1,
+                                               "NameSurvived":  1,
+                                               "RuntimeIdSurvived":  1,
+                                               "BoundsSurvived":  1
+                                           }
+                                       ],
+                     "MutationVerifiedByObservation":  true,
+                     "timingRefreshLatencySeconds":  <duration>,
+                     "RefreshLatencyNote":  "measured, not assumed: the folder window took this long to reflect the file-system change. A 4 s wait was tried first and reported a completely unchanged tree, which would have been filed as \"Explorer identity is perfectly stable across content mutation\" - the exact opposite of what the window does once it refreshes."
+                 }
+             ]
+}
