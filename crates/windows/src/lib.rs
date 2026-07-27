@@ -11,3 +11,5 @@ pub use system::com_runtime::{
     ensure_hosted_library_mta_and_dpi, ensure_owned_process_mta_and_dpi,
     mta_established_for_new_threads,
 };
+#[cfg(target_os = "windows")]
+pub use system::private_file::WindowsPrivateFile;
