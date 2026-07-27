@@ -41,15 +41,15 @@ Two of those are not greenfield. The private-file layer **already shipped once a
 - **R4.** `WindowsAdapter` constructs and satisfies `PlatformAdapter`; every **adapter-backed** command returns honest `PLATFORM_NOT_SUPPORTED`; the commands that reach no adapter (`version`, `skills`, `session`, `trace`, `status`, `permissions`) continue to succeed.
 - **R5.** A Windows permission probe reports truthfully and is unit-tested against mocked security state, on a host-independent seam.
 - **R6.** Windows private-file hardening exists behind a core-defined seam implemented in `agent-desktop-windows` (KTD1), is **installed at a site no consumer can bypass**, and satisfies every measured behaviour in R7.
-- **R7.** The hardening implements, against 2.0's evidence: `ReplaceFile` — not `MoveFileEx` — for an atomic replace whose destination a validation handle holds open; `FILE_SHARE_DELETE` on every concurrently-open handle, necessary but never sufficient; **error 5, not 32**, as the expected destination-side failure; owner validation against `TokenOwner`, not `TokenUser`; locality inference from `FileRemoteProtocolInfo` (class 13) only behind a control call on a known-good class; and ancestor-walk ACL validation (KTD3).
-- **R8.** The hardening **authors** the security state it validates: private roots and artifacts are created with an owner-only `SE_DACL_PROTECTED` descriptor, and every path component is rejected if it carries `FILE_ATTRIBUTE_REPARSE_POINT`.
+- **R7.** The hardening implements, against 2.0's evidence: `ReplaceFile` — not `MoveFileEx` — for an atomic replace whose destination a validation handle holds open; `FILE_SHARE_DELETE` on every concurrently-open handle, necessary but never sufficient; **error 5, not 32**, as the expected destination-side failure; owner validation against `TokenOwner`, not `TokenUser`; and locality inference from `FileRemoteProtocolInfo` (class 13) only behind a control call on a known-good class.
+- **R8.** Every path component is rejected if it carries `FILE_ATTRIBUTE_REPARSE_POINT`, matching the per-component symlink rejection the unix path already performs. The hardening **does not** parse or validate DACLs and **does not** author security descriptors — it relies on the profile inheritance measured in A11-4 (KTD3).
 - **R9.** The dependency pins for `uiautomation` and `windows-capture` are recorded but not added. Win32 bindings needed by 2.1's own scope **are** added, to the platform crate only (KTD4).
 - **R10.** No Win32 binding crate and no unallowlisted `#[cfg(windows)]` platform logic enters `agent-desktop-core`. **Both halves are mechanically gated**, not merely asserted.
 
 ### Key Decisions
 
 - **Private-file code lives behind a core-defined trait, implemented in the platform crate.** (session-settled: user-directed — chosen over `#[cfg(windows)]` inside core, which is the exact shape PR #106 deleted, and over deferring the hardening entirely.) Governs R6, R10.
-- **Windows ACL validation walks to the nearest protected ancestor, diverging from the unix leaf-only rule on the record.** (session-settled: user-directed — chosen over leaf-only parity, because 2.0 measured that a Windows leaf carries no explicit ACE and a leaf-only check is structurally blind to whether the grant is anchored or re-derivable.) Governs R7.
+- **Windows relies on profile inheritance instead of validating ACLs, and rejects reparse points per component.** (Supersedes the earlier session-settled "walk to the nearest protected ancestor" decision — reversed on measured evidence, see KTD3. A11-4 shows a leaf under the profile already inherits SYSTEM + Administrators + user and no `BUILTIN\Users`, so the walk would verify what Windows guarantees; and the only principal it would exclude, another administrator, holds `SeTakeOwnershipPrivilege` and can bypass any DACL.) Governs R7, R8.
 - **Win32 bindings come from `windows-sys` in `crates/windows`, target-gated.** (session-settled: user-directed — chosen over hand-written `extern "system"` declarations, because the struct-layout transcription that hand-binding requires is the precise bug class that killed the previous layer.) Governs R9.
 - **Self-hosted runner registration is not in 2.1.** (session-settled: user-directed — chosen over registering it here or standing up an ephemeral/JIT runner now: a security-sensitive persistent runner on a public repository should be registered by the sub-phase that needs an interactive desktop, not left idle from 2.1 through 2.11.) Moved to 2.12 along with ledger row A10-2's closure.
 
@@ -71,11 +71,19 @@ Two of those are not greenfield. The private-file layer **already shipped once a
 
 - **KTD2. The seam and the apartment install where a consumer cannot skip them.** Governs R2, R6. **`ad_init` is not an install point.** Its own doc says so — `crates/ffi/src/abi_version.rs:34-36`: *"No global state is initialised by this call — skipping it does not prevent adapter functions from operating"* — and the committed header labels it **"(Optional)"** at `crates/ffi/include/agent_desktop.h:10`. Installing there would mean any host that skips it silently runs every private-artifact write through the portable default, with nothing observable distinguishing that state from the hardened one. The repo already solved this shape: `crates/ffi/src/adapter.rs:107-118` calls `ensure_cocoa_multithreaded()?` in the macOS arm of `build_adapter()` immediately before constructing the adapter, while the Windows arm is a bare `Ok(Box::new(WindowsAdapter::new()))`. Both the apartment bootstrap and the seam install go **there** for the cdylib, and at the top of `run()` for the CLI — before `resolve_active_session`, which reads private files at `src/main.rs:118`. `ad_init` stays a pure version check so the committed header and the `ffi-header-drift` job are untouched.
 
-- **KTD3. ACL validation walks the whole chain, anchored at the nearest protected ancestor.** (session-settled: user-directed on the ancestor-walk direction.) Governs R7, R8. Ledger row A11-4 measured that a Windows leaf carries **zero explicit ACEs** — the plain leaf has 3, all `INHERITED_ACE`. The restriction is authored at the nearest `SE_DACL_PROTECTED` ancestor and projected downward. But `SE_DACL_PROTECTED` only means *inheritance stops here*; it says nothing about how permissive that node's own DACL is, and it does not protect the node's **name**. So the walk is two-part: validate the anchor's **own** DACL for untrusted write grants, and continue **past** the anchor to the volume root checking every remaining component for `DELETE` / `FILE_DELETE_CHILD` grants to non-admin principals — otherwise a principal who can rename an ancestor substitutes an attacker-owned subtree that then walks clean. This is a deliberate divergence from the unix leaf-only rule and must be documented in the module.
+- **KTD3. Windows does not validate ACLs at all. It relies on profile inheritance and rejects reparse points.** Governs R7, R8. This **reverses** the earlier session-settled "walk to the nearest protected ancestor" decision, on evidence that arrived after it was made.
+
+  The asymmetry with unix is measurable, and it runs the opposite way to intuition. Unix **must author** its permission because the default is umask-derived and typically world-readable — hence `mode(0o600)` at `private_file.rs:238-244`. Windows **need not**, because ledger row A11-4 measured that a plain leaf under the user profile inherits exactly three ACEs — `NT AUTHORITY\SYSTEM`, `BUILTIN\Administrators`, and the user — with **no `BUILTIN\Users`**, all inherited, zero explicit. That is already `0600`-equivalent for the only reader that matters.
+
+  So the ancestor walk would be verifying a property Windows already guarantees. And the residual thing it would catch — another **admin** on the same box — is not defensible anyway: an administrator holds `SeTakeOwnershipPrivilege` and can seize any object regardless of its DACL. Building a chain-walking ACL validator to exclude a principal who can bypass it is theatre with a real cost, and the cost is the point: **it is the code that killed the previous layer.** The `AceSize` defect exists only because that code parsed ACEs. Not parsing them removes the entire bug class rather than fixing it — the safest ACE parser is the one that is never written.
+
+  What survives is the control that is genuinely load-bearing and has direct unix parity: **per-component reparse-point rejection**. `private_file_parent.rs:54-64` rejects user-controlled symlinks and non-directories on every component of the unix path, and the deleted Windows layer carried the matching `FILE_ATTRIBUTE_REPARSE_POINT` check at `private_file_windows.rs:81-83`. This is not a confidentiality control — it is an integrity one. A junction is creatable by an unprivileged user without `SeCreateSymbolicLinkPrivilege`, and one planted on our path redirects where the product **writes**, which no ACL on the intended destination can prevent.
+
+  Recorded against `docs/phases.md:978`, which requires this contract be "decided deliberately, matching or explicitly diverging from the unix leaf-only rule": we diverge, by validating **less** than unix rather than more, and the divergence is documented in the module.
 
 - **KTD4. Bindings come from `windows-sys 0.61` in `crates/windows` only.** (session-settled: user-directed.) Governs R9, R10. Measured: `cargo tree -p agent-desktop --target x86_64-pc-windows-msvc -i windows-sys` shows **`windows-sys 0.61.2` is already compiled into every Windows build**, transitively via `clap`'s colour support and `tracing-subscriber`; it is in `Cargo.lock:596`. Adding it to the platform crate adds **zero crates and zero supply-chain delta**. It carries everything 2.1 needs. The `windows` crate is not needed until 2.2, where `uiautomation 0.25.0` pulls it transitively.
 
-- **KTD5. Win32 struct reads are extent-checked, not size-pinned.** Governs R7. `docs/solutions/best-practices/ffi-repr-c-struct-size-pinning.md` documents this repo's discipline for fixed-layout structs, and its motivating incident is the same shape as the defect that killed the previous layer: a layout assumption that **passed CI**. Apply `const _: () = assert!(size_of::<T>() == N)` pins to the **fixed-layout** structs (`TOKEN_OWNER`, `FILE_REMOTE_PROTOCOL_INFO`). Do **not** rely on a size pin for `ACE_HEADER`/`ACCESS_ALLOWED_ACE`: those are **variable-length**, so a pin covers only the fixed prefix while the dangerous read is the trailing SID. Those get runtime extent arithmetic instead (see U8).
+- **KTD5. Win32 struct layouts are pinned with compile-time asserts.** Governs R7. `docs/solutions/best-practices/ffi-repr-c-struct-size-pinning.md` documents this repo's discipline, and its motivating incident is the same shape as the defect that killed the previous layer: a layout assumption that **passed CI**. Apply `const _: () = assert!(size_of::<T>() == N)` to every Win32 struct this sub-phase reads through — `TOKEN_OWNER` and `FILE_REMOTE_PROTOCOL_INFO`. Both are fixed-layout, so a size pin is sufficient. Under KTD3 no variable-length structure (`ACL`, `ACE_HEADER`, `ACCESS_ALLOWED_ACE`) is read at all, which is what removes the extent-arithmetic burden — and the bug class that came with it.
 
 - **KTD6. Nothing initialises COM or touches User32 at library load.** Governs R2. Microsoft's DLL best-practices list names both halves explicitly: *"Initialize COM threads by using CoInitializeEx"* and *"Call functions in User32.dll"* are both prohibited inside `DllMain`, because it runs under the loader lock. `#[ctor]` inherits the prohibition — CRT initialisers run in the same context. Use one-time lazy init at the call sites KTD2 names. Repo precedent: `crates/macos/src/system/cocoa_runtime.rs:4-15` (`OnceLock<Result<(), String>>`).
 
@@ -148,12 +156,11 @@ crates/windows/src/
 │   ├── permissions_tests.rs
 │   └── private_file/
 │       ├── mod.rs                # WindowsPrivateFile: impl of core's trait
-│       ├── descriptor.rs         # R8: owner-only SE_DACL_PROTECTED creation
+│       ├── path.rs               # R8: per-component reparse-point rejection
 │       ├── replace.rs            # whole write_atomic: temp → drop → ReplaceFileW
-│       ├── owner.rs              # TokenOwner validation
+│       ├── owner.rs              # TokenOwner comparison (owner only, no DACL)
 │       ├── locality.rs           # class 13 behind a control call
-│       ├── acl.rs                # KTD3 walk + extent-checked ACE read + reparse rejection
-│       └── tests.rs
+│       └── tests.rs              # no acl.rs, no descriptor.rs — see KTD3
 crates/core/src/
 └── private_file_ops.rs           # trait + portable default impl + install/accessor
 ```
@@ -299,13 +306,15 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 
 ### U8. Implement Windows private-file hardening behind the seam
 
-- **Goal:** The Windows arm, built against 2.0's measured evidence, that **authors** the security state it validates rather than hoping to find it.
+- **Goal:** The Windows arm, built against 2.0's measured evidence — deliberately smaller than the layer it replaces, because most of what that layer did was verifying what Windows already guarantees.
 - **Requirements:** R6, R7, R8.
 - **Dependencies:** U3, U7.
-- **Files:** `crates/windows/src/system/private_file/{mod,descriptor,replace,owner,locality,acl,tests}.rs`.
-- **Approach:** Five measured or required behaviours drive five modules.
+- **Files:** `crates/windows/src/system/private_file/{mod,path,replace,owner,locality,tests}.rs`.
+- **Approach:** Four behaviours drive four modules. Note what is **absent** and why (KTD3): there is no descriptor authoring and no DACL validation. Windows already inherits SYSTEM + Administrators + user with no `BUILTIN\Users` under the profile, so authoring re-states it and validating re-checks it — and the validator is precisely the code whose `AceSize` handling failed last time. Not parsing ACEs removes that bug class outright.
 
-  1. **Creation-side security (`descriptor.rs`, R8).** The deleted layer built an owner-only `SE_DACL_PROTECTED` descriptor and passed it via `SECURITY_ATTRIBUTES` at creation; a read-only rebuild would validate an anchor it never authored, and on a permissive profile chain would either hard-fail every write or pass vacuously. Construct that descriptor from `TokenUser` and apply it when creating the private root, its subdirectories, and every temp file. The ancestor walk in `acl.rs` then validates an anchor this code owns.
+  1. **Path integrity (`path.rs`, R8).** Reject any component carrying `FILE_ATTRIBUTE_REPARSE_POINT`. Open each with `FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS` and check the attribute rather than following the link. This is the direct analogue of the unix per-component rule at `private_file_parent.rs:54-64`, which rejects user-controlled symlinks and non-directories, and it restores the check the deleted layer carried at `private_file_windows.rs:81-83`.
+
+     This is an **integrity** control, not a confidentiality one, and that distinction is why it survives the KTD3 cut while ACL validation does not: a junction is creatable by an unprivileged user without `SeCreateSymbolicLinkPrivilege`, and one planted on our path redirects where the product **writes**. No ACL on the intended destination prevents that, because the write never reaches the intended destination.
 
   2. **Atomic replace (`replace.rs`).** Use `ReplaceFileW`, **not** `MoveFileEx`. Measured matrix (42/42 definite, `SuccessWithoutShareDelete: []`):
 
@@ -319,44 +328,30 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 
      Opposite tolerances on opposite sides. Classify **error 5** as the expected destination-side sharing failure, not 32.
 
-     Dropping the source handle before the replace (required — see the last row) opens a window in which a fully-written temp sits closed on disk. Create temps inside a **per-process subdirectory of the private root carrying the descriptor from module 1**, so the closed temp is unreachable to other principals for that window, and sweep stale per-process temp directories at startup so an aborted process leaves no readable orphan.
+     Dropping the source handle before the replace (required — see the last row) opens a window in which a fully-written temp sits closed on disk. Create temps inside a per-process subdirectory of the private root — which inherits the same SYSTEM/Administrators/user ACL as everything else under the profile — and sweep stale per-process temp directories at startup so an aborted process leaves no orphan. The existing hashed-nonce temp name (`private_file.rs:188`) is retained; it is what makes the name unpredictable to a same-privilege racer.
 
      **A trap in the other direction:** plain `OpenOptions` on Windows already defaults to `FILE_SHARE_READ|WRITE|DELETE`, which is why readers holding a destination open work today. Any hardened `CreateFileW` that *narrows* that share mask re-introduces the 122-failure sharing cluster. Widen deliberately; never narrow silently.
 
-  3. **Ownership (`owner.rs`).** Validate against `TokenOwner`, never `TokenUser`. Measured at **both** High and Medium integrity: owner `S-1-5-32-544`, `OwnerMatchesTokenUser: false`, `OwnerMatchesTokenOwner: true`. **Integrity is not the variable — group membership is.** Document plainly in the module that on an admin-group account `TokenOwner` resolves to `BUILTIN\Administrators`, so this check rules out a *foreign* owner and **is not an isolation boundary between admin processes**. The confidentiality control is the DACL from module 1, not the owner field.
+  3. **Ownership (`owner.rs`).** Validate against `TokenOwner`, never `TokenUser`. Measured at **both** High and Medium integrity: owner `S-1-5-32-544`, `OwnerMatchesTokenUser: false`, `OwnerMatchesTokenOwner: true`. **Integrity is not the variable — group membership is.** Read the owner only — `GetSecurityInfo` with `OWNER_SECURITY_INFORMATION`, no DACL requested — so this module reads a fixed-layout SID and never touches an ACE.
+
+     Its purpose is narrow and must be documented as such: it detects a path **pre-created by a foreign principal**, which is the Windows analogue of the unix `uid`/`nlink` post-condition at `private_file.rs:123-143`. On an admin-group account `TokenOwner` resolves to `BUILTIN\Administrators`, so it is explicitly **not** an isolation boundary between admin processes — nothing here is, and nothing can be, since an administrator holds `SeTakeOwnershipPrivilege`.
 
   4. **Locality (`locality.rs`).** `GetFileInformationByHandleEx(FileRemoteProtocolInfo)` — class **13** — distinguishes local from remote, but signals *local* by **failing** with `ERROR_INVALID_PARAMETER (87)` (0/6 local returned data; 3/3 remote did). The trap: an out-of-range class (tested with 55) returns **the same 87** on all 9 targets. So 87 is a locality signal only **behind a control call on a known-good class** — issue `FileBasicInfo` (class 0) on the same handle first and require it to succeed. **Third state:** if the control call itself fails, the verdict is `Unknown`, and `Unknown` is treated as **remote (refused)** for private artifacts — failing open would write private data to SMB storage on a redirected profile.
 
-  5. **ACL and path integrity (`acl.rs`, KTD3, R8).**
-
-     **Reparse rejection first.** The unix path rejects user-controlled symlinks per component (`private_file_parent.rs:68-72`); the deleted Windows layer rejected `FILE_ATTRIBUTE_REPARSE_POINT`; the portable Windows path today is a bare `create_dir_all`. A junction is creatable by an unprivileged user without `SeCreateSymbolicLinkPrivilege`, and one planted in the private root redirects both the write and the walk. Open each component with `FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS` and reject any carrying `FILE_ATTRIBUTE_REPARSE_POINT`.
-
-     **Two-part walk (KTD3).** Validate the anchor's **own** DACL for untrusted write grants — `SE_DACL_PROTECTED` stops inheritance, it does not mean the node is restrictive — then continue **past** the anchor to the volume root checking every remaining component for `DELETE` / `FILE_DELETE_CHILD` grants to non-admin principals, since a principal who can rename an ancestor substitutes a subtree that walks clean. Document the divergence from unix leaf-only.
-
-     **Extent-checked ACE reads.** The bug this module exists not to repeat, at `crates/core/src/private_file_windows_security.rs:87-101` in `8ad66b8^`:
-
-     ```rust
-     let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };   // 91: blind cast
-     let ace_sid = (&raw const ace.SidStart).cast_mut().cast();     // 92: interior pointer
-     if ace.Header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8         // 93: type checked AFTER
-     ```
-
-     Checking `AceType` before forming the SID pointer is **not sufficient** — reading `AceType` is itself a dereference of `ACE_HEADER` at an offset nothing has bounds-checked, which moves the same defect four bytes earlier. Required order: derive the extent from the ACL header after `IsValidAcl`; then per ACE — assert `size_of::<ACE_HEADER>()` fits the remaining extent; read `AceSize` with `ptr::read_unaligned`; assert `AceSize >= size_of::<ACE_HEADER>()`, `AceSize % 4 == 0`, and `AceSize <= remaining` using **checked** arithmetic on the cumulative offset; only then branch on `AceType`; then assert `AceSize >= offset_of!(ACCESS_ALLOWED_ACE, SidStart) + SECURITY_SID_MIN_LENGTH` before forming the SID pointer, and require `IsValidSid` plus `GetLengthSid(sid) <= AceSize - offset_of!(SidStart)`. Treat `AceCount` as **advisory** — stop at the extent, not at the count.
-
-  Apply KTD5 size pins to the fixed-layout structs (`TOKEN_OWNER`, `FILE_REMOTE_PROTOCOL_INFO`) only; `ACE_HEADER`/`ACCESS_ALLOWED_ACE` are variable-length and get the extent arithmetic above instead.
-- **Execution note:** Write the malformed-ACL rejection test **first**, before any ACL reading code. It is the regression test for the defect this sub-phase exists to avoid, it needs no privilege and no desktop, and it is the single highest-value test in the plan.
+  **What is deliberately not here.** The deleted layer's `private_file_windows_security.rs` — DACL enumeration, owner-only descriptor construction, and the `GetAce` loop whose blind cast at `:91` is the defect this sub-phase is haunted by — has **no successor module**. Under KTD3 nothing in 2.1 calls `GetAce`, `GetAclInformation`, `InitializeAcl`, or `AddAccessAllowedAceEx`. If a later sub-phase needs DACL inspection, it inherits the extent-arithmetic obligation then; 2.1 does not, because it reads no variable-length security structure. Apply KTD5 size pins to `TOKEN_OWNER` and `FILE_REMOTE_PROTOCOL_INFO`, both fixed-layout.
+- **Execution note:** Write the junction-redirection test **first**, before any path code. Plant a junction inside a temp private root, point it elsewhere, and assert the write is refused. It needs no privilege and no desktop, it is the regression test for the one attack this unit genuinely defends, and writing it first is what keeps `path.rs` from degrading into a check that follows the link it is supposed to reject.
 - **Patterns to follow:** `docs/solutions/best-practices/ffi-repr-c-struct-size-pinning.md` (KTD5, fixed-layout structs only); `docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md` — a `#[cfg]` branch CI cannot execute is a hypothesis, and a test comparing constants to constants can never fail.
 - **Test scenarios:**
-  - **Malformed ACL is rejected**: an ACE whose `AceSize` does not contain its SID; one whose `AceSize` exceeds the remaining extent; one whose `AceSize` is not DWORD-aligned; a non-`ACCESS_ALLOWED_ACE_TYPE` ACE; an `AceCount` larger than the extent supports. Each refused without reading through the wrong layout. No privilege required.
-  - A path component carrying `FILE_ATTRIBUTE_REPARSE_POINT` is refused — plant a junction in a temp private root and assert the write is refused.
-  - A newly created private root has exactly the owner-only protected DACL module 1 authored (`AceCount == 1`, `InheritanceProtected == true`).
+  - **A junction planted on the path is refused.** Create a temp private root, plant a junction inside it pointing elsewhere, and assert the write is refused rather than landing at the junction target. No privilege required.
+  - A path component that is a regular file where a directory is expected is refused.
+  - A newly created artifact under the profile inherits SYSTEM, Administrators and the user and **no `BUILTIN\Users`** — asserted structurally by principal class, never against literal SIDs (KTD8). This is the assumption KTD3 rests on; it is checked once in tests so a future OS change breaks the test rather than silently degrading the product.
   - `ReplaceFileW` succeeds over a destination held open **with** `FILE_SHARE_DELETE`, and the held handle still reads the **old** bytes.
   - `ReplaceFileW` fails **32** over a destination held open **without** share-delete, and **32** over an open **source** even with share-delete.
   - `MoveFileExW` fails **5**, not 32, over an open target even at share mask `0x7`.
   - Class 13 returns 87 on a local NTFS temp file **while** control class 0 succeeds on the same handle; an out-of-range class also returns 87; a forced control-call failure yields `Unknown` and the write is refused.
   - A freshly created file's owner **equals `TokenOwner`** (KTD8 — never assert inequality to `TokenUser`).
-  - The two-part walk rejects an anchor whose own DACL grants an untrusted principal write, and rejects a chain where a component above the anchor grants `FILE_DELETE_CHILD` to a non-admin principal. Asserted structurally, never against this VM's SIDs (KTD8).
   - Size pins fail the build if an upstream fixed-layout struct changes.
+  - **A negative test asserts the absence**: no symbol from the ACE/ACL family (`GetAce`, `GetAclInformation`, `InitializeAcl`, `AddAccessAllowedAceEx`) appears anywhere in `crates/windows/src/system/private_file/`. KTD3's whole benefit is that this code does not exist, so a grep-level guard keeps a future well-meaning addition from reintroducing the bug class without a decision.
 - **Verification:** every scenario runs on the `windows-latest` lane and is observed failing when its condition is violated; no assertion hardcodes a machine-specific SID or ancestor chain.
 
 ---
@@ -371,7 +366,8 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 | Install reachability | a spawned `agent-desktop` process and an FFI adapter constructed **without** `ad_init` both exercise the installed Windows implementation | U4, U7 |
 | Bootstrap honesty | `RPC_E_CHANGED_MODE` and `ERROR_ACCESS_DENIED` tolerated with tests; no read-back assertion of DPI V2; no COM or User32 call from `DllMain`/`#[ctor]`; `ad_init` unchanged | U4 |
 | Session lifetime | release runs exactly once on close, on drop, and on close-then-drop | U5 |
-| Private-file evidence | every measured behaviour in U8 has a test that can fail; malformed-ACL and reparse-point rejection covered; creation-side DACL asserted | U8 |
+| Private-file evidence | every measured behaviour in U8 has a test that can fail; junction-redirection refusal covered; inherited-ACL assumption asserted structurally | U8 |
+| No ACE parsing | no `GetAce` / `GetAclInformation` / `InitializeAcl` / `AddAccessAllowedAceEx` symbol appears under `crates/windows/src/system/private_file/` (KTD3) | U8 |
 | Portability of assertions | no test asserts an `app/provider` fact — no hardcoded SID, no hardcoded ancestor chain, no inequality-to-`TokenUser` | U6, U8 |
 | Behaviour preservation | all pre-existing unix private-file tests pass through the new seam | U7 |
 | Size | Windows release binary under 15 MiB (currently 1,920,512 B, 12.2%) | U2 |
@@ -387,7 +383,8 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 - COM apartment and DPI awareness are established at a call site no consumer can skip, with the borrowed-apartment and already-set paths tested, and `ad_init` unchanged.
 - `WindowsAdapterSession` owns apartment lifetime and releases exactly once on every path.
 - The permission probe reports truthfully and its mapping functions are unit-tested against literal HRESULTs.
-- Private-file hardening exists behind a core-defined seam, is **proven reachable from both consumers**, authors the security state it validates, and implements every measured behaviour in R7 — **unit-tested on the `windows-latest` lane**, not merely `cargo check`-clean.
+- Private-file hardening exists behind a core-defined seam, is **proven reachable from both consumers**, rejects reparse points per component, and implements every measured behaviour in R7 — **unit-tested on the `windows-latest` lane**, not merely `cargo check`-clean.
+- No ACE or ACL parsing exists in the Windows private-file surface, and a test asserts its absence (KTD3).
 - `agent-desktop-core` contains no Win32 binding crate and no unallowlisted `#[cfg(windows)]` platform logic, **both mechanically gated**.
 - No self-hosted runner was registered; ledger row A10-2 remains open and owned by 2.12.
 
@@ -397,7 +394,8 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 
 - **The seam is the largest structural change.** Routing at the five primitives keeps call sites untouched, and the default implementation is today's code — but the temp-handle reorder deliberately changes the portable path, so "existing unix tests pass" is the real assertion, not "nothing changed."
 - **`unsafe_op_in_unsafe_fn = "warn"` becomes an error under `-D warnings`.** U2's "clippy exits 0" measurement predates U3 and U8. Once real `unsafe` Win32 code lands in `crates/windows`, that workspace lint (`Cargo.toml:26`) bites. Budget for it rather than discovering it in CI.
-- **Eleven new files under `crates/windows/src/system/` in one PR**, all subject to the 400-LOC rule enforced by `scripts/check-rust-file-size.sh`. `acl.rs` is the one most likely to exceed it.
+- **Ten new files under `crates/windows/src/system/` in one PR**, all subject to the 400-LOC rule enforced by `scripts/check-rust-file-size.sh`. Dropping the DACL surface (KTD3) removes the file most likely to have exceeded it.
+- **KTD3 is a bet on inherited ACLs, and it is stated as one.** If a machine's profile chain is misconfigured — an unusual domain policy, an odd roaming-profile setup — the product writes artifacts more readable than intended and nothing detects it. The alternative was a validator that fails closed on the same machine, and this repo has already shipped that: `classify_locality` killed `status` on ordinary local disk. Between silently-permissive and loudly-broken on a legitimate configuration, permissive is the correct failure for a desktop automation CLI. The structural test in U8 pins the assumption so an OS behaviour change breaks a test rather than the product.
 - **`windows-latest` is Server 2025; 2.0 measured Server 2019.** API-contract rows travel; `app/provider` rows do not. KTD8 is the guard, and it is the most likely place a well-meaning test hardcodes an environment artifact.
 - **The CI lane runs as a single administrator**, so every ACL and ownership assertion is exercised from a token that already dominates the objects under test. No lane demonstrates the controls deny a lower-privileged principal. The controls are still worth having; the coverage claim must not be overstated.
 - **The previous layer failed on second-order effects.** Every one of its four clusters was a correct-looking call with a wrong assumption underneath. If a case is not in the measured matrices, measure it with the 2.0 probes rather than reasoning about it.
@@ -408,7 +406,7 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 - **Workspace `default-members` includes `crates/macos`** (`Cargo.toml:3`), so `cargo build --release` and `cargo test --lib --workspace` — both documented in `CLAUDE.md` — fail on Windows and Linux. Recorded as ledger row R6-3, out of scope here because it changes unqualified cargo behaviour on every platform. Its working consequence for this PR is handled by the Verification Contract's pre-commit note.
 - **`trace_read/html.rs:253` bypasses the private-file primitives entirely**, hand-rolling temp+rename with a predictable temp name (`html.rs:227`) instead of the hashed nonce (`private_file.rs:188`). Routing at the primitives does not catch it because it never calls them. Real defect; needs its own decision about whether trace HTML export is a private artifact.
 - **Does the seam cover `write_user_atomic` / `write_user_file`** (`crates/core/src/refs.rs:208`)? Both share `write_atomic_with`, so U7's temp-handle reorder moves the user-output path whether or not it is in scope.
-- **Is cross-admin isolation in scope at all?** If not, the ownership and DACL contract should say so explicitly so the leaf checks are calibrated to the boundary the product actually claims.
+- ~~Is cross-admin isolation in scope?~~ **Decided: no.** An administrator holds `SeTakeOwnershipPrivilege` and can seize any object regardless of its DACL, so no file-permission control can exclude one. macOS gives the same answer implicitly — root reads anything. The product's confidentiality boundary is *other non-admin users*, which profile inheritance already provides. KTD3 and `owner.rs` are written to that boundary and say so.
 - **Whether the FFI should wire `open_session`.** U5 ships a session reachable only from tests; `crates/ffi/src/adapter.rs:19-23` is its natural home. Deferred rather than widening 2.1 into `crates/ffi` beyond the install call.
 
 ## Sources & Research
