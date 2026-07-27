@@ -1,0 +1,96 @@
+{
+    "Probe":  "13-ledger-check",
+    "CapturedAtUtc":  "2026-07-27T03:13:25Z",
+    "Question":  "does FINDINGS.md satisfy R5, R6 and R7 as a machine-checkable contract",
+    "Ledger":  "probes/windows/FINDINGS.md",
+    "RowCount":  79,
+    "SessionEvidenceRows":  25,
+    "AreaCoverage":  [
+                         {
+                             "Area":  "1",
+                             "Rows":  8
+                         },
+                         {
+                             "Area":  "2",
+                             "Rows":  6
+                         },
+                         {
+                             "Area":  "3",
+                             "Rows":  5
+                         },
+                         {
+                             "Area":  "4",
+                             "Rows":  7
+                         },
+                         {
+                             "Area":  "5",
+                             "Rows":  3
+                         },
+                         {
+                             "Area":  "6",
+                             "Rows":  2
+                         },
+                         {
+                             "Area":  "7",
+                             "Rows":  4
+                         },
+                         {
+                             "Area":  "8",
+                             "Rows":  4
+                         },
+                         {
+                             "Area":  "9",
+                             "Rows":  3
+                         },
+                         {
+                             "Area":  "10",
+                             "Rows":  7
+                         },
+                         {
+                             "Area":  "11",
+                             "Rows":  5
+                         }
+                     ],
+    "VerdictCounts":  {
+                          "CONFIRMS":  43,
+                          "CONTRADICTS":  5,
+                          "NEW-EDGE":  26,
+                          "DEFERRED":  5
+                      },
+    "DeferredRows":  [
+                         {
+                             "Id":  "A10-2",
+                             "Area":  "10",
+                             "Closure":  "2.1"
+                         },
+                         {
+                             "Id":  "A10-3",
+                             "Area":  "10",
+                             "Closure":  "2.4"
+                         },
+                         {
+                             "Id":  "A10-5",
+                             "Area":  "10",
+                             "Closure":  "2.10"
+                         },
+                         {
+                             "Id":  "A10-6",
+                             "Area":  "10",
+                             "Closure":  "2.4"
+                         },
+                         {
+                             "Id":  "A10-7",
+                             "Area":  "10",
+                             "Closure":  "2.12"
+                         }
+                     ],
+    "MeasuredHunkCount":  37,
+    "HunkIndexRowCount":  37,
+    "ContradictsRowCount":  5,
+    "ContradictsRowsMapped":  5,
+    "BijectionHolds":  true,
+    "Failures":  [
+
+                 ],
+    "HunkCountSource":  "git -C \u003crepo\u003e diff -U0 main -- docs/phases.md, counting lines matching ^@@ -[0-9]; the measured count is authoritative over any count written in prose"
+}
