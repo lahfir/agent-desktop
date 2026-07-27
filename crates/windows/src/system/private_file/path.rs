@@ -18,7 +18,8 @@ use std::path::{Component, Path, PathBuf};
 
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, READ_CONTROL,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, READ_CONTROL,
 };
 
 use super::owner;
@@ -26,25 +27,55 @@ use super::{invalid_input, permission_denied};
 
 const NO_FOLLOW_DIRECTORY_FLAGS: u32 = FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS;
 
+/// Access the pin handles request. `FILE_LIST_DIRECTORY` is a read-data right,
+/// and only a read/write/delete data access makes a handle participate in
+/// Windows share-access enforcement: an attribute-only handle is exempt from
+/// `IoCheckShareAccess`, imposes no sharing constraint, and would let a
+/// DELETE/rename of the pinned directory through despite the narrowed share
+/// mode. `FILE_READ_ATTRIBUTES` rides along so the same handle can verify the
+/// directory attributes without a second open.
+pub(super) const DIRECTORY_PIN_ACCESS: u32 = FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MissingComponents {
     Create,
     Reject,
 }
 
-pub(super) fn ensure_private_directory_chain(path: &Path) -> std::io::Result<()> {
-    walk_directory_components(path, MissingComponents::Create)?;
-    let directory = open_directory_no_follow(path, FILE_READ_ATTRIBUTES | READ_CONTROL)?;
-    require_verified_directory(&directory)?;
-    owner::require_owned_by_token_owner(&directory, "private file parent")
+/// A retained no-follow handle on every directory from the root down to the
+/// operation's parent. Each handle is opened without `FILE_SHARE_DELETE`, so
+/// while the guard lives none of the pinned directories can be renamed or
+/// deleted and none of their names can be reassigned to a junction. Holding
+/// the whole chain across the create, write, and `ReplaceFileW` that follow
+/// forces every later path-based re-resolution to land on the same validated
+/// directories, closing the check-to-use window in which an attacker could
+/// swap a validated ancestor for a junction and redirect the private write.
+/// The handles are read-only ballast kept alive solely for that pin; the
+/// field is intentionally never read after construction.
+pub(super) struct PinnedDirectoryChain {
+    _handles: Vec<File>,
 }
 
-pub(super) fn require_reparse_free_directory_chain(path: &Path) -> std::io::Result<()> {
+pub(super) fn ensure_private_directory_chain(path: &Path) -> std::io::Result<PinnedDirectoryChain> {
+    let chain = walk_directory_components(path, MissingComponents::Create)?;
+    let directory = open_directory_no_follow(path, FILE_READ_ATTRIBUTES | READ_CONTROL)?;
+    require_verified_directory(&directory)?;
+    owner::require_owned_by_token_owner(&directory, "private file parent")?;
+    Ok(chain)
+}
+
+pub(super) fn require_reparse_free_directory_chain(
+    path: &Path,
+) -> std::io::Result<PinnedDirectoryChain> {
     walk_directory_components(path, MissingComponents::Reject)
 }
 
-fn walk_directory_components(path: &Path, missing: MissingComponents) -> std::io::Result<()> {
+fn walk_directory_components(
+    path: &Path,
+    missing: MissingComponents,
+) -> std::io::Result<PinnedDirectoryChain> {
     let mut current = PathBuf::new();
+    let mut handles = Vec::new();
     for component in path.components() {
         match component {
             Component::CurDir => continue,
@@ -59,23 +90,27 @@ fn walk_directory_components(path: &Path, missing: MissingComponents) -> std::io
             }
             Component::RootDir | Component::Normal(_) => current.push(component.as_os_str()),
         }
-        verify_directory_component(&current, missing)?;
+        handles.push(pin_directory_component(&current, missing)?);
     }
-    Ok(())
+    Ok(PinnedDirectoryChain { _handles: handles })
 }
 
-fn verify_directory_component(
+fn pin_directory_component(
     component_path: &Path,
     missing: MissingComponents,
-) -> std::io::Result<()> {
-    match open_directory_no_follow(component_path, FILE_READ_ATTRIBUTES) {
-        Ok(directory) => require_verified_directory(&directory),
+) -> std::io::Result<File> {
+    match open_directory_no_follow(component_path, DIRECTORY_PIN_ACCESS) {
+        Ok(directory) => {
+            require_verified_directory(&directory)?;
+            Ok(directory)
+        }
         Err(error)
             if error.kind() == ErrorKind::NotFound && missing == MissingComponents::Create =>
         {
             create_directory_component(component_path)?;
-            let directory = open_directory_no_follow(component_path, FILE_READ_ATTRIBUTES)?;
-            require_verified_directory(&directory)
+            let directory = open_directory_no_follow(component_path, DIRECTORY_PIN_ACCESS)?;
+            require_verified_directory(&directory)?;
+            Ok(directory)
         }
         Err(error) => Err(error),
     }
@@ -89,9 +124,10 @@ fn create_directory_component(component_path: &Path) -> std::io::Result<()> {
     }
 }
 
-fn open_directory_no_follow(path: &Path, access: u32) -> std::io::Result<File> {
+pub(super) fn open_directory_no_follow(path: &Path, access: u32) -> std::io::Result<File> {
     OpenOptions::new()
         .access_mode(access)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
         .custom_flags(NO_FOLLOW_DIRECTORY_FLAGS)
         .open(path)
 }

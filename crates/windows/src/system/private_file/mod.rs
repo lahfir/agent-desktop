@@ -62,7 +62,7 @@ impl PrivateFileOps for WindowsPrivateFile {
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| invalid_input("private file path has an invalid filename"))?;
-        path::ensure_private_directory_chain(parent)?;
+        let _chain = path::ensure_private_directory_chain(parent)?;
         validate_destination_if_present(path)?;
         let lease = replace::acquire_write_lease(parent)?;
         let (temporary, file) = replace::create_private_temp_file(&lease, destination_name)?;
@@ -72,9 +72,10 @@ impl PrivateFileOps for WindowsPrivateFile {
     }
 
     fn open_private_append(&self, path: &Path) -> std::io::Result<File> {
-        if let Some(parent) = path.parent() {
-            path::require_reparse_free_directory_chain(parent)?;
-        }
+        let _chain = path
+            .parent()
+            .map(path::require_reparse_free_directory_chain)
+            .transpose()?;
         let mut options = OpenOptions::new();
         options.read(true).create(true).append(true);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private append target")?;
@@ -87,7 +88,7 @@ impl PrivateFileOps for WindowsPrivateFile {
         let parent = path
             .parent()
             .ok_or_else(|| invalid_input("private file path has no parent"))?;
-        path::ensure_private_directory_chain(parent)?;
+        let _chain = path::ensure_private_directory_chain(parent)?;
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(create);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private lock file")?;
@@ -105,7 +106,8 @@ impl PrivateFileOps for WindowsPrivateFile {
     }
 
     fn ensure_private(&self, path: &Path) -> std::io::Result<()> {
-        path::ensure_private_directory_chain(path)
+        path::ensure_private_directory_chain(path)?;
+        Ok(())
     }
 }
 

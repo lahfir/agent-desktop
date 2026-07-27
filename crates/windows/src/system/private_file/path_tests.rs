@@ -1,8 +1,10 @@
 use super::{Scratch, create_junction};
 use crate::system::private_file::WindowsPrivateFile;
+use crate::system::private_file::path::{DIRECTORY_PIN_ACCESS, open_directory_no_follow};
 use agent_desktop_core::PrivateFileOps;
 use std::io::{ErrorKind, Read, Write};
 use std::path::Path;
+use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION};
 
 #[test]
 fn a_junction_component_on_the_write_path_is_refused_and_nothing_lands_at_its_target() {
@@ -215,4 +217,39 @@ fn a_leading_current_dir_component_is_skipped_and_the_write_lands_in_the_working
 
     let landed = root.path().join("sub").join("artifact.json");
     assert_eq!(ops.read_private_bounded(&landed, 64).unwrap(), b"payload");
+}
+
+#[test]
+fn a_pinned_directory_cannot_be_renamed_while_its_no_follow_handle_is_held() {
+    let root = Scratch::new("pin-blocks-swap");
+    let victim = root.path().join("victim");
+    std::fs::create_dir(&victim).expect("the victim directory must be creatable");
+    let swapped_aside = root.path().join("victim-moved");
+
+    let pin = open_directory_no_follow(&victim, DIRECTORY_PIN_ACCESS)
+        .expect("the pin handle must open the validated directory the way the chain walk does");
+
+    let blocked = std::fs::rename(&victim, &swapped_aside)
+        .expect_err("a pinned ancestor must not be renamable out from under the operation");
+    let code = blocked.raw_os_error();
+    assert!(
+        code == Some(ERROR_SHARING_VIOLATION as i32) || code == Some(ERROR_ACCESS_DENIED as i32),
+        "the blocked rename must report a sharing or access violation, got {code:?}"
+    );
+    assert!(victim.is_dir(), "the pinned directory must stay in place");
+    assert!(
+        !swapped_aside.exists(),
+        "no attacker-controlled name may take the pinned directory's place"
+    );
+
+    drop(pin);
+
+    std::fs::rename(&victim, &swapped_aside).expect(
+        "with the pin released the rename must succeed, proving the pin is what blocked it",
+    );
+    assert!(swapped_aside.is_dir(), "the released directory must move");
+    assert!(
+        !victim.exists(),
+        "the original name must be free once unpinned"
+    );
 }
