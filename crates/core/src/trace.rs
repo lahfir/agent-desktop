@@ -248,7 +248,7 @@ pub(crate) fn ensure_trace_dir(dir: &Path) -> Result<(), AppError> {
             .create(dir)?;
     }
     #[cfg(not(unix))]
-    std::fs::create_dir_all(dir)?;
+    crate::private_file_parent::ensure_private(dir)?;
     Ok(())
 }
 

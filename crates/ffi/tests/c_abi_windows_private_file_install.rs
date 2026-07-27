@@ -8,6 +8,8 @@ use common::{ad_adapter_create, ad_adapter_destroy, with_isolated_home};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+
 struct ProbeOps;
 
 impl PrivateFileOps for ProbeOps {}
@@ -24,27 +26,34 @@ fn plant_junction(link: &Path, target: &Path) {
         "mklink /J must succeed without privilege: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let attributes = {
+        use std::os::windows::fs::MetadataExt;
+        std::fs::symlink_metadata(link)
+            .expect("junction link exists")
+            .file_attributes()
+    };
+    assert!(
+        attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0,
+        "planted link must carry FILE_ATTRIBUTE_REPARSE_POINT"
+    );
 }
 
-fn regular_files_under(root: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
+fn entries_under(root: &Path) -> Vec<PathBuf> {
+    let mut entries = Vec::new();
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&directory) else {
+        let Ok(read) = std::fs::read_dir(&directory) else {
             continue;
         };
-        for entry in entries.flatten() {
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_dir() {
-                pending.push(entry.path());
-            } else {
-                files.push(entry.path());
+        for entry in read.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+                pending.push(path.clone());
             }
+            entries.push(path);
         }
     }
-    files
+    entries
 }
 
 /// Core's five private-file primitives are `pub(crate)`, so the behavioral arm
@@ -86,10 +95,10 @@ fn adapter_create_without_ad_init_installs_the_windows_private_file_ops() {
             "a manifest write through a junction component must be refused \
              by the installed WindowsPrivateFile"
         );
-        let leaked = regular_files_under(&target);
+        let leaked = entries_under(&target);
         assert!(
             leaked.is_empty(),
-            "no session artifact may land under the junction target: {leaked:?}"
+            "no session artifact — file or directory — may land under the junction target: {leaked:?}"
         );
     });
 }

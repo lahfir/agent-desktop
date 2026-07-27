@@ -74,25 +74,22 @@ fn parse_envelope(output: &Output) -> serde_json::Value {
     serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope")
 }
 
-fn regular_files_under(root: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
+fn entries_under(root: &Path) -> Vec<PathBuf> {
+    let mut entries = Vec::new();
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&directory) else {
+        let Ok(read) = std::fs::read_dir(&directory) else {
             continue;
         };
-        for entry in entries.flatten() {
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_dir() {
-                pending.push(entry.path());
-            } else {
-                files.push(entry.path());
+        for entry in read.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+                pending.push(path.clone());
             }
+            entries.push(path);
         }
     }
-    files
+    entries
 }
 
 #[test]
@@ -112,10 +109,10 @@ fn session_start_through_a_junction_home_is_refused_by_the_installed_windows_ops
          success means the portable default wrote through the junction"
     );
     assert_eq!(envelope["ok"], false);
-    let leaked = regular_files_under(&target);
+    let leaked = entries_under(&target);
     assert!(
         leaked.is_empty(),
-        "no session artifact may land under the junction target: {leaked:?}"
+        "no session artifact — file or directory — may land under the junction target: {leaked:?}"
     );
 }
 
