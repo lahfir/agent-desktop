@@ -1,6 +1,6 @@
 {
     "Probe":  "01-tree-dump",
-    "CapturedAtUtc":  "2026-07-26T23:51:14Z",
+    "CapturedAtUtc":  "2026-07-27T03:47:15Z",
     "Target":  "notepad.exe",
     "TargetKind":  "classic Win32 Notepad (%WINDIR%\\System32\\notepad.exe) — not the Store/MSIX RichEdit Notepad",
     "Stack":  "managed",
@@ -50,9 +50,9 @@
                          "NodeRecordFormat":  "one node per line, space separated key=value fields in fixed order: i=\u003cindex\u003e d=\u003cdepth\u003e parent=\u003cparent index, -1 at root\u003e ct=\u003cControlType.ProgrammaticName\u003e cls=\u003cClassName\u003e fw=\u003cFrameworkId\u003e aid=\u003cAutomationId\u003e pid=\u003cProcessId\u003e bounds=\u003cok|empty\u003e left=\u003cpx\u003e top=\u003cpx\u003e width=\u003cpx\u003e height=\u003cpx\u003e en=\u003c0|1 IsEnabled\u003e off=\u003c0|1 IsOffscreen\u003e kbf=\u003c0|1 IsKeyboardFocusable\u003e pats=\u003ccomma separated pattern short names, the ProgrammaticName with its PatternIdentifiers.Pattern suffix removed; \"-\" when none\u003e children=\u003cchild count, present only on a node truncated at MaxDepth\u003e name=\u003cName, or \u003credacted:N chars\u003e on a content node\u003e. left/top/width/height are omitted when bounds=empty. name= is always the last field so a Name containing spaces needs no quoting. Empty string values render as \"-\".",
                          "TruncationNote":  "statistics above cover every walked node; Nodes[] below is truncated to SerializedNodeLimit in document order so the PR stays reviewable (KTD6), and secondary passes of the same target carry statistics only. Re-run this probe locally for the full record.",
                          "Nodes":  [
-                                       "i=0 d=0 parent=-1 ct=ControlType.Window cls=Notepad fw=Win32 aid=- pid=7300 bounds=ok left=40 top=40 width=1000 height=640 en=1 off=0 kbf=0 pats=Transform,Window name=Untitled - Notepad",
-                                       "i=1 d=1 parent=0 ct=ControlType.Pane cls=Edit fw=Win32 aid=15 pid=7300 bounds=ok left=48 top=91 width=984 height=558 en=1 off=0 kbf=0 pats=- name=-",
-                                       "i=2 d=1 parent=0 ct=ControlType.Pane cls=msctls_statusbar32 fw=Win32 aid=1025 pid=7300 bounds=ok left=48 top=649 width=984 height=23 en=1 off=0 kbf=0 pats=- name=-"
+                                       "i=0 d=0 parent=-1 ct=ControlType.Window cls=Notepad fw=Win32 aid=- pid=7956 bounds=ok left=40 top=40 width=1000 height=640 en=1 off=0 kbf=0 pats=Transform,Window name=Untitled - Notepad",
+                                       "i=1 d=1 parent=0 ct=ControlType.Pane cls=Edit fw=Win32 aid=15 pid=7956 bounds=ok left=48 top=91 width=984 height=558 en=1 off=0 kbf=0 pats=- name=-",
+                                       "i=2 d=1 parent=0 ct=ControlType.Pane cls=msctls_statusbar32 fw=Win32 aid=1025 pid=7956 bounds=ok left=48 top=649 width=984 height=23 en=1 off=0 kbf=0 pats=- name=-"
                                    ],
                          "FocusBefore":  {
                                              "Resolved":  true,
@@ -100,9 +100,9 @@
                           "NodeRecordFormat":  "one node per line, space separated key=value fields in fixed order: i=\u003cindex\u003e d=\u003cdepth\u003e parent=\u003cparent index, -1 at root\u003e ct=\u003cControlType.ProgrammaticName\u003e cls=\u003cClassName\u003e fw=\u003cFrameworkId\u003e aid=\u003cAutomationId\u003e pid=\u003cProcessId\u003e bounds=\u003cok|empty\u003e left=\u003cpx\u003e top=\u003cpx\u003e width=\u003cpx\u003e height=\u003cpx\u003e en=\u003c0|1 IsEnabled\u003e off=\u003c0|1 IsOffscreen\u003e kbf=\u003c0|1 IsKeyboardFocusable\u003e pats=\u003ccomma separated pattern short names, the ProgrammaticName with its PatternIdentifiers.Pattern suffix removed; \"-\" when none\u003e children=\u003cchild count, present only on a node truncated at MaxDepth\u003e name=\u003cName, or \u003credacted:N chars\u003e on a content node\u003e. left/top/width/height are omitted when bounds=empty. name= is always the last field so a Name containing spaces needs no quoting. Empty string values render as \"-\".",
                           "TruncationNote":  "statistics above cover every walked node; Nodes[] below is truncated to SerializedNodeLimit in document order so the PR stays reviewable (KTD6), and secondary passes of the same target carry statistics only. Re-run this probe locally for the full record.",
                           "Nodes":  [
-                                        "i=0 d=0 parent=-1 ct=ControlType.Window cls=Notepad fw=Win32 aid=- pid=7300 bounds=empty en=1 off=0 kbf=0 pats=Transform,Window name=Untitled - Notepad",
-                                        "i=1 d=1 parent=0 ct=ControlType.Pane cls=Edit fw=Win32 aid=15 pid=7300 bounds=ok left=-32000 top=-32000 width=984 height=558 en=1 off=0 kbf=0 pats=- name=-",
-                                        "i=2 d=1 parent=0 ct=ControlType.Pane cls=msctls_statusbar32 fw=Win32 aid=1025 pid=7300 bounds=ok left=-32000 top=-31442 width=984 height=23 en=1 off=0 kbf=0 pats=- name=-"
+                                        "i=0 d=0 parent=-1 ct=ControlType.Window cls=Notepad fw=Win32 aid=- pid=7956 bounds=empty en=1 off=0 kbf=0 pats=Transform,Window name=Untitled - Notepad",
+                                        "i=1 d=1 parent=0 ct=ControlType.Pane cls=Edit fw=Win32 aid=15 pid=7956 bounds=ok left=-32000 top=-32000 width=984 height=558 en=1 off=0 kbf=0 pats=- name=-",
+                                        "i=2 d=1 parent=0 ct=ControlType.Pane cls=msctls_statusbar32 fw=Win32 aid=1025 pid=7956 bounds=ok left=-32000 top=-31442 width=984 height=23 en=1 off=0 kbf=0 pats=- name=-"
                                     ],
                           "FocusBefore":  {
                                               "Resolved":  true,

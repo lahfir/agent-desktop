@@ -418,7 +418,8 @@ try {
     }
     if ($script:ObsidianLaunched) {
         foreach ($p in @(Get-Process -Name 'Obsidian' -ErrorAction SilentlyContinue)) {
-            try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { }
+            Register-ScratchProcessId -ProcessId $p.Id
+            if (-not ($script:Spawned -contains $p.Id)) { [void]$script:Spawned.Add($p.Id) }
         }
     }
     foreach ($id in @($script:Spawned)) {

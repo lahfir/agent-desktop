@@ -288,7 +288,13 @@ function Invoke-PlacedDump {
     $dump['FocusUnchanged'] = $stable
     $dump['FocusIdentityNote'] = 'focus identity is asserted on ControlType/ClassName/ProcessId/NativeWindowHandle; the focused element is usually the operator console, whose Name mutates independently of focus and would produce false interference'
     $dump['Foreground'] = [ordered]@{ ProcessId = [AgentDesktopProbe.Native]::GetForegroundProcessId() }
-    if (-not $stable) { [void]$script:FocusInterference.Add($Label) }
+    if (-not $stable) {
+        $trackedPids = @(Get-ScratchProcessIds)
+        $selfActivated = ($after.Resolved -and ($trackedPids -contains $after.ProcessId))
+        $dump['FocusChangeClass'] = $(if ($selfActivated) { 'target-self-activation' } else { 'external-interference' })
+        $dump['FocusChangeNote'] = 'a probe-launched target taking focus during its own startup is the target activating itself, not the probe stealing focus or an operator disturbing the run. Electron does this asynchronously when its renderer becomes ready, so it can land mid-dump under load. Only a focus move to a window the probe never launched is interference; self-activation is recorded as a platform fact and does not fail the probe.'
+        if ($selfActivated) { [void]$script:FocusSelfActivation.Add($Label) } else { [void]$script:FocusInterference.Add($Label) }
+    }
     return $dump
 }
 
@@ -325,6 +331,7 @@ function Close-ShellWindowByHandle {
 }
 
 $script:FocusInterference = New-Object System.Collections.ArrayList
+$script:FocusSelfActivation = New-Object System.Collections.ArrayList
 $script:Ledger = New-Object System.Collections.ArrayList
 $notepadPid = 0
 $settingsPid = 0
@@ -383,6 +390,9 @@ try {
     $settingsMatch = $null
     while ((Get-Date) -lt $deadline) {
         $pids = @(Get-Process -Name 'SystemSettings' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+        if (-not $settingsPreexisting) {
+            foreach ($settingsSpawnedPid in $pids) { Register-ScratchProcessId -ProcessId $settingsSpawnedPid }
+        }
         if ($pids.Count -gt 0) { $settingsMatch = Resolve-SettingsFrameWindow -SettingsPids $pids }
         if ($null -ne $settingsMatch) { break }
         if ($settingsPreexisting -and -not $settingsWakeIssued -and (Get-Date) -gt $wakeDeadline) {
@@ -514,6 +524,7 @@ try {
         Stack             = $Stack
         BaselineFocus     = $baselineFocus
         FocusInterference = @($script:FocusInterference)
+        FocusSelfActivation = @($script:FocusSelfActivation)
         BoundsFloorPct    = $boundsFloor
         BelowBoundsFloor  = @($belowFloor)
         Targets           = @($script:Ledger)
@@ -544,6 +555,7 @@ try {
         ObsidianRefable = $settled.RefableNodeCount
         BelowBoundsFloor = @($belowFloor).Count
         FocusInterference = @($script:FocusInterference).Count
+        FocusSelfActivation = @($script:FocusSelfActivation).Count
     }
     if (@($belowFloor).Count -gt 0) {
         Write-ProbeResult -Probe $Probe -Status 'fail' -Message ('bounds floor breached by: ' + (@($belowFloor) -join ', ')) -Data $resultData

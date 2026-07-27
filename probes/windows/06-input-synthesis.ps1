@@ -778,6 +778,8 @@ try {
         $modifierBeforeSweep = Get-ModifierState
         foreach ($m in @($modifierBeforeSweep | Where-Object { $_.asyncKeyIsDown -or $_.keyStateIsDown })) {
             $vk = ($Modifiers | Where-Object { $_.Name -eq $m.key }).Vk
+            try { Assert-Foreground -ExpectedProcessId $script:TargetPid -Stage 'modifier-sweep' }
+            catch { Write-ProbeLog -Message ('modifier sweep releasing ' + $m.key + ' while foreground is not the scratch app: ' + $_.Exception.Message) -Level 'warn' }
             [void][AgentDesktopProbe.Injector]::SendVirtualKey([uint16]$vk, $true)
             $sweepInjected += $m.key
             Start-Sleep -Milliseconds 60
@@ -847,7 +849,9 @@ try {
             confirmationMethod = 'Stop-ScratchProcess terminates and then re-reads the process list until the pid is gone or a 10 s deadline expires; the survivor count above is a second, independent re-read after all teardown.'
         }
     }
-    try { [void](Write-ProbeJson -Probe $Probe -Name 'teardown.json' -InputObject $teardown) } catch { }
+    try { [void](Write-ProbeJson -Probe $Probe -Name 'teardown.json' -InputObject $teardown) }
+    catch { $status = 'fail'; $message = ('teardown capture could not be written: ' + $_.Exception.Message) }
+    if (@($survivors).Count -gt 0) { $status = 'fail'; $message = ('probe-spawned process survived teardown: ' + (@($survivors) -join ',')) }
 
     foreach ($f in @(Get-ChildItem -LiteralPath (Get-CaptureDir -Probe $Probe) -File -ErrorAction SilentlyContinue)) {
         if ($f.Name -like '*.normalized') { continue }

@@ -157,15 +157,15 @@
                            ],
                  "FocusBefore":  {
                                      "Resolved":  true,
-                                     "ControlType":  "ControlType.Edit",
-                                     "ClassName":  "TextBox",
+                                     "ControlType":  "ControlType.Window",
+                                     "ClassName":  "org.wezfurlong.wezterm",
                                      "ProcessId":  <pid>,
                                      "NativeWindowHandle":  <hwnd>
                                  },
                  "FocusAfter":  {
                                     "Resolved":  true,
-                                    "ControlType":  "ControlType.Edit",
-                                    "ClassName":  "TextBox",
+                                    "ControlType":  "ControlType.Window",
+                                    "ClassName":  "org.wezfurlong.wezterm",
                                     "ProcessId":  <pid>,
                                     "NativeWindowHandle":  <hwnd>
                                 },

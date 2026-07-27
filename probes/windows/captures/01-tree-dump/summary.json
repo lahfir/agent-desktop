@@ -1,6 +1,6 @@
 {
     "Probe":  "01-tree-dump",
-    "CapturedAtUtc":  "2026-07-26T23:51:14Z",
+    "CapturedAtUtc":  "2026-07-27T03:47:15Z",
     "Stack":  "managed",
     "BaselineFocus":  {
                           "Resolved":  true,
@@ -12,6 +12,9 @@
     "FocusInterference":  [
 
                           ],
+    "FocusSelfActivation":  [
+
+                            ],
     "BoundsFloorPct":  95,
     "BelowBoundsFloor":  [
 
@@ -46,11 +49,11 @@
                     },
                     {
                         "Target":  "obsidian",
-                        "NodeCount":  119,
-                        "PctNonEmptyBounds":  99.16,
-                        "PctPositiveAreaBounds":  99.16,
-                        "NodesWithControlType":  119,
-                        "RefableNodeCount":  119,
+                        "NodeCount":  113,
+                        "PctNonEmptyBounds":  99.12,
+                        "PctPositiveAreaBounds":  99.12,
+                        "NodesWithControlType":  113,
+                        "RefableNodeCount":  113,
                         "FocusUnchanged":  true
                     }
                 ],
