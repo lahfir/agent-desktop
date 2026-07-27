@@ -68,8 +68,16 @@ pub(super) fn require_local_for_private_write(file: &File, what: &str) -> std::i
 
 pub(super) fn assess_file_locality(file: &File) -> SurfaceLocality {
     let control_succeeded = basic_info_control_succeeds(control_probe_handle(file));
-    let remote_probe = remote_protocol_probe(file.as_raw_handle());
+    let remote_probe = remote_protocol_probe_result(file);
     classify_surface_locality(control_succeeded, remote_probe)
+}
+
+fn remote_protocol_probe_result(file: &File) -> Result<(), u32> {
+    #[cfg(test)]
+    if forced_remote_locality::is_active() {
+        return Ok(());
+    }
+    remote_protocol_probe(file.as_raw_handle())
 }
 
 pub(super) fn classify_surface_locality(
@@ -144,6 +152,34 @@ pub(super) mod forced_control_failure {
             }
         }
         FORCE_CONTROL_FAILURE.with(|flag| flag.set(true));
+        let _reset = ResetOnDrop;
+        run()
+    }
+}
+
+/// Forces the remote-protocol probe to report success while the class-0
+/// control call still runs for real, so the classifier yields `Remote` and
+/// the remote-storage refusal branch can be exercised on ordinary local disk.
+#[cfg(test)]
+pub(super) mod forced_remote_locality {
+    use std::cell::Cell;
+
+    thread_local! {
+        static FORCE_REMOTE_LOCALITY: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(in super::super) fn is_active() -> bool {
+        FORCE_REMOTE_LOCALITY.with(Cell::get)
+    }
+
+    pub(in super::super) fn with_forced_remote_locality<R>(run: impl FnOnce() -> R) -> R {
+        struct ResetOnDrop;
+        impl Drop for ResetOnDrop {
+            fn drop(&mut self) {
+                FORCE_REMOTE_LOCALITY.with(|flag| flag.set(false));
+            }
+        }
+        FORCE_REMOTE_LOCALITY.with(|flag| flag.set(true));
         let _reset = ResetOnDrop;
         run()
     }

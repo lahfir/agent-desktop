@@ -88,7 +88,10 @@ pub(super) fn acquire_write_lease(parent: &Path) -> std::io::Result<TempDirLease
                     liveness_handle: Some(handle),
                 });
             }
-            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) if lease_open_collision_is_retryable(&error) => {
+                let _ = std::fs::remove_dir_all(&directory);
+                continue;
+            }
             Err(error) => {
                 let _ = std::fs::remove_dir_all(&directory);
                 return Err(error);
@@ -99,6 +102,23 @@ pub(super) fn acquire_write_lease(parent: &Path) -> std::io::Result<TempDirLease
         ErrorKind::AlreadyExists,
         "could not allocate a private temp lease directory",
     ))
+}
+
+/// A concurrent same-parent writer racing the sweep can leave a just-created
+/// lease directory swept, delete-pending, or held by the sweep's probe handle,
+/// so the liveness open surfaces `NotFound`, `ERROR_ACCESS_DENIED` (5), or
+/// `ERROR_SHARING_VIOLATION` (32). Those are transient collisions retried on a
+/// fresh nonce. Keying the OS-error cases on `raw_os_error` keeps the
+/// owner/locality/reparse refusals — `PermissionDenied` with no OS code —
+/// fatal, never retried.
+fn lease_open_collision_is_retryable(error: &std::io::Error) -> bool {
+    if error.kind() == ErrorKind::NotFound {
+        return true;
+    }
+    match error.raw_os_error() {
+        Some(code) => code == ERROR_SHARING_VIOLATION as i32 || code == ERROR_ACCESS_DENIED as i32,
+        None => false,
+    }
 }
 
 fn open_verified_liveness_handle(directory: &Path) -> std::io::Result<File> {

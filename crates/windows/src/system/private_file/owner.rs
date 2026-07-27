@@ -78,13 +78,21 @@ impl SidBuffer {
 
 pub(super) fn require_owned_by_token_owner(file: &File, what: &str) -> std::io::Result<()> {
     let expected = process_token_owner_sid()?;
-    let actual = file_owner_sid(file)?;
+    let actual = actual_owner_for_comparison(file)?;
     if !expected.matches(&actual) {
         return Err(permission_denied(format!(
             "{what} is owned by a foreign principal, not this process's token owner"
         )));
     }
     Ok(())
+}
+
+fn actual_owner_for_comparison(file: &File) -> std::io::Result<SidBuffer> {
+    #[cfg(test)]
+    if forced_foreign_owner::is_active() {
+        return forced_foreign_owner::foreign_sid();
+    }
+    file_owner_sid(file)
 }
 
 pub(super) fn file_owner_sid(file: &File) -> std::io::Result<SidBuffer> {
@@ -178,4 +186,57 @@ pub(super) fn process_token_user_sid_for_tests() -> std::io::Result<SidBuffer> {
     let buffer = read_process_token_information(TokenUser)?;
     let user: TOKEN_USER = unsafe { std::ptr::read(buffer.as_ptr().cast()) };
     SidBuffer::copied_from_valid(user.User.Sid)
+}
+
+/// Forces the owner comparison to observe a foreign principal so the
+/// refusal branch of `require_owned_by_token_owner` can be exercised without
+/// a file actually pre-created by another account. The substituted owner is
+/// the `WinLocalSystemSid`, built programmatically so the seam stays portable
+/// and privilege-free.
+#[cfg(test)]
+pub(super) mod forced_foreign_owner {
+    use std::cell::Cell;
+
+    use windows_sys::Win32::Security::{
+        CreateWellKnownSid, SECURITY_MAX_SID_SIZE, WinLocalSystemSid,
+    };
+
+    use super::SidBuffer;
+
+    thread_local! {
+        static FORCE_FOREIGN_OWNER: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(in super::super) fn is_active() -> bool {
+        FORCE_FOREIGN_OWNER.with(Cell::get)
+    }
+
+    pub(in super::super) fn foreign_sid() -> std::io::Result<SidBuffer> {
+        let mut storage = [0_u64; 9];
+        let mut size: u32 = SECURITY_MAX_SID_SIZE;
+        let created = unsafe {
+            CreateWellKnownSid(
+                WinLocalSystemSid,
+                std::ptr::null_mut(),
+                storage.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+        if created == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        SidBuffer::copied_from_valid(storage.as_mut_ptr().cast())
+    }
+
+    pub(in super::super) fn with_forced_foreign_owner<R>(run: impl FnOnce() -> R) -> R {
+        struct ResetOnDrop;
+        impl Drop for ResetOnDrop {
+            fn drop(&mut self) {
+                FORCE_FOREIGN_OWNER.with(|flag| flag.set(false));
+            }
+        }
+        FORCE_FOREIGN_OWNER.with(|flag| flag.set(true));
+        let _reset = ResetOnDrop;
+        run()
+    }
 }

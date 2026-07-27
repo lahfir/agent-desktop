@@ -279,3 +279,50 @@ fn write_atomic_leaves_no_temp_lease_residue_on_success_or_failure() {
     );
     assert_eq!(std::fs::read(&destination).unwrap(), b"first");
 }
+
+#[test]
+fn two_concurrent_writers_to_the_same_parent_both_succeed_with_their_final_content() {
+    let scratch = Scratch::new("concurrent-writers");
+    let iterations = 64_usize;
+
+    let parent_a = scratch.path().to_path_buf();
+    let writer_a = std::thread::spawn(move || {
+        let ops = WindowsPrivateFile::new();
+        for iteration in 0..iterations {
+            let content = format!("a-{iteration}");
+            ops.write_atomic(&parent_a.join("a.json"), content.as_bytes())
+                .unwrap_or_else(|error| {
+                    panic!("writer a iteration {iteration} must succeed: {error}")
+                });
+        }
+    });
+
+    let parent_b = scratch.path().to_path_buf();
+    let writer_b = std::thread::spawn(move || {
+        let ops = WindowsPrivateFile::new();
+        for iteration in 0..iterations {
+            let content = format!("b-{iteration}");
+            ops.write_atomic(&parent_b.join("b.json"), content.as_bytes())
+                .unwrap_or_else(|error| {
+                    panic!("writer b iteration {iteration} must succeed: {error}")
+                });
+        }
+    });
+
+    writer_a.join().expect("writer a must not panic");
+    writer_b.join().expect("writer b must not panic");
+
+    let ops = WindowsPrivateFile::new();
+    assert_eq!(
+        ops.read_private_bounded(&scratch.path().join("a.json"), 64)
+            .unwrap(),
+        format!("a-{}", iterations - 1).into_bytes(),
+        "writer a's final content must survive the concurrent writes"
+    );
+    assert_eq!(
+        ops.read_private_bounded(&scratch.path().join("b.json"), 64)
+            .unwrap(),
+        format!("b-{}", iterations - 1).into_bytes(),
+        "writer b's final content must survive the concurrent writes"
+    );
+}

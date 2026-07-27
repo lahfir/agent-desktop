@@ -2,6 +2,7 @@ use super::{Scratch, create_junction};
 use crate::system::private_file::WindowsPrivateFile;
 use agent_desktop_core::PrivateFileOps;
 use std::io::{ErrorKind, Read, Write};
+use std::path::Path;
 
 #[test]
 fn a_junction_component_on_the_write_path_is_refused_and_nothing_lands_at_its_target() {
@@ -188,4 +189,30 @@ fn parent_traversal_components_are_rejected() {
 
     let refused = outcome.unwrap_err();
     assert_eq!(refused.kind(), ErrorKind::InvalidData);
+}
+
+struct RestoreCurrentDirOnDrop(std::path::PathBuf);
+
+impl Drop for RestoreCurrentDirOnDrop {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.0);
+    }
+}
+
+#[test]
+fn a_leading_current_dir_component_is_skipped_and_the_write_lands_in_the_working_directory() {
+    let root = Scratch::new("curdir");
+    let original_working_dir =
+        std::env::current_dir().expect("the current working directory must be readable");
+    let _restore = RestoreCurrentDirOnDrop(original_working_dir);
+    std::env::set_current_dir(root.path())
+        .expect("the scratch root must be enterable as the working directory");
+
+    let relative = Path::new(".").join("sub").join("artifact.json");
+    let ops = WindowsPrivateFile::new();
+    ops.write_atomic(&relative, b"payload")
+        .expect("a leading current-dir component must be skipped, not rejected");
+
+    let landed = root.path().join("sub").join("artifact.json");
+    assert_eq!(ops.read_private_bounded(&landed, 64).unwrap(), b"payload");
 }

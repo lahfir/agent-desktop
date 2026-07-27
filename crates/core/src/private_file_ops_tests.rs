@@ -163,3 +163,28 @@ fn installing_ops_a_second_time_is_rejected() {
     assert!(install_private_file_ops(Box::new(PortablePrivateFileOps)).is_ok());
     assert!(install_private_file_ops(Box::new(PortablePrivateFileOps)).is_err());
 }
+
+#[test]
+fn temporary_file_name_has_the_hidden_hex_nonce_shape_and_varies_between_calls() {
+    let first = temporary_file_name(OsStr::new("refmap.json"));
+    let first = first
+        .to_str()
+        .expect("the temporary name must be valid UTF-8");
+
+    let nonce = first
+        .strip_prefix(".refmap.json.")
+        .and_then(|rest| rest.strip_suffix(".tmp"))
+        .expect("the name must lead with a dot and the destination name and end with .tmp");
+    assert_eq!(nonce.len(), 16, "the nonce must be 16 hex digits: {nonce}");
+    assert!(
+        nonce.chars().all(|digit| digit.is_ascii_hexdigit()),
+        "the nonce must be hexadecimal: {nonce}"
+    );
+
+    let second = temporary_file_name(OsStr::new("refmap.json"));
+    assert_ne!(
+        OsString::from(first),
+        second,
+        "two successive calls must produce different nonces"
+    );
+}

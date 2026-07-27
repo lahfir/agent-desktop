@@ -3,7 +3,8 @@ use crate::system::private_file::WindowsPrivateFile;
 use crate::system::private_file::locality::{
     AlignedRemoteProtocolInfo, FILE_REMOTE_PROTOCOL_INFO_SIZE, SurfaceLocality,
     assess_file_locality, basic_info_control_succeeds, classify_surface_locality,
-    forced_control_failure::with_forced_control_failure, remote_protocol_probe,
+    forced_control_failure::with_forced_control_failure,
+    forced_remote_locality::with_forced_remote_locality, remote_protocol_probe,
 };
 use agent_desktop_core::PrivateFileOps;
 use std::io::ErrorKind;
@@ -109,4 +110,36 @@ fn a_forced_control_failure_yields_unknown_and_the_private_write_is_refused() {
             b"local again",
         )
         .expect("writes must work again once the control call is restored");
+}
+
+#[test]
+fn a_forced_remote_locality_refuses_the_private_write_while_the_control_call_succeeds() {
+    let scratch = Scratch::new("locality-remote");
+    let probe_path = scratch.path().join("probe.bin");
+    std::fs::write(&probe_path, b"probe").unwrap();
+    let probe_file = std::fs::File::open(&probe_path).unwrap();
+    let refused_artifact = scratch.path().join("gated-parent").join("artifact.json");
+
+    with_forced_remote_locality(|| {
+        assert_eq!(assess_file_locality(&probe_file), SurfaceLocality::Remote);
+        let refused = WindowsPrivateFile::new()
+            .write_atomic(&refused_artifact, b"secret")
+            .unwrap_err();
+        assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
+        assert!(
+            refused.to_string().contains("remote storage"),
+            "the refusal must name the remote storage: {refused}"
+        );
+    });
+
+    assert!(
+        !refused_artifact.exists(),
+        "no artifact may exist after the refused write"
+    );
+    WindowsPrivateFile::new()
+        .write_atomic(
+            &scratch.path().join("ungated-parent").join("artifact.json"),
+            b"local again",
+        )
+        .expect("writes must work again once the locality probe is restored");
 }

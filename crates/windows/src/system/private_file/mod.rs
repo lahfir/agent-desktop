@@ -9,14 +9,20 @@
 //! nonce temp naming, and the bounded-read limits — and adds only the
 //! hardening the measured evidence justifies.
 //!
-//! Deliberately absent: descriptor authoring and DACL validation. A plain
-//! leaf under the user profile already inherits `NT AUTHORITY\SYSTEM`,
-//! `BUILTIN\Administrators`, and the user — with no `BUILTIN\Users` — so
-//! authoring would re-state what Windows grants and validating would
-//! re-check it with exactly the ACE-parsing code whose `AceSize` handling
-//! sank the deleted v0.5.0 layer. Nothing here calls the ACL/ACE family, a
-//! test pins that absence, and a structural test pins the inherited-ACL
-//! assumption itself so an OS change breaks a test rather than the product.
+//! Deliberately absent: descriptor authoring and DACL validation. A freshly
+//! created leaf under the user profile inherits its parent's ACL —
+//! `NT AUTHORITY\SYSTEM`, `BUILTIN\Administrators`, and the user, with no
+//! `BUILTIN\Users` — while a `ReplaceFileW` rewrite instead keeps the DACL of
+//! the leaf it replaces: for our own artifacts the same SYSTEM/Administrators/
+//! user grants with no `BUILTIN\Users`, though re-materialized as explicit
+//! ACEs rather than inherited ones. Either way the security-relevant grants
+//! carry across, so authoring would re-state what Windows grants and
+//! validating would re-check it with exactly the ACE-parsing code whose
+//! `AceSize` handling sank the deleted v0.5.0 layer. Nothing here calls the
+//! ACL/ACE family, a test pins that absence, and a structural test pins the
+//! inherited grants on the freshly created leaf and the same principals'
+//! survival across the replace path so an OS change breaks a test rather than
+//! the product.
 //!
 //! Locality gates only the write surfaces (atomic writes, appends, lock
 //! opens); reads stay ungated so observation commands keep working wherever
