@@ -88,6 +88,22 @@ fn ci_compares_the_release_binary_to_the_workspace_version() {
     assert!(workflow.contains("[ \"$ACTUAL_OUTPUT\" != \"$EXPECTED_OUTPUT\" ]"));
 }
 
+#[test]
+fn ci_windows_lane_gates_the_full_package_surface() {
+    let workflow = include_str!("../../.github/workflows/ci.yml").replace("\r\n", "\n");
+
+    assert!(workflow.contains(
+        "cargo clippy --locked -p agent-desktop-core -p agent-desktop-windows \
+         -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings"
+    ));
+    assert!(workflow.contains("--edges', 'normal,build,dev"));
+    assert!(workflow.contains("run: cargo test --locked -p agent-desktop\n"));
+    assert!(workflow.contains("run: cargo test --locked -p agent-desktop-ffi --tests"));
+    assert!(workflow.contains("expected exactly 2 windows cfg shims"));
+    assert!(workflow.contains("Get-Item target/release/agent-desktop.exe"));
+    assert!(workflow.contains("ORIGINAL_USERPROFILE=$env:USERPROFILE"));
+}
+
 const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "clipboard-clear",
     "clipboard-get",

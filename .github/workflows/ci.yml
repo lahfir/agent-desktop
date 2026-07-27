@@ -223,7 +223,7 @@ jobs:
   test-windows:
     name: Test (Windows)
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -232,33 +232,151 @@ jobs:
       - name: Install Rust toolchain
         run: rustup show
 
+      # Core resolves its data dir via HOME then USERPROFILE (crates/core/src/refs.rs
+      # fn home_dir), and env assigned inside one run: block does not survive into
+      # the next step, so the isolation is hoisted here and exported through
+      # GITHUB_ENV for every later step. CARGO_HOME and RUSTUP_HOME must be resolved
+      # from the real USERPROFILE first (rustup/cargo default them to
+      # %USERPROFILE%\.rustup and %USERPROFILE%\.cargo) so repointing USERPROFILE at
+      # the empty test home doesn't strand the installed toolchain.
+      # ORIGINAL_USERPROFILE feeds the trailing profile-isolation guard.
+      - name: Isolate HOME for the whole lane
+        shell: pwsh
+        run: |
+          $cargoHome  = if ($env:CARGO_HOME)  { $env:CARGO_HOME }  else { Join-Path $env:USERPROFILE '.cargo' }
+          $rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
+          $testHome = Join-Path $env:RUNNER_TEMP ("agent-desktop-test-home-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $testHome | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "ORIGINAL_USERPROFILE=$env:USERPROFILE"
+          Add-Content -Path $env:GITHUB_ENV -Value "CARGO_HOME=$cargoHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "RUSTUP_HOME=$rustupHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "HOME=$testHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "USERPROFILE=$testHome"
+
+      # HOME and USERPROFILE now point into RUNNER_TEMP for every remaining step
+      # (including the post-job cache save), so ~ would miss the real registry; the
+      # cache paths must go through the hoisted CARGO_HOME instead.
       - name: Cache cargo registry
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            ${{ env.CARGO_HOME }}/registry/index/
+            ${{ env.CARGO_HOME }}/registry/cache/
+            ${{ env.CARGO_HOME }}/git/db/
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      # Core resolves its data dir via HOME then USERPROFILE (crates/core/src/refs.rs
-      # fn home_dir), so pointing HOME at a fresh runner-temp directory is enough to
-      # keep tests off the real profile — the bash isolation script the macOS/Linux
-      # lanes use doesn't apply here since this step runs under pwsh. CARGO_HOME and
-      # RUSTUP_HOME must be resolved from the real USERPROFILE first (rustup/cargo
-      # default them to %USERPROFILE%\.rustup and %USERPROFILE%\.cargo) so repointing
-      # USERPROFILE at the empty test home doesn't strand the installed toolchain.
-      - name: Core and Windows unit tests (isolated HOME)
+      - name: Cache build artifacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/
+          key: ${{ runner.os }}-build-ci-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}-${{ hashFiles('crates/**/*.rs', 'src/**/*.rs', 'tests/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-build-ci-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}-
+            ${{ runner.os }}-build-ci-
+
+      # Widened relative to the macOS-lane check: dev edges are included (a Win32
+      # binding crate hiding in dev-dependencies otherwise passes clean) and the
+      # resolution is additionally pinned to the MSVC target.
+      - name: Check dependency isolation
         shell: pwsh
         run: |
-          $env:CARGO_HOME  = if ($env:CARGO_HOME)  { $env:CARGO_HOME }  else { Join-Path $env:USERPROFILE '.cargo' }
-          $env:RUSTUP_HOME = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
-          $testHome = Join-Path $env:RUNNER_TEMP ("agent-desktop-test-home-" + [guid]::NewGuid())
-          New-Item -ItemType Directory -Path $testHome | Out-Null
-          $env:HOME = $testHome
-          $env:USERPROFILE = $testHome
-          cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
+          $pattern = 'agent-desktop-(macos|windows|linux)|\bwindows-sys\b|\bwindows\b|\bwinapi\b'
+          foreach ($target in @('', 'x86_64-pc-windows-msvc')) {
+            $arguments = @('tree', '--locked', '-p', 'agent-desktop-core', '--edges', 'normal,build,dev')
+            if ($target) { $arguments += @('--target', $target) }
+            $tree = cargo @arguments
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $violations = @($tree | Select-String -Pattern $pattern)
+            if ($violations.Count -gt 0) {
+              $violations | ForEach-Object { Write-Host $_.Line }
+              Write-Host "FAIL: core crate pulls platform or Win32 binding crates (target: '$target')"
+              exit 1
+            }
+          }
+          Write-Host 'OK: core crate has no platform dependencies on normal, build, or dev edges'
+
+      # The dependency check cannot see hand-written externs, so reject the raw
+      # Win32 surface at source level. The allowlist is the pair of portable no-op
+      # directory-sync shims in private_file.rs; the count is pinned so a third
+      # windows conditional cannot ride in on the allowlisted file either.
+      - name: Check core source for Win32 leakage
+        shell: pwsh
+        run: |
+          $sources = Get-ChildItem -Path crates/core/src -Recurse -Filter *.rs
+          $forbidden = @($sources | Select-String -Pattern 'extern "system"|std::os::windows')
+          if ($forbidden.Count -gt 0) {
+            $forbidden | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+            Write-Host 'FAIL: core source declares a raw Win32 surface'
+            exit 1
+          }
+          $allowed = (Resolve-Path 'crates/core/src/private_file.rs').Path
+          $cfgMatches = @($sources | Select-String -Pattern 'cfg\(windows\)|cfg\(target_os = "windows"\)' -AllMatches)
+          $outside = @($cfgMatches | Where-Object { $_.Path -ne $allowed })
+          if ($outside.Count -gt 0) {
+            $outside | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+            Write-Host 'FAIL: windows cfg outside the private_file.rs allowlist'
+            exit 1
+          }
+          $shimCount = [int]($cfgMatches | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+          if ($shimCount -ne 2) {
+            Write-Host "FAIL: expected exactly 2 windows cfg shims in private_file.rs, found $shimCount"
+            exit 1
+          }
+          Write-Host 'OK: core source keeps windows conditionals to the 2 allowlisted shims'
+
+      - name: Clippy
+        run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
+
+      - name: Core and Windows unit tests
+        run: cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
+
+      - name: Binary command tests
+        run: cargo test --locked -p agent-desktop
+
+      # The FFI crate ships integration harnesses under crates/ffi/tests/ that a
+      # --lib run skips, and the Windows-gated reachability coverage landing there
+      # must execute on this runner, so wire them in explicitly.
+      - name: FFI integration tests
+        run: cargo test --locked -p agent-desktop-ffi --tests
+
+      - name: Build stripped release binary
+        run: cargo build --locked --release -p agent-desktop
+
+      # The macOS lane's stat -f%z is BSD-only and fails under Git Bash, so the
+      # size gate is native pwsh. There is no helper binary on Windows — the cap
+      # applies to the one shipped executable.
+      - name: Check shipped binary size
+        shell: pwsh
+        run: |
+          $binary = Get-Item target/release/agent-desktop.exe
+          $limit = 15MB
+          Write-Host "Binary size: $($binary.Length) bytes"
+          if ($binary.Length -gt $limit) {
+            Write-Host "FAIL: shipped executable exceeds 15MB limit (binary=$($binary.Length) bytes)"
+            exit 1
+          }
+          Write-Host 'OK: shipped executable is within the 15MB per-file limit'
+
+      # The isolation scenario this lane must prove: a test that writes a private
+      # artifact observes it under RUNNER_TEMP, never the runner profile.
+      - name: Guard profile isolation
+        shell: pwsh
+        run: |
+          if (-not $env:HOME -or -not $env:HOME.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: HOME is not under RUNNER_TEMP: $env:HOME"
+            exit 1
+          }
+          if (-not $env:USERPROFILE -or -not $env:USERPROFILE.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: USERPROFILE is not under RUNNER_TEMP: $env:USERPROFILE"
+            exit 1
+          }
+          $leak = Join-Path $env:ORIGINAL_USERPROFILE '.agent-desktop'
+          if (Test-Path $leak) {
+            Write-Host "FAIL: a test escaped the isolated HOME and wrote $leak"
+            exit 1
+          }
+          Write-Host 'OK: private artifacts stayed under RUNNER_TEMP'
 
   ffi-python-smoke:
     name: FFI Python Smoke
