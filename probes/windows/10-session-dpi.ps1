@@ -259,7 +259,7 @@ try {
         activeConsoleSessionId  = [int][AgentDesktopProbe.Dpi]::WTSGetActiveConsoleSessionId()
         isRemoteSession         = ([AgentDesktopProbe.Dpi]::GetSystemMetrics(0x1000) -ne 0)
         windowStation           = ([System.Environment]::GetEnvironmentVariable('SESSIONNAME'))
-        note                    = 'RDP session-transition behavior is not measurable here (physical console session); it closes at sub-phase 2.1 runner registration'
+        note                    = 'RDP session-transition behavior is not measurable here (physical console session); it closes at sub-phase 2.12 runner registration'
     }
 
     Add-Type -AssemblyName System.Windows.Forms
