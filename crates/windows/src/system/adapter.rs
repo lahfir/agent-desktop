@@ -1,4 +1,7 @@
-use agent_desktop_core::{AdapterError, Deadline, InteractionLease, PermissionReport, SystemOps};
+use agent_desktop_core::{
+    AdapterError, AdapterSession, Deadline, InteractionLease, PermissionReport, SessionAffinity,
+    SystemOps,
+};
 
 use crate::adapter::WindowsAdapter;
 
@@ -17,6 +20,14 @@ impl SystemOps for WindowsAdapter {
     fn unknown_accessibility_means_unsupported(&self) -> bool {
         true
     }
+
+    fn open_session(
+        &self,
+        _affinity: &SessionAffinity,
+        deadline: Deadline,
+    ) -> Result<Box<dyn AdapterSession>, AdapterError> {
+        Ok(Box::new(crate::system::session::open(deadline)?))
+    }
 }
 
 #[cfg(test)]
@@ -34,6 +45,19 @@ mod tests {
             .list_displays(Deadline::after(1_000).unwrap())
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::PlatformNotSupported);
+    }
+
+    #[test]
+    fn open_session_returns_a_live_session_instead_of_not_supported() {
+        let affinity = SessionAffinity {
+            session_id: Some("windows-com-session".into()),
+        };
+
+        let session = WindowsAdapter::new()
+            .open_session(&affinity, Deadline::after(5_000).unwrap())
+            .expect("windows must open an adapter session instead of failing closed");
+
+        session.close().expect("a fresh session must close cleanly");
     }
 
     #[cfg(target_os = "windows")]
