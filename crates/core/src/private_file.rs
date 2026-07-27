@@ -8,10 +8,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn open_private_lock(path: &Path, create: bool) -> std::io::Result<File> {
+    crate::private_file_ops::with_active_ops(|ops| ops.open_private_lock(path, create))
+}
+
+pub(crate) fn open_private_lock_portable(path: &Path, create: bool) -> std::io::Result<File> {
     let parent = path
         .parent()
         .ok_or_else(|| invalid_input("private file path has no parent"))?;
-    crate::private_file_parent::ensure_private(parent)?;
+    crate::private_file_parent::ensure_private_portable(parent)?;
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(create);
     configure_unix(&mut options, 0o600);
@@ -20,10 +24,14 @@ pub(crate) fn open_private_lock(path: &Path, create: bool) -> std::io::Result<Fi
     Ok(file)
 }
 
+pub(crate) fn open_private_append(path: &Path) -> std::io::Result<File> {
+    crate::private_file_ops::with_active_ops(|ops| ops.open_private_append(path))
+}
+
 /// Read access is requested alongside append because callers lock the returned
 /// handle, and Windows `LockFileEx` fails with `ERROR_ACCESS_DENIED` on a handle
 /// opened for append only.
-pub(crate) fn open_private_append(path: &Path) -> std::io::Result<File> {
+pub(crate) fn open_private_append_portable(path: &Path) -> std::io::Result<File> {
     let mut options = OpenOptions::new();
     options.read(true).create(true).append(true);
     configure_unix(&mut options, 0o600);
@@ -33,6 +41,13 @@ pub(crate) fn open_private_append(path: &Path) -> std::io::Result<File> {
 }
 
 pub(crate) fn read_private_bounded(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
+    crate::private_file_ops::with_active_ops(|ops| ops.read_private_bounded(path, max_bytes))
+}
+
+pub(crate) fn read_private_bounded_portable(
+    path: &Path,
+    max_bytes: u64,
+) -> std::io::Result<Vec<u8>> {
     let file = open_private_read(path)?;
     read_bounded(file, max_bytes)
 }
@@ -50,10 +65,14 @@ pub(crate) fn read_regular_bounded(path: &Path, max_bytes: u64) -> std::io::Resu
 }
 
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    crate::private_file_ops::with_active_ops(|ops| ops.write_atomic(path, bytes))
+}
+
+pub(crate) fn write_atomic_portable(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     write_atomic_with(
         path,
         bytes,
-        crate::private_file_parent::ensure_private,
+        crate::private_file_parent::ensure_private_portable,
         sync_directory,
         validate_private_destination,
     )
@@ -82,16 +101,15 @@ fn write_atomic_with(
     ensure_parent(parent)?;
     validate_destination(path)?;
     let (temporary, mut file) = create_temporary(path)?;
-    let result = (|| {
-        file.write_all(bytes)?;
-        file.sync_all()?;
+    let written = file.write_all(bytes).and_then(|()| file.sync_all());
+    drop(file);
+    let result = written.and_then(|()| {
         #[cfg(test)]
         crash_before_rename_if_requested(path);
         replace_atomic(&temporary, path)?;
         validate_private_regular(&open_private_read(path)?)?;
         sync_parent(parent)
-    })();
-    drop(file);
+    });
     if result.is_err() {
         let _ = std::fs::remove_file(&temporary);
     }
