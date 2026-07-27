@@ -2,6 +2,10 @@ use agent_desktop_core::{AdapterError, ErrorCode};
 
 const DPI_CONTEXT_ALREADY_SET_ERROR: u32 = 5;
 
+#[cfg(target_os = "windows")]
+const _: () =
+    assert!(DPI_CONTEXT_ALREADY_SET_ERROR == windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DpiAwarenessOutcome {
     PerMonitorV2Applied,
@@ -101,14 +105,5 @@ mod tests {
     #[test]
     fn ensure_succeeds_whether_fresh_or_already_configured() {
         ensure_per_monitor_v2().expect("the DPI bootstrap must succeed on every host lane");
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn already_set_constant_matches_error_access_denied() {
-        assert_eq!(
-            DPI_CONTEXT_ALREADY_SET_ERROR,
-            windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED
-        );
     }
 }

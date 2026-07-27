@@ -304,7 +304,7 @@ jobs:
         shell: pwsh
         run: |
           $sources = Get-ChildItem -Path crates/core/src -Recurse -Filter *.rs
-          $forbidden = @($sources | Select-String -Pattern 'extern "system"|std::os::windows')
+          $forbidden = @($sources | Select-String -Pattern 'extern "system|std::os::windows|\bwinapi\b|\bwindows_sys\b')
           if ($forbidden.Count -gt 0) {
             $forbidden | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
             Write-Host 'FAIL: core source declares a raw Win32 surface'

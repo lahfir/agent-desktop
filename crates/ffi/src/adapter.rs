@@ -114,10 +114,7 @@ fn build_adapter() -> Result<Box<dyn PlatformAdapter>, AdapterError> {
 
     #[cfg(target_os = "windows")]
     {
-        agent_desktop_windows::ensure_hosted_library_mta_and_dpi()?;
-        let _ = agent_desktop_core::install_private_file_ops(Box::new(
-            agent_desktop_windows::WindowsPrivateFile,
-        ));
+        agent_desktop_windows::bootstrap_hosted_library()?;
         Ok(Box::new(agent_desktop_windows::WindowsAdapter::new()))
     }
 

@@ -270,6 +270,18 @@ mod tests {
         assert_send_sync::<Box<WindowsAdapterSession>>();
     }
 
+    #[test]
+    fn a_session_moved_to_another_thread_releases_exactly_once_there() {
+        let count = Arc::new(AtomicU32::new(0));
+        let session = Box::new(counted_session(&count));
+
+        std::thread::spawn(move || drop(session))
+            .join()
+            .expect("the thread that drops a moved session must not panic");
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn a_real_com_mta_usage_acquires_and_closes_cleanly() {

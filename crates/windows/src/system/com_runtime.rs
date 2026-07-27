@@ -5,9 +5,17 @@ use std::sync::OnceLock;
 const S_OK_HRESULT: i32 = 0;
 const S_FALSE_HRESULT: i32 = 1;
 const RPC_E_CHANGED_MODE_HRESULT: i32 = 0x8001_0106_u32 as i32;
-#[cfg(any(test, not(target_os = "windows")))]
 const CO_E_NOT_INITIALIZED_HRESULT: i32 = 0x8004_01F0_u32 as i32;
 const APTTYPE_MTA_VALUE: i32 = 1;
+
+#[cfg(target_os = "windows")]
+const _: () = {
+    assert!(S_OK_HRESULT == windows_sys::Win32::Foundation::S_OK);
+    assert!(S_FALSE_HRESULT == windows_sys::Win32::Foundation::S_FALSE);
+    assert!(RPC_E_CHANGED_MODE_HRESULT == windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE);
+    assert!(CO_E_NOT_INITIALIZED_HRESULT == windows_sys::Win32::Foundation::CO_E_NOTINITIALIZED);
+    assert!(APTTYPE_MTA_VALUE == windows_sys::Win32::System::Com::APTTYPE_MTA);
+};
 
 type RetainedMtaCookieAddress = usize;
 
@@ -56,11 +64,25 @@ pub fn ensure_hosted_library_mta_and_dpi() -> Result<(), AdapterError> {
         .map(drop)
 }
 
+/// Performs the whole hosted-library bootstrap the cdylib needs before it
+/// builds an adapter: joins the process-wide MTA, applies per-monitor-v2 DPI
+/// awareness, and installs the Windows private-file backend into core.
+///
+/// The CLI installs the private-file backend from `main` before it parses, but
+/// the cdylib has no such entry point, so it performs all three steps here at
+/// `build_adapter` time.
+#[cfg(target_os = "windows")]
+pub fn bootstrap_hosted_library() -> Result<(), AdapterError> {
+    ensure_hosted_library_mta_and_dpi()?;
+    let _ = agent_desktop_core::install_private_file_ops(Box::new(crate::WindowsPrivateFile));
+    Ok(())
+}
+
 /// Reports whether a newly spawned thread that never called `CoInitializeEx`
 /// observes membership in the multithreaded apartment, which becomes true
 /// once the process-wide MTA exists. Read-only: `CoGetApartmentType` never
 /// initializes COM, so probing cannot create the state it reports.
-pub fn mta_established_for_new_threads() -> bool {
+pub fn is_mta_established_for_new_threads() -> bool {
     std::thread::Builder::new()
         .name("agent-desktop-mta-probe".into())
         .spawn(|| {
@@ -264,31 +286,12 @@ mod tests {
     #[test]
     fn an_established_mta_is_visible_to_fresh_threads() {
         ensure_hosted_library_mta_and_dpi().expect("hosted-library bootstrap");
-        assert!(mta_established_for_new_threads());
+        assert!(is_mta_established_for_new_threads());
     }
 
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn the_canned_probe_reports_no_apartment_off_windows() {
-        assert!(!mta_established_for_new_threads());
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn local_constants_match_windows_sys() {
-        assert_eq!(
-            RPC_E_CHANGED_MODE_HRESULT,
-            windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE
-        );
-        assert_eq!(S_OK_HRESULT, windows_sys::Win32::Foundation::S_OK);
-        assert_eq!(S_FALSE_HRESULT, windows_sys::Win32::Foundation::S_FALSE);
-        assert_eq!(
-            CO_E_NOT_INITIALIZED_HRESULT,
-            windows_sys::Win32::Foundation::CO_E_NOTINITIALIZED
-        );
-        assert_eq!(
-            APTTYPE_MTA_VALUE,
-            windows_sys::Win32::System::Com::APTTYPE_MTA
-        );
+        assert!(!is_mta_established_for_new_threads());
     }
 }

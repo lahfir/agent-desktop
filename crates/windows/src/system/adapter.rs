@@ -33,18 +33,20 @@ impl SystemOps for WindowsAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::ErrorCode;
 
     #[test]
-    fn unknown_accessibility_matches_the_cli_outcome_of_platform_not_supported() {
-        let adapter = WindowsAdapter::new();
+    fn unknown_accessibility_is_unsupported_so_cli_and_ffi_agree() {
+        use agent_desktop_core::PermissionState;
 
+        const UNRECOGNIZED_UIA_HRESULT: i32 = 0x8000_4005_u32 as i32;
+
+        let adapter = WindowsAdapter::new();
         assert!(adapter.unknown_accessibility_means_unsupported());
 
-        let error = adapter
-            .list_displays(Deadline::after(1_000).unwrap())
-            .unwrap_err();
-        assert_eq!(error.code, ErrorCode::PlatformNotSupported);
+        assert_eq!(
+            crate::system::permissions::map_uia_access(UNRECOGNIZED_UIA_HRESULT),
+            PermissionState::Unknown
+        );
     }
 
     #[test]

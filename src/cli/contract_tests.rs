@@ -102,6 +102,8 @@ fn ci_windows_lane_gates_the_full_package_surface() {
     assert!(workflow.contains("expected exactly 2 windows cfg shims"));
     assert!(workflow.contains("Get-Item target/release/agent-desktop.exe"));
     assert!(workflow.contains("ORIGINAL_USERPROFILE=$env:USERPROFILE"));
+    assert!(workflow.contains("Guard profile isolation"));
+    assert!(workflow.contains("FAIL: HOME is not under RUNNER_TEMP"));
 }
 
 const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
