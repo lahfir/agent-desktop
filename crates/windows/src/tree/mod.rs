@@ -1,5 +1,6 @@
 pub mod automation;
 pub mod cache;
+pub mod captures;
 pub mod element;
 pub mod properties;
 pub mod property_ids;

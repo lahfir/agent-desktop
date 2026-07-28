@@ -32,6 +32,7 @@ pub enum PropertyOutcome {
 pub enum PropertyValue {
     Text(String),
     Flag(bool),
+    Number(i32),
     Bounds(Rect),
 }
 
@@ -48,6 +49,13 @@ impl PropertyOutcome {
     pub fn flag(&self) -> Option<bool> {
         match self {
             Self::Known(PropertyValue::Flag(value)) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn number(&self) -> Option<i32> {
+        match self {
+            Self::Known(PropertyValue::Number(value)) => Some(*value),
             _ => None,
         }
     }
@@ -299,6 +307,9 @@ mod imp {
             Ok(Value::EMPTY | Value::NULL | Value::VOID) => PropertyOutcome::Absent,
             Ok(Value::STRING(text)) => bounded_text(text),
             Ok(Value::BOOL(flag)) => PropertyOutcome::Known(PropertyValue::Flag(flag)),
+            Ok(Value::I4(number) | Value::INT(number)) => {
+                PropertyOutcome::Known(PropertyValue::Number(number))
+            }
             Ok(_) => PropertyOutcome::Unknown,
         }
     }
