@@ -7,9 +7,15 @@ publish = false
 
 [dependencies]
 agent-desktop-core.workspace = true
+serde_json.workspace         = true
 thiserror.workspace          = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
+uiautomation = { version = "0.25", default-features = false, features = [
+  "control",
+  "input",
+] }
+windows = { version = "0.62.2", features = ["Win32_UI_Accessibility"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_System_Com",
@@ -18,6 +24,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_Security",
   "Win32_Security_Authorization",
   "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 [lints]

@@ -63,8 +63,21 @@ fn denial_platform_detail_matches_the_invariant_hresult_format() {
 #[test]
 fn unnamed_hresults_format_without_inventing_a_name() {
     assert_eq!(
-        com_hresult_detail(0x8000_4005_u32 as i32),
-        "COM HRESULT 0x80004005"
+        com_hresult_detail(0x8007_0002_u32 as i32),
+        "COM HRESULT 0x80070002"
+    );
+    assert!(com_hresult_symbol(0x8007_0002_u32 as i32).is_none());
+}
+
+#[test]
+fn the_ui_automation_hresults_the_tree_path_raises_are_named() {
+    assert_eq!(
+        com_hresult_detail(0x8004_0201_u32 as i32),
+        "COM HRESULT 0x80040201 (UIA_E_ELEMENTNOTAVAILABLE: The element is not available)"
+    );
+    assert_eq!(
+        com_hresult_detail(0x8004_01F0_u32 as i32),
+        "COM HRESULT 0x800401F0 (CO_E_NOTINITIALIZED: COM has not been initialized)"
     );
 }
 
