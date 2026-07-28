@@ -30,6 +30,26 @@ const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
 const COM_UNINITIALIZED_SUGGESTION: &str =
     "Join the calling thread to the COM multithreaded apartment before observing the desktop";
 
+/// Longest this crate will wait to learn whether a window thread is pumping.
+///
+/// Bounded independently of the operation deadline: the probe exists to avoid
+/// an unbounded block, so spending the whole remaining budget on it would
+/// defeat its purpose.
+const PUMP_PROBE_CAP_MS: u64 = 2_000;
+
+/// Reports a window whose thread is not dispatching messages.
+///
+/// Distinct from a window that does not exist: the handle is valid, the
+/// provider is simply unreachable, and retrying later can succeed.
+pub fn unresponsive_window_error() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "The window's thread is not dispatching messages",
+    )
+    .with_suggestion("Wait for the application to become responsive, then retry")
+    .with_platform_detail("WM_GETOBJECT would block: the window thread did not answer WM_NULL")
+}
+
 /// One UI Automation failure, already split on the discriminator the crate's
 /// `Error` type mixes into a single `i32`.
 ///
@@ -174,17 +194,74 @@ mod imp {
     /// Resolves a top-level window handle to its UI Automation root element.
     ///
     /// `ElementFromHandle` sends `WM_GETOBJECT` to the target's window thread,
-    /// so a target that has stopped pumping blocks here; the deadline is
-    /// checked on entry and again on exit so an expired budget surfaces as a
-    /// timeout rather than as the underlying COM failure.
+    /// and a cross-thread `SendMessage` has no timeout of its own. A `Deadline`
+    /// checked around the call therefore **cannot** interrupt it: against a
+    /// target that has stopped pumping, the call blocks and the deadline is
+    /// only observed once it returns.
+    ///
+    /// So the target is asked first whether it is pumping at all, with
+    /// `SendMessageTimeoutW(WM_NULL, SMTO_ABORTIFHUNG)` - the documented way to
+    /// put a bound on exactly this question. A target that is already hung
+    /// becomes a structured `APP_UNRESPONSIVE` instead of an indefinite block.
+    ///
+    /// This is a mitigation, not a guarantee: a target that stops pumping in
+    /// the window between the probe and the call still blocks. Bounding that
+    /// needs the call issued on a thread this sub-phase can abandon, which is
+    /// a hang guard 2.2 does not own.
     pub fn root_from_hwnd(hwnd: isize, deadline: Deadline) -> Result<UIAElement, AdapterError> {
         crate::system::permissions::ensure_budget(deadline)?;
         let client = automation_client()?;
+        if !window_exists(hwnd) {
+            return Err(root_resolution_error(UiaFailure::Sentinel(
+                super::ERR_NOTFOUND,
+            )));
+        }
+        let probe_ms = deadline.remaining_ms().min(super::PUMP_PROBE_CAP_MS);
+        if !window_is_pumping(hwnd, probe_ms) {
+            return Err(super::unresponsive_window_error());
+        }
         let element = client
             .element_from_handle(Handle::from(hwnd))
             .map_err(|error| root_resolution_error(failure_of(&error)))?;
         crate::system::permissions::ensure_budget(deadline)?;
         Ok(UIAElement::from(element))
+    }
+
+    /// Reports whether a handle still addresses a live window.
+    ///
+    /// Asked before the pump probe so the two failures stay distinct: a handle
+    /// that addresses nothing is a missing window, which is the mapping A14-5
+    /// measured, while a live window that will not answer is an unresponsive
+    /// application. Collapsing them would make a destroyed window look like a
+    /// hung one and send a caller into a pointless retry.
+    pub fn window_exists(hwnd: isize) -> bool {
+        use windows_sys::Win32::UI::WindowsAndMessaging::IsWindow;
+        hwnd != 0 && unsafe { IsWindow(hwnd as *mut std::ffi::c_void) } != 0
+    }
+
+    /// Asks whether a window's thread is dispatching messages, without
+    /// blocking on it.
+    ///
+    /// `WM_NULL` is the no-op message every window proc handles, and
+    /// `SMTO_ABORTIFHUNG` makes the call return immediately when the target is
+    /// already known to be hung rather than waiting out the timeout.
+    pub fn window_is_pumping(hwnd: isize, timeout_ms: u64) -> bool {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_NULL,
+        };
+        let mut answer: usize = 0;
+        let sent = unsafe {
+            SendMessageTimeoutW(
+                hwnd as *mut std::ffi::c_void,
+                WM_NULL,
+                0,
+                0,
+                SMTO_ABORTIFHUNG,
+                u32::try_from(timeout_ms.max(1)).unwrap_or(u32::MAX),
+                &mut answer,
+            )
+        };
+        sent != 0
     }
 }
 
@@ -210,7 +287,7 @@ mod imp {
 pub use imp::root_from_hwnd;
 
 #[cfg(target_os = "windows")]
-pub use imp::{automation_client, failure_of, uia_error};
+pub use imp::{automation_client, failure_of, uia_error, window_exists, window_is_pumping};
 
 /// Rejects a window handle that cannot address a window before it reaches the
 /// COM layer, so a null handle is an argument error rather than a COM failure.

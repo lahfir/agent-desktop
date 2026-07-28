@@ -201,6 +201,42 @@ impl Drop for LocalFixture {
     }
 }
 
+/// A window whose thread owns it but never dispatches its messages.
+///
+/// Deliberately leaks its thread: the thread is sleeping and cannot be joined
+/// without waiting it out, which is the whole point of the fixture. It is
+/// bounded by the sleep, so a test run cannot retain it indefinitely.
+pub(crate) struct StalledFixture {
+    handle: isize,
+    class_name: String,
+}
+
+impl StalledFixture {
+    pub(crate) fn create() -> Result<Self, String> {
+        let class_name = fixture_window::unique_class_name();
+        let (sender, receiver) = channel();
+        spawn({
+            let class_name = class_name.clone();
+            move || fixture_window::stalled_window(&class_name, sender)
+        });
+        match receiver.recv_timeout(READY_TIMEOUT) {
+            Ok(Ok(handle)) => Ok(Self { handle, class_name }),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(String::from("the stalled window never became ready")),
+        }
+    }
+
+    pub(crate) fn handle(&self) -> isize {
+        self.handle
+    }
+}
+
+impl Drop for StalledFixture {
+    fn drop(&mut self) {
+        fixture_window::unregister_class(&self.class_name);
+    }
+}
+
 fn host_on_this_thread(
     class_name: &str,
     ready: Sender<Result<fixture_window::PumpHandle, String>>,

@@ -271,6 +271,45 @@ pub(crate) fn destroy_window(handle: isize) {
     unsafe { DestroyWindow(handle as *mut c_void) };
 }
 
+/// Creates a window and then deliberately never pumps its queue.
+///
+/// The 2.2 plan records "whether a non-pumping target produces a clean timeout
+/// or a hang is unverified, and the fixture cannot produce the condition". It
+/// can: `CreateWindowExW` dispatches `WM_CREATE` inline, so a thread can own a
+/// live window and then stop dispatching. That makes the resolver's pump probe
+/// testable instead of assumed.
+pub(crate) fn stalled_window(class_name: &str, ready: Sender<Result<isize, String>>) {
+    if let Err(error) = register_class(class_name) {
+        let _ = ready.send(Err(error));
+        return;
+    }
+    let name = wide(class_name);
+    let title = wide("agent-desktop stalled fixture");
+    let window = unsafe {
+        CreateWindowExW(
+            0,
+            name.as_ptr(),
+            title.as_ptr(),
+            WS_OVERLAPPEDWINDOW,
+            OFFSCREEN_LEFT,
+            OFFSCREEN_TOP,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            GetModuleHandleW(std::ptr::null()),
+            std::ptr::null(),
+        )
+    };
+    if window.is_null() {
+        let _ = ready.send(Err("CreateWindowExW produced no window".into()));
+        return;
+    }
+    unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
+    let _ = ready.send(Ok(window as isize));
+    std::thread::sleep(std::time::Duration::from_secs(120));
+}
+
 pub(crate) fn geometry(handle: isize) -> WindowGeometry {
     let window = handle as *mut c_void;
     let mut rect = RECT {

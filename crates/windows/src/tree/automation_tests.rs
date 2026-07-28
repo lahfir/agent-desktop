@@ -210,6 +210,62 @@ mod windows_only {
         ));
     }
 
+    /// Greptile raised this as a P1 and it was right: two deadline checks
+    /// cannot interrupt the blocking `SendMessage` between them, so a target
+    /// that has stopped pumping would block the caller indefinitely.
+    ///
+    /// The 2.2 plan records the condition as unverified because "the fixture
+    /// cannot produce it". It can - `CreateWindowExW` dispatches `WM_CREATE`
+    /// inline, so a thread can own a live, visible window and then never
+    /// dispatch again. Against that window the resolver must return a
+    /// structured `APP_UNRESPONSIVE` promptly, not hang; the watchdog makes a
+    /// regression fail loudly rather than stall the lane.
+    #[test]
+    fn a_window_that_stopped_pumping_is_reported_rather_than_blocked_on() {
+        bootstrap();
+        let stalled = crate::tree::fixture::StalledFixture::create()
+            .expect("a non-pumping window is created");
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watchdog = done.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            assert!(
+                watchdog.load(std::sync::atomic::Ordering::SeqCst),
+                "root resolution blocked on a window that stopped pumping"
+            );
+        });
+
+        let started = std::time::Instant::now();
+        let outcome = root_from_hwnd(
+            stalled.handle(),
+            Deadline::after(5_000).expect("a bounded deadline"),
+        );
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let Err(error) = outcome else {
+            panic!("a window that is not dispatching must not resolve");
+        };
+        assert_eq!(error.code, ErrorCode::AppUnresponsive);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "the probe must bound the wait, took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_pumping_window_passes_the_probe() {
+        bootstrap();
+        let fixture =
+            crate::tree::fixture::LocalFixture::create().expect("a pumping window is created");
+
+        assert!(crate::tree::automation::window_is_pumping(
+            fixture.handle(),
+            2_000
+        ));
+        assert!(!crate::tree::automation::window_is_pumping(0, 50));
+    }
+
     #[test]
     fn a_live_uia_error_never_carries_the_crate_message_verbatim() {
         let error = uia_error(&UiaError::new(ERR_TIMEOUT, LEAK_MARKER), "read a property");
