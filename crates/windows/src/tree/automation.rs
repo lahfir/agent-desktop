@@ -37,6 +37,17 @@ const COM_UNINITIALIZED_SUGGESTION: &str =
 /// defeat its purpose.
 const PUMP_PROBE_CAP_MS: u64 = 2_000;
 
+/// How long a UI Automation call may wait to reach a target's provider.
+///
+/// Measured, not assumed: against a window whose thread owns it but never
+/// dispatches, `ElementFromHandle` returns `UIA_E_TIMEOUT` at this bound
+/// instead of blocking. Without it the same call did not return inside a 30 s
+/// watchdog.
+pub const CONNECTION_TIMEOUT_MS: u32 = 2_000;
+
+/// How long one UI Automation transaction may take end to end.
+pub const TRANSACTION_TIMEOUT_MS: u32 = 20_000;
+
 /// Reports a window whose thread is not dispatching messages.
 ///
 /// Distinct from a window that does not exist: the handle is valid, the
@@ -154,6 +165,8 @@ mod imp {
     use agent_desktop_core::{AdapterError, Deadline};
     use std::cell::OnceCell;
     use uiautomation::{Error as UiaError, UIAutomation, types::Handle};
+    use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
+    use windows::Win32::UI::Accessibility::{CUIAutomation8, IUIAutomation, IUIAutomation2};
 
     thread_local! {
         static CLIENT: OnceCell<UIAutomation> = const { OnceCell::new() };
@@ -184,11 +197,47 @@ mod imp {
             if let Some(client) = cell.get() {
                 return Ok(client.clone());
             }
-            let client = UIAutomation::new_direct()
-                .map_err(|error| uia_error(&error, "create a UI Automation client"))?;
+            let client = create_bounded_client()?;
             let _ = cell.set(client.clone());
             Ok(client)
         })
+    }
+
+    /// Builds a client whose calls are bounded, falling back to the crate's
+    /// own constructor when they cannot be.
+    ///
+    /// `UIAutomation::new_direct()` is `CoCreateInstance(&CUIAutomation, ...)`,
+    /// and on build 17763 that object does not support `IUIAutomation2`, so its
+    /// calls have no timeout at all: measured against a window that stopped
+    /// dispatching, `ElementFromHandle` did not return inside a 30 s watchdog.
+    /// `CUIAutomation8` exposes `SetConnectionTimeout`, and the same call then
+    /// returns `UIA_E_TIMEOUT` in 1.02 s.
+    ///
+    /// This keeps every property `new_direct()` was chosen for - it is the same
+    /// direct `CoCreateInstance`, it never calls `CoInitializeEx`, so it works
+    /// inside an STA host and leaks no initialization count in a long-lived
+    /// process. Only the CLSID differs, and the fallback preserves the original
+    /// path wherever `CUIAutomation8` is unavailable.
+    fn create_bounded_client() -> Result<UIAutomation, AdapterError> {
+        match bounded_automation() {
+            Some(automation) => Ok(UIAutomation::from(automation)),
+            None => UIAutomation::new_direct()
+                .map_err(|error| uia_error(&error, "create a UI Automation client")),
+        }
+    }
+
+    fn bounded_automation() -> Option<IUIAutomation> {
+        let client: IUIAutomation2 =
+            unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_ALL) }.ok()?;
+        unsafe {
+            client
+                .SetConnectionTimeout(super::CONNECTION_TIMEOUT_MS)
+                .ok()?;
+            client
+                .SetTransactionTimeout(super::TRANSACTION_TIMEOUT_MS)
+                .ok()?;
+        }
+        Some(client.into())
     }
 
     /// Resolves a top-level window handle to its UI Automation root element.

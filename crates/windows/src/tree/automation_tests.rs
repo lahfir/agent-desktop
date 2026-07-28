@@ -253,23 +253,74 @@ mod windows_only {
         );
     }
 
-    /// The UIA-level bound is unreachable from this client, measured rather
-    /// than assumed: `uiautomation` creates `CUIAutomation`, and on this build
-    /// that object does not support `IUIAutomation2`, so
-    /// `SetConnectionTimeout` and `SetTransactionTimeout` cannot be reached
-    /// without abandoning `new_direct()` for a `CUIAutomation8` client of our
-    /// own. Recorded as A14-12; the pump probe is the bound that is available.
+    /// Why the client is built from `CUIAutomation8` rather than the CLSID
+    /// `UIAutomation::new_direct()` uses: the crate's object does not support
+    /// `IUIAutomation2` on this build, so its calls carry no timeout at all.
+    ///
+    /// If this ever starts succeeding, the fallback path in
+    /// `create_bounded_client` becomes bounded too and this test says so.
     #[test]
-    fn the_uia_connection_timeout_is_not_reachable_from_this_client() {
+    fn the_crates_own_client_carries_no_timeout_which_is_why_it_is_not_used() {
+        use windows::Win32::UI::Accessibility::{IUIAutomation, IUIAutomation2};
+        use windows::core::Interface;
+        bootstrap();
+        let crate_client = uiautomation::UIAutomation::new_direct().expect("the crate's client");
+        let raw: IUIAutomation = crate_client.as_ref().clone();
+
+        assert!(raw.cast::<IUIAutomation2>().is_err());
+    }
+
+    /// The client this crate hands out is the bounded one.
+    #[test]
+    fn the_shipped_client_exposes_the_timeouts_it_sets() {
         use windows::Win32::UI::Accessibility::{IUIAutomation, IUIAutomation2};
         use windows::core::Interface;
         bootstrap();
         let client = automation_client().expect("a client");
         let raw: IUIAutomation = client.as_ref().clone();
 
+        let bounded: IUIAutomation2 = raw
+            .cast()
+            .expect("the shipped client must expose IUIAutomation2");
+        assert_eq!(
+            unsafe { bounded.ConnectionTimeout() }.expect("a connection timeout is set"),
+            crate::tree::automation::CONNECTION_TIMEOUT_MS
+        );
+    }
+
+    /// The race Greptile named: a target that answers the pump probe and then
+    /// stops dispatching. The probe cannot help there, so the bound has to be
+    /// on the call itself.
+    ///
+    /// Asserted by skipping the probe entirely and calling the client
+    /// directly, which is the worst case the resolver can face. The client's
+    /// connection timeout returns `UIA_E_TIMEOUT` instead of blocking.
+    #[test]
+    fn the_client_bounds_a_call_the_pump_probe_cannot_catch() {
+        bootstrap();
+        let stalled = crate::tree::fixture::StalledFixture::create()
+            .expect("a non-pumping window is created");
+        let client = automation_client().expect("a client");
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watchdog = done.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            assert!(
+                watchdog.load(std::sync::atomic::Ordering::SeqCst),
+                "the client did not bound a call against a non-pumping target"
+            );
+        });
+
+        let started = std::time::Instant::now();
+        let outcome =
+            client.element_from_handle(uiautomation::types::Handle::from(stalled.handle()));
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        assert!(outcome.is_err(), "a stalled target must not resolve");
         assert!(
-            raw.cast::<IUIAutomation2>().is_err(),
-            "IUIAutomation2 became reachable - the pump probe can be replaced by the UIA timeouts"
+            started.elapsed() < std::time::Duration::from_secs(15),
+            "the call must be bounded, took {:?}",
+            started.elapsed()
         );
     }
 
