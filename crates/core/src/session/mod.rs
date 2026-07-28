@@ -236,7 +236,7 @@ fn create_session_tree(dir: &Path) -> Result<(), AppError> {
     }
     #[cfg(not(unix))]
     {
-        std::fs::create_dir_all(dir.join("trace"))?;
+        crate::private_file_parent::ensure_private(&dir.join("trace"))?;
     }
     Ok(())
 }

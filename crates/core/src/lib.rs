@@ -68,6 +68,7 @@ pub mod permission_report;
 pub mod permission_state;
 mod point;
 mod private_file;
+mod private_file_ops;
 mod private_file_parent;
 mod process_id;
 mod process_identity;
@@ -133,6 +134,7 @@ mod surface_signal;
 pub(crate) mod trace;
 mod trace_artifact_budget;
 pub(crate) mod trace_artifacts;
+mod trace_file;
 pub mod trace_read;
 pub mod trace_sanitize;
 mod trace_state;
@@ -224,6 +226,9 @@ pub use output::{ErrorPayload, Response};
 pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use point::Point;
+pub use private_file_ops::{
+    PrivateFileOps, bounded_read, install_private_file_ops, temporary_file_name,
+};
 pub use process_id::ProcessId;
 pub use process_identity::ProcessIdentity;
 pub use recovery_hint::RecoveryHint;

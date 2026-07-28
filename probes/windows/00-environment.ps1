@@ -320,8 +320,8 @@ try {
             UserInteractive = [Environment]::UserInteractive
         }
         Reason        = 'This VM runs on the physical console: SESSIONNAME=Console, UserInteractive=True, one interactive session. An RDP session transition cannot be produced here without disconnecting the very session the probe corpus runs in, so no honest observation of remote-session behavior is available from this environment (KTD3).'
-        ClosurePoint  = 'Sub-phase 2.1 runner registration. Registering the Windows CI runner in 2.1 creates the second, non-console session environment; the RDP session-transition facet is measured there and this row closes against that runner. Until then no Windows adapter behavior may assume console-session semantics.'
-        PhasesAction  = 'phases.md must not claim RDP/remote-session support for the Windows adapter until 2.1 runner evidence exists.'
+        ClosurePoint  = 'Sub-phase 2.12 runner registration. Registering the Windows CI runner in 2.12 creates the second, non-console session environment; the RDP session-transition facet is measured there and this row closes against that runner. Until then no Windows adapter behavior may assume console-session semantics.'
+        PhasesAction  = 'phases.md must not claim RDP/remote-session support for the Windows adapter until 2.12 runner evidence exists.'
     }
     $deferredPath = Write-ProbeJson -Probe $Probe -Name 'deferred-rdp.json' -InputObject $deferred
 

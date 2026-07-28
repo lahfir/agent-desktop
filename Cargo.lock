@@ -89,6 +89,7 @@ version = "0.6.0"
 dependencies = [
  "agent-desktop-core",
  "thiserror",
+ "windows-sys",
 ]
 
 [[package]]
