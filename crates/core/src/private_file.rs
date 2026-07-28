@@ -74,6 +74,20 @@ pub(crate) fn write_atomic_portable(path: &Path, bytes: &[u8]) -> std::io::Resul
     )
 }
 
+/// Writes user-requested output, deliberately bypassing the `PrivateFileOps`
+/// seam that `write_atomic` routes through.
+///
+/// Its two callers — `commands::screenshot` and `commands::clipboard_get`, via
+/// `crate::refs::write_user_file` — write to a destination the user named, so
+/// it must tolerate network shares, reparse-traversing paths such as OneDrive
+/// or mapped folders, and directories owned by another principal. A platform
+/// implementation of the seam refuses all three, which is right for private
+/// artifacts and a regression here; the unix baseline already encodes the same
+/// asymmetry, accepting the group-readable destination and the system
+/// temporary directory that the private path rejects. The cost is that user
+/// output keeps the portable rename-based replace on Windows, which unlike
+/// `ReplaceFileW` fails over a destination another process holds open — a
+/// limitation of user output, not of private artifacts.
 pub(crate) fn write_user_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     write_atomic_with(
         path,

@@ -97,6 +97,35 @@ fn every_primitive_routes_through_the_overriding_ops() {
 }
 
 #[test]
+fn user_output_writes_deliberately_bypass_the_platform_seam() {
+    let directory = scratch_directory("user-output-bypass");
+    let private_path = directory.join("refmap.json");
+    let user_path = directory.join("out.png");
+    let recorder = RecordingOps::new();
+
+    with_test_ops_override(recorder.clone(), || {
+        crate::private_file::write_atomic(&private_path, b"private artifact").unwrap();
+        crate::private_file::write_user_atomic(&user_path, b"user output").unwrap();
+    });
+
+    assert_eq!(
+        recorder.calls(),
+        vec!["write_atomic"],
+        "the seam must observe the private-artifact write and only that write"
+    );
+    assert!(
+        !private_path.exists(),
+        "the fake swallowed the private write, proving the seam intercepted it"
+    );
+    assert_eq!(
+        std::fs::read(&user_path).unwrap(),
+        b"user output",
+        "the user write must land its bytes through the portable path"
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn the_override_is_scoped_to_its_thread() {
     let recorder = RecordingOps::new();
 
