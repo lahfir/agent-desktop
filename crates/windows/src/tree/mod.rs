@@ -3,6 +3,12 @@ pub mod cache;
 pub mod element;
 pub mod properties;
 pub mod property_ids;
+pub mod walker;
+pub mod walker_enumerate;
+pub mod walker_source;
+
+#[cfg(test)]
+mod walker_fake;
 
 #[cfg(all(test, target_os = "windows"))]
 mod fixture;
