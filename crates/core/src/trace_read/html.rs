@@ -5,6 +5,7 @@ use base64::Engine;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const VIEWER_HTML: &str = include_str!("viewer.html");
@@ -14,8 +15,6 @@ const VIEWER_JS: &str = include_str!("viewer.js");
 pub const TRACE_EXPORT_DEFAULT_LIMIT: usize = 5000;
 const MAX_EMBED_SCREENSHOT_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_JSON_BYTES: u64 = 200 * 1024 * 1024;
-
-static EXPORT_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
 static TEST_MAX_JSON_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -118,7 +117,7 @@ pub fn export_html(
             .join(format!("trace-{session_id}.html"))
     });
 
-    write_export_file(&path, html.as_bytes())?;
+    crate::refs::write_user_file(&path, html.as_bytes())?;
     let bytes = html.len();
 
     let warnings: Vec<Value> = merged
@@ -211,49 +210,6 @@ fn escape_for_json_island(json: &str) -> String {
     out
 }
 
-fn write_export_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
-    if path.is_symlink() {
-        return Err(AppError::invalid_input_with_suggestion(
-            "Refusing to write trace export through a symlink",
-            "Choose a different --out path.",
-        ));
-    }
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
-    }
-    let unique = EXPORT_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = path.with_extension(format!("{}.{unique}.tmp", std::process::id()));
-    let result = write_export_tmp_then_rename(&tmp, path, bytes);
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
-}
-
-fn write_export_tmp_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> Result<(), AppError> {
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(tmp)?;
-        file.write_all(bytes)?;
-        file.flush()?;
-    }
-    #[cfg(not(unix))]
-    std::fs::write(tmp, bytes)?;
-
-    std::fs::rename(tmp, path)?;
-    Ok(())
-}
-
 #[cfg(test)]
 #[path = "html_tests.rs"]
 mod tests;
@@ -265,3 +221,7 @@ mod screenshot_tests;
 #[cfg(test)]
 #[path = "html_export_stats_tests.rs"]
 mod export_stats_tests;
+
+#[cfg(test)]
+#[path = "html_write_tests.rs"]
+mod write_tests;
