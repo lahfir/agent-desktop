@@ -147,6 +147,7 @@ windows-sys = { version = "0.61", features = [
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
         [IO.File]::WriteAllText((Join-Path $work 'Cargo.toml'), $manifest, $utf8NoBom)
         Copy-Item -LiteralPath (Join-Path $script:ProbeDir 'probe.rs') -Destination (Join-Path $work 'src\main.rs') -Force
+        Copy-Item -LiteralPath (Join-Path $script:ProbeDir 'probe_window.rs') -Destination (Join-Path $work 'src\probe_window.rs') -Force
         $env:PROBE_UIAUTOMATION_VERSION = $UiAutomationVersion
         Push-Location $work
         try {

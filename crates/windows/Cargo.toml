@@ -23,7 +23,10 @@ windows-sys = { version = "0.61", features = [
   "Win32_Storage_FileSystem",
   "Win32_Security",
   "Win32_Security_Authorization",
+  "Win32_System_ApplicationInstallationAndServicing",
+  "Win32_System_LibraryLoader",
   "Win32_System_Threading",
+  "Win32_Graphics_Gdi",
   "Win32_UI_WindowsAndMessaging",
 ] }
 
