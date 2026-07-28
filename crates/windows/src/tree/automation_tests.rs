@@ -253,6 +253,26 @@ mod windows_only {
         );
     }
 
+    /// The UIA-level bound is unreachable from this client, measured rather
+    /// than assumed: `uiautomation` creates `CUIAutomation`, and on this build
+    /// that object does not support `IUIAutomation2`, so
+    /// `SetConnectionTimeout` and `SetTransactionTimeout` cannot be reached
+    /// without abandoning `new_direct()` for a `CUIAutomation8` client of our
+    /// own. Recorded as A14-12; the pump probe is the bound that is available.
+    #[test]
+    fn the_uia_connection_timeout_is_not_reachable_from_this_client() {
+        use windows::Win32::UI::Accessibility::{IUIAutomation, IUIAutomation2};
+        use windows::core::Interface;
+        bootstrap();
+        let client = automation_client().expect("a client");
+        let raw: IUIAutomation = client.as_ref().clone();
+
+        assert!(
+            raw.cast::<IUIAutomation2>().is_err(),
+            "IUIAutomation2 became reachable - the pump probe can be replaced by the UIA timeouts"
+        );
+    }
+
     #[test]
     fn a_pumping_window_passes_the_probe() {
         bootstrap();
