@@ -7,11 +7,13 @@ use windows_sys::Win32::System::ApplicationInstallationAndServicing::{
     ACTCTXW, ActivateActCtx, CreateActCtxW,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, GetWindowRect,
-    IDC_ARROW, IsWindowVisible, LoadCursorW, MSG, PostMessageW, PostQuitMessage, RegisterClassExW,
-    SW_MINIMIZE, SW_SHOWNOACTIVATE, SetWindowTextW, ShowWindow, TranslateMessage, UnregisterClassW,
-    WM_CLOSE, WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    IDC_ARROW, IsWindowVisible, LoadCursorW, MSG, PostMessageW, PostQuitMessage,
+    PostThreadMessageW, RegisterClassExW, SW_MINIMIZE, SW_SHOWNOACTIVATE, SetWindowTextW,
+    ShowWindow, TranslateMessage, UnregisterClassW, WM_CLOSE, WM_DESTROY, WM_QUIT, WNDCLASSEXW,
+    WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 const ES_PASSWORD: u32 = 0x0020;
@@ -60,6 +62,13 @@ pub(crate) struct FixtureControls {
     pub(crate) button: HWND,
     pub(crate) edit: HWND,
     pub(crate) password: HWND,
+}
+
+/// A running fixture pump: the window it owns and the thread that pumps it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PumpHandle {
+    pub(crate) window: isize,
+    pub(crate) thread_id: u32,
 }
 
 pub(crate) struct WindowGeometry {
@@ -171,7 +180,7 @@ fn control(parent: HWND, class: &str, text: &str, style: u32, top: i32) -> HWND 
 /// non-zero size: `HwndProxyElementProvider` excludes windows that fail
 /// `IsWindowVisible` or report a zero-area rect, so `SW_HIDE` and a
 /// message-only window are both unusable here.
-pub(crate) fn host_window(class_name: &str, ready: Sender<Result<isize, String>>) {
+pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, String>>) {
     activate_common_controls_v6();
     if let Err(error) = register_class(class_name) {
         let _ = ready.send(Err(error));
@@ -222,7 +231,8 @@ fn create_controls(window: HWND) -> FixtureControls {
     }
 }
 
-fn pump_until_destroyed(handle: isize, ready: Sender<Result<isize, String>>) {
+fn pump_until_destroyed(handle: isize, ready: Sender<Result<PumpHandle, String>>) {
+    let thread_id = unsafe { GetCurrentThreadId() };
     let mut message = MSG::default();
     let mut announced = false;
     while unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) } > 0 {
@@ -230,13 +240,27 @@ fn pump_until_destroyed(handle: isize, ready: Sender<Result<isize, String>>) {
         unsafe { DispatchMessageW(&message) };
         if !announced && message.message == WM_FIXTURE_READY {
             announced = true;
-            let _ = ready.send(Ok(handle));
+            let _ = ready.send(Ok(PumpHandle {
+                window: handle,
+                thread_id,
+            }));
         }
     }
 }
 
 pub(crate) fn close_window(handle: isize) {
     unsafe { PostMessageW(handle as *mut c_void, WM_CLOSE, 0, 0) };
+}
+
+/// Ends a pump whose window may already be gone.
+///
+/// `WM_CLOSE` reaches the pump only through the window, so a window destroyed
+/// out from under the fixture leaves `GetMessageW` blocked forever and turns a
+/// joining teardown into a hang of the whole test binary rather than a
+/// failure. `WM_QUIT` is posted to the *thread* queue, which `GetMessageW`
+/// answers with 0 whatever the window's state.
+pub(crate) fn quit_pump(thread_id: u32) {
+    unsafe { PostThreadMessageW(thread_id, WM_QUIT, 0, 0) };
 }
 
 pub(crate) fn minimize_window(handle: isize) {

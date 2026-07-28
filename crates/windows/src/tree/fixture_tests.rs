@@ -238,3 +238,30 @@ fn the_fixture_exposes_plain_content_and_withholds_secure_content() {
         );
     }
 }
+
+/// Teardown must not depend on the window still existing.
+///
+/// `WM_CLOSE` reaches the pump only through the window, so a window destroyed
+/// out from under the fixture would leave `GetMessageW` blocked and turn the
+/// joining `Drop` into a hang of the whole test binary - which on CI burns the
+/// lane's timeout and produces no diagnostic at all. The watchdog makes a
+/// regression fail loudly instead of hanging.
+#[test]
+fn a_fixture_whose_window_is_already_destroyed_still_tears_down() {
+    let fixture = LocalFixture::create().expect("the fixture window is created");
+    let handle = fixture.handle();
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watchdog = done.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(20));
+        assert!(
+            watchdog.load(std::sync::atomic::Ordering::SeqCst),
+            "fixture teardown hung after its window was destroyed"
+        );
+    });
+
+    crate::tree::fixture_window::destroy_window(handle);
+    drop(fixture);
+
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+}

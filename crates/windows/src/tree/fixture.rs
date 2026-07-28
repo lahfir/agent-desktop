@@ -42,10 +42,10 @@ pub(crate) fn is_host_process() -> bool {
 /// if the parent is killed without running `HostedFixture`'s `Drop`, so a
 /// crashed test run cannot leave a window host behind on a shared runner.
 pub(crate) fn run_as_host() {
-    let (sender, receiver) = channel();
+    let (sender, receiver) = channel::<Result<fixture_window::PumpHandle, String>>();
     spawn(move || {
-        if let Ok(Ok(handle)) = receiver.recv_timeout(READY_TIMEOUT) {
-            println!("{HANDLE_PREFIX}{handle}");
+        if let Ok(Ok(running)) = receiver.recv_timeout(READY_TIMEOUT) {
+            println!("{HANDLE_PREFIX}{}", running.window);
         }
     });
     spawn(|| {
@@ -143,6 +143,7 @@ impl Drop for HostedFixture {
 /// the walk's failure classification or the cache policy.
 pub(crate) struct LocalFixture {
     handle: isize,
+    pump_thread_id: u32,
     class_name: String,
     pump: Option<JoinHandle<()>>,
 }
@@ -155,14 +156,15 @@ impl LocalFixture {
             let class_name = class_name.clone();
             move || host_on_this_thread(&class_name, sender)
         });
-        let handle = match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(Ok(handle)) => handle,
+        let running = match receiver.recv_timeout(READY_TIMEOUT) {
+            Ok(Ok(running)) => running,
             Ok(Err(error)) => return Err(error),
             Err(_) => return Err(String::from("the fixture window never became ready")),
         };
-        await_walkable(handle)?;
+        await_walkable(running.window)?;
         Ok(Self {
-            handle,
+            handle: running.window,
+            pump_thread_id: running.thread_id,
             class_name,
             pump: Some(pump),
         })
@@ -190,6 +192,7 @@ impl LocalFixture {
 impl Drop for LocalFixture {
     fn drop(&mut self) {
         fixture_window::close_window(self.handle);
+        fixture_window::quit_pump(self.pump_thread_id);
         if let Some(pump) = self.pump.take() {
             let _ = pump.join();
         }
@@ -198,7 +201,10 @@ impl Drop for LocalFixture {
     }
 }
 
-fn host_on_this_thread(class_name: &str, ready: Sender<Result<isize, String>>) {
+fn host_on_this_thread(
+    class_name: &str,
+    ready: Sender<Result<fixture_window::PumpHandle, String>>,
+) {
     fixture_window::host_window(class_name, ready);
 }
 
