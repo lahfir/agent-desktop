@@ -48,8 +48,7 @@ mod windows_only {
     use crate::tree::automation::{automation_client, uia_error};
 
     fn root_element() -> UIAElement {
-        crate::system::com_runtime::ensure_owned_process_mta_and_dpi()
-            .expect("2.1 bootstrap establishes the apartment");
+        crate::tree::fixture::ensure_test_apartment();
         let client = automation_client().expect("a UIA client is available");
         UIAElement::from(
             client

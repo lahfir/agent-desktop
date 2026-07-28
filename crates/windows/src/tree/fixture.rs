@@ -14,6 +14,21 @@ const HANDLE_PREFIX: &str = "AGENT_DESKTOP_FIXTURE_HWND=";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
 
+/// Joins this thread to the multithreaded apartment for a test.
+///
+/// `ensure_owned_process_mta_and_dpi` is wrong here and the reason is not
+/// cosmetic: `CoInitializeEx` is thread-local while that bootstrap's guard is
+/// process-wide, so in a multi-threaded test binary only the first thread to
+/// call it ever joins the apartment and every other thread sees
+/// `CO_E_NOTINITIALIZED` from `CoCreateInstance`. Its own contract says as
+/// much - it is sound for the CLI because the CLI calls it once from `main`
+/// before any COM work. Libtest's worker threads are threads this product
+/// does not own, which is exactly the case `CoIncrementMTAUsage` exists for.
+pub(crate) fn ensure_test_apartment() {
+    crate::system::com_runtime::ensure_hosted_library_mta_and_dpi()
+        .expect("the process-wide MTA registration succeeds");
+}
+
 /// Reports whether this process was re-executed to host a fixture window.
 pub(crate) fn is_host_process() -> bool {
     std::env::var(HOST_ENVIRONMENT_FLAG).is_ok()

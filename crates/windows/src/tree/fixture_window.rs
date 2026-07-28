@@ -9,12 +9,20 @@ use windows_sys::Win32::System::ApplicationInstallationAndServicing::{
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, GetWindowRect,
-    IDC_ARROW, IsWindowVisible, LoadCursorW, MSG, PostQuitMessage, RegisterClassExW, SW_MINIMIZE,
-    SW_SHOWNOACTIVATE, SetWindowTextW, ShowWindow, TranslateMessage, UnregisterClassW, WM_CLOSE,
-    WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    IDC_ARROW, IsWindowVisible, LoadCursorW, MSG, PostMessageW, PostQuitMessage, RegisterClassExW,
+    SW_MINIMIZE, SW_SHOWNOACTIVATE, SetWindowTextW, ShowWindow, TranslateMessage, UnregisterClassW,
+    WM_CLOSE, WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 const ES_PASSWORD: u32 = 0x0020;
+/// Private message the host posts to itself before entering its pump, so
+/// readiness is announced from inside the pump rather than before it.
+///
+/// `ElementFromHandle` sends `WM_GETOBJECT` and a cross-thread `SendMessage`
+/// blocks until the receiving thread dispatches, so a handle announced before
+/// the pump starts lets a loaded machine call in during the gap and observe
+/// `E_FAIL`.
+const WM_FIXTURE_READY: u32 = 0x0400 + 1;
 const CONTROL_BORDER: u32 = 0x0080_0000;
 const OFFSCREEN_LEFT: i32 = 2_000;
 const OFFSCREEN_TOP: i32 = 2_000;
@@ -196,8 +204,8 @@ pub(crate) fn host_window(class_name: &str, ready: Sender<Result<isize, String>>
     debug_assert!(!controls.edit.is_null());
     debug_assert!(!controls.password.is_null());
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
-    let _ = ready.send(Ok(window as isize));
-    pump_until_destroyed();
+    unsafe { PostMessageW(window, WM_FIXTURE_READY, 0, 0) };
+    pump_until_destroyed(window as isize, ready);
 }
 
 fn create_controls(window: HWND) -> FixtureControls {
@@ -214,23 +222,21 @@ fn create_controls(window: HWND) -> FixtureControls {
     }
 }
 
-fn pump_until_destroyed() {
+fn pump_until_destroyed(handle: isize, ready: Sender<Result<isize, String>>) {
     let mut message = MSG::default();
+    let mut announced = false;
     while unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) } > 0 {
         unsafe { TranslateMessage(&message) };
         unsafe { DispatchMessageW(&message) };
+        if !announced && message.message == WM_FIXTURE_READY {
+            announced = true;
+            let _ = ready.send(Ok(handle));
+        }
     }
 }
 
 pub(crate) fn close_window(handle: isize) {
-    unsafe {
-        windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
-            handle as *mut c_void,
-            WM_CLOSE,
-            0,
-            0,
-        )
-    };
+    unsafe { PostMessageW(handle as *mut c_void, WM_CLOSE, 0, 0) };
 }
 
 pub(crate) fn minimize_window(handle: isize) {

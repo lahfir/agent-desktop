@@ -158,8 +158,7 @@ mod windows_only {
     use uiautomation::Error as UiaError;
 
     fn bootstrap() {
-        crate::system::com_runtime::ensure_owned_process_mta_and_dpi()
-            .expect("2.1 bootstrap establishes the apartment");
+        crate::tree::fixture::ensure_test_apartment();
     }
 
     #[test]

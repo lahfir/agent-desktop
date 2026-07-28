@@ -1,5 +1,4 @@
 use super::*;
-use crate::system::com_runtime::ensure_owned_process_mta_and_dpi;
 use crate::tree::automation::{automation_client, uia_error};
 use agent_desktop_core::Deadline;
 use std::time::Duration;
@@ -21,7 +20,7 @@ fn fixture_host_process_entry() {
 }
 
 fn bootstrap() {
-    ensure_owned_process_mta_and_dpi().expect("2.1 bootstrap establishes the apartment");
+    ensure_test_apartment();
 }
 
 fn raw_view_walker() -> UITreeWalker {
