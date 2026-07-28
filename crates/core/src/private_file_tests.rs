@@ -7,6 +7,34 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::sync::{Mutex, MutexGuard};
+
+static CURRENT_DIRECTORY_LOCK: Mutex<()> = Mutex::new(());
+
+struct CurrentDirectoryGuard {
+    previous: PathBuf,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl CurrentDirectoryGuard {
+    fn enter(target: &Path) -> Self {
+        let lock = CURRENT_DIRECTORY_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(target).unwrap();
+        Self {
+            previous,
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for CurrentDirectoryGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.previous);
+    }
+}
 
 fn directory(label: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -238,6 +266,19 @@ fn private_lock_creates_and_reopens_the_lock_file() {
 
     assert!(path.is_file());
     drop(open_private_lock(&path, false).unwrap());
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn user_write_accepts_a_bare_relative_filename() {
+    let directory = directory("bare-relative");
+    let guard = CurrentDirectoryGuard::enter(&directory);
+
+    write_user_atomic(Path::new("bare-name.txt"), b"relative").unwrap();
+
+    assert_eq!(std::fs::read("bare-name.txt").unwrap(), b"relative");
+    assert!(directory.join("bare-name.txt").is_file());
+    drop(guard);
     std::fs::remove_dir_all(directory).unwrap();
 }
 

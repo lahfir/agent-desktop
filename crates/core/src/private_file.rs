@@ -98,6 +98,11 @@ pub(crate) fn write_user_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()
     )
 }
 
+/// `Path::parent` yields `Some("")` for a bare relative filename, and both
+/// `std::fs::metadata("")` and opening `""` fail with `NotFound`, so the empty
+/// parent is normalized to the current directory before `ensure_parent` and
+/// `sync_parent` see it; without that, a legitimate relative output path such
+/// as `--out report.html` is rejected.
 fn write_atomic_with(
     path: &Path,
     bytes: &[u8],
@@ -108,6 +113,11 @@ fn write_atomic_with(
     let parent = path
         .parent()
         .ok_or_else(|| invalid_input("private file path has no parent"))?;
+    let parent = if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    };
     ensure_parent(parent)?;
     validate_destination(path)?;
     let (temporary, mut file) = create_temporary(path)?;
