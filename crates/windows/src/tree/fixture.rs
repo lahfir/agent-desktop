@@ -13,6 +13,8 @@ const HOST_TEST_NAME: &str = "tree::fixture::tests::fixture_host_process_entry";
 const HANDLE_PREFIX: &str = "AGENT_DESKTOP_FIXTURE_HWND=";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
+const WALKABLE_TIMEOUT: Duration = Duration::from_secs(20);
+const WALKABLE_POLL: Duration = Duration::from_millis(100);
 
 /// Joins this thread to the multithreaded apartment for a test.
 ///
@@ -90,19 +92,25 @@ impl HostedFixture {
             }
             let _ = sender.send(0);
         });
-        match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(handle) if handle != 0 => Ok(Self {
-                child: Some(child),
-                handle,
-            }),
+        let handle = match receiver.recv_timeout(READY_TIMEOUT) {
+            Ok(handle) if handle != 0 => handle,
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                Err(String::from(
+                return Err(String::from(
                     "the fixture host never reported a window handle",
-                ))
+                ));
             }
+        };
+        if let Err(error) = await_walkable(handle) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
         }
+        Ok(Self {
+            child: Some(child),
+            handle,
+        })
     }
 
     pub(crate) fn handle(&self) -> isize {
@@ -147,15 +155,17 @@ impl LocalFixture {
             let class_name = class_name.clone();
             move || host_on_this_thread(&class_name, sender)
         });
-        match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(Ok(handle)) => Ok(Self {
-                handle,
-                class_name,
-                pump: Some(pump),
-            }),
-            Ok(Err(error)) => Err(error),
-            Err(_) => Err(String::from("the fixture window never became ready")),
-        }
+        let handle = match receiver.recv_timeout(READY_TIMEOUT) {
+            Ok(Ok(handle)) => handle,
+            Ok(Err(error)) => return Err(error),
+            Err(_) => return Err(String::from("the fixture window never became ready")),
+        };
+        await_walkable(handle)?;
+        Ok(Self {
+            handle,
+            class_name,
+            pump: Some(pump),
+        })
     }
 
     pub(crate) fn handle(&self) -> isize {
@@ -190,6 +200,31 @@ impl Drop for LocalFixture {
 
 fn host_on_this_thread(class_name: &str, ready: Sender<Result<isize, String>>) {
     fixture_window::host_window(class_name, ready);
+}
+
+/// Blocks until the window actually resolves to a UI Automation root.
+///
+/// A pumping window is necessary but not sufficient. `ElementFromHandle`
+/// sends `WM_GETOBJECT`, and that `SendMessage` carries its own timeout, so on
+/// a loaded runner starting several fixture hosts at once the first call can
+/// return `E_FAIL` against a window that is perfectly healthy a moment later.
+/// The fixture's contract is a walkable window, so it does not hand one out
+/// until it is one - which keeps the retry in the harness rather than
+/// smuggling it into the product's resolver.
+fn await_walkable(handle: isize) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + WALKABLE_TIMEOUT;
+    let mut last = String::from("the fixture window never resolved");
+    while std::time::Instant::now() < deadline {
+        match crate::tree::automation::root_from_hwnd(
+            handle,
+            agent_desktop_core::Deadline::standard().map_err(|error| error.message.clone())?,
+        ) {
+            Ok(_) => return Ok(()),
+            Err(error) => last = error.message.clone(),
+        }
+        std::thread::sleep(WALKABLE_POLL);
+    }
+    Err(last)
 }
 
 #[cfg(test)]
