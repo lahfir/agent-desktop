@@ -7,7 +7,7 @@
                     "activeConsoleSessionId":  1,
                     "isRemoteSession":  false,
                     "windowStation":  "Console",
-                    "note":  "RDP session-transition behavior is not measurable here (physical console session); it closes at sub-phase 2.1 runner registration"
+                    "note":  "RDP session-transition behavior is not measurable here (physical console session); it closes at sub-phase 2.12 runner registration"
                 },
     "displays":  [
                      {
@@ -42,7 +42,7 @@
                        "scaleActuallyApplied":  false,
                        "awareArm":  {
                                         "mode":  "aware",
-                                        "processId":  8764,
+                                        "processId":  6368,
                                         "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
                                         "setProcessDpiAwarenessContextPerMonitorV2":  "succeeded",
                                         "awarenessEffective":  "PROCESS_PER_MONITOR_DPI_AWARE",
@@ -74,7 +74,7 @@
                                     },
                        "unawareArm":  {
                                           "mode":  "unaware",
-                                          "processId":  304,
+                                          "processId":  8296,
                                           "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
                                           "setProcessDpiAwarenessContextPerMonitorV2":  "not attempted (unaware arm, forced with __COMPAT_LAYER=DPIUNAWARE)",
                                           "awarenessEffective":  "PROCESS_DPI_UNAWARE",
@@ -130,7 +130,7 @@
                        "scaleActuallyApplied":  false,
                        "awareArm":  {
                                         "mode":  "aware",
-                                        "processId":  8412,
+                                        "processId":  6664,
                                         "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
                                         "setProcessDpiAwarenessContextPerMonitorV2":  "succeeded",
                                         "awarenessEffective":  "PROCESS_PER_MONITOR_DPI_AWARE",
@@ -162,7 +162,7 @@
                                     },
                        "unawareArm":  {
                                           "mode":  "unaware",
-                                          "processId":  5060,
+                                          "processId":  5132,
                                           "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
                                           "setProcessDpiAwarenessContextPerMonitorV2":  "not attempted (unaware arm, forced with __COMPAT_LAYER=DPIUNAWARE)",
                                           "awarenessEffective":  "PROCESS_DPI_UNAWARE",

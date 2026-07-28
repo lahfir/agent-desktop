@@ -1,4 +1,4 @@
-use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
+use agent_desktop_core::{ActionOps, InputOps, ObservationOps};
 
 pub struct WindowsAdapter;
 
@@ -17,12 +17,11 @@ impl Default for WindowsAdapter {
 impl ObservationOps for WindowsAdapter {}
 impl ActionOps for WindowsAdapter {}
 impl InputOps for WindowsAdapter {}
-impl SystemOps for WindowsAdapter {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::{AppError, CommandContext, ErrorCode, SnapshotSurface};
+    use agent_desktop_core::{AppError, CommandContext, ErrorCode, SnapshotSurface, SystemOps};
 
     #[test]
     fn snapshot_surfaces_fail_closed_until_windows_implements_them() {

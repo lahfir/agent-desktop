@@ -137,7 +137,7 @@ Because there is exactly one environment (KTD2), the `scope` column is doing rea
 | id | script | stack | scope | phases.md expectation | observed | verdict | action |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A10-1 | `10-session-dpi.ps1` | managed | app/provider | Invariant 12, no cross-session driving, and R12, UIA requires an interactive session | `sessionId` 1 equals `activeConsoleSessionId` 1, `isRemoteSession` false, window station `Console`, `UserInteractive` true. The whole corpus therefore ran in a genuinely interactive console session, which is the precondition every input and hit-test row depends on | CONFIRMS | the corpus's interactivity precondition is measured, not assumed |
-| A10-2 | `00-environment.ps1` | n/a | app/provider | R12: an RDP disconnect can drop the console session to a non-interactive state, with `tscon` as the documented workaround | measured environmental fact: this VM runs on the physical console with one interactive session. An RDP session transition cannot be produced here without disconnecting the very session the corpus runs in, so no honest observation is available | DEFERRED | closure: 2.1 - registering the Windows CI runner creates the second, non-console session environment where this facet is measured. Until then no Windows adapter behavior may assume console-session semantics, and phases.md must not claim RDP or remote-session support |
+| A10-2 | `00-environment.ps1` | n/a | app/provider | R12: an RDP disconnect can drop the console session to a non-interactive state, with `tscon` as the documented workaround | measured environmental fact: this VM runs on the physical console with one interactive session. An RDP session transition cannot be produced here without disconnecting the very session the corpus runs in, so no honest observation is available | DEFERRED | closure: 2.12 - registering the Windows CI runner creates the second, non-console session environment where this facet is measured. Until then no Windows adapter behavior may assume console-session semantics, and phases.md must not claim RDP or remote-session support |
 | A10-3 | `10-session-dpi.ps1` | managed | app/provider | 2.4 owns `list_displays` and per-monitor `scale_factor`; 2.0 area 10 requires DPI and multi-monitor bounds behavior | this display reports no EDID, registry key prefix `NOEDID_15AD_0405`, and offers exactly one scale step: minimum, current and maximum relative scale are all 0, with zero steps above recommended. Requesting 125 pct makes `DisplayConfigSetDeviceInfo` **return success and persist the value to the registry** while the monitor's effective DPI stays 96 in both arms. The aware-versus-unaware bounds delta is therefore a measured numeric **zero** on all four rectangle fields, with the split genuinely in force: `PROCESS_PER_MONITOR_DPI_AWARE` against `PROCESS_DPI_UNAWARE` forced by `__COMPAT_LAYER` | DEFERRED | closure: 2.4 - the sub-phase that owns `list_displays` and per-monitor `scale_factor`, on a runner with a scalable display. Carried forward regardless of closure: a successful return from `DisplayConfigSetDeviceInfo` is not evidence the scale applied, so 2.4 must verify against effective DPI |
 | A10-4 | `10-session-dpi.ps1` | managed | api-contract | Invariant 1: `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` at startup | the V2 call **succeeds** on build 17763 from a process that starts `PROCESS_DPI_UNAWARE`. The read-back reports the V1 string `PROCESS_PER_MONITOR_DPI_AWARE`, because `GetProcessDpiAwareness` has no V2 enumerant | CONFIRMS | invariant 1 is viable on the stated 1809 floor. 2.1's bootstrap must not assert V2 by reading awareness back - the read-back cannot express it |
 | A10-5 | `00-environment.ps1` | n/a | app/provider | 2.10: `Windows.Graphics.Capture` per-window screenshot requires Windows 10 1903+ | measured environmental fact: this VM is build 17763, that is 1809, below the 1903 floor, so no `Windows.Graphics.Capture` behavior can be observed here at all | DEFERRED | closure: 2.10 - on `windows-latest`, the sub-phase that owns modern capture |
@@ -199,12 +199,15 @@ R7 requires the map to be bijective in both directions: every hunk maps to at le
 backing row, and every `CONTRADICTS` row maps to at least one hunk.
 
 The authoritative count is measured, not written. `git diff -U0 main -- docs/phases.md`
-reports **37** hunks after this sub-phase's corrections. It reported 36 before U9's
-replacements; of U9's six in-place corrections, three merged into existing adjacent hunks
-under `-U0` (the private-file requirements bullet into H13, the `CacheRequest` row into
-H17, and the Chromium settle clauses into H08, H16 and H36, which already touched those
-exact lines), and one opened the new H37. `13-ledger-check.ps1` re-measures the count on
-every run and fails if the index and the live diff disagree.
+reports **43** hunks. `13-ledger-check.ps1` re-measures the count on every run and fails if
+the index and the live diff disagree, so no number written here can drift.
+
+Sub-phase 2.1's corrections to phases.md are carried in this index because the same
+source-of-truth rule governs them, but not all of them are 2.0 measurements. A hunk whose
+correction came from 2.1 research rather than from a probe cites the ledger row that
+carries the same obligation and is labelled `research:` with its source, so a
+citation-backed external fact never launders itself into a measured one. H04 and the
+research clauses inside H15, H16, H19, H22 and H34 are the rows carrying that label.
 
 The five `CONTRADICTS` rows are A1-5, A6-1, A8-3, A11-1 and A11-3; each appears below.
 
@@ -213,40 +216,46 @@ The five `CONTRADICTS` rows are A1-5, A6-1, A8-3, A11-1 and A11-3; each appears 
 | H01 | `@@ -13 +13,2 @@` release table, v0.6.0 and v0.5.0 rows | C-14, R6-1, R6-4 |
 | H02 | `@@ -41 +42 @@` Phase 2 status line | C-14 |
 | H03 | `@@ -53 +54 @@` phase summary table row | C-14 |
-| H04 | `@@ -579 +580,3 @@` CI job table, `platform-check` plus the new `test-windows` and `test-linux` lanes | C-14, R6-1, R6-6 |
-| H05 | `@@ -795,2 +798,2 @@` the integration branch is the base for everything that platform does | R6-10 |
-| H06 | `@@ -801 +804,2 @@` no-convenience-deferral rule and the promotion gate | A10-2, A10-3, A10-5, A10-6, A10-7 |
-| H07 | `@@ -810 +814 @@` Phase 2 section status | C-14 |
-| H08 | `@@ -869,2 +873,2 @@` P2-O14 Action Center mapping, and P2-O15 Chromium exposure plus the settle requirement | C-10, C-4, A1-5 |
-| H09 | `@@ -873 +877 @@` P2-O18 ships inside Phase 2 | A10-2 |
-| H10 | `@@ -928 +932 @@` capability map, tray overflow window class | C-5 |
-| H11 | `@@ -955 +959 @@` 2.0 scope names the Notepad variant | C-9, A1-1 |
-| H12 | `@@ -970 +974 @@` 2.1 extends the existing `test-windows` lane | C-13, R6-2, R6-6 |
-| H13 | `@@ -974,2 +978,2 @@` 2.1 records the re-verified pins, and the 2.1 private-file requirements | R6-11, A11-1, A11-3 |
-| H14 | `@@ -981 +985 @@` 2.1 exit criteria scope to the packages that build on Windows | C-12, R6-3 |
-| H15 | `@@ -996 +1000 @@` 2.2 key APIs, `uiautomation` 0.25+ | R6-11, C-2 |
-| H16 | `@@ -1032 +1036 @@` 2.4 Chromium detection requires a settle before judging thinness | A1-5, C-4 |
-| H17 | `@@ -1102,2 +1106,2 @@` API mapping table, tree-root pin and the `CacheRequest` phase split | R6-11, A6-1, A6-2 |
-| H18 | `@@ -1227 +1231 @@` npm postinstall gains `win32-arm64` | C-6 |
-| H19 | `@@ -1240 +1244 @@` 2.14 title loses the stretch qualifier | A10-2 |
-| H20 | `@@ -1244 +1248 @@` 2.14 ships before the 2.15 merge | A10-2 |
-| H21 | `@@ -1261 +1265 @@` tray command table, overflow flyout class | C-5 |
-| H22 | `@@ -1280 +1284 @@` 2.14 list-items bullet, overflow flyout class | C-5 |
-| H23 | `@@ -1298 +1302 @@` 2.15 depends on all of 2.0 through 2.14 | A10-2 |
-| H24 | `@@ -1306,2 +1310,2 @@` OS floors, Windows 10 servicing reality and the WGC feature floors | C-7, C-8, A10-5 |
-| H25 | `@@ -1316,3 +1320,3 @@` new-dependency pin table | R6-11, C-1, C-2, C-3 |
-| H26 | `@@ -1322 +1326 @@` pin re-verification note | R6-11 |
-| H27 | `@@ -1335 +1339 @@` `Cargo.toml` snippet, `uiautomation = "0.25"` | R6-11, C-2 |
-| H28 | `@@ -1337 +1341 @@` `Cargo.toml` snippet, `windows-capture = "2.0.0"` | R6-11, C-1 |
-| H29 | `@@ -1389 +1393 @@` docs checklist, Windows permissions and Chromium 138 | C-4, A1-5 |
-| H30 | `@@ -1716 +1720 @@` 3.14 title loses the stretch qualifier | A10-2 |
-| H31 | `@@ -1720 +1724 @@` 3.14 ships before the 3.15 merge | A10-2 |
-| H32 | `@@ -1768 +1772 @@` 3.15 depends on all of 3.0 through 3.14 | A10-2 |
-| H33 | `@@ -2476,3 +2480,4 @@` CI evolution table, v0.6.0 row and the Phase 2 and 3 rows | C-14, R6-1, R6-6 |
-| H34 | `@@ -2482 +2487 @@` runner enforcement scopes to the packages that build on each OS | C-12, C-13, R6-3 |
-| H35 | `@@ -2493,3 +2498,3 @@` new-dependencies summary table | R6-11, C-1, C-2, C-3 |
-| H36 | `@@ -2536 +2541 @@` R2 risk row, settle before judging a Chromium tree thin | A1-5, C-4 |
-| H37 | `@@ -2547 +2552 @@` R13 risk row, handler removal cost is window churn rather than the barrier | A8-3 |
+| H04 | `@@ -541 +542 @@` core unit-test list names the doubles that exist | R6-1 (research: a repo-wide grep finds no `MockAdapter` in any `.rs` file; the real doubles are `NoopAdapter` and per-test ad-hoc structs) |
+| H05 | `@@ -579 +580,3 @@` CI job table, `platform-check` plus the `test-windows` and `test-linux` lanes, and the core-isolation check inside 2.1's lane extension | C-14, R6-1, R6-6, R6-7, C-13 |
+| H06 | `@@ -795,2 +798,2 @@` the integration branch is the base for everything that platform does | R6-10 |
+| H07 | `@@ -801 +804,2 @@` no-convenience-deferral rule and the promotion gate | A10-2, A10-3, A10-5, A10-6, A10-7 |
+| H08 | `@@ -810 +814 @@` Phase 2 section status | C-14 |
+| H09 | `@@ -823 +827 @@` Windows Engineering Invariant 1, the manifest divergence and the ban on verifying V2 by read-back | A10-4 |
+| H10 | `@@ -825 +829 @@` Windows Engineering Invariant 3, event delivery is multi-threaded while registration is not | A8-4 |
+| H11 | `@@ -869,2 +873,2 @@` P2-O14 Action Center mapping, and P2-O15 Chromium exposure plus the settle requirement | C-10, C-4, A1-5 |
+| H12 | `@@ -873 +877 @@` P2-O18 ships inside Phase 2 | A10-2 |
+| H13 | `@@ -928 +932 @@` capability map, tray overflow window class | C-5 |
+| H14 | `@@ -955 +959 @@` 2.0 scope names the Notepad variant | C-9, A1-1 |
+| H15 | `@@ -970,3 +974,2 @@` 2.1's lane extension and its `EXE_SUFFIX` prerequisite, the runner bullet dropped from 2.1, and the split COM/DPI bootstrap | C-13, R6-2, R6-6, A10-2, A8-4, A10-4 (research: Microsoft Learn on `CoIncrementMTAUsage`) |
+| H16 | `@@ -974,2 +977,2 @@` 2.1 records the pins and scopes the embargo to `uiautomation`/`windows-capture`, and the private-file requirements with the seam stated as a constraint | R6-11, A11-1, A11-3 (research: every private-artifact write site is in core with no adapter handle, and core may not depend on the platform crate) |
+| H17 | `@@ -977 +980 @@` 2.1 key APIs gain `CoIncrementMTAUsage`, `ReplaceFileW` and `GetFileInformationByHandleEx` | A11-1, A11-3 |
+| H18 | `@@ -981 +984 @@` 2.1 exit criteria: package scope, adapter-backed commands and portable private-file assertions, with no runner or RDP measurement left in the gate | C-12, R6-3, R6-5, A11-2, A11-4, C-11 |
+| H19 | `@@ -996 +999 @@` 2.2 key APIs, `uiautomation` 0.25+ constructed with `new_direct()` | R6-11, C-2 (research: the crate's own two constructor doc strings) |
+| H20 | `@@ -1032 +1035 @@` 2.4 Chromium detection requires a settle before judging thinness | A1-5, C-4 |
+| H21 | `@@ -1102,2 +1105,2 @@` API mapping table, tree-root pin plus `new_direct()`, and the `CacheRequest` phase split | R6-11, A6-1, A6-2, C-2 |
+| H22 | `@@ -1211 +1214,4 @@` 2.12 registers the self-hosted interactive runner, hardens that registration for a public repository, and owns the deferred-row closure | A10-2 (research: GitHub's own guidance against self-hosted runners on public repositories) |
+| H23 | `@@ -1217 +1223 @@` 2.12 exit criteria gain the runner, its written hardening policy and the RDP measurement | A10-2 |
+| H24 | `@@ -1219 +1225 @@` 2.12 estimate covers runner registration alongside the fixture and harness | A10-2 |
+| H25 | `@@ -1227 +1233 @@` npm postinstall gains `win32-arm64` | C-6 |
+| H26 | `@@ -1240 +1246 @@` 2.14 title loses the stretch qualifier | A10-2 |
+| H27 | `@@ -1244 +1250 @@` 2.14 ships before the 2.15 merge | A10-2 |
+| H28 | `@@ -1261 +1267 @@` tray command table, overflow flyout class | C-5 |
+| H29 | `@@ -1280 +1286 @@` 2.14 list-items bullet, overflow flyout class | C-5 |
+| H30 | `@@ -1298 +1304 @@` 2.15 depends on all of 2.0 through 2.14 | A10-2 |
+| H31 | `@@ -1306,2 +1312,2 @@` OS floors, Windows 10 servicing reality and the WGC feature floors | C-7, C-8, A10-5 |
+| H32 | `@@ -1316,3 +1322,3 @@` new-dependency pin table | R6-11, C-1, C-2, C-3 |
+| H33 | `@@ -1322 +1328 @@` pin re-verification note | R6-11 |
+| H34 | `@@ -1335,3 +1341,3 @@` `Cargo.toml` snippet: `uiautomation = "0.25"`, the five `windows` features 2.1's own scope needs, and `windows-capture = "2.0.0"` | R6-11, C-1, C-2, C-3 (research: all five feature gates verified present in `windows` 0.62.2 and `windows-sys` 0.61.2 on docs.rs) |
+| H35 | `@@ -1389 +1395 @@` docs checklist, Windows permissions and Chromium 138 | C-4, A1-5 |
+| H36 | `@@ -1716 +1722 @@` 3.14 title loses the stretch qualifier | A10-2 |
+| H37 | `@@ -1720 +1726 @@` 3.14 ships before the 3.15 merge | A10-2 |
+| H38 | `@@ -1768 +1774 @@` 3.15 depends on all of 3.0 through 3.14 | A10-2 |
+| H39 | `@@ -2476,3 +2482,4 @@` CI evolution table, v0.6.0 row plus the Phase 2 and 3 rows, with runner registration named at 2.12 | C-14, R6-1, R6-6, A10-2 |
+| H40 | `@@ -2482 +2489 @@` runner enforcement: package scope, and clippy, core isolation and the size cap stated as macOS-only today | C-12, C-13, R6-3, R6-6, R6-7 |
+| H41 | `@@ -2493,3 +2500,3 @@` new-dependencies summary table | R6-11, C-1, C-2, C-3 |
+| H42 | `@@ -2536 +2543 @@` R2 risk row, settle before judging a Chromium tree thin | A1-5, C-4 |
+| H43 | `@@ -2546,2 +2553,2 @@` R12 risk row, the `tscon` workaround is owed by the sub-phase that registers the runner, and R13, handler removal cost is window churn rather than the barrier | A10-2, A8-3 |
 
 ## Completeness self-check
 

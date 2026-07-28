@@ -1,6 +1,6 @@
 {
     "Probe":  "00-environment",
-    "CapturedAtUtc":  "2026-07-26T09:07:02Z",
+    "CapturedAtUtc":  "2026-07-27T05:58:25Z",
     "Purpose":  "machine facts every sub-phase 2.0 ledger row inherits",
     "Os":  {
                "ProductName":  "Windows Server 2019 Datacenter",
@@ -108,7 +108,7 @@
                                 ]
                  },
     "Integrity":  {
-                      "ProcessId":  1516,
+                      "ProcessId":  2400,
                       "MandatoryLabelSid":  "S-1-16-12288",
                       "MandatoryLabelName":  "High",
                       "EnableLua":  1,
