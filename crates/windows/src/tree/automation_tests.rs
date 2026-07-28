@@ -255,10 +255,9 @@ mod windows_only {
 
     /// Why the client is built from `CUIAutomation8` rather than the CLSID
     /// `UIAutomation::new_direct()` uses: the crate's object does not support
-    /// `IUIAutomation2` on this build, so its calls carry no timeout at all.
-    ///
-    /// If this ever starts succeeding, the fallback path in
-    /// `create_bounded_client` becomes bounded too and this test says so.
+    /// `IUIAutomation2`, so its calls carry no timeout at all. That is the
+    /// whole reason this crate does not use it, and the reason there is no
+    /// fallback to it.
     #[test]
     fn the_crates_own_client_carries_no_timeout_which_is_why_it_is_not_used() {
         use windows::Win32::UI::Accessibility::{IUIAutomation, IUIAutomation2};
@@ -270,7 +269,10 @@ mod windows_only {
         assert!(raw.cast::<IUIAutomation2>().is_err());
     }
 
-    /// The client this crate hands out is the bounded one.
+    /// The client this crate hands out is the bounded one - always, with no
+    /// unbounded fallback. A client whose calls cannot time out is refused
+    /// rather than quietly accepted, so this assertion holds on every build
+    /// the product supports or client creation fails outright.
     #[test]
     fn the_shipped_client_exposes_the_timeouts_it_sets() {
         use windows::Win32::UI::Accessibility::{IUIAutomation, IUIAutomation2};

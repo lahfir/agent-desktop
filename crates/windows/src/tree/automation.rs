@@ -186,12 +186,13 @@ mod imp {
 
     /// Hands out this thread's UI Automation client.
     ///
-    /// Constructed with `new_direct()` only. `new()` would call
-    /// `CoInitializeEx` itself: on a thread already in the MTA that returns
-    /// `S_FALSE` and permanently leaks one initialization count, and on any
-    /// STA host thread it fails outright with `RPC_E_CHANGED_MODE`. Sub-phase
-    /// 2.1's bootstrap owns the apartment, so this accessor asserts the
-    /// precondition instead of establishing it.
+    /// Constructed by direct `CoCreateInstance`, never through
+    /// `UIAutomation::new()`. `new()` would call `CoInitializeEx` itself: on a
+    /// thread already in the MTA that returns `S_FALSE` and permanently leaks
+    /// one initialization count, and on any STA host thread it fails outright
+    /// with `RPC_E_CHANGED_MODE`. Sub-phase 2.1's bootstrap owns the
+    /// apartment, so this accessor asserts the precondition instead of
+    /// establishing it. See `create_bounded_client` for which CLSID, and why.
     pub fn automation_client() -> Result<UIAutomation, AdapterError> {
         CLIENT.with(|cell| {
             if let Some(client) = cell.get() {
@@ -203,41 +204,51 @@ mod imp {
         })
     }
 
-    /// Builds a client whose calls are bounded, falling back to the crate's
-    /// own constructor when they cannot be.
+    /// Builds a client whose calls are bounded, and fails rather than hand
+    /// back one whose calls are not.
     ///
     /// `UIAutomation::new_direct()` is `CoCreateInstance(&CUIAutomation, ...)`,
-    /// and on build 17763 that object does not support `IUIAutomation2`, so its
-    /// calls have no timeout at all: measured against a window that stopped
-    /// dispatching, `ElementFromHandle` did not return inside a 30 s watchdog.
+    /// and that object does not support `IUIAutomation2`, so its calls carry no
+    /// timeout at all: measured against a window that stopped dispatching,
+    /// `ElementFromHandle` did not return inside a 30 s watchdog.
     /// `CUIAutomation8` exposes `SetConnectionTimeout`, and the same call then
-    /// returns `UIA_E_TIMEOUT` in 1.02 s.
+    /// returns `UIA_E_TIMEOUT` inside the bound.
     ///
     /// This keeps every property `new_direct()` was chosen for - it is the same
     /// direct `CoCreateInstance`, it never calls `CoInitializeEx`, so it works
     /// inside an STA host and leaks no initialization count in a long-lived
-    /// process. Only the CLSID differs, and the fallback preserves the original
-    /// path wherever `CUIAutomation8` is unavailable.
+    /// process. Only the CLSID differs.
+    ///
+    /// There is deliberately **no fallback to the unbounded client**. A
+    /// fallback would silently trade the hang guarantee for availability on a
+    /// platform that cannot occur: `CUIAutomation8` has shipped since
+    /// Windows 8, the product's floor is Windows 10 1809, and it is measured
+    /// present on both build 17763 and the Server 2025 CI image. A client
+    /// whose calls cannot be bounded is one this crate should refuse, not one
+    /// it should quietly accept.
     fn create_bounded_client() -> Result<UIAutomation, AdapterError> {
-        match bounded_automation() {
-            Some(automation) => Ok(UIAutomation::from(automation)),
-            None => UIAutomation::new_direct()
-                .map_err(|error| uia_error(&error, "create a UI Automation client")),
-        }
-    }
-
-    fn bounded_automation() -> Option<IUIAutomation> {
-        let client: IUIAutomation2 =
-            unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_ALL) }.ok()?;
+        let client: IUIAutomation2 = unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_ALL) }
+            .map_err(|error| unbounded_client_error(error.code().0))?;
         unsafe {
             client
                 .SetConnectionTimeout(super::CONNECTION_TIMEOUT_MS)
-                .ok()?;
+                .map_err(|error| unbounded_client_error(error.code().0))?;
             client
                 .SetTransactionTimeout(super::TRANSACTION_TIMEOUT_MS)
-                .ok()?;
+                .map_err(|error| unbounded_client_error(error.code().0))?;
         }
-        Some(client.into())
+        let automation: IUIAutomation = client.into();
+        Ok(UIAutomation::from(automation))
+    }
+
+    fn unbounded_client_error(hresult: i32) -> AdapterError {
+        uia_failure_error(
+            UiaFailure::Hresult(hresult),
+            "create a UI Automation client whose calls are bounded",
+        )
+        .with_suggestion(
+            "This build does not provide CUIAutomation8; observation is refused rather than run against a client that cannot time out",
+        )
     }
 
     /// Resolves a top-level window handle to its UI Automation root element.
