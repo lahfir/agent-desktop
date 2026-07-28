@@ -134,6 +134,7 @@ mod surface_signal;
 pub(crate) mod trace;
 mod trace_artifact_budget;
 pub(crate) mod trace_artifacts;
+mod trace_file;
 pub mod trace_read;
 pub mod trace_sanitize;
 mod trace_state;
