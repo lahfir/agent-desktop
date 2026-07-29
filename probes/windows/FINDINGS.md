@@ -256,32 +256,33 @@ The five `CONTRADICTS` rows are A1-5, A6-1, A8-3, A11-1 and A11-3; each appears 
 | H18 | `@@ -981 +984 @@` 2.1 exit criteria: package scope, adapter-backed commands and portable private-file assertions, with no runner or RDP measurement left in the gate | C-12, R6-3, R6-5, A11-2, A11-4, C-11 |
 | H19 | `@@ -996 +999 @@` 2.2 key APIs, `uiautomation` 0.25+ constructed with `new_direct()`, and the reason for it corrected | R6-11, C-2 (research: the crate's own two constructor doc strings, then the 0.25.0 source itself - `new()` proceeds on any non-negative HRESULT, so it reads `S_FALSE` as success on an MTA thread and leaks one initialization count, and fails `RPC_E_CHANGED_MODE` on an STA host thread) |
 | H20 | `@@ -1032 +1035 @@` 2.4 Chromium detection requires a settle before judging thinness | A1-5, C-4 |
-| H21 | `@@ -1102,2 +1105,2 @@` API mapping table, tree-root pin plus `new_direct()` and its corrected reason, and the `CacheRequest` phase split | R6-11, A6-1, A6-2, C-2 (research: `uiautomation` 0.25.0 source, the same correction H19 carries - the table stated the disproved reason in a second place) |
-| H22 | `@@ -1211 +1214,5 @@` 2.12 registers the self-hosted interactive runner, hardens that registration for a public repository, owns the deferred-row closure, and records the measured hosted-runner session without weakening the justification | A10-2, A14-1 (research: GitHub's own guidance against self-hosted runners on public repositories, and Microsoft's contrary Azure Pipelines UI-testing guidance) |
-| H23 | `@@ -1217 +1224 @@` 2.12 exit criteria gain the runner, its written hardening policy and the RDP measurement | A10-2 |
-| H24 | `@@ -1219 +1226 @@` 2.12 estimate covers runner registration alongside the fixture and harness | A10-2 |
-| H25 | `@@ -1227 +1234 @@` npm postinstall gains `win32-arm64` | C-6 |
-| H26 | `@@ -1240 +1247 @@` 2.14 title loses the stretch qualifier | A10-2 |
-| H27 | `@@ -1244 +1251 @@` 2.14 ships before the 2.15 merge | A10-2 |
-| H28 | `@@ -1261 +1268 @@` tray command table, overflow flyout class | C-5 |
-| H29 | `@@ -1280 +1287 @@` 2.14 list-items bullet, overflow flyout class | C-5 |
-| H30 | `@@ -1298 +1305 @@` 2.15 depends on all of 2.0 through 2.14 | A10-2 |
-| H31 | `@@ -1306,2 +1313,2 @@` OS floors, Windows 10 servicing reality and the WGC feature floors | C-7, C-8, A10-5 |
-| H32 | `@@ -1316,3 +1323,3 @@` new-dependency pin table | R6-11, C-1, C-2, C-3 |
-| H33 | `@@ -1322 +1329 @@` pin re-verification note | R6-11 |
-| H34 | `@@ -1335,3 +1342,3 @@` `Cargo.toml` snippet: `uiautomation = "0.25"`, the five `windows` features 2.1's own scope needs, and `windows-capture = "2.0.0"` | R6-11, C-1, C-2, C-3 (research: all five feature gates verified present in `windows` 0.62.2 and `windows-sys` 0.61.2 on docs.rs) |
-| H35 | `@@ -1389 +1396 @@` docs checklist, Windows permissions and Chromium 138 | C-4, A1-5 |
-| H36 | `@@ -1716 +1723 @@` 3.14 title loses the stretch qualifier | A10-2 |
-| H37 | `@@ -1720 +1727 @@` 3.14 ships before the 3.15 merge | A10-2 |
-| H38 | `@@ -1768 +1775 @@` 3.15 depends on all of 3.0 through 3.14 | A10-2 |
-| H39 | `@@ -2476,3 +2483,4 @@` CI evolution table, v0.6.0 row plus the Phase 2 and 3 rows, with runner registration named at 2.12 | C-14, R6-1, R6-6, A10-2 |
-| H40 | `@@ -2482 +2490 @@` runner enforcement: package scope, and clippy, core isolation and the size cap stated as macOS-only today | C-12, C-13, R6-3, R6-6, R6-7 |
-| H41 | `@@ -2493,3 +2501,3 @@` new-dependencies summary table | R6-11, C-1, C-2, C-3 |
-| H42 | `@@ -2536 +2544 @@` R2 risk row, settle before judging a Chromium tree thin | A1-5, C-4 |
-| H43 | `@@ -2546,2 +2554,2 @@` R12 risk row, the `tscon` workaround is owed by the sub-phase that registers the runner, and R13, handler removal cost is window churn rather than the barrier | A10-2, A8-3 |
+| H21 | `@@ -1102,2 +1106,2 @@` API mapping table, tree-root pin plus `new_direct()` and its corrected reason, and the `CacheRequest` phase split | R6-11, A6-1, A6-2, C-2 (research: `uiautomation` 0.25.0 source, the same correction H19 carries - the table stated the disproved reason in a second place) |
+| H22 | `@@ -1211 +1215,5 @@` 2.12 registers the self-hosted interactive runner, hardens that registration for a public repository, owns the deferred-row closure, and records the measured hosted-runner session without weakening the justification | A10-2, A14-1 (research: GitHub's own guidance against self-hosted runners on public repositories, and Microsoft's contrary Azure Pipelines UI-testing guidance) |
+| H23 | `@@ -1217 +1225 @@` 2.12 exit criteria gain the runner, its written hardening policy and the RDP measurement | A10-2 |
+| H24 | `@@ -1219 +1227 @@` 2.12 estimate covers runner registration alongside the fixture and harness | A10-2 |
+| H25 | `@@ -1227 +1235 @@` npm postinstall gains `win32-arm64` | C-6 |
+| H26 | `@@ -1240 +1248 @@` 2.14 title loses the stretch qualifier | A10-2 |
+| H27 | `@@ -1244 +1252 @@` 2.14 ships before the 2.15 merge | A10-2 |
+| H28 | `@@ -1261 +1269 @@` tray command table, overflow flyout class | C-5 |
+| H29 | `@@ -1280 +1288 @@` 2.14 list-items bullet, overflow flyout class | C-5 |
+| H30 | `@@ -1298 +1306 @@` 2.15 depends on all of 2.0 through 2.14 | A10-2 |
+| H31 | `@@ -1306,2 +1314,2 @@` OS floors, Windows 10 servicing reality and the WGC feature floors | C-7, C-8, A10-5 |
+| H32 | `@@ -1316,3 +1324,3 @@` new-dependency pin table | R6-11, C-1, C-2, C-3 |
+| H33 | `@@ -1322 +1330 @@` pin re-verification note | R6-11 |
+| H34 | `@@ -1335,3 +1343,3 @@` `Cargo.toml` snippet: `uiautomation = "0.25"`, the five `windows` features 2.1's own scope needs, and `windows-capture = "2.0.0"` | R6-11, C-1, C-2, C-3 (research: all five feature gates verified present in `windows` 0.62.2 and `windows-sys` 0.61.2 on docs.rs) |
+| H35 | `@@ -1389 +1397 @@` docs checklist, Windows permissions and Chromium 138 | C-4, A1-5 |
+| H36 | `@@ -1716 +1724 @@` 3.14 title loses the stretch qualifier | A10-2 |
+| H37 | `@@ -1720 +1728 @@` 3.14 ships before the 3.15 merge | A10-2 |
+| H38 | `@@ -1768 +1776 @@` 3.15 depends on all of 3.0 through 3.14 | A10-2 |
+| H39 | `@@ -2476,3 +2484,4 @@` CI evolution table, v0.6.0 row plus the Phase 2 and 3 rows, with runner registration named at 2.12 | C-14, R6-1, R6-6, A10-2 |
+| H40 | `@@ -2482 +2491 @@` runner enforcement: package scope, and clippy, core isolation and the size cap stated as macOS-only today | C-12, C-13, R6-3, R6-6, R6-7 |
+| H41 | `@@ -2493,3 +2502,3 @@` new-dependencies summary table | R6-11, C-1, C-2, C-3 |
+| H42 | `@@ -2536 +2545 @@` R2 risk row, settle before judging a Chromium tree thin | A1-5, C-4 |
+| H43 | `@@ -2546,2 +2555,2 @@` R12 risk row, the `tscon` workaround is owed by the sub-phase that registers the runner, and R13, handler removal cost is window churn rather than the barrier | A10-2, A8-3 |
 | H44 | `@@ -992,2 +995,2 @@` 2.2 scope: the cycle-guard rationale, and `CacheRequest` batching stated as conditional with no node-count arm | A6-1, A6-2 (research: 2.0 measured nothing about UIA element-identity reuse and neither 2.0 walker calls `GetParent`, so the imported macOS pointer-reuse rationale had no backing) |
 | H45 | `@@ -1000 +1003 @@` 2.2 exit criteria: the dump binary batches by provider class, and the cache unit test asserts equality rather than speed | A6-1, A6-2 |
-| H46 | `@@ -1041 +1044 @@` 2.4 exit criteria restated rule-shaped, with named apps and fixed ref thresholds removed and an explicit skip-with-reason | A6-2, A2-4, A1-1, C-9, C-11 (research: the probe corpus's own KTD7 scope rule, which keeps an `app/provider` row from travelling) |
+| H46 | `@@ -1041 +1045 @@` 2.4 exit criteria restated rule-shaped, with named apps and fixed ref thresholds removed and an explicit skip-with-reason | A6-2, A2-4, A1-1, C-9, C-11 (research: the probe corpus's own KTD7 scope rule, which keeps an `app/provider` row from travelling) |
+| H48 | `@@ -1035,0 +1039 @@` 2.4 scope records what 2.2 hands over unresolved: mid-walk process death is invisible on both the sibling and property axes, and the hang bound is the client's connection timeout rather than the operation deadline | A14-4, A14-9, A14-11 |
 
 ## Completeness self-check
 
