@@ -41,6 +41,43 @@ Bypass for an emergency commit with `git commit --no-verify` or `SKIP_PRECOMMIT=
 
 Cross-platform Rust CLI + MCP server enabling AI agents to observe and control desktop applications via native OS accessibility trees.
 
+## Source of Truth & Sync (Non-Negotiable)
+
+Two documents govern every phase, and they are never allowed to disagree.
+
+- **`docs/phases.md` is the source of truth for the product.** Scope, exit criteria, invariants, API mappings, dependency pins and phase order live there. What the product *is* and *will be* is settled by that document.
+- **The sub-phase plan under `docs/plans/` is the source of truth for implementation and review.** How a sub-phase is built, what its units are, and what its Verification Contract and Definition of Done require are settled by the plan.
+- **They must be in sync at every commit, and both must match the code.** A statement in one that contradicts the other, or contradicts what shipped, is a defect in its own right — not documentation debt to be tidied later. The next sub-phase's planner reads these documents as fact; a stale line becomes a wrong decision.
+
+### Planning: contradictions are corrected on discovery
+
+Research routinely disproves statements in `docs/phases.md`. When it does:
+
+- **Correct `docs/phases.md` in the same PR that discovered it.** Never plan around a statement known to be false, and never leave the correction to a later sub-phase.
+- **Correct in place; never annotate.** Rewrite the statement so the document reads true. No "previously said X", no "NOTE:", no changelog line — the document is the product's source of truth, not its history.
+- **Cite what disproved it** — a `probes/**/FINDINGS.md` row id, or the verified source.
+- The plan carries the correction as its own implementation unit, so it is reviewed alongside the work.
+
+### Implementation: build it, do not defer it
+
+**Deferral is the exception and the bar is high. The default is that the implementer makes it work.**
+
+- **Attempt the work fully before concluding it cannot be done.** "Harder than expected", "the plan underestimated it", "a later sub-phase touches this anyway", and "the PR is already large" are **not** grounds for deferral.
+- A deferral is justified only when the work is genuinely blocked: technically impossible on the platform, dependent on infrastructure that does not exist yet, or completable only by violating a stated invariant or safety property. Name which one applies.
+- **Measure before deferring.** If the obstacle is an unknown, settle it with a probe or an experiment first. A deferral resting on an assumption is not a deferral, it is a guess — and an assumption that turns out to be wrong has usually hidden work that was a few hours away.
+- Reducing scope is the owner's call, not the implementer's. If the work genuinely cannot land, say so explicitly and stop; do not narrow the deliverable quietly.
+
+### Every deferral updates `docs/phases.md` immediately
+
+When something is deferred — at planning time or at implementation time — the sub-phase that now owns it is updated in the **same PR**, before that PR is opened for review:
+
+- Write the deferred work into the **receiving** sub-phase's scope in `docs/phases.md`, in enough detail that its implementer can act on it without reading this PR or its plan.
+- State what was learned that forces it there, and cite the evidence.
+- If the deferral changes what the **originating** sub-phase delivers, correct that sub-phase's scope and exit criteria too, so it never claims work it did not ship.
+- A ledger row, a PR description, or a plan's residual list is **not** sufficient. Those are read by this PR's reviewer; `docs/phases.md` is read by the next sub-phase's planner, and that is who needs to know.
+
+**A PR that defers work without updating `docs/phases.md` is incomplete and must not be merged.**
+
 ## Git & Commits
 
 ### Branching during a platform phase (Phase 2 = Windows, in progress)
