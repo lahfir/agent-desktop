@@ -271,6 +271,13 @@ pub(crate) fn destroy_window(handle: isize) {
     unsafe { DestroyWindow(handle as *mut c_void) };
 }
 
+/// How often a stalled host looks for its stop signal.
+///
+/// Sleeping is not pumping - the queue is still never serviced, so the window
+/// stays stalled for a `SendMessage` - but it lets teardown end the thread in
+/// milliseconds instead of leaving one parked per test for two minutes.
+const STALL_POLL: std::time::Duration = std::time::Duration::from_millis(25);
+
 /// Creates a window and then deliberately never pumps its queue.
 ///
 /// The 2.2 plan records "whether a non-pumping target produces a clean timeout
@@ -278,7 +285,11 @@ pub(crate) fn destroy_window(handle: isize) {
 /// can: `CreateWindowExW` dispatches `WM_CREATE` inline, so a thread can own a
 /// live window and then stop dispatching. That makes the resolver's pump probe
 /// testable instead of assumed.
-pub(crate) fn stalled_window(class_name: &str, ready: Sender<Result<isize, String>>) {
+pub(crate) fn stalled_window(
+    class_name: &str,
+    ready: Sender<Result<isize, String>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
     if let Err(error) = register_class(class_name) {
         let _ = ready.send(Err(error));
         return;
@@ -307,7 +318,10 @@ pub(crate) fn stalled_window(class_name: &str, ready: Sender<Result<isize, Strin
     }
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     let _ = ready.send(Ok(window as isize));
-    std::thread::sleep(std::time::Duration::from_secs(120));
+    while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+        std::thread::sleep(STALL_POLL);
+    }
+    unsafe { DestroyWindow(window) };
 }
 
 pub(crate) fn geometry(handle: isize) -> WindowGeometry {

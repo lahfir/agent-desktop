@@ -66,7 +66,7 @@ fn unnamed_hresults_format_without_inventing_a_name() {
         com_hresult_detail(0x8007_0002_u32 as i32),
         "COM HRESULT 0x80070002"
     );
-    assert!(com_hresult_symbol(0x8007_0002_u32 as i32).is_none());
+    assert!(crate::system::hresult::com_hresult_symbol(0x8007_0002_u32 as i32).is_none());
 }
 
 #[test]

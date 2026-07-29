@@ -158,11 +158,7 @@ mod windows_only {
         for child in &children {
             let (cached, _) = read_cached(child);
             let (live, _) = read_live(child);
-            for property in [
-                TreeProperty::ClassName,
-                TreeProperty::Name,
-                TreeProperty::Value,
-            ] {
+            for property in TreeProperty::WALK_SET {
                 assert_eq!(
                     cached.get(property),
                     live.get(property),

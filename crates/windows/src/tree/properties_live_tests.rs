@@ -167,3 +167,56 @@ fn a_read_that_genuinely_fails_classifies_unknown_and_never_absent() {
         PropertyOutcome::Absent
     );
 }
+
+/// The plan's U5 scenario, against a live provider rather than a synthetic
+/// error: a failed read on a control whose text *is* a unique marker must
+/// produce an error carrying none of it.
+///
+/// The failure is forced deterministically with an empty cache request, so
+/// the element is real, its text is real, and the read genuinely cannot be
+/// answered. `ref_action.rs` clones message and details into session JSONL
+/// and the trace HTML export, so a leak here is persisted, not transient.
+#[test]
+fn a_failed_read_on_a_marker_bearing_control_leaks_none_of_it() {
+    bootstrap();
+    let fixture = HostedFixture::spawn().expect("the fixture host starts");
+    let client = crate::tree::automation::automation_client().expect("a UIA client");
+    let request = client
+        .create_cache_request()
+        .expect("an empty cache request builds");
+    request
+        .set_element_mode(uiautomation::types::ElementMode::Full)
+        .expect("the element mode is settable");
+
+    let marked = walk_children(fixture.handle())
+        .into_iter()
+        .find(|child| {
+            matches!(
+                read_live(child).0.get(TreeProperty::Value),
+                PropertyOutcome::Known(PropertyValue::Text(ref value))
+                    if value.contains(CONTENT_MARKER)
+            )
+        })
+        .expect("the fixture exposes a control carrying the marker");
+    let uncacheable = marked
+        .0
+        .build_updated_cache(&request)
+        .map(crate::tree::element::UIAElement::from)
+        .expect("the same element with an empty cache");
+
+    let (_, errors) = read_cached(&uncacheable);
+
+    assert!(!errors.is_empty(), "the read must genuinely have failed");
+    for error in errors {
+        let rendered = format!(
+            "{}|{}|{}",
+            error.message,
+            error.platform_detail.unwrap_or_default(),
+            serde_json::to_string(&error.details).unwrap_or_default()
+        );
+        assert!(
+            !rendered.contains(CONTENT_MARKER),
+            "a failed read leaked the control's text: {rendered}"
+        );
+    }
+}

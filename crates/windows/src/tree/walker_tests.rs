@@ -258,3 +258,36 @@ fn the_complete_case_projects_and_the_incomplete_case_is_refused() {
             .is_err()
     );
 }
+
+/// The failure cap keeps one pathological target from flooding a trace
+/// segment, but a consumer that sees the cap and no count would read a
+/// systemic failure as a local one. The count travels even though the dropped
+/// errors do not.
+#[test]
+fn faults_beyond_the_reporting_cap_are_counted_rather_than_vanishing() {
+    let children: Vec<i32> = (2..=40).collect();
+    let mut fake = FakeTree::default().with_children(1, &children);
+    for child in &children {
+        fake = fake.faulting_on_first_child(*child);
+    }
+
+    let outcome = walk(&fake, budget(10));
+
+    assert!(!outcome.tree.is_complete());
+    let suppressed = outcome
+        .failures
+        .last()
+        .and_then(|error| error.details.as_ref())
+        .and_then(|details| details.get("suppressed_failures"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+    assert!(
+        suppressed > 0,
+        "a walk that dropped faults must say how many"
+    );
+    assert_eq!(
+        outcome.stats.reads.health.cannot_complete,
+        suppressed + outcome.failures.len() as u64,
+        "the counted total must account for every fault, reported or not"
+    );
+}

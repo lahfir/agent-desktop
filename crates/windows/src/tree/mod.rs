@@ -1,11 +1,15 @@
 pub mod automation;
-pub mod cache;
-pub mod captures;
+pub(crate) mod cache;
+
+#[cfg(test)]
+mod captures;
 pub mod element;
+pub mod element_properties;
 pub mod properties;
 pub mod property_ids;
+pub mod property_outcome;
 pub mod walker;
-pub mod walker_enumerate;
+pub(crate) mod walker_enumerate;
 pub mod walker_source;
 
 #[cfg(test)]

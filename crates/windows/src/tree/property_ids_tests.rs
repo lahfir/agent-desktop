@@ -67,18 +67,43 @@ fn every_property_resolves_through_the_crate_generated_constants() {
 /// A2-5 measured that UIA property ids are build-specific and named 2.2 as
 /// the place a hand-written table would fail silently, so the source must
 /// contain no bare property-id integer.
+///
+/// Matched as a whole token in the range UIA actually uses, not as the
+/// substring "300": a prose mention of 300 milliseconds, or a `30_000` ms
+/// constant, is not a property id and must not fail this.
 #[test]
 fn no_property_id_integer_appears_in_this_module() {
-    for source in [
-        include_str!("property_ids.rs"),
-        include_str!("properties.rs"),
-        include_str!("cache.rs"),
+    for (name, source) in [
+        ("property_ids.rs", include_str!("property_ids.rs")),
+        ("properties.rs", include_str!("properties.rs")),
+        ("cache.rs", include_str!("cache.rs")),
     ] {
-        for line in source.lines() {
+        for (number, line) in source.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("///") || trimmed.starts_with("//!") {
+                continue;
+            }
             assert!(
-                !line.contains("300") || line.trim_start().starts_with("///"),
-                "a UIA property id literal appeared in: {line}"
+                !contains_property_id_literal(line),
+                "{name}:{} carries a UIA property-id literal: {line}",
+                number + 1
             );
         }
     }
+}
+
+/// Reports whether a line contains a bare integer in UIA's property-id range.
+///
+/// A token is a candidate only when it is a whole number, five digits long,
+/// and between 30000 and 30999 - the block UIA allocates property ids from.
+fn contains_property_id_literal(line: &str) -> bool {
+    line.split(|character: char| !(character.is_ascii_digit() || character == '_'))
+        .filter(|token| !token.is_empty())
+        .map(|token| token.replace('_', ""))
+        .any(|token| {
+            token.len() == 5
+                && token
+                    .parse::<u32>()
+                    .is_ok_and(|value| (30_000..=30_999).contains(&value))
+        })
 }

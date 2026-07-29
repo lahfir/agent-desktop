@@ -30,6 +30,7 @@ pub struct TreeWalk<'a, S: TreeSource> {
     stats: LocatorStats,
     complete: bool,
     failures: Vec<AdapterError>,
+    suppressed_failures: u32,
 }
 
 impl<'a, S: TreeSource> TreeWalk<'a, S> {
@@ -41,6 +42,7 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
             stats: LocatorStats::default(),
             complete: true,
             failures: Vec::new(),
+            suppressed_failures: 0,
         }
     }
 
@@ -49,6 +51,7 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
     /// Zero on every exit from a completed `visit`, including the exits taken
     /// when enumeration faults. A missed removal is the bug this guard ships
     /// with most easily, so it is observable rather than implied.
+    #[cfg(test)]
     pub fn ancestor_depth(&self) -> usize {
         self.ancestors.len()
     }
@@ -88,7 +91,11 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
                 self.ancestors.len()
             )));
         }
-        Ok((self.stats, self.complete, self.failures))
+        let mut failures = self.failures;
+        if let Some(last) = failures.last_mut() {
+            annotate_suppressed(last, self.suppressed_failures);
+        }
+        Ok((self.stats, self.complete, failures))
     }
 
     fn visit_entered(
@@ -222,6 +229,7 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
     fn record(&mut self, failure: UiaFailure, axis: &str, raw_depth: u8, child_index: usize) {
         self.stats.reads.health.cannot_complete += 1;
         if self.failures.len() >= MAX_REPORTED_FAILURES {
+            self.suppressed_failures += 1;
             return;
         }
         self.failures
@@ -260,6 +268,22 @@ fn enumeration_error(
         "raw_depth": raw_depth,
         "child_index": child_index,
     }))
+}
+
+/// Names how many further faults the cap dropped.
+///
+/// The cap keeps one pathological target from flooding a trace segment, but a
+/// consumer that sees eight errors and no count would read a systemic failure
+/// as a local one. The number travels; the dropped errors do not.
+fn annotate_suppressed(error: &mut AdapterError, suppressed: u32) {
+    if suppressed == 0 {
+        return;
+    }
+    let mut details = error.details.take().unwrap_or_else(|| json!({}));
+    if let Some(map) = details.as_object_mut() {
+        map.insert("suppressed_failures".into(), json!(suppressed));
+    }
+    error.details = Some(details);
 }
 
 /// Records whether every native predecessor of this edge was retained.

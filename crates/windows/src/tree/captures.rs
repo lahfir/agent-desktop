@@ -13,7 +13,7 @@
 //! window handle or a user path is a defect regardless of what tree it holds.
 
 /// The committed dev-box captures, by the target variant each records.
-pub const CAPTURE_FILES: [&str; 2] = ["notepad-com.json", "explorer-com.json"];
+const CAPTURE_FILES: [&str; 2] = ["notepad-com.json", "explorer-com.json"];
 
 #[cfg(test)]
 #[path = "captures_tests.rs"]

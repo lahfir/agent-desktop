@@ -1,4 +1,5 @@
 use super::*;
+use agent_desktop_core::{IdentifierKind, LocatorField, Rect};
 
 fn text(value: &str) -> PropertyOutcome {
     PropertyOutcome::Known(PropertyValue::Text(value.into()))

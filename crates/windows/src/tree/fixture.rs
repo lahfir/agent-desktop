@@ -1,5 +1,7 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::thread::{JoinHandle, spawn};
 use std::time::Duration;
@@ -203,26 +205,40 @@ impl Drop for LocalFixture {
 
 /// A window whose thread owns it but never dispatches its messages.
 ///
-/// Deliberately leaks its thread: the thread is sleeping and cannot be joined
-/// without waiting it out, which is the whole point of the fixture. It is
-/// bounded by the sleep, so a test run cannot retain it indefinitely.
+/// The host thread cannot be joined the ordinary way - joining means waiting
+/// for it to finish, and finishing means it stopped owning the window this
+/// fixture exists to keep stalled. Instead it is told to stop and polls for
+/// that signal, so teardown ends it in milliseconds rather than leaving a
+/// parked thread per test.
 pub(crate) struct StalledFixture {
     handle: isize,
     class_name: String,
+    stop: Arc<AtomicBool>,
+    host: Option<JoinHandle<()>>,
 }
 
 impl StalledFixture {
     pub(crate) fn create() -> Result<Self, String> {
         let class_name = fixture_window::unique_class_name();
+        let stop = Arc::new(AtomicBool::new(false));
         let (sender, receiver) = channel();
-        spawn({
+        let host = spawn({
             let class_name = class_name.clone();
-            move || fixture_window::stalled_window(&class_name, sender)
+            let stop = stop.clone();
+            move || fixture_window::stalled_window(&class_name, sender, stop)
         });
         match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(Ok(handle)) => Ok(Self { handle, class_name }),
+            Ok(Ok(handle)) => Ok(Self {
+                handle,
+                class_name,
+                stop,
+                host: Some(host),
+            }),
             Ok(Err(error)) => Err(error),
-            Err(_) => Err(String::from("the stalled window never became ready")),
+            Err(_) => {
+                stop.store(true, Ordering::SeqCst);
+                Err(String::from("the stalled window never became ready"))
+            }
         }
     }
 
@@ -233,6 +249,10 @@ impl StalledFixture {
 
 impl Drop for StalledFixture {
     fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(host) = self.host.take() {
+            let _ = host.join();
+        }
         fixture_window::unregister_class(&self.class_name);
     }
 }

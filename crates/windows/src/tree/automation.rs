@@ -1,6 +1,12 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode};
 
-use crate::system::permissions::{com_hresult_detail, ensure_budget};
+use crate::system::hresult::{
+    CO_E_NOTINITIALIZED, E_ACCESSDENIED, E_INVALIDARG, E_POINTER, RPC_E_DISCONNECTED,
+    RPC_E_SERVERFAULT, RPC_S_CALL_FAILED, RPC_S_SERVER_UNAVAILABLE, UIA_E_ELEMENTNOTAVAILABLE,
+    UIA_E_ELEMENTNOTENABLED, UIA_E_INVALIDOPERATION, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT,
+    com_hresult_detail,
+};
+use crate::system::permissions::ensure_budget;
 
 pub const ERR_NONE: i32 = 0;
 pub const ERR_NOTFOUND: i32 = 1;
@@ -12,20 +18,6 @@ pub const ERR_FORMAT: i32 = 6;
 pub const ERR_INVALID_OBJECT: i32 = 7;
 pub const ERR_ALREADY_RUNNING: i32 = 8;
 pub const ERR_INVALID_ARG: i32 = 9;
-
-const E_ACCESSDENIED: i32 = 0x8007_0005_u32 as i32;
-const E_POINTER: i32 = 0x8000_4003_u32 as i32;
-const E_INVALIDARG: i32 = 0x8007_0057_u32 as i32;
-const CO_E_NOTINITIALIZED: i32 = 0x8004_01F0_u32 as i32;
-const RPC_E_SERVERFAULT: i32 = 0x8001_0105_u32 as i32;
-const RPC_E_DISCONNECTED: i32 = 0x8001_0108_u32 as i32;
-const RPC_S_SERVER_UNAVAILABLE: i32 = 0x8007_06BA_u32 as i32;
-const RPC_S_CALL_FAILED: i32 = 0x8007_06BE_u32 as i32;
-const UIA_E_ELEMENTNOTENABLED: i32 = 0x8004_0200_u32 as i32;
-const UIA_E_ELEMENTNOTAVAILABLE: i32 = 0x8004_0201_u32 as i32;
-const UIA_E_NOTSUPPORTED: i32 = 0x8004_0204_u32 as i32;
-const UIA_E_TIMEOUT: i32 = 0x8013_1505_u32 as i32;
-const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
 
 const COM_UNINITIALIZED_SUGGESTION: &str =
     "Join the calling thread to the COM multithreaded apartment before observing the desktop";
@@ -264,10 +256,13 @@ mod imp {
     /// put a bound on exactly this question. A target that is already hung
     /// becomes a structured `APP_UNRESPONSIVE` instead of an indefinite block.
     ///
-    /// This is a mitigation, not a guarantee: a target that stops pumping in
-    /// the window between the probe and the call still blocks. Bounding that
-    /// needs the call issued on a thread this sub-phase can abandon, which is
-    /// a hang guard 2.2 does not own.
+    /// The probe is the fast, precise answer, not the safety net. A target
+    /// that answers it and then stops dispatching cannot be caught by any
+    /// preflight, so the bound that actually holds is the client's own
+    /// `ConnectionTimeout` (see `create_bounded_client`): that call returns
+    /// `UIA_E_TIMEOUT` rather than blocking. The probe exists because it turns
+    /// an already-hung target into a clearer error, sooner, than waiting the
+    /// connection timeout out.
     pub fn root_from_hwnd(hwnd: isize, deadline: Deadline) -> Result<UIAElement, AdapterError> {
         crate::system::permissions::ensure_budget(deadline)?;
         let client = automation_client()?;
