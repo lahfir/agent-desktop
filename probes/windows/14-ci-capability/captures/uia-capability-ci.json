@@ -1,0 +1,70 @@
+{
+    "measurements":  {
+                         "child_process":  {
+                                               "descendants_found":  10,
+                                               "direct_children_found":  5,
+                                               "hosted":  true,
+                                               "root_resolved":  true
+                                           },
+                         "exhaustion":  {
+                                            "code":  0,
+                                            "result_hex":  null,
+                                            "result_is_none":  true
+                                        },
+                         "forced_failure":  {
+                                                "element_from_handle":  {
+                                                                            "code":  -2147220991,
+                                                                            "result_hex":  "0x80040201",
+                                                                            "result_is_none":  false
+                                                                        },
+                                                "get_first_child":  {
+                                                                        "code":  -2147467259,
+                                                                        "result_hex":  "0x80004005",
+                                                                        "result_is_none":  false
+                                                                    },
+                                                "get_next_sibling":  {
+                                                                         "code":  0,
+                                                                         "result_hex":  null,
+                                                                         "result_is_none":  true
+                                                                     }
+                                            },
+                         "secure_field":  {
+                                              "help_text":  {
+                                                                "contains_marker":  false,
+                                                                "is_null":  false,
+                                                                "length":  0,
+                                                                "variant_type":  "VARENUM(8)"
+                                                            },
+                                              "legacy_value":  {
+                                                                   "contains_marker":  false,
+                                                                   "is_null":  false,
+                                                                   "length":  0,
+                                                                   "variant_type":  "VARENUM(8)"
+                                                               },
+                                              "name":  {
+                                                           "contains_marker":  false,
+                                                           "is_null":  false,
+                                                           "length":  12,
+                                                           "variant_type":  "VARENUM(8)"
+                                                       },
+                                              "secure_field_found":  true,
+                                              "value":  {
+                                                            "contains_marker":  false,
+                                                            "is_null":  false,
+                                                            "length":  0,
+                                                            "variant_type":  "VARENUM(8)"
+                                                        }
+                                          },
+                         "self_created_window":  {
+                                                     "created":  true,
+                                                     "descendants_found":  10,
+                                                     "non_zero_rect":  true,
+                                                     "root_failure":  null,
+                                                     "root_resolved":  true,
+                                                     "visible":  true
+                                                 }
+                     },
+    "probe":  "14-ci-capability",
+    "stack":  "uia3-com",
+    "uiautomation_version":  "0.25.0"
+}

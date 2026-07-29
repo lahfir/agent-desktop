@@ -4,7 +4,7 @@ mod actions;
 mod adapter;
 mod input;
 mod system;
-mod tree;
+pub mod tree;
 
 pub use adapter::WindowsAdapter;
 #[cfg(target_os = "windows")]
