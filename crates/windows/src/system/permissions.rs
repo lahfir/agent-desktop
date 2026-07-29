@@ -2,8 +2,8 @@ use agent_desktop_core::{AdapterError, Deadline, PermissionReport, PermissionSta
 
 const ACCESSIBILITY_SUGGESTION: &str = "Run agent-desktop in an interactive desktop session as a user allowed to use the UI Automation COM runtime; restricted tokens and AppContainer processes are denied UIA access.";
 
-const S_OK: i32 = 0;
-const E_ACCESSDENIED: i32 = 0x8007_0005_u32 as i32;
+pub(crate) use crate::system::hresult::com_hresult_detail;
+use crate::system::hresult::{E_ACCESSDENIED, S_OK};
 
 #[cfg(target_os = "windows")]
 mod imp {
@@ -128,14 +128,6 @@ pub(crate) fn uia_access_denied_error(hresult: i32) -> AdapterError {
     )
     .with_suggestion(ACCESSIBILITY_SUGGESTION)
     .with_platform_detail(com_hresult_detail(hresult))
-}
-
-pub(crate) fn com_hresult_detail(hresult: i32) -> String {
-    let code = hresult as u32;
-    match hresult {
-        E_ACCESSDENIED => format!("COM HRESULT 0x{code:08X} (E_ACCESSDENIED: Access is denied)"),
-        _ => format!("COM HRESULT 0x{code:08X}"),
-    }
 }
 
 fn screen_recording_report_state() -> PermissionState {

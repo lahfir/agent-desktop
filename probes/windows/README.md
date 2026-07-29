@@ -1,8 +1,16 @@
-﻿# Windows platform exploration probes (sub-phase 2.0)
+﻿# Windows platform exploration probes (sub-phases 2.0 and later)
 
 Evidence-gathering scripts for the Windows adapter. They observe the real OS and write
 bounded, redacted captures that the `FINDINGS.md` ledger cites. Nothing here is product
-code: no Rust, no CI, no workspace dependencies.
+code, and nothing here is a workspace member.
+
+Sub-phase 2.0 (`00-*.ps1` through `13-*.ps1`) is PowerShell only. Later sub-phases extend
+the corpus where a question can only be answered against the crate the adapter actually
+ships or against a runner this box is not: `14-ci-capability/` adds a standalone Rust
+probe, built in a scratch directory outside the workspace, and
+`.github/workflows/windows-capability-probe.yml` runs it on `windows-latest`. That
+workflow is path-filtered to the probe directory and its own file, so it adds no time to
+the required lanes.
 
 ## Prerequisites
 

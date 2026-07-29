@@ -1,0 +1,47 @@
+name: Windows capability probe
+
+# Measure-before-design evidence for the Windows adapter sub-phases. The
+# trigger is pull_request, not only workflow_dispatch: GitHub dispatches a
+# workflow only when the file exists on the default branch, and every Windows
+# sub-phase lands on feat/windows-adapter rather than on main, so a dispatch
+# trigger alone would never run on the branch that needs the measurement. The
+# path filter keeps this job off every unrelated pull request.
+on:
+  pull_request:
+    paths:
+      - 'probes/windows/14-ci-capability/**'
+      - '.github/workflows/windows-capability-probe.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: windows-capability-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  capability-probe:
+    name: Measure the hosted Windows runner
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      # Windows PowerShell 5.1, matching the rest of the probe corpus; pwsh is
+      # not used anywhere in probes/windows.
+      - name: Run the capability probe
+        shell: powershell
+        run: |
+          .\probes\windows\14-ci-capability\probe.ps1 -Label ci
+
+      - name: Upload the measured captures
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-capability-probe-captures
+          path: probes/windows/14-ci-capability/captures/*-ci.json
+          if-no-files-found: error
