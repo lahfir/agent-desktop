@@ -28,6 +28,13 @@ const WALKABLE_POLL: Duration = Duration::from_millis(100);
 /// much - it is sound for the CLI because the CLI calls it once from `main`
 /// before any COM work. Libtest's worker threads are threads this product
 /// does not own, which is exactly the case `CoIncrementMTAUsage` exists for.
+/// The single entry every Windows-gated test uses before touching UI
+/// Automation. Four modules previously each defined their own one-line
+/// `bootstrap()` around this call.
+pub(crate) fn bootstrap() {
+    ensure_test_apartment();
+}
+
 pub(crate) fn ensure_test_apartment() {
     crate::system::com_runtime::ensure_hosted_library_mta_and_dpi()
         .expect("the process-wide MTA registration succeeds");

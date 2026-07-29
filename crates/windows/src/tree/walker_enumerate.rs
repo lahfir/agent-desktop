@@ -12,6 +12,27 @@ use crate::system::permissions::ensure_budget;
 /// trace segment cannot be flooded from a single walk.
 const MAX_REPORTED_FAILURES: usize = 8;
 
+/// Which of the two enumeration calls faulted.
+///
+/// Typed rather than a string: the two axes behave differently against a dead
+/// provider - descent surfaces `E_FAIL` while the sibling terminator is
+/// indistinguishable from end-of-list (A14-4) - so a reader of a trace segment
+/// needs to know which one this was, and a typo must not be able to change it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EnumerationAxis {
+    FirstChild,
+    NextSibling,
+}
+
+impl EnumerationAxis {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::FirstChild => "first_child",
+            Self::NextSibling => "next_sibling",
+        }
+    }
+}
+
 /// One node's child list as the enumeration loop found it.
 struct ChildRead<N> {
     elements: Vec<N>,
@@ -164,13 +185,23 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
                         complete = false;
                         break;
                     }
+                    if ensure_budget(self.budget.deadline).is_err() {
+                        self.note_deadline_exhausted();
+                        complete = false;
+                        break;
+                    }
                     let next = self.source.next_sibling(&current);
                     elements.push(current);
                     match next {
                         Ok(sibling) => current = sibling,
                         Err(failure) if failure.is_exhaustion() => break,
                         Err(failure) => {
-                            self.record(failure, "next_sibling", raw_depth, elements.len());
+                            self.record(
+                                failure,
+                                EnumerationAxis::NextSibling,
+                                raw_depth,
+                                elements.len(),
+                            );
                             complete = false;
                             break;
                         }
@@ -179,7 +210,7 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
             }
             Err(failure) if failure.is_exhaustion() => {}
             Err(failure) => {
-                self.record(failure, "first_child", raw_depth, 0);
+                self.record(failure, EnumerationAxis::FirstChild, raw_depth, 0);
                 complete = false;
             }
         }
@@ -226,7 +257,13 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
         }
     }
 
-    fn record(&mut self, failure: UiaFailure, axis: &str, raw_depth: u8, child_index: usize) {
+    fn record(
+        &mut self,
+        failure: UiaFailure,
+        axis: EnumerationAxis,
+        raw_depth: u8,
+        child_index: usize,
+    ) {
         self.stats.reads.health.cannot_complete += 1;
         if self.failures.len() >= MAX_REPORTED_FAILURES {
             self.suppressed_failures += 1;
@@ -258,13 +295,13 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
 /// export, so anything baked in is persisted.
 fn enumeration_error(
     failure: UiaFailure,
-    axis: &str,
+    axis: EnumerationAxis,
     raw_depth: u8,
     child_index: usize,
 ) -> AdapterError {
     uia_failure_error(failure, "enumerate the children of an element").with_details(json!({
         "kind": "child_enumeration_failed",
-        "axis": axis,
+        "axis": axis.as_str(),
         "raw_depth": raw_depth,
         "child_index": child_index,
     }))

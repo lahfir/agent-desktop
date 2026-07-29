@@ -97,14 +97,11 @@ mod windows_only {
     use super::*;
     use crate::tree::element::UIAElement;
     use crate::tree::fixture::HostedFixture;
+    use crate::tree::fixture::bootstrap;
     use crate::tree::properties::{read_cached, read_live};
     use crate::tree::property_ids::TreeProperty;
     use agent_desktop_core::Deadline;
     use uiautomation::types::TreeScope;
-
-    fn bootstrap() {
-        crate::tree::fixture::ensure_test_apartment();
-    }
 
     fn cached_children(handle: isize) -> Vec<UIAElement> {
         let root = crate::tree::automation::root_from_hwnd(

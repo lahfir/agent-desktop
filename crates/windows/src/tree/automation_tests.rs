@@ -155,11 +155,8 @@ fn the_canned_resolver_reports_a_missing_window_for_an_empty_handle() {
 #[cfg(target_os = "windows")]
 mod windows_only {
     use super::*;
+    use crate::tree::fixture::bootstrap;
     use uiautomation::Error as UiaError;
-
-    fn bootstrap() {
-        crate::tree::fixture::ensure_test_apartment();
-    }
 
     #[test]
     fn the_client_is_reusable_within_a_thread() {
@@ -319,11 +316,39 @@ mod windows_only {
         done.store(true, std::sync::atomic::Ordering::SeqCst);
 
         assert!(outcome.is_err(), "a stalled target must not resolve");
+        let bound = std::time::Duration::from_millis(u64::from(
+            crate::tree::automation::CONNECTION_TIMEOUT_MS,
+        )) * 2;
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(15),
-            "the call must be bounded, took {:?}",
+            started.elapsed() < bound,
+            "the call must be bounded by the client's connection timeout, took {:?}",
             started.elapsed()
         );
+    }
+
+    /// UI Automation's client core initializes lazily and not re-entrantly:
+    /// concurrent first touches made all but one thread fail instantly with
+    /// E_FAIL and "Re-Entrant CheckInit() call, aborting". The accessor
+    /// serializes that first touch, so every thread gets a working client.
+    #[test]
+    fn concurrent_first_touches_do_not_race_uia_lazy_initialization() {
+        bootstrap();
+        let readers: Vec<_> = (0..4)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    bootstrap();
+                    let client = automation_client().expect("a client per thread");
+                    client.get_root_element().is_ok()
+                })
+            })
+            .collect();
+
+        for reader in readers {
+            assert!(
+                reader.join().expect("the reader thread completes"),
+                "a healthy desktop-root read was refused by the connection bound"
+            );
+        }
     }
 
     #[test]

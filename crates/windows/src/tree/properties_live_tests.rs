@@ -1,4 +1,5 @@
 use super::*;
+use crate::tree::fixture::bootstrap;
 use crate::tree::fixture::{CONTENT_MARKER, HostedFixture, SECURE_MARKER};
 use crate::tree::properties::read_cached;
 use uiautomation::UIElement;
@@ -28,10 +29,6 @@ fn walk_children(handle: isize) -> Vec<crate::tree::element::UIAElement> {
         .into_iter()
         .map(crate::tree::element::UIAElement::from)
         .collect()
-}
-
-fn bootstrap() {
-    crate::tree::fixture::ensure_test_apartment();
 }
 
 /// The gate asserted against a real out-of-process provider, not only

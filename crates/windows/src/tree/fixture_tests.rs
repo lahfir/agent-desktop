@@ -1,5 +1,6 @@
 use super::*;
 use crate::tree::automation::{automation_client, uia_error};
+use crate::tree::fixture::bootstrap;
 use agent_desktop_core::Deadline;
 use std::time::Duration;
 use uiautomation::types::UIProperty;
@@ -17,10 +18,6 @@ fn fixture_host_process_entry() {
         "the host entry must not run without the host flag"
     );
     run_as_host();
-}
-
-fn bootstrap() {
-    ensure_test_apartment();
 }
 
 fn raw_view_walker() -> UITreeWalker {

@@ -105,6 +105,14 @@ unsafe extern "system" fn window_proc(
 }
 
 fn activate_common_controls_v6() {
+    static ACTIVATED: std::sync::Once = std::sync::Once::new();
+    ACTIVATED.call_once(install_common_controls_v6);
+}
+
+/// The activation context is process-wide, so writing the manifest and
+/// creating the context once per fixture wrote the same file repeatedly and
+/// leaked a context per window.
+fn install_common_controls_v6() {
     let directory = std::env::temp_dir().join("agent-desktop-fixture-manifests");
     let _ = std::fs::create_dir_all(&directory);
     let path = directory.join(format!("comctl32-v6-{}.manifest", std::process::id()));

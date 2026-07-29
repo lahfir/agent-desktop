@@ -6,6 +6,16 @@ use agent_desktop_core::{
 use super::property_ids::TreeProperty;
 use super::property_outcome::{PropertyOutcome, PropertyValue};
 
+fn withholds_content(outcome: &PropertyOutcome) -> bool {
+    match outcome {
+        PropertyOutcome::Known(PropertyValue::Flag(secure)) => *secure,
+        PropertyOutcome::Known(PropertyValue::Number(secure)) => *secure != 0,
+        PropertyOutcome::Known(_) => true,
+        PropertyOutcome::Unknown => true,
+        PropertyOutcome::Absent => false,
+    }
+}
+
 /// Every property read for one element, already gated on `IsPassword`.
 #[derive(Debug, Clone, Default)]
 pub struct ElementProperties {
@@ -18,8 +28,7 @@ impl ElementProperties {
         let secure = reads
             .iter()
             .find(|(property, _)| *property == TreeProperty::IsPassword)
-            .and_then(|(_, outcome)| outcome.flag())
-            .unwrap_or(false);
+            .is_some_and(|(_, outcome)| withholds_content(outcome));
         let entries = reads
             .into_iter()
             .map(|(property, outcome)| {
@@ -33,6 +42,24 @@ impl ElementProperties {
         Self { entries, secure }
     }
 
+    /// Decides the secure-field gate from one `IsPassword` outcome.
+    ///
+    /// Fails closed, because the cost is asymmetric: withholding a name that
+    /// was not secret loses a little evidence, while publishing one that was
+    /// puts a password into a snapshot, a session JSONL segment and a trace
+    /// HTML export.
+    ///
+    /// - `Known(true)` is the ordinary answer, and a non-zero integer is the
+    ///   same answer from a provider that returns `VT_I4` where UIA documents
+    ///   `VT_BOOL`. Reading only `VT_BOOL` would let such a provider open the
+    ///   gate.
+    /// - `Unknown` means the read failed, which is not evidence the element is
+    ///   safe, so it withholds too.
+    /// - `Absent` means the provider answered and does not implement the
+    ///   property, which is a real answer: not a password field.
+    ///
+    /// An element whose read set never requested `IsPassword` is not gated at
+    /// all - there was nothing to gate, and the caller chose the property set.
     pub fn is_secure(&self) -> bool {
         self.secure
     }

@@ -116,18 +116,23 @@ fn node(element: &UIAElement, parent: Option<usize>, index: usize) -> Value {
     })
 }
 
-fn collect(
-    source: &UiaTreeSource,
-    element: &UIAElement,
+/// Where one node sits in the dump being built.
+struct Position {
     parent: Option<usize>,
     index: usize,
     depth: u8,
+}
+
+fn collect(
+    source: &UiaTreeSource,
+    element: &UIAElement,
+    at: Position,
     max_depth: u8,
     nodes: &mut Vec<Value>,
 ) {
     let position = nodes.len();
-    nodes.push(node(element, parent, index));
-    if depth >= max_depth {
+    nodes.push(node(element, at.parent, at.index));
+    if at.depth >= max_depth {
         return;
     }
     let mut child = match source.first_child(element) {
@@ -140,9 +145,11 @@ fn collect(
         collect(
             source,
             &child,
-            Some(position),
-            child_index,
-            depth + 1,
+            Position {
+                parent: Some(position),
+                index: child_index,
+                depth: at.depth + 1,
+            },
             max_depth,
             nodes,
         );
@@ -168,9 +175,11 @@ pub fn dump(root: &UIAElement, options: &Options, deadline: Deadline) -> Result<
     collect(
         &source,
         &prepared,
-        None,
-        0,
-        0,
+        Position {
+            parent: None,
+            index: 0,
+            depth: 0,
+        },
         options.max_depth,
         &mut nodes,
     );

@@ -101,18 +101,60 @@ fn a_non_secure_element_keeps_every_value_bearing_property() {
     assert_eq!(properties.get(TreeProperty::Value), text("visible-value"));
 }
 
-/// An unreadable `IsPassword` must not open the gate by accident, so the flag
-/// defaults closed only in the sense that a non-`Known(true)` outcome leaves
-/// the element non-secure - the branch that matters is asserted explicitly
-/// rather than left to a default.
+/// The gate fails closed. A failed `IsPassword` read is not evidence the
+/// element is safe to publish, and the costs are asymmetric: withholding a
+/// name that was not secret loses a little evidence, publishing one that was
+/// puts a password into a snapshot, a session JSONL segment and a trace HTML
+/// export.
 #[test]
-fn an_unreadable_is_password_leaves_the_element_unmarked() {
+fn an_unreadable_is_password_withholds_rather_than_publishing() {
     let properties = reads(&[
         (TreeProperty::IsPassword, PropertyOutcome::Unknown),
         (TreeProperty::Value, text("visible-value")),
     ]);
 
+    assert!(properties.is_secure());
+    assert_eq!(properties.get(TreeProperty::Value), PropertyOutcome::Absent);
+}
+
+/// A provider that answers `IsPassword` as an integer where UIA documents a
+/// boolean must not slip past the gate. Reading only `VT_BOOL` would let it.
+#[test]
+fn an_integer_is_password_still_closes_the_gate() {
+    let properties = reads(&[
+        (
+            TreeProperty::IsPassword,
+            PropertyOutcome::Known(PropertyValue::Number(1)),
+        ),
+        (TreeProperty::Value, text("secret-value")),
+    ]);
+
+    assert!(properties.is_secure());
+    assert_eq!(properties.get(TreeProperty::Value), PropertyOutcome::Absent);
+}
+
+/// A provider that answers `IsPassword` and does not implement it has given a
+/// real answer, so the gate stays open - otherwise every element on a provider
+/// without the property would lose its name and value.
+#[test]
+fn an_absent_is_password_is_a_real_answer_and_leaves_content_readable() {
+    let properties = reads(&[
+        (TreeProperty::IsPassword, PropertyOutcome::Absent),
+        (TreeProperty::Value, text("visible-value")),
+    ]);
+
     assert!(!properties.is_secure());
+    assert_eq!(properties.get(TreeProperty::Value), text("visible-value"));
+}
+
+/// An element whose read set never asked for `IsPassword` is not gated: there
+/// was nothing to gate, and the walk chooses the property set.
+#[test]
+fn a_read_set_without_the_flag_is_not_gated() {
+    let properties = reads(&[(TreeProperty::Value, text("visible-value"))]);
+
+    assert!(!properties.is_secure());
+    assert_eq!(properties.get(TreeProperty::Value), text("visible-value"));
 }
 
 #[test]
@@ -181,6 +223,21 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
 }
 
 /// KTD14: a failed read must name the property and never carry its content.
+/// A provider is free to hand back nonsense. An inverted side is degenerate,
+/// not negative-sized, and an extreme one must not overflow a debug build.
+#[test]
+fn a_rectangle_side_is_never_negative_and_never_overflows() {
+    assert_eq!(extent(10, 40), 30.0);
+    assert_eq!(extent(40, 10), 0.0, "an inverted side collapses to zero");
+    assert_eq!(extent(7, 7), 0.0);
+    assert_eq!(
+        extent(i32::MIN, i32::MAX),
+        f64::from(i32::MAX),
+        "an extreme span saturates rather than overflowing"
+    );
+    assert_eq!(extent(i32::MAX, i32::MIN), 0.0);
+}
+
 #[test]
 fn a_property_read_error_names_the_property_and_carries_no_content() {
     const MARKER: &str = "zzmarkerzz-account-number";

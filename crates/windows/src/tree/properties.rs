@@ -17,6 +17,18 @@ pub fn bounded_text(value: String) -> PropertyOutcome {
     }
 }
 
+/// Measures one side of a rectangle.
+///
+/// Saturating, because a provider is free to hand back nonsense and this crate
+/// denies panicking paths: `right - left` on extreme values overflows `i32` and
+/// would abort a debug build. An inverted side is degenerate, not
+/// negative-sized, so it collapses to zero - the same shape A14-8 measured on a
+/// minimized top-level window - rather than travelling downstream as a negative
+/// width no consumer expects.
+pub fn extent(near: i32, far: i32) -> f64 {
+    f64::from(far.saturating_sub(near).max(0))
+}
+
 /// Builds the structured error for a property read that failed, carrying the
 /// property's name and never its value (KTD14).
 pub fn property_read_error(base: AdapterError, property: TreeProperty) -> AdapterError {
@@ -132,13 +144,11 @@ mod imp {
     /// minimized top-level window reports (A14-8), rather than travelling
     /// downstream as a negative width that no consumer expects.
     fn rect_outcome(rectangle: uiautomation::types::Rect) -> PropertyOutcome {
-        let width = rectangle.get_right() - rectangle.get_left();
-        let height = rectangle.get_bottom() - rectangle.get_top();
         PropertyOutcome::Known(PropertyValue::Bounds(Rect {
             x: f64::from(rectangle.get_left()),
             y: f64::from(rectangle.get_top()),
-            width: f64::from(width.max(0)),
-            height: f64::from(height.max(0)),
+            width: super::extent(rectangle.get_left(), rectangle.get_right()),
+            height: super::extent(rectangle.get_top(), rectangle.get_bottom()),
         }))
     }
 

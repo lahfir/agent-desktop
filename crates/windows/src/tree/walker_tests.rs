@@ -1,7 +1,10 @@
 use super::*;
 use crate::tree::automation::UiaFailure;
 use crate::tree::walker_enumerate::TreeWalk;
-use crate::tree::walker_fake::{E_FAIL, EXHAUSTION, FakeTree, REAL_FAILURE, budget, walk};
+use crate::tree::walker_fake::{
+    E_FAIL, EXHAUSTION, FakeTree, REAL_FAILURE, budget, walk, walk_expecting_failure,
+};
+use agent_desktop_core::{Deadline, ErrorCode};
 
 /// The fakes encode the measured pair, not a reading of the crate. If this
 /// fails, every other fake-driven assertion below is testing the wrong model.
@@ -208,7 +211,9 @@ fn the_cycle_guard_is_unwound_on_the_error_exit_path() {
 
     assert!(subtree.is_some());
     assert_eq!(walk.ancestor_depth(), 0);
-    assert!(walk.finish().is_ok());
+    let (_, complete, failures) = walk.finish().expect("the guard left nothing behind");
+    assert!(!complete, "a faulting walk must not report complete");
+    assert!(!failures.is_empty());
 }
 
 #[test]
@@ -222,6 +227,12 @@ fn the_cycle_guard_is_unwound_when_the_deadline_expires() {
 
     assert!(subtree.is_none());
     assert_eq!(walk.ancestor_depth(), 0);
+    let (stats, complete, _) = walk.finish().expect("the guard left nothing behind");
+    assert!(
+        !complete,
+        "a walk cut short by its deadline must report incomplete, not merely unwind"
+    );
+    assert!(stats.reads.health.deadline_exhausted > 0);
 }
 
 /// A sibling list that never terminates is invisible to the ancestor guard, so
@@ -256,6 +267,51 @@ fn the_complete_case_projects_and_the_incomplete_case_is_refused() {
             .tree
             .into_accessibility_tree()
             .is_err()
+    );
+}
+
+/// A walk whose root never yielded a subtree has to say *why*. The two causes
+/// are not interchangeable: an expired budget is the caller's own limit and is
+/// retryable with a larger one, while a root that simply produced nothing is
+/// the target failing to answer.
+#[test]
+fn a_root_that_never_read_reports_the_cause_that_produced_it() {
+    let fake = FakeTree::default().with_chain(&[1, 2]);
+    let expired = WalkBudget::new(10, Deadline::after(1).expect("a one millisecond deadline"));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    let error = walk_expecting_failure(&fake, expired);
+
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("kind"))
+            .and_then(serde_json::Value::as_str),
+        Some("walk_root_unread")
+    );
+}
+
+/// `predecessors_complete` is what tells a consumer whether the child it is
+/// looking at is preceded by every sibling the provider actually had. A child
+/// after a dropped one must not claim an intact prefix.
+#[test]
+fn an_edge_after_a_dropped_sibling_reports_its_prefix_as_incomplete() {
+    let fake = FakeTree::default()
+        .with_children(1, &[2, 3, 4])
+        .aliasing(2, 1);
+
+    let outcome = walk(&fake, budget(10));
+    let root = outcome
+        .tree
+        .into_accessibility_tree()
+        .expect("core accepts the observation");
+
+    assert_eq!(
+        root.children.len(),
+        2,
+        "the cycle child is dropped and its siblings retained"
     );
 }
 

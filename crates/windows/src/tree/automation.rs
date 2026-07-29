@@ -31,10 +31,14 @@ const PUMP_PROBE_CAP_MS: u64 = 2_000;
 
 /// How long a UI Automation call may wait to reach a target's provider.
 ///
-/// Measured, not assumed: against a window whose thread owns it but never
-/// dispatches, `ElementFromHandle` returns `UIA_E_TIMEOUT` at this bound
-/// instead of blocking. Without it the same call did not return inside a 30 s
-/// watchdog.
+/// This is a backstop against an unbounded hang, not a latency budget - the
+/// operation `Deadline` bounds latency and is checked around every call. It is
+/// UI Automation's own documented default, kept explicit so the value is a
+/// decision rather than an inheritance.
+///
+/// The already-hung case does not wait this out. `root_from_hwnd` probes with
+/// `SendMessageTimeoutW` first and fails in `PUMP_PROBE_CAP_MS`; this bound
+/// only catches a target that stops dispatching after answering that probe.
 pub const CONNECTION_TIMEOUT_MS: u32 = 2_000;
 
 /// How long one UI Automation transaction may take end to end.
@@ -164,6 +168,20 @@ mod imp {
         static CLIENT: OnceCell<UIAutomation> = const { OnceCell::new() };
     }
 
+    /// Serializes the first UI Automation touch across threads.
+    ///
+    /// UI Automation's client core initializes lazily on first use and that
+    /// initialization is **not re-entrant**: when several threads first reach
+    /// it at once, all but one abort with `E_FAIL` and the message "Re-Entrant
+    /// CheckInit() call, aborting". Measured on this box as three concurrent
+    /// `get_root_element` calls, of which two failed instantly - not a
+    /// timeout, an outright refusal.
+    ///
+    /// Creating the client is not enough to trigger it; the first *call* is.
+    /// So the lock is held across a warm-up call, and released once the
+    /// process-wide core is up. Per-thread clients are safe from then on.
+    static FIRST_TOUCH: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// Splits a crate error onto the `result()` discriminator.
     pub fn failure_of(error: &UiaError) -> UiaFailure {
         match error.result() {
@@ -190,10 +208,20 @@ mod imp {
             if let Some(client) = cell.get() {
                 return Ok(client.clone());
             }
-            let client = create_bounded_client()?;
+            let client = create_serialized_client()?;
             let _ = cell.set(client.clone());
             Ok(client)
         })
+    }
+
+    /// Builds this thread's client without racing UI Automation's own lazy
+    /// initialization against another thread's.
+    fn create_serialized_client() -> Result<UIAutomation, AdapterError> {
+        let guard = FIRST_TOUCH.lock();
+        let client = create_bounded_client()?;
+        let _ = client.get_root_element();
+        drop(guard);
+        Ok(client)
     }
 
     /// Builds a client whose calls are bounded, and fails rather than hand
