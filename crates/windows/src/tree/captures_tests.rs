@@ -69,5 +69,13 @@ fn no_committed_capture_is_an_empty_tree() {
             document.get("walk").is_some(),
             "{name} records no walk verdict"
         );
+        for census in ["control_types", "providers", "sample"] {
+            assert!(
+                document[census]
+                    .as_array()
+                    .is_some_and(|rows| !rows.is_empty()),
+                "{name} records an empty {census} census"
+            );
+        }
     }
 }

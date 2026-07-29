@@ -7,6 +7,7 @@ use agent_desktop_windows::tree::property_ids::TreeProperty;
 use agent_desktop_windows::tree::walker::{TreeSource, WalkBudget};
 use agent_desktop_windows::tree::walker_source::{UiaTreeSource, walk_uia_subtree};
 use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::select::Options;
 
@@ -184,7 +185,7 @@ pub fn dump(root: &UIAElement, options: &Options, deadline: Deadline) -> Result<
         &mut nodes,
     );
     let document = json!({
-        "capture": "uia-tree-dump",
+        "capture": "uia-tree-census",
         "client_stack": "uia3-com",
         "crate": "uiautomation 0.25.0",
         "target_class": options.class_name,
@@ -193,9 +194,71 @@ pub fn dump(root: &UIAElement, options: &Options, deadline: Deadline) -> Result<
         "max_depth": options.max_depth,
         "node_count": nodes.len(),
         "walk": walk_verdict(&prepared, deadline),
-        "nodes": nodes,
+        "control_types": control_type_census(&nodes),
+        "providers": provider_census(&nodes),
+        "sample": sample(&nodes),
     });
     serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+}
+
+/// One row per `ControlType` the target exposes.
+///
+/// This is what 2.3's role map and 2.4's surface detection actually read. A
+/// full per-node dump carried the same information a hundred times over -
+/// measured on Explorer, 100 nodes spread across 23 control types, 40 class
+/// names and 15 provider strings, with 85 of the provider strings verbatim
+/// repeats and every bounds value unassertable by rule (R9, KTD8).
+fn control_type_census(nodes: &[Value]) -> Value {
+    let mut rows: BTreeMap<String, (usize, BTreeSet<String>, usize, usize)> = BTreeMap::new();
+    for node in nodes {
+        let key = node["control_type"].to_string();
+        let row = rows.entry(key).or_insert((0, BTreeSet::new(), 0, 0));
+        row.0 += 1;
+        row.1.insert(node["class_name"].to_string());
+        row.2 += usize::from(node["automation_id"].as_str() != Some("<absent>"));
+        row.3 += usize::from(node["name"]["present"].as_bool().unwrap_or(false));
+    }
+    Value::Array(
+        rows.into_iter()
+            .map(|(control_type, (count, class_names, with_id, with_name))| {
+                json!({
+                    "control_type": control_type,
+                    "nodes": count,
+                    "class_names": class_names.into_iter().collect::<Vec<_>>(),
+                    "with_automation_id": with_id,
+                    "with_name": with_name,
+                })
+            })
+            .collect(),
+    )
+}
+
+/// One row per distinct provider, which is what the cache policy keys on.
+fn provider_census(nodes: &[Value]) -> Value {
+    let mut rows: BTreeMap<String, usize> = BTreeMap::new();
+    for node in nodes {
+        *rows
+            .entry(node["provider_description"].to_string())
+            .or_default() += 1;
+    }
+    Value::Array(
+        rows.into_iter()
+            .map(|(provider, count)| json!({ "provider": provider, "nodes": count }))
+            .collect(),
+    )
+}
+
+/// One fully-detailed node per control type, so the shape stays inspectable
+/// without repeating it for every sibling.
+fn sample(nodes: &[Value]) -> Value {
+    let mut seen = BTreeSet::new();
+    Value::Array(
+        nodes
+            .iter()
+            .filter(|node| seen.insert(node["control_type"].to_string()))
+            .cloned()
+            .collect(),
+    )
 }
 
 fn os_build() -> String {

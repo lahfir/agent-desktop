@@ -1,10 +1,121 @@
 {
-  "capture": "uia-tree-dump",
+  "capture": "uia-tree-census",
   "client_stack": "uia3-com",
+  "control_types": [
+    {
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50000",
+      "nodes": 7,
+      "with_automation_id": 7,
+      "with_name": 7
+    },
+    {
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50010",
+      "nodes": 2,
+      "with_automation_id": 2,
+      "with_name": 2
+    },
+    {
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50011",
+      "nodes": 6,
+      "with_automation_id": 6,
+      "with_name": 6
+    },
+    {
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50014",
+      "nodes": 2,
+      "with_automation_id": 2,
+      "with_name": 2
+    },
+    {
+      "class_names": [
+        "\"msctls_statusbar32\""
+      ],
+      "control_type": "50017",
+      "nodes": 1,
+      "with_automation_id": 1,
+      "with_name": 1
+    },
+    {
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50020",
+      "nodes": 4,
+      "with_automation_id": 4,
+      "with_name": 4
+    },
+    {
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50027",
+      "nodes": 1,
+      "with_automation_id": 1,
+      "with_name": 1
+    },
+    {
+      "class_names": [
+        "\"Edit\""
+      ],
+      "control_type": "50030",
+      "nodes": 1,
+      "with_automation_id": 1,
+      "with_name": 1
+    },
+    {
+      "class_names": [
+        "\"Notepad\""
+      ],
+      "control_type": "50032",
+      "nodes": 1,
+      "with_automation_id": 1,
+      "with_name": 1
+    },
+    {
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50037",
+      "nodes": 1,
+      "with_automation_id": 1,
+      "with_name": 1
+    }
+  ],
   "crate": "uiautomation 0.25.0",
   "max_depth": 24,
   "node_count": 26,
-  "nodes": [
+  "os_build": "Microsoft Windows [Version 10.0.17763.7434]",
+  "providers": [
+    {
+      "nodes": 23,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: EDIT Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    }
+  ],
+  "sample": [
     {
       "automation_id": "",
       "bounds": {
@@ -36,7 +147,7 @@
       },
       "child_index": 0,
       "class_name": "Edit",
-      "control_type": 50004,
+      "control_type": 50030,
       "failed_reads": 0,
       "is_offscreen": false,
       "is_password": false,
@@ -45,7 +156,7 @@
         "present": true
       },
       "parent_index": 0,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: EDIT Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
     },
     {
       "automation_id": "NonClientVerticalScrollBar",
@@ -87,90 +198,6 @@
         "present": true
       },
       "parent_index": 2,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "DownButton",
-      "bounds": {
-        "height": 17.0,
-        "width": 17.0,
-        "x": 1219.0,
-        "y": 560.0
-      },
-      "child_index": 1,
-      "class_name": "",
-      "control_type": 50000,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 9,
-        "present": true
-      },
-      "parent_index": 2,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "NonClientHorizontalScrollBar",
-      "bounds": {
-        "height": 17.0,
-        "width": 735.0,
-        "x": 484.0,
-        "y": 577.0
-      },
-      "child_index": 1,
-      "class_name": "",
-      "control_type": 50014,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 10,
-        "present": true
-      },
-      "parent_index": 1,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "UpButton",
-      "bounds": {
-        "height": 17.0,
-        "width": 17.0,
-        "x": 484.0,
-        "y": 577.0
-      },
-      "child_index": 0,
-      "class_name": "",
-      "control_type": 50000,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 11,
-        "present": true
-      },
-      "parent_index": 5,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "DownButton",
-      "bounds": {
-        "height": 17.0,
-        "width": 17.0,
-        "x": 1202.0,
-        "y": 577.0
-      },
-      "child_index": 1,
-      "class_name": "",
-      "control_type": 50000,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 12,
-        "present": true
-      },
-      "parent_index": 5,
       "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
     },
     {
@@ -237,70 +264,7 @@
       "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
     },
     {
-      "automation_id": "",
-      "bounds": {
-        "height": 21.0,
-        "width": 123.0,
-        "x": 862.0,
-        "y": 596.0
-      },
-      "child_index": 1,
-      "class_name": "",
-      "control_type": 50020,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 17,
-        "present": true
-      },
-      "parent_index": 9,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 21.0,
-        "width": 123.0,
-        "x": 987.0,
-        "y": 596.0
-      },
-      "child_index": 2,
-      "class_name": "",
-      "control_type": 50020,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 16,
-        "present": true
-      },
-      "parent_index": 9,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 21.0,
-        "width": 108.0,
-        "x": 1112.0,
-        "y": 596.0
-      },
-      "child_index": 3,
-      "class_name": "",
-      "control_type": 50020,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 4,
-        "present": true
-      },
-      "parent_index": 9,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
+      "automation_id": "TitleBar",
       "bounds": {
         "height": 28.0,
         "width": 736.0,
@@ -321,7 +285,7 @@
       "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
     },
     {
-      "automation_id": "MenuBar",
+      "automation_id": "SystemMenuBar",
       "bounds": {
         "height": 22.0,
         "width": 22.0,
@@ -361,198 +325,8 @@
       },
       "parent_index": 15,
       "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 30.0,
-        "width": 47.0,
-        "x": 1097.0,
-        "y": 101.0
-      },
-      "child_index": 1,
-      "class_name": "",
-      "control_type": 50000,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 8,
-        "present": true
-      },
-      "parent_index": 14,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 30.0,
-        "width": 46.0,
-        "x": 1144.0,
-        "y": 101.0
-      },
-      "child_index": 2,
-      "class_name": "",
-      "control_type": 50000,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 8,
-        "present": true
-      },
-      "parent_index": 14,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 30.0,
-        "width": 47.0,
-        "x": 1190.0,
-        "y": 101.0
-      },
-      "child_index": 3,
-      "class_name": "",
-      "control_type": 50000,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 5,
-        "present": true
-      },
-      "parent_index": 14,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "MenuBar",
-      "bounds": {
-        "height": 19.0,
-        "width": 752.0,
-        "x": 484.0,
-        "y": 131.0
-      },
-      "child_index": 3,
-      "class_name": "",
-      "control_type": 50010,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 11,
-        "present": true
-      },
-      "parent_index": 0,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 19.0,
-        "width": 32.0,
-        "x": 484.0,
-        "y": 131.0
-      },
-      "child_index": 0,
-      "class_name": "",
-      "control_type": 50011,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 4,
-        "present": true
-      },
-      "parent_index": 20,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 19.0,
-        "width": 34.0,
-        "x": 516.0,
-        "y": 131.0
-      },
-      "child_index": 1,
-      "class_name": "",
-      "control_type": 50011,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 4,
-        "present": true
-      },
-      "parent_index": 20,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 19.0,
-        "width": 52.0,
-        "x": 550.0,
-        "y": 131.0
-      },
-      "child_index": 2,
-      "class_name": "",
-      "control_type": 50011,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 6,
-        "present": true
-      },
-      "parent_index": 20,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 19.0,
-        "width": 39.0,
-        "x": 602.0,
-        "y": 131.0
-      },
-      "child_index": 3,
-      "class_name": "",
-      "control_type": 50011,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 4,
-        "present": true
-      },
-      "parent_index": 20,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
-    },
-    {
-      "automation_id": "",
-      "bounds": {
-        "height": 19.0,
-        "width": 39.0,
-        "x": 641.0,
-        "y": 131.0
-      },
-      "child_index": 4,
-      "class_name": "",
-      "control_type": 50011,
-      "failed_reads": 0,
-      "is_offscreen": false,
-      "is_password": false,
-      "name": {
-        "chars": 4,
-        "present": true
-      },
-      "parent_index": 20,
-      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
     }
   ],
-  "os_build": "Microsoft Windows [Version 10.0.17763.7434]",
   "target_class": "Notepad",
   "target_variant": "classic Win32 Notepad (%WINDIR%\\System32\\notepad.exe), not the Store MSIX RichEdit variant",
   "walk": {

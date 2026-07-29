@@ -328,7 +328,8 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 - **Requirements:** R8.
 - **Dependencies:** U6, U7.
 - **Files:** `crates/windows/examples/uia_tree_dump.rs`, `docs/plans/2026-07-27-002-captures/notepad-com.json`, `docs/plans/2026-07-27-002-captures/explorer-com.json`.
-- **Approach:** An example binary taking a window selector and a view, walking the tree and writing JSON with per-node `ControlType`, `ClassName`, `AutomationId`, `Name` **presence only**, bounds, parent index, and `ProviderDescription`. Run it on the dev box against classic Notepad and an Explorer folder window; commit both captures recording target variant, OS build, and client stack — the metadata whose absence made 2.0's managed dumps unusable as COM expectations.
+- **Approach:** An example binary taking a window selector and a view, walking the tree and writing JSON as a **census** rather than a per-node dump: capture metadata, the shipped walker's own completeness verdict, one row per `ControlType` (node count, the `ClassName`s it appears under, how many carry an `AutomationId`, how many carry a `Name`), one row per distinct `ProviderDescription`, and one fully-detailed sample node per control type carrying `ClassName`, `AutomationId`, `Name` **presence only**, bounds and parent index.
+  A full per-node dump was written first and discarded: measured on Explorer it was 2,117 lines carrying 23 control types, 40 class names and 15 provider strings, with 85 of the 100 provider strings verbatim repeats and every bounds value unassertable by rule (R9, KTD8 forbid asserting capture contents). It was 28% of the sub-phase's diff and write-only - nothing reads it, no test can check it, and it rots the day the target updates. The census preserves every claim the ledger makes at 1,135 lines for both targets. This settles the Open Question below about where the captures belong by removing most of the reason to ask. Run it on the dev box against classic Notepad and an Explorer folder window; commit both captures recording target variant, OS build, and client stack — the metadata whose absence made 2.0's managed dumps unusable as COM expectations.
   **Normalise host data before writing**, as 2.0's own captures already do (`probes/windows/captures/08-uia3-com/census.json` substitutes `pid:<pid>,providerId:<providerid>`): `Name` is presence-only by rule, and pids, provider ids, window handles, and user paths are substituted. **Gate every item behind `#[cfg(target_os = "windows")]` with a `#[cfg(not(...))] fn main()` stub** (KTD11) — `cargo check --all-targets` compiles examples, and an ungated reference to the target-gated `uiautomation` breaks the Linux gate. The tool is prerequisite-aware: an unresolvable target reports skipped, never a false green.
 - **Execution note:** For an Electron or Chromium target a first read understates the tree ~13x (A1-5, deterministic) — settle before capturing, and never capture behind another window (A1-6). Neither applies to Notepad or Explorer, but the tool should not encourage the mistake.
 - **Patterns to follow:** `crates/macos/examples/ax_probe.rs` for the fully-gated example shape; `crates/core/examples/locator_benchmark` for the example convention; `probes/windows/captures/08-uia3-com/census.json` for capture field shape and normalisation.
@@ -374,7 +375,7 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 | Evidence honesty | no test asserts a node count, tree shape, timing multiplier, coordinate literal, or any `app/provider` fact | U4-U8 |
 | No banned calls | no `UIAutomation::new()`, no `UITreeWalker::get_children`, no `SetFocus`, no literal UIA property-id integer — each asserted by grep | U3, U5, U6 |
 | Size | Windows release binary under 15 MiB with `uiautomation` linked | U2 |
-| Dev-box evidence | both COM captures committed with variant, build, client stack, and host-data normalisation | U8 |
+| Dev-box evidence | both COM censuses committed with variant, build, client stack, host-data normalisation, the walker's completeness verdict, and non-empty control-type, provider and sample sections | U8 |
 | Doc truth | each of the five `docs/phases.md` amendments cites the row or source that disproved the prior statement | U9 |
 | PR is green | every required check on a PR into `feat/windows-adapter`, never `main` | whole PR |
 
@@ -395,7 +396,7 @@ Per-unit `**Files:**` lists are authoritative; this tree is a scope declaration.
 - Property reads distinguish `Known`, `Absent`, and `Unknown`; no value-bearing property is read from a password field; no UIA property id appears as a literal.
 - `CacheRequest` correctness is asserted against a cross-process provider, timing is not, `ElementMode::Full` is never weakened, and no node-count arm exists.
 - No error raised anywhere in this sub-phase carries app-derived content.
-- Committed COM dumps of Notepad and Explorer exist as dev-box evidence, normalised, recording variant, build, and client stack.
+- Committed COM censuses of Notepad and Explorer exist as dev-box evidence, normalised, recording variant, build, client stack and the walker's own completeness verdict, with per-control-type and per-provider rows and one sample node per control type rather than a full per-node dump.
 - `ObservationOps::observe_tree` still returns `PLATFORM_NOT_SUPPORTED`; no ref is allocated anywhere in `crates/windows`.
 - The five `docs/phases.md` statements are corrected in place with their disproving evidence cited.
 
