@@ -117,6 +117,32 @@ fn an_unreadable_is_password_withholds_rather_than_publishing() {
     assert_eq!(properties.get(TreeProperty::Value), PropertyOutcome::Absent);
 }
 
+/// Withholding replaces content, it does not invent an answer. When the whole
+/// read failed there is nothing to withhold, and rewriting `Unknown` to
+/// `Absent` would claim the provider does not implement the property — the
+/// fabrication A14-9 forbids, because `Absent` satisfies
+/// `EvidenceRequirements` and a target that never answered must not.
+#[test]
+fn withholding_never_turns_a_failed_read_into_a_real_answer() {
+    let properties = reads(&[
+        (TreeProperty::IsPassword, PropertyOutcome::Unknown),
+        (TreeProperty::Value, PropertyOutcome::Unknown),
+        (TreeProperty::Name, text("readable-name")),
+    ]);
+
+    assert!(properties.is_secure());
+    assert_eq!(
+        properties.get(TreeProperty::Value),
+        PropertyOutcome::Unknown,
+        "a failed read has no content to withhold"
+    );
+    assert_eq!(
+        properties.get(TreeProperty::Name),
+        PropertyOutcome::Absent,
+        "content that was actually read is withheld"
+    );
+}
+
 /// A provider that answers `IsPassword` as an integer where UIA documents a
 /// boolean must not slip past the gate. Reading only `VT_BOOL` would let it.
 #[test]

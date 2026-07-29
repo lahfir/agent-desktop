@@ -6,6 +6,22 @@ use agent_desktop_core::{
 use super::property_ids::TreeProperty;
 use super::property_outcome::{PropertyOutcome, PropertyValue};
 
+/// Withholds a value-bearing property from a secure element.
+///
+/// Only a value that was actually read is replaced. A read that failed carries
+/// no content, so there is nothing to withhold — and rewriting it to `Absent`
+/// would claim the provider does not implement the property, which is false
+/// and is exactly the fabrication A14-9 forbids: `Absent` is a legitimate
+/// answer that satisfies `EvidenceRequirements`, and a target that never
+/// answered must not be able to satisfy them.
+fn withheld(outcome: PropertyOutcome) -> PropertyOutcome {
+    match outcome {
+        PropertyOutcome::Known(_) => PropertyOutcome::Absent,
+        PropertyOutcome::Absent => PropertyOutcome::Absent,
+        PropertyOutcome::Unknown => PropertyOutcome::Unknown,
+    }
+}
+
 fn withholds_content(outcome: &PropertyOutcome) -> bool {
     match outcome {
         PropertyOutcome::Known(PropertyValue::Flag(secure)) => *secure,
@@ -33,7 +49,7 @@ impl ElementProperties {
             .into_iter()
             .map(|(property, outcome)| {
                 if secure && property.is_value_bearing() {
-                    (property, PropertyOutcome::Absent)
+                    (property, withheld(outcome))
                 } else {
                     (property, outcome)
                 }
