@@ -1,109 +1,64 @@
-use agent_desktop_core::{LocatorField, NameEvidence};
+use agent_desktop_core::{
+    LocatorField, NameEvidence, NameSlotStatus, SlotStatus, resolve_description, resolve_name,
+};
 
 use crate::tree::node_attribute_status::{
     DESCRIPTION, LABEL, NodeAttributeStatus, PLACEHOLDER, TITLE, TITLE_ELEMENT, VALUE,
 };
 
+/// The accessible name, computed by core.
+///
+/// This adapter holds no precedence of its own. It once did, and the copy it
+/// held disagreed with the documented one - which is how a documented
+/// precedence ended up with no caller at all. Everything platform-specific
+/// about macOS's naming is folded into the per-slot status **here**, before
+/// core is called, so the shared function never sees an `AX`-prefixed token.
 pub(crate) fn name_field(
     evidence: &NameEvidence,
     status: &NodeAttributeStatus,
     role: Option<&str>,
     children_complete: bool,
 ) -> LocatorField<String> {
-    let mut uncertain = false;
-    for (candidate, unknown) in name_sources(evidence, status, role, children_complete) {
-        uncertain |= unknown;
-        if let Some(value) = meaningful(candidate) {
-            return if uncertain {
-                LocatorField::Unknown
-            } else {
-                LocatorField::Known(value.to_string())
-            };
-        }
-    }
-    if uncertain {
-        LocatorField::Unknown
-    } else {
-        LocatorField::Absent
-    }
+    resolve_name(evidence, &slot_status(status, role, children_complete))
 }
 
 pub(crate) fn description_field(
     evidence: &NameEvidence,
     status: &NodeAttributeStatus,
     role: Option<&str>,
-    _children_complete: bool,
+    children_complete: bool,
 ) -> LocatorField<String> {
-    let sources = stronger_name_sources(evidence, status, role);
-    let pre_name_known = sources
-        .iter()
-        .any(|(candidate, _)| meaningful(*candidate).is_some());
-    let pre_name_unknown = sources.iter().any(|(_, unknown)| *unknown);
-    let description = meaningful(evidence.description.as_deref());
-    let description_unknown = status.field_unknown(DESCRIPTION);
-    match (description, pre_name_known, pre_name_unknown) {
-        (Some(_), true, _) if description_unknown => LocatorField::Unknown,
-        (Some(value), true, _) => LocatorField::Known(value.to_string()),
-        (Some(_), false, true) => LocatorField::Unknown,
-        (None, true, _) if description_unknown => LocatorField::Unknown,
-        (None, false, true) if description_unknown => LocatorField::Unknown,
-        _ => LocatorField::Absent,
-    }
+    resolve_description(evidence, &slot_status(status, role, children_complete))
 }
 
-fn name_sources<'a>(
-    evidence: &'a NameEvidence,
+/// Folds macOS's two platform gates into the platform-neutral slot status.
+///
+/// `static_value` is admitted only for `AXStaticText`. Suppressing the slot
+/// must also suppress the uncertainty of an `AXValue` read that was never
+/// going to be consulted, or every control with a transient value read would
+/// lose its name.
+///
+/// `child_label`'s certainty is child enumeration: a label derived from
+/// children the walk did not finish reading is a label that may be wrong.
+fn slot_status(
     status: &NodeAttributeStatus,
     role: Option<&str>,
     children_complete: bool,
-) -> [(Option<&'a str>, bool); 7] {
-    let stronger = stronger_name_sources(evidence, status, role);
-    [
-        stronger[0],
-        stronger[1],
-        stronger[2],
-        stronger[3],
-        (
-            evidence.description.as_deref(),
-            status.field_unknown(DESCRIPTION),
-        ),
-        (evidence.child_label.as_deref(), !children_complete),
-        (
-            evidence.placeholder.as_deref(),
-            status.field_unknown(PLACEHOLDER),
-        ),
-    ]
-}
-
-fn stronger_name_sources<'a>(
-    evidence: &'a NameEvidence,
-    status: &NodeAttributeStatus,
-    role: Option<&str>,
-) -> [(Option<&'a str>, bool); 4] {
-    [
-        (
-            evidence.explicit_label.as_deref(),
-            status.field_unknown(LABEL),
-        ),
-        (
-            evidence.labelled_by_text.as_deref(),
-            status.field_unknown(TITLE_ELEMENT),
-        ),
-        (
-            evidence.native_title.as_deref(),
-            status.field_unknown(TITLE),
-        ),
-        (
-            (role == Some("AXStaticText"))
-                .then_some(evidence.static_value.as_deref())
-                .flatten(),
-            role == Some("AXStaticText") && status.field_unknown(VALUE),
-        ),
-    ]
-}
-
-fn meaningful(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
+) -> NameSlotStatus {
+    let static_text = role == Some("AXStaticText");
+    NameSlotStatus {
+        explicit_label: NameSlotStatus::uncertain_if(status.field_unknown(LABEL)),
+        labelled_by_text: NameSlotStatus::uncertain_if(status.field_unknown(TITLE_ELEMENT)),
+        native_title: NameSlotStatus::uncertain_if(status.field_unknown(TITLE)),
+        static_value: if static_text {
+            NameSlotStatus::uncertain_if(status.field_unknown(VALUE))
+        } else {
+            SlotStatus::Suppressed
+        },
+        child_label: NameSlotStatus::uncertain_if(!children_complete),
+        placeholder: NameSlotStatus::uncertain_if(status.field_unknown(PLACEHOLDER)),
+        description: NameSlotStatus::uncertain_if(status.field_unknown(DESCRIPTION)),
+    }
 }
 
 #[cfg(test)]
@@ -212,6 +167,71 @@ mod tests {
         assert_eq!(
             description_field(&evidence, &status, Some("AXButton"), true),
             LocatorField::Known("Saves the draft".into())
+        );
+    }
+
+    /// Byte-identical golden fixtures prove only what the fixtures cover. If
+    /// none exercises a static-text element, a shared function that quietly
+    /// dropped the `AXValue` slot would pass them all. This is the finer guard.
+    #[test]
+    fn a_static_text_is_named_by_its_value_and_other_roles_are_not() {
+        let evidence = NameEvidence {
+            static_value: Some("body copy".into()),
+            ..NameEvidence::default()
+        };
+        let status = NodeAttributeStatus::default();
+
+        assert_eq!(
+            name_field(&evidence, &status, Some("AXStaticText"), true),
+            LocatorField::Known("body copy".into())
+        );
+        assert_eq!(
+            name_field(&evidence, &status, Some("AXButton"), true),
+            LocatorField::Absent,
+            "the value slot belongs to static text alone"
+        );
+    }
+
+    /// Suppressing the value slot must suppress its uncertainty too. Without
+    /// that, every control whose `AXValue` read failed transiently would lose
+    /// a name it read perfectly well from its title.
+    #[test]
+    fn a_failed_value_read_does_not_cloud_the_name_of_a_role_that_never_uses_it() {
+        let evidence = NameEvidence {
+            native_title: Some("Save".into()),
+            ..NameEvidence::default()
+        };
+        let mut status = NodeAttributeStatus::default();
+        status.record_slot_error(VALUE, accessibility_sys::kAXErrorCannotComplete);
+
+        assert_eq!(
+            name_field(&evidence, &status, Some("AXButton"), true),
+            LocatorField::Known("Save".into())
+        );
+        assert_eq!(
+            name_field(&evidence, &status, Some("AXStaticText"), true),
+            LocatorField::Unknown,
+            "a static text genuinely depends on the value it could not read"
+        );
+    }
+
+    /// The other shape the golden fixtures may not cover: a label derived from
+    /// children the walk did not finish reading is a label that may be wrong.
+    #[test]
+    fn an_incomplete_child_read_clouds_a_child_derived_name() {
+        let evidence = NameEvidence {
+            child_label: Some("derived from children".into()),
+            ..NameEvidence::default()
+        };
+        let status = NodeAttributeStatus::default();
+
+        assert_eq!(
+            name_field(&evidence, &status, Some("AXGroup"), true),
+            LocatorField::Known("derived from children".into())
+        );
+        assert_eq!(
+            name_field(&evidence, &status, Some("AXGroup"), false),
+            LocatorField::Unknown
         );
     }
 
