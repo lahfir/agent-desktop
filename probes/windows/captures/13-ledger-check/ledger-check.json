@@ -1,9 +1,9 @@
 {
     "Probe":  "13-ledger-check",
-    "CapturedAtUtc":  "2026-07-27T06:02:07Z",
+    "CapturedAtUtc":  "2026-07-31T23:36:27Z",
     "Question":  "does FINDINGS.md satisfy R5, R6 and R7 as a machine-checkable contract",
     "Ledger":  "probes/windows/FINDINGS.md",
-    "RowCount":  79,
+    "RowCount":  105,
     "SessionEvidenceRows":  25,
     "AreaCoverage":  [
                          {
@@ -52,9 +52,9 @@
                          }
                      ],
     "VerdictCounts":  {
-                          "CONFIRMS":  43,
-                          "CONTRADICTS":  5,
-                          "NEW-EDGE":  26,
+                          "CONFIRMS":  52,
+                          "CONTRADICTS":  9,
+                          "NEW-EDGE":  39,
                           "DEFERRED":  5
                       },
     "DeferredRows":  [
@@ -84,13 +84,16 @@
                              "Closure":  "2.12"
                          }
                      ],
-    "MeasuredHunkCount":  43,
-    "HunkIndexRowCount":  43,
-    "ContradictsRowCount":  5,
-    "ContradictsRowsMapped":  5,
-    "BijectionHolds":  true,
+    "MeasuredHunkCount":  57,
+    "HunkIndexRowCount":  47,
+    "ContradictsRowCount":  9,
+    "ContradictsRowsMapped":  6,
+    "BijectionHolds":  false,
     "Failures":  [
-
+                     "hunk index lists 47 hunk(s) but git diff -U0 main -- docs/phases.md measures 57",
+                     "CONTRADICTS row A14-8 is not backed by any phases.md hunk",
+                     "CONTRADICTS row A14-12 is not backed by any phases.md hunk",
+                     "CONTRADICTS row A15-12 is not backed by any phases.md hunk"
                  ],
     "HunkCountSource":  "git -C \u003crepo\u003e diff -U0 main -- docs/phases.md, counting lines matching ^@@ -[0-9]; the measured count is authoritative over any count written in prose"
 }

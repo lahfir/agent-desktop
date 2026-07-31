@@ -25,7 +25,8 @@ param(
     [switch]$MutateList,
     [int]$Left = 500,
     [int]$Top = 100,
-    [int]$TimeoutSeconds = 0
+    [int]$TimeoutSeconds = 0,
+    [string]$SecretMarker = 'zzvocabsecretzz'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,7 +38,7 @@ Add-Type -AssemblyName WindowsBase
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AgentDesktop Scratch WPF" Width="460" Height="430"
+        Title="AgentDesktop Scratch WPF" Width="460" Height="530"
         WindowStartupLocation="Manual" ShowActivated="False"
         AutomationProperties.AutomationId="wndScratchWpf">
   <Grid Margin="12">
@@ -47,6 +48,8 @@ $xaml = @'
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
@@ -73,6 +76,20 @@ $xaml = @'
              AutomationProperties.AutomationId="txtStatusMirror" Text="status:ready"/>
     <TextBlock x:Name="lblStatus" Grid.Row="6" Margin="0,4"
                AutomationProperties.AutomationId="lblStatus" Text="status:ready"/>
+    <StackPanel Grid.Row="7" Orientation="Horizontal" Margin="0,4">
+      <TextBlock x:Name="lblFieldName" AutomationProperties.AutomationId="lblFieldName"
+                 Text="Field label" VerticalAlignment="Center" Margin="0,0,8,0"/>
+      <TextBox x:Name="txtLabelled" AutomationProperties.AutomationId="txtLabelled"
+               AutomationProperties.LabeledBy="{Binding ElementName=lblFieldName}"
+               Width="140" Height="24"/>
+    </StackPanel>
+    <StackPanel Grid.Row="8" Orientation="Horizontal" Margin="0,4">
+      <PasswordBox x:Name="pwdSecret" AutomationProperties.AutomationId="pwdSecret"
+                   Width="120" Height="24" Margin="0,0,8,0"/>
+      <TextBox x:Name="txtLabelledBySecret" AutomationProperties.AutomationId="txtLabelledBySecret"
+               AutomationProperties.LabeledBy="{Binding ElementName=pwdSecret}"
+               Width="140" Height="24"/>
+    </StackPanel>
   </Grid>
 </Window>
 '@
@@ -147,6 +164,7 @@ $window.Add_Closed({ $window.Dispatcher.InvokeShutdown() })
 
 Set-ScratchList $script:ListMutated
 Set-ScratchStatus 'status:ready'
+$window.FindName('pwdSecret').Password = $SecretMarker
 
 if ($TimeoutSeconds -gt 0) {
     $timer = New-Object System.Windows.Threading.DispatcherTimer
