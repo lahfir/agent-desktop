@@ -6,6 +6,7 @@ use serde_json::json;
 
 use super::automation::UiaFailure;
 use super::element::UIAElement;
+use super::properties::ElementProperties;
 use super::walker_enumerate::TreeWalk;
 
 /// The deepest native nesting one walk descends through.
@@ -158,21 +159,29 @@ pub fn is_web_wrapper(_element: &UIAElement) -> bool {
     false
 }
 
-/// The role vocabulary seam 2.3 fills.
+/// The role vocabulary, resolved from the properties the walk already read.
 ///
-/// `Unknown` is the honest answer while no vocabulary exists, and it is also
-/// the one that produces the documented projection: core renders an unknown
-/// role as the string `unknown`.
-pub fn walk_role(_element: &UIAElement) -> LocatorField<String> {
-    LocatorField::Unknown
+/// The seam takes the read set rather than the element because every input the
+/// vocabulary needs - the control type and the pattern availability that
+/// refines it - arrives in the same batch. Reading them again from the element
+/// would cost a round trip per node for values already in hand.
+pub fn walk_role(properties: &ElementProperties) -> LocatorField<String> {
+    crate::tree::roles::resolve_role(properties)
 }
 
-/// The available-actions seam 2.3 fills.
-///
-/// `Unknown` projects to an empty action list in core, which is what an
-/// adapter with no pattern vocabulary can truthfully offer.
-pub fn walk_available_actions(_element: &UIAElement) -> LocatorField<Vec<String>> {
-    LocatorField::Unknown
+/// The available-actions vocabulary, resolved from the same read set.
+pub fn walk_available_actions(properties: &ElementProperties) -> LocatorField<Vec<String>> {
+    crate::tree::actions::resolve_actions(properties)
+}
+
+/// The state vocabulary, which needs the resolved role: several UIA state
+/// sources are only meaningful on some roles, and `ToggleState` in particular
+/// means `checked` on a checkbox and `pressed` on a button.
+pub fn walk_states(
+    properties: &ElementProperties,
+    role: &LocatorField<String>,
+) -> LocatorField<Vec<String>> {
+    crate::tree::states::resolve_states(properties, role)
 }
 
 #[cfg(test)]

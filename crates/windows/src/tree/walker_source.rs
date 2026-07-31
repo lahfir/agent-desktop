@@ -10,7 +10,7 @@ mod imp {
     use crate::tree::element::UIAElement;
     use crate::tree::properties::{read_cached, read_live};
     use crate::tree::walker::{
-        NodeKey, TreeSource, is_web_wrapper, walk_available_actions, walk_role,
+        NodeKey, TreeSource, is_web_wrapper, walk_available_actions, walk_role, walk_states,
     };
     use agent_desktop_core::{AdapterError, LocatorEvidence};
     use uiautomation::UIAutomation;
@@ -101,8 +101,11 @@ mod imp {
                 None => read_live(node),
             };
             let failed = u64::try_from(errors.len()).unwrap_or(u64::MAX);
+            let role = walk_role(&properties);
+            let actions = walk_available_actions(&properties);
+            let states = walk_states(&properties, &role);
             (
-                properties.into_locator_evidence(walk_role(node), walk_available_actions(node)),
+                properties.into_locator_evidence(role, actions, states),
                 failed,
             )
         }
@@ -119,7 +122,7 @@ mod imp {
     use crate::tree::element::UIAElement;
     use crate::tree::properties::ElementProperties;
     use crate::tree::walker::{
-        NodeKey, TreeSource, is_web_wrapper, walk_available_actions, walk_role,
+        NodeKey, TreeSource, is_web_wrapper, walk_available_actions, walk_role, walk_states,
     };
     use agent_desktop_core::{AdapterError, LocatorEvidence};
 
@@ -157,12 +160,12 @@ mod imp {
             false
         }
 
-        fn evidence(&self, node: &UIAElement) -> (LocatorEvidence, u64) {
-            (
-                ElementProperties::default()
-                    .into_locator_evidence(walk_role(node), walk_available_actions(node)),
-                0,
-            )
+        fn evidence(&self, _node: &UIAElement) -> (LocatorEvidence, u64) {
+            let properties = ElementProperties::default();
+            let role = walk_role(&properties);
+            let actions = walk_available_actions(&properties);
+            let states = walk_states(&properties, &role);
+            (properties.into_locator_evidence(role, actions, states), 0)
         }
 
         fn is_web_wrapper(&self, node: &UIAElement) -> bool {

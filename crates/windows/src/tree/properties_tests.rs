@@ -186,9 +186,17 @@ fn a_read_set_without_the_flag_is_not_gated() {
 #[test]
 fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
     let absent = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Absent)])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+        .into_locator_evidence(
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+        );
     let failed = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Unknown)])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+        .into_locator_evidence(
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+        );
 
     assert!(absent.identifiers.is_complete());
     assert!(!failed.identifiers.is_complete());
@@ -200,7 +208,11 @@ fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
 #[test]
 fn an_automation_id_is_carried_as_a_typed_identifier() {
     let evidence = reads(&[(TreeProperty::AutomationId, text("save-button"))])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+        .into_locator_evidence(
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+        );
 
     let identifier = evidence
         .identifiers
@@ -212,8 +224,11 @@ fn an_automation_id_is_carried_as_a_typed_identifier() {
 
 #[test]
 fn a_whitespace_only_automation_id_is_not_promoted_to_an_identifier() {
-    let evidence = reads(&[(TreeProperty::AutomationId, text("   "))])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+    let evidence = reads(&[(TreeProperty::AutomationId, text("   "))]).into_locator_evidence(
+        LocatorField::Unknown,
+        LocatorField::Unknown,
+        LocatorField::Unknown,
+    );
 
     assert!(evidence.identifiers.preferred_identifier().is_none());
     assert!(evidence.identifiers.is_complete());
@@ -238,6 +253,7 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
     .into_locator_evidence(
         LocatorField::Known("button".into()),
         LocatorField::Known(Vec::new()),
+        LocatorField::Known(vec!["focused".into()]),
     );
 
     assert_eq!(evidence.name, LocatorField::Known("Save".into()));
@@ -245,7 +261,11 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
     assert_eq!(evidence.description, LocatorField::Absent);
     assert_eq!(evidence.role, LocatorField::Known("button".into()));
     assert!(!evidence.ref_evidence.bounds.is_unknown());
-    assert!(evidence.states.is_unknown());
+    assert_eq!(
+        evidence.states,
+        LocatorField::Known(vec!["focused".into()]),
+        "the states slot carries what the caller resolved, rather than a literal the projection invented"
+    );
 }
 
 /// KTD14: a failed read must name the property and never carry its content.

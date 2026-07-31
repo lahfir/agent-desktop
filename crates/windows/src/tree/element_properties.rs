@@ -91,15 +91,17 @@ impl ElementProperties {
     /// Projects the read set onto the evidence slot shape core consumes, so
     /// 2.4 needs no translation layer.
     ///
-    /// `role` and `available_actions` come from the 2.3 seams and are
-    /// deliberately `Unknown` until 2.3 fills them; `states` likewise.
-    /// `identifiers` uses `IdentifierEvidence::typed`, because
+    /// `role`, `available_actions` and `states` are all resolved by the
+    /// vocabulary modules from this same read set and threaded in by the
+    /// caller, so this projection stays a projection and takes no decision of
+    /// its own. `identifiers` uses `IdentifierEvidence::typed`, because
     /// `IdentifierEvidence::new` stamps every value `Unknown` and would void
     /// the ref downstream in `refs_validate.rs`.
     pub fn into_locator_evidence(
         self,
         role: LocatorField<String>,
         available_actions: LocatorField<Vec<String>>,
+        states: LocatorField<Vec<String>>,
     ) -> LocatorEvidence {
         let name = self.get(TreeProperty::Name).text();
         let value = self.get(TreeProperty::Value).text();
@@ -111,7 +113,7 @@ impl ElementProperties {
             description,
             value,
             identifiers: self.identifier_evidence(),
-            states: LocatorField::Unknown,
+            states,
             ref_evidence: LocatorRefEvidence {
                 bounds,
                 available_actions,

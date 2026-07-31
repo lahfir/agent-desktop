@@ -1,12 +1,15 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, LocatorEvidence, LocatorField, ObservationRoot, ProcessId, WindowInfo,
-    WindowState,
+    AdapterError, Deadline, LocatorEvidence, ObservationRoot, ProcessId, WindowInfo, WindowState,
 };
 use std::collections::{HashMap, HashSet};
 
 use crate::tree::automation::{ERR_NONE, UiaFailure};
-use crate::tree::properties::ElementProperties;
-use crate::tree::walker::{NodeKey, TreeSource, WalkBudget, WalkOutcome, walk_from_root};
+use crate::tree::properties::{ElementProperties, PropertyOutcome};
+use crate::tree::property_ids::TreeProperty;
+use crate::tree::walker::{
+    NodeKey, TreeSource, WalkBudget, WalkOutcome, walk_available_actions, walk_from_root,
+    walk_role, walk_states,
+};
 
 /// The benign end-of-list pair A14-3 measured: `code() == 0` with `result()`
 /// `None`, on both build 17763 and build 26100.
@@ -29,6 +32,7 @@ pub(crate) struct FakeTree {
     wrappers: HashSet<i32>,
     first_child_faults: HashSet<i32>,
     next_sibling_faults: HashSet<i32>,
+    reads: HashMap<i32, Vec<(TreeProperty, PropertyOutcome)>>,
 }
 
 impl FakeTree {
@@ -64,6 +68,17 @@ impl FakeTree {
 
     pub(crate) fn wrapping(mut self, node: i32) -> Self {
         self.wrappers.insert(node);
+        self
+    }
+
+    /// Gives one node a read set, so a vocabulary assertion can be driven end
+    /// to end through the real evidence path rather than by calling the
+    /// producer directly.
+    ///
+    /// Without this the fake answered every node with an empty read set, which
+    /// is why `states` could not be asserted through the walk at all.
+    pub(crate) fn reading(mut self, node: i32, reads: &[(TreeProperty, PropertyOutcome)]) -> Self {
+        self.reads.insert(node, reads.to_vec());
         self
     }
 
@@ -117,12 +132,13 @@ impl TreeSource for FakeTree {
         self.alias_of(*left) == self.alias_of(*right)
     }
 
-    fn evidence(&self, _node: &i32) -> (LocatorEvidence, u64) {
-        (
-            ElementProperties::default()
-                .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown),
-            0,
-        )
+    fn evidence(&self, node: &i32) -> (LocatorEvidence, u64) {
+        let properties =
+            ElementProperties::from_reads(self.reads.get(node).cloned().unwrap_or_default());
+        let role = walk_role(&properties);
+        let actions = walk_available_actions(&properties);
+        let states = walk_states(&properties, &role);
+        (properties.into_locator_evidence(role, actions, states), 0)
     }
 
     fn is_web_wrapper(&self, node: &i32) -> bool {
