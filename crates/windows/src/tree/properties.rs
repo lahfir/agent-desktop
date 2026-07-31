@@ -126,6 +126,9 @@ mod imp {
         let mut reads = Vec::with_capacity(TreeProperty::WALK_SET.len());
         let mut errors = Vec::new();
         for property in TreeProperty::WALK_SET {
+            if property.is_element_valued() {
+                continue;
+            }
             match read(element, property) {
                 Ok(outcome) => reads.push((property, outcome)),
                 Err(error) => {

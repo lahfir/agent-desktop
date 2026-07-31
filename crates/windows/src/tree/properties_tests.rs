@@ -59,18 +59,18 @@ fn a_string_past_the_bound_is_unknown_and_is_never_truncated_into_evidence() {
 /// else is.
 #[test]
 fn a_secure_element_withholds_every_value_bearing_property() {
-    let properties = reads(&[
+    let mut entries = vec![
         (
             TreeProperty::IsPassword,
             PropertyOutcome::Known(PropertyValue::Flag(true)),
         ),
-        (TreeProperty::Name, text("secret-name")),
-        (TreeProperty::Value, text("secret-value")),
-        (TreeProperty::HelpText, text("secret-help")),
-        (TreeProperty::LegacyValue, text("secret-legacy")),
         (TreeProperty::AutomationId, text("field-1")),
         (TreeProperty::ClassName, text("Edit")),
-    ]);
+    ];
+    for property in TreeProperty::VALUE_BEARING {
+        entries.push((property, text("zzsecretzz")));
+    }
+    let properties = reads(&entries);
 
     assert!(properties.is_secure());
     for property in TreeProperty::VALUE_BEARING {
