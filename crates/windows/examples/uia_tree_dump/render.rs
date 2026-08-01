@@ -1,4 +1,5 @@
 use agent_desktop_core::{Deadline, ObservationRoot, ProcessId, WindowInfo, WindowState};
+use agent_desktop_windows::tree::automation::failure_of;
 use agent_desktop_windows::tree::element::UIAElement;
 use agent_desktop_windows::tree::name_evidence::{LabelOutcome, read_label};
 use agent_desktop_windows::tree::properties::{read_live, read_one};
@@ -63,6 +64,14 @@ struct Position {
 /// deadline would still issue up to the sibling cap's worth of them per parent
 /// while each recursive call returned immediately. `walker_enumerate.rs`
 /// checks both bounds in the same place for the same reason.
+///
+/// **A failed enumeration is not the end of a list.** UI Automation signals
+/// both as `Err`, distinguished only by `is_exhaustion()` - the benign pair
+/// A14-3 measured against the real fault A14-4 measured. Treating them alike
+/// makes a provider that died mid-walk produce a short census reporting
+/// `truncated: false`, which is a partial answer that reads as a complete one.
+/// Every enumeration arm here consults the discriminator, as the shipped
+/// walker does.
 struct Bounds {
     max_depth: u8,
     deadline: Deadline,
@@ -104,7 +113,10 @@ fn collect(
     }
     let mut child = match source.first_child(element) {
         Ok(first) => first,
-        Err(_) => {
+        Err(failure) => {
+            if !failure.is_exhaustion() {
+                bounds.truncated = true;
+            }
             if key.is_some() {
                 bounds.ancestors.pop();
             }
@@ -132,7 +144,12 @@ fn collect(
         }
         match next {
             Ok(sibling) => child = sibling,
-            Err(_) => break,
+            Err(failure) => {
+                if !failure.is_exhaustion() {
+                    bounds.truncated = true;
+                }
+                break;
+            }
         }
     }
     if key.is_some() {
@@ -273,8 +290,14 @@ fn count_view(
             count.truncated = true;
             continue;
         }
-        let Ok(mut child) = walker.get_first_child(&element) else {
-            continue;
+        let mut child = match walker.get_first_child(&element) {
+            Ok(first) => first,
+            Err(error) => {
+                if !failure_of(&error).is_exhaustion() {
+                    count.truncated = true;
+                }
+                continue;
+            }
         };
         let mut siblings = 0;
         loop {
@@ -287,7 +310,12 @@ fn count_view(
             }
             match next {
                 Ok(sibling) => child = sibling,
-                Err(_) => break,
+                Err(error) => {
+                    if !failure_of(&error).is_exhaustion() {
+                        count.truncated = true;
+                    }
+                    break;
+                }
             }
         }
     }
