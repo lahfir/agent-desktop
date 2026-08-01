@@ -8,10 +8,9 @@ mod imp {
     use crate::tree::automation::{UiaFailure, automation_client, failure_of, uia_error};
     use crate::tree::cache::{build_walk_cache_request, policy_for_root};
     use crate::tree::element::UIAElement;
+    use crate::tree::name_evidence::read_label;
     use crate::tree::properties::{read_cached, read_live};
-    use crate::tree::walker::{
-        NodeKey, TreeSource, is_web_wrapper, walk_available_actions, walk_role, walk_states,
-    };
+    use crate::tree::walker::{NodeKey, TreeSource, is_web_wrapper, walk_vocabulary};
     use agent_desktop_core::{AdapterError, LocatorEvidence};
     use uiautomation::UIAutomation;
     use uiautomation::core::{UICacheRequest, UITreeWalker};
@@ -101,13 +100,9 @@ mod imp {
                 None => read_live(node),
             };
             let failed = u64::try_from(errors.len()).unwrap_or(u64::MAX);
-            let role = walk_role(&properties);
-            let actions = walk_available_actions(&properties);
-            let states = walk_states(&properties, &role);
-            (
-                properties.into_locator_evidence(role, actions, states),
-                failed,
-            )
+            let label = read_label(node, self.cache.is_some());
+            let vocabulary = walk_vocabulary(&properties, &label);
+            (properties.into_locator_evidence(vocabulary), failed)
         }
 
         fn is_web_wrapper(&self, node: &UIAElement) -> bool {
@@ -120,10 +115,9 @@ mod imp {
 mod imp {
     use crate::tree::automation::{ERR_NONE, UiaFailure};
     use crate::tree::element::UIAElement;
+    use crate::tree::element_properties::ResolvedVocabulary;
     use crate::tree::properties::ElementProperties;
-    use crate::tree::walker::{
-        NodeKey, TreeSource, is_web_wrapper, walk_available_actions, walk_role, walk_states,
-    };
+    use crate::tree::walker::{NodeKey, TreeSource, is_web_wrapper};
     use agent_desktop_core::{AdapterError, LocatorEvidence};
 
     /// Canned arm so the walk's entry point, and every module that calls it,
@@ -161,11 +155,10 @@ mod imp {
         }
 
         fn evidence(&self, _node: &UIAElement) -> (LocatorEvidence, u64) {
-            let properties = ElementProperties::default();
-            let role = walk_role(&properties);
-            let actions = walk_available_actions(&properties);
-            let states = walk_states(&properties, &role);
-            (properties.into_locator_evidence(role, actions, states), 0)
+            (
+                ElementProperties::default().into_locator_evidence(ResolvedVocabulary::unknown()),
+                0,
+            )
         }
 
         fn is_web_wrapper(&self, node: &UIAElement) -> bool {

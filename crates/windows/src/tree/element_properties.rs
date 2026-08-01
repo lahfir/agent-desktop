@@ -32,6 +32,35 @@ fn withholds_content(outcome: &PropertyOutcome) -> bool {
     }
 }
 
+/// What the vocabulary modules made of one element's read set.
+///
+/// These travel together because they are resolved together, from the same
+/// batch, by the same walk step. Passing them as five separate arguments to
+/// the projection was the alternative, and it put the projection one slot away
+/// from the parameter limit with every future evidence field making it worse.
+#[derive(Debug, Clone)]
+pub struct ResolvedVocabulary {
+    pub role: LocatorField<String>,
+    pub available_actions: LocatorField<Vec<String>>,
+    pub states: LocatorField<Vec<String>>,
+    pub name: LocatorField<String>,
+    pub description: LocatorField<String>,
+}
+
+impl ResolvedVocabulary {
+    /// The answer for an element nothing was read from: every slot unknown.
+    /// Used by the non-Windows twin and by tests that assert on other slots.
+    pub fn unknown() -> Self {
+        Self {
+            role: LocatorField::Unknown,
+            available_actions: LocatorField::Unknown,
+            states: LocatorField::Unknown,
+            name: LocatorField::Unknown,
+            description: LocatorField::Unknown,
+        }
+    }
+}
+
 /// Every property read for one element, already gated on `IsPassword`.
 #[derive(Debug, Clone, Default)]
 pub struct ElementProperties {
@@ -91,32 +120,28 @@ impl ElementProperties {
     /// Projects the read set onto the evidence slot shape core consumes, so
     /// 2.4 needs no translation layer.
     ///
-    /// `role`, `available_actions` and `states` are all resolved by the
-    /// vocabulary modules from this same read set and threaded in by the
-    /// caller, so this projection stays a projection and takes no decision of
-    /// its own. `identifiers` uses `IdentifierEvidence::typed`, because
-    /// `IdentifierEvidence::new` stamps every value `Unknown` and would void
-    /// the ref downstream in `refs_validate.rs`.
-    pub fn into_locator_evidence(
-        self,
-        role: LocatorField<String>,
-        available_actions: LocatorField<Vec<String>>,
-        states: LocatorField<Vec<String>>,
-    ) -> LocatorEvidence {
-        let name = self.get(TreeProperty::Name).text();
+    /// Projects the read set onto core's evidence slots.
+    ///
+    /// Every interpreted slot is resolved by a vocabulary module from this
+    /// same read set and threaded in by the caller, so this stays a projection
+    /// and takes no decision of its own - notably the name, which core
+    /// computes and no adapter does. `identifiers` uses
+    /// `IdentifierEvidence::typed`, because `IdentifierEvidence::new` stamps
+    /// every value `Unknown` and would void the ref downstream in
+    /// `refs_validate.rs`.
+    pub fn into_locator_evidence(self, vocabulary: ResolvedVocabulary) -> LocatorEvidence {
         let value = self.get(TreeProperty::Value).text();
-        let description = self.get(TreeProperty::HelpText).text();
         let bounds = self.get(TreeProperty::BoundingRectangle).bounds();
         LocatorEvidence {
-            role,
-            name,
-            description,
+            role: vocabulary.role,
+            name: vocabulary.name,
+            description: vocabulary.description,
             value,
             identifiers: self.identifier_evidence(),
-            states,
+            states: vocabulary.states,
             ref_evidence: LocatorRefEvidence {
                 bounds,
-                available_actions,
+                available_actions: vocabulary.available_actions,
             },
         }
     }

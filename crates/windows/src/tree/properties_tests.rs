@@ -1,4 +1,5 @@
 use super::*;
+use crate::tree::element_properties::ResolvedVocabulary;
 use agent_desktop_core::{IdentifierKind, LocatorField, Rect};
 
 fn text(value: &str) -> PropertyOutcome {
@@ -186,17 +187,9 @@ fn a_read_set_without_the_flag_is_not_gated() {
 #[test]
 fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
     let absent = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Absent)])
-        .into_locator_evidence(
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-        );
+        .into_locator_evidence(ResolvedVocabulary::unknown());
     let failed = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Unknown)])
-        .into_locator_evidence(
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-        );
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     assert!(absent.identifiers.is_complete());
     assert!(!failed.identifiers.is_complete());
@@ -213,11 +206,8 @@ fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
 #[test]
 fn a_blank_automation_id_produces_no_identifier() {
     for blank in ["", "   ", "\t"] {
-        let evidence = reads(&[(TreeProperty::AutomationId, text(blank))]).into_locator_evidence(
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-        );
+        let evidence = reads(&[(TreeProperty::AutomationId, text(blank))])
+            .into_locator_evidence(ResolvedVocabulary::unknown());
 
         assert!(
             evidence.identifiers.preferred_identifier().is_none(),
@@ -236,11 +226,7 @@ fn a_blank_automation_id_produces_no_identifier() {
 #[test]
 fn a_populated_automation_id_carries_its_kind_and_survives_validation() {
     let evidence = reads(&[(TreeProperty::AutomationId, text("save-button"))])
-        .into_locator_evidence(
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-        );
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     let identifier = evidence
         .identifiers
@@ -261,17 +247,9 @@ fn a_populated_automation_id_carries_its_kind_and_survives_validation() {
 #[test]
 fn a_failed_automation_id_read_is_incomplete_evidence_rather_than_an_absent_id() {
     let failed = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Unknown)])
-        .into_locator_evidence(
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-        );
+        .into_locator_evidence(ResolvedVocabulary::unknown());
     let absent = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Absent)])
-        .into_locator_evidence(
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-        );
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     assert!(!failed.identifiers.is_complete());
     assert!(absent.identifiers.is_complete());
@@ -284,11 +262,7 @@ fn a_failed_automation_id_read_is_incomplete_evidence_rather_than_an_absent_id()
 #[test]
 fn an_automation_id_is_carried_as_a_typed_identifier() {
     let evidence = reads(&[(TreeProperty::AutomationId, text("save-button"))])
-        .into_locator_evidence(
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-            LocatorField::Unknown,
-        );
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     let identifier = evidence
         .identifiers
@@ -300,11 +274,8 @@ fn an_automation_id_is_carried_as_a_typed_identifier() {
 
 #[test]
 fn a_whitespace_only_automation_id_is_not_promoted_to_an_identifier() {
-    let evidence = reads(&[(TreeProperty::AutomationId, text("   "))]).into_locator_evidence(
-        LocatorField::Unknown,
-        LocatorField::Unknown,
-        LocatorField::Unknown,
-    );
+    let evidence = reads(&[(TreeProperty::AutomationId, text("   "))])
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     assert!(evidence.identifiers.preferred_identifier().is_none());
     assert!(evidence.identifiers.is_complete());
@@ -326,21 +297,27 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
             })),
         ),
     ])
-    .into_locator_evidence(
-        LocatorField::Known("button".into()),
-        LocatorField::Known(Vec::new()),
-        LocatorField::Known(vec!["focused".into()]),
-    );
+    .into_locator_evidence(ResolvedVocabulary {
+        role: LocatorField::Known("button".into()),
+        available_actions: LocatorField::Known(Vec::new()),
+        states: LocatorField::Known(vec!["focused".into()]),
+        name: LocatorField::Known("Save".into()),
+        description: LocatorField::Absent,
+    });
 
-    assert_eq!(evidence.name, LocatorField::Known("Save".into()));
     assert_eq!(evidence.value, LocatorField::Known("draft".into()));
+    assert!(!evidence.ref_evidence.bounds.is_unknown());
+    assert_eq!(
+        evidence.name,
+        LocatorField::Known("Save".into()),
+        "the name is core's, carried through rather than recomputed from the read set"
+    );
     assert_eq!(evidence.description, LocatorField::Absent);
     assert_eq!(evidence.role, LocatorField::Known("button".into()));
-    assert!(!evidence.ref_evidence.bounds.is_unknown());
     assert_eq!(
         evidence.states,
         LocatorField::Known(vec!["focused".into()]),
-        "the states slot carries what the caller resolved, rather than a literal the projection invented"
+        "every interpreted slot carries what the caller resolved, rather than a literal the projection invented"
     );
 }
 

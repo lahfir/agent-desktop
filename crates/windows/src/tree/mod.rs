@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod automation;
 pub(crate) mod cache;
+pub mod name_evidence;
 pub mod roles;
 pub mod states;
 

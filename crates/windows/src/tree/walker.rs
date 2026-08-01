@@ -6,6 +6,7 @@ use serde_json::json;
 
 use super::automation::UiaFailure;
 use super::element::UIAElement;
+use super::element_properties::ResolvedVocabulary;
 use super::properties::ElementProperties;
 use super::walker_enumerate::TreeWalk;
 
@@ -182,6 +183,26 @@ pub fn walk_states(
     role: &LocatorField<String>,
 ) -> LocatorField<Vec<String>> {
     crate::tree::states::resolve_states(properties, role)
+}
+
+/// Resolves every interpreted slot from one element's read set.
+///
+/// One place, so the ordering dependency between them is visible: states needs
+/// the role, and the name needs the label relation the caller resolved.
+pub fn walk_vocabulary(
+    properties: &ElementProperties,
+    label: &crate::tree::name_evidence::LabelOutcome,
+) -> ResolvedVocabulary {
+    let role = walk_role(properties);
+    let states = walk_states(properties, &role);
+    let (name, description) = crate::tree::name_evidence::name_fields(properties, label);
+    ResolvedVocabulary {
+        role,
+        available_actions: walk_available_actions(properties),
+        states,
+        name,
+        description,
+    }
 }
 
 #[cfg(test)]

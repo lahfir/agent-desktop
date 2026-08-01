@@ -4,11 +4,11 @@ use agent_desktop_core::{
 use std::collections::{HashMap, HashSet};
 
 use crate::tree::automation::{ERR_NONE, UiaFailure};
+use crate::tree::name_evidence::LabelOutcome;
 use crate::tree::properties::{ElementProperties, PropertyOutcome};
 use crate::tree::property_ids::TreeProperty;
 use crate::tree::walker::{
-    NodeKey, TreeSource, WalkBudget, WalkOutcome, walk_available_actions, walk_from_root,
-    walk_role, walk_states,
+    NodeKey, TreeSource, WalkBudget, WalkOutcome, walk_from_root, walk_vocabulary,
 };
 
 /// The benign end-of-list pair A14-3 measured: `code() == 0` with `result()`
@@ -135,10 +135,8 @@ impl TreeSource for FakeTree {
     fn evidence(&self, node: &i32) -> (LocatorEvidence, u64) {
         let properties =
             ElementProperties::from_reads(self.reads.get(node).cloned().unwrap_or_default());
-        let role = walk_role(&properties);
-        let actions = walk_available_actions(&properties);
-        let states = walk_states(&properties, &role);
-        (properties.into_locator_evidence(role, actions, states), 0)
+        let vocabulary = walk_vocabulary(&properties, &LabelOutcome::Unlabelled);
+        (properties.into_locator_evidence(vocabulary), 0)
     }
 
     fn is_web_wrapper(&self, node: &i32) -> bool {
