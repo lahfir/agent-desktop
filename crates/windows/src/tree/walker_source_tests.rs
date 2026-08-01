@@ -34,7 +34,8 @@ fn the_walk_issues_no_banned_call() {
     }
 }
 
-/// KTD5's bans, over the files that would be tempted to break them.
+/// The bans on instantiating a pattern or keying on a display string, over
+/// the files that would be tempted to break them.
 ///
 /// Pattern-derived state is read as ordinary batched properties. The
 /// crate-idiomatic route is `get_pattern`, a COM `QueryInterface` per node per
@@ -116,9 +117,9 @@ mod windows_only {
     }
 
     /// The seams now carry a vocabulary, and this is the assertion that says
-    /// so. It asserted the opposite until this sub-phase - `role == "unknown"`
-    /// and an empty action list - so leaving it green would have meant the
-    /// wiring never landed.
+    /// so. It asserted the opposite before the vocabulary wiring landed -
+    /// `role == "unknown"` and an empty action list - so leaving it green
+    /// would have meant the wiring never landed.
     ///
     /// It asserts on kind, never on count or shape: which controls a provider
     /// exposes is an `app/provider` fact, so the claim is that *some* node
@@ -164,8 +165,9 @@ mod windows_only {
         );
     }
 
-    /// The trap KTD4 exists to prevent, asserted against a real provider
-    /// rather than a fake: `IsLegacyIAccessiblePatternAvailable` is true on
+    /// The trap the affordance-gated action rule exists to prevent, asserted
+    /// against a real provider rather than a fake:
+    /// `IsLegacyIAccessiblePatternAvailable` is true on
     /// every element here, so an adapter that treated availability as an
     /// affordance would advertise an action on every node.
     #[test]

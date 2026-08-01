@@ -55,9 +55,9 @@ fn a_string_past_the_bound_is_unknown_and_is_never_truncated_into_evidence() {
     );
 }
 
-/// KTD13's gate, asserted on the projection rather than on a provider: every
-/// value-bearing property is withheld when `IsPassword` is true, and nothing
-/// else is.
+/// The secure-field gate, asserted on the projection rather than on a
+/// provider: every value-bearing property is withheld when `IsPassword` is
+/// true, and nothing else is.
 #[test]
 fn a_secure_element_withholds_every_value_bearing_property() {
     let mut entries = vec![
@@ -195,9 +195,9 @@ fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
     assert!(!failed.identifiers.is_complete());
 }
 
-/// `AutomationId` -> `native_id` shipped in 2.2, ahead of the sub-phase that
-/// nominally owned it, and shipped without a test. These pin the three rules
-/// it actually implements, each of which fails when inverted.
+/// `AutomationId` -> `native_id` shipped ahead of the work that nominally
+/// owned it, and shipped without a test. These pin the three rules it
+/// actually implements, each of which fails when inverted.
 ///
 /// A blank id must produce no identifier at all. `IdentifierEvidence::typed`
 /// filters it, so an adapter that stopped filtering would hand every
@@ -321,8 +321,8 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
     );
 }
 
-/// KTD14: a failed read must name the property and never carry its content.
-/// A provider is free to hand back nonsense. An inverted side is degenerate,
+/// A failed read must name the property and never carry its content. A
+/// provider is free to hand back nonsense. An inverted side is degenerate,
 /// not negative-sized, and an extreme one must not overflow a debug build.
 #[test]
 fn a_rectangle_side_is_never_negative_and_never_overflows() {

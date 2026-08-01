@@ -2,13 +2,13 @@
 //! the same COM client, walker, property reader and cache policy the adapter
 //! ships.
 //!
-//! Sub-phase 2.0's committed dumps were taken on the **managed** stack, which
-//! A2-4 measured reporting the identical Notepad window as 3 nodes against 26
-//! on the COM stack. This tool exists so 2.2's evidence is in the stack the
+//! Earlier committed dumps were taken on the **managed** stack, which A2-4
+//! measured reporting the identical Notepad window as 3 nodes against 26 on
+//! the COM stack. This tool exists so evidence is captured in the stack the
 //! product actually uses, and it records the target variant, OS build and
-//! client stack that 2.0's dumps lacked.
+//! client stack that those earlier dumps lacked.
 //!
-//! Host data is normalised before writing, as the 2.0 captures already do:
+//! Host data is normalised before writing, as those earlier captures already do:
 //! process ids, provider ids, window handles and user paths are substituted,
 //! and `Name` is recorded as presence and length only.
 //!

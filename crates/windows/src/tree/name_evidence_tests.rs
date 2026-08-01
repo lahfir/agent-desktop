@@ -92,9 +92,9 @@ fn an_unlabelled_element_is_absent_rather_than_failed() {
     );
 }
 
-/// KTD10's cross-element case, which A15-2 measured as constructible rather
-/// than hypothetical: a WPF TextBox labelled by a PasswordBox resolves, and
-/// the target reports IsPassword while the referring element does not.
+/// The cross-element secure-label case, which A15-2 measured as constructible
+/// rather than hypothetical: a WPF TextBox labelled by a PasswordBox resolves,
+/// and the target reports IsPassword while the referring element does not.
 ///
 /// The referring element's own gate never sees this, because the text came
 /// from a different element. Adding `labelled_by_text` to `VALUE_BEARING`
@@ -206,7 +206,7 @@ fn the_adapter_supplies_slots_and_suppresses_the_ones_it_cannot_fill() {
     assert_eq!(
         status.placeholder,
         SlotStatus::Suppressed,
-        "placeholder is 2.4's evidence field and this sub-phase must not fill it"
+        "placeholder is an evidence field this module deliberately leaves unfilled"
     );
 }
 

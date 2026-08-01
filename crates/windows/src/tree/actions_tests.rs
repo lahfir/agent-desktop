@@ -33,13 +33,12 @@ fn known_actions(field: &LocatorField<Vec<String>>) -> &[String] {
     field.known().map(Vec::as_slice).unwrap_or(&[])
 }
 
-/// KTD4's central claim, and the one invisible to any per-pattern test: A2-2
-/// measured `IsLegacyIAccessiblePatternAvailable` `true` on 141 of 141
-/// elements, so an ordinary, non-interactive element that merely advertises
-/// `LegacyAvailable` (with no `LegacyDefaultAction`) must not read as
-/// ref-able. Making the `LegacyIAccessible` arm unconditional was verified by
-/// hand to fail this exact assertion - see the unit's final report for the
-/// observed failure text.
+/// The affordance-gating rule's central claim, and the one invisible to any
+/// per-pattern test: A2-2 measured `IsLegacyIAccessiblePatternAvailable`
+/// `true` on 141 of 141 elements, so an ordinary, non-interactive element
+/// that merely advertises `LegacyAvailable` (with no `LegacyDefaultAction`)
+/// must not read as ref-able. Making the `LegacyIAccessible` arm
+/// unconditional was verified by hand to fail this exact assertion.
 #[test]
 fn legacy_availability_alone_does_not_make_an_ordinary_element_ref_able() {
     let mut reads = inert_reads();

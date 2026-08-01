@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Fails when shipped source code references the project's delivery plan.
+#
+# Phase numbers, sub-phase numbers and plan decision ids are project
+# bookkeeping. They answer "when was this written", which stops being true the
+# moment the roadmap moves, and they mean nothing to anyone reading the code
+# without the plan open beside them. A comment should say what is true about
+# the code and why, in terms that survive the plan being rewritten.
+#
+#   banned:  "Sub-phase 2.2 ships the seam, not the predicate"
+#   fine:    "The predicate is deliberately unfilled: filling it needs the
+#             Chromium detection this module does not do"
+#
+# Scope is shipped source only - crates/ and src/. It deliberately does NOT
+# cover docs/ or probes/: docs/phases.md IS the delivery plan, and the probe
+# corpus is evidence organised by the areas that produced it.
+#
+# Ledger row ids such as A15-7 are NOT banned. They are evidence citations - a
+# pointer to the measurement that forced a decision, the way a comment may cite
+# a CVE or an RFC - and they stay true regardless of what happens to the
+# roadmap. Add a row to the table below to change that.
+
+set -euo pipefail
+
+run_check() {
+    local pattern="$1"
+    local description="$2"
+    local matches
+    if matches="$(grep -rnE --include='*.rs' "$pattern" crates src 2>/dev/null)"; then
+        printf '%s\n' "$matches" >&2
+        printf '  ^ %s - describe what is true, not when it was built\n\n' "$description" >&2
+        return 1
+    fi
+    return 0
+}
+
+failed=0
+
+run_check 'sub-?phase' 'sub-phase reference' || failed=1
+run_check '[Pp]hase[[:space:]]+[0-9]' 'phase number reference' || failed=1
+run_check 'KTD[0-9]' 'plan decision id' || failed=1
+run_check '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id' || failed=1
+
+if [ "$failed" -ne 0 ]; then
+    printf 'Shipped source must not reference the delivery plan.\n' >&2
+    printf 'Rewrite the comment so it explains the code, not the roadmap.\n' >&2
+    exit 1
+fi

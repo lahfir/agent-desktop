@@ -66,8 +66,8 @@ fn the_module_test_is_case_insensitive_and_not_a_substring_match() {
     );
 }
 
-/// KTD5's exclusion, asserted as an absence: a node-count arm cannot exist,
-/// because the count is unknown when the request is built.
+/// The size/speed exclusion, asserted as an absence: a node-count arm cannot
+/// exist, because the count is unknown when the request is built.
 #[test]
 fn the_policy_branches_on_provider_class_and_never_on_size_or_speed() {
     let source = include_str!("cache.rs");

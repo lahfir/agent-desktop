@@ -152,10 +152,10 @@ fn root_missing_error(stats: &LocatorStats) -> AdapterError {
 
 /// Whether this element is a wrapper that costs raw depth but no logical depth.
 ///
-/// Sub-phase 2.2 ships the seam, not the predicate: the body is 2.4's, together
-/// with Chromium detection. It is called where child logical depth is computed,
-/// so 2.4 fills it in without editing the traversal, and a fake can force the
-/// two counters apart today.
+/// The seam is deliberately unfilled: the predicate's body still needs
+/// Chromium detection, which does not exist yet. It is called where child
+/// logical depth is computed, so it can be filled in later without editing
+/// the traversal, and a fake can force the two counters apart today.
 pub fn is_web_wrapper(_element: &UIAElement) -> bool {
     false
 }

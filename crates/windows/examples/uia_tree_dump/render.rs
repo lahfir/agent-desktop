@@ -186,12 +186,12 @@ pub fn dump(
     serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
 }
 
-/// The RawView-versus-ControlView delta KTD11 leaves unreconciled: the code
-/// opens the raw view walker while the document mandates the control view.
+/// The RawView-versus-ControlView delta is left unreconciled: the code opens
+/// the raw view walker while the document mandates the control view.
 ///
 /// A15-10 measured them identical on a Win32 fixture and five nodes apart on
 /// WPF, so the delta is provider-dependent. Reporting it per real target is
-/// what lets 2.4 decide on data rather than on an argument.
+/// what lets that choice be made on data rather than on an argument.
 fn view_delta(hwnd: isize, max_depth: u8, deadline: Deadline) -> Value {
     let count = |control_view: bool| -> Value {
         match count_view(hwnd, control_view, max_depth, deadline) {

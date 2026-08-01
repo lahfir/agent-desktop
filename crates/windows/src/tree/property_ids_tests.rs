@@ -67,8 +67,8 @@ fn the_only_element_valued_property_is_the_label_relation() {
 }
 
 /// The gate is only sound if `IsPassword` arrives in the same batch as the
-/// properties it gates; a separate read would cost the round trip KTD5 exists
-/// to avoid and would open a window where the gate has no input.
+/// properties it gates; a separate read would cost a round trip the batched
+/// design avoids and would open a window where the gate has no input.
 #[test]
 fn the_walk_set_carries_the_flag_that_gates_it() {
     assert!(TreeProperty::WALK_SET.contains(&TreeProperty::IsPassword));
@@ -89,10 +89,10 @@ fn the_gate_covers_exactly_the_properties_whose_content_comes_from_the_target() 
     assert!(!TreeProperty::IsPassword.is_value_bearing());
 }
 
-/// Every property this sub-phase added whose value is text read out of the
-/// target is gated, checked against the read set rather than against a second
-/// hand-maintained list - a text property added to the walk without joining
-/// the gate is the leak KTD10 exists to prevent, and it would otherwise be
+/// Every property whose value is text read out of the target is gated,
+/// checked against the read set rather than against a second hand-maintained
+/// list - a text property added to the walk without joining the gate is the
+/// leak the secure-field gate exists to prevent, and it would otherwise be
 /// invisible until a password reached a trace export.
 #[test]
 fn no_text_property_reaches_the_walk_without_joining_the_gate() {

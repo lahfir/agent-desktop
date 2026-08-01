@@ -1,10 +1,10 @@
-//! Where sub-phase 2.2's committed COM evidence lives, and the normalisation
-//! rules it is held to.
+//! Where the committed COM evidence lives, and the normalisation rules it is
+//! held to.
 //!
 //! The captures under `docs/plans/2026-07-27-002-captures/` are produced by
 //! `crates/windows/examples/uia_tree_dump.rs` on a developer machine, in the
-//! UIA3 COM stack the adapter ships. Sub-phase 2.0's dumps were taken on the
-//! managed stack, which A2-4 measured reporting the identical Notepad window
+//! UIA3 COM stack the adapter ships. Earlier dumps taken on the managed stack
+//! are not comparable: A2-4 measured the identical Notepad window reporting
 //! as 3 nodes against 26 on COM, so they cannot serve as COM expectations.
 //!
 //! Nothing in CI asserts what the captures contain - that would be an
@@ -12,11 +12,11 @@
 //! **redaction rule**: a capture that leaks a process id, a provider id, a
 //! window handle or a user path is a defect regardless of what tree it holds.
 //!
-//! Sub-phase 2.3's dogfood censuses are deliberately **not** committed and so
-//! are not listed here. They run to thousands of lines of JSON, they are
-//! regenerated on demand by `probes/windows/scratch/run-dogfood.ps1`, and
-//! everything a later reader needs from them - the findings, the per-target
-//! judgements, the coverage numbers - is written up in the report under
+//! Dogfood censuses are deliberately **not** committed and so are not listed
+//! here. They run to thousands of lines of JSON, they are regenerated on
+//! demand by `probes/windows/scratch/run-dogfood.ps1`, and everything a later
+//! reader needs from them - the findings, the per-target judgements, the
+//! coverage numbers - is written up in the report under
 //! `docs/dogfood-reports/`. Committing the raw census as well would carry the
 //! bulk without the meaning. The redaction rule those files are held to lives
 //! with the renderer that applies it, in

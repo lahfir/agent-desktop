@@ -48,8 +48,7 @@ const READ_HEALTH_PROBES: [TreeProperty; 6] = [
 /// default as a claim and so decorated the whole tree. The property cannot
 /// distinguish "not applicable" from "invalid" on any stack measured here, so
 /// it is not read at all and `invalid` stays unproduced rather than faked -
-/// which is what KTD6 requires of a token whose platform source turns out
-/// unusable.
+/// the correct outcome for a token whose platform source turns out unusable.
 ///
 /// # Known vs Unknown
 /// `LocatorField::Unknown` is returned only when every [`READ_HEALTH_PROBES`]

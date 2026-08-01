@@ -11,7 +11,8 @@ use super::property_outcome::PropertyOutcome;
 /// `true` on 141 of 141 elements, so its own read succeeding proves nothing
 /// about any real affordance - counting it toward "did the reads succeed"
 /// would let a tree where every other pattern read failed still report
-/// `Known`, which is the same failure shape KTD4 forbids one property over.
+/// `Known`, which is the same failure shape the rule below forbids for every
+/// other property: an action implied by a read that did not actually succeed.
 const AFFORDANCE_AVAILABILITY: [TreeProperty; 8] = [
     TreeProperty::InvokeAvailable,
     TreeProperty::ToggleAvailable,
@@ -25,15 +26,15 @@ const AFFORDANCE_AVAILABILITY: [TreeProperty; 8] = [
 
 /// Resolves the available-action list from the read set.
 ///
-/// KTD4: an action is emitted only for a pattern whose availability implies a
+/// An action is emitted only for a pattern whose availability implies a
 /// specific affordance - `Invoke`, `Toggle`, `ExpandCollapse`,
 /// `SelectionItem`, `Value` (gated on not read-only), `RangeValue`, `Scroll`,
 /// `ScrollItem`. `LegacyIAccessible` availability is not one of those: A2-2
 /// measured it `true` on 141 of 141 elements, so treating it as an affordance
 /// would ref-allocate every element in every tree. It contributes exactly one
 /// action, `Click`, and only when `LegacyDefaultAction` itself reads as a
-/// non-empty string - the gate this sub-phase measured working (button,
-/// checkbox and list item non-empty; edit, text and container roles empty).
+/// non-empty string - the gate measured working: button, checkbox and list
+/// item non-empty; edit, text and container roles empty.
 /// `SetFocus` is emitted truthfully from `IsKeyboardFocusable`, but core
 /// already declines to treat a bare `SetFocus` as a primary action, so it can
 /// never be the sole reason an element becomes ref-able.
