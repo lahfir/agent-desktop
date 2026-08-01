@@ -117,6 +117,43 @@ impl ElementProperties {
             .unwrap_or(PropertyOutcome::Unknown)
     }
 
+    /// Reads a boolean **through its gate**, which is the only safe way to
+    /// read one.
+    ///
+    /// A15-7 measured that a pattern-state property returns a
+    /// default-looking value - never the not-supported sentinel - on an
+    /// element whose provider does not implement the pattern: a static text
+    /// reports `ValueIsReadOnly` = `true` with no `Value` pattern at all.
+    /// `TreeProperty::gate()` names the availability property that has to be
+    /// `true` first, and this is the single accessor that consults it, so a
+    /// caller cannot read a gated property without the gate. A property with
+    /// no gate reads straight through.
+    pub fn gated_flag(&self, property: TreeProperty) -> Option<bool> {
+        if !self.gate_open(property) {
+            return None;
+        }
+        self.get(property).flag()
+    }
+
+    pub fn gated_number(&self, property: TreeProperty) -> Option<i32> {
+        if !self.gate_open(property) {
+            return None;
+        }
+        self.get(property).number()
+    }
+
+    /// Whether a gated property's value means anything on this element.
+    pub fn is_true(&self, property: TreeProperty) -> bool {
+        self.gated_flag(property) == Some(true)
+    }
+
+    fn gate_open(&self, property: TreeProperty) -> bool {
+        match property.gate() {
+            Some(gate) => self.get(gate).flag() == Some(true),
+            None => true,
+        }
+    }
+
     /// Projects the read set onto the evidence slot shape core consumes, so
     /// 2.4 needs no translation layer.
     ///

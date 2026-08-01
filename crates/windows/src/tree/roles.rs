@@ -98,10 +98,10 @@ mod imp {
     /// advertise both; `Toggle` is the stronger claim about the control's
     /// nature so it wins primary-role selection.
     fn button_role(properties: &ElementProperties) -> Role {
-        if is_available(properties, TreeProperty::ToggleAvailable) {
+        if properties.is_true(TreeProperty::ToggleAvailable) {
             return Role::Switch;
         }
-        if is_available(properties, TreeProperty::ExpandCollapseAvailable) {
+        if properties.is_true(TreeProperty::ExpandCollapseAvailable) {
             return Role::MenuButton;
         }
         Role::Button
@@ -111,7 +111,7 @@ mod imp {
     /// implements selection is a listbox, an unselectable list is a plain
     /// list.
     fn list_role(properties: &ElementProperties) -> Role {
-        if is_available(properties, TreeProperty::SelectionAvailable) {
+        if properties.is_true(TreeProperty::SelectionAvailable) {
             Role::ListBox
         } else {
             Role::List
@@ -122,8 +122,8 @@ mod imp {
     /// addressable by row and column is a cell, otherwise it is the row that
     /// contains cells.
     fn data_item_role(properties: &ElementProperties) -> Role {
-        if is_available(properties, TreeProperty::GridItemAvailable)
-            || is_available(properties, TreeProperty::TableItemAvailable)
+        if properties.is_true(TreeProperty::GridItemAvailable)
+            || properties.is_true(TreeProperty::TableItemAvailable)
         {
             Role::Cell
         } else {
@@ -135,7 +135,8 @@ mod imp {
     /// editable document (a rich edit control, not a static viewer) is a
     /// text field, everything else stays a document.
     fn document_role(properties: &ElementProperties) -> Role {
-        if is_available(properties, TreeProperty::ValueAvailable) && !is_value_read_only(properties)
+        if properties.is_true(TreeProperty::ValueAvailable)
+            && !properties.is_true(TreeProperty::ValueIsReadOnly)
         {
             Role::TextField
         } else {
@@ -147,30 +148,13 @@ mod imp {
     /// marks the pane as a dialog surface, and a plain pane with neither is a
     /// generic container.
     fn pane_role(properties: &ElementProperties) -> Role {
-        if is_available(properties, TreeProperty::WindowAvailable) || is_dialog(properties) {
+        if properties.is_true(TreeProperty::WindowAvailable)
+            || properties.is_true(TreeProperty::IsDialog)
+        {
             Role::Dialog
         } else {
             Role::Group
         }
-    }
-
-    fn is_available(properties: &ElementProperties, property: TreeProperty) -> bool {
-        properties.get(property).flag() == Some(true)
-    }
-
-    fn is_dialog(properties: &ElementProperties) -> bool {
-        properties.get(TreeProperty::IsDialog).flag() == Some(true)
-    }
-
-    /// Reads `ValueIsReadOnly` through its gate: A15-7 measured a
-    /// non-editable element reporting `ValueIsReadOnly = true` with no
-    /// `Value` pattern at all, so the flag means nothing until `ValueAvailable`
-    /// itself reads `Known(Flag(true))`.
-    fn is_value_read_only(properties: &ElementProperties) -> bool {
-        if !is_available(properties, TreeProperty::ValueAvailable) {
-            return false;
-        }
-        properties.get(TreeProperty::ValueIsReadOnly).flag() == Some(true)
     }
 }
 

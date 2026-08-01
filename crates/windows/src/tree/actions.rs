@@ -54,35 +54,37 @@ pub fn resolve_actions(properties: &ElementProperties) -> LocatorField<Vec<Strin
 
     let mut actions = Vec::new();
 
-    if is_available(properties, TreeProperty::InvokeAvailable) {
+    if properties.is_true(TreeProperty::InvokeAvailable) {
         push_unique(&mut actions, capability::CLICK);
     }
-    if is_available(properties, TreeProperty::ToggleAvailable) {
+    if properties.is_true(TreeProperty::ToggleAvailable) {
         push_unique(&mut actions, capability::TOGGLE);
     }
-    if is_available(properties, TreeProperty::ExpandCollapseAvailable) {
+    if properties.is_true(TreeProperty::ExpandCollapseAvailable) {
         push_unique(&mut actions, capability::EXPAND);
         push_unique(&mut actions, capability::COLLAPSE);
     }
-    if is_available(properties, TreeProperty::SelectionItemAvailable) {
+    if properties.is_true(TreeProperty::SelectionItemAvailable) {
         push_unique(&mut actions, capability::SELECT);
     }
-    if is_available(properties, TreeProperty::ValueAvailable) && !is_value_read_only(properties) {
+    if properties.is_true(TreeProperty::ValueAvailable)
+        && !properties.is_true(TreeProperty::ValueIsReadOnly)
+    {
         push_unique(&mut actions, capability::SET_VALUE);
     }
-    if is_available(properties, TreeProperty::RangeValueAvailable) {
+    if properties.is_true(TreeProperty::RangeValueAvailable) {
         push_unique(&mut actions, capability::SET_VALUE);
     }
-    if is_available(properties, TreeProperty::ScrollAvailable) {
+    if properties.is_true(TreeProperty::ScrollAvailable) {
         push_unique(&mut actions, capability::SCROLL);
     }
-    if is_available(properties, TreeProperty::ScrollItemAvailable) {
+    if properties.is_true(TreeProperty::ScrollItemAvailable) {
         push_unique(&mut actions, capability::SCROLL_TO);
     }
     if has_legacy_default_action(properties) {
         push_unique(&mut actions, capability::CLICK);
     }
-    if is_keyboard_focusable(properties) {
+    if properties.is_true(TreeProperty::IsKeyboardFocusable) {
         push_unique(&mut actions, capability::SET_FOCUS);
     }
 
@@ -101,18 +103,6 @@ fn read_set_is_unknown(properties: &ElementProperties) -> bool {
             properties.get(TreeProperty::IsKeyboardFocusable),
             PropertyOutcome::Unknown
         )
-}
-
-fn is_available(properties: &ElementProperties, property: TreeProperty) -> bool {
-    properties.get(property).flag() == Some(true)
-}
-
-fn is_value_read_only(properties: &ElementProperties) -> bool {
-    properties.get(TreeProperty::ValueIsReadOnly).flag() == Some(true)
-}
-
-fn is_keyboard_focusable(properties: &ElementProperties) -> bool {
-    properties.get(TreeProperty::IsKeyboardFocusable).flag() == Some(true)
 }
 
 fn has_legacy_default_action(properties: &ElementProperties) -> bool {

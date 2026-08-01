@@ -126,6 +126,68 @@ fn nothing_readable_and_nothing_failed_is_absent_rather_than_unknown() {
     );
 }
 
+/// A failed description read is `Absent` rather than `Unknown` when nothing
+/// outranks the description, and that is deliberate.
+///
+/// With no stronger source, the description *becomes the name* - the rule
+/// `description_is_not_duplicated_when_it_supplies_the_name` pins - so the
+/// description field is `Absent` whether the read succeeded or failed: either
+/// way there is no *separate* description to report. `Unknown` here would
+/// claim a description might exist that provably could not.
+///
+/// The name is still `Unknown` in that case, which is where the uncertainty
+/// belongs. The two answers are asserted together because it is their
+/// combination that is correct, and reading either alone invites "fixing" it.
+#[test]
+fn a_failed_description_is_absent_when_it_would_have_been_the_name() {
+    let status = NameSlotStatus {
+        description: SlotStatus::Uncertain,
+        ..NameSlotStatus::default()
+    };
+
+    for evidence in [
+        NameEvidence::default(),
+        NameEvidence {
+            description: Some("would have been the name".into()),
+            ..NameEvidence::default()
+        },
+    ] {
+        assert_eq!(
+            resolve_description(&evidence, &status),
+            LocatorField::Absent,
+            "nothing outranks the description, so there is no separate description"
+        );
+        assert_eq!(
+            resolve_name(&evidence, &status),
+            LocatorField::Unknown,
+            "the uncertainty belongs to the name, which the description would have supplied"
+        );
+    }
+}
+
+/// The same failed read **is** `Unknown` once something else is the name,
+/// because then a separate description could genuinely have existed.
+#[test]
+fn a_failed_description_is_unknown_once_a_stronger_source_is_the_name() {
+    let evidence = NameEvidence {
+        native_title: Some("Save".into()),
+        ..NameEvidence::default()
+    };
+    let status = NameSlotStatus {
+        description: SlotStatus::Uncertain,
+        ..NameSlotStatus::default()
+    };
+
+    assert_eq!(
+        resolve_name(&evidence, &status),
+        LocatorField::Known("Save".into())
+    );
+    assert_eq!(
+        resolve_description(&evidence, &status),
+        LocatorField::Unknown
+    );
+}
+
 #[test]
 fn blank_evidence_is_ignored_without_rewriting_content() {
     let value = NameEvidence {

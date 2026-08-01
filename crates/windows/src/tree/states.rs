@@ -89,16 +89,16 @@ pub fn resolve_states(
     push_toggle_state(properties, role, &mut states);
     push_expand_collapse_state(properties, &mut states);
 
-    if gated_flag(properties, TreeProperty::SelectionItemIsSelected) == Some(true) {
+    if properties.gated_flag(TreeProperty::SelectionItemIsSelected) == Some(true) {
         states.push(state::SELECTED.to_string());
     }
-    if gated_flag(properties, TreeProperty::ValueIsReadOnly) == Some(true) {
+    if properties.gated_flag(TreeProperty::ValueIsReadOnly) == Some(true) {
         states.push(state::READONLY.to_string());
     }
-    if gated_flag(properties, TreeProperty::SelectionCanSelectMultiple) == Some(true) {
+    if properties.gated_flag(TreeProperty::SelectionCanSelectMultiple) == Some(true) {
         states.push(state::MULTISELECTABLE.to_string());
     }
-    if gated_flag(properties, TreeProperty::WindowIsModal) == Some(true) {
+    if properties.gated_flag(TreeProperty::WindowIsModal) == Some(true) {
         states.push(state::MODAL.to_string());
     }
 
@@ -113,42 +113,13 @@ fn read_health_failed(properties: &ElementProperties) -> bool {
         .all(|property| matches!(properties.get(*property), PropertyOutcome::Unknown))
 }
 
-/// Whether a gated property's own availability property reports
-/// `Known(Flag(true))`.
-///
-/// A15-7 measured that a pattern-state property returns a default-looking
-/// value - never the not-supported sentinel - on an element whose provider
-/// does not implement the pattern: a static text reports `ToggleState` =
-/// `Indeterminate` and `ValueIsReadOnly` = `true`. Every gated read in this
-/// file goes through this one check so an arm cannot forget it.
-fn gate_open(properties: &ElementProperties, property: TreeProperty) -> bool {
-    match property.gate() {
-        Some(gate) => properties.get(gate).flag() == Some(true),
-        None => true,
-    }
-}
-
-fn gated_flag(properties: &ElementProperties, property: TreeProperty) -> Option<bool> {
-    if !gate_open(properties, property) {
-        return None;
-    }
-    properties.get(property).flag()
-}
-
-fn gated_number(properties: &ElementProperties, property: TreeProperty) -> Option<i32> {
-    if !gate_open(properties, property) {
-        return None;
-    }
-    properties.get(property).number()
-}
-
 /// `ToggleState`, role-gated exactly as macOS's `state_reader.rs` gates the
 /// same source: `checked`/`indeterminate` only on a toggleable role, and
 /// `pressed` instead of `checked` on a `button` role. The two checks are
 /// independent, mirroring `state_reader.rs:35-41` and `:57-59`, because a
 /// role is never both at once.
 fn push_toggle_state(properties: &ElementProperties, role: &str, states: &mut Vec<String>) {
-    let Some(toggle) = gated_number(properties, TreeProperty::ToggleState) else {
+    let Some(toggle) = properties.gated_number(TreeProperty::ToggleState) else {
         return;
     };
     if roles::is_toggleable_role(role) {
@@ -167,7 +138,7 @@ fn push_toggle_state(properties: &ElementProperties, role: &str, states: &mut Ve
 /// not model as a token: it means the pattern is implemented but the node
 /// never expands, which is neither `expanded` nor a collapsed state.
 fn push_expand_collapse_state(properties: &ElementProperties, states: &mut Vec<String>) {
-    let Some(value) = gated_number(properties, TreeProperty::ExpandCollapseState) else {
+    let Some(value) = properties.gated_number(TreeProperty::ExpandCollapseState) else {
         return;
     };
     if value == EXPAND_COLLAPSE_STATE_EXPANDED {

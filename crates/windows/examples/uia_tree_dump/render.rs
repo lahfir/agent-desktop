@@ -19,7 +19,7 @@ fn node(element: &UIAElement, parent: Option<usize>, index: usize) -> Value {
     json!({
         "parent_index": parent,
         "child_index": index,
-        "control_type": slot(&read_one(element, TreeProperty::ControlType)),
+        "control_type": slot(&properties.get(TreeProperty::ControlType)),
         "role": role_of(&vocabulary.role),
         "available_actions": field_list(&vocabulary.available_actions),
         "states": field_list(&vocabulary.states),

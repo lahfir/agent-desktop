@@ -111,6 +111,18 @@ pub fn field_presence(field: &LocatorField<String>) -> Value {
     }
 }
 
+/// Renders a resolved evidence slot, keeping the tri-state visible.
+///
+/// `Absent` and `Unknown` are rendered as distinct markers rather than both
+/// collapsing to an empty value, because that difference is the whole point of
+/// the slot: `Absent` is the provider answering, `Unknown` is a read that
+/// failed. A census that showed them the same way would hide exactly the
+/// distinction it exists to report.
+///
+/// This and [`role_of`] are the same three arms over different payloads. One
+/// generic function would need a `Serialize` bound, and `serde` is not a
+/// dependency of this crate - widening a shipped crate's dependency surface to
+/// collapse six lines of dev tooling is the worse trade.
 pub fn field_list(field: &LocatorField<Vec<String>>) -> Value {
     match field {
         LocatorField::Known(values) => json!(values),
