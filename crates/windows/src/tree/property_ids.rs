@@ -90,16 +90,18 @@ impl TreeProperty {
     /// `BuildUpdatedCache` round trip per node that advertises a pattern - and
     /// timed it head to head.
     ///
-    /// **It does not reliably recover the cost, and the honest range is wider
-    /// than one statistic suggests.** Across four runs the split measured
-    /// 0.80x to 1.08x the flat set: slightly cheaper on the out-of-process
-    /// provider, at or above parity on the in-process proxy. Its run-to-run
-    /// spread is also far worse - 1.6x between its own fastest and slowest
-    /// repeat against 1.07x to 1.35x for the flat set - so a single `min`
-    /// sample can read 0.70x while the median of the same seven repeats reads
-    /// 1.08x. The best case never approached what would be needed to offset
-    /// the group it targets, because the expense sits in the identity and
-    /// naming properties **every** node needs and no gate can exclude.
+    /// **It does not recover the cost.** Across four runs and two Windows
+    /// builds the split measured 0.80x to 1.08x the flat set, and the only
+    /// readings that favoured it came from one machine: the hosted runner puts
+    /// it at 1.07x-1.08x on the in-process proxy and 0.99x-1.03x on the
+    /// out-of-process provider, so the sub-1.0 readings are a dev-box artifact
+    /// rather than a property of the design. Its run-to-run spread is also far
+    /// worse - 1.6x between its own fastest and slowest repeat against 1.07x
+    /// to 1.35x for the flat set - so a single `min` sample can read 0.70x
+    /// while the median of those same seven repeats reads 1.08x. Nothing
+    /// approached what would offset the group it targets, because the expense
+    /// sits in the identity and naming properties **every** node needs and no
+    /// gate can exclude.
     ///
     /// What settles it is not the timing but the shape: the split trades a
     /// bounded per-node prefetch for a round trip per pattern-bearing node -

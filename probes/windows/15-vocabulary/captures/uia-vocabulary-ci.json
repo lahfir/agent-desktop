@@ -3,57 +3,57 @@
                          "batch_cost":  {
                                             "base_set":  {
                                                              "nodes":  20,
-                                                             "prefetch_max_micros":  41640,
-                                                             "prefetch_median_micros":  41138,
-                                                             "prefetch_min_micros":  40790,
+                                                             "prefetch_max_micros":  37368,
+                                                             "prefetch_median_micros":  34469,
+                                                             "prefetch_min_micros":  33929,
                                                              "properties":  10,
-                                                             "read_median_micros":  303,
+                                                             "read_median_micros":  248,
                                                              "repeats":  7,
                                                              "successful_reads":  200
                                                          },
                                             "base_set_repeat":  {
                                                                     "nodes":  20,
-                                                                    "prefetch_max_micros":  47645,
-                                                                    "prefetch_median_micros":  40874,
-                                                                    "prefetch_min_micros":  40696,
+                                                                    "prefetch_max_micros":  36692,
+                                                                    "prefetch_median_micros":  34783,
+                                                                    "prefetch_min_micros":  34030,
                                                                     "properties":  10,
-                                                                    "read_median_micros":  263,
+                                                                    "read_median_micros":  240,
                                                                     "repeats":  7,
                                                                     "successful_reads":  200
                                                                 },
                                             "conditional_split":  {
                                                                       "nodes_needing_a_round_trip":  12,
-                                                                      "total_max_micros":  54169,
-                                                                      "total_median_micros":  47687,
-                                                                      "total_min_micros":  46930
+                                                                      "total_max_micros":  41909,
+                                                                      "total_median_micros":  40796,
+                                                                      "total_min_micros":  40460
                                                                   },
                                             "core_plus_availability":  {
                                                                            "nodes":  20,
-                                                                           "prefetch_max_micros":  44682,
-                                                                           "prefetch_median_micros":  43180,
-                                                                           "prefetch_min_micros":  42448,
+                                                                           "prefetch_max_micros":  55654,
+                                                                           "prefetch_median_micros":  37663,
+                                                                           "prefetch_min_micros":  37071,
                                                                            "properties":  36,
-                                                                           "read_median_micros":  910,
+                                                                           "read_median_micros":  837,
                                                                            "repeats":  7,
                                                                            "successful_reads":  720
                                                                        },
                                             "core_set":  {
                                                              "nodes":  20,
-                                                             "prefetch_max_micros":  47358,
-                                                             "prefetch_median_micros":  42866,
-                                                             "prefetch_min_micros":  41785,
+                                                             "prefetch_max_micros":  39005,
+                                                             "prefetch_median_micros":  36263,
+                                                             "prefetch_min_micros":  36093,
                                                              "properties":  24,
-                                                             "read_median_micros":  617,
+                                                             "read_median_micros":  555,
                                                              "repeats":  7,
                                                              "successful_reads":  480
                                                          },
                                             "full_set":  {
                                                              "nodes":  20,
-                                                             "prefetch_max_micros":  48652,
-                                                             "prefetch_median_micros":  44350,
-                                                             "prefetch_min_micros":  44018,
+                                                             "prefetch_max_micros":  41187,
+                                                             "prefetch_median_micros":  37958,
+                                                             "prefetch_min_micros":  37501,
                                                              "properties":  43,
-                                                             "read_median_micros":  1076,
+                                                             "read_median_micros":  979,
                                                              "repeats":  7,
                                                              "successful_reads":  860
                                                          },
@@ -77,208 +77,83 @@
                                             "elements":  20,
                                             "non_secure_labelled_by_secure":  false,
                                             "resolved":  0,
-                                            "rows":  [
-                                                         {
-                                                             "control_type":  50020,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50004,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50020,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50004,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  true
-                                                         },
-                                                         {
-                                                             "control_type":  50004,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50000,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50020,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50002,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50007,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50007,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50008,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50007,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50007,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50008,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50011,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50010,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50000,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50000,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50000,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         },
-                                                         {
-                                                             "control_type":  50037,
-                                                             "failed":  {
-                                                                            "code":  0,
-                                                                            "result_hex":  null,
-                                                                            "result_is_none":  true
-                                                                        },
-                                                             "resolved":  false,
-                                                             "secure":  false
-                                                         }
-                                                     ]
+                                            "resolved_rows":  [
+
+                                                              ],
+                                            "unresolved_shapes":  [
+                                                                      {
+                                                                          "control_type":  50020,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50004,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50000,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50002,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50007,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50008,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50011,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50010,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50037,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      }
+                                                                  ]
                                         },
                          "pattern_state_without_pattern":  {
                                                                "rows":  [
@@ -286,12 +161,6 @@
                                                                                 "availability_property_reported":  false,
                                                                                 "control_type":  50020,
                                                                                 "outcome":  {
-                                                                                                "bool":  null,
-                                                                                                "contains_marker":  false,
-                                                                                                "is_null":  false,
-                                                                                                "length":  0,
-                                                                                                "non_empty":  false,
-                                                                                                "not_supported":  false,
                                                                                                 "number":  2,
                                                                                                 "variant_type":  "VARENUM(3)"
                                                                                             },
@@ -301,12 +170,6 @@
                                                                                 "availability_property_reported":  false,
                                                                                 "control_type":  50020,
                                                                                 "outcome":  {
-                                                                                                "bool":  null,
-                                                                                                "contains_marker":  false,
-                                                                                                "is_null":  false,
-                                                                                                "length":  0,
-                                                                                                "non_empty":  false,
-                                                                                                "not_supported":  false,
                                                                                                 "number":  3,
                                                                                                 "variant_type":  "VARENUM(3)"
                                                                                             },
@@ -317,12 +180,6 @@
                                                                                 "control_type":  50020,
                                                                                 "outcome":  {
                                                                                                 "bool":  false,
-                                                                                                "contains_marker":  false,
-                                                                                                "is_null":  false,
-                                                                                                "length":  0,
-                                                                                                "non_empty":  false,
-                                                                                                "not_supported":  false,
-                                                                                                "number":  null,
                                                                                                 "variant_type":  "VARENUM(11)"
                                                                                             },
                                                                                 "property":  "SelectionItemIsSelected"
@@ -332,12 +189,6 @@
                                                                                 "control_type":  50020,
                                                                                 "outcome":  {
                                                                                                 "bool":  true,
-                                                                                                "contains_marker":  false,
-                                                                                                "is_null":  false,
-                                                                                                "length":  0,
-                                                                                                "non_empty":  false,
-                                                                                                "not_supported":  false,
-                                                                                                "number":  null,
                                                                                                 "variant_type":  "VARENUM(11)"
                                                                                             },
                                                                                 "property":  "ValueIsReadOnly"
@@ -347,12 +198,6 @@
                                                                                 "control_type":  50020,
                                                                                 "outcome":  {
                                                                                                 "bool":  false,
-                                                                                                "contains_marker":  false,
-                                                                                                "is_null":  false,
-                                                                                                "length":  0,
-                                                                                                "non_empty":  false,
-                                                                                                "not_supported":  false,
-                                                                                                "number":  null,
                                                                                                 "variant_type":  "VARENUM(11)"
                                                                                             },
                                                                                 "property":  "SelectionCanSelectMultiple"
@@ -365,92 +210,36 @@
                                                                    "control_type":  50000,
                                                                    "count":  4,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
                                                                                                  "length":  5,
                                                                                                  "non_empty":  true,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  1048576,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -458,84 +247,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -544,92 +261,36 @@
                                                                    "control_type":  50002,
                                                                    "count":  1,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
                                                                                                  "length":  5,
                                                                                                  "non_empty":  true,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  1048576,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -637,24 +298,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -663,92 +312,34 @@
                                                                    "control_type":  50004,
                                                                    "count":  3,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  1048576,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -756,64 +347,16 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  false,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  false,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              },
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -822,92 +365,36 @@
                                                                    "control_type":  50007,
                                                                    "count":  4,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
                                                                                                  "length":  12,
                                                                                                  "non_empty":  true,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  19922944,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -915,84 +402,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -1001,92 +416,34 @@
                                                                    "control_type":  50008,
                                                                    "count":  2,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  1048576,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -1094,44 +451,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -1140,92 +465,34 @@
                                                                    "control_type":  50010,
                                                                    "count":  1,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  false,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  1048576,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -1233,24 +500,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -1259,92 +514,34 @@
                                                                    "control_type":  50011,
                                                                    "count":  1,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  1074790400,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -1352,24 +549,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -1378,92 +563,34 @@
                                                                    "control_type":  50020,
                                                                    "count":  3,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  64,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -1471,64 +598,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
-                                                                                                             "variant_type":  "VARENUM(11)"
-                                                                                                         },
-                                                                                                         {
-                                                                                                             "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
-                                                                                                 "variant_type":  "VARENUM(11)"
-                                                                                             },
-                                                                                             {
-                                                                                                 "bool":  true,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
@@ -1537,92 +612,34 @@
                                                                    "control_type":  50037,
                                                                    "count":  1,
                                                                    "full_description":  {
-                                                                                            "bool":  null,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(8)"
                                                                                         },
                                                                    "help_text":  {
-                                                                                     "bool":  null,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(8)"
                                                                                  },
                                                                    "is_content_element":  {
                                                                                               "bool":  false,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_control_element":  {
                                                                                               "bool":  true,
-                                                                                              "contains_marker":  false,
-                                                                                              "is_null":  false,
-                                                                                              "length":  0,
-                                                                                              "non_empty":  false,
-                                                                                              "not_supported":  false,
-                                                                                              "number":  null,
                                                                                               "variant_type":  "VARENUM(11)"
                                                                                           },
                                                                    "is_dialog":  {
                                                                                      "bool":  false,
-                                                                                     "contains_marker":  false,
-                                                                                     "is_null":  false,
-                                                                                     "length":  0,
-                                                                                     "non_empty":  false,
-                                                                                     "not_supported":  false,
-                                                                                     "number":  null,
                                                                                      "variant_type":  "VARENUM(11)"
                                                                                  },
                                                                    "item_status":  {
-                                                                                       "bool":  null,
-                                                                                       "contains_marker":  false,
-                                                                                       "is_null":  false,
-                                                                                       "length":  0,
-                                                                                       "non_empty":  false,
-                                                                                       "not_supported":  false,
-                                                                                       "number":  null,
                                                                                        "variant_type":  "VARENUM(8)"
                                                                                    },
                                                                    "legacy_available":  {
                                                                                             "bool":  true,
-                                                                                            "contains_marker":  false,
-                                                                                            "is_null":  false,
-                                                                                            "length":  0,
-                                                                                            "non_empty":  false,
-                                                                                            "not_supported":  false,
-                                                                                            "number":  null,
                                                                                             "variant_type":  "VARENUM(11)"
                                                                                         },
                                                                    "legacy_default_action":  {
-                                                                                                 "bool":  null,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(8)"
                                                                                              },
                                                                    "legacy_state":  {
-                                                                                        "bool":  null,
-                                                                                        "contains_marker":  false,
-                                                                                        "is_null":  false,
-                                                                                        "length":  0,
-                                                                                        "non_empty":  false,
-                                                                                        "not_supported":  false,
                                                                                         "number":  1048576,
                                                                                         "variant_type":  "VARENUM(3)"
                                                                                     },
@@ -1630,24 +647,12 @@
                                                                    "selection_can_select_multiple":  [
                                                                                                          {
                                                                                                              "bool":  false,
-                                                                                                             "contains_marker":  false,
-                                                                                                             "is_null":  false,
-                                                                                                             "length":  0,
-                                                                                                             "non_empty":  false,
-                                                                                                             "not_supported":  false,
-                                                                                                             "number":  null,
                                                                                                              "variant_type":  "VARENUM(11)"
                                                                                                          }
                                                                                                      ],
                                                                    "value_is_readonly":  [
                                                                                              {
                                                                                                  "bool":  false,
-                                                                                                 "contains_marker":  false,
-                                                                                                 "is_null":  false,
-                                                                                                 "length":  0,
-                                                                                                 "non_empty":  false,
-                                                                                                 "not_supported":  false,
-                                                                                                 "number":  null,
                                                                                                  "variant_type":  "VARENUM(11)"
                                                                                              }
                                                                                          ]
