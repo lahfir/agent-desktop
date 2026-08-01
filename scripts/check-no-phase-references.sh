@@ -62,6 +62,10 @@ run_check '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id' || failed=1
 # `-<digit>.<digit>`, which silently swallowed `phase-2.4` - the exact thing
 # the check exists to catch - while innocent prose decimals like "a 2.5 ms
 # timeout" still fired. Each strip now names the idiom it permits.
+# Single quotes are load-bearing: `$0` is awk's whole-line variable and must
+# reach awk unexpanded. Double quotes would have the shell substitute its own
+# `$0` - the script's name - into the program text.
+# shellcheck disable=SC2016
 BARE_REFERENCE_AWK='
 {
     text = $0
