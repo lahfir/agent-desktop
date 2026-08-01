@@ -50,16 +50,33 @@ run_check '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id' || failed=1
 #
 # Scoped to doc comments, because outside them `0.0` and `1.0` are float
 # literals and there are hundreds of them.
+# Implemented in awk and by tokenising rather than with word-boundary regexes.
+# `\b` is a GNU extension that BSD sed and grep do not support, so a regex
+# using it silently stops stripping on the macOS runner and reports every
+# version number as a violation. Splitting the line into tokens needs no
+# boundary support and is exact on both.
 bare_reference_check() {
     local matches
     matches="$(
         grep -rnE --include='*.rs' '^[[:space:]]*(///|//!)' crates src 2>/dev/null |
-            sed -E 's#\bv[0-9]+\.[0-9]+(\.[0-9]+)?##g;
-                    s#\b[0-9]+\.[0-9]+(\.[0-9]+)+##g;
-                    s#[-[:alnum:]]-[0-9]+\.[0-9]+##g;
-                    s#\b[0-9]+\.[0-9]+x##g;
-                    s#"[0-9]+\.[0-9]+"##g' |
-            grep -E '\b[0-9]\.[0-9]{1,2}\b' || true
+            awk '
+                {
+                    text = $0
+                    gsub(/v[0-9]+\.[0-9]+(\.[0-9]+)?/, " ", text)
+                    gsub(/[0-9]+\.[0-9]+\.[0-9]+/, " ", text)
+                    gsub(/-[0-9]+\.[0-9]+/, " ", text)
+                    gsub(/[0-9]+\.[0-9]+x/, " ", text)
+                    gsub(/"[0-9]+\.[0-9]+"/, " ", text)
+                    gsub(/[^0-9.]/, " ", text)
+                    n = split(text, tokens, " ")
+                    for (i = 1; i <= n; i++) {
+                        if (tokens[i] ~ /^[0-9]\.[0-9][0-9]?$/) {
+                            print
+                            next
+                        }
+                    }
+                }
+            ' || true
     )"
     if [ -n "$matches" ]; then
         printf '%s\n' "$matches" >&2
