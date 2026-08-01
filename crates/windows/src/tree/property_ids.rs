@@ -82,18 +82,29 @@ impl TreeProperty {
     ///
     /// **The set is flat, and that is a measured decision rather than a
     /// default.** A15-11 measured the expanded set against 2.2's ten
-    /// properties on the same walk: 1.16x on the in-process Win32 proxy at 20
-    /// nodes, 1.89x on a real out-of-process WPF provider at 46 nodes, min of
+    /// properties on the same walk: 1.22x on the in-process Win32 proxy at 20
+    /// nodes, 1.98x on a real out-of-process WPF provider at 81 nodes, min of
     /// seven repeats after a discarded warm-up. That is materially slower, so
     /// A15-12 built the conditional split the plan pre-committed to - core
     /// plus availability prefetched, pattern state fetched with one
     /// `BuildUpdatedCache` round trip per node that advertises a pattern - and
-    /// timed it head to head. It costs 0.95x to 1.05x the flat set: no
-    /// recovery in either direction, because the expense sits in the identity
-    /// and naming properties **every** node needs and no gate can exclude.
+    /// timed it head to head.
     ///
-    /// The split would also trade a bounded per-node prefetch for a round trip
-    /// per pattern-bearing node, which is unbounded on a selection-dense tree.
+    /// **It does not reliably recover the cost, and the honest range is wider
+    /// than one statistic suggests.** Across four runs the split measured
+    /// 0.80x to 1.08x the flat set: slightly cheaper on the out-of-process
+    /// provider, at or above parity on the in-process proxy. Its run-to-run
+    /// spread is also far worse - 1.6x between its own fastest and slowest
+    /// repeat against 1.07x to 1.35x for the flat set - so a single `min`
+    /// sample can read 0.70x while the median of the same seven repeats reads
+    /// 1.08x. The best case never approached what would be needed to offset
+    /// the group it targets, because the expense sits in the identity and
+    /// naming properties **every** node needs and no gate can exclude.
+    ///
+    /// What settles it is not the timing but the shape: the split trades a
+    /// bounded per-node prefetch for a round trip per pattern-bearing node -
+    /// 26 of 81 nodes on the WPF fixture - which is unbounded on a
+    /// selection-dense tree, for at best a tenth off a walk.
     /// What was available instead was trimming: `ItemStatus`, `Orientation`
     /// and `RangeValueIsReadOnly` are read by no vocabulary here and are not
     /// requested. `IsDataValidForForm` joined them after the dogfood run -

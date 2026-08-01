@@ -33,16 +33,47 @@ pub fn failure_shape(error: &UiaError) -> Value {
 /// `VT_UNKNOWN` and no field distinguishes it from any other interface.
 pub fn variant_shape(variant: &Variant) -> Value {
     let rendered = variant.get_string().unwrap_or_default();
-    json!({
-        "variant_type": format!("{:?}", variant.get_type()),
-        "is_null": variant.is_null(),
-        "not_supported": is_not_supported(variant),
-        "length": rendered.chars().count(),
-        "non_empty": !rendered.trim().is_empty(),
-        "contains_marker": rendered.contains(SECRET_MARKER),
-        "bool": boolean_of(variant),
-        "number": number_of(variant),
-    })
+    let mut shape = serde_json::Map::new();
+    shape.insert(
+        "variant_type".into(),
+        json!(format!("{:?}", variant.get_type())),
+    );
+    if is_not_supported(variant) {
+        shape.insert("not_supported".into(), json!(true));
+    }
+    if variant.is_null() {
+        shape.insert("is_null".into(), json!(true));
+    }
+    if let Some(flag) = boolean_of(variant) {
+        shape.insert("bool".into(), json!(flag));
+    }
+    if let Some(number) = number_of(variant) {
+        shape.insert("number".into(), json!(number));
+    }
+    if !rendered.is_empty() {
+        shape.insert("length".into(), json!(rendered.chars().count()));
+        shape.insert("non_empty".into(), json!(!rendered.trim().is_empty()));
+    }
+    if rendered.contains(SECRET_MARKER) {
+        shape.insert("contains_marker".into(), json!(true));
+    }
+    Value::Object(shape)
+}
+
+/// Collapses a per-element reading to the **distinct** shapes observed.
+///
+/// A capture that prints one shape per element records the same answer as many
+/// times as the provider happens to expose that control - ten identical rows
+/// for ten static texts - which is bulk, not evidence. The distinct set plus a
+/// count says exactly as much and is what a later reader can actually scan.
+fn distinct_shapes(shapes: Vec<Value>) -> Value {
+    let mut seen: Vec<Value> = Vec::new();
+    for shape in shapes {
+        if !seen.contains(&shape) {
+            seen.push(shape);
+        }
+    }
+    json!(seen)
 }
 
 pub fn boolean_of(variant: &Variant) -> Option<bool> {
@@ -164,17 +195,24 @@ pub fn measure_labeled_by(elements: &[UIElement]) -> Value {
             }),
         })
         .collect();
-    let labelled = rows
+    let resolved: Vec<&Value> = rows
         .iter()
         .filter(|row| row["resolved"] == json!(true))
-        .count();
+        .collect();
+    let mut unresolved: Vec<Value> = rows
+        .iter()
+        .filter(|row| row["resolved"] != json!(true))
+        .map(|row| json!({ "control_type": row["control_type"], "failed": row["failed"] }))
+        .collect();
+    unresolved.dedup();
     json!({
         "elements": rows.len(),
-        "resolved": labelled,
+        "resolved": resolved.len(),
         "non_secure_labelled_by_secure": rows.iter().any(|row| {
             row["secure"] == json!(false) && row["target_secure"] == json!(true)
         }),
-        "rows": rows,
+        "resolved_rows": resolved,
+        "unresolved_shapes": distinct_shapes(unresolved),
     })
 }
 
@@ -196,14 +234,18 @@ pub fn measure_per_control_type(elements: &[UIElement]) -> Value {
                 "legacy_default_action": read_shape(sample, UIProperty::LegacyIAccessibleDefaultAction),
                 "legacy_state": read_shape(sample, UIProperty::LegacyIAccessibleState),
                 "legacy_available": read_shape(sample, UIProperty::IsLegacyIAccessiblePatternAvailable),
-                "value_is_readonly": bucket
-                    .iter()
-                    .map(|element| read_shape(element, UIProperty::ValueIsReadOnly))
-                    .collect::<Vec<Value>>(),
-                "selection_can_select_multiple": bucket
-                    .iter()
-                    .map(|element| read_shape(element, UIProperty::SelectionCanSelectMultiple))
-                    .collect::<Vec<Value>>(),
+                "value_is_readonly": distinct_shapes(
+                    bucket
+                        .iter()
+                        .map(|element| read_shape(element, UIProperty::ValueIsReadOnly))
+                        .collect(),
+                ),
+                "selection_can_select_multiple": distinct_shapes(
+                    bucket
+                        .iter()
+                        .map(|element| read_shape(element, UIProperty::SelectionCanSelectMultiple))
+                        .collect(),
+                ),
                 "is_control_element": read_shape(sample, UIProperty::IsControlElement),
                 "is_content_element": read_shape(sample, UIProperty::IsContentElement),
                 "is_dialog": read_shape(sample, UIProperty::IsDialog),
