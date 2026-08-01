@@ -93,7 +93,7 @@ fn a_live_read_distinguishes_present_content_from_an_unimplemented_property() {
 /// process death is no more detectable through a property read than
 /// through the sibling terminator (A14-4).
 ///
-/// The guarantee 2.2 does make is asserted instead, and it is the one
+/// The guarantee actually made is asserted instead, and it is the one
 /// that matters downstream: a provider that went away is never reported
 /// as a provider that does not implement the property. `Absent` feeds
 /// completeness gating as a legitimate answer; fabricating it here would

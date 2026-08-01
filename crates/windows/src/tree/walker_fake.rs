@@ -1,12 +1,15 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, LocatorEvidence, LocatorField, ObservationRoot, ProcessId, WindowInfo,
-    WindowState,
+    AdapterError, Deadline, LocatorEvidence, ObservationRoot, ProcessId, WindowInfo, WindowState,
 };
 use std::collections::{HashMap, HashSet};
 
 use crate::tree::automation::{ERR_NONE, UiaFailure};
-use crate::tree::properties::ElementProperties;
-use crate::tree::walker::{NodeKey, TreeSource, WalkBudget, WalkOutcome, walk_from_root};
+use crate::tree::name_evidence::LabelOutcome;
+use crate::tree::properties::{ElementProperties, PropertyOutcome};
+use crate::tree::property_ids::TreeProperty;
+use crate::tree::walker::{
+    NodeKey, TreeSource, WalkBudget, WalkOutcome, walk_from_root, walk_vocabulary,
+};
 
 /// The benign end-of-list pair A14-3 measured: `code() == 0` with `result()`
 /// `None`, on both build 17763 and build 26100.
@@ -16,6 +19,14 @@ pub(crate) const EXHAUSTION: UiaFailure = UiaFailure::Sentinel(ERR_NONE);
 /// process has gone away returns `E_FAIL` with `result()` `Some`.
 pub(crate) const E_FAIL: i32 = 0x8000_4005_u32 as i32;
 pub(crate) const REAL_FAILURE: UiaFailure = UiaFailure::Hresult(E_FAIL);
+
+/// The nodes on which each enumeration step should fail rather than answer,
+/// grouped so `FakeTree` itself stays under the struct field cap.
+#[derive(Default)]
+struct EnumerationFaults {
+    first_child: HashSet<i32>,
+    next_sibling: HashSet<i32>,
+}
 
 /// An in-memory enumerator that answers on the same trait the live UI
 /// Automation walker implements, so the correctness branches these tests drive
@@ -27,8 +38,8 @@ pub(crate) struct FakeTree {
     alias: HashMap<i32, i32>,
     unkeyed: HashSet<i32>,
     wrappers: HashSet<i32>,
-    first_child_faults: HashSet<i32>,
-    next_sibling_faults: HashSet<i32>,
+    faults: EnumerationFaults,
+    reads: HashMap<i32, Vec<(TreeProperty, PropertyOutcome)>>,
 }
 
 impl FakeTree {
@@ -67,13 +78,24 @@ impl FakeTree {
         self
     }
 
+    /// Gives one node a read set, so a vocabulary assertion can be driven end
+    /// to end through the real evidence path rather than by calling the
+    /// producer directly.
+    ///
+    /// Without this the fake answered every node with an empty read set, which
+    /// is why `states` could not be asserted through the walk at all.
+    pub(crate) fn reading(mut self, node: i32, reads: &[(TreeProperty, PropertyOutcome)]) -> Self {
+        self.reads.insert(node, reads.to_vec());
+        self
+    }
+
     pub(crate) fn faulting_on_first_child(mut self, node: i32) -> Self {
-        self.first_child_faults.insert(node);
+        self.faults.first_child.insert(node);
         self
     }
 
     pub(crate) fn faulting_on_next_sibling(mut self, node: i32) -> Self {
-        self.next_sibling_faults.insert(node);
+        self.faults.next_sibling.insert(node);
         self
     }
 
@@ -93,14 +115,14 @@ impl TreeSource for FakeTree {
     type Node = i32;
 
     fn first_child(&self, node: &i32) -> Result<i32, UiaFailure> {
-        if self.first_child_faults.contains(node) {
+        if self.faults.first_child.contains(node) {
             return Err(REAL_FAILURE);
         }
         self.first.get(node).copied().ok_or(EXHAUSTION)
     }
 
     fn next_sibling(&self, node: &i32) -> Result<i32, UiaFailure> {
-        if self.next_sibling_faults.contains(node) {
+        if self.faults.next_sibling.contains(node) {
             return Err(REAL_FAILURE);
         }
         self.next.get(node).copied().ok_or(EXHAUSTION)
@@ -117,12 +139,11 @@ impl TreeSource for FakeTree {
         self.alias_of(*left) == self.alias_of(*right)
     }
 
-    fn evidence(&self, _node: &i32) -> (LocatorEvidence, u64) {
-        (
-            ElementProperties::default()
-                .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown),
-            0,
-        )
+    fn evidence(&self, node: &i32) -> (LocatorEvidence, u64) {
+        let properties =
+            ElementProperties::from_reads(self.reads.get(node).cloned().unwrap_or_default());
+        let vocabulary = walk_vocabulary(&properties, &LabelOutcome::Unlabelled);
+        (properties.into_locator_evidence(vocabulary), 0)
     }
 
     fn is_web_wrapper(&self, node: &i32) -> bool {

@@ -66,8 +66,8 @@ fn the_module_test_is_case_insensitive_and_not_a_substring_match() {
     );
 }
 
-/// KTD5's exclusion, asserted as an absence: a node-count arm cannot exist,
-/// because the count is unknown when the request is built.
+/// The size/speed exclusion, asserted as an absence: a node-count arm cannot
+/// exist, because the count is unknown when the request is built.
 #[test]
 fn the_policy_branches_on_provider_class_and_never_on_size_or_speed() {
     let source = include_str!("cache.rs");
@@ -168,7 +168,7 @@ mod windows_only {
 
     /// `ElementMode::Full` keeps the element bound to the live UI, so a live
     /// getter still works after a cached read. `ElementMode::None` would
-    /// break every action command from 2.6 onward.
+    /// break every command that acts on an element read from the cache.
     #[test]
     fn live_getters_still_work_after_a_cached_read() {
         bootstrap();

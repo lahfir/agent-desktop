@@ -1,4 +1,5 @@
 use super::*;
+use crate::tree::element_properties::ResolvedVocabulary;
 use agent_desktop_core::{IdentifierKind, LocatorField, Rect};
 
 fn text(value: &str) -> PropertyOutcome {
@@ -54,23 +55,23 @@ fn a_string_past_the_bound_is_unknown_and_is_never_truncated_into_evidence() {
     );
 }
 
-/// KTD13's gate, asserted on the projection rather than on a provider: every
-/// value-bearing property is withheld when `IsPassword` is true, and nothing
-/// else is.
+/// The secure-field gate, asserted on the projection rather than on a
+/// provider: every value-bearing property is withheld when `IsPassword` is
+/// true, and nothing else is.
 #[test]
 fn a_secure_element_withholds_every_value_bearing_property() {
-    let properties = reads(&[
+    let mut entries = vec![
         (
             TreeProperty::IsPassword,
             PropertyOutcome::Known(PropertyValue::Flag(true)),
         ),
-        (TreeProperty::Name, text("secret-name")),
-        (TreeProperty::Value, text("secret-value")),
-        (TreeProperty::HelpText, text("secret-help")),
-        (TreeProperty::LegacyValue, text("secret-legacy")),
         (TreeProperty::AutomationId, text("field-1")),
         (TreeProperty::ClassName, text("Edit")),
-    ]);
+    ];
+    for property in TreeProperty::VALUE_BEARING {
+        entries.push((property, text("zzsecretzz")));
+    }
+    let properties = reads(&entries);
 
     assert!(properties.is_secure());
     for property in TreeProperty::VALUE_BEARING {
@@ -186,12 +187,73 @@ fn a_read_set_without_the_flag_is_not_gated() {
 #[test]
 fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
     let absent = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Absent)])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+        .into_locator_evidence(ResolvedVocabulary::unknown());
     let failed = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Unknown)])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     assert!(absent.identifiers.is_complete());
     assert!(!failed.identifiers.is_complete());
+}
+
+/// `AutomationId` -> `native_id` shipped ahead of the work that nominally
+/// owned it, and shipped without a test. These pin the three rules it
+/// actually implements, each of which fails when inverted.
+///
+/// A blank id must produce no identifier at all. `IdentifierEvidence::typed`
+/// filters it, so an adapter that stopped filtering would hand every
+/// unidentified element the same empty key and make them mutually
+/// indistinguishable to re-identification.
+#[test]
+fn a_blank_automation_id_produces_no_identifier() {
+    for blank in ["", "   ", "\t"] {
+        let evidence = reads(&[(TreeProperty::AutomationId, text(blank))])
+            .into_locator_evidence(ResolvedVocabulary::unknown());
+
+        assert!(
+            evidence.identifiers.preferred_identifier().is_none(),
+            "a blank automation id became an identifier"
+        );
+        assert!(
+            evidence.identifiers.is_complete(),
+            "a provider that answered with a blank id gave a real answer"
+        );
+    }
+}
+
+/// The kind must be `AutomationId` and never `Unknown`: `refs_validate.rs`
+/// hard-rejects a populated `native_id` whose kind is `Unknown`, so an
+/// identifier stamped wrong is one that is silently dropped at persistence.
+#[test]
+fn a_populated_automation_id_carries_its_kind_and_survives_validation() {
+    let evidence = reads(&[(TreeProperty::AutomationId, text("save-button"))])
+        .into_locator_evidence(ResolvedVocabulary::unknown());
+
+    let identifier = evidence
+        .identifiers
+        .preferred_identifier()
+        .expect("a populated automation id is the preferred identifier");
+    assert_eq!(identifier.kind, IdentifierKind::AutomationId);
+    assert_ne!(
+        identifier.kind,
+        IdentifierKind::Unknown,
+        "refs_validate rejects a populated native_id whose kind is Unknown"
+    );
+    assert_eq!(identifier.value, "save-button");
+}
+
+/// A failed read is incomplete evidence, not an absent identifier. `Absent`
+/// satisfies completeness gating, so reporting a target that never answered as
+/// "has no id" would let it satisfy requirements it never met.
+#[test]
+fn a_failed_automation_id_read_is_incomplete_evidence_rather_than_an_absent_id() {
+    let failed = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Unknown)])
+        .into_locator_evidence(ResolvedVocabulary::unknown());
+    let absent = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Absent)])
+        .into_locator_evidence(ResolvedVocabulary::unknown());
+
+    assert!(!failed.identifiers.is_complete());
+    assert!(absent.identifiers.is_complete());
+    assert!(failed.identifiers.preferred_identifier().is_none());
 }
 
 /// `IdentifierEvidence::new` stamps `IdentifierKind::Unknown`, which
@@ -200,7 +262,7 @@ fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
 #[test]
 fn an_automation_id_is_carried_as_a_typed_identifier() {
     let evidence = reads(&[(TreeProperty::AutomationId, text("save-button"))])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     let identifier = evidence
         .identifiers
@@ -213,7 +275,7 @@ fn an_automation_id_is_carried_as_a_typed_identifier() {
 #[test]
 fn a_whitespace_only_automation_id_is_not_promoted_to_an_identifier() {
     let evidence = reads(&[(TreeProperty::AutomationId, text("   "))])
-        .into_locator_evidence(LocatorField::Unknown, LocatorField::Unknown);
+        .into_locator_evidence(ResolvedVocabulary::unknown());
 
     assert!(evidence.identifiers.preferred_identifier().is_none());
     assert!(evidence.identifiers.is_complete());
@@ -235,21 +297,32 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
             })),
         ),
     ])
-    .into_locator_evidence(
-        LocatorField::Known("button".into()),
-        LocatorField::Known(Vec::new()),
-    );
+    .into_locator_evidence(ResolvedVocabulary {
+        role: LocatorField::Known("button".into()),
+        available_actions: LocatorField::Known(Vec::new()),
+        states: LocatorField::Known(vec!["focused".into()]),
+        name: LocatorField::Known("Save".into()),
+        description: LocatorField::Absent,
+    });
 
-    assert_eq!(evidence.name, LocatorField::Known("Save".into()));
     assert_eq!(evidence.value, LocatorField::Known("draft".into()));
+    assert!(!evidence.ref_evidence.bounds.is_unknown());
+    assert_eq!(
+        evidence.name,
+        LocatorField::Known("Save".into()),
+        "the name is core's, carried through rather than recomputed from the read set"
+    );
     assert_eq!(evidence.description, LocatorField::Absent);
     assert_eq!(evidence.role, LocatorField::Known("button".into()));
-    assert!(!evidence.ref_evidence.bounds.is_unknown());
-    assert!(evidence.states.is_unknown());
+    assert_eq!(
+        evidence.states,
+        LocatorField::Known(vec!["focused".into()]),
+        "every interpreted slot carries what the caller resolved, rather than a literal the projection invented"
+    );
 }
 
-/// KTD14: a failed read must name the property and never carry its content.
-/// A provider is free to hand back nonsense. An inverted side is degenerate,
+/// A failed read must name the property and never carry its content. A
+/// provider is free to hand back nonsense. An inverted side is degenerate,
 /// not negative-sized, and an extreme one must not overflow a debug build.
 #[test]
 fn a_rectangle_side_is_never_negative_and_never_overflows() {

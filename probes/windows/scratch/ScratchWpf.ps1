@@ -25,7 +25,8 @@ param(
     [switch]$MutateList,
     [int]$Left = 500,
     [int]$Top = 100,
-    [int]$TimeoutSeconds = 0
+    [int]$TimeoutSeconds = 0,
+    [string]$SecretMarker = 'zzvocabsecretzz'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,7 +38,7 @@ Add-Type -AssemblyName WindowsBase
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AgentDesktop Scratch WPF" Width="460" Height="430"
+        Title="AgentDesktop Scratch WPF" Width="460" Height="760"
         WindowStartupLocation="Manual" ShowActivated="False"
         AutomationProperties.AutomationId="wndScratchWpf">
   <Grid Margin="12">
@@ -49,6 +50,10 @@ $xaml = @'
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="160"/>
+      <RowDefinition Height="150"/>
     </Grid.RowDefinitions>
     <CheckBox x:Name="chkToggle" Grid.Row="0" Margin="0,4"
               AutomationProperties.AutomationId="chkToggle" Content="Enable feature"/>
@@ -73,6 +78,34 @@ $xaml = @'
              AutomationProperties.AutomationId="txtStatusMirror" Text="status:ready"/>
     <TextBlock x:Name="lblStatus" Grid.Row="6" Margin="0,4"
                AutomationProperties.AutomationId="lblStatus" Text="status:ready"/>
+    <StackPanel Grid.Row="7" Orientation="Horizontal" Margin="0,4">
+      <TextBlock x:Name="lblFieldName" AutomationProperties.AutomationId="lblFieldName"
+                 Text="Field label" VerticalAlignment="Center" Margin="0,0,8,0"/>
+      <TextBox x:Name="txtLabelled" AutomationProperties.AutomationId="txtLabelled"
+               AutomationProperties.LabeledBy="{Binding ElementName=lblFieldName}"
+               Width="140" Height="24"/>
+    </StackPanel>
+    <StackPanel Grid.Row="8" Orientation="Horizontal" Margin="0,4">
+      <PasswordBox x:Name="pwdSecret" AutomationProperties.AutomationId="pwdSecret"
+                   Width="120" Height="24" Margin="0,0,8,0"/>
+      <TextBox x:Name="txtLabelledBySecret" AutomationProperties.AutomationId="txtLabelledBySecret"
+               AutomationProperties.LabeledBy="{Binding ElementName=pwdSecret}"
+               Width="140" Height="24"/>
+    </StackPanel>
+    <TabControl x:Name="tabMain" Grid.Row="9" Margin="0,4"
+                AutomationProperties.AutomationId="tabMain">
+      <TabItem x:Name="tabAlpha" Header="Tab-Alpha" AutomationProperties.AutomationId="tabAlpha"/>
+      <TabItem x:Name="tabBravo" Header="Tab-Bravo" AutomationProperties.AutomationId="tabBravo"/>
+      <TabItem x:Name="tabCharlie" Header="Tab-Charlie" AutomationProperties.AutomationId="tabCharlie"/>
+    </TabControl>
+    <DataGrid x:Name="dgvRows" Grid.Row="10" Margin="0,4"
+              AutomationProperties.AutomationId="dgvRows"
+              AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Column-Label" Binding="{Binding Label}"/>
+        <DataGridTextColumn Header="Column-Value" Binding="{Binding Value}"/>
+      </DataGrid.Columns>
+    </DataGrid>
   </Grid>
 </Window>
 '@
@@ -92,6 +125,7 @@ $btnMutateList = $window.FindName('btnMutateList')
 $lstItems = $window.FindName('lstItems')
 $lblStatus = $window.FindName('lblStatus')
 $txtStatusMirror = $window.FindName('txtStatusMirror')
+$dgvRows = $window.FindName('dgvRows')
 
 $script:BaselineItems = @('Item-Alpha', 'Item-Bravo', 'Item-Charlie', 'Item-Delta', 'Item-Echo')
 $script:MutatedItems = @('Item-Alpha', 'Item-Charlie', 'Item-Delta', 'Item-Echo', 'Item-Foxtrot', 'Item-Golf')
@@ -147,6 +181,12 @@ $window.Add_Closed({ $window.Dispatcher.InvokeShutdown() })
 
 Set-ScratchList $script:ListMutated
 Set-ScratchStatus 'status:ready'
+$window.FindName('pwdSecret').Password = $SecretMarker
+
+$dgvRows.ItemsSource = @(
+    [pscustomobject]@{ Label = 'Row-Alpha'; Value = 'Value-Alpha' },
+    [pscustomobject]@{ Label = 'Row-Bravo'; Value = 'Value-Bravo' }
+)
 
 if ($TimeoutSeconds -gt 0) {
     $timer = New-Object System.Windows.Threading.DispatcherTimer

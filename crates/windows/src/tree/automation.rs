@@ -200,8 +200,8 @@ mod imp {
     /// `UIAutomation::new()`. `new()` would call `CoInitializeEx` itself: on a
     /// thread already in the MTA that returns `S_FALSE` and permanently leaks
     /// one initialization count, and on any STA host thread it fails outright
-    /// with `RPC_E_CHANGED_MODE`. Sub-phase 2.1's bootstrap owns the
-    /// apartment, so this accessor asserts the precondition instead of
+    /// with `RPC_E_CHANGED_MODE`. Apartment bootstrap owns the apartment
+    /// elsewhere, so this accessor asserts the precondition instead of
     /// establishing it. See `create_bounded_client` for which CLSID, and why.
     pub fn automation_client() -> Result<UIAutomation, AdapterError> {
         CLIENT.with(|cell| {

@@ -1,144 +1,111 @@
 use agent_desktop_core::{Deadline, ObservationRoot, ProcessId, WindowInfo, WindowState};
+use agent_desktop_windows::tree::automation::failure_of;
 use agent_desktop_windows::tree::element::UIAElement;
-use agent_desktop_windows::tree::properties::{
-    PropertyOutcome, PropertyValue, read_live, read_one,
-};
+use agent_desktop_windows::tree::name_evidence::read_label;
+use agent_desktop_windows::tree::properties::{read_live, read_one};
 use agent_desktop_windows::tree::property_ids::TreeProperty;
-use agent_desktop_windows::tree::walker::{TreeSource, WalkBudget};
+use agent_desktop_windows::tree::walker::{NodeKey, TreeSource, WalkBudget, walk_vocabulary};
 use agent_desktop_windows::tree::walker_source::{UiaTreeSource, walk_uia_subtree};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
+use super::render_census::{control_type_census, provider_census, sample, vocabulary_summary};
+use super::render_node::{NodeFields, Position, render_node};
 use super::select::Options;
 
-/// Substituted for every run-varying host value, matching the placeholders the
-/// 2.0 captures already use.
-const REDACTED_PID: &str = "<pid>";
-const REDACTED_PROVIDER: &str = "<providerid>";
-const REDACTED_PATH: &str = "<userprofile>";
-
-/// Reports an unresolvable target as a structured skip.
+/// Reads one element and renders it.
 ///
-/// Never a silent empty dump: a capture containing nothing reads as evidence
-/// that the tree was empty.
-pub fn skipped(reason: &str) -> String {
-    json!({ "status": "skipped", "reason": reason }).to_string()
-}
-
-/// Replaces every run-varying or host-identifying value in a provider string.
-///
-/// `ProviderDescription` embeds a process id and a hexadecimal provider id,
-/// and a user path can appear in a module path, so the substitution runs
-/// before anything reaches the capture file. Each key consumes its **whole**
-/// value: a substitution that stops at the first non-digit leaves the tail of
-/// a `0x`-prefixed id in the file, which is a leak that reads as redacted.
-fn normalise(text: &str) -> String {
-    let substituted = substitute_after(text, "pid:", REDACTED_PID);
-    let substituted = substitute_after(&substituted, "providerId:", REDACTED_PROVIDER);
-    redact_paths(&substituted)
-}
-
-fn substitute_after(text: &str, key: &str, replacement: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find(key) {
-        out.push_str(&rest[..at + key.len()]);
-        let value = &rest[at + key.len()..];
-        let consumed = value
-            .find(|character: char| !(character.is_ascii_alphanumeric()))
-            .unwrap_or(value.len());
-        if consumed == 0 {
-            rest = value;
-            continue;
-        }
-        out.push_str(replacement);
-        rest = &value[consumed..];
-    }
-    out.push_str(rest);
-    out
-}
-
-fn redact_paths(text: &str) -> String {
-    let lowered = text.to_ascii_lowercase();
-    match lowered.find(r"\users\") {
-        None => text.to_string(),
-        Some(at) => {
-            let tail = &text[at + r"\users\".len()..];
-            let end = tail.find('\\').unwrap_or(tail.len());
-            format!("{}{}{}", &text[..at], REDACTED_PATH, &tail[end..])
-        }
-    }
-}
-
-fn text_of(outcome: &PropertyOutcome) -> Option<String> {
-    match outcome {
-        PropertyOutcome::Known(PropertyValue::Text(value)) => Some(value.clone()),
-        _ => None,
-    }
-}
-
-fn slot(outcome: &PropertyOutcome) -> Value {
-    match outcome {
-        PropertyOutcome::Known(PropertyValue::Text(value)) => json!(normalise(value)),
-        PropertyOutcome::Known(PropertyValue::Flag(value)) => json!(value),
-        PropertyOutcome::Known(PropertyValue::Number(value)) => json!(value),
-        PropertyOutcome::Known(PropertyValue::Bounds(bounds)) => json!({
-            "x": bounds.x, "y": bounds.y, "width": bounds.width, "height": bounds.height
-        }),
-        PropertyOutcome::Absent => json!("<absent>"),
-        PropertyOutcome::Unknown => json!("<unknown>"),
-    }
-}
-
-/// `Name` is recorded as presence and length only, per the corpus redaction
-/// rule: a document node's name is user content.
-fn name_presence(outcome: &PropertyOutcome) -> Value {
-    match text_of(outcome) {
-        Some(value) if value.is_empty() => json!({ "present": true, "chars": 0 }),
-        Some(value) => json!({ "present": true, "chars": value.chars().count() }),
-        None => json!({ "present": false, "outcome": slot(outcome) }),
-    }
-}
-
-fn node(element: &UIAElement, parent: Option<usize>, index: usize) -> Value {
+/// The whole `Position` travels rather than just its parent and index: the
+/// renderer ignores `depth`, but inventing a zero for it here would put a
+/// value in the struct that is not true of the node.
+fn node(element: &UIAElement, at: Position) -> Value {
     let (properties, errors) = read_live(element);
-    json!({
-        "parent_index": parent,
-        "child_index": index,
-        "control_type": slot(&read_one(element, TreeProperty::ControlType)),
-        "class_name": slot(&properties.get(TreeProperty::ClassName)),
-        "automation_id": slot(&properties.get(TreeProperty::AutomationId)),
-        "name": name_presence(&properties.get(TreeProperty::Name)),
-        "bounds": slot(&properties.get(TreeProperty::BoundingRectangle)),
-        "is_password": slot(&properties.get(TreeProperty::IsPassword)),
-        "is_offscreen": slot(&properties.get(TreeProperty::IsOffscreen)),
-        "provider_description": slot(&read_one(element, TreeProperty::ProviderDescription)),
-        "failed_reads": errors.len(),
+    let label = read_label(element, false);
+    let vocabulary = walk_vocabulary(&properties, &label);
+    let provider_description = read_one(element, TreeProperty::ProviderDescription);
+    render_node(&NodeFields {
+        position: at,
+        properties,
+        vocabulary,
+        label,
+        provider_description,
+        failed_reads: errors.len(),
     })
 }
 
-/// Where one node sits in the dump being built.
-struct Position {
-    parent: Option<usize>,
-    index: usize,
-    depth: u8,
+/// What bounds the census recursion.
+///
+/// `--max-depth` alone is adequate for a census of a fixture and is not
+/// adequate for a tool a human points at an arbitrary window: a provider that
+/// publishes a cyclic child graph or an endless sibling list would hang it.
+/// This carries the same three bounds the shipped walker has - a deadline, an
+/// ancestor-path cycle guard keyed on the identity the provider publishes, and
+/// a sibling cap.
+///
+/// **The deadline is re-checked inside the sibling loop, not only on entry to
+/// each node.** A check at entry alone stops the recursion but not the
+/// enumeration: every `next_sibling` is a cross-process call, so an expired
+/// deadline would still issue up to the sibling cap's worth of them per parent
+/// while each recursive call returned immediately. `walker_enumerate.rs`
+/// checks both bounds in the same place for the same reason.
+///
+/// **A failed enumeration is not the end of a list.** UI Automation signals
+/// both as `Err`, distinguished only by `is_exhaustion()` - the benign pair
+/// A14-3 measured against the real fault A14-4 measured. Treating them alike
+/// makes a provider that died mid-walk produce a short census reporting
+/// `truncated: false`, which is a partial answer that reads as a complete one.
+/// Every enumeration arm here consults the discriminator, as the shipped
+/// walker does.
+struct Bounds {
+    max_depth: u8,
+    deadline: Deadline,
+    ancestors: Vec<Vec<i32>>,
+    truncated: bool,
 }
+
+const MAX_CENSUS_SIBLINGS: usize = 10_000;
 
 fn collect(
     source: &UiaTreeSource,
     element: &UIAElement,
     at: Position,
-    max_depth: u8,
+    bounds: &mut Bounds,
     nodes: &mut Vec<Value>,
 ) {
-    let position = nodes.len();
-    nodes.push(node(element, at.parent, at.index));
-    if at.depth >= max_depth {
+    if bounds.deadline.is_expired() {
+        bounds.truncated = true;
         return;
+    }
+    let key = match source.identity(element) {
+        NodeKey::Runtime(runtime_id) => Some(runtime_id),
+        NodeKey::Unavailable => None,
+    };
+    if let Some(key) = &key {
+        if bounds.ancestors.contains(key) {
+            bounds.truncated = true;
+            return;
+        }
+    }
+    let position = nodes.len();
+    nodes.push(node(element, at));
+    if at.depth >= bounds.max_depth {
+        bounds.truncated = true;
+        return;
+    }
+    if let Some(key) = key.clone() {
+        bounds.ancestors.push(key);
     }
     let mut child = match source.first_child(element) {
         Ok(first) => first,
-        Err(_) => return,
+        Err(failure) => {
+            if !failure.is_exhaustion() {
+                bounds.truncated = true;
+            }
+            if key.is_some() {
+                bounds.ancestors.pop();
+            }
+            return;
+        }
     };
     let mut child_index = 0;
     loop {
@@ -151,14 +118,26 @@ fn collect(
                 index: child_index,
                 depth: at.depth + 1,
             },
-            max_depth,
+            bounds,
             nodes,
         );
         child_index += 1;
+        if child_index >= MAX_CENSUS_SIBLINGS || bounds.deadline.is_expired() {
+            bounds.truncated = true;
+            break;
+        }
         match next {
             Ok(sibling) => child = sibling,
-            Err(_) => return,
+            Err(failure) => {
+                if !failure.is_exhaustion() {
+                    bounds.truncated = true;
+                }
+                break;
+            }
         }
+    }
+    if key.is_some() {
+        bounds.ancestors.pop();
     }
 }
 
@@ -167,12 +146,23 @@ fn collect(
 /// The traversal runs on the shipped `TreeSource`, so the dump exercises the
 /// same enumeration surface and cache policy the adapter uses and can never
 /// reach the banned `get_children`.
-pub fn dump(root: &UIAElement, options: &Options, deadline: Deadline) -> Result<String, String> {
+pub fn dump(
+    root: &UIAElement,
+    hwnd: isize,
+    options: &Options,
+    deadline: Deadline,
+) -> Result<String, String> {
     let source = UiaTreeSource::for_root(root).map_err(|error| error.message.clone())?;
     let prepared = source
         .prepare_root(root)
         .map_err(|error| error.message.clone())?;
     let mut nodes = Vec::new();
+    let mut bounds = Bounds {
+        max_depth: options.max_depth,
+        deadline,
+        ancestors: Vec::new(),
+        truncated: false,
+    };
     collect(
         &source,
         &prepared,
@@ -181,19 +171,22 @@ pub fn dump(root: &UIAElement, options: &Options, deadline: Deadline) -> Result<
             index: 0,
             depth: 0,
         },
-        options.max_depth,
+        &mut bounds,
         &mut nodes,
     );
     let document = json!({
-        "capture": "uia-tree-census",
+        "capture": "uia-vocabulary-census",
         "client_stack": "uia3-com",
         "crate": "uiautomation 0.25.0",
         "target_class": options.class_name,
         "target_variant": options.variant,
         "os_build": os_build(),
         "max_depth": options.max_depth,
+        "census_truncated": bounds.truncated,
         "node_count": nodes.len(),
         "walk": walk_verdict(&prepared, deadline),
+        "vocabulary": vocabulary_summary(&nodes),
+        "view_delta": view_delta(hwnd, options.max_depth, deadline),
         "control_types": control_type_census(&nodes),
         "providers": provider_census(&nodes),
         "sample": sample(&nodes),
@@ -201,64 +194,116 @@ pub fn dump(root: &UIAElement, options: &Options, deadline: Deadline) -> Result<
     serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
 }
 
-/// One row per `ControlType` the target exposes.
+/// The RawView-versus-ControlView delta is left unreconciled: the code opens
+/// the raw view walker while the document mandates the control view.
 ///
-/// This is what 2.3's role map and 2.4's surface detection actually read. A
-/// full per-node dump carried the same information a hundred times over -
-/// measured on Explorer, 100 nodes spread across 23 control types, 40 class
-/// names and 15 provider strings, with 85 of the provider strings verbatim
-/// repeats and every bounds value unassertable by rule (R9, KTD8).
-fn control_type_census(nodes: &[Value]) -> Value {
-    let mut rows: BTreeMap<String, (usize, BTreeSet<String>, usize, usize)> = BTreeMap::new();
-    for node in nodes {
-        let key = node["control_type"].to_string();
-        let row = rows.entry(key).or_insert((0, BTreeSet::new(), 0, 0));
-        row.0 += 1;
-        row.1.insert(node["class_name"].to_string());
-        row.2 += usize::from(node["automation_id"].as_str() != Some("<absent>"));
-        row.3 += usize::from(node["name"]["present"].as_bool().unwrap_or(false));
-    }
-    Value::Array(
-        rows.into_iter()
-            .map(|(control_type, (count, class_names, with_id, with_name))| {
-                json!({
-                    "control_type": control_type,
-                    "nodes": count,
-                    "class_names": class_names.into_iter().collect::<Vec<_>>(),
-                    "with_automation_id": with_id,
-                    "with_name": with_name,
-                })
-            })
-            .collect(),
-    )
+/// A15-10 measured them identical on a Win32 fixture and five nodes apart on
+/// WPF, so the delta is provider-dependent. Reporting it per real target is
+/// what lets that choice be made on data rather than on an argument.
+fn view_delta(hwnd: isize, max_depth: u8, deadline: Deadline) -> Value {
+    let count = |control_view: bool| -> Value {
+        match count_view(hwnd, control_view, max_depth, deadline) {
+            Err(reason) => json!({ "failed": reason }),
+            Ok(count) => json!({
+                "nodes": count.nodes,
+                "truncated": count.truncated,
+                "control_types": count.control_types.into_iter().collect::<Vec<_>>(),
+            }),
+        }
+    };
+    json!({ "raw_view": count(false), "control_view": count(true) })
 }
 
-/// One row per distinct provider, which is what the cache policy keys on.
-fn provider_census(nodes: &[Value]) -> Value {
-    let mut rows: BTreeMap<String, usize> = BTreeMap::new();
-    for node in nodes {
-        *rows
-            .entry(node["provider_description"].to_string())
-            .or_default() += 1;
-    }
-    Value::Array(
-        rows.into_iter()
-            .map(|(provider, count)| json!({ "provider": provider, "nodes": count }))
-            .collect(),
-    )
+/// What one tree view presented, and whether the walk saw all of it.
+struct ViewCount {
+    nodes: usize,
+    control_types: BTreeSet<i32>,
+    truncated: bool,
 }
 
-/// One fully-detailed node per control type, so the shape stays inspectable
-/// without repeating it for every sibling.
-fn sample(nodes: &[Value]) -> Value {
-    let mut seen = BTreeSet::new();
-    Value::Array(
-        nodes
-            .iter()
-            .filter(|node| seen.insert(node["control_type"].to_string()))
-            .cloned()
-            .collect(),
-    )
+/// Counts the nodes and distinct control types one tree view presents.
+///
+/// Enumerated with `get_first_child`/`get_next_sibling` rather than the
+/// crate's `get_children`, which retires end-of-siblings and a real
+/// cross-process fault through the same arm.
+///
+/// **Every loop here is bounded, including the inner sibling loop.** The
+/// ancestor guard the shipped walker uses cannot see a sibling chain that
+/// never terminates - no element repeats on any root-to-node path - so a
+/// provider whose `get_next_sibling` cycles would spin this loop forever and
+/// grow the pending stack without limit. Depth bounds descent, the sibling cap
+/// bounds breadth, and the deadline bounds both; the count reports whether any
+/// of them fired, because a truncated census that says nothing reads as a
+/// complete one.
+fn count_view(
+    hwnd: isize,
+    control_view: bool,
+    max_depth: u8,
+    deadline: Deadline,
+) -> Result<ViewCount, String> {
+    use agent_desktop_windows::tree::automation::automation_client;
+    let client = automation_client().map_err(|error| error.message.clone())?;
+    let walker = if control_view {
+        client.get_control_view_walker()
+    } else {
+        client.get_raw_view_walker()
+    }
+    .map_err(|error| error.to_string())?;
+    let mut count = ViewCount {
+        nodes: 0,
+        control_types: BTreeSet::new(),
+        truncated: false,
+    };
+    let root = client
+        .element_from_handle(uiautomation::types::Handle::from(hwnd))
+        .map_err(|error| error.to_string())?;
+    let mut stack = vec![(root, 0_u8)];
+    while let Some((element, depth)) = stack.pop() {
+        if deadline.is_expired() {
+            count.truncated = true;
+            break;
+        }
+        count.nodes += 1;
+        if let Ok(uiautomation::variants::Value::I4(id)) = element
+            .get_property_value(uiautomation::types::UIProperty::ControlType)
+            .and_then(|variant| variant.get_value())
+        {
+            count.control_types.insert(id);
+        }
+        if depth >= max_depth {
+            count.truncated = true;
+            continue;
+        }
+        let mut child = match walker.get_first_child(&element) {
+            Ok(first) => first,
+            Err(error) => {
+                if !failure_of(&error).is_exhaustion() {
+                    count.truncated = true;
+                }
+                continue;
+            }
+        };
+        let mut siblings = 0;
+        loop {
+            let next = walker.get_next_sibling(&child);
+            stack.push((child, depth + 1));
+            siblings += 1;
+            if siblings >= MAX_CENSUS_SIBLINGS || deadline.is_expired() {
+                count.truncated = true;
+                break;
+            }
+            match next {
+                Ok(sibling) => child = sibling,
+                Err(error) => {
+                    if !failure_of(&error).is_exhaustion() {
+                        count.truncated = true;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    Ok(count)
 }
 
 fn os_build() -> String {

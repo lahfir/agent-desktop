@@ -123,8 +123,8 @@ fn two_fixtures_created_concurrently_do_not_interfere() {
     assert!(descendant_count(&walker, &second_root.0, 0) > 0);
 }
 
-/// KTD9: the client automating its own UI must call from a thread that owns
-/// no windows. A call issued on the pump thread would block on its own
+/// The client automating its own UI must call from a thread that owns no
+/// windows. A call issued on the pump thread would block on its own
 /// `WM_GETOBJECT` and deadlock, so the harness never hands that thread out.
 #[test]
 fn every_uia_call_is_issued_from_a_thread_that_owns_no_fixture_window() {

@@ -58,6 +58,30 @@ deletion without treating a mock as a platform oracle.
   user data or depend on an arbitrary foreground application.
 - Record a skipped native gate as skipped, not green.
 
+## Recurrence
+
+The Windows vocabulary work (2026-08-01) ran the same gate on a platform with no fixture harness
+yet, and the gate took a different shape: `probes/windows/scratch/run-dogfood.ps1` drove the
+`ControlType`→`Role`, action, and state vocabulary against four real UI stacks nobody in this
+repository wrote — classic Notepad (Win32 `EDIT` proxy), Explorer (DirectUI shell), and
+WinForms/WPF scratch fixtures. It found one real defect no unit test had: `invalid` was
+emitted on every node of every target, because a UIA form-validity flag's `false` default was
+read as a positive claim rather than the absence of one. It also recorded two targets —
+Chromium/Electron and the modern Settings app — as **skipped with a reason** rather than
+silently green, exactly this doc's "record a skipped native gate as skipped" rule. The
+resulting report is committed at
+`docs/dogfood-reports/2026-07-31-feat-windows-2-3-vocabulary-dogfood.md`; the raw per-node
+census JSON it was produced from is deliberately gitignored (see `docs/plans/2026-07-31-001-captures/`
+in `.gitignore`), because a census can carry a real application's on-screen text where a
+report describing shapes and counts does not — the durable record is the report, not the
+capture.
+
+This confirms the rule is not macOS- or fixture-specific: a platform-neutral vocabulary layer
+still needs its own real-app pass, and that pass can take the form of a scripted dogfood run
+against off-the-shelf software instead of a purpose-built fixture app, provided it keeps the
+same discipline — real software, effects verified independently, skips recorded honestly, and
+raw captures kept out of the repository while the judgement drawn from them is kept in it.
+
 ## Related
 
 - [Build desktop actions as an observe-resolve-preflight-dispatch contract](playwright-grade-desktop-reliability-2026-06-02.md)

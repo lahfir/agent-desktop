@@ -32,6 +32,35 @@ fn withholds_content(outcome: &PropertyOutcome) -> bool {
     }
 }
 
+/// What the vocabulary modules made of one element's read set.
+///
+/// These travel together because they are resolved together, from the same
+/// batch, by the same walk step. Passing them as five separate arguments to
+/// the projection was the alternative, and it put the projection one slot away
+/// from the parameter limit with every future evidence field making it worse.
+#[derive(Debug, Clone)]
+pub struct ResolvedVocabulary {
+    pub role: LocatorField<String>,
+    pub available_actions: LocatorField<Vec<String>>,
+    pub states: LocatorField<Vec<String>>,
+    pub name: LocatorField<String>,
+    pub description: LocatorField<String>,
+}
+
+impl ResolvedVocabulary {
+    /// The answer for an element nothing was read from: every slot unknown.
+    /// Used by the non-Windows twin and by tests that assert on other slots.
+    pub fn unknown() -> Self {
+        Self {
+            role: LocatorField::Unknown,
+            available_actions: LocatorField::Unknown,
+            states: LocatorField::Unknown,
+            name: LocatorField::Unknown,
+            description: LocatorField::Unknown,
+        }
+    }
+}
+
 /// Every property read for one element, already gated on `IsPassword`.
 #[derive(Debug, Clone, Default)]
 pub struct ElementProperties {
@@ -88,33 +117,66 @@ impl ElementProperties {
             .unwrap_or(PropertyOutcome::Unknown)
     }
 
-    /// Projects the read set onto the evidence slot shape core consumes, so
-    /// 2.4 needs no translation layer.
+    /// Reads a boolean **through its gate**, which is the only safe way to
+    /// read one.
     ///
-    /// `role` and `available_actions` come from the 2.3 seams and are
-    /// deliberately `Unknown` until 2.3 fills them; `states` likewise.
-    /// `identifiers` uses `IdentifierEvidence::typed`, because
-    /// `IdentifierEvidence::new` stamps every value `Unknown` and would void
-    /// the ref downstream in `refs_validate.rs`.
-    pub fn into_locator_evidence(
-        self,
-        role: LocatorField<String>,
-        available_actions: LocatorField<Vec<String>>,
-    ) -> LocatorEvidence {
-        let name = self.get(TreeProperty::Name).text();
+    /// A15-7 measured that a pattern-state property returns a
+    /// default-looking value - never the not-supported sentinel - on an
+    /// element whose provider does not implement the pattern: a static text
+    /// reports `ValueIsReadOnly` = `true` with no `Value` pattern at all.
+    /// `TreeProperty::gate()` names the availability property that has to be
+    /// `true` first, and this is the single accessor that consults it, so a
+    /// caller cannot read a gated property without the gate. A property with
+    /// no gate reads straight through.
+    pub fn gated_flag(&self, property: TreeProperty) -> Option<bool> {
+        if !self.gate_open(property) {
+            return None;
+        }
+        self.get(property).flag()
+    }
+
+    pub fn gated_number(&self, property: TreeProperty) -> Option<i32> {
+        if !self.gate_open(property) {
+            return None;
+        }
+        self.get(property).number()
+    }
+
+    /// Whether a gated property's value means anything on this element.
+    pub fn is_true(&self, property: TreeProperty) -> bool {
+        self.gated_flag(property) == Some(true)
+    }
+
+    fn gate_open(&self, property: TreeProperty) -> bool {
+        match property.gate() {
+            Some(gate) => self.get(gate).flag() == Some(true),
+            None => true,
+        }
+    }
+
+    /// Projects the read set onto the evidence slot shape core consumes, so
+    /// the consumer needs no translation layer.
+    ///
+    /// Every interpreted slot is resolved by a vocabulary module from this
+    /// same read set and threaded in by the caller, so this stays a projection
+    /// and takes no decision of its own - notably the name, which core
+    /// computes and no adapter does. `identifiers` uses
+    /// `IdentifierEvidence::typed`, because `IdentifierEvidence::new` stamps
+    /// every value `Unknown` and would void the ref downstream in
+    /// `refs_validate.rs`.
+    pub fn into_locator_evidence(self, vocabulary: ResolvedVocabulary) -> LocatorEvidence {
         let value = self.get(TreeProperty::Value).text();
-        let description = self.get(TreeProperty::HelpText).text();
         let bounds = self.get(TreeProperty::BoundingRectangle).bounds();
         LocatorEvidence {
-            role,
-            name,
-            description,
+            role: vocabulary.role,
+            name: vocabulary.name,
+            description: vocabulary.description,
             value,
             identifiers: self.identifier_evidence(),
-            states: LocatorField::Unknown,
+            states: vocabulary.states,
             ref_evidence: LocatorRefEvidence {
                 bounds,
-                available_actions,
+                available_actions: vocabulary.available_actions,
             },
         }
     }

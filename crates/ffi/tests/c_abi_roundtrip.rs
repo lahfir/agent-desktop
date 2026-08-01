@@ -141,8 +141,8 @@ fn stale_ref_returns_ok_false_error_envelope() {
 ///
 /// **Deferred CI proof**: the full-loop proof — real `ad_snapshot` producing
 /// `@e` refs consumed by `ad_execute_by_ref` against a live app at the C
-/// boundary — is tracked as plan unit U9 / Phase B: an external-consumer smoke
-/// harness (Python ctypes) that runs in the macOS E2E environment.
+/// boundary — is deferred to an external-consumer smoke harness (Python
+/// ctypes) that runs in the macOS E2E environment.
 ///
 /// **Manual execution** (requires AX permission + a running target app):
 /// ```text

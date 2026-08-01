@@ -13,7 +13,7 @@ symptoms:
 root_cause: process_gap
 resolution_type: code_removal
 severity: high
-tags: [platform-isolation, ci, windows, private-file, cfg, dead-code]
+tags: [platform-isolation, ci, windows, private-file, cfg, dead-code, test-lane-scope]
 ---
 
 # Never ship platform code that CI cannot execute
@@ -69,10 +69,32 @@ in core is executed on every PR. That lane, not the deleted code, is the actual 
 is what stops the same mistake reaching the Linux adapter, whose
 `validate_local_filesystem` had been equally unrun.
 
+## Recurrence
+
+The Windows vocabulary work (2026-08-01) hit the same shape again, one level down. The census
+tool's redaction guard — a marker-planted test proving `render_node` never serializes a
+real application's `Name`, `HelpText`, `FullDescription`, or `LegacyDefaultAction` into a
+committed capture — was written in
+`crates/windows/examples/uia_tree_dump/render_node_tests.rs`. The Windows CI lane ran
+`cargo test -p agent-desktop-windows --lib`, which builds and executes the library target
+only; `--lib` does not reach anything under `examples/`. The guard compiled, asserted a
+real security property, and could never fire on the runner — not because no lane existed,
+but because the lane's own flags excluded the target the guard lived in. Same defect,
+different mechanism: the 2026-07-25 instance was a `#[cfg]` branch with no lane at all,
+this one is a guard sitting in a target a lane deliberately does not build.
+
+Fixed by adding a `Windows example tests` step (`cargo test --locked -p
+agent-desktop-windows --examples`) to `.github/workflows/ci.yml`, and pinning that exact
+command string as an assertion in `src/cli/contract_tests.rs` so the step cannot silently
+disappear from the workflow file the way the coverage gap itself was invisible.
+
 ## Rules
 
 - A `#[cfg]` branch that CI cannot execute is not shipped code, it is a hypothesis. Either
-  add a lane that runs it, or do not merge it.
+  add a lane that runs it, or do not merge it. The same holds for a guard CI *can* build
+  but a lane's flags exclude from execution — a `--lib` run skipping `examples/`, a
+  `--tests` run skipping a doctest. Pin the exact command that runs the guard, not just a
+  lane's existence, so a later flag change can't quietly narrow it back out.
 - Do not write platform hardening ahead of the platform adapter it protects. Write it on
   that platform, against a lane that runs it, informed by probes.
 - A test that compares constants to constants is not a test. Every test must be able to

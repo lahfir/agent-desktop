@@ -36,7 +36,8 @@ fn no_committed_capture_leaks_a_host_identifier() {
     }
 }
 
-/// The metadata whose absence made 2.0's dumps unusable as COM expectations.
+/// The metadata whose absence made the earlier managed-stack dumps unusable
+/// as COM expectations.
 #[test]
 fn every_committed_capture_records_its_variant_build_and_stack() {
     for (name, body) in captures() {

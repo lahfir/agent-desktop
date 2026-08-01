@@ -107,9 +107,9 @@ fn a_root_failure_that_is_not_a_missing_window_keeps_its_own_code() {
     assert_eq!(error.code, ErrorCode::PermDenied);
 }
 
-/// KTD14: `ref_action.rs` clones adapter error text into session JSONL and
-/// into the trace HTML export, so a marker that reaches the caller through
-/// the context phrase must not reach the persisted error.
+/// `ref_action.rs` clones adapter error text into session JSONL and into the
+/// trace HTML export, so a marker that reaches the caller through the
+/// context phrase must not reach the persisted error.
 #[test]
 fn a_classifier_error_carries_shape_and_never_target_content() {
     let error = uia_failure_error(
@@ -211,7 +211,7 @@ mod windows_only {
     /// cannot interrupt the blocking `SendMessage` between them, so a target
     /// that has stopped pumping would block the caller indefinitely.
     ///
-    /// The 2.2 plan records the condition as unverified because "the fixture
+    /// The condition is recorded elsewhere as unverified because "the fixture
     /// cannot produce it". It can - `CreateWindowExW` dispatches `WM_CREATE`
     /// inline, so a thread can own a live, visible window and then never
     /// dispatch again. Against that window the resolver must return a
