@@ -19,6 +19,37 @@ A scoped UI layer that can be observed separately from the whole window, such as
 ### Drill-down
 A snapshot operation that starts from an existing ref to observe that element's subtree instead of re-reading the entire window.
 
+## Vocabulary
+
+The four platform-neutral vocabularies every adapter produces and core consumes, and the evidence model all four rest on. They were single-platform code types until two adapters produced them; they are shared contracts now, and an adapter that emits a token outside one of them is emitting something no consumer can act on.
+
+### Evidence Tri-State
+Every property an adapter reads is `Known`, `Absent`, or `Unknown`, and the three are never collapsed into two.
+
+`Absent` is an answer: the provider was asked and does not have this. `Unknown` is the lack of one — the read failed, or what it returned cannot be trusted. The distinction is load-bearing in both directions. `Absent` satisfies completeness gating and `Unknown` must not, so a target that never answered cannot pass for one that answered "no". Conversely a role, state, or affordance is granted only on a positive claim, so a failed read withholds it. A convenience predicate that flattens the tri-state to `bool` is therefore safe only in positive position — asking "did this say yes" — and fails open the moment it is negated, because negation silently rewrites "I could not tell" as "definitely not".
+
+### Role
+The canonical kind of a control, drawn from a closed set core owns.
+
+Each platform maps its own taxonomy onto it — macOS from `AXRole` plus its subrole fold, Windows from UIA's `ControlType` refined by pattern availability — and never invents a token. The platform taxonomies are not parallel: UIA's `Tab` is the container and its `TabItem` is the page selector, which is the inverse of the ARIA naming core follows, and several canonical roles (`switch`, `colorwell`) have no control type at all and are reachable only through refinement or not at all. A role core does not recognise is `unknown`, which is a positive statement about the element and is distinct from a read that failed.
+
+### State Vocabulary
+The closed set of state tokens a node may carry, defined by core's `STATE_VOCABULARY`.
+
+Adapters emit only members of it, and a membership assertion is paired with a negative control so it cannot pass vacuously. A token is emitted only where the platform evidenced it: where a platform has no source for a reserved token, the token stays unproduced rather than defaulted. Emitting from an ungated source is the characteristic failure here — a property that reports a plausible value on an element whose provider never implemented the underlying pattern will decorate every inert node in the tree with states it does not have.
+
+A role mapping can put a reserved token permanently out of reach on one platform without the token itself being wrong. The same logical control — a toggle button — surfaces as `role: button` with state `pressed` on macOS, because macOS keeps the control's role as `button` and reads its toggle value as `pressed`. Windows resolves the identical control to `role: switch` with state `checked` instead, because Windows reclassifies any `Button` control type that advertises toggle support to `switch` before states resolve, so the `role == button` precondition a `pressed` arm would need can never hold there. `pressed` therefore stays unproduced on Windows, deliberately, and the two adapters disagree on both the role and the state token for the same UI. This is a known, deliberate divergence for the current phase, not a bug — the cross-platform convergence question is owned by the Hardening & Integration Review sub-phase in `docs/phases.md`.
+
+### Name Evidence
+The raw slots an adapter supplies so that **core**, not the adapter, computes the accessible name.
+
+The slots are ranked by one precedence shared across platforms, and each slot carries its own read status, so uncertainty travels: when a source that would have outranked the winner failed to read, the name is unknown rather than the weaker source's value. A platform folds its own gating — which slots apply to which roles, whether children were fully enumerated — into those statuses before calling, so the shared computation never sees a platform-specific token. An adapter that computes its own name is a second precedence, and two precedences drift.
+
+### Native ID
+The strongest developer-assigned identifier a platform exposes for an element, carried in `native_id`.
+
+Windows supplies UIA's `AutomationId`, macOS `AXIdentifier` or `AXDOMIdentifier`, Linux AT-SPI's `accessible-id`. It is typed rather than bare: an identifier whose kind is unknown is rejected at persistence, so the kind travels with the value. A blank value is no identifier at all — publishing one would give every unidentified element the same key. A read that failed is incomplete evidence rather than an absent identifier, because "absent" satisfies completeness gating and a target that never answered must not. Coverage varies by an order of magnitude across UI stacks, so it is a strong hint for re-identification and never a sufficient key alone.
+
 ## Refs And Identity
 
 ### Ref

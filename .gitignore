@@ -86,6 +86,8 @@ docs/*
 !docs/solutions/**
 !docs/plans/
 !docs/plans/**
+!docs/dogfood-reports/
+!docs/dogfood-reports/**
 !docs/brainstorms/
 !docs/brainstorms/**
 
@@ -109,3 +111,8 @@ probes/windows/scratch/bin/
 # are byte-reproducible from the capture beside them; committing both doubles the
 # evidence diff for no added information.
 probes/*/captures/**/*.normalized
+
+# Sub-phase 2.3 dogfood census output. Regenerate with
+# probes/windows/scratch/run-dogfood.ps1 -- the durable record is the report
+# under docs/dogfood-reports/, not the raw JSON.
+docs/plans/2026-07-31-001-captures/

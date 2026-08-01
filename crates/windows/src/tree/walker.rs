@@ -6,6 +6,8 @@ use serde_json::json;
 
 use super::automation::UiaFailure;
 use super::element::UIAElement;
+use super::element_properties::ResolvedVocabulary;
+use super::properties::ElementProperties;
 use super::walker_enumerate::TreeWalk;
 
 /// The deepest native nesting one walk descends through.
@@ -150,29 +152,57 @@ fn root_missing_error(stats: &LocatorStats) -> AdapterError {
 
 /// Whether this element is a wrapper that costs raw depth but no logical depth.
 ///
-/// Sub-phase 2.2 ships the seam, not the predicate: the body is 2.4's, together
-/// with Chromium detection. It is called where child logical depth is computed,
-/// so 2.4 fills it in without editing the traversal, and a fake can force the
-/// two counters apart today.
+/// The seam is deliberately unfilled: the predicate's body still needs
+/// Chromium detection, which does not exist yet. It is called where child
+/// logical depth is computed, so it can be filled in later without editing
+/// the traversal, and a fake can force the two counters apart today.
 pub fn is_web_wrapper(_element: &UIAElement) -> bool {
     false
 }
 
-/// The role vocabulary seam 2.3 fills.
+/// The role vocabulary, resolved from the properties the walk already read.
 ///
-/// `Unknown` is the honest answer while no vocabulary exists, and it is also
-/// the one that produces the documented projection: core renders an unknown
-/// role as the string `unknown`.
-pub fn walk_role(_element: &UIAElement) -> LocatorField<String> {
-    LocatorField::Unknown
+/// The seam takes the read set rather than the element because every input the
+/// vocabulary needs - the control type and the pattern availability that
+/// refines it - arrives in the same batch. Reading them again from the element
+/// would cost a round trip per node for values already in hand.
+pub fn walk_role(properties: &ElementProperties) -> LocatorField<String> {
+    crate::tree::roles::resolve_role(properties)
 }
 
-/// The available-actions seam 2.3 fills.
+/// The available-actions vocabulary, resolved from the same read set.
+pub fn walk_available_actions(properties: &ElementProperties) -> LocatorField<Vec<String>> {
+    crate::tree::actions::resolve_actions(properties)
+}
+
+/// The state vocabulary, which needs the resolved role: several UIA state
+/// sources are only meaningful on some roles, and `ToggleState` in particular
+/// means `checked` only on a toggleable role such as a checkbox or switch.
+pub fn walk_states(
+    properties: &ElementProperties,
+    role: &LocatorField<String>,
+) -> LocatorField<Vec<String>> {
+    crate::tree::states::resolve_states(properties, role)
+}
+
+/// Resolves every interpreted slot from one element's read set.
 ///
-/// `Unknown` projects to an empty action list in core, which is what an
-/// adapter with no pattern vocabulary can truthfully offer.
-pub fn walk_available_actions(_element: &UIAElement) -> LocatorField<Vec<String>> {
-    LocatorField::Unknown
+/// One place, so the ordering dependency between them is visible: states needs
+/// the role, and the name needs the label relation the caller resolved.
+pub fn walk_vocabulary(
+    properties: &ElementProperties,
+    label: &crate::tree::name_evidence::LabelOutcome,
+) -> ResolvedVocabulary {
+    let role = walk_role(properties);
+    let states = walk_states(properties, &role);
+    let (name, description) = crate::tree::name_evidence::name_fields(properties, label);
+    ResolvedVocabulary {
+        role,
+        available_actions: walk_available_actions(properties),
+        states,
+        name,
+        description,
+    }
 }
 
 #[cfg(test)]

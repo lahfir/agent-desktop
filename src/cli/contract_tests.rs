@@ -99,6 +99,10 @@ fn ci_windows_lane_gates_the_full_package_surface() {
     assert!(workflow.contains("--edges', 'normal,build,dev"));
     assert!(workflow.contains("run: cargo test --locked -p agent-desktop\n"));
     assert!(workflow.contains("run: cargo test --locked -p agent-desktop-ffi --tests"));
+    assert!(
+        workflow.contains("run: cargo test --locked -p agent-desktop-windows --examples"),
+        "the census redaction guard lives in an example, which a --lib run skips"
+    );
     assert!(workflow.contains("expected exactly 2 windows cfg shims"));
     assert!(workflow.contains("Get-Item target/release/agent-desktop.exe"));
     assert!(workflow.contains("ORIGINAL_USERPROFILE=$env:USERPROFILE"));

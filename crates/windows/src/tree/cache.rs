@@ -16,7 +16,7 @@ const CLIENT_SIDE_PROVIDER_MODULE: &str = "uiautomationcore.dll";
 /// *before* the walk, and the count is known only *after* it, so the arm would
 /// have no input at decision time. A6-2 also measured the only available
 /// candidate threshold on the managed stack, where A2-4 measured the same
-/// window as 3 nodes against 26 on the COM stack this sub-phase ships.
+/// window as 3 nodes against 26 on the COM stack the adapter uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CachePolicy {
     /// Prefetch the walk property set with each element.
@@ -89,7 +89,8 @@ mod imp {
     ///
     /// `ElementMode::Full` always: with `AutomationElementMode_None` a client
     /// has no access to uncached properties or control patterns and cannot
-    /// invoke an action, which would break every command from 2.6 onward.
+    /// invoke an action, which would break every command that acts on the
+    /// element afterward.
     ///
     /// The scope includes `TreeScope::Element`, because the scope is relative
     /// to the element the call returns and omitting `Element` silently fails

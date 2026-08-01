@@ -52,6 +52,7 @@ run() {
 }
 
 run "Rust source rules" scripts/check-rust-file-size.sh
+run "No delivery-plan references in source" scripts/check-no-phase-references.sh
 run "cargo fmt --all -- --check" cargo fmt --all -- --check
 run "cargo clippy --all-targets -- -D warnings" cargo clippy --all-targets -- -D warnings
 run "cargo test --lib --workspace" scripts/cargo-test-isolated-home.sh test --lib --workspace

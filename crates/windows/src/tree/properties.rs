@@ -30,7 +30,8 @@ pub fn extent(near: i32, far: i32) -> f64 {
 }
 
 /// Builds the structured error for a property read that failed, carrying the
-/// property's name and never its value (KTD14).
+/// property's name and never its value, so a failure cannot leak content
+/// through the error path.
 pub fn property_read_error(base: AdapterError, property: TreeProperty) -> AdapterError {
     base.with_details(serde_json::json!({
         "kind": "property_read_failed",
@@ -126,6 +127,9 @@ mod imp {
         let mut reads = Vec::with_capacity(TreeProperty::WALK_SET.len());
         let mut errors = Vec::new();
         for property in TreeProperty::WALK_SET {
+            if property.is_element_valued() {
+                continue;
+            }
             match read(element, property) {
                 Ok(outcome) => reads.push((property, outcome)),
                 Err(error) => {
@@ -159,7 +163,7 @@ mod imp {
     /// singleton `UiaGetReservedNotSupportedValue` returns, and no field of
     /// the variant distinguishes it from any other interface pointer.
     /// `VT_EMPTY`, `VT_NULL` and `VT_VOID` mean the provider answered with
-    /// nothing, which is `Absent`; a variant this sub-phase cannot decode is
+    /// nothing, which is `Absent`; a variant this reader cannot decode is
     /// `Unknown`, because presenting an undecoded value as identity evidence
     /// is what silently breaks re-identification downstream.
     fn classify(variant: &Variant) -> PropertyOutcome {

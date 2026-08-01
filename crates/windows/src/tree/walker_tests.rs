@@ -173,8 +173,8 @@ fn a_depth_boundary_reports_a_child_count_instead_of_children() {
 }
 
 /// Without the `is_web_wrapper` seam the two counters can never disagree, so
-/// this assertion would be testing behaviour 2.2 ships no mechanism to
-/// produce. The control below is what makes that claim checkable.
+/// this assertion would be testing behaviour this crate ships no mechanism
+/// to produce. The control below is what makes that claim checkable.
 #[test]
 fn logical_and_raw_depth_diverge_when_a_node_is_a_web_wrapper() {
     let wrapped = FakeTree::default().with_chain(&[1, 2, 3]).wrapping(2);

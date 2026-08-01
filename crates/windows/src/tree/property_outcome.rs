@@ -1,9 +1,9 @@
 use agent_desktop_core::{LocatorField, Rect};
 
-/// Longest string this sub-phase will carry into evidence.
+/// Longest string carried into evidence.
 ///
 /// A value past the bound is `Unknown` rather than a truncated `Known`: a
-/// prefix that is presented as exact identity evidence would make 2.5's
+/// prefix that is presented as exact identity evidence would make
 /// re-identification match the wrong element.
 pub const MAX_EVIDENCE_CHARS: usize = 2_048;
 

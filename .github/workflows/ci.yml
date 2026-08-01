@@ -126,6 +126,9 @@ jobs:
       - name: Enforce Rust source rules
         run: scripts/check-rust-file-size.sh
 
+      - name: Enforce no delivery-plan references in source
+        run: scripts/check-no-phase-references.sh
+
       - name: Clippy
         run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-macos -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
 
@@ -330,6 +333,13 @@ jobs:
 
       - name: Core and Windows unit tests
         run: cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
+
+      # The census example carries the redaction rule that keeps a real
+      # application's text out of a committed capture, and a --lib run does not
+      # execute tests inside examples/. Without this step that guard exists but
+      # never fires on the runner.
+      - name: Windows example tests
+        run: cargo test --locked -p agent-desktop-windows --examples
 
       - name: Binary command tests
         run: cargo test --locked -p agent-desktop

@@ -141,7 +141,8 @@ namespace AgentDesktop.Scratch
             "btnMutateList", "btnZeroSize", "tbSlider", "trvNodes", "lstItems",
             "pnlScroll", "btnRow00", "btnRow01", "btnRow02", "btnRow03", "btnRow04",
             "btnRow05", "btnRow06", "btnRow07", "lblStatus", "txtStatusMirror",
-            "lblScrollPos", "lblSliderValue", "lblInstance"
+            "lblScrollPos", "lblSliderValue", "lblInstance",
+            "tabMain", "tpAlpha", "tpBravo", "tpCharlie", "nudCount", "dgvRows"
         };
 
         private static readonly string[] BaselineItems = new string[]
@@ -176,7 +177,7 @@ namespace AgentDesktop.Scratch
             hostProviders = options.HostProviders;
             Name = "frmScratchMain";
             Text = "AgentDesktop Scratch WinForms [" + options.Tag + "]";
-            ClientSize = new Size(760, 520);
+            ClientSize = new Size(760, 680);
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.Manual;
             Location = new Point(options.X, options.Y);
@@ -187,6 +188,7 @@ namespace AgentDesktop.Scratch
             BuildRightColumn();
             BuildScrollPanel();
             BuildStatusStrip(options.Tag);
+            BuildDataControls();
 
             listMutated = options.MutateList;
             ApplyListContents(listMutated);
@@ -340,6 +342,35 @@ namespace AgentDesktop.Scratch
             Place(this, sliderLabel, "lblSliderValue", 196, 456, 160, 20).Text = "slider:0";
             Place(this, instanceLabel, "lblInstance", 392, 456, 340, 20).Text = "instance:" + tag
                 + " pid:" + System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
+        }
+
+        private void BuildDataControls()
+        {
+            TabControl tabs = Place(this, new TabControl(), "tabMain", 16, 486, 340, 130);
+            TabPage tabAlpha = new TabPage("Tab-Alpha");
+            tabAlpha.Name = "tpAlpha";
+            TabPage tabBravo = new TabPage("Tab-Bravo");
+            tabBravo.Name = "tpBravo";
+            TabPage tabCharlie = new TabPage("Tab-Charlie");
+            tabCharlie.Name = "tpCharlie";
+            tabs.TabPages.Add(tabAlpha);
+            tabs.TabPages.Add(tabBravo);
+            tabs.TabPages.Add(tabCharlie);
+
+            NumericUpDown spinner = Place(this, new NumericUpDown(), "nudCount", 16, 626, 120, 24);
+            spinner.Minimum = 0;
+            spinner.Maximum = 100;
+            spinner.Value = 0;
+
+            DataGridView grid = Place(this, new DataGridView(), "dgvRows", 392, 290, 340, 124);
+            grid.ColumnCount = 2;
+            grid.Columns[0].Name = "Column-Label";
+            grid.Columns[1].Name = "Column-Value";
+            grid.RowHeadersVisible = false;
+            grid.AllowUserToAddRows = false;
+            grid.Rows.Add("Row-Alpha", "Value-Alpha");
+            grid.Rows.Add("Row-Bravo", "Value-Bravo");
+            grid.Rows.Add("Row-Charlie", "Value-Charlie");
         }
 
         private void ApplyListContents(bool mutated)
