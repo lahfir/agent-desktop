@@ -141,7 +141,8 @@ namespace AgentDesktop.Scratch
             "btnMutateList", "btnZeroSize", "tbSlider", "trvNodes", "lstItems",
             "pnlScroll", "btnRow00", "btnRow01", "btnRow02", "btnRow03", "btnRow04",
             "btnRow05", "btnRow06", "btnRow07", "lblStatus", "txtStatusMirror",
-            "lblScrollPos", "lblSliderValue", "lblInstance"
+            "lblScrollPos", "lblSliderValue", "lblInstance",
+            "tabMain", "tpAlpha", "tpBravo", "tpCharlie", "nudCount", "dgvRows"
         };
 
         private static readonly string[] BaselineItems = new string[]
@@ -176,7 +177,7 @@ namespace AgentDesktop.Scratch
             hostProviders = options.HostProviders;
             Name = "frmScratchMain";
             Text = "AgentDesktop Scratch WinForms [" + options.Tag + "]";
-            ClientSize = new Size(760, 520);
+            ClientSize = new Size(760, 680);
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.Manual;
             Location = new Point(options.X, options.Y);
@@ -187,6 +188,7 @@ namespace AgentDesktop.Scratch
             BuildRightColumn();
             BuildScrollPanel();
             BuildStatusStrip(options.Tag);
+            BuildDataControls();
 
             listMutated = options.MutateList;
             ApplyListContents(listMutated);

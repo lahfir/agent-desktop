@@ -19,6 +19,30 @@ A scoped UI layer that can be observed separately from the whole window, such as
 ### Drill-down
 A snapshot operation that starts from an existing ref to observe that element's subtree instead of re-reading the entire window.
 
+## Vocabulary
+
+The four platform-neutral vocabularies every adapter produces and core consumes. They were single-platform code types until two adapters produced them; they are shared contracts now, and an adapter that emits a token outside one of them is emitting something no consumer can act on.
+
+### Role
+The canonical kind of a control, drawn from a closed set core owns.
+
+Each platform maps its own taxonomy onto it — macOS from `AXRole` plus its subrole fold, Windows from UIA's `ControlType` refined by pattern availability — and never invents a token. The platform taxonomies are not parallel: UIA's `Tab` is the container and its `TabItem` is the page selector, which is the inverse of the ARIA naming core follows, and several canonical roles (`switch`, `colorwell`) have no control type at all and are reachable only through refinement or not at all. A role core does not recognise is `unknown`, which is a positive statement about the element and is distinct from a read that failed.
+
+### State Vocabulary
+The closed set of state tokens a node may carry, defined by core's `STATE_VOCABULARY`.
+
+Adapters emit only members of it, and a membership assertion is paired with a negative control so it cannot pass vacuously. A token is emitted only where the platform evidenced it: where a platform has no source for a reserved token, the token stays unproduced rather than defaulted. Emitting from an ungated source is the characteristic failure here — a property that reports a plausible value on an element whose provider never implemented the underlying pattern will decorate every inert node in the tree with states it does not have.
+
+### Name Evidence
+The raw slots an adapter supplies so that **core**, not the adapter, computes the accessible name.
+
+The slots are ranked by one precedence shared across platforms, and each slot carries its own read status, so uncertainty travels: when a source that would have outranked the winner failed to read, the name is unknown rather than the weaker source's value. A platform folds its own gating — which slots apply to which roles, whether children were fully enumerated — into those statuses before calling, so the shared computation never sees a platform-specific token. An adapter that computes its own name is a second precedence, and two precedences drift.
+
+### Native ID
+The strongest developer-assigned identifier a platform exposes for an element, carried in `native_id`.
+
+Windows supplies UIA's `AutomationId`, macOS `AXIdentifier` or `AXDOMIdentifier`, Linux AT-SPI's `accessible-id`. It is typed rather than bare: an identifier whose kind is unknown is rejected at persistence, so the kind travels with the value. A blank value is no identifier at all — publishing one would give every unidentified element the same key. A read that failed is incomplete evidence rather than an absent identifier, because "absent" satisfies completeness gating and a target that never answered must not. Coverage varies by an order of magnitude across UI stacks, so it is a strong hint for re-identification and never a sufficient key alone.
+
 ## Refs And Identity
 
 ### Ref
