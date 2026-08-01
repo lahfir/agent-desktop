@@ -56,6 +56,13 @@ struct Position {
 /// This carries the same three bounds the shipped walker has - a deadline, an
 /// ancestor-path cycle guard keyed on the identity the provider publishes, and
 /// a sibling cap.
+///
+/// **The deadline is re-checked inside the sibling loop, not only on entry to
+/// each node.** A check at entry alone stops the recursion but not the
+/// enumeration: every `next_sibling` is a cross-process call, so an expired
+/// deadline would still issue up to the sibling cap's worth of them per parent
+/// while each recursive call returned immediately. `walker_enumerate.rs`
+/// checks both bounds in the same place for the same reason.
 struct Bounds {
     max_depth: u8,
     deadline: Deadline,
@@ -119,7 +126,7 @@ fn collect(
             nodes,
         );
         child_index += 1;
-        if child_index >= MAX_CENSUS_SIBLINGS {
+        if child_index >= MAX_CENSUS_SIBLINGS || bounds.deadline.is_expired() {
             bounds.truncated = true;
             break;
         }
