@@ -22,6 +22,14 @@
 mod select;
 
 #[cfg(target_os = "windows")]
+#[path = "uia_tree_dump/render_slots.rs"]
+mod render_slots;
+
+#[cfg(target_os = "windows")]
+#[path = "uia_tree_dump/render_census.rs"]
+mod render_census;
+
+#[cfg(target_os = "windows")]
 #[path = "uia_tree_dump/render.rs"]
 mod render;
 
@@ -33,7 +41,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Err(reason) => {
-            eprintln!("{}", render::skipped(&reason));
+            eprintln!("{}", render_slots::skipped(&reason));
             std::process::ExitCode::FAILURE
         }
     }
@@ -62,7 +70,7 @@ fn run() -> Result<String, String> {
         )
     })?;
 
-    let document = render::dump(&root, &options, deadline)?;
+    let document = render::dump(&root, handle, &options, deadline)?;
     std::fs::write(&options.output, document).map_err(|error| error.to_string())?;
     Ok(options.output.clone())
 }

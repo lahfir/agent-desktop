@@ -194,11 +194,15 @@ mod tests {
 
     /// Suppressing the value slot must suppress its uncertainty too. Without
     /// that, every control whose `AXValue` read failed transiently would lose
-    /// a name it read perfectly well from its title.
+    /// a name it read perfectly well from a weaker source.
+    ///
+    /// The evidence deliberately carries no `native_title`: that slot outranks
+    /// the value, so it would answer before the value's uncertainty was ever
+    /// reached and the test would pass whether the suppression worked or not.
     #[test]
     fn a_failed_value_read_does_not_cloud_the_name_of_a_role_that_never_uses_it() {
         let evidence = NameEvidence {
-            native_title: Some("Save".into()),
+            description: Some("a weaker source".into()),
             ..NameEvidence::default()
         };
         let mut status = NodeAttributeStatus::default();
@@ -206,7 +210,8 @@ mod tests {
 
         assert_eq!(
             name_field(&evidence, &status, Some("AXButton"), true),
-            LocatorField::Known("Save".into())
+            LocatorField::Known("a weaker source".into()),
+            "a button never consults the value, so a failed value read is not its problem"
         );
         assert_eq!(
             name_field(&evidence, &status, Some("AXStaticText"), true),
