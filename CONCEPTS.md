@@ -21,7 +21,12 @@ A snapshot operation that starts from an existing ref to observe that element's 
 
 ## Vocabulary
 
-The four platform-neutral vocabularies every adapter produces and core consumes. They were single-platform code types until two adapters produced them; they are shared contracts now, and an adapter that emits a token outside one of them is emitting something no consumer can act on.
+The four platform-neutral vocabularies every adapter produces and core consumes, and the evidence model all four rest on. They were single-platform code types until two adapters produced them; they are shared contracts now, and an adapter that emits a token outside one of them is emitting something no consumer can act on.
+
+### Evidence Tri-State
+Every property an adapter reads is `Known`, `Absent`, or `Unknown`, and the three are never collapsed into two.
+
+`Absent` is an answer: the provider was asked and does not have this. `Unknown` is the lack of one — the read failed, or what it returned cannot be trusted. The distinction is load-bearing in both directions. `Absent` satisfies completeness gating and `Unknown` must not, so a target that never answered cannot pass for one that answered "no". Conversely a role, state, or affordance is granted only on a positive claim, so a failed read withholds it. A convenience predicate that flattens the tri-state to `bool` is therefore safe only in positive position — asking "did this say yes" — and fails open the moment it is negated, because negation silently rewrites "I could not tell" as "definitely not".
 
 ### Role
 The canonical kind of a control, drawn from a closed set core owns.
