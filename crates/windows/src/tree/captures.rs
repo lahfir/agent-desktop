@@ -15,6 +15,28 @@
 /// The committed dev-box captures, by the target variant each records.
 const CAPTURE_FILES: [&str; 2] = ["notepad-com.json", "explorer-com.json"];
 
+/// The 2.3 vocabulary captures, taken against real applications on four UI
+/// stacks by `probes/windows/scratch/run-dogfood.ps1`.
+const VOCABULARY_CAPTURE_FILES: [&str; 4] =
+    ["notepad.json", "explorer.json", "winforms.json", "wpf.json"];
+
+/// Every field in a capture that carries text read out of the target, and is
+/// therefore recorded as presence and length rather than as content.
+///
+/// The rule previously named `Name` alone while the renderer emitted any other
+/// text field verbatim, so a property added to the census without this
+/// treatment would have put a real application's text into a committed file.
+/// Asserting the shape on the committed artifacts is what catches that: a
+/// field that renders as a bare string here has bypassed the rule.
+const PRESENCE_ONLY_FIELDS: [&str; 6] = [
+    "name",
+    "description",
+    "automation_id",
+    "help_text",
+    "full_description",
+    "legacy_default_action",
+];
+
 #[cfg(test)]
 #[path = "captures_tests.rs"]
 mod tests;

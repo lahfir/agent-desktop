@@ -344,6 +344,35 @@ namespace AgentDesktop.Scratch
                 + " pid:" + System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
         }
 
+        private void BuildDataControls()
+        {
+            TabControl tabs = Place(this, new TabControl(), "tabMain", 16, 486, 340, 130);
+            TabPage tabAlpha = new TabPage("Tab-Alpha");
+            tabAlpha.Name = "tpAlpha";
+            TabPage tabBravo = new TabPage("Tab-Bravo");
+            tabBravo.Name = "tpBravo";
+            TabPage tabCharlie = new TabPage("Tab-Charlie");
+            tabCharlie.Name = "tpCharlie";
+            tabs.TabPages.Add(tabAlpha);
+            tabs.TabPages.Add(tabBravo);
+            tabs.TabPages.Add(tabCharlie);
+
+            NumericUpDown spinner = Place(this, new NumericUpDown(), "nudCount", 16, 626, 120, 24);
+            spinner.Minimum = 0;
+            spinner.Maximum = 100;
+            spinner.Value = 0;
+
+            DataGridView grid = Place(this, new DataGridView(), "dgvRows", 392, 290, 340, 124);
+            grid.ColumnCount = 2;
+            grid.Columns[0].Name = "Column-Label";
+            grid.Columns[1].Name = "Column-Value";
+            grid.RowHeadersVisible = false;
+            grid.AllowUserToAddRows = false;
+            grid.Rows.Add("Row-Alpha", "Value-Alpha");
+            grid.Rows.Add("Row-Bravo", "Value-Bravo");
+            grid.Rows.Add("Row-Charlie", "Value-Charlie");
+        }
+
         private void ApplyListContents(bool mutated)
         {
             string[] source = mutated ? MutatedItems : BaselineItems;

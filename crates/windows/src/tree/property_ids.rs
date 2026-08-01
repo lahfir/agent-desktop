@@ -96,8 +96,9 @@ impl TreeProperty {
     /// per pattern-bearing node, which is unbounded on a selection-dense tree.
     /// What was available instead was trimming: `ItemStatus`, `Orientation`
     /// and `RangeValueIsReadOnly` are read by no vocabulary here and are not
-    /// requested.
-    pub const WALK_SET: [TreeProperty; 41] = [
+    /// requested. `IsDataValidForForm` joined them after the dogfood run -
+    /// `states.rs` records why its `invalid` token is unproduced.
+    pub const WALK_SET: [TreeProperty; 40] = [
         TreeProperty::Name,
         TreeProperty::AutomationId,
         TreeProperty::ClassName,
@@ -115,7 +116,6 @@ impl TreeProperty {
         TreeProperty::IsKeyboardFocusable,
         TreeProperty::HasKeyboardFocus,
         TreeProperty::IsRequiredForForm,
-        TreeProperty::IsDataValidForForm,
         TreeProperty::IsDialog,
         TreeProperty::ToggleState,
         TreeProperty::ExpandCollapseState,

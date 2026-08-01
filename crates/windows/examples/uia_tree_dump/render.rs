@@ -89,6 +89,7 @@ fn collect(
     let position = nodes.len();
     nodes.push(node(element, at.parent, at.index));
     if at.depth >= bounds.max_depth {
+        bounds.truncated = true;
         return;
     }
     if let Some(key) = key.clone() {

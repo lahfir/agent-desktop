@@ -1,0 +1,768 @@
+{
+  "capture": "uia-vocabulary-census",
+  "census_truncated": false,
+  "client_stack": "uia3-com",
+  "control_types": [
+    {
+      "action_lists": [
+        "[\"Click\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50000",
+      "nodes": 7,
+      "roles": [
+        "\"button\""
+      ],
+      "state_tokens": [
+        "\"disabled\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 7,
+      "with_non_blank_name": 7
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50010",
+      "nodes": 2,
+      "roles": [
+        "\"menu\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 2,
+      "with_non_blank_name": 2
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"Expand\",\"Collapse\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50011",
+      "nodes": 6,
+      "roles": [
+        "\"menuitem\""
+      ],
+      "state_tokens": [
+        "\"haspopup\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 6
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50014",
+      "nodes": 2,
+      "roles": [
+        "\"scrollbar\""
+      ],
+      "state_tokens": [
+        "\"disabled\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 2,
+      "with_non_blank_name": 2
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"msctls_statusbar32\""
+      ],
+      "control_type": "50017",
+      "nodes": 1,
+      "roles": [
+        "\"status\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50020",
+      "nodes": 4,
+      "roles": [
+        "\"statictext\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 3
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50027",
+      "nodes": 1,
+      "roles": [
+        "\"handle\""
+      ],
+      "state_tokens": [
+        "\"disabled\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\",\"Scroll\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"Edit\""
+      ],
+      "control_type": "50030",
+      "nodes": 1,
+      "roles": [
+        "\"textfield\""
+      ],
+      "state_tokens": [
+        "\"focused\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"Notepad\""
+      ],
+      "control_type": "50032",
+      "nodes": 1,
+      "roles": [
+        "\"window\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50037",
+      "nodes": 1,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    }
+  ],
+  "crate": "uiautomation 0.25.0",
+  "max_depth": 24,
+  "node_count": 26,
+  "os_build": "Microsoft Windows [Version 10.0.17763.7434]",
+  "providers": [
+    {
+      "nodes": 23,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: EDIT Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    }
+  ],
+  "sample": [
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 525.0,
+        "width": 768.0,
+        "x": 476.0,
+        "y": 100.0
+      },
+      "child_index": 0,
+      "class_name": "Notepad",
+      "control_type": 50032,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 15,
+        "present": true
+      },
+      "parent_index": null,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "window",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 2,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue",
+        "Scroll",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 443.0,
+        "width": 752.0,
+        "x": 484.0,
+        "y": 151.0
+      },
+      "child_index": 0,
+      "class_name": "Edit",
+      "control_type": 50030,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 11,
+        "present": true
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: EDIT Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "textfield",
+      "states": [
+        "focused"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 26,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue"
+      ],
+      "bounds": {
+        "height": 426.0,
+        "width": 17.0,
+        "x": 1219.0,
+        "y": 151.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50014,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 8,
+        "present": true
+      },
+      "parent_index": 1,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "scrollbar",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 8,
+        "present": true
+      },
+      "available_actions": [
+        "Click"
+      ],
+      "bounds": {
+        "height": 17.0,
+        "width": 17.0,
+        "x": 1219.0,
+        "y": 151.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50000,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 7,
+        "present": true
+      },
+      "parent_index": 2,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "button",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 17.0,
+        "width": 17.0,
+        "x": 1219.0,
+        "y": 577.0
+      },
+      "child_index": 2,
+      "class_name": "",
+      "control_type": 50027,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 1,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "handle",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 4,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 23.0,
+        "width": 752.0,
+        "x": 484.0,
+        "y": 594.0
+      },
+      "child_index": 1,
+      "class_name": "msctls_statusbar32",
+      "control_type": 50017,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "status",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 21.0,
+        "width": 376.0,
+        "x": 484.0,
+        "y": 596.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50020,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 9,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "statictext",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 8,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 28.0,
+        "width": 736.0,
+        "x": 500.0,
+        "y": 103.0
+      },
+      "child_index": 2,
+      "class_name": "",
+      "control_type": 50037,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "group",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 13,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 22.0,
+        "x": 484.0,
+        "y": 108.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50010,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 6,
+        "present": true
+      },
+      "parent_index": 14,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "menu",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click",
+        "Expand",
+        "Collapse",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 22.0,
+        "x": 484.0,
+        "y": 108.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50011,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 4,
+        "present": true
+      },
+      "name": {
+        "chars": 6,
+        "present": true
+      },
+      "parent_index": 15,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "menuitem",
+      "states": [
+        "haspopup"
+      ]
+    }
+  ],
+  "target_class": "Notepad",
+  "target_variant": "classic Win32 Notepad on a synthetic scratch file (dogfood run)",
+  "view_delta": {
+    "control_view": {
+      "control_types": [
+        50000,
+        50010,
+        50011,
+        50014,
+        50017,
+        50020,
+        50027,
+        50030,
+        50032,
+        50037
+      ],
+      "nodes": 26
+    },
+    "raw_view": {
+      "control_types": [
+        50000,
+        50010,
+        50011,
+        50014,
+        50017,
+        50020,
+        50027,
+        50030,
+        50032,
+        50037
+      ],
+      "nodes": 26
+    }
+  },
+  "vocabulary": {
+    "control_types_resolving_to_unknown": [],
+    "identifier_coverage_rule": "non-blank, matching IdentifierEvidence::typed - not merely present",
+    "interactive_roles_produced": [
+      "button",
+      "menuitem",
+      "textfield"
+    ],
+    "nodes": 26,
+    "nodes_advertising_an_action": 21,
+    "nodes_carrying_a_state": 14,
+    "non_blank_automation_id": 14,
+    "non_blank_name": 22,
+    "resolved_to_a_role": 26
+  },
+  "walk": {
+    "cycles_skipped": 0,
+    "enumeration_failures": 0,
+    "nodes_observed": 26,
+    "structurally_complete": true
+  }
+}

@@ -1,0 +1,1554 @@
+{
+  "capture": "uia-vocabulary-census",
+  "census_truncated": false,
+  "client_stack": "uia3-com",
+  "control_types": [
+    {
+      "action_lists": [
+        "[\"Click\",\"SetFocus\"]",
+        "[\"Click\"]"
+      ],
+      "class_names": [
+        "\"\"",
+        "\"Button\""
+      ],
+      "control_type": "50000",
+      "nodes": 5,
+      "roles": [
+        "\"button\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 5,
+      "with_non_blank_name": 5
+    },
+    {
+      "action_lists": [
+        "[\"Toggle\",\"Click\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"CheckBox\""
+      ],
+      "control_type": "50002",
+      "nodes": 1,
+      "roles": [
+        "\"checkbox\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Expand\",\"Collapse\",\"Click\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"ComboBox\""
+      ],
+      "control_type": "50003",
+      "nodes": 1,
+      "roles": [
+        "\"combobox\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"Scroll\",\"SetFocus\"]",
+        "[\"SetValue\",\"Scroll\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"PasswordBox\"",
+        "\"TextBox\""
+      ],
+      "control_type": "50004",
+      "nodes": 5,
+      "roles": [
+        "\"textfield\""
+      ],
+      "state_tokens": [
+        "\"readonly\"",
+        "\"secure\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 2,
+      "with_non_blank_automation_id": 5,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Select\",\"ScrollTo\",\"Click\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"ListBoxItem\""
+      ],
+      "control_type": "50007",
+      "nodes": 5,
+      "roles": [
+        "\"option\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 5,
+      "with_non_blank_name": 5
+    },
+    {
+      "action_lists": [
+        "[\"Scroll\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"ListBox\""
+      ],
+      "control_type": "50008",
+      "nodes": 1,
+      "roles": [
+        "\"listbox\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50010",
+      "nodes": 1,
+      "roles": [
+        "\"menu\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Expand\",\"Collapse\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50011",
+      "nodes": 1,
+      "roles": [
+        "\"menuitem\""
+      ],
+      "state_tokens": [
+        "\"haspopup\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\"]"
+      ],
+      "class_names": [
+        "\"ScrollBar\""
+      ],
+      "control_type": "50014",
+      "nodes": 10,
+      "roles": [
+        "\"scrollbar\""
+      ],
+      "state_tokens": [
+        "\"disabled\"",
+        "\"offscreen\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 10,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"TabControl\""
+      ],
+      "control_type": "50018",
+      "nodes": 1,
+      "roles": [
+        "\"tablist\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"Select\",\"Click\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"TabItem\""
+      ],
+      "control_type": "50019",
+      "nodes": 3,
+      "roles": [
+        "\"tab\""
+      ],
+      "state_tokens": [
+        "\"selected\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 3,
+      "with_non_blank_name": 3
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"TextBlock\""
+      ],
+      "control_type": "50020",
+      "nodes": 19,
+      "roles": [
+        "\"statictext\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 2,
+      "with_non_blank_name": 19
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"SetValue\",\"ScrollTo\",\"SetFocus\"]",
+        "[]"
+      ],
+      "class_names": [
+        "\"DataGridCell\"",
+        "\"DataGridDetailsPresenter\""
+      ],
+      "control_type": "50025",
+      "nodes": 6,
+      "roles": [
+        "\"unknown\""
+      ],
+      "state_tokens": [
+        "\"offscreen\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 4
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"Thumb\""
+      ],
+      "control_type": "50027",
+      "nodes": 8,
+      "roles": [
+        "\"handle\""
+      ],
+      "state_tokens": [
+        "\"offscreen\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 8,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"Scroll\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"DataGrid\""
+      ],
+      "control_type": "50028",
+      "nodes": 1,
+      "roles": [
+        "\"grid\""
+      ],
+      "state_tokens": [
+        "\"multiselectable\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"Select\",\"ScrollTo\"]"
+      ],
+      "class_names": [
+        "\"DataGridRow\""
+      ],
+      "control_type": "50029",
+      "nodes": 2,
+      "roles": [
+        "\"row\""
+      ],
+      "state_tokens": [
+        "\"multiselectable\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 2
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"Window\""
+      ],
+      "control_type": "50032",
+      "nodes": 1,
+      "roles": [
+        "\"window\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Scroll\"]"
+      ],
+      "class_names": [
+        "\"ScrollViewer\""
+      ],
+      "control_type": "50033",
+      "nodes": 5,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 5,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"DataGridColumnHeadersPresenter\""
+      ],
+      "control_type": "50034",
+      "nodes": 1,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"ScrollTo\"]",
+        "[\"Click\"]"
+      ],
+      "class_names": [
+        "\"DataGridColumnHeader\"",
+        "\"DataGridRowHeader\""
+      ],
+      "control_type": "50035",
+      "nodes": 4,
+      "roles": [
+        "\"column\""
+      ],
+      "state_tokens": [
+        "\"offscreen\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 2
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50037",
+      "nodes": 1,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    }
+  ],
+  "crate": "uiautomation 0.25.0",
+  "max_depth": 24,
+  "node_count": 82,
+  "os_build": "Microsoft Windows [Version 10.0.17763.7434]",
+  "providers": [
+    {
+      "nodes": 6,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 75,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    }
+  ],
+  "sample": [
+    {
+      "automation_id": {
+        "chars": 13,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 752.0,
+        "width": 460.0,
+        "x": 500.0,
+        "y": 100.0
+      },
+      "child_index": 0,
+      "class_name": "Window",
+      "control_type": 50032,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 34,
+        "present": true
+      },
+      "parent_index": null,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "window",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 8,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 28.0,
+        "width": 428.0,
+        "x": 524.0,
+        "y": 103.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50037,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "group",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 13,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 22.0,
+        "x": 508.0,
+        "y": 108.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50010,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 6,
+        "present": true
+      },
+      "parent_index": 1,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "menu",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Expand",
+        "Collapse",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 22.0,
+        "x": 508.0,
+        "y": 108.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50011,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 6,
+        "present": true
+      },
+      "parent_index": 2,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "menuitem",
+      "states": [
+        "haspopup"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 16,
+        "present": true
+      },
+      "available_actions": [
+        "Click"
+      ],
+      "bounds": {
+        "height": 30.0,
+        "width": 47.0,
+        "x": 813.0,
+        "y": 101.0
+      },
+      "child_index": 1,
+      "class_name": "",
+      "control_type": 50000,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 8,
+        "present": true
+      },
+      "parent_index": 1,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "button",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 9,
+        "present": true
+      },
+      "available_actions": [
+        "Toggle",
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 15.0,
+        "width": 420.0,
+        "x": 520.0,
+        "y": 147.0
+      },
+      "child_index": 1,
+      "class_name": "CheckBox",
+      "control_type": 50002,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 14,
+        "present": true
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "checkbox",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 16.0,
+        "width": 76.0,
+        "x": 540.0,
+        "y": 146.0
+      },
+      "child_index": 0,
+      "class_name": "TextBlock",
+      "control_type": 50020,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 14,
+        "present": true
+      },
+      "parent_index": 7,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "statictext",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 8,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue",
+        "Scroll",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 24.0,
+        "width": 420.0,
+        "x": 520.0,
+        "y": 170.0
+      },
+      "child_index": 2,
+      "class_name": "TextBox",
+      "control_type": 50004,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "textfield",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 16,
+        "present": true
+      },
+      "available_actions": [
+        "Scroll"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 418.0,
+        "x": 521.0,
+        "y": 171.0
+      },
+      "child_index": 0,
+      "class_name": "ScrollViewer",
+      "control_type": 50033,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": false,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 9,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "group",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 17,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue"
+      ],
+      "bounds": {
+        "height": 0.0,
+        "width": 0.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "child_index": 0,
+      "class_name": "ScrollBar",
+      "control_type": 50014,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": true,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 10,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "scrollbar",
+      "states": [
+        "disabled",
+        "offscreen"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 9,
+        "present": true
+      },
+      "available_actions": [
+        "Expand",
+        "Collapse",
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 24.0,
+        "width": 420.0,
+        "x": 520.0,
+        "y": 202.0
+      },
+      "child_index": 3,
+      "class_name": "ComboBox",
+      "control_type": 50003,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 6,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "combobox",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 8,
+        "present": true
+      },
+      "available_actions": [
+        "Scroll",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 130.0,
+        "width": 420.0,
+        "x": 520.0,
+        "y": 268.0
+      },
+      "child_index": 6,
+      "class_name": "ListBox",
+      "control_type": 50008,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "listbox",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 18,
+        "present": true
+      },
+      "available_actions": [
+        "Select",
+        "ScrollTo",
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 20.0,
+        "width": 416.0,
+        "x": 522.0,
+        "y": 270.0
+      },
+      "child_index": 0,
+      "class_name": "ListBoxItem",
+      "control_type": 50007,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 12,
+        "present": true
+      },
+      "name": {
+        "chars": 10,
+        "present": true
+      },
+      "parent_index": 18,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "option",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 7,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 152.0,
+        "width": 420.0,
+        "x": 520.0,
+        "y": 526.0
+      },
+      "child_index": 13,
+      "class_name": "TabControl",
+      "control_type": 50018,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "tablist",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 8,
+        "present": true
+      },
+      "available_actions": [
+        "Select",
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 69.0,
+        "x": 520.0,
+        "y": 526.0
+      },
+      "child_index": 0,
+      "class_name": "TabItem",
+      "control_type": 50019,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 6,
+        "present": true
+      },
+      "name": {
+        "chars": 9,
+        "present": true
+      },
+      "parent_index": 47,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "tab",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 7,
+        "present": true
+      },
+      "available_actions": [
+        "Scroll",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 142.0,
+        "width": 420.0,
+        "x": 520.0,
+        "y": 686.0
+      },
+      "child_index": 14,
+      "class_name": "DataGrid",
+      "control_type": 50028,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "grid",
+      "states": [
+        "multiselectable"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 27,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 24.0,
+        "width": 418.0,
+        "x": 521.0,
+        "y": 687.0
+      },
+      "child_index": 0,
+      "class_name": "DataGridColumnHeadersPresenter",
+      "control_type": 50034,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 54,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "group",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click",
+        "ScrollTo"
+      ],
+      "bounds": {
+        "height": 24.0,
+        "width": 84.0,
+        "x": 521.0,
+        "y": 687.0
+      },
+      "child_index": 0,
+      "class_name": "DataGridColumnHeader",
+      "control_type": 50035,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 12,
+        "present": true
+      },
+      "parent_index": 55,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "column",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 22,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 0.0,
+        "width": 0.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "child_index": 1,
+      "class_name": "Thumb",
+      "control_type": 50027,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": true,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 56,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "handle",
+      "states": [
+        "offscreen"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click",
+        "Select",
+        "ScrollTo"
+      ],
+      "bounds": {
+        "height": 19.0,
+        "width": 418.0,
+        "x": 521.0,
+        "y": 711.0
+      },
+      "child_index": 1,
+      "class_name": "DataGridRow",
+      "control_type": 50029,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 12,
+        "present": true
+      },
+      "name": {
+        "chars": 37,
+        "present": true
+      },
+      "parent_index": 54,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "row",
+      "states": [
+        "multiselectable"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click",
+        "SetValue",
+        "ScrollTo",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 19.0,
+        "width": 84.0,
+        "x": 521.0,
+        "y": 711.0
+      },
+      "child_index": 1,
+      "class_name": "DataGridCell",
+      "control_type": 50025,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 9,
+        "present": true
+      },
+      "parent_index": 64,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (managed:MS.Internal.Automation.ElementProxy, PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35)]",
+      "role": "unknown",
+      "states": []
+    }
+  ],
+  "target_class": "HwndWrapper[DefaultDomain;Pipeline Execution Thread;148767b5-3043-4e12-a064-64e4346d44c5]",
+  "target_variant": "AgentDesktop WPF scratch fixture with TabControl/DataGrid (dogfood run)",
+  "view_delta": {
+    "control_view": {
+      "control_types": [
+        50000,
+        50002,
+        50003,
+        50004,
+        50007,
+        50008,
+        50010,
+        50011,
+        50014,
+        50018,
+        50019,
+        50020,
+        50025,
+        50027,
+        50028,
+        50029,
+        50032,
+        50034,
+        50035,
+        50037
+      ],
+      "nodes": 77
+    },
+    "raw_view": {
+      "control_types": [
+        50000,
+        50002,
+        50003,
+        50004,
+        50007,
+        50008,
+        50010,
+        50011,
+        50014,
+        50018,
+        50019,
+        50020,
+        50025,
+        50027,
+        50028,
+        50029,
+        50032,
+        50033,
+        50034,
+        50035,
+        50037
+      ],
+      "nodes": 82
+    }
+  },
+  "vocabulary": {
+    "control_types_resolving_to_unknown": [
+      "50025"
+    ],
+    "identifier_coverage_rule": "non-blank, matching IdentifierEvidence::typed - not merely present",
+    "interactive_roles_produced": [
+      "button",
+      "checkbox",
+      "combobox",
+      "listbox",
+      "menuitem",
+      "option",
+      "tab",
+      "textfield"
+    ],
+    "nodes": 82,
+    "nodes_advertising_an_action": 52,
+    "nodes_carrying_a_state": 26,
+    "non_blank_automation_id": 52,
+    "non_blank_name": 45,
+    "resolved_to_a_role": 76
+  },
+  "walk": {
+    "cycles_skipped": 0,
+    "enumeration_failures": 0,
+    "nodes_observed": 82,
+    "structurally_complete": true
+  }
+}

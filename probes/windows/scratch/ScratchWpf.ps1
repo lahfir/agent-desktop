@@ -38,7 +38,7 @@ Add-Type -AssemblyName WindowsBase
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AgentDesktop Scratch WPF" Width="460" Height="530"
+        Title="AgentDesktop Scratch WPF" Width="460" Height="760"
         WindowStartupLocation="Manual" ShowActivated="False"
         AutomationProperties.AutomationId="wndScratchWpf">
   <Grid Margin="12">
@@ -52,6 +52,8 @@ $xaml = @'
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="160"/>
+      <RowDefinition Height="150"/>
     </Grid.RowDefinitions>
     <CheckBox x:Name="chkToggle" Grid.Row="0" Margin="0,4"
               AutomationProperties.AutomationId="chkToggle" Content="Enable feature"/>
@@ -90,6 +92,20 @@ $xaml = @'
                AutomationProperties.LabeledBy="{Binding ElementName=pwdSecret}"
                Width="140" Height="24"/>
     </StackPanel>
+    <TabControl x:Name="tabMain" Grid.Row="9" Margin="0,4"
+                AutomationProperties.AutomationId="tabMain">
+      <TabItem x:Name="tabAlpha" Header="Tab-Alpha" AutomationProperties.AutomationId="tabAlpha"/>
+      <TabItem x:Name="tabBravo" Header="Tab-Bravo" AutomationProperties.AutomationId="tabBravo"/>
+      <TabItem x:Name="tabCharlie" Header="Tab-Charlie" AutomationProperties.AutomationId="tabCharlie"/>
+    </TabControl>
+    <DataGrid x:Name="dgvRows" Grid.Row="10" Margin="0,4"
+              AutomationProperties.AutomationId="dgvRows"
+              AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Column-Label" Binding="{Binding Label}"/>
+        <DataGridTextColumn Header="Column-Value" Binding="{Binding Value}"/>
+      </DataGrid.Columns>
+    </DataGrid>
   </Grid>
 </Window>
 '@
@@ -109,6 +125,7 @@ $btnMutateList = $window.FindName('btnMutateList')
 $lstItems = $window.FindName('lstItems')
 $lblStatus = $window.FindName('lblStatus')
 $txtStatusMirror = $window.FindName('txtStatusMirror')
+$dgvRows = $window.FindName('dgvRows')
 
 $script:BaselineItems = @('Item-Alpha', 'Item-Bravo', 'Item-Charlie', 'Item-Delta', 'Item-Echo')
 $script:MutatedItems = @('Item-Alpha', 'Item-Charlie', 'Item-Delta', 'Item-Echo', 'Item-Foxtrot', 'Item-Golf')
@@ -165,6 +182,11 @@ $window.Add_Closed({ $window.Dispatcher.InvokeShutdown() })
 Set-ScratchList $script:ListMutated
 Set-ScratchStatus 'status:ready'
 $window.FindName('pwdSecret').Password = $SecretMarker
+
+$dgvRows.ItemsSource = @(
+    [pscustomobject]@{ Label = 'Row-Alpha'; Value = 'Value-Alpha' },
+    [pscustomobject]@{ Label = 'Row-Bravo'; Value = 'Value-Bravo' }
+)
 
 if ($TimeoutSeconds -gt 0) {
     $timer = New-Object System.Windows.Threading.DispatcherTimer

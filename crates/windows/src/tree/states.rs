@@ -22,17 +22,34 @@ const EXPAND_COLLAPSE_STATE_EXPANDED: i32 = 1;
 /// these reads back `Unknown`, nothing about this element was actually read -
 /// that is the shape `ElementProperties::get` produces for a property nobody
 /// ever supplied a `(TreeProperty, PropertyOutcome)` entry for.
-const READ_HEALTH_PROBES: [TreeProperty; 7] = [
+const READ_HEALTH_PROBES: [TreeProperty; 6] = [
     TreeProperty::IsEnabled,
     TreeProperty::IsOffscreen,
     TreeProperty::HasKeyboardFocus,
     TreeProperty::IsRequiredForForm,
-    TreeProperty::IsDataValidForForm,
     TreeProperty::IsPassword,
     TreeProperty::LegacyState,
 ];
 
 /// Resolves the state vocabulary from the read set and the resolved role.
+///
+/// # `invalid` is deliberately unproduced, and the dogfood run is why
+///
+/// Microsoft's ARIA state table gives `IsDataValidForForm` as the source, and
+/// the first implementation read it that way. Run against four real targets it
+/// emitted `invalid` on **every node of every one of them** - 26 of 26 on
+/// Notepad, 113 of 113 on Explorer - on static text, title bars, windows and
+/// menus alike.
+///
+/// `false` is that property's *default*, not an assertion. It means no form
+/// rule declares the element valid, which is true of everything that is not a
+/// form field. `IsRequiredForForm` shares the default and is safe only because
+/// `required` is emitted on `true`, a positive claim; `invalid` read the
+/// default as a claim and so decorated the whole tree. The property cannot
+/// distinguish "not applicable" from "invalid" on any stack measured here, so
+/// it is not read at all and `invalid` stays unproduced rather than faked -
+/// which is what KTD6 requires of a token whose platform source turns out
+/// unusable.
 ///
 /// # Known vs Unknown
 /// `LocatorField::Unknown` is returned only when every [`READ_HEALTH_PROBES`]
@@ -67,9 +84,6 @@ pub fn resolve_states(
     }
     if properties.get(TreeProperty::IsRequiredForForm).flag() == Some(true) {
         states.push(state::REQUIRED.to_string());
-    }
-    if properties.get(TreeProperty::IsDataValidForForm).flag() == Some(false) {
-        states.push(state::INVALID.to_string());
     }
 
     push_toggle_state(properties, role, &mut states);

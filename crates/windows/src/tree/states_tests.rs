@@ -60,7 +60,7 @@ fn representative_cases() -> Vec<(Vec<(TreeProperty, PropertyOutcome)>, &'static
             "textfield",
         ),
         (
-            vec![flag(TreeProperty::IsDataValidForForm, false)],
+            vec![flag(TreeProperty::IsRequiredForForm, true)],
             "textfield",
         ),
         (
@@ -233,6 +233,60 @@ fn toggle_state_on_with_button_role_emits_pressed_not_checked() {
 
     assert!(states.contains(&state::PRESSED.to_string()));
     assert!(!states.contains(&state::CHECKED.to_string()));
+}
+
+/// The regression test for the defect the dogfood run found, and the reason
+/// `invalid` is unproduced.
+///
+/// `IsDataValidForForm` reads `false` on essentially everything, because
+/// `false` is its default rather than a claim. Emitting `invalid` from it put
+/// the token on **every node of every target measured** - 26 of 26 on Notepad,
+/// 113 of 113 on Explorer - including static text, title bars and windows.
+///
+/// The contrast with `required` is the whole point: that arm reads the same
+/// kind of form flag and is safe only because it emits on `true`.
+#[test]
+fn a_default_false_form_validity_flag_produces_no_invalid_token() {
+    for role in ["statictext", "window", "textfield", "menuitem"] {
+        let states = resolved(
+            vec![
+                flag(TreeProperty::IsDataValidForForm, false),
+                enabled_true(),
+            ],
+            role,
+        );
+
+        assert!(
+            !states.contains(&state::INVALID.to_string()),
+            "a {role} was reported invalid because a form flag defaulted to false"
+        );
+    }
+
+    assert!(
+        resolved(
+            vec![flag(TreeProperty::IsRequiredForForm, true), enabled_true()],
+            "textfield",
+        )
+        .contains(&state::REQUIRED.to_string()),
+        "the sibling arm that emits on a positive claim must still work, or this proves nothing"
+    );
+}
+
+/// `invalid` has no usable Windows source and must not appear from any input.
+#[test]
+fn invalid_is_unproduced_whatever_the_read_set_says() {
+    for value in [true, false] {
+        for role in ["textfield", "checkbox", "statictext"] {
+            let states = resolved(
+                vec![
+                    flag(TreeProperty::IsDataValidForForm, value),
+                    enabled_true(),
+                ],
+                role,
+            );
+            assert!(!states.contains(&state::INVALID.to_string()));
+        }
+    }
 }
 
 #[test]

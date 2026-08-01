@@ -1,0 +1,1787 @@
+{
+  "capture": "uia-vocabulary-census",
+  "census_truncated": false,
+  "client_stack": "uia3-com",
+  "control_types": [
+    {
+      "action_lists": [
+        "[\"Click\",\"Expand\",\"Collapse\",\"SetFocus\"]",
+        "[\"Click\",\"SetFocus\"]",
+        "[\"Click\"]"
+      ],
+      "class_names": [
+        "\"\"",
+        "\"Button\""
+      ],
+      "control_type": "50000",
+      "nodes": 20,
+      "roles": [
+        "\"button\"",
+        "\"menubutton\""
+      ],
+      "state_tokens": [
+        "\"disabled\"",
+        "\"haspopup\"",
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 8,
+      "with_non_blank_name": 20
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]",
+        "[\"SetValue\",\"SetFocus\"]",
+        "[\"SetValue\"]"
+      ],
+      "class_names": [
+        "\"SearchEditBox\"",
+        "\"UIProperty\""
+      ],
+      "control_type": "50004",
+      "nodes": 17,
+      "roles": [
+        "\"textfield\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 1,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 17,
+      "with_non_blank_name": 17
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"UIImage\""
+      ],
+      "control_type": "50006",
+      "nodes": 4,
+      "roles": [
+        "\"image\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"Select\",\"SetValue\",\"ScrollTo\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"UIItem\""
+      ],
+      "control_type": "50007",
+      "nodes": 4,
+      "roles": [
+        "\"option\""
+      ],
+      "state_tokens": [
+        "\"focused\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 4,
+      "with_non_blank_name": 4
+    },
+    {
+      "action_lists": [
+        "[\"Scroll\"]"
+      ],
+      "class_names": [
+        "\"UIItemsView\""
+      ],
+      "control_type": "50008",
+      "nodes": 1,
+      "roles": [
+        "\"listbox\""
+      ],
+      "state_tokens": [
+        "\"multiselectable\"",
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50010",
+      "nodes": 1,
+      "roles": [
+        "\"menu\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"Expand\",\"Collapse\",\"SetFocus\"]",
+        "[\"Click\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50011",
+      "nodes": 2,
+      "roles": [
+        "\"menuitem\""
+      ],
+      "state_tokens": [
+        "\"haspopup\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 2
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"msctls_progress32\""
+      ],
+      "control_type": "50012",
+      "nodes": 1,
+      "roles": [
+        "\"progressbar\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[\"Select\",\"Click\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"SelectorButton\""
+      ],
+      "control_type": "50013",
+      "nodes": 2,
+      "roles": [
+        "\"radiobutton\""
+      ],
+      "state_tokens": [
+        "\"readonly\"",
+        "\"selected\""
+      ],
+      "with_description": 2,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 2,
+      "with_non_blank_name": 2
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"StatusBarModuleInner\""
+      ],
+      "control_type": "50017",
+      "nodes": 1,
+      "roles": [
+        "\"status\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50018",
+      "nodes": 1,
+      "roles": [
+        "\"tablist\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Select\",\"Click\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50019",
+      "nodes": 3,
+      "roles": [
+        "\"tab\""
+      ],
+      "state_tokens": [
+        "\"haspopup\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 3
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"MetadataLabel\""
+      ],
+      "control_type": "50020",
+      "nodes": 1,
+      "roles": [
+        "\"statictext\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 1,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"SetValue\"]",
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\"",
+        "\"ToolbarWindow32\""
+      ],
+      "control_type": "50021",
+      "nodes": 5,
+      "roles": [
+        "\"toolbar\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 5
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"SysTreeView32\""
+      ],
+      "control_type": "50023",
+      "nodes": 1,
+      "roles": [
+        "\"outline\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"Expand\",\"Collapse\",\"Select\",\"SetValue\",\"ScrollTo\",\"Click\",\"SetFocus\"]",
+        "[\"Expand\",\"Collapse\",\"Select\",\"SetValue\",\"ScrollTo\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50024",
+      "nodes": 10,
+      "roles": [
+        "\"treeitem\""
+      ],
+      "state_tokens": [
+        "\"expanded\"",
+        "\"selected\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 10
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50025",
+      "nodes": 1,
+      "roles": [
+        "\"unknown\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 0
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"Element\"",
+        "\"SelectorNoDefault\""
+      ],
+      "control_type": "50026",
+      "nodes": 2,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 2,
+      "with_non_blank_name": 2
+    },
+    {
+      "action_lists": [
+        "[\"Click\",\"Expand\",\"Collapse\",\"SetFocus\"]",
+        "[\"Click\"]"
+      ],
+      "class_names": [
+        "\"\"",
+        "\"UIColumnHeader\""
+      ],
+      "control_type": "50031",
+      "nodes": 8,
+      "roles": [
+        "\"menubutton\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 4,
+      "with_non_blank_name": 8
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"CabinetWClass\""
+      ],
+      "control_type": "50032",
+      "nodes": 1,
+      "roles": [
+        "\"window\""
+      ],
+      "state_tokens": [
+        "\"focused\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"SetFocus\"]",
+        "[]"
+      ],
+      "class_names": [
+        "\"Address Band Root\"",
+        "\"Breadcrumb Parent\"",
+        "\"CtrlNotifySink\"",
+        "\"DUIListView\"",
+        "\"DUIViewWndClassName\"",
+        "\"Element\"",
+        "\"HWNDView\"",
+        "\"NUIPane\"",
+        "\"NetUIHWND\"",
+        "\"ProperTreeHost\"",
+        "\"ReBarWindow32\"",
+        "\"Search Box\"",
+        "\"SearchBox\"",
+        "\"SearchEditBoxWrapperClass\"",
+        "\"SeparatorBand\"",
+        "\"ShellTabWindowClass\"",
+        "\"TravelBand\"",
+        "\"UIRibbonCommandBar\"",
+        "\"UIRibbonCommandBarDock\"",
+        "\"UIRibbonWorkPane\"",
+        "\"UniversalSearchBand\"",
+        "\"UpBand\"",
+        "\"WorkerW\""
+      ],
+      "control_type": "50033",
+      "nodes": 25,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 6,
+      "with_non_blank_name": 10
+    },
+    {
+      "action_lists": [
+        "[]"
+      ],
+      "class_names": [
+        "\"UIViewHeader\""
+      ],
+      "control_type": "50034",
+      "nodes": 1,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [
+        "\"readonly\""
+      ],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 0,
+      "with_non_blank_name": 1
+    },
+    {
+      "action_lists": [
+        "[\"SetValue\",\"SetFocus\"]"
+      ],
+      "class_names": [
+        "\"\""
+      ],
+      "control_type": "50037",
+      "nodes": 1,
+      "roles": [
+        "\"group\""
+      ],
+      "state_tokens": [],
+      "with_description": 0,
+      "with_label_relation": 0,
+      "with_non_blank_automation_id": 1,
+      "with_non_blank_name": 0
+    }
+  ],
+  "crate": "uiautomation 0.25.0",
+  "max_depth": 24,
+  "node_count": 113,
+  "os_build": "Microsoft Windows [Version 10.0.17763.7434]",
+  "providers": [
+    {
+      "nodes": 11,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]\""
+    },
+    {
+      "nodes": 10,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main(parent link):Microsoft: TreeView Item Proxy (unmanaged:UIAutomationCore.DLL)]\""
+    },
+    {
+      "nodes": 12,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]\""
+    },
+    {
+      "nodes": 6,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIRibbon.dll)]\""
+    },
+    {
+      "nodes": 17,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]\""
+    },
+    {
+      "nodes": 25,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:explorerframe.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Microsoft: Non-Control Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 22,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main:Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main:Microsoft: TreeView PRoxy (unmanaged:UIAutomationCore.DLL)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: Ribbon Non-Client Provider (unmanaged:UIRibbon.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 2,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:explorerframe.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Override(parent link):Nested [pid:<pid>,providerId:<providerid> Override(parent link):Unidentified Provider (unmanaged:DUI70.dll)]; Main:Microsoft: Non-Control Proxy (unmanaged:uiautomationcore.dll); Hwnd:Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 1,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Override(parent link):Nested [pid:<pid>,providerId:<providerid> Override(parent link):Unidentified Provider (unmanaged:DUI70.dll)]; Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main:Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]; Hwnd:Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    },
+    {
+      "nodes": 2,
+      "provider": "\"[pid:<pid>,providerId:<providerid> Override:Nested [pid:<pid>,providerId:<providerid> Override(parent link):Unidentified Provider (unmanaged:DUI70.dll)]; Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main:Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]\""
+    }
+  ],
+  "sample": [
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 640.0,
+        "width": 1000.0,
+        "x": 66.0,
+        "y": 0.0
+      },
+      "child_index": 0,
+      "class_name": "CabinetWClass",
+      "control_type": 50032,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 58,
+        "present": true
+      },
+      "parent_index": null,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: Ribbon Non-Client Provider (unmanaged:UIRibbon.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "window",
+      "states": [
+        "focused"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 24.0,
+        "width": 984.0,
+        "x": 74.0,
+        "y": 31.0
+      },
+      "child_index": 0,
+      "class_name": "UIRibbonCommandBarDock",
+      "control_type": 50033,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 15,
+        "present": true
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main:Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "group",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click",
+        "SetValue"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 44.0,
+        "x": 112.0,
+        "y": 5.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50021,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 20,
+        "present": true
+      },
+      "parent_index": 5,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "toolbar",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 24.0,
+        "width": 22.0,
+        "x": 112.0,
+        "y": 3.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50000,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 10,
+        "present": true
+      },
+      "parent_index": 6,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "button",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue"
+      ],
+      "bounds": {
+        "height": 23.0,
+        "width": 884.0,
+        "x": 130.0,
+        "y": 31.0
+      },
+      "child_index": 3,
+      "class_name": "",
+      "control_type": 50018,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 11,
+        "present": true
+      },
+      "parent_index": 5,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "tablist",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 23.0,
+        "width": 884.0,
+        "x": 130.0,
+        "y": 31.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50025,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 11,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "unknown",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Select",
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 23.0,
+        "width": 58.0,
+        "x": 130.0,
+        "y": 31.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50019,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 4,
+        "present": true
+      },
+      "name": {
+        "chars": 4,
+        "present": true
+      },
+      "parent_index": 12,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "tab",
+      "states": [
+        "haspopup"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 650.0,
+        "x": 181.0,
+        "y": 61.0
+      },
+      "child_index": 0,
+      "class_name": "msctls_progress32",
+      "control_type": 50012,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 28,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main:Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "progressbar",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click"
+      ],
+      "bounds": {
+        "height": 21.0,
+        "width": 35.0,
+        "x": 181.0,
+        "y": 61.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50031,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 4,
+        "present": true
+      },
+      "name": {
+        "chars": 13,
+        "present": true
+      },
+      "parent_index": 31,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "menubutton",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Click"
+      ],
+      "bounds": {
+        "height": 21.0,
+        "width": 354.0,
+        "x": 389.0,
+        "y": 61.0
+      },
+      "child_index": 4,
+      "class_name": "",
+      "control_type": 50011,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 59,
+        "present": true
+      },
+      "parent_index": 31,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "menuitem",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 13,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 15.0,
+        "width": 170.0,
+        "x": 850.0,
+        "y": 64.0
+      },
+      "child_index": 0,
+      "class_name": "SearchEditBox",
+      "control_type": 50004,
+      "description": {
+        "chars": 66,
+        "present": true
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 66,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 10,
+        "present": true
+      },
+      "parent_index": 44,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:explorerframe.dll)]",
+      "role": "textfield",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 20,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 23.0,
+        "width": 984.0,
+        "x": 74.0,
+        "y": 609.0
+      },
+      "child_index": 0,
+      "class_name": "StatusBarModuleInner",
+      "control_type": 50017,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 10,
+        "present": true
+      },
+      "parent_index": 53,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]",
+      "role": "status",
+      "states": [
+        "readonly"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 29,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 23.0,
+        "width": 52.0,
+        "x": 81.0,
+        "y": 609.0
+      },
+      "child_index": 0,
+      "class_name": "Element",
+      "control_type": 50026,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 14,
+        "present": true
+      },
+      "parent_index": 54,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]",
+      "role": "group",
+      "states": [
+        "readonly"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 13,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 23.0,
+        "width": 42.0,
+        "x": 86.0,
+        "y": 609.0
+      },
+      "child_index": 0,
+      "class_name": "MetadataLabel",
+      "control_type": 50020,
+      "description": {
+        "chars": 16,
+        "present": true
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 16,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 7,
+        "present": true
+      },
+      "parent_index": 55,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]",
+      "role": "statictext",
+      "states": [
+        "readonly"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 16,
+        "present": true
+      },
+      "available_actions": [
+        "Select",
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 23.0,
+        "width": 22.0,
+        "x": 1010.0,
+        "y": 609.0
+      },
+      "child_index": 0,
+      "class_name": "SelectorButton",
+      "control_type": 50013,
+      "description": {
+        "chars": 67,
+        "present": true
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 67,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 5,
+        "present": true
+      },
+      "name": {
+        "chars": 7,
+        "present": true
+      },
+      "parent_index": 57,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]",
+      "role": "radiobutton",
+      "states": [
+        "selected",
+        "readonly"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 3,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 519.0,
+        "width": 156.0,
+        "x": 74.0,
+        "y": 90.0
+      },
+      "child_index": 0,
+      "class_name": "SysTreeView32",
+      "control_type": 50023,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 9,
+        "present": true
+      },
+      "parent_index": 60,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main:Microsoft: TreeView PRoxy (unmanaged:UIAutomationCore.DLL)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "outline",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Expand",
+        "Collapse",
+        "Select",
+        "SetValue",
+        "ScrollTo",
+        "Click",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 24.0,
+        "width": 72.0,
+        "x": 117.0,
+        "y": 106.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50024,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 8,
+        "present": true
+      },
+      "name": {
+        "chars": 12,
+        "present": true
+      },
+      "parent_index": 61,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Annotation:Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main(parent link):Microsoft: TreeView Item Proxy (unmanaged:UIAutomationCore.DLL)]",
+      "role": "treeitem",
+      "states": [
+        "expanded"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [
+        "Scroll"
+      ],
+      "bounds": {
+        "height": 519.0,
+        "width": 824.0,
+        "x": 234.0,
+        "y": 90.0
+      },
+      "child_index": 0,
+      "class_name": "UIItemsView",
+      "control_type": 50008,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 10,
+        "present": true
+      },
+      "parent_index": 72,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main:Nested [pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:explorerframe.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]",
+      "role": "listbox",
+      "states": [
+        "readonly",
+        "multiselectable"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 25.0,
+        "width": 824.0,
+        "x": 234.0,
+        "y": 90.0
+      },
+      "child_index": 0,
+      "class_name": "UIViewHeader",
+      "control_type": 50034,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 6,
+        "present": true
+      },
+      "parent_index": 73,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]",
+      "role": "group",
+      "states": [
+        "readonly"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 1,
+        "present": true
+      },
+      "available_actions": [
+        "Click",
+        "Select",
+        "SetValue",
+        "ScrollTo",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 574.0,
+        "x": 248.0,
+        "y": 121.0
+      },
+      "child_index": 1,
+      "class_name": "UIItem",
+      "control_type": 50007,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 12,
+        "present": true
+      },
+      "name": {
+        "chars": 5,
+        "present": true
+      },
+      "parent_index": 73,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:explorerframe.dll)]",
+      "role": "option",
+      "states": [
+        "focused"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 0,
+        "present": true
+      },
+      "available_actions": [],
+      "bounds": {
+        "height": 22.0,
+        "width": 18.0,
+        "x": 252.0,
+        "y": 121.0
+      },
+      "child_index": 0,
+      "class_name": "UIImage",
+      "control_type": 50006,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": true,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 83,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Unidentified Provider (unmanaged:DUI70.dll)]",
+      "role": "image",
+      "states": [
+        "readonly"
+      ]
+    },
+    {
+      "automation_id": {
+        "chars": 8,
+        "present": true
+      },
+      "available_actions": [
+        "SetValue",
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 31.0,
+        "width": 968.0,
+        "x": 90.0,
+        "y": 3.0
+      },
+      "child_index": 3,
+      "class_name": "",
+      "control_type": 50037,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "parent_index": 0,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIRibbon.dll)]",
+      "role": "group",
+      "states": []
+    },
+    {
+      "automation_id": {
+        "chars": 13,
+        "present": true
+      },
+      "available_actions": [
+        "SetFocus"
+      ],
+      "bounds": {
+        "height": 22.0,
+        "width": 22.0,
+        "x": 74.0,
+        "y": 8.0
+      },
+      "child_index": 0,
+      "class_name": "",
+      "control_type": 50010,
+      "description": {
+        "outcome": "<absent>",
+        "present": false
+      },
+      "failed_reads": 0,
+      "full_description": {
+        "chars": 0,
+        "present": true
+      },
+      "help_text": {
+        "chars": 0,
+        "present": true
+      },
+      "is_content_element": false,
+      "is_control_element": true,
+      "is_offscreen": false,
+      "is_password": false,
+      "labelled": false,
+      "legacy_default_action": {
+        "chars": 0,
+        "present": true
+      },
+      "name": {
+        "chars": 6,
+        "present": true
+      },
+      "parent_index": 107,
+      "provider_description": "[pid:<pid>,providerId:<providerid> Main(parent link):Microsoft: MSAA Proxy (unmanaged:UIRibbon.dll)]",
+      "role": "menu",
+      "states": []
+    }
+  ],
+  "target_class": "CabinetWClass",
+  "target_variant": "Windows Explorer on a synthetic scratch directory (dogfood run)",
+  "view_delta": {
+    "control_view": {
+      "control_types": [
+        50000,
+        50004,
+        50006,
+        50007,
+        50008,
+        50010,
+        50011,
+        50012,
+        50013,
+        50017,
+        50018,
+        50019,
+        50020,
+        50021,
+        50023,
+        50024,
+        50025,
+        50026,
+        50031,
+        50032,
+        50033,
+        50034,
+        50037
+      ],
+      "nodes": 107
+    },
+    "raw_view": {
+      "control_types": [
+        50000,
+        50004,
+        50006,
+        50007,
+        50008,
+        50010,
+        50011,
+        50012,
+        50013,
+        50017,
+        50018,
+        50019,
+        50020,
+        50021,
+        50023,
+        50024,
+        50025,
+        50026,
+        50031,
+        50032,
+        50033,
+        50034,
+        50037
+      ],
+      "nodes": 113
+    }
+  },
+  "vocabulary": {
+    "control_types_resolving_to_unknown": [
+      "50025"
+    ],
+    "identifier_coverage_rule": "non-blank, matching IdentifierEvidence::typed - not merely present",
+    "interactive_roles_produced": [
+      "button",
+      "listbox",
+      "menubutton",
+      "menuitem",
+      "option",
+      "radiobutton",
+      "tab",
+      "textfield",
+      "treeitem"
+    ],
+    "nodes": 113,
+    "nodes_advertising_an_action": 98,
+    "nodes_carrying_a_state": 49,
+    "non_blank_automation_id": 49,
+    "non_blank_name": 91,
+    "resolved_to_a_role": 112
+  },
+  "walk": {
+    "cycles_skipped": 0,
+    "enumeration_failures": 0,
+    "nodes_observed": 113,
+    "structurally_complete": true
+  }
+}
