@@ -334,6 +334,13 @@ jobs:
       - name: Core and Windows unit tests
         run: cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
 
+      # The census example carries the redaction rule that keeps a real
+      # application's text out of a committed capture, and a --lib run does not
+      # execute tests inside examples/. Without this step that guard exists but
+      # never fires on the runner.
+      - name: Windows example tests
+        run: cargo test --locked -p agent-desktop-windows --examples
+
       - name: Binary command tests
         run: cargo test --locked -p agent-desktop
 

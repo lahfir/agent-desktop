@@ -3,8 +3,8 @@
 ///
 /// The numbering is deliberately absent here. A2-5 measured that UIA property
 /// ids are build-specific - `IsAnnotationPatternAvailable` is 30118 on build
-/// 17763 while 30113 is a different property - and named 2.2 as the place a
-/// hand-written table would fail silently. Every id comes from the crate's
+/// 17763 while 30113 is a different property - and named this module as the
+/// place a hand-written table would fail silently. Every id comes from the crate's
 /// generated constants through the mapping below.
 ///
 /// Pattern-derived state is read here as ordinary properties. UIA exposes
@@ -65,9 +65,13 @@ impl TreeProperty {
     ///
     /// `LabeledBy` is not here and is not an omission: it yields an *element*,
     /// not text, so there is no content on this element to withhold. The text
-    /// derived from it is guarded at both ends in `name_evidence.rs` - the
-    /// referring element's own `IsPassword`, and the target's, which A15-2
-    /// measured as a reachable case rather than a hypothetical one.
+    /// derived from it is guarded in `name_evidence.rs`, on the target side -
+    /// `read_label`'s `is_secure` check on the label target's own
+    /// `IsPassword` - which A15-2 measured as a reachable case rather than a
+    /// hypothetical one. The referring element's own `IsPassword` never gates
+    /// it, because the text crosses an element boundary before this element's
+    /// gate runs; that is sufficient, because the text belongs to the label
+    /// target, not to this element.
     pub const VALUE_BEARING: [TreeProperty; 6] = [
         TreeProperty::Name,
         TreeProperty::HelpText,
@@ -81,7 +85,7 @@ impl TreeProperty {
     /// carries. Nothing else is requested, so nothing unread is paid for.
     ///
     /// **The set is flat, and that is a measured decision rather than a
-    /// default.** A15-11 measured the expanded set against 2.2's ten
+    /// default.** A15-11 measured the expanded set against the previous ten
     /// properties on the same walk: 1.22x on the in-process Win32 proxy at 20
     /// nodes, 1.98x on a real out-of-process WPF provider at 81 nodes, min of
     /// seven repeats after a discarded warm-up. That is materially slower, so
@@ -156,6 +160,65 @@ impl TreeProperty {
 
     pub fn is_value_bearing(self) -> bool {
         Self::VALUE_BEARING.contains(&self)
+    }
+
+    /// Whether this property's value is text read out of the target element,
+    /// declared independently of `VALUE_BEARING`.
+    ///
+    /// An exhaustive match with no catch-all arm: adding a variant is a
+    /// compile error here rather than a silent `false`, which is what let a
+    /// hand-maintained duplicate of `VALUE_BEARING` miss a text property that
+    /// reached `WALK_SET` without joining either list. `is_value_bearing()`
+    /// must be `true` for every property this returns `true` for -
+    /// `property_ids_tests.rs` asserts the agreement across the whole enum,
+    /// not only `WALK_SET`, so it holds before a property is ever added to
+    /// the walk.
+    pub fn carries_target_text(self) -> bool {
+        match self {
+            TreeProperty::Name
+            | TreeProperty::HelpText
+            | TreeProperty::FullDescription
+            | TreeProperty::Value
+            | TreeProperty::LegacyValue
+            | TreeProperty::LegacyDefaultAction => true,
+            TreeProperty::AutomationId
+            | TreeProperty::ClassName
+            | TreeProperty::LabeledBy
+            | TreeProperty::BoundingRectangle
+            | TreeProperty::IsPassword
+            | TreeProperty::IsOffscreen
+            | TreeProperty::IsEnabled
+            | TreeProperty::IsControlElement
+            | TreeProperty::IsContentElement
+            | TreeProperty::IsKeyboardFocusable
+            | TreeProperty::HasKeyboardFocus
+            | TreeProperty::IsRequiredForForm
+            | TreeProperty::IsDataValidForForm
+            | TreeProperty::IsDialog
+            | TreeProperty::ToggleState
+            | TreeProperty::ExpandCollapseState
+            | TreeProperty::SelectionItemIsSelected
+            | TreeProperty::ValueIsReadOnly
+            | TreeProperty::SelectionCanSelectMultiple
+            | TreeProperty::WindowIsModal
+            | TreeProperty::LegacyState
+            | TreeProperty::InvokeAvailable
+            | TreeProperty::ToggleAvailable
+            | TreeProperty::ExpandCollapseAvailable
+            | TreeProperty::SelectionItemAvailable
+            | TreeProperty::SelectionAvailable
+            | TreeProperty::ValueAvailable
+            | TreeProperty::RangeValueAvailable
+            | TreeProperty::ScrollAvailable
+            | TreeProperty::ScrollItemAvailable
+            | TreeProperty::WindowAvailable
+            | TreeProperty::GridItemAvailable
+            | TreeProperty::TableItemAvailable
+            | TreeProperty::LegacyAvailable
+            | TreeProperty::ProviderDescription
+            | TreeProperty::ControlType
+            | TreeProperty::RuntimeId => false,
+        }
     }
 
     /// Whether the property's value is an element rather than a scalar.

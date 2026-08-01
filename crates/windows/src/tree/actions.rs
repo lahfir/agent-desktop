@@ -69,7 +69,7 @@ pub fn resolve_actions(properties: &ElementProperties) -> LocatorField<Vec<Strin
         push_unique(&mut actions, capability::SELECT);
     }
     if properties.is_true(TreeProperty::ValueAvailable)
-        && !properties.is_true(TreeProperty::ValueIsReadOnly)
+        && properties.gated_flag(TreeProperty::ValueIsReadOnly) == Some(false)
     {
         push_unique(&mut actions, capability::SET_VALUE);
     }

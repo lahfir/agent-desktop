@@ -24,6 +24,16 @@ pub fn control_type_census(nodes: &[Value]) -> Value {
     )
 }
 
+/// The four "how much of this row's identity evidence is non-blank" counters,
+/// grouped so `Row` stays under the project's field-count cap.
+#[derive(Default)]
+struct Coverage {
+    automation_id: usize,
+    name: usize,
+    description: usize,
+    label: usize,
+}
+
 #[derive(Default)]
 struct Row {
     nodes: usize,
@@ -31,10 +41,7 @@ struct Row {
     roles: BTreeSet<String>,
     action_lists: BTreeSet<String>,
     state_tokens: BTreeSet<String>,
-    with_automation_id: usize,
-    with_name: usize,
-    with_description: usize,
-    with_label: usize,
+    coverage: Coverage,
 }
 
 impl Row {
@@ -49,10 +56,10 @@ impl Row {
                 self.state_tokens.insert(token.to_string());
             }
         }
-        self.with_automation_id += usize::from(is_present(&node["automation_id"]));
-        self.with_name += usize::from(is_present(&node["name"]));
-        self.with_description += usize::from(is_present(&node["description"]));
-        self.with_label += usize::from(node["labelled"].as_bool().unwrap_or(false));
+        self.coverage.automation_id += usize::from(is_present(&node["automation_id"]));
+        self.coverage.name += usize::from(is_present(&node["name"]));
+        self.coverage.description += usize::from(is_present(&node["description"]));
+        self.coverage.label += usize::from(node["labelled"].as_bool().unwrap_or(false));
     }
 
     fn render(self, control_type: &str) -> Value {
@@ -63,17 +70,17 @@ impl Row {
             "class_names": self.class_names.into_iter().collect::<Vec<_>>(),
             "action_lists": self.action_lists.into_iter().collect::<Vec<_>>(),
             "state_tokens": self.state_tokens.into_iter().collect::<Vec<_>>(),
-            "with_non_blank_automation_id": self.with_automation_id,
-            "with_non_blank_name": self.with_name,
-            "with_description": self.with_description,
-            "with_label_relation": self.with_label,
+            "with_non_blank_automation_id": self.coverage.automation_id,
+            "with_non_blank_name": self.coverage.name,
+            "with_description": self.coverage.description,
+            "with_label_relation": self.coverage.label,
         })
     }
 }
 
 /// Whether a presence-and-length slot recorded actual content.
 ///
-/// The rule is **non-blank**, not merely present. 2.2's census counted
+/// The rule is **non-blank**, not merely present. An earlier census counted
 /// `automation_id != "<absent>"`, so a `Known("")` counted toward coverage -
 /// which overstates it and is not comparable with A7-1's measured percentages.
 /// This matches `element_properties.rs`'s own blank filter and

@@ -136,7 +136,7 @@ mod imp {
     /// text field, everything else stays a document.
     fn document_role(properties: &ElementProperties) -> Role {
         if properties.is_true(TreeProperty::ValueAvailable)
-            && !properties.is_true(TreeProperty::ValueIsReadOnly)
+            && properties.gated_flag(TreeProperty::ValueIsReadOnly) == Some(false)
         {
             Role::TextField
         } else {

@@ -90,27 +90,82 @@ fn the_gate_covers_exactly_the_properties_whose_content_comes_from_the_target() 
 }
 
 /// Every property whose value is text read out of the target is gated,
-/// checked against the read set rather than against a second hand-maintained
-/// list - a text property added to the walk without joining the gate is the
-/// leak the secure-field gate exists to prevent, and it would otherwise be
-/// invisible until a password reached a trace export.
+/// checked against `carries_target_text()` - the property's own declaration -
+/// rather than against a second hand-maintained list. A hand list that
+/// happened to duplicate `VALUE_BEARING` let a text property added to
+/// `WALK_SET` without joining either list escape both this test and the
+/// secure-field gate, invisible until a password reached a trace export.
+/// `carries_target_text()` is an exhaustive match with no catch-all arm, so a
+/// new variant forces a compile-time decision instead of a silent `false`.
 #[test]
 fn no_text_property_reaches_the_walk_without_joining_the_gate() {
-    let text_properties = [
-        TreeProperty::Name,
-        TreeProperty::HelpText,
-        TreeProperty::FullDescription,
-        TreeProperty::Value,
-        TreeProperty::LegacyValue,
-        TreeProperty::LegacyDefaultAction,
-    ];
     for property in TreeProperty::WALK_SET {
-        if !text_properties.contains(&property) {
+        if !property.carries_target_text() {
             continue;
         }
         assert!(
             property.is_value_bearing(),
             "{} carries target-authored text into evidence without the secure gate",
+            property.as_str()
+        );
+    }
+}
+
+/// `carries_target_text()` and `is_value_bearing()` are two independent
+/// declarations of the same fact - one on the property itself, one in
+/// `VALUE_BEARING` - and a property that carries target text must be
+/// value-bearing regardless of whether the walk currently reads it, so this
+/// checks the whole enum rather than only `WALK_SET`.
+#[test]
+fn carries_target_text_implies_value_bearing_across_every_property() {
+    for property in [
+        TreeProperty::Name,
+        TreeProperty::AutomationId,
+        TreeProperty::ClassName,
+        TreeProperty::HelpText,
+        TreeProperty::FullDescription,
+        TreeProperty::LabeledBy,
+        TreeProperty::Value,
+        TreeProperty::LegacyValue,
+        TreeProperty::BoundingRectangle,
+        TreeProperty::IsPassword,
+        TreeProperty::IsOffscreen,
+        TreeProperty::IsEnabled,
+        TreeProperty::IsControlElement,
+        TreeProperty::IsContentElement,
+        TreeProperty::IsKeyboardFocusable,
+        TreeProperty::HasKeyboardFocus,
+        TreeProperty::IsRequiredForForm,
+        TreeProperty::IsDataValidForForm,
+        TreeProperty::IsDialog,
+        TreeProperty::ToggleState,
+        TreeProperty::ExpandCollapseState,
+        TreeProperty::SelectionItemIsSelected,
+        TreeProperty::ValueIsReadOnly,
+        TreeProperty::SelectionCanSelectMultiple,
+        TreeProperty::WindowIsModal,
+        TreeProperty::LegacyState,
+        TreeProperty::LegacyDefaultAction,
+        TreeProperty::InvokeAvailable,
+        TreeProperty::ToggleAvailable,
+        TreeProperty::ExpandCollapseAvailable,
+        TreeProperty::SelectionItemAvailable,
+        TreeProperty::SelectionAvailable,
+        TreeProperty::ValueAvailable,
+        TreeProperty::RangeValueAvailable,
+        TreeProperty::ScrollAvailable,
+        TreeProperty::ScrollItemAvailable,
+        TreeProperty::WindowAvailable,
+        TreeProperty::GridItemAvailable,
+        TreeProperty::TableItemAvailable,
+        TreeProperty::LegacyAvailable,
+        TreeProperty::ProviderDescription,
+        TreeProperty::ControlType,
+        TreeProperty::RuntimeId,
+    ] {
+        assert!(
+            !property.carries_target_text() || property.is_value_bearing(),
+            "{} carries target text by its own declaration but is missing from VALUE_BEARING",
             property.as_str()
         );
     }
@@ -148,8 +203,8 @@ fn every_property_resolves_through_the_crate_generated_constants() {
     let _ = uia_property(TreeProperty::RuntimeId);
 }
 
-/// A2-5 measured that UIA property ids are build-specific and named 2.2 as
-/// the place a hand-written table would fail silently, so the source must
+/// A2-5 measured that UIA property ids are build-specific and named this
+/// module as the place a hand-written table would fail silently, so the source must
 /// contain no bare property-id integer.
 ///
 /// Matched as a whole token in the range UIA actually uses, not as the
@@ -161,6 +216,17 @@ fn no_property_id_integer_appears_in_this_module() {
         ("property_ids.rs", include_str!("property_ids.rs")),
         ("properties.rs", include_str!("properties.rs")),
         ("cache.rs", include_str!("cache.rs")),
+        (
+            "element_properties.rs",
+            include_str!("element_properties.rs"),
+        ),
+        ("roles.rs", include_str!("roles.rs")),
+        ("actions.rs", include_str!("actions.rs")),
+        ("states.rs", include_str!("states.rs")),
+        ("name_evidence.rs", include_str!("name_evidence.rs")),
+        ("property_outcome.rs", include_str!("property_outcome.rs")),
+        ("walker.rs", include_str!("walker.rs")),
+        ("walker_source.rs", include_str!("walker_source.rs")),
     ] {
         for (number, line) in source.lines().enumerate() {
             let trimmed = line.trim_start();

@@ -33,6 +33,8 @@ The closed set of state tokens a node may carry, defined by core's `STATE_VOCABU
 
 Adapters emit only members of it, and a membership assertion is paired with a negative control so it cannot pass vacuously. A token is emitted only where the platform evidenced it: where a platform has no source for a reserved token, the token stays unproduced rather than defaulted. Emitting from an ungated source is the characteristic failure here — a property that reports a plausible value on an element whose provider never implemented the underlying pattern will decorate every inert node in the tree with states it does not have.
 
+A role mapping can put a reserved token permanently out of reach on one platform without the token itself being wrong. The same logical control — a toggle button — surfaces as `role: button` with state `pressed` on macOS, because macOS keeps the control's role as `button` and reads its toggle value as `pressed`. Windows resolves the identical control to `role: switch` with state `checked` instead, because Windows reclassifies any `Button` control type that advertises toggle support to `switch` before states resolve, so the `role == button` precondition a `pressed` arm would need can never hold there. `pressed` therefore stays unproduced on Windows, deliberately, and the two adapters disagree on both the role and the state token for the same UI. This is a known, deliberate divergence for the current phase, not a bug — the cross-platform convergence question is owned by the Hardening & Integration Review sub-phase in `docs/phases.md`.
+
 ### Name Evidence
 The raw slots an adapter supplies so that **core**, not the adapter, computes the accessible name.
 

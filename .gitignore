@@ -86,6 +86,8 @@ docs/*
 !docs/solutions/**
 !docs/plans/
 !docs/plans/**
+!docs/dogfood-reports/
+!docs/dogfood-reports/**
 !docs/brainstorms/
 !docs/brainstorms/**
 

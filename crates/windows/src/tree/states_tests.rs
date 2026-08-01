@@ -79,13 +79,6 @@ fn representative_cases() -> Vec<(Vec<(TreeProperty, PropertyOutcome)>, &'static
         ),
         (
             vec![
-                flag(TreeProperty::ToggleAvailable, true),
-                number(TreeProperty::ToggleState, 1),
-            ],
-            "button",
-        ),
-        (
-            vec![
                 flag(TreeProperty::ExpandCollapseAvailable, true),
                 number(TreeProperty::ExpandCollapseState, 1),
             ],
@@ -221,18 +214,28 @@ fn toggle_state_on_non_toggleable_role_emits_no_checked() {
     assert!(!states.contains(&state::PRESSED.to_string()));
 }
 
+/// `pressed` has no reachable source: `push_toggle_state`'s dead arm for
+/// `role == "button"` was removed because `roles.rs` reclassifies any
+/// toggle-available `Button` to `switch` before states resolve, so a
+/// `button` role reaching this producer has never advertised
+/// `ToggleAvailable` and never carries a `ToggleState` to read. See
+/// `resolve_states`'s doc comment for the full reasoning. This is the
+/// regression test for that guarantee across both toggle values the
+/// pattern defines.
 #[test]
-fn toggle_state_on_with_button_role_emits_pressed_not_checked() {
-    let states = resolved(
-        vec![
-            flag(TreeProperty::ToggleAvailable, true),
-            number(TreeProperty::ToggleState, 1),
-        ],
-        "button",
-    );
+fn pressed_is_unproduced_for_a_button_role_at_any_toggle_state() {
+    for toggle in [1, 2] {
+        let states = resolved(
+            vec![
+                flag(TreeProperty::ToggleAvailable, true),
+                number(TreeProperty::ToggleState, toggle),
+            ],
+            "button",
+        );
 
-    assert!(states.contains(&state::PRESSED.to_string()));
-    assert!(!states.contains(&state::CHECKED.to_string()));
+        assert!(!states.contains(&state::PRESSED.to_string()));
+        assert!(!states.contains(&state::CHECKED.to_string()));
+    }
 }
 
 /// The regression test for the defect the dogfood run found, and the reason

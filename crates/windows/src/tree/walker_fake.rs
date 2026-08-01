@@ -20,6 +20,14 @@ pub(crate) const EXHAUSTION: UiaFailure = UiaFailure::Sentinel(ERR_NONE);
 pub(crate) const E_FAIL: i32 = 0x8000_4005_u32 as i32;
 pub(crate) const REAL_FAILURE: UiaFailure = UiaFailure::Hresult(E_FAIL);
 
+/// The nodes on which each enumeration step should fail rather than answer,
+/// grouped so `FakeTree` itself stays under the struct field cap.
+#[derive(Default)]
+struct EnumerationFaults {
+    first_child: HashSet<i32>,
+    next_sibling: HashSet<i32>,
+}
+
 /// An in-memory enumerator that answers on the same trait the live UI
 /// Automation walker implements, so the correctness branches these tests drive
 /// are the branches that ship.
@@ -30,8 +38,7 @@ pub(crate) struct FakeTree {
     alias: HashMap<i32, i32>,
     unkeyed: HashSet<i32>,
     wrappers: HashSet<i32>,
-    first_child_faults: HashSet<i32>,
-    next_sibling_faults: HashSet<i32>,
+    faults: EnumerationFaults,
     reads: HashMap<i32, Vec<(TreeProperty, PropertyOutcome)>>,
 }
 
@@ -83,12 +90,12 @@ impl FakeTree {
     }
 
     pub(crate) fn faulting_on_first_child(mut self, node: i32) -> Self {
-        self.first_child_faults.insert(node);
+        self.faults.first_child.insert(node);
         self
     }
 
     pub(crate) fn faulting_on_next_sibling(mut self, node: i32) -> Self {
-        self.next_sibling_faults.insert(node);
+        self.faults.next_sibling.insert(node);
         self
     }
 
@@ -108,14 +115,14 @@ impl TreeSource for FakeTree {
     type Node = i32;
 
     fn first_child(&self, node: &i32) -> Result<i32, UiaFailure> {
-        if self.first_child_faults.contains(node) {
+        if self.faults.first_child.contains(node) {
             return Err(REAL_FAILURE);
         }
         self.first.get(node).copied().ok_or(EXHAUSTION)
     }
 
     fn next_sibling(&self, node: &i32) -> Result<i32, UiaFailure> {
-        if self.next_sibling_faults.contains(node) {
+        if self.faults.next_sibling.contains(node) {
             return Err(REAL_FAILURE);
         }
         self.next.get(node).copied().ok_or(EXHAUSTION)

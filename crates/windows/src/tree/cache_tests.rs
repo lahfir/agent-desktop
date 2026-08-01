@@ -168,7 +168,7 @@ mod windows_only {
 
     /// `ElementMode::Full` keeps the element bound to the live UI, so a live
     /// getter still works after a cached read. `ElementMode::None` would
-    /// break every action command from 2.6 onward.
+    /// break every command that acts on an element read from the cache.
     #[test]
     fn live_getters_still_work_after_a_cached_read() {
         bootstrap();

@@ -155,9 +155,7 @@ impl ElementProperties {
     }
 
     /// Projects the read set onto the evidence slot shape core consumes, so
-    /// 2.4 needs no translation layer.
-    ///
-    /// Projects the read set onto core's evidence slots.
+    /// the consumer needs no translation layer.
     ///
     /// Every interpreted slot is resolved by a vocabulary module from this
     /// same read set and threaded in by the caller, so this stays a projection

@@ -200,6 +200,31 @@ fn checkbox_advertising_toggle_stays_checkbox_not_switch() {
     );
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn a_failed_read_only_read_resolves_document_not_textfield() {
+    assert_eq!(
+        role_of(
+            ControlType::Document,
+            vec![
+                flag(TreeProperty::ValueAvailable, true),
+                (TreeProperty::ValueIsReadOnly, PropertyOutcome::Unknown),
+            ]
+        ),
+        "document"
+    );
+    assert_eq!(
+        role_of(
+            ControlType::Document,
+            vec![
+                flag(TreeProperty::ValueAvailable, true),
+                flag(TreeProperty::ValueIsReadOnly, false),
+            ]
+        ),
+        "textfield"
+    );
+}
+
 #[test]
 fn an_unrecognized_control_type_id_yields_unknown_role_not_a_failed_read() {
     let properties = ElementProperties::from_reads(vec![(

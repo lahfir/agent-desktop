@@ -50,6 +50,25 @@ const READ_HEALTH_PROBES: [TreeProperty; 6] = [
 /// it is not read at all and `invalid` stays unproduced rather than faked -
 /// the correct outcome for a token whose platform source turns out unusable.
 ///
+/// # `pressed` is deliberately unproduced, and the role mapping is why
+///
+/// Microsoft's ARIA state table pairs `pressed` with the same `ToggleState`
+/// source `checked` reads, and macOS's `state_reader.rs` genuinely emits
+/// `pressed` for that same logical control - a toggle button. Windows cannot
+/// reach that arm: `roles.rs`'s `button_role` reclassifies any `Button`
+/// control type that advertises `ToggleAvailable` to `Role::Switch` before
+/// states resolve, so a node whose role has reached this function as
+/// `"button"` has, by construction, never advertised `ToggleAvailable` and so
+/// never carries a `ToggleState` to read. The precondition a `pressed` arm
+/// would need - `role == "button"` alongside a live toggle value - cannot
+/// hold on this stack. That is a different reason than `invalid`'s: not an
+/// unusable source, but a role vocabulary the producer can never see because
+/// an earlier stage has already claimed it for `switch`. The same logical
+/// control therefore surfaces as `button` + `pressed` on macOS and `switch` +
+/// `checked` on Windows. That divergence is deliberate; see `CONCEPTS.md`'s
+/// State Vocabulary entry and `docs/phases.md`'s Hardening & Integration
+/// Review scope for the owning decision.
+///
 /// # Known vs Unknown
 /// `LocatorField::Unknown` is returned only when every [`READ_HEALTH_PROBES`]
 /// source came back `PropertyOutcome::Unknown` too - the shape a property
@@ -112,11 +131,11 @@ fn read_health_failed(properties: &ElementProperties) -> bool {
         .all(|property| matches!(properties.get(*property), PropertyOutcome::Unknown))
 }
 
-/// `ToggleState`, role-gated exactly as macOS's `state_reader.rs` gates the
-/// same source: `checked`/`indeterminate` only on a toggleable role, and
-/// `pressed` instead of `checked` on a `button` role. The two checks are
-/// independent, mirroring `state_reader.rs:35-41` and `:57-59`, because a
-/// role is never both at once.
+/// `ToggleState`, role-gated exactly as macOS's `state_reader.rs:35-41` gates
+/// the same source for `checked`/`indeterminate` on a toggleable role.
+/// `state_reader.rs:57-59`'s sibling `pressed` arm has no counterpart here;
+/// see `resolve_states`'s doc comment for why the role that arm needs can
+/// never reach this function.
 fn push_toggle_state(properties: &ElementProperties, role: &str, states: &mut Vec<String>) {
     let Some(toggle) = properties.gated_number(TreeProperty::ToggleState) else {
         return;
@@ -127,9 +146,6 @@ fn push_toggle_state(properties: &ElementProperties, role: &str, states: &mut Ve
             TOGGLE_STATE_INDETERMINATE => states.push(state::INDETERMINATE.to_string()),
             _ => {}
         }
-    }
-    if role == "button" && toggle == TOGGLE_STATE_ON {
-        states.push(state::PRESSED.to_string());
     }
 }
 

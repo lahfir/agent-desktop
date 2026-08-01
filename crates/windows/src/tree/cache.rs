@@ -89,7 +89,8 @@ mod imp {
     ///
     /// `ElementMode::Full` always: with `AutomationElementMode_None` a client
     /// has no access to uncached properties or control patterns and cannot
-    /// invoke an action, which would break every command from 2.6 onward.
+    /// invoke an action, which would break every command that acts on the
+    /// element afterward.
     ///
     /// The scope includes `TreeScope::Element`, because the scope is relative
     /// to the element the call returns and omitting `Element` silently fails

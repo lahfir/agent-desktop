@@ -77,8 +77,9 @@ fn evidence_of(properties: &ElementProperties, label: &LabelOutcome) -> NameEvid
 /// does not pick between them; Microsoft documents `FullDescription` as the
 /// extended description and `HelpText` as a brief one, so the richer source
 /// wins and the other backs it up. `HelpText` never doubles as a placeholder:
-/// `placeholder` is 2.4's evidence field, and a property serving two slots is
-/// how the same string ends up reported twice under different names.
+/// `placeholder` is a separate evidence field this module does not fill, and
+/// a property serving two slots is how the same string ends up reported
+/// twice under different names.
 fn description_of(properties: &ElementProperties) -> Option<String> {
     text_of(properties.get(TreeProperty::FullDescription))
         .or_else(|| text_of(properties.get(TreeProperty::HelpText)))
@@ -121,12 +122,17 @@ fn label_slot(properties: &ElementProperties, label: &LabelOutcome) -> SlotStatu
     }
 }
 
-/// The description slot is uncertain only when **both** its sources failed:
-/// either one reading successfully is a real answer about the element.
+/// A `Known` source outranks an `Unknown` one: one property answering is a
+/// real answer about the element, even if the other read failed. Only once
+/// neither source produced a value does a failed read matter - and then it
+/// must cloud the slot rather than let a provider that definitively has
+/// nothing (both `Absent`) look the same as a read that simply broke.
 fn description_slot(properties: &ElementProperties) -> SlotStatus {
     let full = properties.get(TreeProperty::FullDescription);
     let help = properties.get(TreeProperty::HelpText);
-    if matches!(full, PropertyOutcome::Unknown) && matches!(help, PropertyOutcome::Unknown) {
+    if matches!(full, PropertyOutcome::Known(_)) || matches!(help, PropertyOutcome::Known(_)) {
+        SlotStatus::Certain
+    } else if matches!(full, PropertyOutcome::Unknown) || matches!(help, PropertyOutcome::Unknown) {
         SlotStatus::Uncertain
     } else {
         SlotStatus::Certain
@@ -140,9 +146,36 @@ fn slot_of(outcome: PropertyOutcome) -> SlotStatus {
     }
 }
 
+/// The cross-element secure gate, as a decision on plain values.
+///
+/// A label's text crosses an element boundary: the referring element's own
+/// per-element secure gate never sees it, because the content came from a
+/// different element's `Name`. This function is the only thing standing
+/// between a secure target's text and a different, non-secure element's
+/// published name, so it is kept free of COM types and given its own tests -
+/// including one that proves the secure branch is load-bearing by removing
+/// it and watching a test fail.
+fn label_from_target(target_is_secure: bool, target_name: Result<String, ()>) -> LabelOutcome {
+    if target_is_secure {
+        return LabelOutcome::Withheld;
+    }
+    match target_name {
+        Err(()) => LabelOutcome::Failed,
+        Ok(text) if text.trim().is_empty() => LabelOutcome::Unlabelled,
+        Ok(text) => LabelOutcome::Text(text),
+    }
+}
+
+/// The fail-closed policy behind the target's `IsPassword` read: a property
+/// that could not be read is not evidence the target is safe, so it is
+/// treated the same as a confirmed secure target.
+fn secure_from_read(read: Result<bool, ()>) -> bool {
+    read.unwrap_or(true)
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::LabelOutcome;
+    use super::{LabelOutcome, label_from_target, secure_from_read};
     use crate::tree::element::UIAElement;
     use crate::tree::property_ids::{TreeProperty, uia_property};
     use uiautomation::UIElement;
@@ -159,9 +192,8 @@ mod imp {
     /// read live, for the labelled nodes alone. On the WPF fixture that is two
     /// of forty-six.
     ///
-    /// The target's `IsPassword` is checked here rather than left to the
-    /// referring element's gate: the text crosses an element boundary, so the
-    /// per-element gate never sees it. A15-2 measured that case as real.
+    /// The COM reads happen here; the policy on what they mean lives in
+    /// `label_from_target`, which this function only calls.
     pub fn read_label(element: &UIAElement, cached: bool) -> LabelOutcome {
         let property = uia_property(TreeProperty::LabeledBy);
         let variant = if cached {
@@ -175,26 +207,22 @@ mod imp {
         let Some(target) = element_of(&variant) else {
             return LabelOutcome::Unlabelled;
         };
-        if is_secure(&target) {
-            return LabelOutcome::Withheld;
-        }
-        match target.get_property_value(uia_property(TreeProperty::Name)) {
-            Err(_) => LabelOutcome::Failed,
-            Ok(name) => match name.get_string() {
-                Err(_) => LabelOutcome::Failed,
-                Ok(text) if text.trim().is_empty() => LabelOutcome::Unlabelled,
-                Ok(text) => LabelOutcome::Text(text),
-            },
-        }
+        label_from_target(is_secure(&target), read_name(&target))
     }
 
-    /// Fails closed, exactly as the per-element gate does: a target whose
-    /// `IsPassword` could not be read is not evidence it is safe to publish.
+    fn read_name(target: &UIElement) -> Result<String, ()> {
+        target
+            .get_property_value(uia_property(TreeProperty::Name))
+            .map_err(|_| ())
+            .and_then(|name| name.get_string().map_err(|_| ()))
+    }
+
     fn is_secure(target: &UIElement) -> bool {
-        match target.get_property_value(uia_property(TreeProperty::IsPassword)) {
-            Err(_) => true,
-            Ok(variant) => !matches!(variant.get_value(), Ok(Value::BOOL(false))),
-        }
+        let read = match target.get_property_value(uia_property(TreeProperty::IsPassword)) {
+            Err(_) => Err(()),
+            Ok(variant) => Ok(!matches!(variant.get_value(), Ok(Value::BOOL(false)))),
+        };
+        secure_from_read(read)
     }
 
     fn element_of(variant: &Variant) -> Option<UIElement> {

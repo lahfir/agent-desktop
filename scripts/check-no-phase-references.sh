@@ -42,6 +42,35 @@ run_check '[Pp]hase[[:space:]]+[0-9]' 'phase number reference' || failed=1
 run_check 'KTD[0-9]' 'plan decision id' || failed=1
 run_check '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id' || failed=1
 
+# A bare "2.4" is the same reference with the word filed off, and the checks
+# above cannot see it. It cannot simply be banned: doc comments legitimately
+# carry version numbers (`v0.5.0`, `pre-1.0`, a `"version":"2.1"` envelope
+# literal) and measured ratios (`1.35x`, `sub-1.0`). Those shapes are stripped
+# from the line first, and whatever bare `N.N` survives is a plan reference.
+#
+# Scoped to doc comments, because outside them `0.0` and `1.0` are float
+# literals and there are hundreds of them.
+bare_reference_check() {
+    local matches
+    matches="$(
+        grep -rnE --include='*.rs' '^[[:space:]]*(///|//!)' crates src 2>/dev/null |
+            sed -E 's#\bv[0-9]+\.[0-9]+(\.[0-9]+)?##g;
+                    s#\b[0-9]+\.[0-9]+(\.[0-9]+)+##g;
+                    s#[-[:alnum:]]-[0-9]+\.[0-9]+##g;
+                    s#\b[0-9]+\.[0-9]+x##g;
+                    s#"[0-9]+\.[0-9]+"##g' |
+            grep -E '\b[0-9]\.[0-9]{1,2}\b' || true
+    )"
+    if [ -n "$matches" ]; then
+        printf '%s\n' "$matches" >&2
+        printf '  ^ bare plan reference (a sub-phase number) - name the thing, not the slice of roadmap that shipped it\n\n' >&2
+        return 1
+    fi
+    return 0
+}
+
+bare_reference_check || failed=1
+
 if [ "$failed" -ne 0 ]; then
     printf 'Shipped source must not reference the delivery plan.\n' >&2
     printf 'Rewrite the comment so it explains the code, not the roadmap.\n' >&2

@@ -288,11 +288,11 @@ const STALL_POLL: std::time::Duration = std::time::Duration::from_millis(25);
 
 /// Creates a window and then deliberately never pumps its queue.
 ///
-/// The 2.2 plan records "whether a non-pumping target produces a clean timeout
-/// or a hang is unverified, and the fixture cannot produce the condition". It
-/// can: `CreateWindowExW` dispatches `WM_CREATE` inline, so a thread can own a
-/// live window and then stop dispatching. That makes the resolver's pump probe
-/// testable instead of assumed.
+/// Whether a non-pumping target produces a clean timeout or a hang was
+/// treated as unverifiable, on the assumption that the fixture cannot
+/// produce the condition. It can: `CreateWindowExW` dispatches `WM_CREATE`
+/// inline, so a thread can own a live window and then stop dispatching.
+/// That makes the resolver's pump probe testable instead of assumed.
 pub(crate) fn stalled_window(
     class_name: &str,
     ready: Sender<Result<isize, String>>,

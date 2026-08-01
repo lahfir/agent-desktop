@@ -9,7 +9,7 @@ use agent_desktop_windows::tree::properties::{PropertyOutcome, PropertyValue};
 use serde_json::{Value, json};
 
 /// Substituted for every run-varying host value, matching the placeholders the
-/// 2.0 captures already use.
+/// earlier committed captures already use.
 const REDACTED_PID: &str = "<pid>";
 const REDACTED_PROVIDER: &str = "<providerid>";
 const REDACTED_PATH: &str = "<userprofile>";
@@ -136,5 +136,71 @@ pub fn role_of(field: &LocatorField<String>) -> Value {
         LocatorField::Known(role) => json!(role),
         LocatorField::Absent => json!("<absent>"),
         LocatorField::Unknown => json!("<unknown>"),
+    }
+}
+
+/// Regression gate for the redaction rule this module exists to enforce.
+///
+/// Nothing else in `examples/uia_tree_dump` asserts that a value-bearing
+/// renderer withholds its input rather than rendering it verbatim, so a
+/// revert of one property from `text_presence`/`field_presence` back to
+/// `slot()` would otherwise pass CI while writing real application text into
+/// a committed capture.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MARKER: &str = "ZZ-CENSUS-LEAK-MARKER-do-not-serialize-1234567";
+
+    #[test]
+    fn text_presence_never_renders_the_value() {
+        let outcome = PropertyOutcome::Known(PropertyValue::Text(MARKER.to_string()));
+
+        let rendered = text_presence(&outcome);
+
+        assert!(
+            !rendered.to_string().contains(MARKER),
+            "text_presence leaked its input: {rendered}"
+        );
+        assert_eq!(
+            rendered,
+            json!({ "present": true, "chars": MARKER.chars().count() })
+        );
+    }
+
+    #[test]
+    fn field_presence_never_renders_the_value() {
+        let field = LocatorField::Known(MARKER.to_string());
+
+        let rendered = field_presence(&field);
+
+        assert!(
+            !rendered.to_string().contains(MARKER),
+            "field_presence leaked its input: {rendered}"
+        );
+        assert_eq!(
+            rendered,
+            json!({ "present": true, "chars": MARKER.chars().count() })
+        );
+    }
+
+    #[test]
+    fn text_presence_keeps_absent_and_unknown_distinct() {
+        let absent = text_presence(&PropertyOutcome::Absent);
+        let unknown = text_presence(&PropertyOutcome::Unknown);
+
+        assert_ne!(absent, unknown);
+        assert_eq!(absent, json!({ "present": false, "outcome": "<absent>" }));
+        assert_eq!(unknown, json!({ "present": false, "outcome": "<unknown>" }));
+    }
+
+    #[test]
+    fn field_presence_keeps_absent_and_unknown_distinct() {
+        let absent = field_presence(&LocatorField::Absent);
+        let unknown = field_presence(&LocatorField::Unknown);
+
+        assert_ne!(absent, unknown);
+        assert_eq!(absent, json!({ "present": false, "outcome": "<absent>" }));
+        assert_eq!(unknown, json!({ "present": false, "outcome": "<unknown>" }));
     }
 }

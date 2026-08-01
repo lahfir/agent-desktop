@@ -177,6 +177,29 @@ fn writable_value_availability_produces_set_value() {
 }
 
 #[test]
+fn a_failed_read_only_read_produces_no_value_setting_action() {
+    let mut reads = inert_reads();
+    reads.retain(|(property, _)| *property != TreeProperty::ValueAvailable);
+    reads.push((TreeProperty::ValueAvailable, known_flag(true)));
+    reads.push((TreeProperty::ValueIsReadOnly, PropertyOutcome::Unknown));
+    let properties = ElementProperties::from_reads(reads);
+
+    let actions = resolve_actions(&properties);
+
+    assert!(!known_actions(&actions).contains(&capability::SET_VALUE.to_string()));
+
+    let mut positive_reads = inert_reads();
+    positive_reads.retain(|(property, _)| *property != TreeProperty::ValueAvailable);
+    positive_reads.push((TreeProperty::ValueAvailable, known_flag(true)));
+    positive_reads.push((TreeProperty::ValueIsReadOnly, known_flag(false)));
+    let positive_properties = ElementProperties::from_reads(positive_reads);
+
+    let positive_actions = resolve_actions(&positive_properties);
+
+    assert!(known_actions(&positive_actions).contains(&capability::SET_VALUE.to_string()));
+}
+
+#[test]
 fn legacy_availability_with_a_non_empty_default_action_contributes_click() {
     let mut reads = inert_reads();
     reads.retain(|(property, _)| *property != TreeProperty::LegacyDefaultAction);

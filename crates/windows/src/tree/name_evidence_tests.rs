@@ -41,6 +41,48 @@ fn description_of(
     name_fields(&reads(entries), label).1
 }
 
+/// The consumer-visible consequence of the `description_slot` rule, pinned at
+/// the boundary rather than only on the helper.
+///
+/// With nothing else to name the element, the description would have *been*
+/// the name. So when its read fails, the honest answer is that the name is
+/// `Unknown` - not `Absent`, which satisfies completeness gating and would let
+/// an element that never answered pass a requirement it never met.
+///
+/// The `Absent`/`Absent` control beside it is what makes this falsifiable: a
+/// provider that definitively has no description still yields an `Absent`
+/// name, so the test cannot pass by making everything `Unknown`.
+#[test]
+fn a_failed_description_read_clouds_the_name_it_would_have_supplied() {
+    let failed = name_of(
+        &[
+            (TreeProperty::Name, text("")),
+            (TreeProperty::FullDescription, PropertyOutcome::Unknown),
+            (TreeProperty::HelpText, PropertyOutcome::Absent),
+        ],
+        &LabelOutcome::Unlabelled,
+    );
+    let answered = name_of(
+        &[
+            (TreeProperty::Name, text("")),
+            (TreeProperty::FullDescription, PropertyOutcome::Absent),
+            (TreeProperty::HelpText, PropertyOutcome::Absent),
+        ],
+        &LabelOutcome::Unlabelled,
+    );
+
+    assert_eq!(
+        failed,
+        LocatorField::Unknown,
+        "a description read that failed was reported as a definitively absent name"
+    );
+    assert_eq!(
+        answered,
+        LocatorField::Absent,
+        "a provider that has no description must still yield an absent name"
+    );
+}
+
 #[test]
 fn the_provider_computed_name_is_the_name() {
     assert_eq!(
@@ -235,4 +277,86 @@ fn secure_content_reaches_no_name_evidence_slot() {
             );
         }
     }
+}
+
+/// This is the gate itself, not the mapping from an already-decided
+/// `LabelOutcome` to no-text. A secure target must never surface its name,
+/// regardless of what that name is.
+#[test]
+fn a_secure_target_withholds_its_name_even_when_the_name_is_readable() {
+    assert_eq!(
+        label_from_target(true, Ok(MARKER.into())),
+        LabelOutcome::Withheld
+    );
+}
+
+#[test]
+fn a_non_secure_target_with_a_readable_name_yields_the_text() {
+    assert_eq!(
+        label_from_target(false, Ok(MARKER.into())),
+        LabelOutcome::Text(MARKER.into())
+    );
+}
+
+#[test]
+fn a_non_secure_target_with_a_blank_name_is_unlabelled() {
+    assert_eq!(
+        label_from_target(false, Ok("   ".into())),
+        LabelOutcome::Unlabelled
+    );
+}
+
+#[test]
+fn a_target_name_read_that_failed_is_reported_as_failed() {
+    assert_eq!(label_from_target(false, Err(())), LabelOutcome::Failed);
+}
+
+/// Pins the fail-closed policy behind `is_secure`: a target's `IsPassword`
+/// that could not be read is not evidence the target is safe, so it is
+/// treated the same as a confirmed secure target.
+#[test]
+fn an_unreadable_is_password_read_is_treated_as_secure() {
+    assert!(secure_from_read(Err(())));
+    assert!(secure_from_read(Ok(true)));
+    assert!(!secure_from_read(Ok(false)));
+}
+
+#[test]
+fn description_slot_is_certain_when_one_source_answered_and_the_other_failed() {
+    let properties = reads(&[
+        (TreeProperty::FullDescription, text("Saves the draft")),
+        (TreeProperty::HelpText, PropertyOutcome::Unknown),
+    ]);
+    assert_eq!(description_slot(&properties), SlotStatus::Certain);
+}
+
+/// The combination that was wrong before the fix: `FullDescription` failed to
+/// read and `HelpText` has nothing. The old logic required both sources to be
+/// `Unknown` before reporting `Uncertain`, so this came back `Certain` - a
+/// failed read reported as a definitive "no description".
+#[test]
+fn description_slot_is_uncertain_when_one_source_failed_and_the_other_is_merely_absent() {
+    let properties = reads(&[
+        (TreeProperty::FullDescription, PropertyOutcome::Unknown),
+        (TreeProperty::HelpText, PropertyOutcome::Absent),
+    ]);
+    assert_eq!(description_slot(&properties), SlotStatus::Uncertain);
+}
+
+#[test]
+fn description_slot_is_uncertain_when_both_sources_failed() {
+    let properties = reads(&[
+        (TreeProperty::FullDescription, PropertyOutcome::Unknown),
+        (TreeProperty::HelpText, PropertyOutcome::Unknown),
+    ]);
+    assert_eq!(description_slot(&properties), SlotStatus::Uncertain);
+}
+
+#[test]
+fn description_slot_is_certain_when_both_sources_are_definitively_absent() {
+    let properties = reads(&[
+        (TreeProperty::FullDescription, PropertyOutcome::Absent),
+        (TreeProperty::HelpText, PropertyOutcome::Absent),
+    ]);
+    assert_eq!(description_slot(&properties), SlotStatus::Certain);
 }
