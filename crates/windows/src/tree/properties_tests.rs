@@ -202,6 +202,82 @@ fn an_absent_automation_id_is_complete_evidence_and_a_failed_read_is_not() {
     assert!(!failed.identifiers.is_complete());
 }
 
+/// `AutomationId` -> `native_id` shipped in 2.2, ahead of the sub-phase that
+/// nominally owned it, and shipped without a test. These pin the three rules
+/// it actually implements, each of which fails when inverted.
+///
+/// A blank id must produce no identifier at all. `IdentifierEvidence::typed`
+/// filters it, so an adapter that stopped filtering would hand every
+/// unidentified element the same empty key and make them mutually
+/// indistinguishable to re-identification.
+#[test]
+fn a_blank_automation_id_produces_no_identifier() {
+    for blank in ["", "   ", "\t"] {
+        let evidence = reads(&[(TreeProperty::AutomationId, text(blank))]).into_locator_evidence(
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+        );
+
+        assert!(
+            evidence.identifiers.preferred_identifier().is_none(),
+            "a blank automation id became an identifier"
+        );
+        assert!(
+            evidence.identifiers.is_complete(),
+            "a provider that answered with a blank id gave a real answer"
+        );
+    }
+}
+
+/// The kind must be `AutomationId` and never `Unknown`: `refs_validate.rs`
+/// hard-rejects a populated `native_id` whose kind is `Unknown`, so an
+/// identifier stamped wrong is one that is silently dropped at persistence.
+#[test]
+fn a_populated_automation_id_carries_its_kind_and_survives_validation() {
+    let evidence = reads(&[(TreeProperty::AutomationId, text("save-button"))])
+        .into_locator_evidence(
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+        );
+
+    let identifier = evidence
+        .identifiers
+        .preferred_identifier()
+        .expect("a populated automation id is the preferred identifier");
+    assert_eq!(identifier.kind, IdentifierKind::AutomationId);
+    assert_ne!(
+        identifier.kind,
+        IdentifierKind::Unknown,
+        "refs_validate rejects a populated native_id whose kind is Unknown"
+    );
+    assert_eq!(identifier.value, "save-button");
+}
+
+/// A failed read is incomplete evidence, not an absent identifier. `Absent`
+/// satisfies completeness gating, so reporting a target that never answered as
+/// "has no id" would let it satisfy requirements it never met.
+#[test]
+fn a_failed_automation_id_read_is_incomplete_evidence_rather_than_an_absent_id() {
+    let failed = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Unknown)])
+        .into_locator_evidence(
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+        );
+    let absent = reads(&[(TreeProperty::AutomationId, PropertyOutcome::Absent)])
+        .into_locator_evidence(
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+            LocatorField::Unknown,
+        );
+
+    assert!(!failed.identifiers.is_complete());
+    assert!(absent.identifiers.is_complete());
+    assert!(failed.identifiers.preferred_identifier().is_none());
+}
+
 /// `IdentifierEvidence::new` stamps `IdentifierKind::Unknown`, which
 /// `refs_validate.rs` treats as no identifier at all; the reader must use
 /// `typed`.

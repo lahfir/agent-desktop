@@ -1,8 +1,198 @@
-use agent_desktop_core::LocatorField;
+use agent_desktop_core::{LocatorField, Role};
 
 use super::properties::ElementProperties;
+use super::property_ids::TreeProperty;
+use super::property_outcome::{PropertyOutcome, PropertyValue};
 
 /// Resolves a canonical role from the read set.
-pub fn resolve_role(_properties: &ElementProperties) -> LocatorField<String> {
-    LocatorField::Unknown
+///
+/// A `ControlType` read that failed keeps its own [`PropertyOutcome::Unknown`]
+/// shape all the way to [`LocatorField::Unknown`] - that is a failed read, not
+/// evidence the element's role is [`Role::Unknown`]. Every other shape a
+/// provider can answer with - a known id, or a read that came back `Absent`
+/// or with a variant this crate does not model as a role source - resolves to
+/// the typed `Role::Unknown`, which is a legitimate, positive answer about
+/// the element rather than a missing one.
+pub fn resolve_role(properties: &ElementProperties) -> LocatorField<String> {
+    match properties.get(TreeProperty::ControlType) {
+        PropertyOutcome::Unknown => LocatorField::Unknown,
+        PropertyOutcome::Known(PropertyValue::Number(id)) => {
+            LocatorField::Known(control_type_role(id, properties).as_str().to_string())
+        }
+        PropertyOutcome::Absent | PropertyOutcome::Known(_) => {
+            LocatorField::Known(Role::Unknown.as_str().to_string())
+        }
+    }
 }
+
+#[cfg(target_os = "windows")]
+mod imp {
+    use agent_desktop_core::Role;
+    use uiautomation::types::ControlType;
+
+    use super::ElementProperties;
+    use super::TreeProperty;
+
+    /// Maps one `ControlType` id to the canonical `Role`, refined by the
+    /// pattern availability this same walk already reads.
+    ///
+    /// An id the crate does not know is not a failed read - the caller
+    /// already dispositioned that case from the property outcome - it is an
+    /// id this build's `ControlType` cannot decode, which resolves to
+    /// [`Role::Unknown`] the same as [`ControlType::Custom`] does.
+    ///
+    /// The match has no catch-all arm. Adding a `ControlType` variant to the
+    /// `uiautomation` crate is therefore a build error here rather than a
+    /// silent `Role::Unknown` for a type this map was never taught.
+    pub(crate) fn control_type_role(id: i32, properties: &ElementProperties) -> Role {
+        let Ok(control_type) = ControlType::try_from(id) else {
+            return Role::Unknown;
+        };
+        match control_type {
+            ControlType::Button => button_role(properties),
+            ControlType::Calendar => Role::Group,
+            ControlType::CheckBox => Role::Checkbox,
+            ControlType::ComboBox => Role::ComboBox,
+            ControlType::Edit => Role::TextField,
+            ControlType::Hyperlink => Role::Link,
+            ControlType::Image => Role::Image,
+            ControlType::ListItem => Role::Option,
+            ControlType::List => list_role(properties),
+            ControlType::Menu => Role::Menu,
+            ControlType::MenuBar => Role::Menu,
+            ControlType::MenuItem => Role::MenuItem,
+            ControlType::ProgressBar => Role::ProgressBar,
+            ControlType::RadioButton => Role::RadioButton,
+            ControlType::ScrollBar => Role::ScrollBar,
+            ControlType::Slider => Role::Slider,
+            ControlType::Spinner => Role::Incrementor,
+            ControlType::StatusBar => Role::Status,
+            ControlType::Tab => Role::TabList,
+            ControlType::TabItem => Role::Tab,
+            ControlType::Text => Role::StaticText,
+            ControlType::ToolBar => Role::Toolbar,
+            ControlType::ToolTip => Role::Tooltip,
+            ControlType::Tree => Role::Outline,
+            ControlType::TreeItem => Role::TreeItem,
+            ControlType::Custom => Role::Unknown,
+            ControlType::Group => Role::Group,
+            ControlType::Thumb => Role::Handle,
+            ControlType::DataGrid => Role::Grid,
+            ControlType::DataItem => data_item_role(properties),
+            ControlType::Document => document_role(properties),
+            ControlType::SplitButton => Role::MenuButton,
+            ControlType::Window => Role::Window,
+            ControlType::Pane => pane_role(properties),
+            ControlType::Header => Role::Group,
+            ControlType::HeaderItem => Role::Column,
+            ControlType::Table => Role::Table,
+            ControlType::TitleBar => Role::Group,
+            ControlType::Separator => Role::Separator,
+            ControlType::SemanticZoom => Role::Group,
+            ControlType::AppBar => Role::Toolbar,
+        }
+    }
+
+    /// `Button`, refined by the two patterns a plain push button never
+    /// advertises. Checked in this order because a provider could in theory
+    /// advertise both; `Toggle` is the stronger claim about the control's
+    /// nature so it wins primary-role selection.
+    fn button_role(properties: &ElementProperties) -> Role {
+        if is_available(properties, TreeProperty::ToggleAvailable) {
+            return Role::Switch;
+        }
+        if is_available(properties, TreeProperty::ExpandCollapseAvailable) {
+            return Role::MenuButton;
+        }
+        Role::Button
+    }
+
+    /// `List`, refined by `Selection` availability: a list whose provider
+    /// implements selection is a listbox, an unselectable list is a plain
+    /// list.
+    fn list_role(properties: &ElementProperties) -> Role {
+        if is_available(properties, TreeProperty::SelectionAvailable) {
+            Role::ListBox
+        } else {
+            Role::List
+        }
+    }
+
+    /// `DataItem`, refined by `GridItem`/`TableItem` availability: an item
+    /// addressable by row and column is a cell, otherwise it is the row that
+    /// contains cells.
+    fn data_item_role(properties: &ElementProperties) -> Role {
+        if is_available(properties, TreeProperty::GridItemAvailable)
+            || is_available(properties, TreeProperty::TableItemAvailable)
+        {
+            Role::Cell
+        } else {
+            Role::Row
+        }
+    }
+
+    /// `Document`, refined by `Value` availability read through its gate: an
+    /// editable document (a rich edit control, not a static viewer) is a
+    /// text field, everything else stays a document.
+    fn document_role(properties: &ElementProperties) -> Role {
+        if is_available(properties, TreeProperty::ValueAvailable) && !is_value_read_only(properties)
+        {
+            Role::TextField
+        } else {
+            Role::Document
+        }
+    }
+
+    /// `Pane`, refined by `Window` availability or `IsDialog`: either one
+    /// marks the pane as a dialog surface, and a plain pane with neither is a
+    /// generic container.
+    fn pane_role(properties: &ElementProperties) -> Role {
+        if is_available(properties, TreeProperty::WindowAvailable) || is_dialog(properties) {
+            Role::Dialog
+        } else {
+            Role::Group
+        }
+    }
+
+    fn is_available(properties: &ElementProperties, property: TreeProperty) -> bool {
+        properties.get(property).flag() == Some(true)
+    }
+
+    fn is_dialog(properties: &ElementProperties) -> bool {
+        properties.get(TreeProperty::IsDialog).flag() == Some(true)
+    }
+
+    /// Reads `ValueIsReadOnly` through its gate: A15-7 measured a
+    /// non-editable element reporting `ValueIsReadOnly = true` with no
+    /// `Value` pattern at all, so the flag means nothing until `ValueAvailable`
+    /// itself reads `Known(Flag(true))`.
+    fn is_value_read_only(properties: &ElementProperties) -> bool {
+        if !is_available(properties, TreeProperty::ValueAvailable) {
+            return false;
+        }
+        properties.get(TreeProperty::ValueIsReadOnly).flag() == Some(true)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+mod imp {
+    use agent_desktop_core::Role;
+
+    use super::ElementProperties;
+
+    /// Exists only so `agent-desktop-windows` compiles on the Linux
+    /// cross-check target used to prove this crate carries no unconditional
+    /// platform leakage. The control-type map's own assertions - the
+    /// exhaustive match, the ARIA containment table, the refinement gates -
+    /// all run on the Windows lane, where `uiautomation::types::ControlType`
+    /// exists to exercise them against.
+    pub(crate) fn control_type_role(_id: i32, _properties: &ElementProperties) -> Role {
+        Role::Unknown
+    }
+}
+
+use imp::control_type_role;
+
+#[cfg(test)]
+#[path = "roles_tests.rs"]
+mod tests;
