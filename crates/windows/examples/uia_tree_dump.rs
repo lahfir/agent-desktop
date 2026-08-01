@@ -26,6 +26,10 @@ mod select;
 mod render_slots;
 
 #[cfg(target_os = "windows")]
+#[path = "uia_tree_dump/render_node.rs"]
+mod render_node;
+
+#[cfg(target_os = "windows")]
 #[path = "uia_tree_dump/render_census.rs"]
 mod render_census;
 

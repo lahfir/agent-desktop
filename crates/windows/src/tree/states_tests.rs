@@ -3,7 +3,6 @@ use agent_desktop_core::state;
 
 use crate::tree::properties::{ElementProperties, PropertyOutcome, PropertyValue};
 use crate::tree::property_ids::TreeProperty;
-use crate::tree::walker_fake::{FakeTree, budget, walk};
 
 use super::resolve_states;
 
@@ -220,8 +219,10 @@ fn toggle_state_on_non_toggleable_role_emits_no_checked() {
 /// `button` role reaching this producer has never advertised
 /// `ToggleAvailable` and never carries a `ToggleState` to read. See
 /// `resolve_states`'s doc comment for the full reasoning. This is the
-/// regression test for that guarantee across both toggle values the
-/// pattern defines.
+/// regression test for that guarantee across both toggle values the pattern
+/// defines. Its input is deliberately unreachable in production; see
+/// [`toggle_state_on_a_switch_role_emits_checked_and_indeterminate`] for the
+/// reachable shape - do not "fix" this test by feeding it a real role.
 #[test]
 fn pressed_is_unproduced_for_a_button_role_at_any_toggle_state() {
     for toggle in [1, 2] {
@@ -236,6 +237,32 @@ fn pressed_is_unproduced_for_a_button_role_at_any_toggle_state() {
         assert!(!states.contains(&state::PRESSED.to_string()));
         assert!(!states.contains(&state::CHECKED.to_string()));
     }
+}
+
+/// The reachable counterpart to the test above: `switch` is a role
+/// `roles.rs` actually produces for a toggle-available control, and
+/// `is_toggleable_role` confirms it is gated in before the assertion runs.
+#[test]
+fn toggle_state_on_a_switch_role_emits_checked_and_indeterminate() {
+    assert!(agent_desktop_core::roles::is_toggleable_role("switch"));
+
+    let checked = resolved(
+        vec![
+            flag(TreeProperty::ToggleAvailable, true),
+            number(TreeProperty::ToggleState, 1),
+        ],
+        "switch",
+    );
+    assert!(checked.contains(&state::CHECKED.to_string()));
+
+    let indeterminate = resolved(
+        vec![
+            flag(TreeProperty::ToggleAvailable, true),
+            number(TreeProperty::ToggleState, 2),
+        ],
+        "switch",
+    );
+    assert!(indeterminate.contains(&state::INDETERMINATE.to_string()));
 }
 
 /// The regression test for the defect the dogfood run found, and the reason
@@ -321,52 +348,4 @@ fn legacy_state_haspopup_bit_alongside_an_unrelated_bit_emits_haspopup() {
 
     assert!(states.contains(&state::HASPOPUP.to_string()));
     assert!(!states.contains(&state::BUSY.to_string()));
-}
-
-#[test]
-fn end_to_end_through_the_walk_reaches_locator_evidence_states() {
-    let fake = FakeTree::default()
-        .with_children(1, &[2])
-        .reading(2, &[flag(TreeProperty::IsEnabled, false)]);
-
-    let outcome = walk(&fake, budget(10));
-    let root = outcome
-        .tree
-        .into_accessibility_tree()
-        .expect("a complete walk projects");
-    let child = root.children.first().expect("the child was walked");
-
-    assert!(
-        child
-            .presentation
-            .states
-            .contains(&state::DISABLED.to_string())
-    );
-}
-
-#[test]
-fn offscreen_on_a_container_does_not_reach_its_children() {
-    let fake = FakeTree::default()
-        .with_children(1, &[2])
-        .reading(1, &[enabled_true(), flag(TreeProperty::IsOffscreen, true)])
-        .reading(2, &[enabled_true(), flag(TreeProperty::IsOffscreen, false)]);
-
-    let outcome = walk(&fake, budget(10));
-    let root = outcome
-        .tree
-        .into_accessibility_tree()
-        .expect("a complete walk projects");
-    let child = root.children.first().expect("the child was walked");
-
-    assert!(
-        root.presentation
-            .states
-            .contains(&state::OFFSCREEN.to_string())
-    );
-    assert!(
-        !child
-            .presentation
-            .states
-            .contains(&state::OFFSCREEN.to_string())
-    );
 }

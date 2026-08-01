@@ -55,28 +55,36 @@ run_check '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id' || failed=1
 # using it silently stops stripping on the macOS runner and reports every
 # version number as a violation. Splitting the line into tokens needs no
 # boundary support and is exact on both.
+# The awk program both the real scan and the self-test run, so the fixture
+# below is testing the shipped rule rather than a copy of it.
+#
+# The strips are deliberately narrow. An earlier version stripped any
+# `-<digit>.<digit>`, which silently swallowed `phase-2.4` - the exact thing
+# the check exists to catch - while innocent prose decimals like "a 2.5 ms
+# timeout" still fired. Each strip now names the idiom it permits.
+BARE_REFERENCE_AWK='
+{
+    text = $0
+    gsub(/v[0-9]+\.[0-9]+(\.[0-9]+)?/, " ", text)
+    gsub(/[0-9]+\.[0-9]+\.[0-9]+/, " ", text)
+    gsub(/(pre|post|sub|over|under)-[0-9]+\.[0-9]+/, " ", text)
+    gsub(/[0-9]+\.[0-9]+ ?(x|ms|s|us|%|MiB|MB|KB|GB)([^A-Za-z]|$)/, " ", text)
+    gsub(/"[0-9]+\.[0-9]+"/, " ", text)
+    gsub(/[^0-9.]/, " ", text)
+    n = split(text, tokens, " ")
+    for (i = 1; i <= n; i++) {
+        if (tokens[i] ~ /^[0-9]\.[0-9][0-9]?$/) {
+            print
+            next
+        }
+    }
+}'
+
 bare_reference_check() {
     local matches
     matches="$(
         grep -rnE --include='*.rs' '^[[:space:]]*(///|//!)' crates src 2>/dev/null |
-            awk '
-                {
-                    text = $0
-                    gsub(/v[0-9]+\.[0-9]+(\.[0-9]+)?/, " ", text)
-                    gsub(/[0-9]+\.[0-9]+\.[0-9]+/, " ", text)
-                    gsub(/-[0-9]+\.[0-9]+/, " ", text)
-                    gsub(/[0-9]+\.[0-9]+x/, " ", text)
-                    gsub(/"[0-9]+\.[0-9]+"/, " ", text)
-                    gsub(/[^0-9.]/, " ", text)
-                    n = split(text, tokens, " ")
-                    for (i = 1; i <= n; i++) {
-                        if (tokens[i] ~ /^[0-9]\.[0-9][0-9]?$/) {
-                            print
-                            next
-                        }
-                    }
-                }
-            ' || true
+            awk "$BARE_REFERENCE_AWK" || true
     )"
     if [ -n "$matches" ]; then
         printf '%s\n' "$matches" >&2
@@ -85,6 +93,45 @@ bare_reference_check() {
     fi
     return 0
 }
+
+# A gate whose own allow/deny set is untested is a gate nobody can trust. Both
+# of the cases marked MUST-CATCH below were live defects: `phase-2.4` escaped
+# and `2.5 ms` false-fired.
+self_test() {
+    local must_catch must_pass caught passed failures
+    must_catch='/// see phase-2.4 for details
+/// 2.2 ships the seam
+/// the 2.4 evidence field
+/// as of 2.10 this is owned elsewhere'
+    must_pass='/// pre-1.0 and sub-1.0 readings
+/// v0.5.0 deleted the layer
+/// the envelope is "2.1" on the wire
+/// measured 1.35x against 0.80x
+/// a 2.5 ms timeout and a 1.5 s deadline
+/// uiautomation 0.25.0'
+    failures=0
+    while IFS= read -r line; do
+        caught="$(printf '%s\n' "$line" | awk "$BARE_REFERENCE_AWK")"
+        if [ -z "$caught" ]; then
+            printf 'self-test FAIL (missed): %s\n' "$line" >&2
+            failures=1
+        fi
+    done <<< "$must_catch"
+    while IFS= read -r line; do
+        passed="$(printf '%s\n' "$line" | awk "$BARE_REFERENCE_AWK")"
+        if [ -n "$passed" ]; then
+            printf 'self-test FAIL (false positive): %s\n' "$line" >&2
+            failures=1
+        fi
+    done <<< "$must_pass"
+    if [ "$failures" -ne 0 ]; then
+        printf 'The bare-reference rule does not behave as documented.\n' >&2
+        return 1
+    fi
+    return 0
+}
+
+self_test || failed=1
 
 bare_reference_check || failed=1
 

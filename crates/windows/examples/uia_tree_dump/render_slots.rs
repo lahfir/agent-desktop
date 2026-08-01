@@ -141,11 +141,12 @@ pub fn role_of(field: &LocatorField<String>) -> Value {
 
 /// Regression gate for the redaction rule this module exists to enforce.
 ///
-/// Nothing else in `examples/uia_tree_dump` asserts that a value-bearing
-/// renderer withholds its input rather than rendering it verbatim, so a
-/// revert of one property from `text_presence`/`field_presence` back to
-/// `slot()` would otherwise pass CI while writing real application text into
-/// a committed capture.
+/// These prove `text_presence`/`field_presence` themselves withhold their
+/// input. The other half of the rule - that `render_node` in `render.rs`
+/// calls the withholding renderer rather than `slot()` for each text-bearing
+/// property - is gated separately, by `render_node_tests.rs`: a revert there
+/// of `automation_id`, `help_text`, `full_description`, `legacy_default_action`,
+/// `name`, or `description` back to a verbatim renderer fails that test.
 #[cfg(test)]
 mod tests {
     use super::*;

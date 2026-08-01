@@ -1,7 +1,7 @@
 use agent_desktop_core::{Deadline, ObservationRoot, ProcessId, WindowInfo, WindowState};
 use agent_desktop_windows::tree::automation::failure_of;
 use agent_desktop_windows::tree::element::UIAElement;
-use agent_desktop_windows::tree::name_evidence::{LabelOutcome, read_label};
+use agent_desktop_windows::tree::name_evidence::read_label;
 use agent_desktop_windows::tree::properties::{read_live, read_one};
 use agent_desktop_windows::tree::property_ids::TreeProperty;
 use agent_desktop_windows::tree::walker::{NodeKey, TreeSource, WalkBudget, walk_vocabulary};
@@ -10,43 +10,27 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 use super::render_census::{control_type_census, provider_census, sample, vocabulary_summary};
-use super::render_slots::{field_list, field_presence, role_of, slot, text_presence};
+use super::render_node::{NodeFields, Position, render_node};
 use super::select::Options;
 
-fn node(element: &UIAElement, parent: Option<usize>, index: usize) -> Value {
+/// Reads one element and renders it.
+///
+/// The whole `Position` travels rather than just its parent and index: the
+/// renderer ignores `depth`, but inventing a zero for it here would put a
+/// value in the struct that is not true of the node.
+fn node(element: &UIAElement, at: Position) -> Value {
     let (properties, errors) = read_live(element);
     let label = read_label(element, false);
     let vocabulary = walk_vocabulary(&properties, &label);
-    json!({
-        "parent_index": parent,
-        "child_index": index,
-        "control_type": slot(&properties.get(TreeProperty::ControlType)),
-        "role": role_of(&vocabulary.role),
-        "available_actions": field_list(&vocabulary.available_actions),
-        "states": field_list(&vocabulary.states),
-        "name": field_presence(&vocabulary.name),
-        "description": field_presence(&vocabulary.description),
-        "labelled": !matches!(label, LabelOutcome::Unlabelled),
-        "class_name": slot(&properties.get(TreeProperty::ClassName)),
-        "automation_id": text_presence(&properties.get(TreeProperty::AutomationId)),
-        "help_text": text_presence(&properties.get(TreeProperty::HelpText)),
-        "full_description": text_presence(&properties.get(TreeProperty::FullDescription)),
-        "legacy_default_action": text_presence(&properties.get(TreeProperty::LegacyDefaultAction)),
-        "bounds": slot(&properties.get(TreeProperty::BoundingRectangle)),
-        "is_password": slot(&properties.get(TreeProperty::IsPassword)),
-        "is_offscreen": slot(&properties.get(TreeProperty::IsOffscreen)),
-        "is_control_element": slot(&properties.get(TreeProperty::IsControlElement)),
-        "is_content_element": slot(&properties.get(TreeProperty::IsContentElement)),
-        "provider_description": slot(&read_one(element, TreeProperty::ProviderDescription)),
-        "failed_reads": errors.len(),
+    let provider_description = read_one(element, TreeProperty::ProviderDescription);
+    render_node(&NodeFields {
+        position: at,
+        properties,
+        vocabulary,
+        label,
+        provider_description,
+        failed_reads: errors.len(),
     })
-}
-
-/// Where one node sits in the dump being built.
-struct Position {
-    parent: Option<usize>,
-    index: usize,
-    depth: u8,
 }
 
 /// What bounds the census recursion.
@@ -103,7 +87,7 @@ fn collect(
         }
     }
     let position = nodes.len();
-    nodes.push(node(element, at.parent, at.index));
+    nodes.push(node(element, at));
     if at.depth >= bounds.max_depth {
         bounds.truncated = true;
         return;

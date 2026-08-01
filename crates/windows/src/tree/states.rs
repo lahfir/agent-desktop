@@ -180,3 +180,7 @@ fn push_legacy_state(properties: &ElementProperties, states: &mut Vec<String>) {
 #[cfg(test)]
 #[path = "states_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "states_walk_tests.rs"]
+mod walk_tests;

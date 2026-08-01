@@ -360,3 +360,31 @@ fn description_slot_is_certain_when_both_sources_are_definitively_absent() {
     ]);
     assert_eq!(description_slot(&properties), SlotStatus::Certain);
 }
+
+/// The measured Win32 shape: `FullDescription` reads back a blank string
+/// rather than failing outright, and `HelpText`'s read genuinely failed. A
+/// blank `Known("")` is not an answer - `text_of` already treats it the same
+/// as no value - so this must cloud the slot exactly as if both reads had
+/// failed, not report a definitive "no description" from a source that
+/// never actually answered.
+#[test]
+fn description_slot_is_uncertain_when_one_source_is_blank_and_the_other_failed() {
+    let properties = reads(&[
+        (TreeProperty::FullDescription, text("")),
+        (TreeProperty::HelpText, PropertyOutcome::Unknown),
+    ]);
+    assert_eq!(description_slot(&properties), SlotStatus::Uncertain);
+}
+
+/// Both sources answered, and both answers happen to be blank, with no
+/// failed read anywhere. That is a real claim - the provider has no
+/// description - and must stay `Certain` rather than being pulled down by
+/// the blank-plus-failed rule above.
+#[test]
+fn description_slot_is_certain_when_both_sources_are_blank_with_no_failed_read() {
+    let properties = reads(&[
+        (TreeProperty::FullDescription, text("")),
+        (TreeProperty::HelpText, text("")),
+    ]);
+    assert_eq!(description_slot(&properties), SlotStatus::Certain);
+}

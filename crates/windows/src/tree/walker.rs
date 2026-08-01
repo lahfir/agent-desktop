@@ -177,7 +177,7 @@ pub fn walk_available_actions(properties: &ElementProperties) -> LocatorField<Ve
 
 /// The state vocabulary, which needs the resolved role: several UIA state
 /// sources are only meaningful on some roles, and `ToggleState` in particular
-/// means `checked` on a checkbox and `pressed` on a button.
+/// means `checked` only on a toggleable role such as a checkbox or switch.
 pub fn walk_states(
     properties: &ElementProperties,
     role: &LocatorField<String>,

@@ -122,15 +122,21 @@ fn label_slot(properties: &ElementProperties, label: &LabelOutcome) -> SlotStatu
     }
 }
 
-/// A `Known` source outranks an `Unknown` one: one property answering is a
-/// real answer about the element, even if the other read failed. Only once
-/// neither source produced a value does a failed read matter - and then it
-/// must cloud the slot rather than let a provider that definitively has
-/// nothing (both `Absent`) look the same as a read that simply broke.
+/// A non-blank answer from either source outranks everything else: one
+/// property producing real text is a real answer about the element, even if
+/// the other read failed. `Known("")` is not that answer - a measured Win32
+/// shape reports both properties as empty strings, and `text_of` already
+/// treats a blank string the same as no value, so counting it as "answered"
+/// here would let a source whose read actually failed pass for a source that
+/// definitively has nothing. Only once neither source produced non-blank text
+/// does a failed read matter - and then it must cloud the slot rather than
+/// let a provider that definitively has nothing (both `Absent`, or blank text
+/// with no failed read alongside it) look the same as a read that simply
+/// broke.
 fn description_slot(properties: &ElementProperties) -> SlotStatus {
     let full = properties.get(TreeProperty::FullDescription);
     let help = properties.get(TreeProperty::HelpText);
-    if matches!(full, PropertyOutcome::Known(_)) || matches!(help, PropertyOutcome::Known(_)) {
+    if text_of(full.clone()).is_some() || text_of(help.clone()).is_some() {
         SlotStatus::Certain
     } else if matches!(full, PropertyOutcome::Unknown) || matches!(help, PropertyOutcome::Unknown) {
         SlotStatus::Uncertain

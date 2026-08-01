@@ -196,6 +196,57 @@ mod windows_only {
         );
     }
 
+    /// The three-run stability clause of the Verification Contract's "Live
+    /// vocabulary" row: a live fixture walk's role, action list and state
+    /// tokens must reproduce across three consecutive walks of the same
+    /// provider, not merely appear once.
+    ///
+    /// Only self-consistency is asserted - run two and three reproduce run
+    /// one, node for node - never a specific role, count, or token, which
+    /// would pin an `app/provider` fact this repo's tests must not carry.
+    #[test]
+    fn the_live_walk_reproduces_the_same_vocabulary_across_three_runs() {
+        crate::tree::fixture::ensure_test_apartment();
+        let fixture = HostedFixture::spawn().expect("the fixture host starts");
+        let root =
+            root_from_hwnd(fixture.handle(), deadline()).expect("the fixture window resolves");
+        let window = window();
+
+        let mut runs = Vec::new();
+        for _ in 0..3 {
+            let outcome = walk_uia_subtree(&root, &ObservationRoot::Window(&window), budget(50))
+                .expect("the walk assembles an observation");
+            let projected = outcome
+                .tree
+                .into_accessibility_tree()
+                .expect("core accepts a complete observation");
+
+            let mut nodes = Vec::new();
+            collect(&projected, &mut nodes);
+            runs.push(
+                nodes
+                    .iter()
+                    .map(|node| {
+                        (
+                            node.role.clone(),
+                            node.presentation.available_actions.clone(),
+                            node.presentation.states.clone(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            );
+        }
+
+        assert_eq!(
+            runs[0], runs[1],
+            "the second run's vocabulary diverged from the first"
+        );
+        assert_eq!(
+            runs[0], runs[2],
+            "the third run's vocabulary diverged from the first"
+        );
+    }
+
     fn collect<'a>(
         node: &'a agent_desktop_core::AccessibilityNode,
         into: &mut Vec<&'a agent_desktop_core::AccessibilityNode>,
