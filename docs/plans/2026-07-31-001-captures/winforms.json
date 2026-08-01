@@ -464,7 +464,7 @@
     },
     {
       "automation_id": {
-        "chars": 6,
+        "chars": 5,
         "present": true
       },
       "available_actions": [
@@ -512,7 +512,7 @@
     },
     {
       "automation_id": {
-        "chars": 7,
+        "chars": 5,
         "present": true
       },
       "available_actions": [
@@ -725,7 +725,8 @@
         50033,
         50037
       ],
-      "nodes": 43
+      "nodes": 43,
+      "truncated": false
     },
     "raw_view": {
       "control_types": [
@@ -740,7 +741,8 @@
         50033,
         50037
       ],
-      "nodes": 43
+      "nodes": 43,
+      "truncated": false
     }
   },
   "vocabulary": {

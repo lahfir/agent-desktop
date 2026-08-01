@@ -726,7 +726,8 @@
         50032,
         50037
       ],
-      "nodes": 26
+      "nodes": 26,
+      "truncated": false
     },
     "raw_view": {
       "control_types": [
@@ -741,7 +742,8 @@
         50032,
         50037
       ],
-      "nodes": 26
+      "nodes": 26,
+      "truncated": false
     }
   },
   "vocabulary": {

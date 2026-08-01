@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-07-31T18:47:00.2290904-06:00",
+    "generated":  "2026-07-31T19:10:37.3949321-06:00",
     "out_dir":  "C:\\dev\\agent-desktop\\docs\\plans\\2026-07-31-001-captures",
     "targets":  [
                     {
@@ -32,7 +32,7 @@
                     {
                         "name":  "wpf",
                         "ui_stack":  "wpf",
-                        "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;148767b5-3043-4e12-a064-64e4346d44c5]",
+                        "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;9a054181-e049-4fd3-9026-019534db71f9]",
                         "variant":  "AgentDesktop WPF scratch fixture with TabControl/DataGrid (dogfood run)",
                         "captured":  true,
                         "reason":  "",

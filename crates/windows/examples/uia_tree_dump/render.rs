@@ -196,13 +196,21 @@ fn view_delta(hwnd: isize, max_depth: u8, deadline: Deadline) -> Value {
     let count = |control_view: bool| -> Value {
         match count_view(hwnd, control_view, max_depth, deadline) {
             Err(reason) => json!({ "failed": reason }),
-            Ok((nodes, control_types)) => json!({
-                "nodes": nodes,
-                "control_types": control_types.into_iter().collect::<Vec<_>>(),
+            Ok(count) => json!({
+                "nodes": count.nodes,
+                "truncated": count.truncated,
+                "control_types": count.control_types.into_iter().collect::<Vec<_>>(),
             }),
         }
     };
     json!({ "raw_view": count(false), "control_view": count(true) })
+}
+
+/// What one tree view presented, and whether the walk saw all of it.
+struct ViewCount {
+    nodes: usize,
+    control_types: BTreeSet<i32>,
+    truncated: bool,
 }
 
 /// Counts the nodes and distinct control types one tree view presents.
@@ -210,12 +218,21 @@ fn view_delta(hwnd: isize, max_depth: u8, deadline: Deadline) -> Value {
 /// Enumerated with `get_first_child`/`get_next_sibling` rather than the
 /// crate's `get_children`, which retires end-of-siblings and a real
 /// cross-process fault through the same arm.
+///
+/// **Every loop here is bounded, including the inner sibling loop.** The
+/// ancestor guard the shipped walker uses cannot see a sibling chain that
+/// never terminates - no element repeats on any root-to-node path - so a
+/// provider whose `get_next_sibling` cycles would spin this loop forever and
+/// grow the pending stack without limit. Depth bounds descent, the sibling cap
+/// bounds breadth, and the deadline bounds both; the count reports whether any
+/// of them fired, because a truncated census that says nothing reads as a
+/// complete one.
 fn count_view(
     hwnd: isize,
     control_view: bool,
     max_depth: u8,
     deadline: Deadline,
-) -> Result<(usize, BTreeSet<i32>), String> {
+) -> Result<ViewCount, String> {
     use agent_desktop_windows::tree::automation::automation_client;
     let client = automation_client().map_err(|error| error.message.clone())?;
     let walker = if control_view {
@@ -224,39 +241,50 @@ fn count_view(
         client.get_raw_view_walker()
     }
     .map_err(|error| error.to_string())?;
-    let mut control_types = BTreeSet::new();
-    let mut nodes = 0;
+    let mut count = ViewCount {
+        nodes: 0,
+        control_types: BTreeSet::new(),
+        truncated: false,
+    };
     let root = client
         .element_from_handle(uiautomation::types::Handle::from(hwnd))
         .map_err(|error| error.to_string())?;
     let mut stack = vec![(root, 0_u8)];
     while let Some((element, depth)) = stack.pop() {
         if deadline.is_expired() {
+            count.truncated = true;
             break;
         }
-        nodes += 1;
+        count.nodes += 1;
         if let Ok(uiautomation::variants::Value::I4(id)) = element
             .get_property_value(uiautomation::types::UIProperty::ControlType)
             .and_then(|variant| variant.get_value())
         {
-            control_types.insert(id);
+            count.control_types.insert(id);
         }
         if depth >= max_depth {
+            count.truncated = true;
             continue;
         }
         let Ok(mut child) = walker.get_first_child(&element) else {
             continue;
         };
+        let mut siblings = 0;
         loop {
             let next = walker.get_next_sibling(&child);
             stack.push((child, depth + 1));
+            siblings += 1;
+            if siblings >= MAX_CENSUS_SIBLINGS || deadline.is_expired() {
+                count.truncated = true;
+                break;
+            }
             match next {
                 Ok(sibling) => child = sibling,
                 Err(_) => break,
             }
         }
     }
-    Ok((nodes, control_types))
+    Ok(count)
 }
 
 fn os_build() -> String {

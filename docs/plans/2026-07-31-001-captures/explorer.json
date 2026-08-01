@@ -1008,7 +1008,7 @@
       ],
       "bounds": {
         "height": 21.0,
-        "width": 354.0,
+        "width": 355.0,
         "x": 389.0,
         "y": 61.0
       },
@@ -1724,7 +1724,8 @@
         50034,
         50037
       ],
-      "nodes": 107
+      "nodes": 107,
+      "truncated": false
     },
     "raw_view": {
       "control_types": [
@@ -1752,7 +1753,8 @@
         50034,
         50037
       ],
-      "nodes": 113
+      "nodes": 113,
+      "truncated": false
     }
   },
   "vocabulary": {
