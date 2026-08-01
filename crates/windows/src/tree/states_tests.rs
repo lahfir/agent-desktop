@@ -1,0 +1,315 @@
+use agent_desktop_core::LocatorField;
+use agent_desktop_core::state;
+
+use crate::tree::properties::{ElementProperties, PropertyOutcome, PropertyValue};
+use crate::tree::property_ids::TreeProperty;
+use crate::tree::walker_fake::{FakeTree, budget, walk};
+
+use super::resolve_states;
+
+fn flag(property: TreeProperty, value: bool) -> (TreeProperty, PropertyOutcome) {
+    (property, PropertyOutcome::Known(PropertyValue::Flag(value)))
+}
+
+fn number(property: TreeProperty, value: i32) -> (TreeProperty, PropertyOutcome) {
+    (
+        property,
+        PropertyOutcome::Known(PropertyValue::Number(value)),
+    )
+}
+
+fn enabled_true() -> (TreeProperty, PropertyOutcome) {
+    flag(TreeProperty::IsEnabled, true)
+}
+
+fn props(reads: Vec<(TreeProperty, PropertyOutcome)>) -> ElementProperties {
+    ElementProperties::from_reads(reads)
+}
+
+fn known(field: LocatorField<Vec<String>>) -> Vec<String> {
+    match field {
+        LocatorField::Known(states) => states,
+        other => panic!("expected LocatorField::Known, got {other:?}"),
+    }
+}
+
+fn role_of(role: &str) -> LocatorField<String> {
+    LocatorField::Known(role.to_string())
+}
+
+fn resolved(reads: Vec<(TreeProperty, PropertyOutcome)>, role: &str) -> Vec<String> {
+    let mut all_reads = vec![enabled_true()];
+    all_reads.extend(reads);
+    known(resolve_states(&props(all_reads), &role_of(role)))
+}
+
+/// Every representative source this producer can fire, paired with the role
+/// each needs to fire on. `enabled_true` is prepended by [`resolved`] so a
+/// case here never accidentally hits the read-health fallback.
+fn representative_cases() -> Vec<(Vec<(TreeProperty, PropertyOutcome)>, &'static str)> {
+    vec![
+        (vec![flag(TreeProperty::IsEnabled, false)], "button"),
+        (vec![flag(TreeProperty::IsPassword, true)], "textfield"),
+        (vec![flag(TreeProperty::IsOffscreen, true)], "button"),
+        (
+            vec![flag(TreeProperty::HasKeyboardFocus, true)],
+            "textfield",
+        ),
+        (
+            vec![flag(TreeProperty::IsRequiredForForm, true)],
+            "textfield",
+        ),
+        (
+            vec![flag(TreeProperty::IsDataValidForForm, false)],
+            "textfield",
+        ),
+        (
+            vec![
+                flag(TreeProperty::ToggleAvailable, true),
+                number(TreeProperty::ToggleState, 1),
+            ],
+            "checkbox",
+        ),
+        (
+            vec![
+                flag(TreeProperty::ToggleAvailable, true),
+                number(TreeProperty::ToggleState, 2),
+            ],
+            "checkbox",
+        ),
+        (
+            vec![
+                flag(TreeProperty::ToggleAvailable, true),
+                number(TreeProperty::ToggleState, 1),
+            ],
+            "button",
+        ),
+        (
+            vec![
+                flag(TreeProperty::ExpandCollapseAvailable, true),
+                number(TreeProperty::ExpandCollapseState, 1),
+            ],
+            "treeitem",
+        ),
+        (
+            vec![
+                flag(TreeProperty::SelectionItemAvailable, true),
+                flag(TreeProperty::SelectionItemIsSelected, true),
+            ],
+            "cell",
+        ),
+        (
+            vec![
+                flag(TreeProperty::ValueAvailable, true),
+                flag(TreeProperty::ValueIsReadOnly, true),
+            ],
+            "textfield",
+        ),
+        (
+            vec![
+                flag(TreeProperty::SelectionAvailable, true),
+                flag(TreeProperty::SelectionCanSelectMultiple, true),
+            ],
+            "listbox",
+        ),
+        (
+            vec![
+                flag(TreeProperty::WindowAvailable, true),
+                flag(TreeProperty::WindowIsModal, true),
+            ],
+            "window",
+        ),
+        (
+            vec![number(TreeProperty::LegacyState, 0x4000_0000)],
+            "menuitem",
+        ),
+        (
+            vec![number(TreeProperty::LegacyState, 0x0000_0800)],
+            "button",
+        ),
+    ]
+}
+
+#[test]
+fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
+    let mut emitted = Vec::new();
+    for (reads, role) in representative_cases() {
+        emitted.extend(resolved(reads, role));
+    }
+
+    assert!(
+        !emitted.is_empty(),
+        "representative inputs should exercise at least one producer branch"
+    );
+    state::assert_states_in_vocabulary(&emitted);
+}
+
+#[test]
+#[should_panic(expected = "is not in STATE_VOCABULARY")]
+fn assert_states_in_vocabulary_rejects_bogus_token() {
+    state::assert_states_in_vocabulary(&["zzz_bogus_state_token".to_string()]);
+}
+
+/// The role is `checkbox` on purpose. A non-toggleable role is suppressed by
+/// the role gate whatever the availability gate does, so a static text here
+/// would make this pass for a reason that has nothing to do with A15-7 - and
+/// it would keep passing with the availability gate deleted.
+#[test]
+fn a15_7_toggle_state_without_toggle_available_emits_no_indeterminate() {
+    let states = resolved(
+        vec![
+            flag(TreeProperty::ToggleAvailable, false),
+            number(TreeProperty::ToggleState, 2),
+        ],
+        "checkbox",
+    );
+
+    assert!(!states.contains(&state::INDETERMINATE.to_string()));
+    assert!(!states.contains(&state::CHECKED.to_string()));
+
+    let advertised = resolved(
+        vec![
+            flag(TreeProperty::ToggleAvailable, true),
+            number(TreeProperty::ToggleState, 2),
+        ],
+        "checkbox",
+    );
+
+    assert!(
+        advertised.contains(&state::INDETERMINATE.to_string()),
+        "the same read set with the pattern advertised must produce the token, or the case above proves nothing"
+    );
+}
+
+#[test]
+fn a15_7_readonly_without_value_available_emits_no_readonly() {
+    let states = resolved(
+        vec![
+            flag(TreeProperty::ValueAvailable, false),
+            flag(TreeProperty::ValueIsReadOnly, true),
+        ],
+        "statictext",
+    );
+
+    assert!(!states.contains(&state::READONLY.to_string()));
+}
+
+#[test]
+fn leaf_node_expand_collapse_state_emits_no_expanded_token() {
+    let states = resolved(
+        vec![
+            flag(TreeProperty::ExpandCollapseAvailable, true),
+            number(TreeProperty::ExpandCollapseState, 3),
+        ],
+        "treeitem",
+    );
+
+    assert!(!states.contains(&state::EXPANDED.to_string()));
+}
+
+#[test]
+fn toggle_state_on_non_toggleable_role_emits_no_checked() {
+    let states = resolved(
+        vec![
+            flag(TreeProperty::ToggleAvailable, true),
+            number(TreeProperty::ToggleState, 1),
+        ],
+        "statictext",
+    );
+
+    assert!(!states.contains(&state::CHECKED.to_string()));
+    assert!(!states.contains(&state::PRESSED.to_string()));
+}
+
+#[test]
+fn toggle_state_on_with_button_role_emits_pressed_not_checked() {
+    let states = resolved(
+        vec![
+            flag(TreeProperty::ToggleAvailable, true),
+            number(TreeProperty::ToggleState, 1),
+        ],
+        "button",
+    );
+
+    assert!(states.contains(&state::PRESSED.to_string()));
+    assert!(!states.contains(&state::CHECKED.to_string()));
+}
+
+#[test]
+fn a_failed_state_read_yields_unknown_not_an_empty_known_list() {
+    let properties = props(Vec::new());
+
+    let result = resolve_states(&properties, &LocatorField::Unknown);
+
+    assert!(matches!(result, LocatorField::Unknown));
+}
+
+#[test]
+fn legacy_state_unrelated_bit_emits_neither_haspopup_nor_busy() {
+    let states = resolved(
+        vec![number(TreeProperty::LegacyState, 0x0010_0000)],
+        "menuitem",
+    );
+
+    assert!(!states.contains(&state::HASPOPUP.to_string()));
+    assert!(!states.contains(&state::BUSY.to_string()));
+}
+
+#[test]
+fn legacy_state_haspopup_bit_alongside_an_unrelated_bit_emits_haspopup() {
+    let states = resolved(
+        vec![number(TreeProperty::LegacyState, 0x4010_0000)],
+        "menuitem",
+    );
+
+    assert!(states.contains(&state::HASPOPUP.to_string()));
+    assert!(!states.contains(&state::BUSY.to_string()));
+}
+
+#[test]
+fn end_to_end_through_the_walk_reaches_locator_evidence_states() {
+    let fake = FakeTree::default()
+        .with_children(1, &[2])
+        .reading(2, &[flag(TreeProperty::IsEnabled, false)]);
+
+    let outcome = walk(&fake, budget(10));
+    let root = outcome
+        .tree
+        .into_accessibility_tree()
+        .expect("a complete walk projects");
+    let child = root.children.first().expect("the child was walked");
+
+    assert!(
+        child
+            .presentation
+            .states
+            .contains(&state::DISABLED.to_string())
+    );
+}
+
+#[test]
+fn offscreen_on_a_container_does_not_reach_its_children() {
+    let fake = FakeTree::default()
+        .with_children(1, &[2])
+        .reading(1, &[enabled_true(), flag(TreeProperty::IsOffscreen, true)])
+        .reading(2, &[enabled_true(), flag(TreeProperty::IsOffscreen, false)]);
+
+    let outcome = walk(&fake, budget(10));
+    let root = outcome
+        .tree
+        .into_accessibility_tree()
+        .expect("a complete walk projects");
+    let child = root.children.first().expect("the child was walked");
+
+    assert!(
+        root.presentation
+            .states
+            .contains(&state::OFFSCREEN.to_string())
+    );
+    assert!(
+        !child
+            .presentation
+            .states
+            .contains(&state::OFFSCREEN.to_string())
+    );
+}

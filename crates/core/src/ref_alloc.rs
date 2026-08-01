@@ -67,7 +67,7 @@ pub(crate) fn is_ref_able(node: &AccessibilityNode) -> bool {
     is_ref_able_role_actions(&node.role, &node.presentation.available_actions)
 }
 
-pub(crate) fn is_ref_able_role_actions(role: &str, available_actions: &[String]) -> bool {
+pub fn is_ref_able_role_actions(role: &str, available_actions: &[String]) -> bool {
     INTERACTIVE_ROLES.contains(&role) || advertises_primary_action(available_actions)
 }
 
