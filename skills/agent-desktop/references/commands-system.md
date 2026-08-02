@@ -326,7 +326,7 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 **Per-entry failure shape:**
 ```json
 {
-  "version": "2.1",
+  "version": "2.2",
   "ok": false,
   "command": "click",
   "error": {

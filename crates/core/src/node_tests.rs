@@ -28,6 +28,7 @@ fn test_children_count_omitted_when_none() {
         },
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     };
     let json = serde_json::to_string(&node).unwrap();
@@ -45,6 +46,7 @@ fn test_children_count_present_when_set() {
         },
         presentation: Default::default(),
         children_count: Some(47),
+        subtree_truncated: false,
         children: vec![],
     };
     let json = serde_json::to_string(&node).unwrap();
@@ -150,6 +152,7 @@ fn accessibility_node_bounds_none_omitted_from_json() {
         },
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     };
     let json = serde_json::to_string(&node).unwrap();
@@ -169,6 +172,7 @@ fn accessibility_node_hint_none_omitted_from_json() {
         identity: Default::default(),
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     };
     let json = serde_json::to_string(&node).unwrap();

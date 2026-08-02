@@ -45,41 +45,38 @@ pub fn execute(
         .clone()
         .unwrap_or_else(|| state_from_ref_entry(&entry));
     let states_from_live = live_state.is_some();
-    let live_bounds = optional_live_read(adapter.get_element_bounds(&handle, deadline))?;
-    let visibility = VisibilityEvidence {
-        bounds: live_bounds.or(entry.geometry.bounds),
-        states: state.states.clone(),
-        bounds_from_live: live_bounds.is_some(),
-        states_from_live,
-    };
 
-    let applicable = match args.property {
-        IsProperty::Visible => visibility.applicable(),
-        IsProperty::Enabled | IsProperty::Focused => true,
-        IsProperty::Checked => {
+    let (applicable, result) = match args.property {
+        IsProperty::Visible => {
+            let live_bounds = optional_live_read(adapter.get_element_bounds(&handle, deadline))?;
+            let visibility = VisibilityEvidence {
+                bounds: live_bounds.or(entry.geometry.bounds),
+                states: state.states.clone(),
+                bounds_from_live: live_bounds.is_some(),
+                states_from_live,
+            };
+            (visibility.applicable(), visibility.result())
+        }
+        IsProperty::Enabled => (true, !state::has_state(&state.states, DISABLED)),
+        IsProperty::Focused => (true, state::has_state(&state.states, FOCUSED)),
+        IsProperty::Checked => (
             crate::roles::is_toggleable_role(&entry.identity.role)
                 || state::has_state(&state.states, CHECKED)
                 || crate::capability::contains_any(
                     &entry.capabilities.available_actions,
                     crate::capability::CHECKED_APPLICABILITY,
-                )
-        }
-        IsProperty::Expanded => {
+                ),
+            state::has_state(&state.states, CHECKED),
+        ),
+        IsProperty::Expanded => (
             crate::roles::is_expandable_role(&entry.identity.role)
                 || state::has_state(&state.states, EXPANDED)
                 || crate::capability::contains_any(
                     &entry.capabilities.available_actions,
                     crate::capability::EXPANDED_APPLICABILITY,
-                )
-        }
-    };
-
-    let result = match args.property {
-        IsProperty::Visible => visibility.result(),
-        IsProperty::Enabled => !state::has_state(&state.states, DISABLED),
-        IsProperty::Checked => state::has_state(&state.states, CHECKED),
-        IsProperty::Focused => state::has_state(&state.states, FOCUSED),
-        IsProperty::Expanded => state::has_state(&state.states, EXPANDED),
+                ),
+            state::has_state(&state.states, EXPANDED),
+        ),
     };
 
     Ok(

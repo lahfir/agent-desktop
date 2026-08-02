@@ -117,7 +117,11 @@ fn ok_response_json_shape_has_version_ok_command_data_and_no_error_field() {
     let map: serde_json::Map<String, serde_json::Value> =
         serde_json::from_value(serde_json::to_value(&resp).expect("serializable")).expect("map");
 
-    assert_eq!(map["version"].as_str(), Some("2.1"), "version must be 2.1");
+    assert_eq!(
+        map["version"].as_str(),
+        Some(super::ENVELOPE_VERSION),
+        "version must track ENVELOPE_VERSION"
+    );
     assert_eq!(map["ok"].as_bool(), Some(true), "ok must be true");
     assert_eq!(
         map["command"].as_str(),
@@ -139,7 +143,11 @@ fn err_response_json_shape_has_version_ok_command_error_and_no_data_field() {
     let map: serde_json::Map<String, serde_json::Value> =
         serde_json::from_value(serde_json::to_value(&resp).expect("serializable")).expect("map");
 
-    assert_eq!(map["version"].as_str(), Some("2.1"), "version must be 2.1");
+    assert_eq!(
+        map["version"].as_str(),
+        Some(super::ENVELOPE_VERSION),
+        "version must track ENVELOPE_VERSION"
+    );
     assert_eq!(map["ok"].as_bool(), Some(false), "ok must be false");
     assert_eq!(map["command"].as_str(), Some("click"), "command must match");
     assert!(

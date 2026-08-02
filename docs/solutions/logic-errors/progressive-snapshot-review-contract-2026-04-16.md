@@ -41,6 +41,16 @@ makes old refs appear valid after their evidence has changed.
   observation policy: it clamps depth to three and leaves `children_count` on
   truncated nodes. Named structural anchors can receive drill-down refs, but
   inert containers do not become actionable merely because they were visible.
+- Truncation has two paths and they carry different markers. A depth clamp
+  knows how many children it skipped, so it leaves `children_count`. Budget or
+  deadline exhaustion cannot afford the child-count read that would produce
+  one, so every node whose descendants were cut carries `subtree_truncated`,
+  which propagates to its ancestors and lets a reader walk from the root to
+  the cut. A full snapshot that exhausts its budget returns the subtree it did
+  observe with `complete: false` and `truncated: true` in `data`, rather than
+  discarding the walk. A drill-down never does this: `--root` replaces refs
+  inside an existing map, so it still requires a complete observation and
+  errors instead of destructively merging a partial one.
 - Derive the response window from the root entry's process identity with
   `window_lookup::find_window_for_process`; never synthesize a plausible
   window response.
@@ -57,7 +67,13 @@ ensuring no stale descendants survive a re-drill.
 - Test full-snapshot replacement and rooted-subtree replacement separately.
 - Test qualified and bare ref parsing, including mismatched snapshot IDs.
 - Assert every truncation path exposes a boundary marker instead of silently
-  dropping descendants.
+  dropping descendants. Depth clamping and budget exhaustion are separate
+  paths; a test that only covers the clamp will not notice the other losing
+  its marker.
+- Assert a drill-down refuses to replace refs from an incomplete observation.
+  A full snapshot may return a partial tree because it writes a fresh map and
+  destroys nothing; a rooted replacement deletes descendants it may then be
+  unable to re-allocate.
 - Keep ref allocation in `crates/core/src/ref_alloc.rs`; full snapshots and
   drill-downs must not grow separate allocators.
 

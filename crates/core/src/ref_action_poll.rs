@@ -16,6 +16,13 @@ use crate::{
 
 const STABILITY_POLL_INTERVAL: Duration = Duration::from_millis(16);
 
+/// Waits until the target looks actionable and returns only counters. The
+/// resolved handle is deliberately not handed to dispatch: this loop runs
+/// *before* the interaction lease is taken, because the lease is a
+/// cross-process lock and holding it for the whole wait budget would serialize
+/// every agent-desktop process on the machine. Anything resolved here was
+/// therefore observed without exclusivity, so dispatch re-resolves under the
+/// lease. The second resolve is the correctness boundary, not redundant work.
 pub(crate) fn execute_poll_loop(
     context: RefActionWaitContext<'_>,
     request: &ActionRequest,

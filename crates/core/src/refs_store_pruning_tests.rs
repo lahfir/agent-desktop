@@ -86,3 +86,61 @@ fn prune_never_removes_trace_segments() {
     assert!(segment.is_file());
     assert!(trace_dir.is_dir());
 }
+
+#[test]
+fn eviction_sweeps_orphans_left_in_snapshots_this_process_never_touched() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+
+    let survivor = store.save_new_snapshot(&map_with("Survivor")).unwrap();
+    let orphan = store
+        .snapshots_dir()
+        .join(&survivor)
+        .join("refmap.json.abandoned.tmp");
+    std::fs::write(&orphan, b"orphan").unwrap();
+    let aged = std::time::SystemTime::now() - (STALE_TMP_MAX_AGE * 2);
+    std::fs::File::options()
+        .write(true)
+        .open(&orphan)
+        .unwrap()
+        .set_modified(aged)
+        .unwrap();
+
+    for i in 0..=MAX_SAVED_SNAPSHOTS {
+        store
+            .save_new_snapshot(&map_with(&format!("Fill {i}")))
+            .unwrap();
+    }
+
+    assert!(
+        !orphan.exists(),
+        "snapshot ids are one-shot, so an orphan in a directory this process never rewrites \
+         is only reachable by the exhaustive sweep that runs with eviction"
+    );
+}
+
+#[test]
+fn eviction_drops_to_the_low_water_mark_rather_than_the_cap() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+
+    for i in 0..=MAX_SAVED_SNAPSHOTS {
+        store
+            .save_new_snapshot(&map_with(&format!("Snapshot {i}")))
+            .unwrap();
+    }
+
+    let retained = std::fs::read_dir(store.snapshots_dir())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .count();
+
+    assert_eq!(
+        retained,
+        PRUNE_LOW_WATER,
+        "eviction goes below the cap so the sort-and-stat pass is amortised across the next \
+         {} saves instead of running on every one",
+        MAX_SAVED_SNAPSHOTS - PRUNE_LOW_WATER
+    );
+}

@@ -16,6 +16,7 @@ fn window_node(children: Vec<AccessibilityNode>) -> AccessibilityNode {
         },
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children,
     }
 }
@@ -30,6 +31,7 @@ fn button_node(label: &str) -> AccessibilityNode {
         },
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     }
 }

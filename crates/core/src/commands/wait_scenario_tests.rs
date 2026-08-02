@@ -22,6 +22,7 @@ impl ObservationOps for TextlessTreeAdapter {
                 },
                 presentation: Default::default(),
                 children_count: None,
+                subtree_truncated: false,
                 children: vec![],
             },
         )
@@ -61,6 +62,7 @@ impl ObservationOps for TextlessTreeAdapter {
             },
             presentation: Default::default(),
             children_count: None,
+            subtree_truncated: false,
             children: vec![],
         })
     }

@@ -58,6 +58,7 @@ pub fn run_from_ref_with_context(
         &ObservationRequest::snapshot(&observation_options, deadline).validate()?,
     )?
     .into_accessibility_tree()?;
+    let nodes_observed = count_nodes(&raw_tree);
 
     let source_app = entry.source.source_app.as_deref();
     let source_window_id = entry.source.source_window_id.as_deref();
@@ -121,7 +122,16 @@ pub fn run_from_ref_with_context(
         refmap,
         window,
         snapshot_id: Some(active_snapshot_id),
+        complete: true,
+        nodes_observed,
     })
+}
+
+/// A drill-down replaces refs inside an existing snapshot, so it must observe
+/// its whole subtree or leave the stored map untouched. Partial projection is
+/// only safe for a full snapshot, which writes a fresh map and destroys nothing.
+fn count_nodes(node: &crate::AccessibilityNode) -> usize {
+    1 + node.children.iter().map(count_nodes).sum::<usize>()
 }
 
 #[cfg(test)]
