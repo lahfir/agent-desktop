@@ -18,12 +18,13 @@ pub fn run_from_ref(
     root_ref_id: &str,
     snapshot_id: Option<&str>,
 ) -> Result<SnapshotResult, AppError> {
-    run_from_ref_with_context(
+    run_from_ref_with_context_timeout(
         adapter,
         opts,
         root_ref_id,
         snapshot_id,
         &CommandContext::default(),
+        crate::snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS,
     )
 }
 
@@ -33,6 +34,27 @@ pub fn run_from_ref_with_context(
     root_ref_id: &str,
     snapshot_id: Option<&str>,
     context: &CommandContext,
+) -> Result<SnapshotResult, AppError> {
+    run_from_ref_with_context_timeout(
+        adapter,
+        opts,
+        root_ref_id,
+        snapshot_id,
+        context,
+        crate::snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS,
+    )
+}
+
+/// Like `run_from_ref_with_context`, with an explicit observation deadline -
+/// the `--timeout-ms` knob U1 item 11's branch (A16-11) adds, threaded into the
+/// drill-down deadline as well as the fresh-snapshot one.
+pub fn run_from_ref_with_context_timeout(
+    adapter: &dyn PlatformAdapter,
+    opts: &TreeOptions,
+    root_ref_id: &str,
+    snapshot_id: Option<&str>,
+    context: &CommandContext,
+    timeout_ms: u64,
 ) -> Result<SnapshotResult, AppError> {
     let store = RefStore::for_session(context.session_id())?;
     let (active_snapshot_id, local_root_ref) =
@@ -44,7 +66,7 @@ pub fn run_from_ref_with_context(
         .ok_or_else(|| AppError::stale_ref(root_ref_id))?
         .clone();
 
-    let deadline = crate::Deadline::after(3_000)?;
+    let deadline = crate::Deadline::after(timeout_ms)?;
     let handle = adapter.resolve_element_strict(&entry, deadline)?;
 
     let observation_options = opts.with_ref_identity_bounds();

@@ -16,6 +16,19 @@ pub struct ObservationRequest {
     pub skeleton: bool,
     evidence_plan: EvidencePlan,
     pub budget: ObservationBudget,
+    pub observation_mode: ObservationMode,
+}
+
+/// The observation-mode sub-struct (KTD7): how the caller wants renderer
+/// accessibility handled on a web-wrapped target. The Windows adapter reads it
+/// to decide whether a still-thin post-settle tree demands the
+/// `--force-renderer-accessibility` guidance or a bare tree back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ObservationMode {
+    /// The caller will pass Chromium's `--force-renderer-accessibility`
+    /// (via the `--force-electron-a11y` CLI flag), so the adapter should not
+    /// guess at guidance; it returns the tree it observed.
+    pub force_renderer_accessibility: bool,
 }
 
 impl ObservationRequest {
@@ -56,6 +69,9 @@ impl ObservationRequest {
             skeleton: options.skeleton,
             evidence_plan: EvidencePlan::uniform(EvidenceRequirements::snapshot()),
             budget: ObservationBudget::default(),
+            observation_mode: ObservationMode {
+                force_renderer_accessibility: options.force_renderer_accessibility,
+            },
         }
     }
 
@@ -72,6 +88,7 @@ impl ObservationRequest {
             skeleton: false,
             evidence_plan: EvidencePlan::uniform(EvidenceRequirements::locator(query, request)),
             budget: ObservationBudget::default(),
+            observation_mode: ObservationMode::default(),
         }
     }
 
@@ -115,11 +132,19 @@ impl ObservationRequest {
                 EvidenceRequirements::query(query),
             ),
             budget: ObservationBudget::default(),
+            observation_mode: ObservationMode::default(),
         }
     }
 
     pub fn evidence_for_raw_depth(self, raw_depth: u8) -> EvidenceRequirements {
         self.evidence_plan.for_raw_depth(raw_depth)
+    }
+
+    /// Sets the observation-mode sub-struct (KTD7) the adapter reads for
+    /// renderer-accessibility handling on web-wrapped targets.
+    pub fn with_observation_mode(mut self, mode: ObservationMode) -> Self {
+        self.observation_mode = mode;
+        self
     }
 
     pub fn descendant_evidence(self) -> EvidenceRequirements {

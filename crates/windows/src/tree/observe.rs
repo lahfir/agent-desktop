@@ -3,12 +3,13 @@ use agent_desktop_core::{
 };
 use serde_json::json;
 
-use super::root_resolve::resolve_root;
+use super::chromium;
+use super::surfaces::surface_root;
 use super::walker::{DEFAULT_MAX_RAW_DEPTH, WalkBudget};
 use super::walker_source::walk_uia_subtree;
 
-/// Runs one observation: resolve the root, walk it, and report completeness
-/// honestly.
+/// Runs one observation: resolve the root, walk it, detect a Chromium shell,
+/// and report completeness honestly.
 ///
 /// The walk itself already produces honest boundaries: at a logical or raw
 /// depth boundary it has already enumerated the full child list (bounded by
@@ -25,12 +26,17 @@ use super::walker_source::walk_uia_subtree;
 /// 2. **Liveness-checked completeness** (KTD8): a walk that would report
 ///    `complete` is only trusted after the root re-verifies live; failure is
 ///    `WINDOW_NOT_FOUND`, never a complete-looking tree.
+/// 3. **Chromium shell detection** (KTD7): a full-depth walk of a detected
+///    Chromium root that lands on the pre-activation shell returns the
+///    activation-required error, which core's loop settles and retries.
 pub(crate) fn observe_tree(
     root: ObservationRoot<'_>,
     request: &ObservationRequest,
+    adapter: &crate::adapter::WindowsAdapter,
 ) -> Result<ObservedTree, AdapterError> {
     let request = (*request).validate()?;
-    let element = resolve_root(root, request.deadline)?;
+    let element = surface_root(root, request.surface, request.deadline)?;
+    let chromium_root = chromium::is_chromium_root(&element);
     let budget = WalkBudget::new(request.max_logical_depth, request.deadline)
         .with_max_raw_depth(request.max_raw_depth.min(DEFAULT_MAX_RAW_DEPTH));
     let outcome = walk_uia_subtree(&element, &root, budget)?;
@@ -38,10 +44,35 @@ pub(crate) fn observe_tree(
     if !outcome.failures.is_empty() {
         return Err(walk_fault_error(&outcome.failures));
     }
+    if outcome.tree.is_complete()
+        && chromium_root
+        && chromium::activation_eligible(root, &request)
+        && chromium::is_shell_shaped(&outcome.stats, &request)
+    {
+        if request.observation_mode.force_renderer_accessibility {
+            return Err(still_thin_after_settle());
+        }
+        if adapter.renderer_activation_attempted() {
+            return Err(still_thin_after_settle());
+        }
+        return Err(chromium::activation_required(&outcome.stats));
+    }
     if outcome.tree.is_complete() {
         re_verify_root(root)?;
     }
     Ok(outcome.tree)
+}
+
+/// The post-settle still-thin error (KTD7): **not** marked activation-required,
+/// so it escapes core's loop and reaches the caller - a Chromium tree that
+/// genuinely stays thin after the async build has the guidance `platform_detail`
+/// and no target-derived text.
+fn still_thin_after_settle() -> AdapterError {
+    agent_desktop_core::AdapterError::new(
+        ErrorCode::ActionFailed,
+        "The Chromium tree is still thin after its accessibility build settled",
+    )
+    .with_platform_detail(chromium::still_thin_detail())
 }
 
 /// The KTD8 liveness check: a walk that would claim `complete` only does so
@@ -132,8 +163,12 @@ mod tests {
             state: Default::default(),
         };
 
-        let error = observe_tree(ObservationRoot::Window(&window), &request)
-            .expect_err("a malformed id must fail");
+        let error = observe_tree(
+            ObservationRoot::Window(&window),
+            &request,
+            &crate::adapter::WindowsAdapter::new(),
+        )
+        .expect_err("a malformed id must fail");
         assert_eq!(error.code, ErrorCode::InvalidArgs);
     }
 

@@ -139,14 +139,18 @@ impl TreeSource for FakeTree {
         self.alias_of(*left) == self.alias_of(*right)
     }
 
-    fn evidence(&self, node: &i32) -> (LocatorEvidence, u64) {
+    fn evidence(&self, node: &i32) -> (ElementProperties, LocatorEvidence, u64) {
         let properties =
             ElementProperties::from_reads(self.reads.get(node).cloned().unwrap_or_default());
         let vocabulary = walk_vocabulary(&properties, &LabelOutcome::Unlabelled);
-        (properties.into_locator_evidence(vocabulary), 0)
+        (
+            properties.clone(),
+            properties.into_locator_evidence(vocabulary),
+            0,
+        )
     }
 
-    fn is_web_wrapper(&self, node: &i32) -> bool {
+    fn is_web_wrapper(&self, node: &i32, _properties: &ElementProperties) -> bool {
         self.wrappers.contains(node)
     }
 }

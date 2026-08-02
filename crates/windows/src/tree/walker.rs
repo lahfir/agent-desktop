@@ -5,7 +5,6 @@ use agent_desktop_core::{
 use serde_json::json;
 
 use super::automation::UiaFailure;
-use super::element::UIAElement;
 use super::element_properties::ResolvedVocabulary;
 use super::properties::ElementProperties;
 use super::walker_enumerate::TreeWalk;
@@ -88,10 +87,31 @@ pub trait TreeSource {
     /// Compares two elements when neither carries a runtime id.
     fn same_element(&self, left: &Self::Node, right: &Self::Node) -> bool;
 
-    /// Reads this node's evidence, returning the count of reads that failed.
-    fn evidence(&self, node: &Self::Node) -> (LocatorEvidence, u64);
+    /// Reads this node's evidence and the read set that built it, returning
+    /// the count of reads that failed.
+    ///
+    /// The properties come back so the wrapper predicate (KTD6) can consume
+    /// the same read set without a second fetch.
+    fn evidence(
+        &self,
+        node: &Self::Node,
+    ) -> (
+        crate::tree::properties::ElementProperties,
+        LocatorEvidence,
+        u64,
+    );
 
-    fn is_web_wrapper(&self, node: &Self::Node) -> bool;
+    /// Whether this element is a transparent wrapper that costs raw depth but
+    /// no logical depth.
+    ///
+    /// The predicate consumes the properties this walk has already read
+    /// (control type, name, value, `AutomationId`, actions), so the
+    /// enumeration's per-node read set is not paid for twice (KTD6).
+    fn is_web_wrapper(
+        &self,
+        node: &Self::Node,
+        properties: &crate::tree::properties::ElementProperties,
+    ) -> bool;
 }
 
 /// One completed walk.
@@ -148,16 +168,6 @@ fn root_missing_error(stats: &LocatorStats) -> AdapterError {
             "kind": "walk_root_unread",
             "deadline_exhausted": stats.reads.health.deadline_exhausted,
         }))
-}
-
-/// Whether this element is a wrapper that costs raw depth but no logical depth.
-///
-/// The seam is deliberately unfilled: the predicate's body still needs
-/// Chromium detection, which does not exist yet. It is called where child
-/// logical depth is computed, so it can be filled in later without editing
-/// the traversal, and a fake can force the two counters apart today.
-pub fn is_web_wrapper(_element: &UIAElement) -> bool {
-    false
 }
 
 /// The role vocabulary, resolved from the properties the walk already read.

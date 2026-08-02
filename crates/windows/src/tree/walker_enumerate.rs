@@ -126,10 +126,10 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
         raw_depth: u8,
     ) -> Option<ObservedSubtree> {
         self.note_visit(logical_depth, raw_depth);
-        let (evidence, read_failures) = self.source.evidence(node);
+        let (properties, evidence, read_failures) = self.source.evidence(node);
         self.stats.reads.counts.observation_attempts += 1;
         self.stats.reads.health.native_read_failures += read_failures;
-        let web_wrapper = self.source.is_web_wrapper(node);
+        let web_wrapper = self.source.is_web_wrapper(node, &properties);
         if web_wrapper {
             self.stats.traversal.web_wrapper_nodes += 1;
         }

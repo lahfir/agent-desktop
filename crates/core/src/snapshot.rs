@@ -149,12 +149,39 @@ pub fn run_with_context(
     window_id: Option<&str>,
     context: &CommandContext,
 ) -> Result<SnapshotResult, AppError> {
+    run_with_context_timeout(
+        adapter,
+        opts,
+        app_name,
+        window_id,
+        context,
+        DEFAULT_SNAPSHOT_TIMEOUT_MS,
+    )
+}
+
+/// The default snapshot observation deadline.
+///
+/// A U1 item-11 branch (A16-11) measured a cold Chromium settle at 10-25 s
+/// against the previous hardcoded 3 s, so callers can raise it explicitly via
+/// `--timeout-ms`; the default stays 3 s for the ecosystems that settle fast.
+pub const DEFAULT_SNAPSHOT_TIMEOUT_MS: u64 = 3_000;
+
+/// Like `run_with_context`, with an explicit observation deadline instead of
+/// the hardcoded default - the `--timeout-ms` knob U1 item 11's branch adds.
+pub fn run_with_context_timeout(
+    adapter: &dyn PlatformAdapter,
+    opts: &TreeOptions,
+    app_name: Option<&str>,
+    window_id: Option<&str>,
+    context: &CommandContext,
+    timeout_ms: u64,
+) -> Result<SnapshotResult, AppError> {
     let mut result = build(
         adapter,
         opts,
         app_name,
         window_id,
-        crate::Deadline::after(3_000)?,
+        crate::Deadline::after(timeout_ms)?,
     )?;
     let store = RefStore::for_session(context.session_id())?;
     let snapshot_id = store.save_new_snapshot(&result.refmap)?;

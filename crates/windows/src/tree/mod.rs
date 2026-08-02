@@ -1,12 +1,14 @@
 pub mod actions;
 pub mod automation;
 pub(crate) mod cache;
+pub mod chromium;
 pub mod descriptor;
 pub mod name_evidence;
 pub(crate) mod observe;
 pub mod roles;
-pub(crate) mod root_resolve;
 pub mod states;
+pub mod surfaces;
+pub mod wrapper;
 
 #[cfg(test)]
 mod captures;

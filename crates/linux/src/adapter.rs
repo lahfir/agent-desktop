@@ -41,6 +41,7 @@ mod tests {
                 skeleton: false,
                 root_ref: None,
                 snapshot_id: None,
+                timeout_ms: None,
             },
             &adapter,
             &CommandContext::default(),

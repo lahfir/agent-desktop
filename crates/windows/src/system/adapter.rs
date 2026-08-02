@@ -1,11 +1,45 @@
 use agent_desktop_core::{
     AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
-    PermissionReport, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter, WindowInfo,
+    PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
+    WindowInfo,
 };
 
 use crate::adapter::WindowsAdapter;
 
 impl SystemOps for WindowsAdapter {
+    /// The 2.4 interaction lease: enough to unblock renderer activation.
+    ///
+    /// KTD7 records that core's activation loop acquires a lease before
+    /// activating, and the trait default fails closed - so without this
+    /// override the first settle would die `PLATFORM_NOT_SUPPORTED`. Full
+    /// cross-process lease semantics are the input sub-phases' (2.6+) decision.
+    fn acquire_interaction_lease(
+        &self,
+        deadline: Deadline,
+    ) -> Result<InteractionLease, AdapterError> {
+        InteractionLease::guarded(deadline, ())
+    }
+
+    /// The Chromium settle: connecting to UI Automation already triggered the
+    /// renderer's asynchronous accessibility build (A1-4/A1-5), so activation
+    /// is the connection-plus-settle itself. A short backoff lets the build
+    /// land before core's loop re-walks, and the adapter notes that the settle
+    /// ran so a subsequent still-thin walk returns guidance rather than
+    /// re-arming the loop.
+    fn activate_renderer_accessibility(
+        &self,
+        _process: ProcessIdentity,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        self.note_renderer_activation_attempted();
+        let settled = lease.deadline().remaining();
+        if settled.is_zero() {
+            return Ok(());
+        }
+        std::thread::sleep(settled.min(std::time::Duration::from_millis(50)));
+        Ok(())
+    }
+
     fn permission_report(&self, deadline: Deadline) -> Result<PermissionReport, AdapterError> {
         crate::system::permissions::report(deadline)
     }
@@ -21,12 +55,18 @@ impl SystemOps for WindowsAdapter {
         true
     }
 
-    /// The surfaces this adapter can observe: a named window, and the focused
-    /// window via the focused-only filter. Core validates the requested
-    /// surface against this list before the adapter is ever called (KTD1's
-    /// mirror of `supported_surfaces`).
+    /// The surfaces this adapter can observe: a named window, the focused
+    /// window, and a Chromium modal-as-sheet. Core validates the requested
+    /// surface against this list before the adapter is ever called (the mirror
+    /// of macOS `supported_surfaces`). The sheet surface resolves the focused
+    /// window when it is itself modal (`WindowIsModal`), reaching a Chromium
+    /// modal through the sheet surface.
     fn supported_surfaces(&self) -> Vec<SnapshotSurface> {
-        vec![SnapshotSurface::Window, SnapshotSurface::Focused]
+        vec![
+            SnapshotSurface::Window,
+            SnapshotSurface::Focused,
+            SnapshotSurface::Sheet,
+        ]
     }
 
     /// The focused window is the focused-only filter's first result, composed
@@ -101,5 +141,28 @@ mod tests {
             report.accessibility,
             PermissionState::Granted | PermissionState::Denied { .. }
         ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_activation_path_acquires_a_windows_lease_and_settles() {
+        let adapter = WindowsAdapter::new();
+        let lease = SystemOps::acquire_interaction_lease(&adapter, Deadline::after(5_000).unwrap())
+            .expect("the Windows lease override must not show up as not_supported");
+
+        SystemOps::activate_renderer_accessibility(
+            &adapter,
+            ProcessIdentity::new(std::process::id(), "test"),
+            &lease,
+        )
+        .expect("activation is the settle, which succeeds");
+    }
+
+    #[test]
+    fn the_advertised_surfaces_cover_sheet_observations() {
+        use agent_desktop_core::{SnapshotSurface, SystemOps as _};
+
+        let surfaces = WindowsAdapter::new().supported_surfaces();
+        assert!(surfaces.contains(&SnapshotSurface::Sheet));
     }
 }

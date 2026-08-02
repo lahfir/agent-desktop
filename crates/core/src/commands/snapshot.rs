@@ -19,6 +19,16 @@ pub struct SnapshotArgs {
     pub skeleton: bool,
     pub root_ref: Option<String>,
     pub snapshot_id: Option<String>,
+    /// Snapshot deadline in milliseconds. A U1 item-11 branch (A16-11)
+    /// measured a cold Chromium settle at 10-25 s against a hardcoded 3 s
+    /// deadline, so the caller can raise it when the post-settle still-thin
+    /// guidance names `--timeout-ms`.
+    pub timeout_ms: Option<u64>,
+    /// Parenthetical spelling the observation-mode sub-struct (KTD7): the
+    /// caller says Chromium accessibility is or will be forced, so the adapter
+    /// does not need to guess at guidance. Threaded into the request's
+    /// observation mode.
+    pub force_electron_a11y: bool,
 }
 
 fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
@@ -36,6 +46,7 @@ fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
         compact: args.compact,
         surface: args.surface,
         skeleton: skeleton_applies,
+        force_renderer_accessibility: args.force_electron_a11y,
     }
 }
 
@@ -73,12 +84,14 @@ pub fn execute(
     let opts = tree_options(&args);
 
     if let Some(root) = args.root_ref {
-        return format_result(snapshot_ref::run_from_ref_with_context(
+        return format_result(snapshot_ref::run_from_ref_with_context_timeout(
             adapter,
             &opts,
             &root,
             args.snapshot_id.as_deref(),
             context,
+            args.timeout_ms
+                .unwrap_or(snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS),
         )?);
     }
 
@@ -97,12 +110,14 @@ pub fn execute(
         );
     }
 
-    let result = snapshot::run_with_context(
+    let result = snapshot::run_with_context_timeout(
         adapter,
         &opts,
         args.app.as_deref(),
         args.window_id.as_deref(),
         context,
+        args.timeout_ms
+            .unwrap_or(snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS),
     )?;
 
     format_result(result)

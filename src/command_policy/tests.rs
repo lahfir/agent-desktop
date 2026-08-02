@@ -125,6 +125,8 @@ fn invalid_snapshot_root_is_rejected_before_permission_preflight() {
         surface: crate::cli_args::Surface::Window,
         root: Some("bad-root".into()),
         snapshot: None,
+        timeout_ms: None,
+        force_electron_a11y: false,
     });
 
     let err = preflight(&command, &report).expect_err("invalid root fails first");

@@ -10,8 +10,8 @@ mod imp {
     use crate::tree::element::UIAElement;
     use crate::tree::name_evidence::read_label;
     use crate::tree::properties::{read_cached, read_live};
-    use crate::tree::walker::{NodeKey, TreeSource, is_web_wrapper, walk_vocabulary};
-    use agent_desktop_core::{AdapterError, LocatorEvidence};
+    use crate::tree::walker::{NodeKey, TreeSource, walk_vocabulary};
+    use agent_desktop_core::AdapterError;
     use uiautomation::UIAutomation;
     use uiautomation::core::{UICacheRequest, UITreeWalker};
 
@@ -94,7 +94,14 @@ mod imp {
                 .unwrap_or(false)
         }
 
-        fn evidence(&self, node: &UIAElement) -> (LocatorEvidence, u64) {
+        fn evidence(
+            &self,
+            node: &UIAElement,
+        ) -> (
+            crate::tree::properties::ElementProperties,
+            agent_desktop_core::LocatorEvidence,
+            u64,
+        ) {
             let (properties, errors) = match &self.cache {
                 Some(_) => read_cached(node),
                 None => read_live(node),
@@ -102,11 +109,19 @@ mod imp {
             let failed = u64::try_from(errors.len()).unwrap_or(u64::MAX);
             let label = read_label(node, self.cache.is_some());
             let vocabulary = walk_vocabulary(&properties, &label);
-            (properties.into_locator_evidence(vocabulary), failed)
+            (
+                properties.clone(),
+                properties.into_locator_evidence(vocabulary),
+                failed,
+            )
         }
 
-        fn is_web_wrapper(&self, node: &UIAElement) -> bool {
-            is_web_wrapper(node)
+        fn is_web_wrapper(
+            &self,
+            _node: &UIAElement,
+            properties: &crate::tree::properties::ElementProperties,
+        ) -> bool {
+            crate::tree::wrapper::is_web_wrapper(properties)
         }
     }
 }
@@ -117,8 +132,8 @@ mod imp {
     use crate::tree::element::UIAElement;
     use crate::tree::element_properties::ResolvedVocabulary;
     use crate::tree::properties::ElementProperties;
-    use crate::tree::walker::{NodeKey, TreeSource, is_web_wrapper};
-    use agent_desktop_core::{AdapterError, LocatorEvidence};
+    use crate::tree::walker::{NodeKey, TreeSource};
+    use agent_desktop_core::AdapterError;
 
     /// Canned arm so the walk's entry point, and every module that calls it,
     /// compile and run on a non-Windows lane. It enumerates nothing, which is
@@ -154,15 +169,27 @@ mod imp {
             false
         }
 
-        fn evidence(&self, _node: &UIAElement) -> (LocatorEvidence, u64) {
+        fn evidence(
+            &self,
+            _node: &UIAElement,
+        ) -> (
+            crate::tree::properties::ElementProperties,
+            LocatorEvidence,
+            u64,
+        ) {
             (
+                ElementProperties::default(),
                 ElementProperties::default().into_locator_evidence(ResolvedVocabulary::unknown()),
                 0,
             )
         }
 
-        fn is_web_wrapper(&self, node: &UIAElement) -> bool {
-            is_web_wrapper(node)
+        fn is_web_wrapper(
+            &self,
+            _node: &UIAElement,
+            properties: &crate::tree::properties::ElementProperties,
+        ) -> bool {
+            crate::tree::wrapper::is_web_wrapper(properties)
         }
     }
 }

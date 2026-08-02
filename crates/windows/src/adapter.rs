@@ -2,12 +2,35 @@ use agent_desktop_core::{
     AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, InputOps, ObservationOps,
     ObservationRequest, ObservationRoot, TreeOptions, WindowFilter, WindowInfo,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 
-pub struct WindowsAdapter;
+/// The Windows adapter.
+///
+/// Carries the renderer-activation state KTD7 needs: whether the Chromium
+/// settle has **already run** for this process. Core's loop calls
+/// `activate_renderer_accessibility` (the settle) then retries
+/// `observe_tree`; the adapter must distinguish the pre-settle shell (which
+/// re-arms the loop) from the post-settle still-thin tree (which returns the
+/// guidance error instead of looping forever). A fresh adapter per CLI
+/// invocation makes an instance flag the honest carrier.
+pub struct WindowsAdapter {
+    renderer_activation_attempted: AtomicBool,
+}
 
 impl WindowsAdapter {
     pub fn new() -> Self {
-        Self
+        Self {
+            renderer_activation_attempted: AtomicBool::new(false),
+        }
+    }
+
+    pub(crate) fn note_renderer_activation_attempted(&self) {
+        self.renderer_activation_attempted
+            .store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn renderer_activation_attempted(&self) -> bool {
+        self.renderer_activation_attempted.load(Ordering::Relaxed)
     }
 }
 
@@ -23,7 +46,7 @@ impl ObservationOps for WindowsAdapter {
         root: ObservationRoot<'_>,
         request: &ObservationRequest,
     ) -> Result<agent_desktop_core::ObservedTree, AdapterError> {
-        crate::tree::observe::observe_tree(root, request)
+        crate::tree::observe::observe_tree(root, request, self)
     }
 
     /// The FFI legacy entrypoint: a thin wrapper over the same `observe_tree`
@@ -62,18 +85,30 @@ mod tests {
     use super::*;
     use agent_desktop_core::{SnapshotSurface, SystemOps};
 
-    /// U6's surfaces gate: the adapter advertises exactly the surfaces it can
-    /// observe - a named window and the focused window. Core validates the
-    /// requested surface against this list before the adapter is ever called,
-    /// so this advertisement is what makes `snapshot` end to end possible; the
-    /// old empty-set fail-closed pin is retired because the adapter now
-    /// implements the observation path.
+    /// U6/U7's surfaces gate: the adapter advertises exactly the surfaces it can
+    /// observe - a named window, the focused window, and a Chromium modal
+    /// classified as a sheet. Core validates the requested surface against this
+    /// list before the adapter is ever called, so this advertisement is what
+    /// makes `snapshot` end to end possible.
     #[test]
-    fn supported_surfaces_advertises_window_and_focused() {
+    fn supported_surfaces_advertises_window_focused_and_sheet() {
         let adapter = WindowsAdapter::new();
         assert_eq!(
             adapter.supported_surfaces(),
-            vec![SnapshotSurface::Window, SnapshotSurface::Focused]
+            vec![
+                SnapshotSurface::Window,
+                SnapshotSurface::Focused,
+                SnapshotSurface::Sheet,
+            ]
         );
+    }
+
+    #[test]
+    fn renderer_activation_state_starts_unattempted_and_notes_once() {
+        let adapter = WindowsAdapter::new();
+        assert!(!adapter.renderer_activation_attempted());
+
+        adapter.note_renderer_activation_attempted();
+        assert!(adapter.renderer_activation_attempted());
     }
 }

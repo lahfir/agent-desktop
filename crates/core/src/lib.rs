@@ -202,7 +202,7 @@ pub use live_locator::{
     LocatorIdentifierStats, LocatorLimitStats, LocatorMaterialization, LocatorReadCounts,
     LocatorReadHealth, LocatorReadStats, LocatorRefEvidence, LocatorResolution,
     LocatorResolveRequest, LocatorSelection, LocatorSemanticReadStats, LocatorStats,
-    LocatorTraversalStats, ObservationBudget, ObservationRequest, ObservationRoot,
+    LocatorTraversalStats, ObservationBudget, ObservationMode, ObservationRequest, ObservationRoot,
     ObservationSource, ObservedSubtree, ObservedTree, classify_query_result, evaluate_locator_tree,
     find_first_entry, require_unique, resolve_query,
 };
