@@ -5,7 +5,9 @@ use agent_desktop_core::{
 use serde_json::json;
 
 use super::element::UIAElement;
+#[cfg(target_os = "windows")]
 use super::properties::read_live;
+#[cfg(target_os = "windows")]
 use super::property_ids::TreeProperty;
 use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
 use super::walker_source::UiaTreeSource;
@@ -51,6 +53,7 @@ struct Candidate {
 /// A7-3 measured Explorer re-resolving 29 of 29 `AutomationId` keys with 5
 /// landing on a different element - the silent-wrong-target shape strictness
 /// exists to prevent.
+#[cfg(target_os = "windows")]
 pub(crate) fn resolve_element_strict(
     entry: &RefEntry,
     deadline: Deadline,
@@ -111,6 +114,18 @@ pub(crate) fn resolve_element_strict(
     }
 }
 
+/// The non-Windows twin. The crate cross-compiles to the Linux lane with the
+/// resolver reachable, but there are no UI Automation elements there, so every
+/// stored ref fails closed as stale rather than attempting a search that
+/// cannot find anything.
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn resolve_element_strict(
+    entry: &RefEntry,
+    _deadline: Deadline,
+) -> Result<NativeHandle, AdapterError> {
+    Err(stale_ref_error(entry))
+}
+
 /// Whether one searched element matches the stored evidence exactly.
 ///
 /// `native_id` must match by kind **and** value when the ref carries one; role
@@ -148,6 +163,7 @@ fn candidate_matches(
 }
 
 /// Reaches the stored window's root element from the ref's source window id.
+#[cfg(target_os = "windows")]
 fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElement, AdapterError> {
     let window_id = entry
         .source
@@ -171,6 +187,7 @@ fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElemen
 
 /// Searches the subtree under `element` to the resolve depth, collecting every
 /// node's identity evidence.
+#[cfg(target_os = "windows")]
 fn search_under(
     source: &UiaTreeSource,
     element: &UIAElement,
@@ -192,6 +209,7 @@ fn search_under(
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
 fn enumerate_children(
     source: &UiaTreeSource,
     element: &UIAElement,
@@ -230,6 +248,7 @@ fn enumerate_children(
 
 /// Reads the identity-bearing evidence off one element for comparison, from a
 /// single batched read of the walk property set.
+#[cfg(target_os = "windows")]
 fn read_candidate(element: &UIAElement) -> Candidate {
     let (properties, _) = read_live(element);
     let role = crate::tree::roles::resolve_role(&properties)

@@ -137,7 +137,7 @@ fn corroborate(pid: ProcessId, _row: &ProcessRow) -> bool {
 
 /// The owner pid + token for a window, reusing the identity path.
 fn process_token_of(
-    handle: windows_sys::Win32::Foundation::HWND,
+    handle: super::window_enum::WindowHandle,
 ) -> Option<(ProcessId, Option<String>)> {
     #[cfg(target_os = "windows")]
     {

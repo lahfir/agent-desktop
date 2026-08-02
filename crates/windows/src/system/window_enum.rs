@@ -1,6 +1,22 @@
 use agent_desktop_core::{AdapterError, Rect};
+
+/// A top-level window handle, typed for the compiling platform.
+///
+/// `windows-sys`'s `HWND` is a raw pointer that only exists on Windows; the
+/// crate still must compile on the Linux cross-check lane, so the system
+/// modules name this alias in signatures and keep the Windows-only calls
+/// behind `#[cfg]`. The non-Windows alias stays a raw pointer so
+/// `std::ptr::null_mut()` and pointer casts type-check identically.
+#[cfg(target_os = "windows")]
+pub(crate) type WindowHandle = windows_sys::Win32::Foundation::HWND;
+#[cfg(not(target_os = "windows"))]
+pub(crate) type WindowHandle = *mut core::ffi::c_void;
+
+#[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::HWND;
+#[cfg(target_os = "windows")]
 use windows_sys::Win32::Graphics::Dwm::DWMWA_CLOAKED;
+#[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GWL_EXSTYLE, GetWindowLongW, GetWindowRect, IsIconic, IsWindowVisible,
     WS_EX_TOOLWINDOW,
@@ -13,7 +29,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 /// filter can cite its own evidence per criterion (A16-1).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EnumeratedWindow {
-    pub(crate) handle: HWND,
+    pub(crate) handle: WindowHandle,
     pub(crate) visible: bool,
     pub(crate) iconic: bool,
     pub(crate) cloaked: bool,
@@ -34,6 +50,7 @@ impl EnumeratedWindow {
 /// synchronously on the calling thread, so the visitor is passed by raw
 /// pointer through the callback's `lparam` and never crosses threads; the
 /// reference is valid for the entire synchronous call.
+#[cfg(target_os = "windows")]
 pub(crate) fn enumerate_top_level(
     visit: impl FnMut(EnumeratedWindow) -> bool,
 ) -> Result<(), AdapterError> {
@@ -56,6 +73,14 @@ pub(crate) fn enumerate_top_level(
     Ok(())
 }
 
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn enumerate_top_level(
+    _visit: impl FnMut(EnumeratedWindow) -> bool,
+) -> Result<(), AdapterError> {
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
 fn is_cloaked(window: HWND) -> bool {
     let mut cloaked: u32 = 0;
     let succeeded = unsafe {
@@ -69,11 +94,13 @@ fn is_cloaked(window: HWND) -> bool {
     succeeded && cloaked != 0
 }
 
+#[cfg(target_os = "windows")]
 fn is_tool_window(window: HWND) -> bool {
     let ex_style = unsafe { GetWindowLongW(window, GWL_EXSTYLE) };
     (ex_style & WS_EX_TOOLWINDOW as i32) != 0
 }
 
+#[cfg(target_os = "windows")]
 fn window_rect(window: HWND) -> Rect {
     let mut rect = windows_sys::Win32::Foundation::RECT::default();
     if unsafe { GetWindowRect(window, &mut rect) } == 0 {

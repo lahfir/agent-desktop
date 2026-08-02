@@ -174,7 +174,7 @@ mod imp {
             _node: &UIAElement,
         ) -> (
             crate::tree::properties::ElementProperties,
-            LocatorEvidence,
+            agent_desktop_core::LocatorEvidence,
             u64,
         ) {
             (

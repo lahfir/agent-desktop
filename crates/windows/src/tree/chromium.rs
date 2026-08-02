@@ -1,7 +1,9 @@
 use agent_desktop_core::{AdapterError, LocatorStats, ObservationRequest, ObservationRoot};
 
 use super::element::UIAElement;
+#[cfg(target_os = "windows")]
 use super::properties::read_one;
+#[cfg(target_os = "windows")]
 use super::property_ids::TreeProperty;
 
 /// The top-level window class Chromium ships (A4-4 observed it on Obsidian's
@@ -21,12 +23,21 @@ const SHELL_NODE_CEILING: usize = 32;
 /// Read from the root element's `ClassName` (a one-property live read, never a
 /// second walk). This is what gates the wrapper skip (KTD6) and the
 /// activation settle (KTD7).
+#[cfg(target_os = "windows")]
 pub(crate) fn is_chromium_root(root: &UIAElement) -> bool {
     let class = read_one(root, TreeProperty::ClassName);
     matches!(
         class.text(),
         agent_desktop_core::LocatorField::Known(name) if name.trim() == CHROMIUM_WINDOW_CLASS
     )
+}
+
+/// The non-Windows twin, so the crate's `#![cfg]`-free internal callers compile
+/// on the Linux cross-check lane. No real element exists there, so no window is
+/// Chromium.
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn is_chromium_root(_root: &UIAElement) -> bool {
+    false
 }
 
 /// Whether a full-depth walk of a detected-Chromium root landed on the shell

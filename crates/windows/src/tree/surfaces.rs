@@ -4,7 +4,9 @@ use serde_json::json;
 use super::automation::root_from_hwnd;
 use super::chromium;
 use super::element::UIAElement;
+#[cfg(target_os = "windows")]
 use super::properties::read_one;
+#[cfg(target_os = "windows")]
 use super::property_ids::TreeProperty;
 use crate::system::window_enum::enumerate_top_level;
 use crate::system::window_ops::passes_filter;
@@ -109,11 +111,17 @@ fn focused_hwnd_of(expected: &str) -> Result<isize, AdapterError> {
 ///
 /// This classifies a Chromium modal as a `Sheet` surface, making it reachable
 /// via the sheet surface.
+#[cfg(target_os = "windows")]
 pub(crate) fn window_is_modal_sheet(root: &UIAElement, _chromium: bool) -> bool {
     matches!(
         read_one(root, TreeProperty::WindowIsModal).flag(),
         Some(true)
     )
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn window_is_modal_sheet(_root: &UIAElement, _chromium: bool) -> bool {
+    false
 }
 
 #[cfg(test)]

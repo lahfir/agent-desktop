@@ -17,7 +17,7 @@ pub(crate) fn passes_filter(window: &EnumeratedWindow) -> bool {
 /// the image name that becomes `app` - all read from the same handle.
 #[cfg(target_os = "windows")]
 fn process_facts(
-    handle: windows_sys::Win32::Foundation::HWND,
+    handle: super::window_enum::WindowHandle,
 ) -> Option<(ProcessId, Option<String>, String)> {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
@@ -34,7 +34,7 @@ fn process_facts(
 
 #[cfg(not(target_os = "windows"))]
 fn process_facts(
-    _handle: windows_sys::Win32::Foundation::HWND,
+    _handle: super::window_enum::WindowHandle,
 ) -> Option<(ProcessId, Option<String>, String)> {
     None
 }
@@ -105,7 +105,7 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
     Ok(windows)
 }
 
-fn is_foreground_window(handle: windows_sys::Win32::Foundation::HWND) -> bool {
+fn is_foreground_window(handle: super::window_enum::WindowHandle) -> bool {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
@@ -118,7 +118,7 @@ fn is_foreground_window(handle: windows_sys::Win32::Foundation::HWND) -> bool {
     }
 }
 
-fn live_window_title(handle: windows_sys::Win32::Foundation::HWND) -> String {
+fn live_window_title(handle: super::window_enum::WindowHandle) -> String {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
@@ -191,10 +191,10 @@ fn re_verify(info: &WindowInfo) {
     }
 }
 
-fn parse_handle(id: &str) -> windows_sys::Win32::Foundation::HWND {
+fn parse_handle(id: &str) -> super::window_enum::WindowHandle {
     id.strip_prefix("w-")
         .and_then(|number| number.parse::<usize>().ok())
-        .map(|value| value as windows_sys::Win32::Foundation::HWND)
+        .map(|value| value as super::window_enum::WindowHandle)
         .unwrap_or(std::ptr::null_mut())
 }
 

@@ -11,7 +11,7 @@ use super::process_identity;
 /// target retitling per document), and a hard title check there would fail
 /// drill-down on the very windows 2.4 exists to serve.
 pub(crate) struct WindowIdentityEvidence<'a> {
-    pub(crate) handle: windows_sys::Win32::Foundation::HWND,
+    pub(crate) handle: super::window_enum::WindowHandle,
     pub(crate) pid: ProcessId,
     pub(crate) app: &'a str,
     pub(crate) process_instance: &'a str,
@@ -20,7 +20,7 @@ pub(crate) struct WindowIdentityEvidence<'a> {
 
 impl<'a> WindowIdentityEvidence<'a> {
     pub(crate) fn from_info(
-        handle: windows_sys::Win32::Foundation::HWND,
+        handle: super::window_enum::WindowHandle,
         win: &'a WindowInfo,
     ) -> Option<Self> {
         Some(Self {
@@ -76,7 +76,7 @@ impl<'a> WindowIdentityEvidence<'a> {
 
 /// Reads the live title of a window handle, the one piece of the strict check
 /// only the OS can answer for.
-fn live_window_title(handle: windows_sys::Win32::Foundation::HWND) -> Option<String> {
+fn live_window_title(handle: super::window_enum::WindowHandle) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
@@ -138,7 +138,7 @@ fn live_process_app(_pid: ProcessId) -> String {
 }
 
 /// The fail-closed identity-mismatch error, carrying no window-derived text.
-fn window_identity_mismatch(handle: windows_sys::Win32::Foundation::HWND) -> AdapterError {
+fn window_identity_mismatch(handle: super::window_enum::WindowHandle) -> AdapterError {
     AdapterError::new(
         ErrorCode::WindowNotFound,
         "The window's identity no longer matches its stored evidence",
