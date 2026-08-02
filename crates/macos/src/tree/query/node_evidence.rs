@@ -63,6 +63,7 @@ pub(crate) fn unknown() -> LocatorEvidence {
         ref_evidence: LocatorRefEvidence {
             bounds: LocatorField::Unknown,
             available_actions: LocatorField::Unknown,
+            descriptors: Default::default(),
         },
     }
 }
