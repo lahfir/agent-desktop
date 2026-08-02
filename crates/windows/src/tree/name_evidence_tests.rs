@@ -234,7 +234,10 @@ fn a_description_alone_becomes_the_name_and_is_not_repeated() {
 
 /// The adapter computes no name of its own: every slot it fills is one core's
 /// precedence consumes. The three it cannot fill are suppressed rather than
-/// left to look like absent evidence.
+/// left to look like absent evidence. The placeholder slot is filled from
+/// 2.4 on (it is no longer "deliberately unfilled"), but on an element whose
+/// `FullDescription` has no text, `HelpText` is the description and the slot is
+/// suppressed so the prompt does not double as the description.
 #[test]
 fn the_adapter_supplies_slots_and_suppresses_the_ones_it_cannot_fill() {
     let status = status_of(
@@ -248,8 +251,50 @@ fn the_adapter_supplies_slots_and_suppresses_the_ones_it_cannot_fill() {
     assert_eq!(
         status.placeholder,
         SlotStatus::Suppressed,
-        "placeholder is an evidence field this module deliberately leaves unfilled"
+        "without a FullDescription, HelpText is the description, so no placeholder is claimed"
     );
+}
+
+/// When `FullDescription` carries the description, `HelpText` is free to be
+/// the placeholder and the slot is Certain - the 2.4 P2-O8 placeholder arm.
+/// A placeholder-only control's prompt then reaches the name precedence, which
+/// is what lets such a control receive a name at all.
+#[test]
+fn placeholder_slot_is_certain_when_help_text_is_not_the_description() {
+    let status = status_of(
+        &reads(&[
+            (TreeProperty::FullDescription, text("The description")),
+            (TreeProperty::HelpText, text("The prompt")),
+        ]),
+        &LabelOutcome::Unlabelled,
+    );
+
+    assert_eq!(status.placeholder, SlotStatus::Certain);
+
+    let (name, _) = name_fields(
+        &reads(&[
+            (TreeProperty::FullDescription, text("The description")),
+            (TreeProperty::HelpText, text("The prompt")),
+        ]),
+        &LabelOutcome::Unlabelled,
+    );
+    assert_eq!(name, LocatorField::Known("The description".into()));
+}
+
+/// A failed `HelpText` read on an element with a real description is not a
+/// placeholder claim: the slot turns Uncertain so the name precedence knows a
+/// placeholder may exist that this read could not surface.
+#[test]
+fn placeholder_slot_is_uncertain_when_its_source_read_failed() {
+    let status = status_of(
+        &reads(&[
+            (TreeProperty::FullDescription, text("The description")),
+            (TreeProperty::HelpText, PropertyOutcome::Unknown),
+        ]),
+        &LabelOutcome::Unlabelled,
+    );
+
+    assert_eq!(status.placeholder, SlotStatus::Uncertain);
 }
 
 /// The secure gate is upstream of this module: a secure element's `Name` is

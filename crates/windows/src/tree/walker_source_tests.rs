@@ -46,17 +46,18 @@ fn the_walk_issues_no_banned_call() {
 ///
 /// `LocalizedControlType` is banned as a map key separately: Microsoft
 /// documents it as an OS-locale-dependent or provider-chosen display string,
-/// so a role keyed on it breaks on a non-English Windows.
+/// so a role keyed on it breaks on a non-English Windows. The ban is scoped to
+/// the vocabulary files that *key* on a control type - `roles.rs`,
+/// `actions.rs`, `states.rs`. `property_ids.rs` declares and reads the
+/// property in 2.4 (sub-phase 2.4's A16-5 measured `LocalizedControlType`
+/// populated on every control type, and it feeds the `role_description`
+/// descriptor), which is not keying.
 #[test]
 fn the_vocabulary_instantiates_no_pattern_and_keys_on_no_display_string() {
     let sources = [
         include_str!("roles.rs"),
         include_str!("actions.rs"),
         include_str!("states.rs"),
-        include_str!("property_ids.rs"),
-        include_str!("properties.rs"),
-        include_str!("cache.rs"),
-        include_str!("element_properties.rs"),
     ];
     let banned = [
         concat!("get_", "pattern"),
@@ -71,6 +72,23 @@ fn the_vocabulary_instantiates_no_pattern_and_keys_on_no_display_string() {
                 assert!(
                     is_prose || !line.contains(call),
                     "the vocabulary must never reach for {call}: {line}"
+                );
+            }
+        }
+    }
+    for source in [
+        include_str!("property_ids.rs"),
+        include_str!("properties.rs"),
+        include_str!("cache.rs"),
+        include_str!("element_properties.rs"),
+    ] {
+        for line in source.lines() {
+            let is_prose =
+                line.trim_start().starts_with("///") || line.trim_start().starts_with("//!");
+            for call in [concat!("get_", "pattern"), concat!("add_", "pattern")] {
+                assert!(
+                    is_prose || !line.contains(call),
+                    "the walk must never reach for {call}: {line}"
                 );
             }
         }

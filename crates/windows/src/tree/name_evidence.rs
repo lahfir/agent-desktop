@@ -66,8 +66,19 @@ fn evidence_of(properties: &ElementProperties, label: &LabelOutcome) -> NameEvid
         explicit_label: None,
         static_value: None,
         child_label: None,
-        placeholder: None,
+        placeholder: placeholder_of(properties),
     }
+}
+
+/// The placeholder input slot, filled from `HelpText` where it is not already
+/// the description - the same rule the output `placeholder` descriptor uses.
+///
+/// The slot exists so a placeholder-only control (a text field whose only
+/// accessible text is its prompt) can still receive a name; without it, such a
+/// control would be unreferenced even though UIA publishes the prompt in
+/// `HelpText`.
+fn placeholder_of(properties: &ElementProperties) -> Option<String> {
+    super::descriptor::placeholder_of(properties)
 }
 
 /// `FullDescription` is the description, with `HelpText` as its fallback.
@@ -102,7 +113,25 @@ fn status_of(properties: &ElementProperties, label: &LabelOutcome) -> NameSlotSt
         explicit_label: SlotStatus::Suppressed,
         static_value: SlotStatus::Suppressed,
         child_label: SlotStatus::Suppressed,
-        placeholder: SlotStatus::Suppressed,
+        placeholder: placeholder_slot(properties),
+    }
+}
+
+/// The placeholder slot's status, mirroring the source rule:
+///
+/// - when `FullDescription` is a real answer, `HelpText` is free to be the
+///   placeholder, and the slot tracks the `HelpText` read's certainty;
+/// - when `FullDescription` is blank or failed, `HelpText` is the description
+///   (per `description_of`), there is no placeholder claim, and the slot is
+///   `Suppressed` so the placeholder never double-reports the description.
+fn placeholder_slot(properties: &ElementProperties) -> SlotStatus {
+    if text_of(properties.get(TreeProperty::FullDescription)).is_some() {
+        match properties.get(TreeProperty::HelpText) {
+            PropertyOutcome::Unknown => SlotStatus::Uncertain,
+            PropertyOutcome::Known(_) | PropertyOutcome::Absent => SlotStatus::Certain,
+        }
+    } else {
+        SlotStatus::Suppressed
     }
 }
 

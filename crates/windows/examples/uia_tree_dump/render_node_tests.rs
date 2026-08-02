@@ -40,6 +40,14 @@ fn marked_fields() -> NodeFields {
                 TreeProperty::LegacyDefaultAction,
                 PropertyOutcome::Known(PropertyValue::Text(MARKER.to_string())),
             ),
+            (
+                TreeProperty::LocalizedControlType,
+                PropertyOutcome::Known(PropertyValue::Text(MARKER.to_string())),
+            ),
+            (
+                TreeProperty::AriaRole,
+                PropertyOutcome::Known(PropertyValue::Text(MARKER.to_string())),
+            ),
         ]),
         vocabulary: ResolvedVocabulary {
             role: LocatorField::Known("button".to_string()),
@@ -89,4 +97,20 @@ fn render_node_never_renders_a_marker_planted_in_every_text_slot() {
         json!({ "present": true, "chars": chars })
     );
     assert_eq!(rendered["labelled"], json!(true));
+
+    assert_eq!(
+        rendered["subrole"],
+        json!({ "present": true, "chars": chars }),
+        "AriaRole rendered presence-only, never its content"
+    );
+    assert_eq!(
+        rendered["role_description"],
+        json!({ "present": true, "chars": chars }),
+        "LocalizedControlType rendered presence-only, never its content"
+    );
+    assert_eq!(
+        rendered["placeholder"],
+        json!({ "present": true, "chars": chars }),
+        "the HelpText-derived placeholder rendered presence-only, never its content"
+    );
 }

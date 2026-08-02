@@ -57,6 +57,8 @@ pub enum TreeProperty {
     ProviderDescription,
     ControlType,
     RuntimeId,
+    LocalizedControlType,
+    AriaRole,
 }
 
 impl TreeProperty {
@@ -115,7 +117,17 @@ impl TreeProperty {
     /// and `RangeValueIsReadOnly` are read by no vocabulary here and are not
     /// requested. `IsDataValidForForm` joined them after the dogfood run -
     /// `states.rs` records why its `invalid` token is unproduced.
-    pub const WALK_SET: [TreeProperty; 40] = [
+    ///
+    /// **2.4 added `LocalizedControlType` and `AriaRole` to the flat set on
+    /// measured cost (A16-7).** Sub-phase 2.4 measures the marginal cost of the
+    /// two new properties at 1.03x on the Win32 fixture, 1.18x on the WPF
+    /// tree and 1.22x on settled Chromium (min of seven with a discarded
+    /// warm-up), all inside A15-11's 1.22x-to-1.98x envelope, so the set stays
+    /// flat rather than re-opening the split A15-12 rejected. `AriaProperties`
+    /// was measured but not added: nothing consumes it on the pinned stack
+    /// (A16-6 measured it carrying no `class` token, so `dom_classes` ships
+    /// schema-only), and 2.3's rule is that nothing unread is paid for.
+    pub const WALK_SET: [TreeProperty; 42] = [
         TreeProperty::Name,
         TreeProperty::AutomationId,
         TreeProperty::ClassName,
@@ -156,6 +168,8 @@ impl TreeProperty {
         TreeProperty::GridItemAvailable,
         TreeProperty::TableItemAvailable,
         TreeProperty::LegacyAvailable,
+        TreeProperty::LocalizedControlType,
+        TreeProperty::AriaRole,
     ];
 
     pub fn is_value_bearing(self) -> bool {
@@ -217,7 +231,9 @@ impl TreeProperty {
             | TreeProperty::LegacyAvailable
             | TreeProperty::ProviderDescription
             | TreeProperty::ControlType
-            | TreeProperty::RuntimeId => false,
+            | TreeProperty::RuntimeId
+            | TreeProperty::LocalizedControlType
+            | TreeProperty::AriaRole => false,
         }
     }
 
@@ -301,6 +317,8 @@ impl TreeProperty {
             Self::ProviderDescription => "ProviderDescription",
             Self::ControlType => "ControlType",
             Self::RuntimeId => "RuntimeId",
+            Self::LocalizedControlType => "LocalizedControlType",
+            Self::AriaRole => "AriaRole",
         }
     }
 }
@@ -359,6 +377,8 @@ mod imp {
             TreeProperty::ProviderDescription => UIProperty::ProviderDescription,
             TreeProperty::ControlType => UIProperty::ControlType,
             TreeProperty::RuntimeId => UIProperty::RuntimeId,
+            TreeProperty::LocalizedControlType => UIProperty::LocalizedControlType,
+            TreeProperty::AriaRole => UIProperty::AriaRole,
         }
     }
 }

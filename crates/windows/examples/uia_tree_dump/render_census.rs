@@ -32,6 +32,9 @@ struct Coverage {
     name: usize,
     description: usize,
     label: usize,
+    subrole: usize,
+    role_description: usize,
+    placeholder: usize,
 }
 
 #[derive(Default)]
@@ -60,6 +63,9 @@ impl Row {
         self.coverage.name += usize::from(is_present(&node["name"]));
         self.coverage.description += usize::from(is_present(&node["description"]));
         self.coverage.label += usize::from(node["labelled"].as_bool().unwrap_or(false));
+        self.coverage.subrole += usize::from(is_present(&node["subrole"]));
+        self.coverage.role_description += usize::from(is_present(&node["role_description"]));
+        self.coverage.placeholder += usize::from(is_present(&node["placeholder"]));
     }
 
     fn render(self, control_type: &str) -> Value {
@@ -74,6 +80,9 @@ impl Row {
             "with_non_blank_name": self.coverage.name,
             "with_description": self.coverage.description,
             "with_label_relation": self.coverage.label,
+            "with_subrole": self.coverage.subrole,
+            "with_role_description": self.coverage.role_description,
+            "with_placeholder": self.coverage.placeholder,
         })
     }
 }
