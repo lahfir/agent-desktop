@@ -8,7 +8,13 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 const LATEST_SNAPSHOT_FILE: &str = "latest_snapshot_id";
-const MAX_SAVED_SNAPSHOTS: usize = 512;
+
+/// Refs are invalidated by the next UI change, so retention only has to cover
+/// the handful of snapshots an agent drills through within one interaction.
+/// Pruning to a low-water mark keeps the sort-and-stat pass off the common
+/// save, which otherwise paid it on every snapshot once the cap was reached.
+const MAX_SAVED_SNAPSHOTS: usize = 128;
+pub(crate) const PRUNE_LOW_WATER: usize = 96;
 pub(crate) const STALE_TMP_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, Clone)]

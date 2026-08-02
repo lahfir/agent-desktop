@@ -9,6 +9,7 @@ fn node(role: &str) -> AccessibilityNode {
         identity: Default::default(),
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     }
 }

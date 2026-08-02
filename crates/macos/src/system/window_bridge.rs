@@ -51,17 +51,25 @@ unsafe extern "C" {
     ) -> *mut std::ffi::c_void;
 }
 
+/// `kAXErrorIllegalArgument` is the bridge rejecting the element outright, not
+/// a busy window that might answer later. Treating it as retryable made callers
+/// spin the full resolve budget on a call that can never succeed, and made a
+/// window that simply has no CGWindowID look like an unresolved candidate
+/// rather than a settled non-match.
 #[cfg(target_os = "macos")]
 fn classify(error: i32) -> Result<bool, AdapterError> {
     use accessibility_sys::{
         kAXErrorAPIDisabled, kAXErrorAttributeUnsupported, kAXErrorCannotComplete,
-        kAXErrorInvalidUIElement, kAXErrorNoValue, kAXErrorSuccess,
+        kAXErrorIllegalArgument, kAXErrorInvalidUIElement, kAXErrorNoValue, kAXErrorSuccess,
     };
 
     if error == kAXErrorSuccess {
         return Ok(true);
     }
-    if error == kAXErrorAttributeUnsupported || error == kAXErrorNoValue {
+    if error == kAXErrorAttributeUnsupported
+        || error == kAXErrorNoValue
+        || error == kAXErrorIllegalArgument
+    {
         return Ok(false);
     }
     if error == kAXErrorAPIDisabled {
@@ -140,6 +148,14 @@ mod tests {
             assert_eq!(classified.code, ErrorCode::AppUnresponsive);
             assert_eq!(classified.details.unwrap()["complete"], false);
         }
+    }
+
+    #[test]
+    fn illegal_argument_is_a_settled_absence_not_a_retryable_failure() {
+        assert!(
+            !classify(accessibility_sys::kAXErrorIllegalArgument).unwrap(),
+            "a window the bridge rejects outright has no CGWindowID; retrying cannot change that"
+        );
     }
 
     #[test]

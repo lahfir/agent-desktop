@@ -205,6 +205,11 @@ pub fn end_session(session_id: &str) -> Result<SessionManifest, AppError> {
     if manifest.ended_at.is_none() {
         manifest.ended_at = Some(now_millis());
         write_manifest(&manifest)?;
+        if manifest.artifacts == ArtifactsMode::Full
+            && let Ok(store) = crate::refs_store::RefStore::for_session(Some(&id))
+        {
+            store.discard_ref_scaffolding();
+        }
     }
     Ok(manifest)
 }

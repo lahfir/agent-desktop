@@ -13,6 +13,7 @@ fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> A
         },
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     }
 }

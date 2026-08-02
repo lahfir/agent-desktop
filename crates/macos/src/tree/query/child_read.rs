@@ -87,6 +87,8 @@ mod imp {
         max_elements: usize,
         deadline: std::time::Instant,
     ) -> ChildRead {
+        let count_deadline =
+            super::super::child_read_budget::boundary_count_deadline(max_elements, deadline);
         let mut status = ChildReadStatus::default();
         if prepare(element, deadline, &mut status).is_err() {
             return ChildRead {
@@ -99,7 +101,7 @@ mod imp {
             };
         }
         status.attempts += 1;
-        let count = match child_count(element, attribute, deadline) {
+        let count = match child_count(element, attribute, count_deadline) {
             Ok(count) => count,
             Err(error) if is_absent_error(error) => {
                 return ChildRead::unavailable(status);

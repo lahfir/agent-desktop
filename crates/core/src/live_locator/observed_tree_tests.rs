@@ -152,3 +152,64 @@ fn identifier_evidence_preserves_preference_without_platform_names() {
     assert_eq!(identifiers.preferred_value(), Some("automation-id"));
     assert!(identifiers.is_complete());
 }
+
+#[test]
+fn partial_projection_returns_the_observed_subtree_instead_of_discarding_it() {
+    let incomplete =
+        ObservedSubtree::new(evidence("button", Some("Save")), Vec::new(), false, None);
+    let tree = ObservedTree::from_roots(
+        vec![subtree("window", "Fixture", vec![incomplete])],
+        source(),
+        Default::default(),
+        true,
+    )
+    .unwrap();
+    let observed = tree.node_count();
+
+    assert!(tree.clone().into_accessibility_tree().is_err());
+
+    let (projected, complete, nodes_observed) = tree.into_accessibility_tree_partial().unwrap();
+
+    assert!(!complete);
+    assert_eq!(nodes_observed, observed);
+    assert_eq!(projected.role, "window");
+    assert_eq!(projected.children.len(), 1);
+    assert_eq!(projected.children[0].identity.name.as_deref(), Some("Save"));
+
+    assert!(
+        projected.children[0].subtree_truncated,
+        "the node whose descendants were cut must carry a boundary marker"
+    );
+    assert!(
+        projected.subtree_truncated,
+        "truncation must propagate to ancestors so a caller can walk to the cut"
+    );
+}
+
+#[test]
+fn partial_projection_reports_completeness_when_the_walk_finished() {
+    let tree = ObservedTree::from_roots(
+        vec![subtree(
+            "window",
+            "Fixture",
+            vec![subtree("button", "Save", Vec::new())],
+        )],
+        source(),
+        Default::default(),
+        true,
+    )
+    .unwrap();
+
+    let strict = tree.clone().into_accessibility_tree().unwrap();
+    let (projected, complete, nodes_observed) = tree.into_accessibility_tree_partial().unwrap();
+
+    assert!(complete);
+    assert_eq!(nodes_observed, 2);
+    assert!(
+        !projected.subtree_truncated && !projected.children[0].subtree_truncated,
+        "a complete walk must not mark any node truncated"
+    );
+    assert_eq!(projected.role, strict.role);
+    assert_eq!(projected.identity.name, strict.identity.name);
+    assert_eq!(projected.children.len(), strict.children.len());
+}

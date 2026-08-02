@@ -286,7 +286,7 @@ Every command produces a response envelope:
 
 ```json
 {
-  "version": "2.1",
+  "version": "2.2",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -302,7 +302,7 @@ Error responses:
 
 ```json
 {
-  "version": "2.1",
+  "version": "2.2",
   "ok": false,
   "command": "click",
   "error": {
@@ -339,6 +339,7 @@ The `error` object may also carry optional `details` and `recovery` objects. Ver
 - Static text and non-actionable groups/containers do NOT get refs (they remain in tree for context)
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
 - Snapshot refs are stored by snapshot ID under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer for commands that omit `--snapshot`
+- Retention keeps the newest 128 snapshots per namespace and evicts down to 96, so the sort-and-stat pass is amortised instead of running on every save. Refs are invalidated by the next UI change, so retention only has to cover one interaction's drill-downs. Per R7/KTD5 of the session-first trace plan, a `snapshot_id` referenced by an *older* trace event may therefore no longer resolve to a full tree; `ArtifactsMode::Full` is the recorded mitigation because it copies each refmap into `<session>/trace/refmaps/`
 - `~/.agent-desktop/last_refmap.json` is written only as a latest-snapshot inspection artifact; command code must use `RefStore`
 - Action commands use strict re-identification from platform-neutral `RefEntry` evidence: pid, role, path/source surface, role-conditional stable text identity, and bounds hash. Mutable control values are volatile and must not be treated as stable text identity. Return `STALE_REF` on mismatch and `AMBIGUOUS_TARGET` when multiple plausible live candidates remain.
 - Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets

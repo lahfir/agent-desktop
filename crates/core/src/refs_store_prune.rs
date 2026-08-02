@@ -1,4 +1,4 @@
-use super::{MAX_SAVED_SNAPSHOTS, RefStore, STALE_TMP_MAX_AGE};
+use super::{MAX_SAVED_SNAPSHOTS, PRUNE_LOW_WATER, RefStore, STALE_TMP_MAX_AGE};
 use crate::AppError;
 use crate::refs::validate_snapshot_id;
 
@@ -6,27 +6,54 @@ impl RefStore {
     /// Removes orphaned `*.tmp` files left behind when a process died between
     /// the temp write and the atomic rename. Runs under the store write lock;
     /// the age threshold keeps any in-flight write from another process safe.
+    #[cfg(test)]
     pub(crate) fn remove_tmp_files_older_than(&self, max_age: std::time::Duration) {
+        let latest = self.latest_snapshot_id().ok().flatten().unwrap_or_default();
+        self.remove_reachable_tmp_files(&latest, &self.snapshots_dir(), max_age);
+    }
+
+    /// Sweeps only the directories this save can have written. Snapshot ids are
+    /// allocated once, so a directory is never rewritten and an orphan left in
+    /// an older one is not reachable from here; those are collected by the
+    /// exhaustive sweep that runs with eviction. Doing the exhaustive sweep on
+    /// every save cost a `read_dir` per retained snapshot and dominated the
+    /// save itself once the store reached its cap.
+    fn remove_reachable_tmp_files(
+        &self,
+        latest_id: &str,
+        snapshots_dir: &std::path::Path,
+        max_age: std::time::Duration,
+    ) {
         remove_stale_files_in_dir(&self.base_dir, max_age, is_orphaned_tmp_file);
-        let snapshots_dir = self.snapshots_dir();
-        remove_stale_files_in_dir(&snapshots_dir, max_age, is_orphaned_tmp_file);
-        let Ok(entries) = std::fs::read_dir(snapshots_dir) else {
+        remove_stale_files_in_dir(snapshots_dir, max_age, is_orphaned_tmp_file);
+        if latest_id.is_empty() {
             return;
-        };
-        for entry in entries.flatten() {
-            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-                remove_stale_files_in_dir(&entry.path(), max_age, is_orphaned_tmp_file);
-            }
         }
+        remove_stale_files_in_dir(
+            &snapshots_dir.join(latest_id),
+            max_age,
+            is_orphaned_tmp_file,
+        );
+    }
+
+    /// Drops the ref scaffolding a store accumulated, leaving every other
+    /// artifact in place. Only safe once the refmaps exist somewhere else:
+    /// under `ArtifactsMode::Full` the trace keeps its own copy per snapshot,
+    /// so the store copy is redundant. Under the default `Events` mode nothing
+    /// copies them, and removing them would sever `snapshot_id` resolution for
+    /// anyone reading the trace afterwards.
+    pub fn discard_ref_scaffolding(&self) {
+        let _ = std::fs::remove_dir_all(self.snapshots_dir());
+        let _ = std::fs::remove_file(self.base_dir.join(super::LATEST_SNAPSHOT_FILE));
     }
 
     pub(super) fn prune_old_snapshots_unlocked(&self, latest_id: &str) -> Result<(), AppError> {
-        self.remove_tmp_files_older_than(STALE_TMP_MAX_AGE);
         let dir = self.snapshots_dir();
+        self.remove_reachable_tmp_files(latest_id, &dir, STALE_TMP_MAX_AGE);
         let Ok(entries) = std::fs::read_dir(&dir) else {
             return Ok(());
         };
-        let mut snapshots = Vec::new();
+        let mut retained = Vec::new();
         for entry in entries.flatten() {
             let Ok(file_type) = entry.file_type() else {
                 continue;
@@ -38,18 +65,27 @@ impl RefStore {
             if validate_snapshot_id(&id).is_err() {
                 continue;
             }
-            let modified = entry
-                .metadata()
-                .and_then(|metadata| metadata.modified())
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-            snapshots.push((modified, id, entry.path()));
+            retained.push((id, entry.path()));
         }
-        if snapshots.len() <= MAX_SAVED_SNAPSHOTS {
+        if retained.len() <= MAX_SAVED_SNAPSHOTS {
             return Ok(());
         }
-        snapshots.sort_by_key(|(modified, id, _)| (*modified, id.clone()));
-        let mut remove_count = snapshots.len() - MAX_SAVED_SNAPSHOTS;
-        for (_, id, path) in snapshots {
+        for (_, path) in &retained {
+            remove_stale_files_in_dir(path, STALE_TMP_MAX_AGE, is_orphaned_tmp_file);
+        }
+        let mut dated: Vec<_> = retained
+            .into_iter()
+            .map(|(id, path)| {
+                let modified = path
+                    .metadata()
+                    .and_then(|metadata| metadata.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                (modified, id, path)
+            })
+            .collect();
+        dated.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
+        let mut remove_count = dated.len().saturating_sub(PRUNE_LOW_WATER);
+        for (_, id, path) in dated {
             if remove_count == 0 {
                 break;
             }

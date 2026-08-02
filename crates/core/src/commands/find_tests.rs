@@ -15,6 +15,7 @@ fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> A
         },
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     }
 }
@@ -102,6 +103,7 @@ fn default_limit_caps_materialized_matches() {
         identity: Default::default(),
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: (0..60)
             .map(|i| node(Some(&format!("Button {i}")), None, None))
             .collect(),
@@ -149,6 +151,7 @@ fn count_matches_does_not_build_result_json() {
         identity: Default::default(),
         presentation: Default::default(),
         children_count: None,
+        subtree_truncated: false,
         children: vec![
             node(Some("Save"), None, None),
             node(Some("Cancel"), None, None),

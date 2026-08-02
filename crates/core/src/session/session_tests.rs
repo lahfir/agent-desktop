@@ -290,3 +290,66 @@ fn legacy_pointer_symlink_does_not_activate_a_session() {
 
     assert!(resolve_active_session(None, None).unwrap().is_none());
 }
+
+fn seed_session_refs(id: &str) -> std::path::PathBuf {
+    let store = crate::refs_store::RefStore::for_session(Some(id)).unwrap();
+    store
+        .save_new_snapshot(&crate::RefMap::new())
+        .expect("session snapshot");
+    let dir = session_dir(id).unwrap();
+    std::fs::write(
+        dir.join("trace").join("42-1.jsonl"),
+        b"{\"event\":\"command.start\"}\n",
+    )
+    .unwrap();
+    assert!(dir.join("snapshots").is_dir());
+    dir
+}
+
+#[test]
+fn ending_a_full_artifacts_session_drops_scaffolding_but_keeps_the_recording() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        name: Some("sealed-full".into()),
+        trace: SessionTraceMode::On,
+        artifacts: crate::session::manifest::ArtifactsMode::Full,
+    })
+    .unwrap();
+    let dir = seed_session_refs(&manifest.id);
+
+    end_session(&manifest.id).unwrap();
+
+    assert!(!dir.join("snapshots").exists());
+    assert!(!dir.join("latest_snapshot_id").exists());
+    assert!(dir.join("trace").join("42-1.jsonl").is_file());
+    assert!(dir.join("session.json").is_file());
+}
+
+#[test]
+fn ending_a_default_session_keeps_refmaps_because_nothing_else_copies_them() {
+    let _guard = HomeGuard::new();
+    let manifest = start_session(StartSessionOptions {
+        name: Some("sealed-events".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(
+        manifest.artifacts,
+        crate::session::manifest::ArtifactsMode::Events
+    );
+    let dir = seed_session_refs(&manifest.id);
+
+    end_session(&manifest.id).unwrap();
+
+    assert!(
+        dir.join("snapshots").is_dir(),
+        "Events mode never copies refmaps into trace/, so discarding them would sever snapshot_id resolution for trace readers"
+    );
+    assert!(
+        read_manifest(&manifest.id)
+            .unwrap()
+            .unwrap()
+            .ended_at
+            .is_some()
+    );
+}

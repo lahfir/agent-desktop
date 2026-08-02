@@ -20,6 +20,13 @@ pub struct AccessibilityNode {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub children_count: Option<u32>,
 
+    /// Set when this node's descendants were cut short. Skeleton mode also
+    /// carries `children_count`; budget or deadline exhaustion cannot afford
+    /// the child-count read that would produce one, so the flag is the only
+    /// honest marker available on that path.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub subtree_truncated: bool,
+
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub children: Vec<AccessibilityNode>,
 }
