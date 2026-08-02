@@ -1,5 +1,6 @@
 use agent_desktop_core::{
-    ActionOps, AdapterError, AppInfo, Deadline, InputOps, ObservationOps, WindowFilter, WindowInfo,
+    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, InputOps, ObservationOps,
+    ObservationRequest, ObservationRoot, TreeOptions, WindowFilter, WindowInfo,
 };
 
 pub struct WindowsAdapter;
@@ -17,6 +18,30 @@ impl Default for WindowsAdapter {
 }
 
 impl ObservationOps for WindowsAdapter {
+    fn observe_tree(
+        &self,
+        root: ObservationRoot<'_>,
+        request: &ObservationRequest,
+    ) -> Result<agent_desktop_core::ObservedTree, AdapterError> {
+        crate::tree::observe::observe_tree(root, request)
+    }
+
+    /// The FFI legacy entrypoint: a thin wrapper over the same `observe_tree`
+    /// path (KTD1, mirroring `crates/macos/src/tree/adapter.rs`). `get_subtree`
+    /// has no live caller on any platform and stays unimplemented.
+    fn get_tree(
+        &self,
+        window: &WindowInfo,
+        options: &TreeOptions,
+        deadline: Deadline,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        self.observe_tree(
+            ObservationRoot::Window(window),
+            &ObservationRequest::snapshot(options, deadline),
+        )?
+        .into_accessibility_tree()
+    }
+
     fn list_windows(
         &self,
         filter: &WindowFilter,
@@ -29,49 +54,26 @@ impl ObservationOps for WindowsAdapter {
         crate::system::app_ops::list_apps_live()
     }
 }
-
 impl ActionOps for WindowsAdapter {}
 impl InputOps for WindowsAdapter {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::{AppError, CommandContext, ErrorCode, SnapshotSurface, SystemOps};
+    use agent_desktop_core::{SnapshotSurface, SystemOps};
 
+    /// U6's surfaces gate: the adapter advertises exactly the surfaces it can
+    /// observe - a named window and the focused window. Core validates the
+    /// requested surface against this list before the adapter is ever called,
+    /// so this advertisement is what makes `snapshot` end to end possible; the
+    /// old empty-set fail-closed pin is retired because the adapter now
+    /// implements the observation path.
     #[test]
-    fn snapshot_surfaces_fail_closed_until_windows_implements_them() {
+    fn supported_surfaces_advertises_window_and_focused() {
         let adapter = WindowsAdapter::new();
-        assert!(adapter.supported_surfaces().is_empty());
-
-        let error = agent_desktop_core::commands::snapshot::execute(
-            agent_desktop_core::commands::snapshot::SnapshotArgs {
-                app: None,
-                window_id: None,
-                max_depth: 1,
-                include_bounds: false,
-                interactive_only: false,
-                compact: true,
-                surface: SnapshotSurface::Window,
-                skeleton: false,
-                root_ref: None,
-                snapshot_id: None,
-            },
-            &adapter,
-            &CommandContext::default(),
-        )
-        .expect_err("an unimplemented surface must fail at validation");
-
-        let AppError::Adapter(error) = error else {
-            panic!("surface validation must return an adapter error")
-        };
-        assert_eq!(error.code, ErrorCode::PlatformNotSupported);
-        assert!(
-            error
-                .details
-                .as_ref()
-                .and_then(|details| details.get("supported_surfaces"))
-                .and_then(|surfaces| surfaces.as_array())
-                .is_some_and(Vec::is_empty)
+        assert_eq!(
+            adapter.supported_surfaces(),
+            vec![SnapshotSurface::Window, SnapshotSurface::Focused]
         );
     }
 }

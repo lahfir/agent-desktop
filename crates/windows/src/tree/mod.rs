@@ -3,7 +3,9 @@ pub mod automation;
 pub(crate) mod cache;
 pub mod descriptor;
 pub mod name_evidence;
+pub(crate) mod observe;
 pub mod roles;
+pub(crate) mod root_resolve;
 pub mod states;
 
 #[cfg(test)]

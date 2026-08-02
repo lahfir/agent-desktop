@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
-    PermissionReport, SessionAffinity, SystemOps, WindowFilter, WindowInfo,
+    PermissionReport, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter, WindowInfo,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -19,6 +19,14 @@ impl SystemOps for WindowsAdapter {
 
     fn unknown_accessibility_means_unsupported(&self) -> bool {
         true
+    }
+
+    /// The surfaces this adapter can observe: a named window, and the focused
+    /// window via the focused-only filter. Core validates the requested
+    /// surface against this list before the adapter is ever called (KTD1's
+    /// mirror of `supported_surfaces`).
+    fn supported_surfaces(&self) -> Vec<SnapshotSurface> {
+        vec![SnapshotSurface::Window, SnapshotSurface::Focused]
     }
 
     /// The focused window is the focused-only filter's first result, composed
