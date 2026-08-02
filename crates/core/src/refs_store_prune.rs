@@ -36,15 +36,37 @@ impl RefStore {
         );
     }
 
-    /// Drops the ref scaffolding a store accumulated, leaving every other
-    /// artifact in place. Only safe once the refmaps exist somewhere else:
-    /// under `ArtifactsMode::Full` the trace keeps its own copy per snapshot,
-    /// so the store copy is redundant. Under the default `Events` mode nothing
-    /// copies them, and removing them would sever `snapshot_id` resolution for
-    /// anyone reading the trace afterwards.
-    pub fn discard_ref_scaffolding(&self) {
-        let _ = std::fs::remove_dir_all(self.snapshots_dir());
-        let _ = std::fs::remove_file(self.base_dir.join(super::LATEST_SNAPSHOT_FILE));
+    /// Drops only the refmaps the trace already holds a copy of, leaving every
+    /// other artifact in place. Being in `ArtifactsMode::Full` is not on its own
+    /// proof that a copy exists: the artifact budget and a serialisation failure
+    /// both skip a copy and report success, so a session that recorded more
+    /// refmaps than the budget allows keeps snapshots whose only copy is here.
+    /// Each directory is therefore removed only against its own duplicate, and
+    /// the latest-snapshot pointer survives unless the snapshot it names is gone.
+    pub fn discard_duplicated_ref_scaffolding(&self) {
+        let snapshots = self.snapshots_dir();
+        let duplicates = crate::trace_artifacts::refmap_artifact_dir(&self.trace_dir());
+        let Ok(entries) = std::fs::read_dir(&snapshots) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            let id = entry.file_name().to_string_lossy().to_string();
+            if validate_snapshot_id(&id).is_err() {
+                continue;
+            }
+            if duplicates.join(format!("{id}.json")).is_file() {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+        let pointer = self.base_dir.join(super::LATEST_SNAPSHOT_FILE);
+        if let Ok(Some(latest)) = self.latest_snapshot_id()
+            && !snapshots.join(&latest).is_dir()
+        {
+            let _ = std::fs::remove_file(pointer);
+        }
     }
 
     pub(super) fn prune_old_snapshots_unlocked(&self, latest_id: &str) -> Result<(), AppError> {

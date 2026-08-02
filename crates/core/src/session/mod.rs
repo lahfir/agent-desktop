@@ -208,7 +208,7 @@ pub fn end_session(session_id: &str) -> Result<SessionManifest, AppError> {
         if manifest.artifacts == ArtifactsMode::Full
             && let Ok(store) = crate::refs_store::RefStore::for_session(Some(&id))
         {
-            store.discard_ref_scaffolding();
+            store.discard_duplicated_ref_scaffolding();
         }
     }
     Ok(manifest)
