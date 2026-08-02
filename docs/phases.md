@@ -117,7 +117,7 @@ Phase 1 is the load-bearing phase. It establishes the shared command path, trait
 | P1-O2 | Platform adapter trait | Trait compiles with mock adapter; macOS adapter satisfies all trait methods |
 | P1-O3 | Ref-based interaction | `click @s8f3k2p9:e3` successfully invokes AXPress on the resolved element |
 | P1-O4 | Context efficiency | Typical Finder snapshot < 500 tokens (measured via tiktoken) |
-| P1-O5 | Typed JSON contract | Output envelope carries `version: "2.1"`. **Partial**: dedicated standalone JSON-Schema files were never delivered — deferred to later quality gates. |
+| P1-O5 | Typed JSON contract | Output envelope carries `version: "2.2"`. **Partial**: dedicated standalone JSON-Schema files were never delivered — deferred to later quality gates. |
 | P1-O6 | Permission detection | Permission report covers Accessibility, Screen Recording, and Automation with recovery suggestions |
 | P1-O7 | Command extensibility | Adding a new command follows the current shared path: `commands/{name}.rs` + `commands/mod.rs` + `src/cli_args/` + `src/cli/mod.rs` + `src/dispatch/mod.rs` + `src/command_policy/mod.rs` |
 | P1-O8 | 58 shipped command names (54 operational) | All commands pass integration tests; `key-down` / `key-up` / `mouse-down` / `mouse-up` fail closed pending daemon-owned held input |
@@ -170,7 +170,7 @@ agent-desktop/
 │   │       ├── trace.rs / trace_read/ # JSONL reliability trace, segment merge, HTML viewer
 │   │       ├── error_code.rs    # ErrorCode enum
 │   │       ├── adapter_error.rs / app_error.rs # AdapterError, AppError
-│   │       ├── output.rs        # ENVELOPE_VERSION ("2.1") + envelope builders
+│   │       ├── output.rs        # ENVELOPE_VERSION ("2.2") + envelope builders
 │   │       ├── notification.rs  # NotificationInfo, NotificationFilter, NotificationIdentity
 │   │       └── commands/        # one file per command (direct match, no Command trait)
 │   ├── macos/              # agent-desktop-macos (Phase 1, shipped)
@@ -460,12 +460,12 @@ The `wait` command has been extended with notification, menu, event-diff, and se
 
 ### JSON Output Contract
 
-All commands produce a response envelope with `version: "2.1"`. Standalone schema files are still deferred; the current contract is enforced by Rust serde types, CLI conformance tests, and documented examples.
+All commands produce a response envelope with `version: "2.2"`. Standalone schema files are still deferred; the current contract is enforced by Rust serde types, CLI conformance tests, and documented examples.
 
 Success:
 ```json
 {
-  "version": "2.1",
+  "version": "2.2",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -480,7 +480,7 @@ Success:
 Error:
 ```json
 {
-  "version": "2.1",
+  "version": "2.2",
   "ok": false,
   "command": "click",
   "error": {

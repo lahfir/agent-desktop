@@ -163,8 +163,13 @@ pub(crate) fn format_snapshot_fields(
         },
         "ref_count": ref_count,
         "snapshot_id": result.snapshot_id,
+        "complete": result.complete,
         "tree": tree
     });
+    if !result.complete {
+        body["truncated"] = json!(true);
+        body["nodes_observed"] = json!(result.nodes_observed);
+    }
     if let Some(ms) = elapsed_ms {
         body["elapsed_ms"] = json!(ms);
     }

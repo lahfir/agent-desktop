@@ -3,12 +3,23 @@ use crate::{
     live_locator::{ObservationRequest, ObservationRoot, ObservedTree},
 };
 
+/// A renderer that has not published its accessibility tree yet is discovered
+/// by walking the tree and failing, so every retry here costs a full
+/// observation. Polling that at a fixed short interval spends the whole budget
+/// re-walking a tree that is not ready — on a large renderer it burns dozens of
+/// complete walks and returns nothing. The wait backs off instead, so a
+/// renderer that activates quickly is still caught quickly while one that never
+/// activates is retried a handful of times rather than continuously.
+const INITIAL_ACTIVATION_RETRY: std::time::Duration = std::time::Duration::from_millis(25);
+const MAX_ACTIVATION_RETRY: std::time::Duration = std::time::Duration::from_millis(400);
+
 pub(crate) fn observe_tree(
     adapter: &dyn PlatformAdapter,
     root: ObservationRoot<'_>,
     request: &ObservationRequest,
 ) -> Result<ObservedTree, AppError> {
     let mut activated = false;
+    let mut retry_delay = INITIAL_ACTIVATION_RETRY;
     loop {
         match adapter.observe_tree(root, request) {
             Ok(tree) => return Ok(tree),
@@ -23,7 +34,8 @@ pub(crate) fn observe_tree(
                 if remaining.is_zero() {
                     return Err(request.deadline.timeout_error().into());
                 }
-                std::thread::sleep(remaining.min(std::time::Duration::from_millis(25)));
+                std::thread::sleep(remaining.min(retry_delay));
+                retry_delay = retry_delay.saturating_mul(2).min(MAX_ACTIVATION_RETRY);
             }
             Err(error) => return Err(AppError::Adapter(error)),
         }

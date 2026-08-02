@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/lahfir/agent-desktop/compare/v0.6.0...v0.7.0) (2026-08-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* ENVELOPE_VERSION is now 2.2. `data.complete` is present on every successful snapshot, and a snapshot that exhausts its budget returns `ok: true` with `complete: false` where it previously returned a TIMEOUT error. Callers that branched on TIMEOUT to detect an oversized tree must read `complete` instead.
+
+### Bug Fixes
+
+* return observed trees and stop demanding renderer activation from shallow walks ([#117](https://github.com/lahfir/agent-desktop/issues/117)) ([32175e4](https://github.com/lahfir/agent-desktop/commit/32175e44c553b350c90c311560ac4d341be71632))
+
 ## [0.6.0](https://github.com/lahfir/agent-desktop/compare/v0.5.0...v0.6.0) (2026-07-26)
 
 

@@ -61,6 +61,7 @@ impl ObservationOps for ScopedWaitAdapter {
                 },
                 presentation: Default::default(),
                 children_count: None,
+                subtree_truncated: false,
                 children: vec![],
             },
         )
@@ -109,6 +110,7 @@ impl ObservationOps for ScopedWaitAdapter {
             },
             presentation: Default::default(),
             children_count: None,
+            subtree_truncated: false,
             children: vec![],
         })
     }
@@ -202,6 +204,7 @@ impl ObservationOps for MultiWindowAdapter {
                 },
                 presentation: Default::default(),
                 children_count: None,
+                subtree_truncated: false,
                 children: vec![],
             })
             .into_iter()
@@ -217,6 +220,7 @@ impl ObservationOps for MultiWindowAdapter {
                 },
                 presentation: Default::default(),
                 children_count: None,
+                subtree_truncated: false,
                 children,
             },
         )
@@ -279,6 +283,7 @@ impl ObservationOps for MultiWindowAdapter {
                 },
                 presentation: Default::default(),
                 children_count: None,
+                subtree_truncated: false,
                 children: vec![],
             }]
         } else {
@@ -293,6 +298,7 @@ impl ObservationOps for MultiWindowAdapter {
             },
             presentation: Default::default(),
             children_count: None,
+            subtree_truncated: false,
             children,
         })
     }

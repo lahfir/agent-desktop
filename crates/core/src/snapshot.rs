@@ -19,6 +19,8 @@ pub struct SnapshotResult {
     pub refmap: RefMap,
     pub window: WindowInfo,
     pub snapshot_id: Option<String>,
+    pub complete: bool,
+    pub nodes_observed: usize,
 }
 
 impl SnapshotResult {
@@ -37,12 +39,12 @@ pub fn build(
 ) -> Result<SnapshotResult, AppError> {
     let window = resolve_window(adapter, app_name, window_id, deadline)?;
     let observation_options = opts.with_ref_identity_bounds();
-    let raw_tree = crate::renderer_accessibility::observe_tree(
+    let (raw_tree, complete, nodes_observed) = crate::renderer_accessibility::observe_tree(
         adapter,
         ObservationRoot::Window(&window),
         &ObservationRequest::snapshot(&observation_options, deadline).validate()?,
     )?
-    .into_accessibility_tree()?;
+    .into_accessibility_tree_partial()?;
 
     let mut refmap = RefMap::new();
     let config = RefAllocConfig {
@@ -74,6 +76,8 @@ pub fn build(
         refmap,
         window,
         snapshot_id: None,
+        complete,
+        nodes_observed,
     })
 }
 

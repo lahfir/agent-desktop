@@ -44,6 +44,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                 },
                 presentation: Default::default(),
                 children_count: None,
+                subtree_truncated: false,
                 children: vec![
                     AccessibilityNode {
                         ref_id: None,
@@ -54,6 +55,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                         },
                         presentation: Default::default(),
                         children_count: None,
+                        subtree_truncated: false,
                         children: vec![],
                     },
                     AccessibilityNode {
@@ -73,6 +75,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                             ..Default::default()
                         },
                         children_count: None,
+                        subtree_truncated: false,
                         children: vec![],
                     },
                 ],
@@ -114,6 +117,7 @@ impl ObservationOps for WaitSnapshotAdapter {
             },
             presentation: Default::default(),
             children_count: None,
+            subtree_truncated: false,
             children: vec![AccessibilityNode {
                 ref_id: None,
                 role: "button".into(),
@@ -123,6 +127,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                 },
                 presentation: Default::default(),
                 children_count: None,
+                subtree_truncated: false,
                 children: vec![],
             }],
         })

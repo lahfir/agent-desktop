@@ -19,6 +19,11 @@ A scoped UI layer that can be observed separately from the whole window, such as
 ### Drill-down
 A snapshot operation that starts from an existing ref to observe that element's subtree instead of re-reading the entire window.
 
+### Partial Observation
+A snapshot that ran out of its allotted time before finishing the tree and returns what it did observe rather than discarding the walk.
+
+Completeness is reported on the observation as a whole and on each node whose descendants were cut, so a reader can walk from the root to the boundary. A depth clamp knows how many children it skipped and says so; budget exhaustion cannot afford that count and marks the node without one. Only a full snapshot may be partial — a drill-down replaces refs inside an existing map, so it requires a complete observation and fails rather than destroying descendants it cannot re-allocate.
+
 ## Vocabulary
 
 The four platform-neutral vocabularies every adapter produces and core consumes, and the evidence model all four rest on. They were single-platform code types until two adapters produced them; they are shared contracts now, and an adapter that emits a token outside one of them is emitting something no consumer can act on.
@@ -109,13 +114,23 @@ The refusal is enforced where the close happens, so CLI, FFI, and any future con
 ### Actionability
 The pre-dispatch judgement that a resolved element is safe to act on, based on native evidence such as visibility, stability, enabled state, supported action, policy, and editability.
 
+### Delivery Semantics
+What a failed or uncertain action says about whether input actually reached the application, and therefore whether repeating it is safe.
+
+The distinction that matters is not success versus failure but delivered versus not: an action that never reached the target can be retried freely, while one that may have landed cannot be repeated without risking a duplicate. Verification is a third axis — an action can be known-delivered yet unverified, meaning the input was posted but its effect was not confirmed. Errors carry this alongside the recovery hint so a caller never has to infer retry safety from an error code.
+
+### Interaction Lease
+Machine-wide exclusivity over desktop input, held by one process at a time so concurrent callers cannot interleave synthetic input into each other's actions.
+
+The lease covers dispatch only, never the waiting that precedes it: waiting for an element to become actionable can run long, and holding exclusivity across it would serialize every caller on the machine. Anything resolved while waiting was therefore observed without exclusivity and is re-resolved once the lease is held. That second resolution is the correctness boundary, not redundant work.
+
 ### Capability Vocabulary
 The platform-neutral set of supported action names that core uses to compare command intent with native adapter evidence.
 
 Each adapter maps native primitives into this shared vocabulary before core evaluates actionability. New commands should extend the central vocabulary first, then reuse it from actionability, ref allocation, predicates, FFI tests, and platform adapters.
 
 ### Interaction Policy
-The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input. Ref commands expose exactly two modes: **headless** (the default — accessibility-only, no cursor, fails closed when the semantic path is unavailable) and **headed** (opt-in via the global `--headed` flag — authorizes the action's declared focus and cursor preconditions).
+The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input. The CLI exposes two: **headless** (the default — accessibility-only, no cursor, fails closed when the semantic path is unavailable) and **headed** (opt-in via the global `--headed` flag — authorizes the action's declared focus and cursor preconditions). A third, **focus fallback**, sits between them: it permits focus but not cursor movement. It is not reachable from the CLI flag — it is the base policy of an explicit key press, and language bindings may select it directly.
 
 Core owns those preconditions through `HeadedRequirement`: `FocusedWindow` for keyboard or focus-sensitive work, and `FocusedWindowAndCursor` for pointer delivery. For ref actions, core focuses the exact source window before dispatch and resolves a verified target point for pointer work; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. On macOS, headed `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and the remaining semantic actions stay semantic after the core focus precondition.
 

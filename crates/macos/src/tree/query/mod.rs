@@ -1,6 +1,7 @@
 mod arena;
 mod child_page;
 pub(crate) mod child_read;
+pub(crate) mod child_read_budget;
 pub(crate) mod child_read_plan;
 mod child_read_status;
 mod child_read_telemetry;
@@ -29,6 +30,21 @@ struct ResolvedRoot {
     activation_eligible: bool,
 }
 
+/// Whether the walk ran out of tree before it ran out of depth budget, which is
+/// what makes an absent renderer surface a conclusion rather than a guess. A
+/// depth-clamped observation stops above the web content by design, so its
+/// empty result says nothing about whether the renderer is activated — treating
+/// it as evidence made every shallow snapshot of a Chromium application demand
+/// an activation it did not need, then re-walk the tree until the deadline
+/// expired. Reaching the cap is inconclusive either way: the tree may have
+/// ended exactly there or been cut, and nothing observed can distinguish them.
+fn observation_reached_tree_end(
+    stats: &agent_desktop_core::LocatorStats,
+    request: &ObservationRequest,
+) -> bool {
+    stats.traversal.max_logical_depth < request.max_logical_depth
+}
+
 pub(crate) fn observe_tree(
     root: ObservationRoot<'_>,
     request: &ObservationRequest,
@@ -39,7 +55,8 @@ pub(crate) fn observe_tree(
     let (tree, renderer_ready, stats) =
         traversal::LocatorTraversal::new(&request, resolved.context, deadline)
             .build(resolved.element, resolved.source)?;
-    if resolved.activation_eligible && tree.is_complete() && !renderer_ready {
+    let looked_deep_enough = observation_reached_tree_end(&stats, &request);
+    if resolved.activation_eligible && tree.is_complete() && !renderer_ready && looked_deep_enough {
         if let Some(instance) = resolved.process_instance.as_deref() {
             if crate::tree::renderer_probe::activation_supported(resolved.pid, instance, deadline)?
             {
@@ -175,6 +192,44 @@ mod tests {
         NativeHandle, ObservationRoot, RefCapabilities, RefEntry, RefEntryIdentity, RefGeometry,
         RefProcess, RefScope, RefSource,
     };
+
+    fn request_with_depth(max_depth: u8) -> ObservationRequest {
+        ObservationRequest::snapshot(
+            &agent_desktop_core::TreeOptions {
+                max_depth,
+                ..Default::default()
+            },
+            agent_desktop_core::Deadline::after(1_000).expect("deadline"),
+        )
+    }
+
+    fn stats_reaching(max_logical_depth: u8) -> agent_desktop_core::LocatorStats {
+        let mut stats = agent_desktop_core::LocatorStats::default();
+        stats.traversal.max_logical_depth = max_logical_depth;
+        stats
+    }
+
+    #[test]
+    fn a_walk_that_ended_before_the_cap_can_conclude_the_renderer_is_absent() {
+        assert!(observation_reached_tree_end(
+            &stats_reaching(4),
+            &request_with_depth(10)
+        ));
+    }
+
+    #[test]
+    fn a_walk_that_reached_the_cap_cannot_conclude_anything_about_the_renderer() {
+        assert!(
+            !observation_reached_tree_end(&stats_reaching(3), &request_with_depth(3)),
+            "at the cap the tree may have ended there or been cut, and the observation \
+             cannot tell which; demanding activation on that basis re-walked Chromium \
+             trees until the deadline expired"
+        );
+        assert!(!observation_reached_tree_end(
+            &stats_reaching(10),
+            &request_with_depth(10)
+        ));
+    }
 
     #[test]
     fn null_element_root_is_a_structured_stale_ref() {

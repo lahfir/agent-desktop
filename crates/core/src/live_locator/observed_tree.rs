@@ -74,6 +74,26 @@ impl ObservedTree {
         self.project(self.roots[0] as usize)
     }
 
+    /// Projects whatever was observed and reports its completeness, rather than
+    /// discarding an entire walk because the budget expired before the last
+    /// node. Callers that need an all-or-nothing tree keep using
+    /// `into_accessibility_tree`. The observation layer already annotates each
+    /// truncated container with `children_count`, so a partial tree stays
+    /// honest about its own boundaries.
+    pub fn into_accessibility_tree_partial(
+        self,
+    ) -> Result<(AccessibilityNode, bool, usize), AdapterError> {
+        if self.roots.len() != 1 {
+            return Err(AdapterError::internal(
+                "accessibility projection requires exactly one root",
+            ));
+        }
+        let complete = self.structurally_complete;
+        let nodes_observed = self.nodes.len();
+        let tree = self.project(self.roots[0] as usize)?;
+        Ok((tree, complete, nodes_observed))
+    }
+
     fn append(&mut self, subtree: ObservedSubtree, path: RefPath) -> Result<u32, AdapterError> {
         let index = u32::try_from(self.nodes.len())
             .map_err(|_| AdapterError::internal("observed tree exceeds u32"))?;
@@ -152,6 +172,7 @@ impl ObservedTree {
                 bounds: node.evidence.ref_evidence.bounds.known().copied(),
             },
             children_count: node.children_count,
+            subtree_truncated: !node.completeness.subtree_complete,
             children,
         })
     }

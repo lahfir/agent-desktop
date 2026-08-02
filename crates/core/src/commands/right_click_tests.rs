@@ -70,6 +70,7 @@ impl ObservationOps for ProbeFailingAdapter {
             identity: Default::default(),
             presentation: Default::default(),
             children_count: None,
+            subtree_truncated: false,
             children: Vec::new(),
         })
     }

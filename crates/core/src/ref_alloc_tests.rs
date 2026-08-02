@@ -19,6 +19,7 @@ fn node(role: &str, name: Option<&str>) -> AccessibilityNode {
             ..Default::default()
         },
         children_count: None,
+        subtree_truncated: false,
         children: vec![],
     }
 }

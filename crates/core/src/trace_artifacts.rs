@@ -43,6 +43,10 @@ fn screens_dir(trace_dir: &Path) -> PathBuf {
     trace_dir.join("screens")
 }
 
+pub(crate) fn refmap_artifact_dir(trace_dir: &Path) -> PathBuf {
+    refmaps_dir(trace_dir)
+}
+
 fn refmaps_dir(trace_dir: &Path) -> PathBuf {
     trace_dir.join("refmaps")
 }

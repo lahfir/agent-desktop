@@ -153,6 +153,7 @@ mod tests {
             presentation: agent_desktop_core::NodePresentation::default(),
             children: vec![],
             children_count: None,
+            subtree_truncated: false,
         }
     }
 
