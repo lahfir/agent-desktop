@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, AdapterSession, Deadline, InteractionLease, ObservationOps, PermissionReport,
-    SessionAffinity, SystemOps, WindowFilter, WindowInfo,
+    AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
+    PermissionReport, SessionAffinity, SystemOps, WindowFilter, WindowInfo,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -32,6 +32,10 @@ impl SystemOps for WindowsAdapter {
         };
         let windows = self.list_windows(&filter, deadline)?;
         Ok(windows.into_iter().next())
+    }
+
+    fn list_displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
+        crate::system::display::list_displays_live(deadline)
     }
 
     fn open_session(

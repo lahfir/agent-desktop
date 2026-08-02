@@ -9,7 +9,7 @@ use super::window_identity::WindowIdentityEvidence;
 /// tool window. Each criterion cites its census row (A16-1 measured 147
 /// top-level windows of which 137 invisible, 93 zero-size, 6 cloaked and
 /// 51 tool).
-fn passes_filter(window: &EnumeratedWindow) -> bool {
+pub(crate) fn passes_filter(window: &EnumeratedWindow) -> bool {
     window.visible && !window.is_zero_sized() && !window.cloaked && !window.tool
 }
 

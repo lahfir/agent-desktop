@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    ActionOps, AdapterError, Deadline, InputOps, ObservationOps, WindowFilter, WindowInfo,
+    ActionOps, AdapterError, AppInfo, Deadline, InputOps, ObservationOps, WindowFilter, WindowInfo,
 };
 
 pub struct WindowsAdapter;
@@ -23,6 +23,10 @@ impl ObservationOps for WindowsAdapter {
         _deadline: Deadline,
     ) -> Result<Vec<WindowInfo>, AdapterError> {
         crate::system::window_ops::list_windows_live(filter)
+    }
+
+    fn list_apps(&self, _deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+        crate::system::app_ops::list_apps_live()
     }
 }
 
