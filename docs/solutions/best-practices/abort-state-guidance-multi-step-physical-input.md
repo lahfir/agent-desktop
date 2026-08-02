@@ -24,10 +24,12 @@ pre-dispatch failure: the system may still believe the button is down.
 ## Guidance
 
 `crates/macos/src/input/mouse_drag.rs` owns a `DragReleaseGuard` for the whole
-sequence. It arms only after mouse-down is posted, retains the destination
-release until that post succeeds, and uses `Drop` to post a dragged and up
-event at the origin when the sequence aborts. The happy path disarms only
-after the destination up event has been posted.
+sequence. It arms immediately before mouse-down is posted, so the guard is
+already live when the first committed event goes out, then records delivery
+once that post returns. It retains the destination release until the post
+succeeds, and uses `Drop` to post a dragged and up event at the origin when
+the sequence aborts. The happy path disarms only after the destination up
+event has been posted.
 
 The guard also tracks delivery. Public errors are enriched from that state, so
 callers can distinguish a pre-delivery failure from an interrupted physical

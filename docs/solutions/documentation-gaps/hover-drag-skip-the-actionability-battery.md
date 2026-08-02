@@ -26,11 +26,20 @@ path evolves.
 
 Follow the code path, not a command-family generalization:
 
-`hover` and `drag` enter `pointer_action::resolve_point_with_deadline`. For a
-ref target it retries strict resolution within the command deadline and reads
-live bounds and state. It scrolls a non-visible target into view once, verifies
-valid bounds, requires a stable bounds hash across attempts, and then performs
-the `receives_events` hit-test before physical input.
+`hover` and `drag` resolve their point in two phases, mirroring the pre-lease
+and leased split that ref actions use. `pointer_action::wait_for_point_with_deadline`
+runs first, without exclusivity: for a ref target it retries strict resolution
+within the command deadline, reads live bounds and state, scrolls a non-visible
+target into view once, verifies valid bounds, and requires a stable bounds hash
+across attempts. `pointer_action::resolve_point_under_lease` then re-resolves
+once the interaction lease is held and performs the `receives_events` hit-test
+before physical input.
+
+Two different hit-tests exist and should not be conflated. The shared
+actionability battery runs a multi-candidate-point check for actions whose
+`Action::requires_hit_test()` is true — which now includes the click family,
+not only hover and drag. The pointer pipeline runs its own single-point check
+on the resolved coordinate. Hover and drag use the latter.
 
 An occluded, invalid, or permanently non-visible target returns a structured
 terminal error. Only transient resolution and stability conditions consume the

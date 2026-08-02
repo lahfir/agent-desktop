@@ -62,3 +62,4 @@ deletion without treating a mock as a platform oracle.
 
 - [Build desktop actions as an observe-resolve-preflight-dispatch contract](playwright-grade-desktop-reliability-2026-06-02.md)
 - [Guard OS-reordered resources with an identity fingerprint](identity-fingerprint-against-os-reorder-2026-04-16.md)
+- [Never ship platform code that CI cannot execute](never-ship-platform-code-that-ci-cannot-execute.md) — the complementary gate. This doc covers permissioned native verification of the macOS adapter against real applications; that one covers running platform-conditional core code on real Windows and Linux runners.
