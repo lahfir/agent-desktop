@@ -1,4 +1,6 @@
-use agent_desktop_core::{ActionOps, InputOps, ObservationOps};
+use agent_desktop_core::{
+    ActionOps, AdapterError, Deadline, InputOps, ObservationOps, WindowFilter, WindowInfo,
+};
 
 pub struct WindowsAdapter;
 
@@ -14,7 +16,16 @@ impl Default for WindowsAdapter {
     }
 }
 
-impl ObservationOps for WindowsAdapter {}
+impl ObservationOps for WindowsAdapter {
+    fn list_windows(
+        &self,
+        filter: &WindowFilter,
+        _deadline: Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
+        crate::system::window_ops::list_windows_live(filter)
+    }
+}
+
 impl ActionOps for WindowsAdapter {}
 impl InputOps for WindowsAdapter {}
 

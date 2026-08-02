@@ -90,6 +90,7 @@ dependencies = [
  "agent-desktop-core",
  "serde_json",
  "thiserror",
+ "tracing",
  "uiautomation",
  "windows",
  "windows-sys",

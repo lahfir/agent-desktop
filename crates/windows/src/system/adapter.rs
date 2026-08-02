@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, AdapterSession, Deadline, InteractionLease, PermissionReport, SessionAffinity,
-    SystemOps,
+    AdapterError, AdapterSession, Deadline, InteractionLease, ObservationOps, PermissionReport,
+    SessionAffinity, SystemOps, WindowFilter, WindowInfo,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -19,6 +19,19 @@ impl SystemOps for WindowsAdapter {
 
     fn unknown_accessibility_means_unsupported(&self) -> bool {
         true
+    }
+
+    /// The focused window is the focused-only filter's first result, composed
+    /// from `list_windows` rather than a second native path (KTD10, mirroring
+    /// `crates/macos/src/system/adapter.rs:142-149`). Whatever HWND-shape a
+    /// host presents, it maps to the same identity `list_windows` reports.
+    fn focused_window(&self, deadline: Deadline) -> Result<Option<WindowInfo>, AdapterError> {
+        let filter = WindowFilter {
+            focused_only: true,
+            app: None,
+        };
+        let windows = self.list_windows(&filter, deadline)?;
+        Ok(windows.into_iter().next())
     }
 
     fn open_session(

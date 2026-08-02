@@ -21,6 +21,6 @@ pub mod walker_source;
 mod walker_fake;
 
 #[cfg(all(test, target_os = "windows"))]
-mod fixture;
+pub(crate) mod fixture;
 #[cfg(all(test, target_os = "windows"))]
-mod fixture_window;
+pub(crate) mod fixture_window;
