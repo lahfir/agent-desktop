@@ -40,10 +40,14 @@ pub(crate) fn is_shell_shaped(stats: &LocatorStats, request: &ObservationRequest
     reached_full_depth(stats, request) && stats.traversal.nodes_visited <= SHELL_NODE_CEILING as u64
 }
 
-/// Whether a walk descended to the raw-depth ceiling, i.e. it is a full-depth
-/// observation rather than a depth-clamped one.
+/// Whether a walk genuinely ran out of tree rather than being depth-clamped.
+///
+/// This mirrors macOS's `observation_reached_tree_end` (the #117 lesson): a
+/// depth-clamped observation stops above the web content by design, so its
+/// small tree says nothing about whether the renderer is activated. Only a
+/// walk that ran to a natural end can conclude the tree is genuinely thin.
 fn reached_full_depth(stats: &LocatorStats, request: &ObservationRequest) -> bool {
-    stats.traversal.max_raw_depth >= request.max_raw_depth
+    stats.traversal.max_logical_depth < request.max_logical_depth
 }
 
 /// Whether this observation is eligible to trigger renderer activation, the
@@ -98,18 +102,18 @@ mod tests {
         WindowInfo,
     };
 
-    fn request(max_raw_depth: u8) -> ObservationRequest {
+    fn request(max_depth: u8) -> ObservationRequest {
         let options = TreeOptions {
-            max_depth: max_raw_depth,
+            max_depth,
             ..TreeOptions::default()
         };
         ObservationRequest::snapshot(&options, Deadline::after(5_000).unwrap())
     }
 
-    fn stats(nodes: u64, max_raw_depth: u8) -> LocatorStats {
+    fn stats(nodes: u64, max_logical_depth: u8) -> LocatorStats {
         let mut stats = LocatorStats::default();
         stats.traversal.nodes_visited = nodes;
-        stats.traversal.max_raw_depth = max_raw_depth;
+        stats.traversal.max_logical_depth = max_logical_depth;
         stats
     }
 
@@ -139,7 +143,7 @@ mod tests {
     #[test]
     fn a_full_depth_shell_is_shell_shaped() {
         let request = request(50);
-        let stats = stats(12, 50);
+        let stats = stats(12, 12);
 
         assert!(is_shell_shaped(&stats, &request));
     }
@@ -147,7 +151,7 @@ mod tests {
     #[test]
     fn a_full_depth_settled_tree_is_not_shell_shaped() {
         let request = request(50);
-        let stats = stats(165, 50);
+        let stats = stats(165, 20);
 
         assert!(!is_shell_shaped(&stats, &request));
     }
