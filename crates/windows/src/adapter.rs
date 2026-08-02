@@ -1,6 +1,7 @@
 use agent_desktop_core::{
-    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, InputOps, ObservationOps,
-    ObservationRequest, ObservationRoot, TreeOptions, WindowFilter, WindowInfo,
+    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, InputOps, NativeHandle,
+    ObservationOps, ObservationRequest, ObservationRoot, RefEntry, TreeOptions, WindowFilter,
+    WindowInfo,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -63,6 +64,16 @@ impl ObservationOps for WindowsAdapter {
             &ObservationRequest::snapshot(options, deadline),
         )?
         .into_accessibility_tree()
+    }
+
+    /// Re-resolves a stored ref to a live element, fail-closed (KTD9) - the
+    /// drill-down root `snapshot --root @ref` needs.
+    fn resolve_element_strict(
+        &self,
+        entry: &RefEntry,
+        deadline: Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        crate::tree::resolve::resolve_element_strict(entry, deadline)
     }
 
     fn list_windows(

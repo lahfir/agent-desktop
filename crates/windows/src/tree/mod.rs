@@ -5,6 +5,7 @@ pub mod chromium;
 pub mod descriptor;
 pub mod name_evidence;
 pub(crate) mod observe;
+pub(crate) mod resolve;
 pub mod roles;
 pub mod states;
 pub mod surfaces;
