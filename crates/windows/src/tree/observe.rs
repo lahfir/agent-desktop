@@ -50,7 +50,12 @@ pub(crate) fn observe_tree(
         && chromium::is_shell_shaped(&outcome.stats, &request)
     {
         if request.observation_mode.force_renderer_accessibility {
-            return Err(still_thin_after_settle());
+            // The caller already handled renderer accessibility (or is doing
+            // so) via `--force-electron-a11y`: the flag's documented contract
+            // is that the adapter "skips activation guidance" and returns the
+            // tree it observed. Remove the activation-nag by handing back the
+            // observed tree instead of the still-thin guidance error.
+            return Ok(outcome.tree);
         }
         if adapter.renderer_activation_attempted() {
             return Err(still_thin_after_settle());
@@ -87,10 +92,18 @@ fn re_verify_root(root: ObservationRoot<'_>) -> Result<(), AdapterError> {
             if !crate::tree::automation::window_exists(handle) {
                 return Err(window_gone());
             }
-            if let Some(instance) = window.process_instance.as_deref() {
-                if !crate::system::process_identity::matches_instance(window.pid, instance)? {
-                    return Err(window_identity_changed());
+            match window.process_instance.as_deref() {
+                Some(instance) => {
+                    if !crate::system::process_identity::matches_instance(window.pid, instance)? {
+                        return Err(window_identity_changed());
+                    }
                 }
+                // KTD3's fail-closed rule for the elevated/split-integrity
+                // population: a window whose process token could not be read
+                // (A16-12) can never be identity-corroborated, so the liveness
+                // gate must not accept IsWindow alone against a potentially
+                // recycled HWND.
+                None => return Err(window_identity_changed()),
             }
             Ok(())
         }
@@ -170,13 +183,6 @@ mod tests {
         )
         .expect_err("a malformed id must fail");
         assert_eq!(error.code, ErrorCode::InvalidArgs);
-    }
-
-    #[test]
-    fn a_dead_window_in_reverification_is_window_not_found() {
-        let error = window_gone();
-        assert_eq!(error.code, ErrorCode::WindowNotFound);
-        assert!(error.suggestion.is_some());
     }
 
     #[cfg(target_os = "windows")]

@@ -42,6 +42,7 @@ mod tests {
                 root_ref: None,
                 snapshot_id: None,
                 timeout_ms: None,
+                force_electron_a11y: false,
             },
             &adapter,
             &CommandContext::default(),

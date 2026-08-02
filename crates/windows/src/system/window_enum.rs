@@ -50,6 +50,11 @@ impl EnumeratedWindow {
 /// synchronously on the calling thread, so the visitor is passed by raw
 /// pointer through the callback's `lparam` and never crosses threads; the
 /// reference is valid for the entire synchronous call.
+///
+/// The callback runs across an FFI boundary, so the visitor must neither panic
+/// (a panic would unwind through an `extern "system"` frame, which is UB) nor
+/// re-enter `EnumWindows` or destroy windows while iterating. Every caller in
+/// this crate obeys both.
 #[cfg(target_os = "windows")]
 pub(crate) fn enumerate_top_level(
     visit: impl FnMut(EnumeratedWindow) -> bool,

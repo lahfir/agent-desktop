@@ -78,6 +78,7 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
     let mut windows = Vec::new();
     let mut focused_seen = false;
     let app_filter = filter.app.as_deref().unwrap_or("").to_ascii_lowercase();
+    let verify_failure = std::cell::RefCell::new(None);
 
     enumerate_top_level(|window| {
         if !passes_filter(&window) {
@@ -96,11 +97,21 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
         }
         focused_seen |= focused;
         if let Ok(info) = window_info_from(window, &title, &app, focused) {
-            re_verify(&info);
+            if let Err(error) = re_verify(&info) {
+                // KTD3's two-sided rule: a window whose process changed
+                // mid-listing fails the whole inventory rather than emitting a
+                // half-identified entry.
+                *verify_failure.borrow_mut() = Some(error);
+                return false;
+            }
             windows.push(info);
         }
         true
     })?;
+
+    if let Some(error) = verify_failure.into_inner() {
+        return Err(error);
+    }
 
     Ok(windows)
 }
@@ -181,14 +192,19 @@ fn process_name_for_pid(_pid: u32) -> Option<String> {
 /// the strict check on the fresh listing, and the stored-evidence check that
 /// stored resolution (U6/U8) will rely on, both exercised so neither goes
 /// unused while the seam is fresh.
-fn re_verify(info: &WindowInfo) {
+/// Re-verifies a freshly listed window's identity per KTD3's two-sided rule:
+/// the strict check on the fresh listing, and the stored-evidence check that
+/// stored resolution (U8) will rely on. A window whose process changed
+/// mid-listing fails the inventory rather than emitting a half-identified
+/// entry, so this returns the failure instead of only logging it.
+fn re_verify(info: &WindowInfo) -> Result<(), AdapterError> {
     let handle = parse_handle(&info.id);
-    if let Some(evidence) = WindowIdentityEvidence::from_info(handle, info) {
-        if evidence.verify_strict().is_err() {
-            tracing::debug!("listed window changed identity mid-listing");
-        }
-        let _ = evidence.verify_stored();
-    }
+    let Some(evidence) = WindowIdentityEvidence::from_info(handle, info) else {
+        return Ok(());
+    };
+    evidence.verify_strict()?;
+    let _ = evidence.verify_stored();
+    Ok(())
 }
 
 fn parse_handle(id: &str) -> super::window_enum::WindowHandle {

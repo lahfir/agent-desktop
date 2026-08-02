@@ -21,6 +21,12 @@ mod imp {
         client: UIAutomation,
         walker: UITreeWalker,
         cache: Option<UICacheRequest>,
+        /// Whether the root is Chromium/Electron provenance (KTD6 gate): the
+        /// transparent-wrapper depth skip must only fire under detected
+        /// Chromium/WebView2 provenance, because the identical emptiness test
+        /// would otherwise skip the anonymous `Group`/`Pane` containers native
+        /// stacks are full of.
+        chromium_provenance: bool,
     }
 
     impl UiaTreeSource {
@@ -38,6 +44,7 @@ mod imp {
                 client,
                 walker,
                 cache,
+                chromium_provenance: crate::tree::chromium::is_chromium_root(root),
             })
         }
 
@@ -57,6 +64,13 @@ mod imp {
                     }),
                 None => Ok(root.clone()),
             }
+        }
+
+        /// Whether the root this source walks carries Chromium provenance; the
+        /// wrapper-depth skip only fires when this is true (KTD6).
+        #[cfg(test)]
+        pub(crate) fn chromium_provenance(&self) -> bool {
+            self.chromium_provenance
         }
     }
 
@@ -121,7 +135,7 @@ mod imp {
             _node: &UIAElement,
             properties: &crate::tree::properties::ElementProperties,
         ) -> bool {
-            crate::tree::wrapper::is_web_wrapper(properties)
+            self.chromium_provenance && crate::tree::wrapper::is_web_wrapper(properties)
         }
     }
 }
@@ -187,9 +201,9 @@ mod imp {
         fn is_web_wrapper(
             &self,
             _node: &UIAElement,
-            properties: &crate::tree::properties::ElementProperties,
+            _properties: &crate::tree::properties::ElementProperties,
         ) -> bool {
-            crate::tree::wrapper::is_web_wrapper(properties)
+            false
         }
     }
 }

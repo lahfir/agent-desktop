@@ -93,18 +93,25 @@ pub(crate) fn resolve_element_strict(
         _ => {
             // The bounds hash is the soft signal (KTD9): it never refutes an
             // exact match, but when several elements match the immutable
-            // identity and exactly one also occupied the stored bounds, that
-            // one is the window the ref was taken from. Without that single
-            // corroboration, fail closed as ambiguous rather than guess.
-            let expected_hash = entry.geometry.bounds_hash;
+            // identity and the **stored** ref actually carries a bounds hash,
+            // and exactly one candidate also occupied that bounds, that one is
+            // the window the ref was taken from. A ref that stored no hash
+            // (bounds failed at capture, or hidden by the requester) cannot be
+            // disambiguated by hash, so without a stored hash the lookup fails
+            // closed as ambiguous rather than guessing - a `None == None`
+            // comparison must never pick a candidate that has no bounds
+            // evidence at all.
+            let Some(expected_hash) = entry.geometry.bounds_hash else {
+                return Err(ambiguous_target_error(entry, matches.len()));
+            };
             let hash_matches = matches
                 .iter()
-                .filter(|candidate| candidate.identity.bounds_hash == expected_hash)
+                .filter(|candidate| candidate.identity.bounds_hash == Some(expected_hash))
                 .count();
             if hash_matches == 1 {
                 if let Some(sole) = matches
                     .iter()
-                    .find(|candidate| candidate.identity.bounds_hash == expected_hash)
+                    .find(|candidate| candidate.identity.bounds_hash == Some(expected_hash))
                 {
                     return Ok(sole.element.clone().into_native_handle());
                 }
@@ -170,6 +177,19 @@ fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElemen
         .source_window_id
         .as_deref()
         .ok_or_else(|| stale_ref_error(entry))?;
+    // KTD3's fail-closed process gate (the lubricant the A7-3 wrong-target
+    // shape exists to prevent): a stored ref must not search the tree of a
+    // different process that has since recycled the HWND. The macOS resolver
+    // verifies process instance before searching either (`resolve.rs:50-67`).
+    // A token-less ref (elevated process whose token could not be read) fails
+    // closed here rather than searching an unverified window.
+    if let Some(instance) = entry.process.process_instance.as_deref() {
+        if !crate::system::process_identity::matches_instance(entry.process.pid, instance)? {
+            return Err(stale_ref_error(entry));
+        }
+    } else {
+        return Err(stale_ref_error(entry));
+    }
     crate::tree::surfaces::surface_root(
         agent_desktop_core::ObservationRoot::Window(&agent_desktop_core::WindowInfo {
             id: window_id.to_string(),
@@ -383,12 +403,24 @@ mod tests {
     }
 
     /// A ref that records no native_id (the Electron shape, A7-1) cannot be
-    /// pinned by id; with no corroborating role/name either, it matches a
-    /// blank candidate, and the caller resolves `AMBIGUOUS` over the search.
+    /// pinned by id. The matching rule with an all-absent expected identity
+    /// matches any candidate - the safe outcome is not a single match but the
+    /// caller's `AMBIGUOUS_TARGET` when many candidates appear. This pins that
+    /// the id-only narrowing is what A7-3's guard relies on: give the ref an
+    /// expected role/name and it no longer matches a candidate that disagrees.
+    /// A ref with no id, no role and no name (the Electron shape, A7-1) cannot
+    /// be disambiguated: the matching rule says any candidate matches, so the
+    /// caller resolves `AMBIGUOUS_TARGET` over the search rather than guessing.
+    /// (The role-mismatch narrowing that keeps an ordinary id ref from landing
+    /// on the wrong element is pinned separately by
+    /// `a_matching_native_id_with_a_mismatched_role_does_not_resolve`.)
     #[test]
-    fn a_native_id_less_ref_never_matches_by_id_alone() {
-        let stored = identity(None, "", None);
-        assert!(candidate_matches(&stored, None, "", None));
+    fn a_native_id_less_ref_is_ambiguous_not_a_guess() {
+        let blank = identity(None, "", None);
+        assert!(
+            candidate_matches(&blank, None, "", None),
+            "an all-absent ref matches any candidate; the caller's ambiguity check is the guard"
+        );
     }
 
     #[cfg(target_os = "windows")]

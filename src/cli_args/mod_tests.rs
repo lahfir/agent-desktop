@@ -238,3 +238,26 @@ fn screenshot_args_batch_json_rejects_scope_field_typo() {
     .unwrap_err();
     assert!(err.to_string().contains("`windo_id`"));
 }
+
+/// U1 item 11's `--timeout-ms` knob (A16-11): omitted on the CLI it stays
+/// `None` so the core `DEFAULT_SNAPSHOT_TIMEOUT_MS` (3 s) is preserved, and the
+/// new `--force-electron-a11y` observation-mode flag defaults off.
+#[test]
+fn snapshot_args_cli_timeout_preserves_the_core_default_when_omitted() {
+    let args = SnapshotArgs::try_parse_from(["snapshot"]).unwrap();
+    assert_eq!(args.timeout_ms, None);
+    assert!(!args.force_electron_a11y);
+}
+
+#[test]
+fn snapshot_args_cli_raises_the_timeout_and_forces_electron_a11y() {
+    let args = SnapshotArgs::try_parse_from([
+        "snapshot",
+        "--timeout-ms",
+        "15000",
+        "--force-electron-a11y",
+    ])
+    .unwrap();
+    assert_eq!(args.timeout_ms, Some(15000));
+    assert!(args.force_electron_a11y);
+}

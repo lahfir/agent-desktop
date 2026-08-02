@@ -109,10 +109,18 @@ pub(crate) fn list_apps_live() -> Result<Vec<AppInfo>, AdapterError> {
                 "a window-owning process is absent from the process snapshot",
             ));
         };
-        if token.is_some() && !corroborate(pid, row) {
-            return Err(AdapterError::internal(
-                "window and process identities disagree for an app",
-            ));
+        if let Some(window_token) = token.as_deref() {
+            // KTD10's corroboration: the token the window inventory captured
+            // must still match the process's current generation at assembly
+            // time. Re-reading it and comparing (rather than merely checking
+            // that one exists) is what makes a mid-listing generation change
+            // fail the inventory instead of emitting a half-identified app.
+            let fresh = process_identity::token_for_pid(pid).ok().flatten();
+            if fresh.as_deref() != Some(window_token) {
+                return Err(AdapterError::internal(
+                    "window and process identities disagree for an app",
+                ));
+            }
         }
         apps.push(AppInfo {
             name: row.name.clone(),
@@ -123,16 +131,6 @@ pub(crate) fn list_apps_live() -> Result<Vec<AppInfo>, AdapterError> {
     }
     apps.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(apps)
-}
-
-/// Re-reads the process token at assembly time so the two inventories
-/// corroborate each other; a process that changed generation mid-listing
-/// disagrees and fails the inventory.
-fn corroborate(pid: ProcessId, _row: &ProcessRow) -> bool {
-    process_identity::token_for_pid(pid)
-        .ok()
-        .flatten()
-        .is_some()
 }
 
 /// The owner pid + token for a window, reusing the identity path.

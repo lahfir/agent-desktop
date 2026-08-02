@@ -134,6 +134,27 @@ mod windows_only {
         );
     }
 
+    /// KTD6's provenance gate, pinned at the source that applies it: the
+    /// crate's own Win32 fixture root is **not** Chromium (`Chrome_WidgetWin_1`
+    /// is a Chromium class, and the fixture's registered class is not it), so
+    /// the walk must not skip its empty `Group`-shaped containers as web
+    /// wrappers. Removing the provenance check from `UiaTreeSource` would
+    /// silently deepen native walks (the silent-deepening guard the gate
+    /// exists to enforce).
+    #[test]
+    fn the_live_fixture_walk_is_not_chromium_provenance() {
+        crate::tree::fixture::ensure_test_apartment();
+        let fixture = HostedFixture::spawn().expect("the fixture host starts");
+        let root =
+            root_from_hwnd(fixture.handle(), deadline()).expect("the fixture window resolves");
+
+        let source = UiaTreeSource::for_root(&root).expect("the source constructs");
+        assert!(
+            !source.chromium_provenance(),
+            "the crate's own fixture must not be treated as Chromium provenance"
+        );
+    }
+
     /// The seams now carry a vocabulary, and this is the assertion that says
     /// so. It asserted the opposite before the vocabulary wiring landed -
     /// `role == "unknown"` and an empty action list - so leaving it green

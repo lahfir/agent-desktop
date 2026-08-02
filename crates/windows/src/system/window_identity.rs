@@ -64,11 +64,11 @@ impl<'a> WindowIdentityEvidence<'a> {
             .title
             .is_some_and(|expected| live.as_deref() != Some(expected))
         {
-            tracing::debug!(
-                expected_title = ?self.title,
-                actual_title = ?live,
-                "window title changed while immutable source identity remained valid"
-            );
+            // Shape only - whether the live title drifted, never the titles
+            // themselves, which are target-derived and would reach any tracing
+            // sink that subscribes (the JSONL trace redacts the `title` key,
+            // but a console/file subscriber would not).
+            tracing::debug!("window title changed while immutable source identity remained valid");
         }
         Ok(())
     }
@@ -191,7 +191,11 @@ mod tests {
             return;
         };
         let desktop = unsafe { GetDesktopWindow() };
-        let win = fake_window(pid, &token, "a-title-that-is-not-the-desktop-title");
+        // The strict check compares pid+token+app+title. Using the live image
+        // name as `app` removes the app comparison from the failure, so this
+        // test actually exercises the title arm (and only the title arm).
+        let mut win = fake_window(pid, &token, "a-title-that-is-not-the-desktop-title");
+        win.app = live_process_app(pid);
         let evidence = WindowIdentityEvidence::from_info(desktop, &win)
             .expect("a process with a token derives its evidence");
 
