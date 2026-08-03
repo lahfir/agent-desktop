@@ -152,6 +152,7 @@ self_test() {
 /// as of 2.10 this is owned elsewhere
 /// A U1 item-11 branch decided this
 /// The filter U4 encodes'
+    # shellcheck disable=SC2016
     must_pass='/// pre-1.0 and sub-1.0 readings
 /// v0.5.0 deleted the layer
 /// the envelope is "2.1" on the wire
