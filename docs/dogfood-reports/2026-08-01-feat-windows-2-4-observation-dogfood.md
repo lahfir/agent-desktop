@@ -95,3 +95,40 @@ One, carried to `docs/phases.md` by U10: whether the `cell` refinement should al
 ## Redaction
 
 This report carries no literal `Name`, `Value`, `AutomationId` value, file name, document text, window title or note title read from a real application. Obsidian's tree is described by roles, counts and shape only; every named example is a control class the repository's own fixtures created. No capture JSON is committed.
+
+---
+
+## Post-review-fix pass (2026-08-02, commit 5fde5b5)
+
+A nine-reviewer code review of this branch changed five live behaviors after the run above — the deadline-bounded Chromium settle, per-process activation keying, liveness on the force and Element-rooted paths, the dedicated boundary-count budget, and the fail-closed resolution tie-break — so the read path was dogfooded again from the rebuilt release binary. Same targets, same redaction rules, effects verified by reading the JSON, all launched processes tracked and killed.
+
+### Native targets (Notepad, Explorer, WinForms fixture, WPF fixture)
+
+| target | full snapshot | vs pre-fix refs | skeleton | drill-down | notes |
+| --- | --- | --- | --- | --- | --- |
+| Notepad | `complete:true`, 17 refs, ~200ms | 17 → 17 | tree naturally ≤ depth 3, no boundary | ok | |
+| Explorer | `complete:true`, 69 refs, ~450ms | 68 → 69 (shell variance) | 7 refs; six boundary `group` containers carry `children_count` 1–3 | ok | boundary-count budget observed live |
+| WinForms | `complete:true`, 25 refs, ~307ms | 25 → 25 | shallow, no boundary | ok | |
+| WPF | `complete:true`, 46 refs, ~1.1s | 46 → 46 | 8 boundary containers with counts; 2 report `role=unknown` | ok | role-mapping note below |
+
+The hardened failure paths held: killing the WinForms fixture and re-running its drill-down returned `STALE_REF` (`resolve_no_candidate`, retry-safe, fresh-snapshot recovery) in **35ms** with no application text in any error field; `--surface focused` against an unfocused-but-live target failed closed with `WINDOW_NOT_FOUND` and succeeded after a real foreground change; `list-windows`/`list-apps`/`list-displays` erred nowhere across every combination tried, including two windows on one pid (the WPF host) resolving to distinct ids with window-level focus tracked correctly.
+
+### Chromium (Obsidian, cold start)
+
+The settle fix was exercised at the cold instant it exists for. With Obsidian freshly launched, `--timeout-ms 50` returned a structured `TIMEOUT` whose details echo the elapsed and configured deadline; the same command with `--timeout-ms 30000`, issued moments later against the same window, returned `complete:true` — the knob observably governs the settle window, which the pre-fix one-shot 50ms path could not do. The cold tree is role-for-role identical to the fully warm tree at both default depth and depth 50, so no pre-activation shell survives to be claimed complete. `--force-electron-a11y` returned a real tree on the live window and failed closed with a structured error in 198ms after the window was killed — no hang, no stale tree.
+
+Depth-50 richness improved materially over the pre-fix run: **57 → 166 refs**, with real web-content roles (buttons, textfields, images) behind the wrapper skip. Default-depth refs read 15 against the pre-fix 19; cold and warm agree exactly at that depth, so the difference is the depth-10 clamp meeting Obsidian's DOM nesting, not a settle regression.
+
+Per-process activation keying could not be exercised live — Obsidian is the only Chromium-family application on this box — and is recorded **skipped with that reason**, carried by the unit tests that pin two pids through one adapter.
+
+### Second environment for the cost row
+
+The probe build defect this review found (the CI temp-workdir copy list omitted a module, failed the build, and exited 0 as a skip) is fixed, and the first fixed run uploaded the missing captures: the hosted Server 2025 runner measures the added properties at 1.14x (Win32) and 1.24x (WPF) against the dev box's 1.03x/1.18x. A16-7 now rests on two environments.
+
+### Findings from this pass
+
+- **`--app` matching requires the image name with extension** (`Obsidian.exe`, not `Obsidian`) — correct per the exact-match contract, but a friction note for agents arriving from macOS where the convention omits it. Recorded as a UX consideration, not a defect.
+- **Two WPF boundary containers report `role=unknown`** at the skeleton boundary (list/grid-shaped control types). Cosmetic here; the role-mapping look belongs with the open `cell`-refinement decision already carried by `docs/phases.md`.
+- The binary reports envelope version 2.2; no behavior consequence for this run.
+
+**Post-fix readiness verdict: the fixes hold under real applications.** Every behavior the review changed was either observed working live or skipped with its reason and a pinning test named. No hang, no dishonest completeness, no redaction leak was observed anywhere in this pass.
