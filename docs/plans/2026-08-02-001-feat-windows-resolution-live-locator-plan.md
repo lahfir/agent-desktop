@@ -318,12 +318,12 @@ flowchart LR
 
 - A PR from `feat/windows-2.5-resolution` into `feat/windows-adapter` is open and green.
 - U1 ran, its A17 rows are committed, and every unanswerable question has its pre-committed branch recorded as taken.
-- Matching is three-state through core's matcher with no duplicated rule table; the retry loop distinguishes settled from incomplete; both pinned by tests that fail when inverted.
+- Matching is three-state through the KTD3 composition of core's verdicts with no duplicated rule table; the retry loop distinguishes adapter-loop-settled from incomplete without stamping query-level non-retryability onto the completed-search result; both pinned by tests that fail when inverted.
 - The Electron-shape ref (no identifier) resolves through path and geometry on an unchanged tree and fails closed on a changed one; promotion and tie-break are distinct, both pinned.
 - All five live readers work through one shared read; secure values are withheld at the reader path; a dead provider never satisfies completeness; `get`/`is` return live values and FFI `ad_get("bounds")` works.
 - `find` and `wait --selector` are live end to end on Windows.
 - The live loop was dogfooded against real applications including Obsidian, the 0/1/N semantics carry committed probe evidence, findings were closed or escalated, and the durable redaction-compliant report is committed.
-- `docs/phases.md` reads true — the `resolve_query` correction plus whatever U1/U7 disproved — and `CONCEPTS.md` carries at most the concepts 2.5 introduced.
+- `docs/phases.md` reads true — the `resolve_query` correction, the §2.5/§2.6 offscreen-evidence reconciliation, and the KTD10 secure-field ownership split, plus whatever U1/U7 disproved — and `CONCEPTS.md` carries at most the concepts 2.5 introduced.
 - Abandoned experimental code is removed from the diff.
 
 ---
