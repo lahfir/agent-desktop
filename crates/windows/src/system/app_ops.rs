@@ -8,7 +8,7 @@ use super::window_ops::passes_filter;
 ///
 /// `list_apps` joins the window inventory's owning processes with this
 /// snapshot so the two inventories corroborate each other on
-/// `process_instance` (KTD10, mirroring
+/// `process_instance` (mirroring
 /// `crates/macos/src/system/app_inventory.rs:133-146` where two sources must
 /// agree or the inventory fails).
 #[derive(Debug, Clone)]

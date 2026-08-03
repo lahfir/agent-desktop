@@ -36,7 +36,7 @@ fn role_description_uses_localized_control_type_text() {
 }
 
 /// A failed `LocalizedControlType` read produces no `role_description`:
-/// `Unknown` is not an empty claim (the eager-state rule from 2.3's
+/// `Unknown` is not an empty claim (the eager-state rule from the vocabulary
 /// measurements).
 #[test]
 fn failed_localized_control_type_read_produces_nothing() {
