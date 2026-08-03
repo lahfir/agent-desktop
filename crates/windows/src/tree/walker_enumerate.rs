@@ -1,9 +1,22 @@
-use agent_desktop_core::{AdapterError, LocatorStats, ObservedSubtree};
+use agent_desktop_core::{AdapterError, Deadline, LocatorStats, ObservedSubtree};
 use serde_json::json;
 
 use super::automation::{UiaFailure, uia_failure_error};
 use super::walker::{NodeKey, TreeSource, WalkBudget};
 use crate::system::permissions::ensure_budget;
+
+/// How long a boundary node's child-count-only read gets, independent of the
+/// walk's own deadline.
+///
+/// A boundary node is read for its child count alone, purely to annotate how
+/// much was left unobserved: on a target that materialises children lazily,
+/// that count is not cheap, and one such node could otherwise consume an
+/// entire snapshot budget on a count nobody needs that badly. Mirrors macOS's
+/// `BOUNDARY_COUNT_BUDGET` (`crates/macos/src/tree/query/child_read_budget.rs`,
+/// the same 25ms value and rationale). The count stays best-effort: a starved
+/// read yields no count while the boundary is still marked truncated, so the
+/// two signals never contradict each other.
+const BOUNDARY_COUNT_BUDGET: std::time::Duration = std::time::Duration::from_millis(25);
 
 /// How many enumeration faults one walk reports.
 ///
@@ -144,7 +157,14 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
             self.note_deadline_exhausted();
             return None;
         }
-        let read = self.read_children(node, raw_depth);
+        let boundary_candidate = raw_depth >= self.budget.max_raw_depth
+            || child_logical_depth > self.budget.max_logical_depth;
+        let read_deadline = if boundary_candidate {
+            self.budget.deadline.capped(BOUNDARY_COUNT_BUDGET)
+        } else {
+            self.budget.deadline
+        };
+        let read = self.read_children(node, raw_depth, read_deadline);
         let truncated_by_raw_depth =
             raw_depth >= self.budget.max_raw_depth && !read.elements.is_empty();
         let at_boundary =
@@ -182,7 +202,16 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
     /// Every `Err` is classified on the measured pair instead: an exhaustion
     /// failure ends the list and leaves the subtree complete, anything else
     /// marks it incomplete and surfaces a structured error.
-    fn read_children(&mut self, node: &S::Node, raw_depth: u8) -> ChildRead<S::Node> {
+    ///
+    /// `deadline` is the caller's choice, not always `self.budget.deadline`:
+    /// a boundary node's read is clamped to `BOUNDARY_COUNT_BUDGET` because it
+    /// only ever produces a count, never a subtree to visit.
+    fn read_children(
+        &mut self,
+        node: &S::Node,
+        raw_depth: u8,
+        deadline: Deadline,
+    ) -> ChildRead<S::Node> {
         let mut elements = Vec::new();
         let mut complete = true;
         match self.source.first_child(node) {
@@ -194,7 +223,7 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
                         complete = false;
                         break;
                     }
-                    if ensure_budget(self.budget.deadline).is_err() {
+                    if ensure_budget(deadline).is_err() {
                         self.note_deadline_exhausted();
                         complete = false;
                         break;

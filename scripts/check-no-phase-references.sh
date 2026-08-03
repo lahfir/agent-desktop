@@ -74,6 +74,7 @@ BARE_REFERENCE_AWK='
     gsub(/(pre|post|sub|over|under)-[0-9]+\.[0-9]+/, " ", text)
     gsub(/[0-9]+\.[0-9]+ ?(x|ms|s|us|%|MiB|MB|KB|GB)([^A-Za-z]|$)/, " ", text)
     gsub(/"[0-9]+\.[0-9]+"/, " ", text)
+    gsub(/`[0-9]+\.[0-9]+`/, " ", text)
     gsub(/[^0-9.]/, " ", text)
     n = split(text, tokens, " ")
     for (i = 1; i <= n; i++) {
@@ -98,31 +99,85 @@ bare_reference_check() {
     return 0
 }
 
+# A bare "U4" implementation-unit id is the same reference as "unit U4" with
+# the word filed off, and `run_check`'s '[Uu]nit[[:space:]]+U?[0-9]' pattern
+# above cannot see it: it requires the literal word "unit" immediately
+# before, so prose like "the filter U4 encodes" or "a U1 item-11 branch"
+# passes it clean.
+#
+# Tokenized on the same principle as BARE_REFERENCE_AWK above, so a real Rust
+# type name is never mistaken for a plan reference: `u32`/`u8` are lowercase
+# and the pattern requires an uppercase `U`; `U+0041` unicode notation is
+# split by the `+` into separate `U` and `0041` tokens, so the bare `U` token
+# has no trailing digits to match; and an uppercase ledger citation like
+# `A16-11` never produces a standalone `U<digit>` token because the `A16` and
+# `11` stay glued to their own alphanumeric runs.
+# shellcheck disable=SC2016
+BARE_UNIT_AWK='
+{
+    n = split($0, tokens, /[^A-Za-z0-9]+/)
+    for (i = 1; i <= n; i++) {
+        if (tokens[i] ~ /^U[0-9]{1,2}$/) {
+            print
+            next
+        }
+    }
+}'
+
+bare_unit_check() {
+    local matches
+    matches="$(
+        grep -rnE --include='*.rs' '^[[:space:]]*(///|//!)' crates src 2>/dev/null |
+            awk "$BARE_UNIT_AWK" || true
+    )"
+    if [ -n "$matches" ]; then
+        printf '%s\n' "$matches" >&2
+        printf '  ^ bare plan reference (an implementation-unit id) - name the thing, not the unit that shipped it\n\n' >&2
+        return 1
+    fi
+    return 0
+}
+
 # A gate whose own allow/deny set is untested is a gate nobody can trust. Both
 # of the cases marked MUST-CATCH below were live defects: `phase-2.4` escaped
-# and `2.5 ms` false-fired.
+# and `2.5 ms` false-fired. Every fixture line runs against both awk programs
+# together, exactly as the real scan combines `bare_reference_check` and
+# `bare_unit_check` into one `failed` outcome, so this exercises the same
+# rule text the scan runs rather than a copy of it.
 self_test() {
     local must_catch must_pass caught passed failures
     must_catch='/// see phase-2.4 for details
 /// 2.2 ships the seam
 /// the 2.4 evidence field
-/// as of 2.10 this is owned elsewhere'
+/// as of 2.10 this is owned elsewhere
+/// A U1 item-11 branch decided this
+/// The filter U4 encodes'
     must_pass='/// pre-1.0 and sub-1.0 readings
 /// v0.5.0 deleted the layer
 /// the envelope is "2.1" on the wire
+/// collapsing a failed read to `1.0` is a claim
 /// measured 1.35x against 0.80x
 /// a 2.5 ms timeout and a 1.5 s deadline
-/// uiautomation 0.25.0'
+/// uiautomation 0.25.0
+/// stored as u32 and read back as u8
+/// the character U+0041 renders as A
+/// see A16-11 for the measured margins'
     failures=0
     while IFS= read -r line; do
-        caught="$(printf '%s\n' "$line" | awk "$BARE_REFERENCE_AWK")"
+        caught="$(
+            printf '%s\n' "$line" | awk "$BARE_REFERENCE_AWK"
+            printf '%s\n' "$line" | awk "$BARE_UNIT_AWK"
+        )"
         if [ -z "$caught" ]; then
             printf 'self-test FAIL (missed): %s\n' "$line" >&2
             failures=1
         fi
     done <<< "$must_catch"
     while IFS= read -r line; do
-        passed="$(printf '%s\n' "$line" | awk "$BARE_REFERENCE_AWK")"
+        passed="$(
+            printf '%s\n' "$line" | awk "$BARE_REFERENCE_AWK"
+            printf '%s\n' "$line" | awk "$BARE_UNIT_AWK"
+        )"
         if [ -n "$passed" ]; then
             printf 'self-test FAIL (false positive): %s\n' "$line" >&2
             failures=1
@@ -138,6 +193,8 @@ self_test() {
 self_test || failed=1
 
 bare_reference_check || failed=1
+
+bare_unit_check || failed=1
 
 if [ "$failed" -ne 0 ]; then
     printf 'Shipped source must not reference the delivery plan.\n' >&2

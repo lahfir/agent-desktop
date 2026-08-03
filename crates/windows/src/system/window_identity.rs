@@ -41,7 +41,9 @@ impl<'a> WindowIdentityEvidence<'a> {
         if !process_identity::matches_instance(self.pid, self.process_instance)? {
             return Err(window_identity_mismatch(self.handle));
         }
-        if !self.app.is_empty() && live_process_app(self.pid) != self.app {
+        if !self.app.is_empty()
+            && process_identity::process_image_name(self.pid).unwrap_or_default() != self.app
+        {
             return Err(window_identity_mismatch(self.handle));
         }
         if self.title.is_some_and(|title| !title.is_empty()) {
@@ -91,48 +93,6 @@ fn live_window_title(handle: super::window_enum::WindowHandle) -> Option<String>
     }
 }
 
-/// The image name of the process at `pid`, as the strict check's `app`
-/// corroboration reads it.
-#[cfg(target_os = "windows")]
-fn live_process_app(pid: ProcessId) -> String {
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
-        TH32CS_SNAPPROCESS,
-    };
-
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snapshot.is_null() {
-        return String::new();
-    }
-    let mut entry = PROCESSENTRY32W {
-        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
-        ..Default::default()
-    };
-    let mut found = None;
-    let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) };
-    while ok != 0 {
-        if entry.th32ProcessID == u32::from(pid) {
-            let length = entry
-                .szExeFile
-                .iter()
-                .position(|c| *c == 0)
-                .unwrap_or(entry.szExeFile.len());
-            found = Some(String::from_utf16_lossy(&entry.szExeFile[..length]));
-            break;
-        }
-        ok = unsafe { Process32NextW(snapshot, &mut entry) };
-    }
-    unsafe {
-        windows_sys::Win32::Foundation::CloseHandle(snapshot);
-    }
-    found.unwrap_or_default()
-}
-
-#[cfg(not(target_os = "windows"))]
-fn live_process_app(_pid: ProcessId) -> String {
-    String::new()
-}
-
 /// The fail-closed identity-mismatch error, carrying no window-derived text.
 fn window_identity_mismatch(handle: super::window_enum::WindowHandle) -> AdapterError {
     AdapterError::new(
@@ -176,6 +136,37 @@ mod tests {
         );
     }
 
+    /// A window whose title carries a marker string must not leak it into the
+    /// `WINDOW_NOT_FOUND` error when identity verification fails: the error
+    /// shape is id-only by construction (handle, never title), and this pins
+    /// it so it stays that way.
+    #[test]
+    fn a_marker_titled_window_that_fails_identity_leaks_no_marker() {
+        const MARKER: &str = "unredacted-secret-marker-x7f2";
+        let win = fake_window(ProcessId::new(9_999_999), "windows-proc-v1:0:0", MARKER);
+        let evidence = WindowIdentityEvidence::from_info(std::ptr::null_mut(), &win)
+            .expect("a process instance yields evidence");
+
+        let error = evidence
+            .verify_stored()
+            .expect_err("an unrecognisable pid/token pair must fail closed");
+
+        assert_eq!(error.code, ErrorCode::WindowNotFound);
+        assert!(!error.message.contains(MARKER));
+        assert!(
+            error
+                .details
+                .as_ref()
+                .is_none_or(|details| !details.to_string().contains(MARKER))
+        );
+        assert!(
+            error
+                .platform_detail
+                .as_ref()
+                .is_none_or(|detail| !detail.contains(MARKER))
+        );
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn a_fresh_token_passes_stored_and_strict_fails_on_a_mismatched_live_title() {
@@ -188,7 +179,7 @@ mod tests {
         };
         let desktop = unsafe { GetDesktopWindow() };
         let mut win = fake_window(pid, &token, "a-title-that-is-not-the-desktop-title");
-        win.app = live_process_app(pid);
+        win.app = process_identity::process_image_name(pid).unwrap_or_default();
         let evidence = WindowIdentityEvidence::from_info(desktop, &win)
             .expect("a process with a token derives its evidence");
 

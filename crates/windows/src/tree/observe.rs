@@ -1,11 +1,14 @@
+use std::time::{Duration, Instant};
+
 use agent_desktop_core::{
-    AdapterError, ErrorCode, ObservationRequest, ObservationRoot, ObservedTree,
+    AdapterError, Deadline, ErrorCode, ObservationRequest, ObservationRoot, ObservedTree,
+    ProcessId, ProcessIdentity,
 };
 use serde_json::json;
 
 use super::chromium;
 use super::surfaces::surface_root;
-use super::walker::{DEFAULT_MAX_RAW_DEPTH, WalkBudget};
+use super::walker::{DEFAULT_MAX_RAW_DEPTH, WalkBudget, WalkOutcome};
 use super::walker_source::walk_uia_subtree;
 
 /// Runs one observation: resolve the root, walk it, detect a Chromium shell,
@@ -28,10 +31,19 @@ use super::walker_source::walk_uia_subtree;
 ///    `WINDOW_NOT_FOUND`, never a complete-looking tree.
 /// 3. **Chromium shell detection**: a full-depth walk of a detected Chromium
 ///    root that lands on the pre-activation shell returns the
-///    activation-required error, which core's loop settles and retries. When
-///    the caller already forced renderer accessibility (`--force-electron-a11y`),
-///    the adapter returns the observed tree instead of the guidance error - the
-///    flag's contract is to skip activation guidance.
+///    activation-required error, which core's loop settles and retries. The
+///    marker keeps being returned - re-arming core's retry loop - for as
+///    long as the deadline still has room for another walk of the shape
+///    just measured; only once that room runs out does a still-thin tree
+///    return the plain guidance error core's loop treats as final. The
+///    "settle already ran" state is scoped per process, so a batch or
+///    session observing several processes through one adapter gives every
+///    process its own settle rather than the first process's activation
+///    suppressing every later one. When the caller already forced renderer
+///    accessibility (`--force-electron-a11y`), the adapter still reverifies
+///    the root is live before returning the observed tree instead of the
+///    guidance error - the flag's contract is to skip activation guidance,
+///    not liveness.
 pub(crate) fn observe_tree(
     root: ObservationRoot<'_>,
     request: &ObservationRequest,
@@ -42,28 +54,95 @@ pub(crate) fn observe_tree(
     let chromium_root = chromium::is_chromium_root(&element);
     let budget = WalkBudget::new(request.max_logical_depth, request.deadline)
         .with_max_raw_depth(request.max_raw_depth.min(DEFAULT_MAX_RAW_DEPTH));
+    let walk_started = Instant::now();
     let outcome = walk_uia_subtree(&element, &root, budget)?;
+    finish_observation(
+        root,
+        request,
+        adapter,
+        chromium_root,
+        outcome,
+        walk_started.elapsed(),
+        re_verify_root,
+    )
+}
 
+/// Everything the walk cannot decide for itself, applied to an
+/// already-completed [`WalkOutcome`].
+///
+/// Split out of `observe_tree` so the decision logic - the shell/settle
+/// handling and the liveness gate - can be driven directly from a synthetic
+/// walk outcome and a fake liveness check, the same way `walker_fake` lets
+/// the walker's own correctness branches run without a live UI Automation
+/// provider. `observe_tree` supplies the real walk and `re_verify_root`;
+/// tests supply a canned outcome and a closure that fails on demand.
+fn finish_observation(
+    root: ObservationRoot<'_>,
+    request: ObservationRequest,
+    adapter: &crate::adapter::WindowsAdapter,
+    chromium_root: bool,
+    outcome: WalkOutcome,
+    walk_duration: Duration,
+    verify_root: impl FnOnce(ObservationRoot<'_>) -> Result<(), AdapterError>,
+) -> Result<ObservedTree, AdapterError> {
     if !outcome.failures.is_empty() {
         return Err(walk_fault_error(&outcome.failures));
     }
-    if outcome.tree.is_complete()
+    let shell_shaped = outcome.tree.is_complete()
         && chromium_root
         && chromium::activation_eligible(root, &request)
-        && chromium::is_shell_shaped(&outcome.stats, &request)
-    {
+        && chromium::is_shell_shaped(&outcome.stats, &request);
+    if shell_shaped {
         if request.observation_mode.force_renderer_accessibility {
+            verify_root(root)?;
             return Ok(outcome.tree);
         }
-        if adapter.renderer_activation_attempted() {
-            return Err(still_thin_after_settle());
+        let process = root_process_identity(root);
+        if !adapter.renderer_activation_attempted(&process)
+            || has_room_for_another_walk(request.deadline, walk_duration)
+        {
+            return Err(chromium::activation_required(&outcome.stats));
         }
-        return Err(chromium::activation_required(&outcome.stats));
+        return Err(still_thin_after_settle());
     }
     if outcome.tree.is_complete() {
-        re_verify_root(root)?;
+        verify_root(root)?;
     }
     Ok(outcome.tree)
+}
+
+/// A walk this small can complete near-instantly under a test double, and a
+/// deadline this thin is not enough runway for a genuine retry regardless of
+/// what the last walk measured - this floors the estimate.
+const MIN_WALK_ESTIMATE: Duration = Duration::from_millis(5);
+
+/// Whether the remaining deadline can still absorb another walk of the shape
+/// that was just measured.
+///
+/// Core's loop (`crates/core/src/renderer_accessibility.rs`) retries
+/// `observe_tree` on every activation-required error with a 25-400ms
+/// backoff, so returning the marker here for as long as there is room turns
+/// the settle from a single guess into a real wait for the async Chromium
+/// accessibility build a cold start needs. The walk that just ran is the
+/// cheapest available estimate of what another attempt costs.
+fn has_room_for_another_walk(deadline: Deadline, last_walk: Duration) -> bool {
+    deadline.remaining() > last_walk.max(MIN_WALK_ESTIMATE)
+}
+
+/// The activation-attempted key for a root: its process, scoped by the
+/// process-instance token (the generation the identity check already reads)
+/// so a recycled pid never inherits another process's settle state.
+fn root_process_identity(root: ObservationRoot<'_>) -> ProcessIdentity {
+    match root {
+        ObservationRoot::Window(window) => ProcessIdentity::new(
+            window.pid,
+            window.process_instance.clone().unwrap_or_default(),
+        ),
+        ObservationRoot::Element { entry, .. } => ProcessIdentity::new(
+            entry.process.pid,
+            entry.process.process_instance.clone().unwrap_or_default(),
+        ),
+    }
 }
 
 /// The post-settle still-thin error: **not** marked activation-required,
@@ -85,7 +164,9 @@ fn still_thin_after_settle() -> AdapterError {
 /// read is what makes the claim honest. Fail-closed for the
 /// elevated/split-integrity population: a window whose process token could not
 /// be read (A16-12) can never be identity-corroborated, so `IsWindow` alone is
-/// not accepted against a potentially recycled HWND.
+/// not accepted against a potentially recycled HWND. An `Element` root has no
+/// HWND of its own to probe, so it is corroborated by process identity alone -
+/// still fail-closed, mirroring the `Window` arm's shape.
 fn re_verify_root(root: ObservationRoot<'_>) -> Result<(), AdapterError> {
     match root {
         ObservationRoot::Window(window) => {
@@ -93,17 +174,28 @@ fn re_verify_root(root: ObservationRoot<'_>) -> Result<(), AdapterError> {
             if !crate::tree::automation::window_exists(handle) {
                 return Err(window_gone());
             }
-            match window.process_instance.as_deref() {
-                Some(instance) => {
-                    if !crate::system::process_identity::matches_instance(window.pid, instance)? {
-                        return Err(window_identity_changed());
-                    }
-                }
-                None => return Err(window_identity_changed()),
-            }
-            Ok(())
+            verify_process_identity(window.pid, window.process_instance.as_deref())
         }
-        ObservationRoot::Element { .. } => Ok(()),
+        ObservationRoot::Element { entry, .. } => {
+            verify_process_identity(entry.process.pid, entry.process.process_instance.as_deref())
+        }
+    }
+}
+
+/// Corroborates a root's process against its stored generation token,
+/// fail-closed. A stored ref without a token can never be corroborated, so a
+/// missing token never passes - it is evidence that must be present, not an
+/// optional extra.
+fn verify_process_identity(pid: ProcessId, instance: Option<&str>) -> Result<(), AdapterError> {
+    match instance {
+        Some(instance) => {
+            if crate::system::process_identity::matches_instance(pid, instance)? {
+                Ok(())
+            } else {
+                Err(window_identity_changed())
+            }
+        }
+        None => Err(window_identity_changed()),
     }
 }
 
@@ -153,79 +245,5 @@ fn walk_fault_error(failures: &[AdapterError]) -> AdapterError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_malformed_root_window_id_fails_before_walking() {
-        let request = ObservationRequest::snapshot(
-            &agent_desktop_core::TreeOptions::default(),
-            agent_desktop_core::Deadline::after(5_000).unwrap(),
-        );
-        let window = agent_desktop_core::WindowInfo {
-            id: "not-a-window-id".into(),
-            title: "x".into(),
-            app: "x".into(),
-            pid: agent_desktop_core::ProcessId::new(1),
-            process_instance: None,
-            bounds: None,
-            state: Default::default(),
-        };
-
-        let error = observe_tree(
-            ObservationRoot::Window(&window),
-            &request,
-            &crate::adapter::WindowsAdapter::new(),
-        )
-        .expect_err("a malformed id must fail");
-        assert_eq!(error.code, ErrorCode::InvalidArgs);
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn a_destroyed_hwnd_fails_reverification_as_window_not_found() {
-        let window = agent_desktop_core::WindowInfo {
-            id: format!("w-{}", 0x7fffffff),
-            title: "x".into(),
-            app: "x".into(),
-            pid: agent_desktop_core::ProcessId::new(1),
-            process_instance: None,
-            bounds: None,
-            state: Default::default(),
-        };
-
-        let error = re_verify_root(agent_desktop_core::ObservationRoot::Window(&window))
-            .expect_err("a destroyed handle must fail the liveness gate");
-        assert_eq!(error.code, ErrorCode::WindowNotFound);
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn a_freshly_created_fixture_window_passes_reverification() {
-        use agent_desktop_core::ObservationRoot;
-
-        crate::tree::fixture::ensure_test_apartment();
-        let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
-        let window = agent_desktop_core::WindowInfo {
-            id: format!("w-{}", fixture.handle()),
-            title: "agent-desktop fixture".into(),
-            app: "fixture.exe".into(),
-            pid: agent_desktop_core::ProcessId::from(fixture.process_id()),
-            process_instance: Some(
-                crate::system::process_identity::token_for_pid(
-                    agent_desktop_core::ProcessId::from(fixture.process_id()),
-                )
-                .unwrap()
-                .expect("a live fixture process has a token"),
-            ),
-            bounds: None,
-            state: Default::default(),
-        };
-
-        let result = re_verify_root(ObservationRoot::Window(&window));
-        assert!(
-            result.is_ok(),
-            "a live fixture root must pass the liveness gate"
-        );
-    }
-}
+#[path = "observe_tests.rs"]
+mod tests;

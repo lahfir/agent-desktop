@@ -136,51 +136,44 @@ pub fn run(
     run_with_context(
         adapter,
         opts,
-        app_name,
-        window_id,
+        &SnapshotTarget {
+            app_name,
+            window_id,
+        },
         &CommandContext::default(),
-    )
-}
-
-pub fn run_with_context(
-    adapter: &dyn PlatformAdapter,
-    opts: &TreeOptions,
-    app_name: Option<&str>,
-    window_id: Option<&str>,
-    context: &CommandContext,
-) -> Result<SnapshotResult, AppError> {
-    run_with_context_timeout(
-        adapter,
-        opts,
-        app_name,
-        window_id,
-        context,
         DEFAULT_SNAPSHOT_TIMEOUT_MS,
     )
 }
 
+/// Which window a full snapshot targets: the focused window when both fields
+/// are `None`, a named app's focused window, or an exact window id.
+pub struct SnapshotTarget<'a> {
+    pub app_name: Option<&'a str>,
+    pub window_id: Option<&'a str>,
+}
+
 /// The default snapshot observation deadline.
 ///
-/// A U1 item-11 branch (A16-11) measured a cold Chromium settle at 10-25 s
-/// against the previous hardcoded 3 s, so callers can raise it explicitly via
-/// `--timeout-ms`; the default stays 3 s for the ecosystems that settle fast.
+/// A16-11 measured a cold Chromium settle at 10-25 s against the previous
+/// hardcoded 3 s, so callers can raise it explicitly via `--timeout-ms`; the
+/// default stays 3 s for the ecosystems that settle fast.
 pub const DEFAULT_SNAPSHOT_TIMEOUT_MS: u64 = 3_000;
 
-/// Like `run_with_context`, with an explicit observation deadline instead of
-/// the hardcoded default - the `--timeout-ms` knob U1 item 11's branch adds.
-pub fn run_with_context_timeout(
+/// Runs a full snapshot for `target` and persists its refmap under
+/// `context`'s session, using `timeout_ms` as the observation deadline
+/// (`DEFAULT_SNAPSHOT_TIMEOUT_MS` for callers with no reason to raise it).
+pub fn run_with_context(
     adapter: &dyn PlatformAdapter,
     opts: &TreeOptions,
-    app_name: Option<&str>,
-    window_id: Option<&str>,
+    target: &SnapshotTarget,
     context: &CommandContext,
     timeout_ms: u64,
 ) -> Result<SnapshotResult, AppError> {
     let mut result = build(
         adapter,
         opts,
-        app_name,
-        window_id,
+        target.app_name,
+        target.window_id,
         crate::Deadline::after(timeout_ms)?,
     )?;
     let store = RefStore::for_session(context.session_id())?;

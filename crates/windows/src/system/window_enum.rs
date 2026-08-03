@@ -55,9 +55,15 @@ impl EnumeratedWindow {
 /// (a panic would unwind through an `extern "system"` frame, which is UB) nor
 /// re-enter `EnumWindows` or destroy windows while iterating. Every caller in
 /// this crate obeys both.
+///
+/// `EnumWindows` itself reports failure by returning zero, but a visitor that
+/// deliberately stops early (returns `false`) also makes it return zero - the
+/// same signal as a genuine enumeration failure. The two are told apart here:
+/// an empty or partial desktop the visitor chose to stop on stays `Ok`, only a
+/// zero return the visitor never asked for is reported as an error.
 #[cfg(target_os = "windows")]
 pub(crate) fn enumerate_top_level(
-    visit: impl FnMut(EnumeratedWindow) -> bool,
+    mut visit: impl FnMut(EnumeratedWindow) -> bool,
 ) -> Result<(), AdapterError> {
     unsafe extern "system" fn callback(window: HWND, lparam: isize) -> i32 {
         let visit = unsafe { &mut *(lparam as *mut Box<dyn FnMut(EnumeratedWindow) -> bool>) };
@@ -72,9 +78,22 @@ pub(crate) fn enumerate_top_level(
         i32::from(keep_going)
     }
 
-    let mut visit: Box<dyn FnMut(EnumeratedWindow) -> bool> = Box::new(visit);
-    let parameter = (&mut visit as *mut Box<dyn FnMut(EnumeratedWindow) -> bool>) as isize;
-    unsafe { EnumWindows(Some(callback), parameter) };
+    let stopped_early = std::rc::Rc::new(std::cell::Cell::new(false));
+    let stop_flag = std::rc::Rc::clone(&stopped_early);
+    let mut boxed: Box<dyn FnMut(EnumeratedWindow) -> bool> = Box::new(move |window| {
+        let keep_going = visit(window);
+        if !keep_going {
+            stop_flag.set(true);
+        }
+        keep_going
+    });
+    let parameter = (&mut boxed as *mut Box<dyn FnMut(EnumeratedWindow) -> bool>) as isize;
+    let succeeded = unsafe { EnumWindows(Some(callback), parameter) };
+    if succeeded == 0 && !stopped_early.get() {
+        return Err(AdapterError::internal(
+            "EnumWindows failed to enumerate top-level windows",
+        ));
+    }
     Ok(())
 }
 

@@ -4,7 +4,7 @@ use super::process_identity;
 use super::window_enum::{EnumeratedWindow, enumerate_top_level};
 use super::window_identity::WindowIdentityEvidence;
 
-/// The filter U4 encodes from U1's A16-1 census: a window an agent means is
+/// The filter the A16-1 census justifies: a window an agent means is
 /// visible, has a non-zero rect, is not cloaked by the shell, and is not a
 /// tool window. Each criterion cites its census row (A16-1 measured 147
 /// top-level windows of which 137 invisible, 93 zero-size, 6 cloaked and
@@ -29,7 +29,7 @@ fn process_facts(
     }
     let pid = ProcessId::from(pid);
     let token = process_identity::token_for_pid(pid).ok().flatten();
-    let name = process_name_for_pid(u32::from(pid)).unwrap_or_default();
+    let name = process_identity::process_image_name(pid).unwrap_or_default();
     Some((pid, token, name))
 }
 
@@ -144,46 +144,6 @@ fn live_window_title(handle: super::window_enum::WindowHandle) -> String {
         let _ = handle;
         String::new()
     }
-}
-
-#[cfg(target_os = "windows")]
-fn process_name_for_pid(pid: u32) -> Option<String> {
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
-        TH32CS_SNAPPROCESS,
-    };
-
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snapshot.is_null() {
-        return None;
-    }
-    let mut entry = PROCESSENTRY32W {
-        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
-        ..Default::default()
-    };
-    let mut found = None;
-    let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) };
-    while ok != 0 {
-        if entry.th32ProcessID == pid {
-            let length = entry
-                .szExeFile
-                .iter()
-                .position(|c| *c == 0)
-                .unwrap_or(entry.szExeFile.len());
-            found = Some(String::from_utf16_lossy(&entry.szExeFile[..length]));
-            break;
-        }
-        ok = unsafe { Process32NextW(snapshot, &mut entry) };
-    }
-    unsafe {
-        windows_sys::Win32::Foundation::CloseHandle(snapshot);
-    }
-    found
-}
-
-#[cfg(not(target_os = "windows"))]
-fn process_name_for_pid(_pid: u32) -> Option<String> {
-    None
 }
 
 /// Re-verifies a freshly listed window's identity per the two-sided rule: the

@@ -84,22 +84,21 @@ pub(crate) fn resolve_element_strict(
             |Candidate { element, .. }| Ok(element.into_native_handle()),
         ),
         _ => {
-            let Some(expected_hash) = entry.geometry.bounds_hash else {
-                return Err(ambiguous_target_error(entry, matches.len()));
-            };
-            let hash_matches = matches
+            let candidate_hashes: Vec<Option<u64>> = matches
                 .iter()
-                .filter(|candidate| candidate.identity.bounds_hash == Some(expected_hash))
-                .count();
-            if hash_matches == 1 {
-                if let Some(sole) = matches
-                    .iter()
-                    .find(|candidate| candidate.identity.bounds_hash == Some(expected_hash))
-                {
-                    return Ok(sole.element.clone().into_native_handle());
+                .map(|candidate| candidate.identity.bounds_hash)
+                .collect();
+            match super::resolve_match::select_by_bounds_hash(
+                &candidate_hashes,
+                entry.geometry.bounds_hash,
+            ) {
+                super::resolve_match::Selection::Resolved(index) => {
+                    Ok(matches[index].element.clone().into_native_handle())
+                }
+                super::resolve_match::Selection::Ambiguous => {
+                    Err(ambiguous_target_error(entry, matches.len()))
                 }
             }
-            Err(ambiguous_target_error(entry, matches.len()))
         }
     }
 }

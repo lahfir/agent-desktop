@@ -54,7 +54,12 @@ function Write-ObservationCapture {
 }
 
 function Build-ProbeBinary {
-    $result = [ordered]@{ skipped = $null; work = $null; exe = $null }
+    # buildFailed distinguishes a genuinely broken build from a missing
+    # prerequisite: cargo being absent is an environment fact a dev box can
+    # legitimately skip on, while a compile failure means the source list
+    # below or the probe sources themselves are broken and must not be
+    # reported as a benign skip under -Label ci (see the caller).
+    $result = [ordered]@{ skipped = $null; buildFailed = $false; work = $null; exe = $null }
     $cargo = Get-Command cargo -ErrorAction SilentlyContinue
     if (-not $cargo) {
         $result.skipped = 'cargo is not installed on this machine'
@@ -90,7 +95,7 @@ windows-sys = { version = "0.61", features = [
 "@
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
         [IO.File]::WriteAllText((Join-Path $work 'Cargo.toml'), $manifest, $utf8NoBom)
-        foreach ($file in @('probe.rs', 'probe_window.rs', 'probe_properties.rs', 'probe_measure.rs', 'probe_cost.rs')) {
+        foreach ($file in @('probe.rs', 'probe_window.rs', 'probe_properties.rs', 'probe_measure.rs', 'probe_measure_arms.rs', 'probe_cost.rs')) {
             Copy-Item -LiteralPath (Join-Path $script:ProbeDir $file) -Destination (Join-Path $work "src\$file") -Force
         }
         Copy-Item -LiteralPath (Join-Path $work 'src\probe.rs') -Destination (Join-Path $work 'src\main.rs') -Force
@@ -100,6 +105,7 @@ windows-sys = { version = "0.61", features = [
             & cargo build --quiet 2>&1 | Write-Verbose
             if ($LASTEXITCODE -ne 0) {
                 $result.skipped = "cargo build failed with exit code $LASTEXITCODE; detailed logs were captured on $VerbosePreference"
+                $result.buildFailed = $true
                 return $result
             }
             $result.work = $work
@@ -110,6 +116,7 @@ windows-sys = { version = "0.61", features = [
         }
     } catch {
         $result.skipped = ('build failed: ' + $_.Exception.Message)
+        $result.buildFailed = $true
         return $result
     }
 }
@@ -203,7 +210,12 @@ namespace AgentDesktopObsMin {
 }
 '@ | Out-Null
     $obsidianPids = @(Get-Process -Name 'Obsidian' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-    $scriptcoveringCount = 0
+    # Script-scoped, not local: the EnumWindows callback below runs as a
+    # marshaled delegate invocation, not a plain closure call, so a local
+    # variable increment here does not persist back to this function's own
+    # scope. The previous local $scriptcoveringCount name looked scoped but
+    # was not, which is why the returned count always read 0.
+    $script:coveringCount = 0
     [AgentDesktopObsMin.Native]::EnumWindows({
         param($hWnd, $lParam)
         $winPid = 0
@@ -212,11 +224,11 @@ namespace AgentDesktopObsMin {
         $iconic = [AgentDesktopObsMin.Native]::IsIconic($hWnd)
         if ($visible -and (-not $iconic) -and (-not ($obsidianPids -contains [int]$winPid))) {
             [void][AgentDesktopObsMin.Native]::ShowWindow($hWnd, 6)
-            $scriptcoveringCount++
+            $script:coveringCount++
         }
         return $true
     }, [IntPtr]::Zero) | Out-Null
-    return "minimized $scriptcoveringCount covering top-level window(s)"
+    return "minimized $script:coveringCount covering top-level window(s)"
 }
 
 function Wait-ChromiumTopLevelWindow {
@@ -252,6 +264,16 @@ try {
     $built = Build-ProbeBinary
     if ($built.skipped) {
         Write-Host ("probe binary skipped: " + $built.skipped)
+        if ($Label -eq 'ci' -and $built.buildFailed) {
+            # A missing prerequisite (no cargo) is a legitimate dev-box skip,
+            # but a broken build under -Label ci must fail the workflow
+            # rather than exit 0 through the skip path below: a green run
+            # that silently produced no capture is worse than a red one,
+            # because CI's artifact upload has no other signal that the
+            # observation corpus never got built.
+            Write-ProbeResult -Probe '16-observation' -Status 'fail' -Message 'probe build failed on CI' -Data $built
+            exit 1
+        }
         Write-ProbeResult -Probe '16-observation' -Status 'skip' -Message 'probe build unavailable' -Data $built
         exit 0
     }

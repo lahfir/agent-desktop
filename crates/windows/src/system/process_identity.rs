@@ -81,6 +81,52 @@ pub(crate) fn token_for_pid(pid: ProcessId) -> Result<Option<String>, AdapterErr
     Ok(ProcessIdentity::capture(pid)?.map(ProcessIdentity::token))
 }
 
+/// The image name (executable filename) of the process at `pid`, read from
+/// the ToolHelp process table.
+///
+/// The single walk both window identity checks corroborate `app` against:
+/// `window_ops.rs` and `window_identity.rs` each carried their own verbatim
+/// copy of this loop before it was pulled out from underneath them.
+#[cfg(target_os = "windows")]
+pub(crate) fn process_image_name(pid: ProcessId) -> Option<String> {
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot.is_null() {
+        return None;
+    }
+    let mut entry = PROCESSENTRY32W {
+        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    let mut found = None;
+    let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) };
+    while ok != 0 {
+        if entry.th32ProcessID == u32::from(pid) {
+            let length = entry
+                .szExeFile
+                .iter()
+                .position(|c| *c == 0)
+                .unwrap_or(entry.szExeFile.len());
+            found = Some(String::from_utf16_lossy(&entry.szExeFile[..length]));
+            break;
+        }
+        ok = unsafe { Process32NextW(snapshot, &mut entry) };
+    }
+    unsafe {
+        windows_sys::Win32::Foundation::CloseHandle(snapshot);
+    }
+    found
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn process_image_name(_pid: ProcessId) -> Option<String> {
+    None
+}
+
 /// Verifies a stored token against the process's current generation.
 ///
 /// A recycled PID whose process is a different generation fails closed; a PID
@@ -118,6 +164,17 @@ fn parse_token(pid: ProcessId, token: &str) -> Result<Option<ProcessIdentity>, A
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn process_image_name_finds_the_current_process() {
+        let name = process_image_name(ProcessId::from(std::process::id()));
+
+        assert!(
+            name.is_some_and(|name| !name.is_empty()),
+            "the current process must find its own image name in the process table"
+        );
+    }
 
     #[test]
     fn token_shape_mirrors_macos_is_two_component_creation_time() {
@@ -185,6 +242,30 @@ mod tests {
         assert!(
             matches_instance(pid, &token).unwrap(),
             "a freshly captured token must match the same process"
+        );
+    }
+
+    /// The recycled-pid case: a well-formed token whose generation does not
+    /// match the live process at that pid - the shape a new process reusing
+    /// an old HWND's pid trips - must fail closed on both entry points.
+    #[test]
+    fn a_generation_mismatched_token_fails_closed() {
+        let pid = ProcessId::from(std::process::id());
+        let Some(current) = ProcessIdentity::capture(pid).unwrap() else {
+            return;
+        };
+        let corrupted = ProcessIdentity {
+            creation_seconds: current.creation_seconds.wrapping_add(1),
+            ..current
+        };
+
+        assert!(
+            !corrupted.still_matches().unwrap(),
+            "a different generation of the same pid must not still-match"
+        );
+        assert!(
+            !matches_instance(pid, &corrupted.token()).unwrap(),
+            "a generation-mismatched token must not match the live process"
         );
     }
 }

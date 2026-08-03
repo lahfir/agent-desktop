@@ -23,15 +23,17 @@ impl SystemOps for WindowsAdapter {
     /// The Chromium settle: connecting to UI Automation already triggered the
     /// renderer's asynchronous accessibility build (A1-4/A1-5), so activation
     /// is the connection-plus-settle itself. A short backoff lets the build
-    /// land before core's loop re-walks, and the adapter notes that the settle
-    /// ran so a subsequent still-thin walk returns guidance rather than
-    /// re-arming the loop.
+    /// start landing before core's loop re-walks; core's own retry backoff is
+    /// what turns this into a real wait, and the adapter notes that the
+    /// settle ran **for this process** so a same-process retry keeps only the
+    /// walk in the loop, never a second activation, while an unrelated
+    /// process observed through the same adapter still gets its own pass.
     fn activate_renderer_accessibility(
         &self,
-        _process: ProcessIdentity,
+        process: ProcessIdentity,
         lease: &InteractionLease,
     ) -> Result<(), AdapterError> {
-        self.note_renderer_activation_attempted();
+        self.note_renderer_activation_attempted(process);
         let settled = lease.deadline().remaining();
         if settled.is_zero() {
             return Ok(());

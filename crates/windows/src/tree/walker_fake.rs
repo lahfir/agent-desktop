@@ -20,12 +20,14 @@ pub(crate) const EXHAUSTION: UiaFailure = UiaFailure::Sentinel(ERR_NONE);
 pub(crate) const E_FAIL: i32 = 0x8000_4005_u32 as i32;
 pub(crate) const REAL_FAILURE: UiaFailure = UiaFailure::Hresult(E_FAIL);
 
-/// The nodes on which each enumeration step should fail rather than answer,
-/// grouped so `FakeTree` itself stays under the struct field cap.
+/// The nodes on which each enumeration step should fail, or answer slowly,
+/// rather than answer promptly, grouped so `FakeTree` itself stays under the
+/// struct field cap.
 #[derive(Default)]
 struct EnumerationFaults {
     first_child: HashSet<i32>,
     next_sibling: HashSet<i32>,
+    first_child_delay: HashMap<i32, std::time::Duration>,
 }
 
 /// An in-memory enumerator that answers on the same trait the live UI
@@ -99,6 +101,13 @@ impl FakeTree {
         self
     }
 
+    /// Makes `first_child` block for `delay` before answering, so a walk
+    /// bound by a short deadline observes it as expired.
+    pub(crate) fn slow_first_child(mut self, node: i32, delay: std::time::Duration) -> Self {
+        self.faults.first_child_delay.insert(node, delay);
+        self
+    }
+
     /// A sibling list that never ends. The ancestor guard cannot see it: no
     /// element repeats on any root-to-node path.
     pub(crate) fn looping_siblings(mut self, node: i32) -> Self {
@@ -115,6 +124,9 @@ impl TreeSource for FakeTree {
     type Node = i32;
 
     fn first_child(&self, node: &i32) -> Result<i32, UiaFailure> {
+        if let Some(delay) = self.faults.first_child_delay.get(node) {
+            std::thread::sleep(*delay);
+        }
         if self.faults.first_child.contains(node) {
             return Err(REAL_FAILURE);
         }

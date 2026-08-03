@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, ElementIdentifier, RefEntry};
+use agent_desktop_core::{AdapterError, ElementIdentifier, RefEntry, roles::is_mutable_value_role};
 use serde_json::json;
 
 use super::element::UIAElement;
@@ -27,9 +27,15 @@ pub(crate) struct Candidate {
 /// `native_id` must match by kind **and** value when the ref carries one; role
 /// must match when the ref records a role other than `unknown`; name is
 /// corroboration only when the ref records a name and the element reports one
-/// (a blank live name cannot refute a ref that had no name). The bounds hash,
-/// when both sides have one, is a soft signal - it never refutes, it only
-/// corroborates, per the identity-against-OS-reorder practice.
+/// (a blank live name cannot refute a ref that had no name), and only for a
+/// role whose text is stable. For a mutable-value role
+/// (`agent_desktop_core::roles::is_mutable_value_role`, the same role-
+/// conditional rule core's stable text identity applies in
+/// `crates/core/src/ref_identity.rs`), the reported name can mirror the
+/// live, volatile value, so name drift alone must not refute an otherwise
+/// exact match. The bounds hash, when both sides have one, is a soft signal -
+/// it never refutes, it only corroborates, per the identity-against-OS-reorder
+/// practice.
 pub(crate) fn candidate_matches(
     identity: &NodeIdentity,
     expected_id: Option<&ElementIdentifier>,
@@ -51,11 +57,49 @@ pub(crate) fn candidate_matches(
         }
     }
     if let Some(name) = expected_name {
-        if !name.is_empty() && identity.name.as_deref() != Some(name) {
+        let name_is_identity = !name.is_empty() && !is_mutable_value_role(expected_role);
+        if name_is_identity && identity.name.as_deref() != Some(name) {
             return false;
         }
     }
     true
+}
+
+/// What the 2+-candidate branch decided.
+pub(crate) enum Selection {
+    /// Exactly one candidate matched the stored bounds hash; its index in the
+    /// searched candidate list.
+    Resolved(usize),
+    /// No stored hash, no candidate matched it, or more than one did.
+    Ambiguous,
+}
+
+/// Breaks a tie among several evidence-equal candidates by bounds hash.
+///
+/// Pure over the hashes alone, not the elements, so the decision is testable
+/// without a live COM element in scope. The bounds hash never refutes an
+/// exact match; it only ever picks among several - a stored ref with no hash
+/// (bounds failed at capture, or hidden by the requester) cannot be
+/// disambiguated this way, so it stays ambiguous rather than guessing.
+pub(crate) fn select_by_bounds_hash(
+    candidate_hashes: &[Option<u64>],
+    expected_hash: Option<u64>,
+) -> Selection {
+    let Some(expected_hash) = expected_hash else {
+        return Selection::Ambiguous;
+    };
+    let mut sole = None;
+    let mut matches = 0;
+    for (index, hash) in candidate_hashes.iter().enumerate() {
+        if *hash == Some(expected_hash) {
+            matches += 1;
+            sole = Some(index);
+        }
+    }
+    match (matches, sole) {
+        (1, Some(index)) => Selection::Resolved(index),
+        _ => Selection::Ambiguous,
+    }
 }
 
 pub(crate) fn stale_ref_error(_entry: &RefEntry) -> AdapterError {
@@ -176,5 +220,66 @@ mod tests {
             },
         };
         assert_eq!(stale_ref_error(&entry).code, ErrorCode::StaleRef);
+    }
+
+    /// Two candidates carrying the same evidence, neither distinguished by
+    /// hash, must stay ambiguous - the caller's `AMBIGUOUS_TARGET`, not a
+    /// guess at either one.
+    #[test]
+    fn two_identical_evidence_candidates_stay_ambiguous() {
+        let selection = select_by_bounds_hash(&[Some(1), Some(1)], Some(1));
+
+        assert!(matches!(selection, Selection::Ambiguous));
+    }
+
+    /// Exactly one of several candidates carries the stored bounds hash: that
+    /// one resolves. The expected hash sits at index 1 on purpose, so a
+    /// first-match-wins regression (picking index 0 regardless of hash) would
+    /// fail this assertion rather than pass it by accident.
+    #[test]
+    fn the_sole_candidate_matching_the_stored_hash_resolves() {
+        let selection = select_by_bounds_hash(&[Some(2), Some(1)], Some(1));
+
+        assert!(matches!(selection, Selection::Resolved(1)));
+    }
+
+    /// A stored ref with no bounds hash cannot be disambiguated by hash at
+    /// all, so several candidates stay ambiguous rather than one being picked
+    /// by a `None == None` coincidence.
+    #[test]
+    fn no_stored_hash_cannot_disambiguate() {
+        let selection = select_by_bounds_hash(&[None, None], None);
+
+        assert!(matches!(selection, Selection::Ambiguous));
+    }
+
+    /// A mutable-value role's live name drifting from the stored name (its
+    /// text mirrors the current, volatile value) must not refute an otherwise
+    /// exact match - the role-conditional stable text identity rule core
+    /// defines in `crates/core/src/ref_identity.rs` applies here too.
+    #[test]
+    fn a_mutable_value_role_with_a_drifted_live_name_still_matches_on_native_id() {
+        let live = identity(Some("field-1"), "textfield", Some("New Value"));
+
+        assert!(candidate_matches(
+            &live,
+            Some(&id("field-1")),
+            "textfield",
+            Some("Old Value")
+        ));
+    }
+
+    /// A stable role's name is identity: a live name that drifted from the
+    /// stored one refutes the match even with a matching `native_id`.
+    #[test]
+    fn a_stable_role_with_a_mismatched_live_name_is_refuted() {
+        let live = identity(Some("btn-1"), "button", Some("New Label"));
+
+        assert!(!candidate_matches(
+            &live,
+            Some(&id("btn-1")),
+            "button",
+            Some("Old Label")
+        ));
     }
 }

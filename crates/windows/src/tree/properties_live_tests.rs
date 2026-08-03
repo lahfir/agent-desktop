@@ -165,7 +165,7 @@ fn a_read_that_genuinely_fails_classifies_unknown_and_never_absent() {
     );
 }
 
-/// The plan's U5 scenario, against a live provider rather than a synthetic
+/// The live-provider form of the secure-field scenario, rather than a synthetic
 /// error: a failed read on a control whose text *is* a unique marker must
 /// produce an error carrying none of it.
 ///

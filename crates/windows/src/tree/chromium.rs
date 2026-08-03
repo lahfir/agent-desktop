@@ -12,7 +12,7 @@ use super::property_ids::TreeProperty;
 /// deliberately refuses.
 const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
 
-/// The pre-activation shell shape U1's A16-11 censused: a full-depth walk of a
+/// The pre-activation shell shape A16-11 censused: a full-depth walk of a
 /// not-yet-settled Chromium root lands in the tens of nodes, against a settled
 /// tree of 165. A shell under this line is the connection-triggered-build's
 /// before state, not a genuinely small window.
@@ -94,9 +94,9 @@ pub(crate) fn activation_required(stats: &LocatorStats) -> AdapterError {
 
 /// The `platform_detail` guidance a tree still thin after settle carries.
 ///
-/// Names Chromium's `--force-renderer-accessibility` switch, and the
-/// `--timeout-ms` deadline recommendation where U1 item 11's branch added it.
-/// No target-derived text enters here.
+/// Names Chromium's `--force-renderer-accessibility` switch, and recommends
+/// raising `--timeout-ms` when the observation is cut short before the build
+/// completes. No target-derived text enters here.
 pub(crate) fn still_thin_detail() -> String {
     "The tree is still thin after Chromium's accessibility build settled. \
      If this application is Chromium-based, it may require the \

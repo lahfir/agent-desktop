@@ -1,37 +1,49 @@
 use agent_desktop_core::{
     AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, InputOps, NativeHandle,
-    ObservationOps, ObservationRequest, ObservationRoot, RefEntry, TreeOptions, WindowFilter,
-    WindowInfo,
+    ObservationOps, ObservationRequest, ObservationRoot, ProcessIdentity, RefEntry, TreeOptions,
+    WindowFilter, WindowInfo,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashSet;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 /// The Windows adapter.
 ///
-/// Carries the renderer-activation state the observation loop needs: whether
-/// the Chromium settle has **already run** for this process. Core's loop calls
-/// `activate_renderer_accessibility` (the settle) then retries
-/// `observe_tree`; the adapter must distinguish the pre-settle shell (which
-/// re-arms the loop) from the post-settle still-thin tree (which returns the
-/// guidance error instead of looping forever). A fresh adapter per CLI
-/// invocation makes an instance flag the honest carrier.
+/// Carries the renderer-activation state the observation loop needs: which
+/// processes have **already had** the Chromium settle run for them. Core's
+/// loop calls `activate_renderer_accessibility` (the settle) then retries
+/// `observe_tree`; the adapter must distinguish a process's pre-settle shell
+/// (which re-arms the loop) from its post-settle still-thin tree (which
+/// eventually returns the guidance error instead of looping forever). The
+/// state is keyed per process, not a single flag: an adapter instance is
+/// reused across a batch or an FFI session, so one process settling must
+/// never suppress another process's activation.
 pub struct WindowsAdapter {
-    renderer_activation_attempted: AtomicBool,
+    renderer_activation_attempted: Mutex<HashSet<ProcessIdentity>>,
 }
 
 impl WindowsAdapter {
     pub fn new() -> Self {
         Self {
-            renderer_activation_attempted: AtomicBool::new(false),
+            renderer_activation_attempted: Mutex::new(HashSet::new()),
         }
     }
 
-    pub(crate) fn note_renderer_activation_attempted(&self) {
-        self.renderer_activation_attempted
-            .store(true, Ordering::Relaxed);
+    /// Records that the Chromium settle has run for `process`, scoped to its
+    /// generation (the process-instance token) so a recycled pid never
+    /// inherits another process's settle state.
+    pub(crate) fn note_renderer_activation_attempted(&self, process: ProcessIdentity) {
+        self.activation_set().insert(process);
     }
 
-    pub(crate) fn renderer_activation_attempted(&self) -> bool {
-        self.renderer_activation_attempted.load(Ordering::Relaxed)
+    /// Whether the Chromium settle has already run for `process`.
+    pub(crate) fn renderer_activation_attempted(&self, process: &ProcessIdentity) -> bool {
+        self.activation_set().contains(process)
+    }
+
+    fn activation_set(&self) -> MutexGuard<'_, HashSet<ProcessIdentity>> {
+        self.renderer_activation_attempted
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -97,7 +109,7 @@ mod tests {
     use super::*;
     use agent_desktop_core::{SnapshotSurface, SystemOps};
 
-    /// U6/U7's surfaces gate: the adapter advertises exactly the surfaces it can
+    /// The surfaces gate: the adapter advertises exactly the surfaces it can
     /// observe - a named window, the focused window, and a Chromium modal
     /// classified as a sheet. Core validates the requested surface against this
     /// list before the adapter is ever called, so this advertisement is what
@@ -118,9 +130,26 @@ mod tests {
     #[test]
     fn renderer_activation_state_starts_unattempted_and_notes_once() {
         let adapter = WindowsAdapter::new();
-        assert!(!adapter.renderer_activation_attempted());
+        let process = ProcessIdentity::new(agent_desktop_core::ProcessId::new(1), "gen-1");
 
-        adapter.note_renderer_activation_attempted();
-        assert!(adapter.renderer_activation_attempted());
+        assert!(!adapter.renderer_activation_attempted(&process));
+
+        adapter.note_renderer_activation_attempted(process.clone());
+        assert!(adapter.renderer_activation_attempted(&process));
+    }
+
+    /// Finding 2: a single global flag would let one process's settle
+    /// suppress another process's activation forever. The state must be
+    /// scoped so a second, unrelated process is unaffected by the first.
+    #[test]
+    fn renderer_activation_state_is_scoped_per_process_not_global() {
+        let adapter = WindowsAdapter::new();
+        let first = ProcessIdentity::new(agent_desktop_core::ProcessId::new(1), "gen-1");
+        let second = ProcessIdentity::new(agent_desktop_core::ProcessId::new(2), "gen-1");
+
+        adapter.note_renderer_activation_attempted(first.clone());
+
+        assert!(adapter.renderer_activation_attempted(&first));
+        assert!(!adapter.renderer_activation_attempted(&second));
     }
 }
