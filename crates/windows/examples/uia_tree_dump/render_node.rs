@@ -64,6 +64,9 @@ pub(crate) fn render_node(fields: &NodeFields) -> Value {
         "is_control_element": slot(&fields.properties.get(TreeProperty::IsControlElement)),
         "is_content_element": slot(&fields.properties.get(TreeProperty::IsContentElement)),
         "provider_description": slot(&fields.provider_description),
+        "subrole": text_presence(&fields.properties.get(TreeProperty::AriaRole)),
+        "role_description": text_presence(&fields.properties.get(TreeProperty::LocalizedControlType)),
+        "placeholder": text_presence(&fields.properties.get(TreeProperty::HelpText)),
         "failed_reads": fields.failed_reads,
     })
 }

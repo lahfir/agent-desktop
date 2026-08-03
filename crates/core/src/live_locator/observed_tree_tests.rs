@@ -28,6 +28,76 @@ fn subtree(role: &str, name: &str, children: Vec<ObservedSubtree>) -> ObservedSu
     ObservedSubtree::new(evidence(role, Some(name)), children, true, None)
 }
 
+/// The P2-O8 descriptor group rides the observed-node projection unchanged:
+/// evidence-side values reach the projected `AccessibilityNode` verbatim, and
+/// an empty group projects as an absent group.
+#[test]
+fn descriptor_evidence_projects_onto_the_accessibility_node() {
+    use crate::{
+        IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence, NodeDescriptor, Rect,
+    };
+
+    let evidence_with = LocatorEvidence {
+        role: LocatorField::Known("button".into()),
+        name: LocatorField::Known("Save".into()),
+        description: LocatorField::Absent,
+        value: LocatorField::Absent,
+        identifiers: IdentifierEvidence::absent(),
+        states: LocatorField::Known(Vec::new()),
+        ref_evidence: LocatorRefEvidence {
+            bounds: LocatorField::Known(Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }),
+            available_actions: LocatorField::Known(vec!["Click".into()]),
+            descriptors: NodeDescriptor {
+                subrole: Some("button-icon".into()),
+                role_description: Some("Push button".into()),
+                placeholder: Some("Enter name".into()),
+                dom_classes: vec!["btn".into()],
+            },
+        },
+    };
+    let tree = ObservedTree::from_roots(
+        vec![ObservedSubtree::new(evidence_with, Vec::new(), true, None)],
+        source(),
+        Default::default(),
+        true,
+    )
+    .unwrap();
+    let node = tree.into_accessibility_tree().unwrap();
+
+    assert_eq!(
+        node.presentation.descriptors,
+        NodeDescriptor {
+            subrole: Some("button-icon".into()),
+            role_description: Some("Push button".into()),
+            placeholder: Some("Enter name".into()),
+            dom_classes: vec!["btn".into()],
+        }
+    );
+
+    let empty_tree = ObservedTree::from_roots(
+        vec![ObservedSubtree::new(
+            evidence("button", Some("Save")),
+            Vec::new(),
+            true,
+            None,
+        )],
+        source(),
+        Default::default(),
+        true,
+    )
+    .unwrap();
+    let empty_node = empty_tree.into_accessibility_tree().unwrap();
+    assert_eq!(
+        empty_node.presentation.descriptors,
+        NodeDescriptor::default()
+    );
+}
+
 #[test]
 fn core_builder_owns_preorder_paths_and_child_indices() {
     let tree = ObservedTree::from_roots(

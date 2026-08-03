@@ -57,6 +57,7 @@ mod name_evidence;
 mod name_slot_status;
 pub mod native_handle;
 mod node;
+mod node_descriptor;
 mod node_identity;
 mod node_match_context;
 mod node_presentation;
@@ -201,7 +202,7 @@ pub use live_locator::{
     LocatorIdentifierStats, LocatorLimitStats, LocatorMaterialization, LocatorReadCounts,
     LocatorReadHealth, LocatorReadStats, LocatorRefEvidence, LocatorResolution,
     LocatorResolveRequest, LocatorSelection, LocatorSemanticReadStats, LocatorStats,
-    LocatorTraversalStats, ObservationBudget, ObservationRequest, ObservationRoot,
+    LocatorTraversalStats, ObservationBudget, ObservationMode, ObservationRequest, ObservationRoot,
     ObservationSource, ObservedSubtree, ObservedTree, classify_query_result, evaluate_locator_tree,
     find_first_entry, require_unique, resolve_query,
 };
@@ -217,6 +218,7 @@ pub use name_evidence::NameEvidence;
 pub use name_slot_status::{NameSlotStatus, SlotStatus};
 pub use native_handle::NativeHandle;
 pub use node::AccessibilityNode;
+pub use node_descriptor::NodeDescriptor;
 pub use node_identity::NodeIdentity;
 pub use node_match_context::NodeMatchContext;
 pub use node_presentation::NodePresentation;

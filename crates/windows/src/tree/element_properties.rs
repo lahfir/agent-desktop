@@ -177,6 +177,7 @@ impl ElementProperties {
             ref_evidence: LocatorRefEvidence {
                 bounds,
                 available_actions: vocabulary.available_actions,
+                descriptors: super::descriptor::descriptors(&self),
             },
         }
     }

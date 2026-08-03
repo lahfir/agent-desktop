@@ -172,6 +172,46 @@ fn a_depth_boundary_reports_a_child_count_instead_of_children() {
     assert!(boundary.children_count.is_some());
 }
 
+/// The boundary count read is time-boxed independently of the walk's own
+/// deadline; under a generous deadline it still returns a real count.
+#[test]
+fn a_boundary_count_read_within_its_own_budget_reports_a_count() {
+    let fake = FakeTree::default().with_chain(&[1, 2, 3]);
+
+    let outcome = walk(&fake, budget(1));
+    let root = outcome
+        .tree
+        .into_accessibility_tree()
+        .expect("a read that finishes within its budget stays complete");
+    let boundary = root.children.first().expect("the root retained its child");
+
+    assert_eq!(boundary.children_count, Some(1));
+}
+
+/// A boundary count read that outlives its own 25ms budget yields no count,
+/// while the boundary is still reported truncated - the two signals never
+/// contradict each other even when the read itself was starved.
+#[test]
+fn a_starved_boundary_count_read_drops_the_count_but_keeps_truncation() {
+    let fake = FakeTree::default()
+        .with_chain(&[1, 2, 3])
+        .slow_first_child(2, std::time::Duration::from_millis(40));
+
+    let outcome = walk(&fake, budget(1));
+    let (tree, complete, _) = outcome
+        .tree
+        .into_accessibility_tree_partial()
+        .expect("a partial projection is available even when incomplete");
+    let boundary = tree.children.first().expect("the root retained its child");
+
+    assert!(
+        !complete,
+        "a starved boundary read must not report the walk complete"
+    );
+    assert!(boundary.children_count.is_none());
+    assert!(boundary.subtree_truncated);
+}
+
 /// Without the `is_web_wrapper` seam the two counters can never disagree, so
 /// this assertion would be testing behaviour this crate ships no mechanism
 /// to produce. The control below is what makes that claim checkable.

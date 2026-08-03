@@ -241,9 +241,17 @@ fn test_run_from_ref_explicit_session_snapshot_with_matching_context() {
 
     let adapter = StubAdapter::new(named("button", "Save"));
     let context = crate::CommandContext::new(Some("agent-a".into()), None, false).unwrap();
-    let result =
-        run_from_ref_with_context(&adapter, &drill_opts(), "@e1", Some(&snapshot_id), &context)
-            .expect("session snapshot should drill within its namespace");
+    let result = run_from_ref_with_context(
+        &adapter,
+        &drill_opts(),
+        &RefTarget {
+            root_ref_id: "@e1",
+            snapshot_id: Some(&snapshot_id),
+        },
+        &context,
+        crate::snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS,
+    )
+    .expect("session snapshot should drill within its namespace");
 
     assert_eq!(result.snapshot_id.as_deref(), Some(snapshot_id.as_str()));
     let on_disk = load_session_snapshot("agent-a", &snapshot_id);

@@ -365,12 +365,21 @@ mod imp {
         }
         Ok(UIAElement::from(CannedElement))
     }
+
+    /// No windows exist on the non-Windows lane, so no handle is a live window -
+    /// the liveness re-verification consistently reports the window gone.
+    pub fn window_exists(hwnd: isize) -> bool {
+        hwnd != 0 && false
+    }
 }
 
 pub use imp::root_from_hwnd;
 
 #[cfg(target_os = "windows")]
 pub use imp::{automation_client, failure_of, uia_error, window_exists, window_is_pumping};
+
+#[cfg(not(target_os = "windows"))]
+pub use imp::window_exists;
 
 /// Rejects a window handle that cannot address a window before it reaches the
 /// COM layer, so a null handle is an argument error rather than a COM failure.

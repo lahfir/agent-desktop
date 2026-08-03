@@ -125,8 +125,17 @@ mod tests {
     }
 
     #[test]
-    fn list_apps_on_non_macos_errors_gracefully() {
-        #[cfg(not(target_os = "macos"))]
+    fn list_apps_inventory_matches_the_platform() {
+        #[cfg(target_os = "windows")]
+        {
+            let json = run(&["list-apps"]);
+            assert_eq!(json["ok"], true, "list-apps is live on Windows");
+            assert!(
+                json["data"]["apps"].is_array(),
+                "list-apps returns an apps array on Windows"
+            );
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let json = run(&["list-apps"]);
             assert_eq!(json["ok"], false);

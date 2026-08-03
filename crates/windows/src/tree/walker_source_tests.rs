@@ -46,17 +46,18 @@ fn the_walk_issues_no_banned_call() {
 ///
 /// `LocalizedControlType` is banned as a map key separately: Microsoft
 /// documents it as an OS-locale-dependent or provider-chosen display string,
-/// so a role keyed on it breaks on a non-English Windows.
+/// so a role keyed on it breaks on a non-English Windows. The ban is scoped to
+/// the vocabulary files that *key* on a control type - `roles.rs`,
+/// `actions.rs`, `states.rs`. `property_ids.rs` declares and reads the
+/// property here (A16-5 measured `LocalizedControlType` populated on every
+/// control type, and it feeds the `role_description` descriptor), which is
+/// not keying.
 #[test]
 fn the_vocabulary_instantiates_no_pattern_and_keys_on_no_display_string() {
     let sources = [
         include_str!("roles.rs"),
         include_str!("actions.rs"),
         include_str!("states.rs"),
-        include_str!("property_ids.rs"),
-        include_str!("properties.rs"),
-        include_str!("cache.rs"),
-        include_str!("element_properties.rs"),
     ];
     let banned = [
         concat!("get_", "pattern"),
@@ -71,6 +72,23 @@ fn the_vocabulary_instantiates_no_pattern_and_keys_on_no_display_string() {
                 assert!(
                     is_prose || !line.contains(call),
                     "the vocabulary must never reach for {call}: {line}"
+                );
+            }
+        }
+    }
+    for source in [
+        include_str!("property_ids.rs"),
+        include_str!("properties.rs"),
+        include_str!("cache.rs"),
+        include_str!("element_properties.rs"),
+    ] {
+        for line in source.lines() {
+            let is_prose =
+                line.trim_start().starts_with("///") || line.trim_start().starts_with("//!");
+            for call in [concat!("get_", "pattern"), concat!("add_", "pattern")] {
+                assert!(
+                    is_prose || !line.contains(call),
+                    "the walk must never reach for {call}: {line}"
                 );
             }
         }
@@ -113,6 +131,27 @@ mod windows_only {
         assert!(
             !projected.children.is_empty(),
             "the walk found none of the fixture's created controls"
+        );
+    }
+
+    /// The provenance gate, pinned at the source that applies it: the
+    /// crate's own Win32 fixture root is **not** Chromium (`Chrome_WidgetWin_1`
+    /// is a Chromium class, and the fixture's registered class is not it), so
+    /// the walk must not skip its empty `Group`-shaped containers as web
+    /// wrappers. Removing the provenance check from `UiaTreeSource` would
+    /// silently deepen native walks (the silent-deepening guard the gate
+    /// exists to enforce).
+    #[test]
+    fn the_live_fixture_walk_is_not_chromium_provenance() {
+        crate::tree::fixture::ensure_test_apartment();
+        let fixture = HostedFixture::spawn().expect("the fixture host starts");
+        let root =
+            root_from_hwnd(fixture.handle(), deadline()).expect("the fixture window resolves");
+
+        let source = UiaTreeSource::for_root(&root).expect("the source constructs");
+        assert!(
+            !source.chromium_provenance(),
+            "the crate's own fixture must not be treated as Chromium provenance"
         );
     }
 

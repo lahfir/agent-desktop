@@ -11,6 +11,7 @@ on:
     paths:
       - 'probes/windows/14-ci-capability/**'
       - 'probes/windows/15-vocabulary/**'
+      - 'probes/windows/16-observation/**'
       - '.github/workflows/windows-capability-probe.yml'
   workflow_dispatch:
 
@@ -45,6 +46,11 @@ jobs:
         run: |
           .\probes\windows\15-vocabulary\probe.ps1 -Label ci
 
+      - name: Run the observation probe
+        shell: powershell
+        run: |
+          .\probes\windows\16-observation\probe.ps1 -Label ci -SkipChromium
+
       - name: Upload the measured captures
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -52,4 +58,5 @@ jobs:
           path: |
             probes/windows/14-ci-capability/captures/*-ci.json
             probes/windows/15-vocabulary/captures/*-ci.json
+            probes/windows/16-observation/captures/*-ci.json
           if-no-files-found: error

@@ -24,6 +24,11 @@ A snapshot that ran out of its allotted time before finishing the tree and retur
 
 Completeness is reported on the observation as a whole and on each node whose descendants were cut, so a reader can walk from the root to the boundary. A depth clamp knows how many children it skipped and says so; budget exhaustion cannot afford that count and marks the node without one. Only a full snapshot may be partial — a drill-down replaces refs inside an existing map, so it requires a complete observation and fails rather than destroying descendants it cannot re-allocate.
 
+### Web Wrapper
+A non-semantic container element, produced by web-rendered content, that consumes raw depth but no logical depth during a walk.
+
+Web stacks (Chromium/Electron, WebView) wrap content in chains of anonymous `Group`/`Custom` containers. A transparent wrapper is one whose name, value, `AutomationId` and advertised actions are all empty — it carries no information an agent could act on. Skipping these nodes' logical depth lets a dense web app fit a default depth budget; without the skip, the same app understates its reachable content by an order of magnitude. The skip is gated on detected Chromium provenance rather than applied everywhere: the identical emptiness test would otherwise skip the anonymous containers native stacks are full of. A named or actionable wrapper still consumes depth, because it is then a real element rather than a transparent scaffold.
+
 ## Vocabulary
 
 The four platform-neutral vocabularies every adapter produces and core consumes, and the evidence model all four rest on. They were single-platform code types until two adapters produced them; they are shared contracts now, and an adapter that emits a token outside one of them is emitting something no consumer can act on.
@@ -56,6 +61,11 @@ The strongest developer-assigned identifier a platform exposes for an element, c
 Windows supplies UIA's `AutomationId`, macOS `AXIdentifier` or `AXDOMIdentifier`, Linux AT-SPI's `accessible-id`. It is typed rather than bare: an identifier whose kind is unknown is rejected at persistence, so the kind travels with the value. A blank value is no identifier at all — publishing one would give every unidentified element the same key. A read that failed is incomplete evidence rather than an absent identifier, because "absent" satisfies completeness gating and a target that never answered must not. Coverage varies by an order of magnitude across UI stacks, so it is a strong hint for re-identification and never a sufficient key alone.
 
 ## Refs And Identity
+
+### Window Identity
+The durable identity of a window, used when observation resolves a snapshot root or a stored ref.
+
+Window handles can be recycled: after a window is destroyed, the OS may hand its handle to a different window. A handle alone therefore names the wrong window after churn. Identity is the handle corroborated by a process-generation token — a value derived from the owning process's creation time — so a recycled handle whose process generation no longer matches fails closed rather than resolving to the new occupant. The corroboration is strict for a window freshly listed in the same invocation, and tolerant of title drift for a stored ref (titles legitimately change under a live window), per platform: Windows pairs the HWND with a creation-time token, macOS the window number with a process start-time token.
 
 ### Ref
 A short element identifier assigned by agent-desktop to an actionable or drillable node in a snapshot.

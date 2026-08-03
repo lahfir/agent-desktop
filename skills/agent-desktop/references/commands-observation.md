@@ -33,6 +33,8 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 | `--skeleton` | false | Clamp traversal to depth 3 and add `children_count` to truncated containers |
 | `--root <REF>` | | Drill down from a ref discovered in a previous snapshot. Cannot be combined with `--surface` |
 | `--snapshot <snapshot_id>` | embedded in qualified root | Required only when `--root` is a legacy bare ref |
+| `--timeout-ms <MS>` | 3000 | Observation deadline. A cold Chromium/Electron settle can take 10-25s; raise this when a fresh snapshot returns a shell-thin tree |
+| `--force-electron-a11y` | false | Assume Chromium renderer accessibility is already forced, so the adapter skips activation guidance and returns the observed tree |
 
 **Output structure:**
 ```json
@@ -78,6 +80,12 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 - Produces a shallow overview by clamping depth to `min(max_depth, 3)`
 - Truncated containers include a `children_count` field showing how many children were omitted
 - Named or described containers at the truncation boundary receive refs with empty `available_actions`, serving as drill-down targets for `--root`
+
+**Optional descriptor fields** (emitted by Windows; absent on macOS and Linux; all four are optional and omitted unless a provider produces them):
+- `subrole` — finer role refinement from UIA `AriaRole` (web content)
+- `role_description` — provider's localized control-type description
+- `placeholder` — `HelpText` where it is not already the description
+- `dom_classes` — DOM class list; no Windows producer yet, so always absent on Windows in the current phase
 
 **Root mode (`--root <REF>`):**
 - Starts tree traversal from the given ref instead of the window root

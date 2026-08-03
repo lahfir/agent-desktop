@@ -98,6 +98,8 @@ pub unsafe extern "C" fn ad_snapshot(
             skeleton: false,
             root_ref: None,
             snapshot_id: None,
+            timeout_ms: None,
+            force_electron_a11y: false,
         };
 
         let scope = crate::commands::command_scope!(context, "snapshot");
