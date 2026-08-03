@@ -98,14 +98,18 @@ $xaml = @'
       <TabItem x:Name="tabBravo" Header="Tab-Bravo" AutomationProperties.AutomationId="tabBravo"/>
       <TabItem x:Name="tabCharlie" Header="Tab-Charlie" AutomationProperties.AutomationId="tabCharlie"/>
     </TabControl>
-    <DataGrid x:Name="dgvRows" Grid.Row="10" Margin="0,4"
-              AutomationProperties.AutomationId="dgvRows"
-              AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
-      <DataGrid.Columns>
-        <DataGridTextColumn Header="Column-Label" Binding="{Binding Label}"/>
-        <DataGridTextColumn Header="Column-Value" Binding="{Binding Value}"/>
-      </DataGrid.Columns>
-    </DataGrid>
+    <StackPanel Grid.Row="10" Orientation="Horizontal" Margin="0,4">
+      <ToggleButton x:Name="btnToggle" AutomationProperties.AutomationId="btnToggle"
+                    Content="Toggle Mode" Width="120" Height="26" Margin="0,0,8,0"/>
+      <DataGrid x:Name="dgvRows" Margin="0,0,0,0" Width="380" Height="120"
+                AutomationProperties.AutomationId="dgvRows"
+                AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Column-Label" Binding="{Binding Label}"/>
+          <DataGridTextColumn Header="Column-Value" Binding="{Binding Value}"/>
+        </DataGrid.Columns>
+      </DataGrid>
+    </StackPanel>
   </Grid>
 </Window>
 '@

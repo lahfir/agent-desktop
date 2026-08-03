@@ -3,7 +3,7 @@ use crate::tree::property_outcome::PropertyValue;
 
 const MARKER: &str = "zzmarkerzz";
 
-fn text(value: &str) -> PropertyOutcome {
+pub(super) fn text(value: &str) -> PropertyOutcome {
     PropertyOutcome::Known(PropertyValue::Text(value.into()))
 }
 
@@ -14,7 +14,7 @@ fn text(value: &str) -> PropertyOutcome {
 /// every name uncertain for a reason the walk never produces.
 ///
 /// Entries the caller supplies win, because `get` returns the first match.
-fn reads(entries: &[(TreeProperty, PropertyOutcome)]) -> ElementProperties {
+pub(super) fn reads(entries: &[(TreeProperty, PropertyOutcome)]) -> ElementProperties {
     let mut all = entries.to_vec();
     for property in [
         TreeProperty::Name,
@@ -234,7 +234,10 @@ fn a_description_alone_becomes_the_name_and_is_not_repeated() {
 
 /// The adapter computes no name of its own: every slot it fills is one core's
 /// precedence consumes. The three it cannot fill are suppressed rather than
-/// left to look like absent evidence.
+/// left to look like absent evidence. The placeholder slot is now filled (it
+/// is no longer "deliberately unfilled"), but on an element whose
+/// `FullDescription` has no text, `HelpText` is the description and the slot is
+/// suppressed so the prompt does not double as the description.
 #[test]
 fn the_adapter_supplies_slots_and_suppresses_the_ones_it_cannot_fill() {
     let status = status_of(
@@ -248,8 +251,50 @@ fn the_adapter_supplies_slots_and_suppresses_the_ones_it_cannot_fill() {
     assert_eq!(
         status.placeholder,
         SlotStatus::Suppressed,
-        "placeholder is an evidence field this module deliberately leaves unfilled"
+        "without a FullDescription, HelpText is the description, so no placeholder is claimed"
     );
+}
+
+/// When `FullDescription` carries the description, `HelpText` is free to be
+/// the placeholder and the slot is Certain. A placeholder-only control's
+/// prompt then reaches the name precedence, which is what lets such a control
+/// receive a name at all.
+#[test]
+fn placeholder_slot_is_certain_when_help_text_is_not_the_description() {
+    let status = status_of(
+        &reads(&[
+            (TreeProperty::FullDescription, text("The description")),
+            (TreeProperty::HelpText, text("The prompt")),
+        ]),
+        &LabelOutcome::Unlabelled,
+    );
+
+    assert_eq!(status.placeholder, SlotStatus::Certain);
+
+    let (name, _) = name_fields(
+        &reads(&[
+            (TreeProperty::FullDescription, text("The description")),
+            (TreeProperty::HelpText, text("The prompt")),
+        ]),
+        &LabelOutcome::Unlabelled,
+    );
+    assert_eq!(name, LocatorField::Known("The description".into()));
+}
+
+/// A failed `HelpText` read on an element with a real description is not a
+/// placeholder claim: the slot turns Uncertain so the name precedence knows a
+/// placeholder may exist that this read could not surface.
+#[test]
+fn placeholder_slot_is_uncertain_when_its_source_read_failed() {
+    let status = status_of(
+        &reads(&[
+            (TreeProperty::FullDescription, text("The description")),
+            (TreeProperty::HelpText, PropertyOutcome::Unknown),
+        ]),
+        &LabelOutcome::Unlabelled,
+    );
+
+    assert_eq!(status.placeholder, SlotStatus::Uncertain);
 }
 
 /// The secure gate is upstream of this module: a secure element's `Name` is
@@ -319,72 +364,4 @@ fn an_unreadable_is_password_read_is_treated_as_secure() {
     assert!(secure_from_read(Err(())));
     assert!(secure_from_read(Ok(true)));
     assert!(!secure_from_read(Ok(false)));
-}
-
-#[test]
-fn description_slot_is_certain_when_one_source_answered_and_the_other_failed() {
-    let properties = reads(&[
-        (TreeProperty::FullDescription, text("Saves the draft")),
-        (TreeProperty::HelpText, PropertyOutcome::Unknown),
-    ]);
-    assert_eq!(description_slot(&properties), SlotStatus::Certain);
-}
-
-/// The combination that was wrong before the fix: `FullDescription` failed to
-/// read and `HelpText` has nothing. The old logic required both sources to be
-/// `Unknown` before reporting `Uncertain`, so this came back `Certain` - a
-/// failed read reported as a definitive "no description".
-#[test]
-fn description_slot_is_uncertain_when_one_source_failed_and_the_other_is_merely_absent() {
-    let properties = reads(&[
-        (TreeProperty::FullDescription, PropertyOutcome::Unknown),
-        (TreeProperty::HelpText, PropertyOutcome::Absent),
-    ]);
-    assert_eq!(description_slot(&properties), SlotStatus::Uncertain);
-}
-
-#[test]
-fn description_slot_is_uncertain_when_both_sources_failed() {
-    let properties = reads(&[
-        (TreeProperty::FullDescription, PropertyOutcome::Unknown),
-        (TreeProperty::HelpText, PropertyOutcome::Unknown),
-    ]);
-    assert_eq!(description_slot(&properties), SlotStatus::Uncertain);
-}
-
-#[test]
-fn description_slot_is_certain_when_both_sources_are_definitively_absent() {
-    let properties = reads(&[
-        (TreeProperty::FullDescription, PropertyOutcome::Absent),
-        (TreeProperty::HelpText, PropertyOutcome::Absent),
-    ]);
-    assert_eq!(description_slot(&properties), SlotStatus::Certain);
-}
-
-/// The measured Win32 shape: `FullDescription` reads back a blank string
-/// rather than failing outright, and `HelpText`'s read genuinely failed. A
-/// blank `Known("")` is not an answer - `text_of` already treats it the same
-/// as no value - so this must cloud the slot exactly as if both reads had
-/// failed, not report a definitive "no description" from a source that
-/// never actually answered.
-#[test]
-fn description_slot_is_uncertain_when_one_source_is_blank_and_the_other_failed() {
-    let properties = reads(&[
-        (TreeProperty::FullDescription, text("")),
-        (TreeProperty::HelpText, PropertyOutcome::Unknown),
-    ]);
-    assert_eq!(description_slot(&properties), SlotStatus::Uncertain);
-}
-
-/// Both sources answered, and both answers happen to be blank, with no
-/// failed read anywhere. That is a real claim - the provider has no
-/// description - and must stay `Certain` rather than being pulled down by
-/// the blank-plus-failed rule above.
-#[test]
-fn description_slot_is_certain_when_both_sources_are_blank_with_no_failed_read() {
-    let properties = reads(&[
-        (TreeProperty::FullDescription, text("")),
-        (TreeProperty::HelpText, text("")),
-    ]);
-    assert_eq!(description_slot(&properties), SlotStatus::Certain);
 }

@@ -1,11 +1,47 @@
 use agent_desktop_core::{
-    AdapterError, AdapterSession, Deadline, InteractionLease, PermissionReport, SessionAffinity,
-    SystemOps,
+    AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
+    PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
+    WindowInfo,
 };
 
 use crate::adapter::WindowsAdapter;
 
 impl SystemOps for WindowsAdapter {
+    /// The interaction lease: enough to unblock renderer activation.
+    ///
+    /// Core's activation loop acquires a lease before activating, and the
+    /// trait default fails closed - so without this override the first settle
+    /// would die `PLATFORM_NOT_SUPPORTED`. Full cross-process lease semantics
+    /// are owned by the later input work on this crate.
+    fn acquire_interaction_lease(
+        &self,
+        deadline: Deadline,
+    ) -> Result<InteractionLease, AdapterError> {
+        InteractionLease::guarded(deadline, ())
+    }
+
+    /// The Chromium settle: connecting to UI Automation already triggered the
+    /// renderer's asynchronous accessibility build (A1-4/A1-5), so activation
+    /// is the connection-plus-settle itself. A short backoff lets the build
+    /// start landing before core's loop re-walks; core's own retry backoff is
+    /// what turns this into a real wait, and the adapter notes that the
+    /// settle ran **for this process** so a same-process retry keeps only the
+    /// walk in the loop, never a second activation, while an unrelated
+    /// process observed through the same adapter still gets its own pass.
+    fn activate_renderer_accessibility(
+        &self,
+        process: ProcessIdentity,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        self.note_renderer_activation_attempted(process);
+        let settled = lease.deadline().remaining();
+        if settled.is_zero() {
+            return Ok(());
+        }
+        std::thread::sleep(settled.min(std::time::Duration::from_millis(50)));
+        Ok(())
+    }
+
     fn permission_report(&self, deadline: Deadline) -> Result<PermissionReport, AdapterError> {
         crate::system::permissions::report(deadline)
     }
@@ -19,6 +55,37 @@ impl SystemOps for WindowsAdapter {
 
     fn unknown_accessibility_means_unsupported(&self) -> bool {
         true
+    }
+
+    /// The surfaces this adapter can observe: a named window, the focused
+    /// window, and a Chromium modal-as-sheet. Core validates the requested
+    /// surface against this list before the adapter is ever called (the mirror
+    /// of macOS `supported_surfaces`). The sheet surface resolves the focused
+    /// window when it is itself modal (`WindowIsModal`), reaching a Chromium
+    /// modal through the sheet surface.
+    fn supported_surfaces(&self) -> Vec<SnapshotSurface> {
+        vec![
+            SnapshotSurface::Window,
+            SnapshotSurface::Focused,
+            SnapshotSurface::Sheet,
+        ]
+    }
+
+    /// The focused window is the focused-only filter's first result, composed
+    /// from `list_windows` rather than a second native path (mirroring
+    /// `crates/macos/src/system/adapter.rs:142-149`). Whatever HWND-shape a
+    /// host presents, it maps to the same identity `list_windows` reports.
+    fn focused_window(&self, deadline: Deadline) -> Result<Option<WindowInfo>, AdapterError> {
+        let filter = WindowFilter {
+            focused_only: true,
+            app: None,
+        };
+        let windows = self.list_windows(&filter, deadline)?;
+        Ok(windows.into_iter().next())
+    }
+
+    fn list_displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
+        crate::system::display::list_displays_live(deadline)
     }
 
     fn open_session(
@@ -76,5 +143,28 @@ mod tests {
             report.accessibility,
             PermissionState::Granted | PermissionState::Denied { .. }
         ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_activation_path_acquires_a_windows_lease_and_settles() {
+        let adapter = WindowsAdapter::new();
+        let lease = SystemOps::acquire_interaction_lease(&adapter, Deadline::after(5_000).unwrap())
+            .expect("the Windows lease override must not show up as not_supported");
+
+        SystemOps::activate_renderer_accessibility(
+            &adapter,
+            ProcessIdentity::new(std::process::id(), "test"),
+            &lease,
+        )
+        .expect("activation is the settle, which succeeds");
+    }
+
+    #[test]
+    fn the_advertised_surfaces_cover_sheet_observations() {
+        use agent_desktop_core::{SnapshotSurface, SystemOps as _};
+
+        let surfaces = WindowsAdapter::new().supported_surfaces();
+        assert!(surfaces.contains(&SnapshotSurface::Sheet));
     }
 }

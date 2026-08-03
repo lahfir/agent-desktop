@@ -162,6 +162,8 @@ fn carries_target_text_implies_value_bearing_across_every_property() {
         TreeProperty::ProviderDescription,
         TreeProperty::ControlType,
         TreeProperty::RuntimeId,
+        TreeProperty::LocalizedControlType,
+        TreeProperty::AriaRole,
     ] {
         assert!(
             !property.carries_target_text() || property.is_value_bearing(),
@@ -201,6 +203,8 @@ fn every_property_resolves_through_the_crate_generated_constants() {
     let _ = uia_property(TreeProperty::ProviderDescription);
     let _ = uia_property(TreeProperty::ControlType);
     let _ = uia_property(TreeProperty::RuntimeId);
+    let _ = uia_property(TreeProperty::LocalizedControlType);
+    let _ = uia_property(TreeProperty::AriaRole);
 }
 
 /// A2-5 measured that UIA property ids are build-specific and named this
@@ -225,6 +229,7 @@ fn no_property_id_integer_appears_in_this_module() {
         ("states.rs", include_str!("states.rs")),
         ("name_evidence.rs", include_str!("name_evidence.rs")),
         ("property_outcome.rs", include_str!("property_outcome.rs")),
+        ("descriptor.rs", include_str!("descriptor.rs")),
         ("walker.rs", include_str!("walker.rs")),
         ("walker_source.rs", include_str!("walker_source.rs")),
     ] {

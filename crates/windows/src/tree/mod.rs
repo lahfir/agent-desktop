@@ -1,9 +1,16 @@
 pub mod actions;
 pub mod automation;
 pub(crate) mod cache;
+pub mod chromium;
+pub mod descriptor;
 pub mod name_evidence;
+pub(crate) mod observe;
+pub(crate) mod resolve;
+pub(crate) mod resolve_match;
 pub mod roles;
 pub mod states;
+pub mod surfaces;
+pub mod wrapper;
 
 #[cfg(test)]
 mod captures;
@@ -20,6 +27,6 @@ pub mod walker_source;
 mod walker_fake;
 
 #[cfg(all(test, target_os = "windows"))]
-mod fixture;
+pub(crate) mod fixture;
 #[cfg(all(test, target_os = "windows"))]
-mod fixture_window;
+pub(crate) mod fixture_window;

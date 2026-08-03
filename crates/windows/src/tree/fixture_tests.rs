@@ -193,9 +193,9 @@ fn is_empty(rectangle: &uiautomation::types::Rect) -> bool {
 }
 
 /// The fixture must actually be able to demonstrate the secure-field gate
-/// before U5 relies on it: the plain control's text has to be readable, and
+/// before the secure-field gate relies on it: the plain control's text has to be readable, and
 /// the password control's text has to be a real secret that a read could
-/// leak. A fixture that failed either half would make U5's gate untestable.
+/// leak. A fixture that failed either half would make the secure-field gate untestable.
 #[test]
 fn the_fixture_exposes_plain_content_and_withholds_secure_content() {
     bootstrap();

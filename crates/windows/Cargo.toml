@@ -9,6 +9,7 @@ publish = false
 agent-desktop-core.workspace = true
 serde_json.workspace         = true
 thiserror.workspace          = true
+tracing.workspace            = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 uiautomation = { version = "0.25", default-features = false, features = [
@@ -29,7 +30,9 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_ApplicationInstallationAndServicing",
   "Win32_System_LibraryLoader",
   "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
   "Win32_Graphics_Gdi",
+  "Win32_Graphics_Dwm",
   "Win32_UI_WindowsAndMessaging",
 ] }
 
