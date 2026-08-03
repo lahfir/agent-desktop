@@ -6,6 +6,7 @@ pub mod descriptor;
 pub mod name_evidence;
 pub(crate) mod observe;
 pub(crate) mod resolve;
+pub(crate) mod resolve_match;
 pub mod roles;
 pub mod states;
 pub mod surfaces;

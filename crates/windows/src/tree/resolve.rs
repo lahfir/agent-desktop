@@ -1,58 +1,51 @@
-use agent_desktop_core::{
-    AdapterError, Deadline, ElementIdentifier, IdentifierKind, LocatorField, NativeHandle, Rect,
-    RefEntry,
-};
-use serde_json::json;
+use agent_desktop_core::{AdapterError, Deadline, NativeHandle, RefEntry};
 
+#[cfg(target_os = "windows")]
 use super::element::UIAElement;
 #[cfg(target_os = "windows")]
 use super::properties::read_live;
 #[cfg(target_os = "windows")]
 use super::property_ids::TreeProperty;
+use super::resolve_match::stale_ref_error;
+#[cfg(target_os = "windows")]
+use super::resolve_match::{Candidate, NodeIdentity, ambiguous_target_error};
+#[cfg(target_os = "windows")]
 use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
+#[cfg(target_os = "windows")]
 use super::walker_source::UiaTreeSource;
+#[cfg(target_os = "windows")]
+use agent_desktop_core::{ElementIdentifier, IdentifierKind, LocatorField, Rect};
 
-/// The resolve-scoped depth cap (KTD9).
+/// The resolve-scoped depth cap.
 ///
 /// Independently bounded from the walk's own ceiling, mirroring macOS's
 /// `MAX_RESOLVE_DEPTH` (`crates/macos/src/tree/resolve.rs:15`, a distinct
-/// constant).
+/// constant). Electron elements commonly sit at depth 25+, so the cap is the
+/// search bound rather than the walk bound.
 const MAX_RESOLVE_DEPTH: u8 = 50;
 
-/// The identity evidence one element carries, compared against the stored ref.
-///
-/// Split from [`Candidate`] so the matching decision is a pure function over
-/// plain values, testable without a live COM element in scope.
-#[derive(Clone)]
-struct NodeIdentity {
-    native_id: Option<ElementIdentifier>,
-    role: Option<String>,
-    name: Option<String>,
-    bounds_hash: Option<u64>,
-}
-
-/// A candidate match: the live element plus the identity evidence read from it.
-#[derive(Clone)]
-struct Candidate {
-    element: UIAElement,
-    identity: NodeIdentity,
-}
-
-/// Resolves a stored ref to its live element, fail-closed (KTD9).
+/// Resolves a stored ref to its live element, fail-closed.
 ///
 /// The search descends from the stored window's root (the source window the
 /// ref was taken from) to a resolve-scoped depth, collecting every element
 /// whose `native_id` matches the stored one by kind and value, corroborated by
 /// role and the role-conditional stable text identity. Then:
 ///
-/// - zero candidates → `STALE_REF`
-/// - two or more candidates that all match → `AMBIGUOUS_TARGET`
-/// - exactly one → a `NativeHandle` wrapping the live element
+/// - zero candidates -> `STALE_REF`
+/// - two or more candidates that all match -> `AMBIGUOUS_TARGET`
+/// - exactly one -> a `NativeHandle` wrapping the live element
 ///
 /// Anything short of an exact match fails closed rather than guessing, because
 /// A7-3 measured Explorer re-resolving 29 of 29 `AutomationId` keys with 5
 /// landing on a different element - the silent-wrong-target shape strictness
 /// exists to prevent.
+///
+/// The bounds hash is the soft signal among several matches: it never refutes
+/// an exact match, only breaks a tie over several matches. A stored ref
+/// without a hash (bounds failed at capture, or hidden by the requester)
+/// cannot be disambiguated by hash, so the lookup fails closed as ambiguous
+/// rather than guessing - a `None == None` comparison never picks a candidate
+/// with no bounds evidence.
 #[cfg(target_os = "windows")]
 pub(crate) fn resolve_element_strict(
     entry: &RefEntry,
@@ -75,7 +68,7 @@ pub(crate) fn resolve_element_strict(
     let matches: Vec<Candidate> = searched
         .into_iter()
         .filter(|candidate| {
-            candidate_matches(
+            super::resolve_match::candidate_matches(
                 &candidate.identity,
                 expected_id,
                 expected_role,
@@ -91,16 +84,6 @@ pub(crate) fn resolve_element_strict(
             |Candidate { element, .. }| Ok(element.into_native_handle()),
         ),
         _ => {
-            // The bounds hash is the soft signal (KTD9): it never refutes an
-            // exact match, but when several elements match the immutable
-            // identity and the **stored** ref actually carries a bounds hash,
-            // and exactly one candidate also occupied that bounds, that one is
-            // the window the ref was taken from. A ref that stored no hash
-            // (bounds failed at capture, or hidden by the requester) cannot be
-            // disambiguated by hash, so without a stored hash the lookup fails
-            // closed as ambiguous rather than guessing - a `None == None`
-            // comparison must never pick a candidate that has no bounds
-            // evidence at all.
             let Some(expected_hash) = entry.geometry.bounds_hash else {
                 return Err(ambiguous_target_error(entry, matches.len()));
             };
@@ -133,43 +116,14 @@ pub(crate) fn resolve_element_strict(
     Err(stale_ref_error(entry))
 }
 
-/// Whether one searched element matches the stored evidence exactly.
-///
-/// `native_id` must match by kind **and** value when the ref carries one; role
-/// must match when the ref records a role other than `unknown`; name is
-/// corroboration only when the ref records a name and the element reports one
-/// (a blank live name cannot refute a ref that had no name). The bounds hash,
-/// when both sides have one, is a soft signal - it never refutes, it only
-/// corroborates, per the identity-against-OS-reorder practice.
-fn candidate_matches(
-    identity: &NodeIdentity,
-    expected_id: Option<&ElementIdentifier>,
-    expected_role: &str,
-    expected_name: Option<&str>,
-) -> bool {
-    if let Some(expected) = expected_id {
-        let id_matches = identity
-            .native_id
-            .as_ref()
-            .is_some_and(|actual| actual.kind == expected.kind && actual.value == expected.value);
-        if !id_matches {
-            return false;
-        }
-    }
-    if !expected_role.is_empty() && expected_role != "unknown" {
-        if identity.role.as_deref() != Some(expected_role) {
-            return false;
-        }
-    }
-    if let Some(name) = expected_name {
-        if !name.is_empty() && identity.name.as_deref() != Some(name) {
-            return false;
-        }
-    }
-    true
-}
-
 /// Reaches the stored window's root element from the ref's source window id.
+///
+/// The fail-closed process gate (the A7-3 wrong-target shape exists to
+/// prevent): a stored ref must not search the tree of a different process that
+/// has since recycled the HWND. The macOS resolver verifies process instance
+/// before searching either. A token-less ref (elevated process whose token
+/// could not be read) fails closed here rather than searching an unverified
+/// window.
 #[cfg(target_os = "windows")]
 fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElement, AdapterError> {
     let window_id = entry
@@ -177,12 +131,6 @@ fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElemen
         .source_window_id
         .as_deref()
         .ok_or_else(|| stale_ref_error(entry))?;
-    // KTD3's fail-closed process gate (the lubricant the A7-3 wrong-target
-    // shape exists to prevent): a stored ref must not search the tree of a
-    // different process that has since recycled the HWND. The macOS resolver
-    // verifies process instance before searching either (`resolve.rs:50-67`).
-    // A token-less ref (elevated process whose token could not be read) fails
-    // closed here rather than searching an unverified window.
     if let Some(instance) = entry.process.process_instance.as_deref() {
         if !crate::system::process_identity::matches_instance(entry.process.pid, instance)? {
             return Err(stale_ref_error(entry));
@@ -229,6 +177,8 @@ fn search_under(
     Ok(())
 }
 
+/// Enumerates one element's children for the search, honouring the sibling cap
+/// as a hard bound on pathological lists.
 #[cfg(target_os = "windows")]
 fn enumerate_children(
     source: &UiaTreeSource,
@@ -298,39 +248,53 @@ fn read_candidate(element: &UIAElement) -> Candidate {
     }
 }
 
-fn stale_ref_error(_entry: &RefEntry) -> AdapterError {
-    AdapterError::stale_ref("Stored ref does not match any live element").with_details(json!({
-        "kind": "resolve_no_candidate",
-    }))
-}
-
-fn ambiguous_target_error(_entry: &RefEntry, count: usize) -> AdapterError {
-    AdapterError::ambiguous_target("Multiple live elements match the stored identity")
-        .with_suggestion("Take a fresh snapshot and use its new ref")
-        .with_details(json!({
-            "kind": "resolve_ambiguous",
-            "candidate_count": count,
-        }))
-}
-
-#[cfg(test)]
-mod tests {
+#[cfg(all(test, target_os = "windows"))]
+mod windows_only {
     use super::*;
-    use agent_desktop_core::ErrorCode;
+    use agent_desktop_core::{RefEntry, WindowInfo};
 
+    /// The live half of the resolver: the fixture's tree is walked, one
+    /// element carrying a non-empty `AutomationId` is captured, and a ref
+    /// built from that exact evidence resolves back to a live element - the
+    /// `snapshot` -> pick ref -> `--root` drill-down loop, across a real
+    /// process boundary.
     #[test]
-    fn a_zero_candidate_resolution_is_stale() {
-        let error = stale_ref_error(&RefEntry {
+    fn a_fixture_ref_resolves_to_the_same_element_end_to_end() {
+        crate::tree::fixture::ensure_test_apartment();
+        let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
+        let window = WindowInfo {
+            id: format!("w-{}", fixture.handle()),
+            title: "agent-desktop fixture".into(),
+            app: "fixture.exe".into(),
+            pid: agent_desktop_core::ProcessId::from(fixture.process_id()),
+            process_instance: Some(
+                crate::system::process_identity::token_for_pid(
+                    agent_desktop_core::ProcessId::from(fixture.process_id()),
+                )
+                .unwrap()
+                .expect("a live fixture process has a token"),
+            ),
+            bounds: None,
+            state: Default::default(),
+        };
+        let deadline = crate::tree::walker_fake::deadline();
+        let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline)
+            .expect("the fixture window resolves");
+        let token = window.process_instance.clone().unwrap();
+
+        let captured = capture_identified(&root, deadline).expect("a fixture element has an id");
+
+        let entry = RefEntry {
             process: agent_desktop_core::RefProcess {
-                pid: agent_desktop_core::ProcessId::new(1),
-                process_instance: None,
+                pid: window.pid,
+                process_instance: Some(token),
             },
             identity: agent_desktop_core::RefEntryIdentity {
-                role: "button".into(),
-                name: None,
+                role: captured.role.clone().unwrap_or_default(),
+                name: captured.name.clone(),
                 value: None,
                 description: None,
-                native_id: None,
+                native_id: captured.native_id.clone(),
             },
             geometry: agent_desktop_core::RefGeometry {
                 bounds: None,
@@ -341,8 +305,8 @@ mod tests {
                 available_actions: Vec::new(),
             },
             source: agent_desktop_core::RefSource {
-                source_app: None,
-                source_window_id: Some("w-1".into()),
+                source_app: Some("fixture.exe".into()),
+                source_window_id: Some(window.id.clone()),
                 source_window_title: None,
                 source_window_bounds_hash: None,
                 source_surface: agent_desktop_core::SnapshotSurface::Window,
@@ -352,190 +316,48 @@ mod tests {
                 path_is_absolute: false,
                 path: agent_desktop_core::refs::RefPath::default(),
             },
-        });
-        assert_eq!(error.code, ErrorCode::StaleRef);
-    }
+        };
 
-    fn identity(native: Option<&str>, role: &str, name: Option<&str>) -> NodeIdentity {
-        NodeIdentity {
-            native_id: native.map(|value| ElementIdentifier {
-                kind: IdentifierKind::AutomationId,
-                value: value.to_string(),
-            }),
-            role: if role.is_empty() {
-                None
-            } else {
-                Some(role.to_string())
-            },
-            name: name.map(str::to_string),
-            bounds_hash: None,
-        }
-    }
+        let handle = resolve_element_strict(&entry, deadline)
+            .expect("the stored identity re-resolves to a live element");
 
-    fn id(expected: &str) -> ElementIdentifier {
-        ElementIdentifier {
-            kind: IdentifierKind::AutomationId,
-            value: expected.to_string(),
-        }
-    }
-
-    /// The A7-3 silent-wrong-target pin (KTD9): two elements sharing a
-    /// `native_id` but with different roles must not both match a ref that
-    /// records the role. Weakening the evidence check to id-only would let a
-    /// wrong element resolve - the exact shape A7-3 measured on Explorer.
-    #[test]
-    fn a_matching_native_id_with_a_mismatched_role_does_not_resolve() {
-        let stored = identity(Some("row-77"), "row", Some("Alpha"));
-        let other_row = identity(Some("row-77"), "option", Some("Beta"));
-
-        assert!(!candidate_matches(
-            &other_row,
-            Some(&id("row-77")),
-            "row",
-            Some("Alpha")
-        ));
-        assert!(candidate_matches(
-            &stored,
-            Some(&id("row-77")),
-            "row",
-            Some("Alpha")
-        ));
-    }
-
-    /// A ref that records no native_id (the Electron shape, A7-1) cannot be
-    /// pinned by id. The matching rule with an all-absent expected identity
-    /// matches any candidate - the safe outcome is not a single match but the
-    /// caller's `AMBIGUOUS_TARGET` when many candidates appear. This pins that
-    /// the id-only narrowing is what A7-3's guard relies on: give the ref an
-    /// expected role/name and it no longer matches a candidate that disagrees.
-    /// A ref with no id, no role and no name (the Electron shape, A7-1) cannot
-    /// be disambiguated: the matching rule says any candidate matches, so the
-    /// caller resolves `AMBIGUOUS_TARGET` over the search rather than guessing.
-    /// (The role-mismatch narrowing that keeps an ordinary id ref from landing
-    /// on the wrong element is pinned separately by
-    /// `a_matching_native_id_with_a_mismatched_role_does_not_resolve`.)
-    #[test]
-    fn a_native_id_less_ref_is_ambiguous_not_a_guess() {
-        let blank = identity(None, "", None);
         assert!(
-            candidate_matches(&blank, None, "", None),
-            "an all-absent ref matches any candidate; the caller's ambiguity check is the guard"
+            handle.downcast_ref::<UIAElement>().is_some(),
+            "the resolved handle carries a UI Automation element"
         );
     }
 
-    #[cfg(target_os = "windows")]
-    mod windows_only {
-        use super::*;
-        use agent_desktop_core::{RefEntry, WindowInfo};
+    /// Walks the fixture and returns the first element carrying a
+    /// non-empty `AutomationId`, with the identity read off it.
+    fn capture_identified(
+        root: &UIAElement,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Option<NodeIdentity> {
+        let source = UiaTreeSource::for_root(root).ok()?;
+        let prepared = source.prepare_root(root).ok()?;
+        let budget = WalkBudget::new(10, deadline);
+        walk_for_identity(&source, &prepared, 0, &budget)
+    }
 
-        /// The live half of the resolver: the fixture's tree is walked, one
-        /// element carrying a non-empty `AutomationId` is captured, and a ref
-        /// built from that exact evidence resolves back to a live element -
-        /// the `snapshot` → pick ref → `--root` drill-down loop, across a real
-        /// process boundary.
-        #[test]
-        fn a_fixture_ref_resolves_to_the_same_element_end_to_end() {
-            crate::tree::fixture::ensure_test_apartment();
-            let fixture =
-                crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
-            let window = WindowInfo {
-                id: format!("w-{}", fixture.handle()),
-                title: "agent-desktop fixture".into(),
-                app: "fixture.exe".into(),
-                pid: agent_desktop_core::ProcessId::from(fixture.process_id()),
-                process_instance: Some(
-                    crate::system::process_identity::token_for_pid(
-                        agent_desktop_core::ProcessId::from(fixture.process_id()),
-                    )
-                    .unwrap()
-                    .expect("a live fixture process has a token"),
-                ),
-                bounds: None,
-                state: Default::default(),
-            };
-            let deadline = crate::tree::walker_fake::deadline();
-            let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline)
-                .expect("the fixture window resolves");
-            let token = window.process_instance.clone().unwrap();
-
-            let captured =
-                capture_identified(&root, deadline).expect("a fixture element has an id");
-
-            let entry = RefEntry {
-                process: agent_desktop_core::RefProcess {
-                    pid: window.pid,
-                    process_instance: Some(token),
-                },
-                identity: agent_desktop_core::RefEntryIdentity {
-                    role: captured.role.clone().unwrap_or_default(),
-                    name: captured.name.clone(),
-                    value: None,
-                    description: None,
-                    native_id: captured.native_id.clone(),
-                },
-                geometry: agent_desktop_core::RefGeometry {
-                    bounds: None,
-                    bounds_hash: None,
-                },
-                capabilities: agent_desktop_core::RefCapabilities {
-                    states: Vec::new(),
-                    available_actions: Vec::new(),
-                },
-                source: agent_desktop_core::RefSource {
-                    source_app: Some("fixture.exe".into()),
-                    source_window_id: Some(window.id.clone()),
-                    source_window_title: None,
-                    source_window_bounds_hash: None,
-                    source_surface: agent_desktop_core::SnapshotSurface::Window,
-                },
-                scope: agent_desktop_core::RefScope {
-                    root_ref: None,
-                    path_is_absolute: false,
-                    path: agent_desktop_core::refs::RefPath::default(),
-                },
-            };
-
-            let handle = resolve_element_strict(&entry, deadline)
-                .expect("the stored identity re-resolves to a live element");
-
-            assert!(
-                handle.downcast_ref::<UIAElement>().is_some(),
-                "the resolved handle carries a UI Automation element"
-            );
+    fn walk_for_identity(
+        source: &UiaTreeSource,
+        element: &UIAElement,
+        depth: u8,
+        budget: &WalkBudget,
+    ) -> Option<NodeIdentity> {
+        if depth >= 10 {
+            return None;
         }
-
-        /// Walks the fixture and returns the first element carrying a
-        /// non-empty `AutomationId`, with the identity read off it.
-        fn capture_identified(
-            root: &UIAElement,
-            deadline: agent_desktop_core::Deadline,
-        ) -> Option<NodeIdentity> {
-            let source = UiaTreeSource::for_root(root).ok()?;
-            let prepared = source.prepare_root(root).ok()?;
-            let budget = WalkBudget::new(10, deadline);
-            walk_for_identity(&source, &prepared, 0, &budget)
+        let candidate = read_candidate(element);
+        if candidate.identity.native_id.is_some() {
+            return Some(candidate.identity);
         }
-
-        fn walk_for_identity(
-            source: &UiaTreeSource,
-            element: &UIAElement,
-            depth: u8,
-            budget: &WalkBudget,
-        ) -> Option<NodeIdentity> {
-            if depth >= 10 {
-                return None;
+        let children = enumerate_children(source, element, budget).ok()?;
+        for child in children {
+            if let Some(found) = walk_for_identity(source, &child, depth + 1, budget) {
+                return Some(found);
             }
-            let candidate = read_candidate(element);
-            if candidate.identity.native_id.is_some() {
-                return Some(candidate.identity);
-            }
-            let children = enumerate_children(source, element, budget).ok()?;
-            for child in children {
-                if let Some(found) = walk_for_identity(source, &child, depth + 1, budget) {
-                    return Some(found);
-                }
-            }
-            None
         }
+        None
     }
 }

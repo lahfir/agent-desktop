@@ -21,11 +21,11 @@ mod imp {
         client: UIAutomation,
         walker: UITreeWalker,
         cache: Option<UICacheRequest>,
-        /// Whether the root is Chromium/Electron provenance (KTD6 gate): the
-        /// transparent-wrapper depth skip must only fire under detected
-        /// Chromium/WebView2 provenance, because the identical emptiness test
-        /// would otherwise skip the anonymous `Group`/`Pane` containers native
-        /// stacks are full of.
+        /// Whether the root is Chromium/Electron provenance (the provenance
+        /// gate): the transparent-wrapper depth skip must only fire under
+        /// detected Chromium/WebView2 provenance, because the identical
+        /// emptiness test would otherwise skip the anonymous `Group`/`Pane`
+        /// containers native stacks are full of.
         chromium_provenance: bool,
     }
 
@@ -67,7 +67,7 @@ mod imp {
         }
 
         /// Whether the root this source walks carries Chromium provenance; the
-        /// wrapper-depth skip only fires when this is true (KTD6).
+        /// wrapper-depth skip only fires when this is true.
         #[cfg(test)]
         pub(crate) fn chromium_provenance(&self) -> bool {
             self.chromium_provenance

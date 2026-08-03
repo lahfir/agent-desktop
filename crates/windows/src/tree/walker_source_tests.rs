@@ -49,9 +49,9 @@ fn the_walk_issues_no_banned_call() {
 /// so a role keyed on it breaks on a non-English Windows. The ban is scoped to
 /// the vocabulary files that *key* on a control type - `roles.rs`,
 /// `actions.rs`, `states.rs`. `property_ids.rs` declares and reads the
-/// property in 2.4 (sub-phase 2.4's A16-5 measured `LocalizedControlType`
-/// populated on every control type, and it feeds the `role_description`
-/// descriptor), which is not keying.
+/// property here (A16-5 measured `LocalizedControlType` populated on every
+/// control type, and it feeds the `role_description` descriptor), which is
+/// not keying.
 #[test]
 fn the_vocabulary_instantiates_no_pattern_and_keys_on_no_display_string() {
     let sources = [
@@ -134,7 +134,7 @@ mod windows_only {
         );
     }
 
-    /// KTD6's provenance gate, pinned at the source that applies it: the
+    /// The provenance gate, pinned at the source that applies it: the
     /// crate's own Win32 fixture root is **not** Chromium (`Chrome_WidgetWin_1`
     /// is a Chromium class, and the fixture's registered class is not it), so
     /// the walk must not skip its empty `Group`-shaped containers as web

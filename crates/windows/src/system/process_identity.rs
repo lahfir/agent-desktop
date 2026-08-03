@@ -1,14 +1,14 @@
 use agent_desktop_core::{AdapterError, ProcessId};
 
-/// The process-generation token KTD3 defines: a creation-time-derived identity
-/// that survives HWND recycling, mirroring macOS's
+/// The process-generation token: a creation-time-derived identity that
+/// survives HWND recycling, mirroring macOS's
 /// `"macos-proc-v1:{start_seconds}:{start_microseconds}"` shape.
 ///
 /// Windows FILETIME is 100-nanosecond ticks since 1601; the token keeps the
 /// integer second and the sub-second tick so two processes started in the same
 /// second stay distinct, the same way the macOS token's microsecond field
-/// does. A token is read from the process handle KTD3 already needs, so the
-/// identity never costs a separate enumeration.
+/// does. A token is read from the process handle the identity check already
+/// needs, so the identity never costs a separate enumeration.
 const TOKEN_PREFIX: &str = "windows-proc-v1";
 const TICKS_PER_SECOND: u64 = 10_000_000;
 
@@ -25,7 +25,7 @@ impl ProcessIdentity {
     /// `None` is the honest answer for a process whose token cannot be read
     /// (an elevated-process handle the caller cannot open, per the split-
     /// integrity measurement A16-12): the window still lists, with
-    /// `process_instance: None`, and fails closed on resolution (KTD3).
+    /// `process_instance: None`, and fails closed on resolution.
     #[cfg(target_os = "windows")]
     pub(crate) fn capture(pid: ProcessId) -> Result<Option<Self>, AdapterError> {
         use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};

@@ -82,11 +82,12 @@ fn owning_processes() -> Result<Vec<EnumeratedWindow>, AdapterError> {
 /// The live `list_apps` inventory.
 ///
 /// Every listed app owns at least one agent-facing window (the A16-1 filter)
-/// and corroborates its identity with the process snapshot: a pid present in
-/// the window inventory but absent from the process snapshot fails the
-/// inventory rather than emitting a half-identified app (KTD10's corroboration
-/// rule). `bundle_id` has no Windows analogue in 2.4 and is recorded, not
-/// faked.
+/// and corroborates its identity against the process snapshot: a pid present
+/// in the window inventory but absent from the process snapshot fails the
+/// inventory rather than emitting a half-identified app. The process
+/// generation the inventory captured is re-read at assembly time and compared,
+/// so a mid-listing generation change also fails the inventory. `bundle_id`
+/// has no Windows analogue and is recorded, not faked.
 pub(crate) fn list_apps_live() -> Result<Vec<AppInfo>, AdapterError> {
     let owners = owning_processes()?;
     let snapshot = process_snapshot()?;
@@ -110,11 +111,6 @@ pub(crate) fn list_apps_live() -> Result<Vec<AppInfo>, AdapterError> {
             ));
         };
         if let Some(window_token) = token.as_deref() {
-            // KTD10's corroboration: the token the window inventory captured
-            // must still match the process's current generation at assembly
-            // time. Re-reading it and comparing (rather than merely checking
-            // that one exists) is what makes a mid-listing generation change
-            // fail the inventory instead of emitting a half-identified app.
             let fresh = process_identity::token_for_pid(pid).ok().flatten();
             if fresh.as_deref() != Some(window_token) {
                 return Err(AdapterError::internal(

@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 /// The Windows adapter.
 ///
-/// Carries the renderer-activation state KTD7 needs: whether the Chromium
-/// settle has **already run** for this process. Core's loop calls
+/// Carries the renderer-activation state the observation loop needs: whether
+/// the Chromium settle has **already run** for this process. Core's loop calls
 /// `activate_renderer_accessibility` (the settle) then retries
 /// `observe_tree`; the adapter must distinguish the pre-settle shell (which
 /// re-arms the loop) from the post-settle still-thin tree (which returns the
@@ -51,8 +51,9 @@ impl ObservationOps for WindowsAdapter {
     }
 
     /// The FFI legacy entrypoint: a thin wrapper over the same `observe_tree`
-    /// path (KTD1, mirroring `crates/macos/src/tree/adapter.rs`). `get_subtree`
-    /// has no live caller on any platform and stays unimplemented.
+    /// path the binary's `snapshot` uses (mirroring
+    /// `crates/macos/src/tree/adapter.rs`). `get_subtree` has no live caller
+    /// on any platform and stays unimplemented.
     fn get_tree(
         &self,
         window: &WindowInfo,
@@ -66,7 +67,7 @@ impl ObservationOps for WindowsAdapter {
         .into_accessibility_tree()
     }
 
-    /// Re-resolves a stored ref to a live element, fail-closed (KTD9) - the
+    /// Re-resolves a stored ref to a live element, fail-closed - the
     /// drill-down root `snapshot --root @ref` needs.
     fn resolve_element_strict(
         &self,

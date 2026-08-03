@@ -3,7 +3,7 @@ use super::property_ids::TreeProperty;
 use super::property_outcome::{PropertyOutcome, PropertyValue};
 
 /// Whether an element is a transparent web wrapper that consumes raw depth but
-/// no logical depth (KTD6).
+/// no logical depth.
 ///
 /// The predicate consumes only evidence this walk has already read - control
 /// type, name, value, `AutomationId`, and actions - so it costs nothing extra
@@ -17,7 +17,7 @@ use super::property_outcome::{PropertyOutcome, PropertyValue};
 /// Chromium-provenance gate (that a skip only fires under detected
 /// Chromium/WebView2 provenance) lives at the call site, because the same
 /// predicate would otherwise skip the anonymous `Group`/`Pane` containers
-/// native stacks are full of (KTD6's silent-deepening guard).
+/// native stacks are full of (the silent-deepening guard).
 pub(crate) fn is_web_wrapper(properties: &ElementProperties) -> bool {
     let control_type = non_zero_number(properties.get(TreeProperty::ControlType));
     let is_group_or_custom = control_type == Some(50026) || control_type == Some(50025);
@@ -79,7 +79,7 @@ mod tests {
         )]
     }
 
-    /// KTD6's silent-deepening guard: an empty `Group` is a wrapper, but only
+    /// The silent-deepening guard: an empty `Group` is a wrapper, but only
     /// under Chromium provenance - the gate lives at the call site. This pins
     /// the emptiness half of the predicate.
     #[test]

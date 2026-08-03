@@ -285,3 +285,7 @@ pub fn read_label(_element: &super::element::UIAElement, _cached: bool) -> Label
 #[cfg(test)]
 #[path = "name_evidence_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "name_evidence_description_tests.rs"]
+mod tests_description;

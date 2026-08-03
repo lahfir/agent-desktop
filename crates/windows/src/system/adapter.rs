@@ -7,12 +7,12 @@ use agent_desktop_core::{
 use crate::adapter::WindowsAdapter;
 
 impl SystemOps for WindowsAdapter {
-    /// The 2.4 interaction lease: enough to unblock renderer activation.
+    /// The interaction lease: enough to unblock renderer activation.
     ///
-    /// KTD7 records that core's activation loop acquires a lease before
-    /// activating, and the trait default fails closed - so without this
-    /// override the first settle would die `PLATFORM_NOT_SUPPORTED`. Full
-    /// cross-process lease semantics are the input sub-phases' (2.6+) decision.
+    /// Core's activation loop acquires a lease before activating, and the
+    /// trait default fails closed - so without this override the first settle
+    /// would die `PLATFORM_NOT_SUPPORTED`. Full cross-process lease semantics
+    /// are owned by the later input work on this crate.
     fn acquire_interaction_lease(
         &self,
         deadline: Deadline,
@@ -70,7 +70,7 @@ impl SystemOps for WindowsAdapter {
     }
 
     /// The focused window is the focused-only filter's first result, composed
-    /// from `list_windows` rather than a second native path (KTD10, mirroring
+    /// from `list_windows` rather than a second native path (mirroring
     /// `crates/macos/src/system/adapter.rs:142-149`). Whatever HWND-shape a
     /// host presents, it maps to the same identity `list_windows` reports.
     fn focused_window(&self, deadline: Deadline) -> Result<Option<WindowInfo>, AdapterError> {

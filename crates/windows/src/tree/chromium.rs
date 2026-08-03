@@ -21,8 +21,8 @@ const SHELL_NODE_CEILING: usize = 32;
 /// Whether the root window is Chromium/Electron provenance.
 ///
 /// Read from the root element's `ClassName` (a one-property live read, never a
-/// second walk). This is what gates the wrapper skip (KTD6) and the
-/// activation settle (KTD7).
+/// second walk). This is what gates the wrapper skip and the activation
+/// settle.
 #[cfg(target_os = "windows")]
 pub(crate) fn is_chromium_root(root: &UIAElement) -> bool {
     let class = read_one(root, TreeProperty::ClassName);
@@ -41,12 +41,12 @@ pub(crate) fn is_chromium_root(_root: &UIAElement) -> bool {
 }
 
 /// Whether a full-depth walk of a detected-Chromium root landed on the shell
-/// shape (KTD7).
+/// shape.
 ///
 /// A depth-clamped observation never claims this: the walk stopped above the
 /// web content by design (the #117 lesson), so its small tree says nothing
-/// about the renderer (the plan's "a depth-clamped walk never demands
-/// activation"). This is only consulted for a **full-depth** walk.
+/// about the renderer (a depth-clamped walk never demands activation). This is
+/// only consulted for a **full-depth** walk.
 pub(crate) fn is_shell_shaped(stats: &LocatorStats, request: &ObservationRequest) -> bool {
     reached_full_depth(stats, request) && stats.traversal.nodes_visited <= SHELL_NODE_CEILING as u64
 }

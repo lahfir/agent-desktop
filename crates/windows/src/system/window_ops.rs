@@ -13,8 +13,9 @@ pub(crate) fn passes_filter(window: &EnumeratedWindow) -> bool {
     window.visible && !window.is_zero_sized() && !window.cloaked && !window.tool
 }
 
-/// The process facts one window needs: its owner's pid, the KTD3 token and
-/// the image name that becomes `app` - all read from the same handle.
+/// The process facts one window needs: its owner's pid, the process-generation
+/// token and the image name that becomes `app` - all read from the same
+/// handle.
 #[cfg(target_os = "windows")]
 fn process_facts(
     handle: super::window_enum::WindowHandle,
@@ -70,7 +71,7 @@ fn window_info_from(
 
 /// The live top-level window inventory an agent means, per the A16-1 filter.
 ///
-/// Verification re-runs on both sides of the read (the KTD3 rule macOS's
+/// Verification re-runs on both sides of the read (the two-sided rule macOS's
 /// `window_inventory.rs:91-155` carries): the owning process is re-checked
 /// after assembly, and a window whose process changed mid-listing fails the
 /// whole inventory rather than emitting a half-identified entry.
@@ -98,9 +99,6 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
         focused_seen |= focused;
         if let Ok(info) = window_info_from(window, &title, &app, focused) {
             if let Err(error) = re_verify(&info) {
-                // KTD3's two-sided rule: a window whose process changed
-                // mid-listing fails the whole inventory rather than emitting a
-                // half-identified entry.
                 *verify_failure.borrow_mut() = Some(error);
                 return false;
             }
@@ -188,15 +186,12 @@ fn process_name_for_pid(_pid: u32) -> Option<String> {
     None
 }
 
-/// Re-verifies a freshly listed window's identity per KTD3's two-sided rule:
-/// the strict check on the fresh listing, and the stored-evidence check that
-/// stored resolution (U6/U8) will rely on, both exercised so neither goes
-/// unused while the seam is fresh.
-/// Re-verifies a freshly listed window's identity per KTD3's two-sided rule:
-/// the strict check on the fresh listing, and the stored-evidence check that
-/// stored resolution (U8) will rely on. A window whose process changed
-/// mid-listing fails the inventory rather than emitting a half-identified
-/// entry, so this returns the failure instead of only logging it.
+/// Re-verifies a freshly listed window's identity per the two-sided rule: the
+/// strict check on the fresh listing, and the stored-evidence check that
+/// stored resolution will rely on; both exercised so neither goes unused
+/// while a seam is fresh. A window whose process changed mid-listing fails
+/// the inventory rather than emitting a half-identified entry, so this
+/// returns the failure instead of only logging it.
 fn re_verify(info: &WindowInfo) -> Result<(), AdapterError> {
     let handle = parse_handle(&info.id);
     let Some(evidence) = WindowIdentityEvidence::from_info(handle, info) else {

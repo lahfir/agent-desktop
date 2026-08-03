@@ -90,8 +90,8 @@ pub trait TreeSource {
     /// Reads this node's evidence and the read set that built it, returning
     /// the count of reads that failed.
     ///
-    /// The properties come back so the wrapper predicate (KTD6) can consume
-    /// the same read set without a second fetch.
+    /// The properties come back so the wrapper predicate can consume the same
+    /// read set without a second fetch.
     fn evidence(
         &self,
         node: &Self::Node,
@@ -106,7 +106,7 @@ pub trait TreeSource {
     ///
     /// The predicate consumes the properties this walk has already read
     /// (control type, name, value, `AutomationId`, actions), so the
-    /// enumeration's per-node read set is not paid for twice (KTD6).
+    /// enumeration's per-node read set is not paid for twice.
     fn is_web_wrapper(
         &self,
         node: &Self::Node,

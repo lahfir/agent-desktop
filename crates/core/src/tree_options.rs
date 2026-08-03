@@ -9,7 +9,7 @@ pub struct TreeOptions {
     pub surface: SnapshotSurface,
     pub skeleton: bool,
     /// Whether the observation should assume Chromium renderer accessibility
-    /// is (or will be) forced - the KTD7 observation-mode hint surfaced as the
+    /// is (or will be) forced - the observation-mode hint surfaced as the
     /// `--force-electron-a11y` CLI flag.
     pub force_renderer_accessibility: bool,
 }

@@ -118,7 +118,7 @@ fn placeholder_absent_when_description_source_failed() {
 }
 
 /// `dom_classes` has no producer on the pinned stack: it is always empty, the
-/// schema-only landing KTD5's branch settled.
+/// schema-only landing the descriptor branch settled.
 #[test]
 fn dom_classes_is_always_empty_from_this_producer() {
     let properties = from_reads(&[]);

@@ -19,7 +19,7 @@ pub struct ObservationRequest {
     pub observation_mode: ObservationMode,
 }
 
-/// The observation-mode sub-struct (KTD7): how the caller wants renderer
+/// The observation-mode sub-struct: how the caller wants renderer
 /// accessibility handled on a web-wrapped target. The Windows adapter reads it
 /// to decide whether a still-thin post-settle tree demands the
 /// `--force-renderer-accessibility` guidance or a bare tree back.
@@ -140,7 +140,7 @@ impl ObservationRequest {
         self.evidence_plan.for_raw_depth(raw_depth)
     }
 
-    /// Sets the observation-mode sub-struct (KTD7) the adapter reads for
+    /// Sets the observation-mode sub-struct the adapter reads for
     /// renderer-accessibility handling on web-wrapped targets.
     pub fn with_observation_mode(mut self, mode: ObservationMode) -> Self {
         self.observation_mode = mode;

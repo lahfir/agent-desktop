@@ -2,13 +2,13 @@ use agent_desktop_core::{AdapterError, Deadline, DisplayInfo, Rect};
 
 /// Enumerates the active monitors and reports each with bounds, the primary
 /// flag, and `scale` derived from **effective** DPI - the applied value, not
-/// the requested one (KTD11, A10-3's carried warning: a successful scale
-/// *request* is not evidence the scale *applied*).
+/// the requested one (A10-3's carried warning: a successful scale *request* is
+/// not evidence the scale *applied*).
 ///
 /// The dev box and both CI environments have exactly one 96-DPI display
 /// (A10-3), so the per-monitor code lands with single-monitor evidence; the
-/// multi-monitor verification belongs to whichever later sub-phase first runs
-/// on a rig with more than one (recorded in `docs/phases.md` by U10).
+/// multi-monitor path is unverified until it runs on a rig with more than one
+/// monitor.
 pub(crate) fn list_displays_live(_deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
     #[cfg(target_os = "windows")]
     {

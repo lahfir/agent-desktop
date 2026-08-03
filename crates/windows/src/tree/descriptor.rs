@@ -10,14 +10,14 @@ use super::property_ids::TreeProperty;
 /// All four sources are `Known`-only emissions resolved by the same walk batch,
 /// so nothing here costs a round trip.
 ///
-/// Sources, each confirmed by sub-phase 2.4's A16 probe family:
+/// Sources, each confirmed by the A16 probe family:
 /// - `role_description` ← `LocalizedControlType` (A16-5: populated on every
 ///   control type across all three stacks, zero failed reads; the content is
 ///   the provider's display vocabulary, so it is not target text and never
 ///   withheld by the secure gate).
 /// - `subrole` ← `AriaRole` (A16-6: non-empty on 164 of 165 settled Chromium
 ///   elements with short ARIA vocabulary tokens; a failed read produces no
-///   subrole). `AriaRole` is provider vocabulary by the plan's pre-committed
+///   subrole). `AriaRole` is provider vocabulary by the caller's pre-committed
 ///   branch - the verbatim-author-text sub-question returned zero on this box,
 ///   so it is not target text either.
 /// - `placeholder` ← `HelpText`, but only where `HelpText` is not already the

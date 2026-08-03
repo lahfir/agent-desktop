@@ -15,20 +15,23 @@ use super::walker_source::walk_uia_subtree;
 /// depth boundary it has already enumerated the full child list (bounded by
 /// the sibling and deadline budgets), so `children_count` is the real count and
 /// `subtree_truncated` records that descendants were not walked - the two flags
-/// set independently (KTD12's "a boundary node may carry a count with
-/// `subtree_truncated: true`"). A deadline-starved walk reports the partial
+/// set independently (a boundary node may carry a count with
+/// `subtree_truncated: true`). A deadline-starved walk reports the partial
 /// tree it observed with `complete: false`, never as a discard.
 ///
 /// This function adds what the walk cannot decide for itself:
 ///
 /// 1. **Enumeration-failure surfacing**: a walk with real faults returns a
 ///    structured error, never a silently-truncated success.
-/// 2. **Liveness-checked completeness** (KTD8): a walk that would report
-///    `complete` is only trusted after the root re-verifies live; failure is
+/// 2. **Liveness-checked completeness**: a walk that would report `complete`
+///    is only trusted after the root re-verifies live; failure is
 ///    `WINDOW_NOT_FOUND`, never a complete-looking tree.
-/// 3. **Chromium shell detection** (KTD7): a full-depth walk of a detected
-///    Chromium root that lands on the pre-activation shell returns the
-///    activation-required error, which core's loop settles and retries.
+/// 3. **Chromium shell detection**: a full-depth walk of a detected Chromium
+///    root that lands on the pre-activation shell returns the
+///    activation-required error, which core's loop settles and retries. When
+///    the caller already forced renderer accessibility (`--force-electron-a11y`),
+///    the adapter returns the observed tree instead of the guidance error - the
+///    flag's contract is to skip activation guidance.
 pub(crate) fn observe_tree(
     root: ObservationRoot<'_>,
     request: &ObservationRequest,
@@ -50,11 +53,6 @@ pub(crate) fn observe_tree(
         && chromium::is_shell_shaped(&outcome.stats, &request)
     {
         if request.observation_mode.force_renderer_accessibility {
-            // The caller already handled renderer accessibility (or is doing
-            // so) via `--force-electron-a11y`: the flag's documented contract
-            // is that the adapter "skips activation guidance" and returns the
-            // tree it observed. Remove the activation-nag by handing back the
-            // observed tree instead of the still-thin guidance error.
             return Ok(outcome.tree);
         }
         if adapter.renderer_activation_attempted() {
@@ -68,7 +66,7 @@ pub(crate) fn observe_tree(
     Ok(outcome.tree)
 }
 
-/// The post-settle still-thin error (KTD7): **not** marked activation-required,
+/// The post-settle still-thin error: **not** marked activation-required,
 /// so it escapes core's loop and reaches the caller - a Chromium tree that
 /// genuinely stays thin after the async build has the guidance `platform_detail`
 /// and no target-derived text.
@@ -80,11 +78,14 @@ fn still_thin_after_settle() -> AdapterError {
     .with_platform_detail(chromium::still_thin_detail())
 }
 
-/// The KTD8 liveness check: a walk that would claim `complete` only does so
-/// after the root re-verifies live - `IsWindow` plus the process-generation
-/// token (KTD3). A dead provider's sibling terminator is indistinguishable
-/// from end-of-list (A14-4), so the terminator alone never proves
-/// completeness; this independent read is what makes the claim honest.
+/// The liveness check: a walk that would claim `complete` only does so after
+/// the root re-verifies live - `IsWindow` plus the process-generation token.
+/// A dead provider's sibling terminator is indistinguishable from end-of-list
+/// (A14-4), so the terminator alone never proves completeness; this independent
+/// read is what makes the claim honest. Fail-closed for the
+/// elevated/split-integrity population: a window whose process token could not
+/// be read (A16-12) can never be identity-corroborated, so `IsWindow` alone is
+/// not accepted against a potentially recycled HWND.
 fn re_verify_root(root: ObservationRoot<'_>) -> Result<(), AdapterError> {
     match root {
         ObservationRoot::Window(window) => {
@@ -98,11 +99,6 @@ fn re_verify_root(root: ObservationRoot<'_>) -> Result<(), AdapterError> {
                         return Err(window_identity_changed());
                     }
                 }
-                // KTD3's fail-closed rule for the elevated/split-integrity
-                // population: a window whose process token could not be read
-                // (A16-12) can never be identity-corroborated, so the liveness
-                // gate must not accept IsWindow alone against a potentially
-                // recycled HWND.
                 None => return Err(window_identity_changed()),
             }
             Ok(())

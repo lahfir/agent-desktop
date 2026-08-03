@@ -119,6 +119,12 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
         Ok((self.stats, self.complete, failures))
     }
 
+    /// Visits one node: reads its evidence, resolves subtree depth by
+    /// wrapper-ness, and reports its children. A boundary `children_count` is
+    /// only real when the enumeration completed: a raw-depth boundary with the
+    /// full sibling list read knows how many children it skipped, but a
+    /// deadline- or sibling-cap-cut list has an unknowable count and marks the
+    /// node without one.
     fn visit_entered(
         &mut self,
         node: &S::Node,
@@ -147,12 +153,6 @@ impl<'a, S: TreeSource> TreeWalk<'a, S> {
             if truncated_by_raw_depth {
                 self.stats.traversal.limits.depth_hits += 1;
             }
-            // The child count is only real when the enumeration completed: a
-            // raw-depth boundary with the full sibling list read knows how many
-            // children it skipped, but a deadline- or sibling-cap-cut list has
-            // an unknowable count (KTD12's "a depth clamp knows how many
-            // children it skipped and says so; budget exhaustion cannot afford
-            // that count and marks the node without one").
             let count = read
                 .complete
                 .then(|| u32::try_from(read.elements.len()).ok().filter(|c| *c > 0))

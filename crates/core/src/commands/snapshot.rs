@@ -24,10 +24,10 @@ pub struct SnapshotArgs {
     /// deadline, so the caller can raise it when the post-settle still-thin
     /// guidance names `--timeout-ms`.
     pub timeout_ms: Option<u64>,
-    /// Parenthetical spelling the observation-mode sub-struct (KTD7): the
-    /// caller says Chromium accessibility is or will be forced, so the adapter
-    /// does not need to guess at guidance. Threaded into the request's
-    /// observation mode.
+    /// Parenthetical spelling the observation-mode sub-struct: the caller says
+    /// Chromium accessibility is or will be forced, so the adapter does not
+    /// need to guess at guidance. Threaded into the request's observation
+    /// mode.
     pub force_electron_a11y: bool,
 }
 

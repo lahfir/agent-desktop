@@ -11,8 +11,9 @@ use super::property_ids::TreeProperty;
 use crate::system::window_enum::enumerate_top_level;
 use crate::system::window_ops::passes_filter;
 
-/// Resolves the element an observation root names, per-surface (KTD2 for
-/// `Window`, KTD10's composition for `Focused`).
+/// Resolves the element an observation root names, per-surface (`Window`
+/// resolves the named window directly; `Focused` composes the focused-only
+/// inventory).
 ///
 /// `Surface` semantics live here: only the surfaces this adapter advertises
 /// are handled (core validates the requested surface before the adapter is
@@ -64,7 +65,7 @@ fn window_hwnd(id: &str) -> Result<isize, AdapterError> {
 }
 
 /// The focused window's HWND, found through the focused-only window inventory
-/// the same way `focused_window` composes it (KTD10).
+/// the same way `focused_window` composes it.
 fn focused_hwnd_of(expected: &str) -> Result<isize, AdapterError> {
     let mut focused = None;
     enumerate_top_level(|window| {

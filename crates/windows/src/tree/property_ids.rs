@@ -118,15 +118,15 @@ impl TreeProperty {
     /// requested. `IsDataValidForForm` joined them after the dogfood run -
     /// `states.rs` records why its `invalid` token is unproduced.
     ///
-    /// **2.4 added `LocalizedControlType` and `AriaRole` to the flat set on
-    /// measured cost (A16-7).** Sub-phase 2.4 measures the marginal cost of the
-    /// two new properties at 1.03x on the Win32 fixture, 1.18x on the WPF
-    /// tree and 1.22x on settled Chromium (min of seven with a discarded
-    /// warm-up), all inside A15-11's 1.22x-to-1.98x envelope, so the set stays
-    /// flat rather than re-opening the split A15-12 rejected. `AriaProperties`
-    /// was measured but not added: nothing consumes it on the pinned stack
-    /// (A16-6 measured it carrying no `class` token, so `dom_classes` ships
-    /// schema-only), and 2.3's rule is that nothing unread is paid for.
+    /// `LocalizedControlType` and `AriaRole` joined the flat set on measured
+    /// cost (A16-7): the marginal cost of the two new properties is 1.03x on
+    /// the Win32 fixture, 1.18x on the WPF tree and 1.22x on settled Chromium
+    /// (min of seven with a discarded warm-up), all inside A15-11's
+    /// 1.22x-to-1.98x envelope, so the set stays flat rather than re-opening
+    /// the split A15-12 rejected. `AriaProperties` was measured but not added:
+    /// nothing consumes it on the pinned stack (A16-6 measured it carrying no
+    /// `class` token, so `dom_classes` ships schema-only), and the standing
+    /// rule is that nothing unread is paid for.
     pub const WALK_SET: [TreeProperty; 42] = [
         TreeProperty::Name,
         TreeProperty::AutomationId,
