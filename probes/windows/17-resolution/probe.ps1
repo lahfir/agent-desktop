@@ -24,8 +24,10 @@
     measurements; a placeholder or an absent capture fails the run, because CI's
     only other signal is the artifact upload, which a placeholder satisfies
     exactly as well as a measurement does and which the passes that did run
-    satisfy on behalf of the ones that did not. A dev-box run keeps the
-    placeholder and stays green; the operator can see it.
+    satisfy on behalf of the ones that did not. A run that declared no
+    mandatory captures at all fails the same way, because a gate handed nothing
+    to check is not a check. A dev-box run keeps the placeholder and stays
+    green; the operator can see it.
 #>
 [CmdletBinding()]
 param(
@@ -416,13 +418,7 @@ try {
     }
 }
 
-$script:measurementGap = Get-MandatoryMeasurementGap
-if ($Label -eq 'ci' -and $null -ne $script:measurementGap) {
-    Write-ProbeResult -Probe '17-resolution' -Status 'fail' `
-        -Message 'a mandatory pass produced no capture or recorded a placeholder instead of a measurement' `
-        -Data $script:measurementGap
-    exit 1
-}
+Assert-MandatoryMeasurement -Probe '17-resolution' -Label $Label
 
 Write-ProbeResult -Probe '17-resolution' -Status 'ok' -Message 'resolution probes captured' -Data @{
     own = if ($script:ownPath) { Split-Path -Leaf $script:ownPath } else { '<none>' }

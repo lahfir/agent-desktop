@@ -496,22 +496,46 @@ function Start-MediumIntegrityProcess {
     all and wrote no capture - is not data, and on CI it is indistinguishable
     from success unless the harness says so: the artifact upload is CI's only
     other signal, and it is satisfied by a placeholder or by the surviving
-    captures of the passes that did run. These four helpers let a probe declare
-    which captures a CI run must contain, mark each one as it is produced, and
-    ask at the end whether anything is missing or degraded.
+    captures of the passes that did run. These helpers let a probe declare which
+    captures a CI run must contain, mark each one as it is produced, and ask at
+    the end whether anything is missing or degraded.
+
+    An empty declaration is itself a gap, and Get-MandatoryMeasurementGap
+    reports it as one. The declaration is what gives the gate its teeth, so a
+    probe that declares nothing - a new leg written without one, a refactor that
+    drops the call - would otherwise sail through the same check having asserted
+    nothing at all. Answering it here rather than at each call site is what makes
+    it unforgettable: every probe already asks this function whether the run
+    measured what it promised, so every probe, including one written next year,
+    inherits the answer without adding a line. Dev-box runs are unaffected for
+    the same reason the rest of the gate leaves them alone - the -Label ci
+    condition sits at the call site (Assert-MandatoryMeasurement), so a dev box
+    reads the gap and keeps going.
 #>
 function New-NotMeasuredResult {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Reason)
     return [ordered]@{ not_measured = $true; skipped = $Reason }
 }
 
+<#
+    A result that carries no not-measured marker is a measurement, whatever
+    shape it has: a bare JSON array, a raw string and a number are all legitimate
+    captures, and only New-NotMeasuredResult - which returns a dictionary -
+    produces a placeholder, so demanding a property bag would flag real data. A
+    result with no content is the exception. An empty array, an empty dictionary
+    and a blank string assert exactly as much as the $null a pass returns when it
+    produced nothing at all, and are treated the same way.
+#>
 function Test-PassNotMeasured {
     param([Parameter(Mandatory = $true)][AllowNull()]$Result)
     if ($null -eq $Result) { return $true }
+    if ($Result -is [string]) { return [string]::IsNullOrWhiteSpace($Result) }
     if ($Result -is [System.Collections.IDictionary]) {
         if ($Result.Contains($script:NotMeasuredKey)) { return [bool]$Result[$script:NotMeasuredKey] }
-        return $Result.Contains('skipped')
+        if ($Result.Contains('skipped')) { return $true }
+        return ($Result.Count -eq 0)
     }
+    if ($Result -is [System.Collections.ICollection]) { return ($Result.Count -eq 0) }
     $properties = $Result.PSObject.Properties
     $marker = $properties[$script:NotMeasuredKey]
     if ($null -ne $marker) { return [bool]$marker.Value }
@@ -538,17 +562,50 @@ function Register-MandatoryPass {
 }
 
 function Get-MandatoryMeasurementGap {
+    if ($script:MandatoryExpected.Count -eq 0) {
+        return [ordered]@{
+            reason            = 'the probe declared no mandatory captures, so the run asserted nothing'
+            empty_declaration = $true
+            missing_captures  = @()
+            missing_count     = 0
+            degraded_captures = @($script:MandatoryDegraded)
+            degraded_count    = $script:MandatoryDegraded.Count
+        }
+    }
     $missing = New-Object System.Collections.ArrayList
     foreach ($entry in $script:MandatoryExpected) {
         if (-not $script:MandatoryProduced.Contains($entry)) { [void]$missing.Add($entry) }
     }
     if ($missing.Count -eq 0 -and $script:MandatoryDegraded.Count -eq 0) { return $null }
     return [ordered]@{
+        reason            = 'a mandatory pass produced no capture or recorded a placeholder instead of a measurement'
+        empty_declaration = $false
         missing_captures  = @($missing)
         missing_count     = $missing.Count
         degraded_captures = @($script:MandatoryDegraded)
         degraded_count    = $script:MandatoryDegraded.Count
     }
+}
+
+<#
+    The verdict, so that no probe hand-rolls it: the gap object carries the
+    message that names what went wrong, and a probe that copies this one line
+    cannot report a misleading reason or forget the -Label ci condition. The
+    label is validated rather than free text, so a run label this gate has no
+    policy for fails the parameter bind instead of quietly skipping the check.
+    The gap is read on every label, not only ci, so a dev-box run exercises the
+    same code path CI depends on.
+#>
+function Assert-MandatoryMeasurement {
+    param(
+        [Parameter(Mandatory = $true)][string]$Probe,
+        [Parameter(Mandatory = $true)][ValidateSet('devbox', 'ci')][string]$Label
+    )
+    $gap = Get-MandatoryMeasurementGap
+    if ($Label -ne 'ci') { return }
+    if ($null -eq $gap) { return }
+    Write-ProbeResult -Probe $Probe -Status 'fail' -Message ([string]$gap['reason']) -Data $gap
+    exit 1
 }
 
 function Write-ProbeLog {

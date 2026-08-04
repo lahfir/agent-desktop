@@ -24,8 +24,10 @@
     measurements; a placeholder or an absent capture fails the run, because CI's
     only other signal is the artifact upload, which a placeholder satisfies
     exactly as well as a measurement does and which the passes that did run
-    satisfy on behalf of the ones that did not. A dev-box run keeps the
-    placeholder and stays green; the operator can see it.
+    satisfy on behalf of the ones that did not. A run that declared no
+    mandatory captures at all fails the same way, because a gate handed nothing
+    to check is not a check. A dev-box run keeps the placeholder and stays
+    green; the operator can see it.
 #>
 [CmdletBinding()]
 param(
@@ -178,13 +180,7 @@ $wpfPath = Write-VocabularyCapture -Name "uia-vocabulary-wpf-$Label.json" -Conte
 Register-MandatoryPass -Capture $wpfPath -Result $wpf
 Write-Host "wrote $wpfPath"
 
-$script:measurementGap = Get-MandatoryMeasurementGap
-if ($Label -eq 'ci' -and $null -ne $script:measurementGap) {
-    Write-ProbeResult -Probe '15-vocabulary' -Status 'fail' `
-        -Message 'a mandatory pass produced no capture or recorded a placeholder instead of a measurement' `
-        -Data $script:measurementGap
-    exit 1
-}
+Assert-MandatoryMeasurement -Probe '15-vocabulary' -Label $Label
 
 Write-ProbeResult -Probe '15-vocabulary' -Status 'ok' -Message 'vocabulary probes captured' -Data @{
     win32 = Split-Path -Leaf $path
