@@ -79,9 +79,11 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
                 .is_some_and(|role| role == &entry.identity.role);
             if role_matches {
                 match super::resolve_match::candidate_outcome(entry, &evidence) {
-                    CandidateOutcome::Matched => return Ok(candidate.into_native_handle()),
+                    CandidateOutcome::Matched => {
+                        return Ok(into_verified_handle(candidate, entry));
+                    }
                     CandidateOutcome::Incomplete if geometry_matches(entry, &evidence) => {
-                        return Ok(candidate.into_native_handle());
+                        return Ok(into_verified_handle(candidate, entry));
                     }
                     _ => {}
                 }
@@ -108,7 +110,7 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
             let Some(candidate) = searched.into_iter().next() else {
                 return Err(stale_ref_error(entry));
             };
-            Ok(candidate.element.into_native_handle())
+            Ok(into_verified_handle(candidate.element, entry))
         }
         _ => {
             let candidate_hashes: Vec<Option<u64>> = searched
@@ -120,7 +122,7 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
                 entry.geometry.bounds_hash,
             ) {
                 super::resolve_match::Selection::Resolved(index) => {
-                    Ok(searched[index].element.clone().into_native_handle())
+                    Ok(into_verified_handle(searched[index].element.clone(), entry))
                 }
                 super::resolve_match::Selection::Ambiguous => {
                     Err(ambiguous_target_error(entry, searched.len()))
@@ -128,6 +130,20 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
             }
         }
     }
+}
+
+/// Wraps the resolved element with the ref's verified process identity, so the
+/// live-read path can corroborate that the provider is still the one
+/// resolution verified (KTD7). The token-less case cannot reach here:
+/// `resolve_window_root` fails closed on it first.
+#[cfg(target_os = "windows")]
+fn into_verified_handle(element: super::element::UIAElement, entry: &RefEntry) -> NativeHandle {
+    element
+        .with_verified_process(
+            entry.process.pid.get(),
+            entry.process.process_instance.clone().unwrap_or_default(),
+        )
+        .into_native_handle()
 }
 
 #[cfg(target_os = "windows")]
