@@ -34,9 +34,9 @@ struct MarkerRecord {
     bottom: i32,
 }
 
+/// Obsidian strips the `.md` extension for display; the marker prefix is the
+/// authoritative token either way.
 fn is_marker_name(name: &str) -> bool {
-    // Obsidian strips the .md extension for display; the marker prefix is the
-    // authoritative token either way.
     let text = name.trim().trim_end_matches(".md");
     text == MARKER_PREFIX || text.starts_with(&format!("{MARKER_PREFIX}-"))
 }
@@ -106,29 +106,31 @@ pub fn measure_survival(automation: &UIAutomation, root: &UIElement) -> Value {
         })
         .collect();
 
-    // The secure-live-read gate rides the same read set on this target: the
-    // shared read's `IsPassword` flag, reported as a shape census.
-    let password_control_types: Vec<i32> = {
-        let mut seen = Vec::new();
-        for element in crate::measure::collect_descendants(&walker, root, WALK_DEPTH_LIMIT) {
-            if element
-                .get_property_value(UIProperty::IsPassword)
-                .ok()
-                .and_then(|variant| boolean_of(&variant))
-                .unwrap_or(false)
-            {
-                let control_type = crate::measure::control_type_of(&element);
-                if !seen.contains(&control_type) {
-                    seen.push(control_type);
-                }
-            }
-        }
-        seen
-    };
+    let password_control_types: Vec<i32> = secure_shape_census(&walker, root);
 
     json!({
         "markers_found": records.len(),
         "marker_rows": rows,
         "password_element_control_types": password_control_types,
     })
+}
+
+/// The secure-live-read gate rides the same read set on this target: the
+/// shared read's `IsPassword` flag, reported as a shape census.
+fn secure_shape_census(walker: &UITreeWalker, root: &UIElement) -> Vec<i32> {
+    let mut seen = Vec::new();
+    for element in crate::measure::collect_descendants(walker, root, WALK_DEPTH_LIMIT) {
+        if element
+            .get_property_value(UIProperty::IsPassword)
+            .ok()
+            .and_then(|variant| boolean_of(&variant))
+            .unwrap_or(false)
+        {
+            let control_type = crate::measure::control_type_of(&element);
+            if !seen.contains(&control_type) {
+                seen.push(control_type);
+            }
+        }
+    }
+    seen
 }

@@ -64,7 +64,7 @@ function Build-ProbeBinary {
         $manifest = '  [package]' + "`n" + '  name = "agent-desktop-resolution-probe"' + "`n" + '  version = "0.0.0"' + "`n" + '  edition = "2021"' + "`n" + "`n" + '  [dependencies]' + "`n" + '  serde_json = "1"' + "`n" + '  uiautomation = "=' + $UiAutomationVersion + '"' + "`n" + '  windows-sys = { version = "0.61", features = [' + "`n" + '    "Win32_Foundation",' + "`n" + '    "Win32_Graphics_Gdi",' + "`n" + '    "Win32_System_Com",' + "`n" + '    "Win32_System_LibraryLoader",' + "`n" + '    "Win32_UI_WindowsAndMessaging",' + "`n" + '  ] }' + "`n" + "`n" + '  [workspace]'
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
         [IO.File]::WriteAllText((Join-Path $work 'Cargo.toml'), $manifest, $utf8NoBom)
-        foreach ($file in @('probe.rs', 'probe_window.rs', 'probe_measure.rs', 'probe_findall.rs', 'probe_swap.rs', 'probe_survival.rs')) {
+        foreach ($file in (Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'probe*.rs' | Select-Object -ExpandProperty Name)) {
             Copy-Item -LiteralPath (Join-Path $script:ProbeDir $file) -Destination (Join-Path $work "src\$file") -Force
         }
         Copy-Item -LiteralPath (Join-Path $work 'src\probe.rs') -Destination (Join-Path $work 'src\main.rs') -Force

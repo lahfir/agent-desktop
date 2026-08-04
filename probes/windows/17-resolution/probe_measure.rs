@@ -52,23 +52,23 @@ pub fn control_type_of(element: &UIElement) -> i32 {
 pub fn is_ref_able_control_type(control_type: i32) -> bool {
     matches!(
         control_type,
-        50000 // Button
-        | 50002 // CheckBox
-        | 50003 // ComboBox
-        | 50004 // Edit
-        | 50005 // Hyperlink
-        | 50007 // ListItem
-        | 50011 // MenuItem
-        | 50013 // RadioButton
-        | 50014 // ScrollBar
-        | 50015 // Slider
-        | 50016 // Spinner
-        | 50018 // Tab
-        | 50019 // TabItem
-        | 50024 // TreeItem
-        | 50029 // DataItem
-        | 50031 // SplitButton
-        | 50035 // HeaderItem
+        50000
+        | 50002
+        | 50003
+        | 50004
+        | 50005
+        | 50007
+        | 50011
+        | 50013
+        | 50014
+        | 50015
+        | 50016
+        | 50018
+        | 50019
+        | 50024
+        | 50029
+        | 50031
+        | 50035
     )
 }
 

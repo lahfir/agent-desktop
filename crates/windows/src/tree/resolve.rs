@@ -7,7 +7,7 @@ use super::resolve_match::stale_ref_error;
 use super::resolve_match::{CandidateOutcome, ambiguous_target_error};
 #[cfg(target_os = "windows")]
 use super::resolve_search::{
-    MAX_RESOLVE_DEPTH, can_use_path_fast_path, element_at_path, geometry_matches,
+    MAX_RESOLVE_DEPTH, SearchContext, can_use_path_fast_path, element_at_path, geometry_matches,
     identity_unknown_error, search_under,
 };
 #[cfg(target_os = "windows")]
@@ -62,7 +62,6 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
         .with_max_raw_depth(MAX_RESOLVE_DEPTH)
         .with_max_siblings(DEFAULT_MAX_SIBLINGS);
 
-    // The path fast-path (see `resolve_search`): a locator, never identity.
     if can_use_path_fast_path(entry) {
         let mut path_incomplete = false;
         if let Some(candidate) = element_at_path(
@@ -93,15 +92,12 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
 
     let mut searched = Vec::new();
     let mut incomplete = false;
-    search_under(
-        &source,
-        &prepared,
-        0,
-        &budget,
+    let search_ctx = SearchContext {
+        source: &source,
         entry,
-        &mut searched,
-        &mut incomplete,
-    )?;
+        budget: &budget,
+    };
+    search_under(&search_ctx, &prepared, 0, &mut searched, &mut incomplete)?;
 
     match searched.len() {
         0 if incomplete => Err(identity_unknown_error(entry)),
@@ -179,13 +175,17 @@ pub(crate) fn retry_incomplete_until(
 }
 
 /// Whether the adapter's own loop should retry an error: only an explicitly
-/// retryable, incomplete read. Mirrors macOS
+/// retryable, incomplete read. A provider's own `UIA_E_TIMEOUT` classifies
+/// `Timeout` and is one of those - it is a per-call transport timeout inside
+/// the operation's budget, not the budget running out. Deadline exhaustion
+/// carries no retryable stamp, so it still falls through to the caller. Mirrors macOS
 /// (`resolve.rs:275-277`); the granularity split between adapter-loop-settled
 /// and incomplete lives in the `complete`/`retryable` details every resolver
 /// error carries.
 #[cfg(target_os = "windows")]
 pub(crate) fn is_retryable_resolution_error(error: &AdapterError) -> bool {
-    error.code == ErrorCode::AppUnresponsive && error.is_explicitly_retryable()
+    error.is_explicitly_retryable()
+        && matches!(error.code, ErrorCode::AppUnresponsive | ErrorCode::Timeout)
 }
 
 #[cfg(target_os = "windows")]

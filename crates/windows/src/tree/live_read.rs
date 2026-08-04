@@ -9,6 +9,18 @@
 //! composition (`read_label` + `walk_vocabulary` + `into_locator_evidence`).
 //! The five readers are projections over that one read: value, state, actions,
 //! element, bounds.
+//!
+//! The process corroboration runs twice, not once: a first, cheap check
+//! before the read rejects an already-dead handle without paying for a
+//! property fetch, and a second, authoritative check after the read and its
+//! completeness gate rejects a handle whose process died *during* the read -
+//! the corpse case A14-9 measured, where the dead provider's reads still
+//! return success. Only the second check's answer is trusted to gate the
+//! `Ok`; the first is an optimization, not a substitute. Separately, the
+//! read's own discarded errors are inspected for the vanished-element
+//! disposition before the completeness gate ever sees them, so a resolved
+//! target that reports `UIA_E_ELEMENTNOTAVAILABLE` settles as stale rather
+//! than surfacing as a retryable, indefinitely-repeated `AppUnresponsive`.
 
 use agent_desktop_core::{
     AdapterError, ElementState, ErrorCode, LiveElement, LiveIdentity, LocatorEvidence,
@@ -30,44 +42,82 @@ pub(crate) struct LiveRead {
 mod imp {
     use super::{
         LiveRead, essential_live_evidence_complete, incomplete_live_evidence, stale_reader_error,
+        target_read_reports_vanished,
     };
-    use crate::tree::element::uia_element;
+    use crate::tree::element::{UIAElement, uia_element};
     use crate::tree::name_evidence::read_label;
-    use crate::tree::properties::read_live;
+    use crate::tree::properties::{ElementProperties, read_live};
     use crate::tree::walker::walk_vocabulary;
     use agent_desktop_core::{AdapterError, Deadline, NativeHandle, ProcessId};
 
     /// The shared single-element live read.
     ///
     /// Fails `STALE_REF`-class when the verified process token has moved on
-    /// (the dead-provider shape, driven through a dead token), and fails
-    /// retryable `AppUnresponsive` when an essential slot reads `Unknown` - it
-    /// never answers with a partial bundle claiming completeness.
+    /// either before or after the read (the dead-provider shape, driven
+    /// through a dead token), fails `STALE_REF`-class when the read itself
+    /// reports the resolved target vanished, and fails retryable
+    /// `AppUnresponsive` when an essential slot reads `Unknown` - it never
+    /// answers with a partial bundle claiming completeness.
     pub fn read_live_element(
         handle: &NativeHandle,
         deadline: Deadline,
     ) -> Result<LiveRead, AdapterError> {
         let element = uia_element(handle)?;
+        read_live_element_core(element, deadline, corroborate_verified_process, read_live)
+    }
+
+    /// The read's body, generic over how process-instance corroboration and
+    /// the property read itself are performed.
+    ///
+    /// Production always passes the real corroborator and the real
+    /// `properties::read_live`; a test substitutes one or the other to drive
+    /// a specific failure deterministically - a fake corroborator that
+    /// answers live once and dead the next call stands in for a process that
+    /// dies between the pre-read and post-read checks (A14-9's corpse timing,
+    /// which a real process kill cannot reproduce without a race), and a
+    /// fake read stands in for a resolved target that has vanished.
+    pub(crate) fn read_live_element_core(
+        element: &UIAElement,
+        deadline: Deadline,
+        corroborate: impl Fn(&UIAElement) -> Result<(), AdapterError>,
+        read: impl Fn(&UIAElement) -> (ElementProperties, Vec<AdapterError>),
+    ) -> Result<LiveRead, AdapterError> {
         crate::system::permissions::ensure_budget(deadline)?;
-        if let Some((pid, token)) = element.verified_process() {
-            if !crate::system::process_identity::matches_instance(ProcessId::new(pid), token)? {
-                return Err(stale_reader_error());
-            }
-        }
+        corroborate(element)?;
         if deadline.is_expired() {
             return Err(deadline.timeout_error());
         }
-        let (properties, _errors) = read_live(element);
+        let (properties, errors) = read(element);
+        if target_read_reports_vanished(&errors) {
+            return Err(stale_reader_error());
+        }
         let label = read_label(element, false);
         let vocabulary = walk_vocabulary(&properties, &label);
         let evidence = properties.clone().into_locator_evidence(vocabulary);
         if !essential_live_evidence_complete(&evidence) {
             return Err(incomplete_live_evidence());
         }
+        corroborate(element)?;
         Ok(LiveRead {
             properties,
             evidence,
         })
+    }
+
+    /// Corroborates the handle's verified process token against the
+    /// process's live generation, right now.
+    ///
+    /// Not memoized: called again after the read, it genuinely re-queries the
+    /// OS rather than trusting the answer the pre-read call already gave,
+    /// which is what lets the post-read call catch a process that died
+    /// during the read.
+    pub(crate) fn corroborate_verified_process(element: &UIAElement) -> Result<(), AdapterError> {
+        if let Some((pid, token)) = element.verified_process() {
+            if !crate::system::process_identity::matches_instance(ProcessId::new(pid), token)? {
+                return Err(stale_reader_error());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -142,7 +192,7 @@ pub(crate) fn live_element(read: &LiveRead) -> Result<LiveElement, AdapterError>
         description: read.evidence.description.clone(),
         identifiers: read.evidence.identifiers.clone(),
     };
-    let available_actions = known_actions(read.evidence.ref_evidence.available_actions.clone())?;
+    let available_actions = live_actions(read)?;
     let bounds = read.evidence.ref_evidence.bounds.known().copied();
     Ok(LiveElement {
         identity,
@@ -165,6 +215,22 @@ fn known_actions(actions: LocatorField<Vec<String>>) -> Result<Vec<String>, Adap
         LocatorField::Absent => Ok(Vec::new()),
         LocatorField::Unknown => Err(incomplete_live_evidence()),
     }
+}
+
+/// Reports whether the read's own discarded errors already settled the
+/// resolved target as vanished.
+///
+/// Reuses the classification `automation_classify.rs`/`hresult.rs` already
+/// computed into each error rather than re-deriving it: within
+/// `properties::read_live`'s error vector, `ErrorCode::StaleRef` is produced
+/// exclusively by `ReadDisposition::Unavailable` - `UIA_E_ELEMENTNOTAVAILABLE`
+/// on the HRESULT branch, `ERR_INVALID_OBJECT` on the sentinel branch - and
+/// that disposition is the only one this module treats as a settled-stale
+/// read of the resolved target rather than a retryable transport failure.
+fn target_read_reports_vanished(errors: &[AdapterError]) -> bool {
+    errors
+        .iter()
+        .any(|error| error.code == ErrorCode::StaleRef && error.is_explicitly_retryable())
 }
 
 fn essential_live_evidence_complete(evidence: &LocatorEvidence) -> bool {

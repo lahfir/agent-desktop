@@ -81,7 +81,10 @@ from 2.4) still stands and is not re-litigated here.
 | --- | --- | --- |
 | Obsidian web-content STALE_REF rate inside the file tree is unmeasurable on this host (first-contact shell) | 2.12 self-hosted-runner environment (A17-8) | recorded, `closure: 2.12` |
 | WPF live reads (`get`/`is`) not sampled in this run - the WPF leg records snapshot only | U7-next / dogfood extension | recorded |
-| `find --count` vs materialized agreement not asserted on a real app (no CI assertion may name a real-app count) | per VC "Evidence honesty" | recorded |
+| `find --count` vs materialized agreement not asserted on a real app (no CI assertion may name a real-app count) | per VC "Evidence honesty" | **closed on fixtures** - agreement is now pinned against the hosted fixture, where a count is repo-controlled rather than an `app/provider` fact |
+| Traced correction to this sub-phase's own framing: `wait --selector` polls through `resolve_query` with materialization `None`, which reaches `observe_tree` only - it never calls `resolve_locator_anchor`. The anchor carries default `find`'s selected-match hydration, not the selector wait. The wait path is pinned against the mechanism it actually uses | read from `crates/core/src/commands/wait_selector.rs` while closing the coverage gap | recorded, and the pin added |
+| Fake-driven end-to-end drives for mid-descent vanish and dead-token descent would need the resolver search generalized over `TreeSource`; the classification itself is pinned arm-by-arm at unit level instead | a later sub-phase touching the resolver's test seams | recorded |
+| Pure dedup left unapplied to keep this diff's blast radius honest: the role gate repeated at three resolver sites, the secure-element DFS helper repeated across three test modules, and the two enumeration shells whose failure dispositions deliberately invert | maintainability follow-up | recorded |
 
 ## Verification Contract result (this unit's part)
 

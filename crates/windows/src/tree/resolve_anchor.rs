@@ -69,6 +69,9 @@ fn resolve_locator_anchor_once(
         return Err(stale_ref_error(entry));
     };
     let (_, evidence, _) = source.evidence(&candidate);
+    if evidence.role.is_unknown() {
+        return Err(identity_unknown_error(entry));
+    }
     let role_matches = evidence
         .role
         .known()
@@ -165,6 +168,14 @@ fn anchor_descent(
         ),
     }
 }
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_anchor_selector_wait_tests.rs"]
+mod selector_wait_tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_anchor_count_agreement_tests.rs"]
+mod count_agreement_tests;
 
 #[cfg(all(test, target_os = "windows"))]
 mod windows_only {

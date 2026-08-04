@@ -31,7 +31,6 @@ pub const FINDALL_REPEATS: usize = 7;
 fn min_of(operation: impl FnMut() -> Result<(), ()>) -> (f64, f64, f64) {
     let mut samples = Vec::with_capacity(FINDALL_REPEATS);
     let mut closure = operation;
-    // One discarded warm-up, matching the A15-13 methodology.
     let _ = closure();
     for _ in 0..FINDALL_REPEATS {
         let started = Instant::now();
@@ -80,7 +79,6 @@ pub fn measure_findall(automation: &UIAutomation, root: &UIElement, target: &str
         Ok(())
     });
 
-    // Distinct AutomationIds in walk order, two per fixture-control probe set.
     let mut distinct_ids: Vec<&str> = Vec::new();
     for evidence in &walked_evidence {
         if let Some(id) = evidence.native_id.as_deref() {
@@ -118,8 +116,6 @@ pub fn measure_findall(automation: &UIAutomation, root: &UIElement, target: &str
         }
     }
 
-    // A single stored id's resolve-via-FindAll timing (the per-ref cost) and
-    // the resolve-scoped walk timing, both min-of-seven.
     let known_id = distinct_ids.first().copied().unwrap_or("absent-id");
     let find_time = min_of(|| {
         find_all_id(automation, root, known_id).map(|_| ()).map_err(|_| ())
