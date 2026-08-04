@@ -89,6 +89,14 @@ impl ObservationOps for WindowsAdapter {
         crate::tree::resolve::resolve_element_strict(entry, deadline)
     }
 
+    fn resolve_locator_anchor(
+        &self,
+        entry: &RefEntry,
+        deadline: Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        crate::tree::resolve_anchor::resolve_locator_anchor(entry, deadline)
+    }
+
     /// The five live readers are projections over one shared single-element
     /// read (`crate::tree::live_read`), which corroborates the verified
     /// process token before answering and fails retryable when an essential

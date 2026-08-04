@@ -137,7 +137,7 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
 /// resolution verified (KTD7). The token-less case cannot reach here:
 /// `resolve_window_root` fails closed on it first.
 #[cfg(target_os = "windows")]
-fn into_verified_handle(element: super::element::UIAElement, entry: &RefEntry) -> NativeHandle {
+pub(crate) fn into_verified_handle(element: super::element::UIAElement, entry: &RefEntry) -> NativeHandle {
     element
         .with_verified_process(
             entry.process.pid.get(),
@@ -147,7 +147,7 @@ fn into_verified_handle(element: super::element::UIAElement, entry: &RefEntry) -
 }
 
 #[cfg(target_os = "windows")]
-fn retry_incomplete_until(
+pub(crate) fn retry_incomplete_until(
     deadline: Deadline,
     mut operation: impl FnMut() -> Result<NativeHandle, AdapterError>,
 ) -> Result<NativeHandle, AdapterError> {
@@ -181,12 +181,12 @@ fn retry_incomplete_until(
 /// and incomplete lives in the `complete`/`retryable` details every resolver
 /// error carries.
 #[cfg(target_os = "windows")]
-fn is_retryable_resolution_error(error: &AdapterError) -> bool {
+pub(crate) fn is_retryable_resolution_error(error: &AdapterError) -> bool {
     error.code == ErrorCode::AppUnresponsive && error.is_explicitly_retryable()
 }
 
 #[cfg(target_os = "windows")]
-fn sleep_before_retry(deadline: Deadline) {
+pub(crate) fn sleep_before_retry(deadline: Deadline) {
     let remaining = deadline.remaining();
     std::thread::sleep(remaining.min(std::time::Duration::from_millis(25)));
 }
@@ -195,7 +195,7 @@ fn sleep_before_retry(deadline: Deadline) {
 /// caller sees why the retries ran out, preserving the incomplete's own
 /// details rather than discarding them for a bare `TIMEOUT`.
 #[cfg(target_os = "windows")]
-fn mark_deadline_elapsed(mut error: AdapterError) -> AdapterError {
+pub(crate) fn mark_deadline_elapsed(mut error: AdapterError) -> AdapterError {
     let mut details = error.details.take().unwrap_or_else(|| serde_json::json!({}));
     if let Some(object) = details.as_object_mut() {
         object.insert("deadline_elapsed".into(), serde_json::json!(true));
@@ -228,7 +228,7 @@ pub(crate) fn resolve_element_strict(
 /// could not be read) fails closed here rather than searching an unverified
 /// window.
 #[cfg(target_os = "windows")]
-fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElement, AdapterError> {
+pub(crate) fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElement, AdapterError> {
     let window_id = entry
         .source
         .source_window_id

@@ -7,6 +7,7 @@ pub mod name_evidence;
 pub(crate) mod observe;
 pub(crate) mod live_read;
 pub(crate) mod resolve;
+pub(crate) mod resolve_anchor;
 pub(crate) mod resolve_search;
 pub(crate) mod resolve_match;
 pub mod roles;
