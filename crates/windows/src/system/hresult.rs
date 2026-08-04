@@ -23,6 +23,61 @@ pub(crate) const UIA_E_NOTSUPPORTED: i32 = 0x8004_0204_u32 as i32;
 pub(crate) const UIA_E_TIMEOUT: i32 = 0x8013_1505_u32 as i32;
 pub(crate) const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
 
+/// The read-path classification U4's retry loop consumes: whether a failed
+/// read is a settled absence, a transient transport failure, a vanished
+/// element, or a terminal error the attempt must surface as-is.
+///
+/// The three classes are the `kAXErrorIllegalArgument` lesson ported to
+/// Windows (`crates/macos/src/system/window_bridge.rs:54-103`): a
+/// structurally-impossible answer - the element genuinely lacks the attribute,
+/// the window genuinely has no match - is a **settled absence, never
+/// retryable**; conflating it with a transport failure burns the whole budget
+/// retrying what cannot succeed. Retryable transport turns the attempt
+/// incomplete within its deadline; a vanished element is the granularity case
+/// (`UIA_E_ELEMENTNOTAVAILABLE`) that settles as stale only for a read of the
+/// resolved target and marks a mid-descent node incomplete instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReadDisposition {
+    /// Structurally impossible: the provider answered that the property or
+    /// pattern does not exist, or the request could not be a valid read.
+    /// Settled, never retried.
+    SettledAbsence,
+    /// Transport or timeout: retryable within the operation's deadline.
+    Retryable,
+    /// The element is unavailable: stale for the resolved target, incomplete
+    /// for a node vanishing mid-descent.
+    Unavailable,
+    /// A hard failure with no defined recovery (denial, unknown code).
+    Terminal,
+}
+
+impl ReadDisposition {
+    /// The typed channel pair U4's loop and core's hydration read: a settled
+    /// absence or terminal failure is complete and never retried; transport
+    /// and a vanished element are incomplete and retryable within the
+    /// deadline.
+    pub(crate) fn retry_details(self) -> (bool, bool) {
+        match self {
+            ReadDisposition::SettledAbsence | ReadDisposition::Terminal => (true, false),
+            ReadDisposition::Retryable | ReadDisposition::Unavailable => (false, true),
+        }
+    }
+}
+
+/// Classifies a named read-path HRESULT onto the three-state disposition.
+///
+/// An unlisted code is `Terminal` - the loop retries only what is marked
+/// retryable, so an unknown failure surfaces rather than being guessed.
+pub(crate) fn classify_read_hresult(hresult: i32) -> ReadDisposition {
+    match hresult {
+        UIA_E_NOTSUPPORTED | E_INVALIDARG | E_POINTER => ReadDisposition::SettledAbsence,
+        UIA_E_TIMEOUT | RPC_E_DISCONNECTED | RPC_E_SERVERFAULT | RPC_S_SERVER_UNAVAILABLE
+        | RPC_S_CALL_FAILED => ReadDisposition::Retryable,
+        UIA_E_ELEMENTNOTAVAILABLE => ReadDisposition::Unavailable,
+        _ => ReadDisposition::Terminal,
+    }
+}
+
 /// Renders an HRESULT for `platform_detail`.
 ///
 /// Shape only: a code and, where one is known, its symbol and meaning. No
@@ -71,3 +126,8 @@ pub(crate) fn com_hresult_symbol(hresult: i32) -> Option<(&'static str, &'static
     };
     Some(symbol)
 }
+
+
+#[cfg(test)]
+#[path = "hresult_tests.rs"]
+mod tests;

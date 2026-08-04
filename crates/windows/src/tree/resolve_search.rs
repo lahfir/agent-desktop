@@ -67,10 +67,11 @@ pub(crate) fn element_at_path(
     root: &UIAElement,
     path: &[usize],
     budget: &WalkBudget,
+    incomplete: &mut bool,
 ) -> Result<Option<UIAElement>, AdapterError> {
     let mut current = root.clone();
     for &index in path {
-        let children = enumerate_children(source, &current, budget)?;
+        let children = enumerate_children(source, &current, budget, incomplete)?;
         let Some(child) = children.get(index) else {
             return Ok(None);
         };
@@ -140,7 +141,7 @@ pub(crate) fn search_under(
         *incomplete = true;
     }
 
-    let children = enumerate_children(source, element, budget)?;
+    let children = enumerate_children(source, element, budget, incomplete)?;
     for child in children {
         search_under(source, &child, depth + 1, budget, entry, out, incomplete)?;
     }
@@ -153,16 +154,14 @@ pub(crate) fn enumerate_children(
     source: &UiaTreeSource,
     element: &UIAElement,
     budget: &WalkBudget,
+    incomplete: &mut bool,
 ) -> Result<Vec<UIAElement>, AdapterError> {
     let mut children = Vec::new();
     let mut current = match source.first_child(element) {
         Ok(first) => first,
         Err(failure) if failure.is_exhaustion() => return Ok(children),
         Err(failure) => {
-            return Err(super::automation::uia_failure_error(
-                failure,
-                "descend to a stored ref",
-            ));
+            return descent_failure(failure, children, incomplete, "descend to a stored ref");
         }
     };
     loop {
@@ -175,14 +174,41 @@ pub(crate) fn enumerate_children(
             Ok(sibling) => current = sibling,
             Err(failure) if failure.is_exhaustion() => break,
             Err(failure) => {
-                return Err(super::automation::uia_failure_error(
+                return descent_failure(
                     failure,
+                    children,
+                    incomplete,
                     "walk a stored ref's siblings",
-                ));
+                );
             }
         }
     }
     Ok(children)
+}
+
+/// Classifies a descent failure under U4's read disposition: a settled
+/// absence means the node enumerates nothing (a real answer, not
+/// incomplete); a transport failure or vanished node marks the search
+/// incomplete and the descent continues - a non-target node dying
+/// mid-descent under live churn is not evidence the target is gone; a
+/// terminal failure propagates.
+fn descent_failure(
+    failure: super::automation::UiaFailure,
+    children: Vec<UIAElement>,
+    incomplete: &mut bool,
+    context: &str,
+) -> Result<Vec<UIAElement>, AdapterError> {
+    match super::automation::uia_failure_disposition(failure) {
+        crate::system::hresult::ReadDisposition::SettledAbsence => Ok(children),
+        crate::system::hresult::ReadDisposition::Retryable
+        | crate::system::hresult::ReadDisposition::Unavailable => {
+            *incomplete = true;
+            Ok(children)
+        }
+        crate::system::hresult::ReadDisposition::Terminal => Err(
+            super::automation::uia_failure_error(failure, context),
+        ),
+    }
 }
 
 /// Builds the candidate from the walk-composed evidence the search already
@@ -357,7 +383,8 @@ mod tests {
             path.extend_from_slice(prefix);
             return Ok(Some((path, properties, node_evidence, failed)));
         }
-        let children = enumerate_children(source, element, budget)?;
+        let mut ignored = false;
+        let children = enumerate_children(source, element, budget, &mut ignored)?;
         for (index, child) in children.iter().enumerate() {
             prefix.push(index);
             if let Some(found) = find_secure(source, child, depth + 1, budget, prefix)? {

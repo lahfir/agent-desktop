@@ -89,12 +89,20 @@ impl UiaFailure {
 /// the target — a property value, a `Name`, a `ClassName`, a window title, or
 /// a `ProviderDescription` — may reach this function, because
 /// `ref_action.rs` clones adapter error text into session trace segments.
+///
+/// Every error is stamped with the typed `complete`/`retryable` pair the
+/// resolution retry loop and core's hydration read off the details payload
+/// (U4): a settled absence or terminal failure is complete and never retried,
+/// a transport failure or a vanished element is incomplete and retryable.
 pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
+    let (complete, retryable) = uia_failure_disposition(failure).retry_details();
+    let details = serde_json::json!({ "complete": complete, "retryable": retryable });
     match failure {
         UiaFailure::Hresult(hresult) => {
             let (code, suggestion) = hresult_disposition(hresult);
             let error = AdapterError::new(code, format!("UI Automation could not {context}"))
-                .with_platform_detail(com_hresult_detail(hresult));
+                .with_platform_detail(com_hresult_detail(hresult))
+                .with_details(details);
             match suggestion {
                 Some(hint) => error.with_suggestion(hint),
                 None => error,
@@ -104,7 +112,24 @@ pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
             sentinel_disposition(sentinel),
             format!("UI Automation could not {context}"),
         )
-        .with_platform_detail(format!("UI Automation client status {sentinel}")),
+        .with_platform_detail(format!("UI Automation client status {sentinel}"))
+        .with_details(details),
+    }
+}
+
+/// The read-path disposition of a UI Automation failure across both branches,
+/// driving the `complete`/`retryable` stamp on `uia_failure_error` (U4).
+pub(crate) fn uia_failure_disposition(failure: UiaFailure) -> crate::system::hresult::ReadDisposition {
+    match failure {
+        UiaFailure::Hresult(hresult) => crate::system::hresult::classify_read_hresult(hresult),
+        UiaFailure::Sentinel(sentinel) => match sentinel {
+            ERR_TIMEOUT | ERR_INACTIVE => crate::system::hresult::ReadDisposition::Retryable,
+            ERR_NOTFOUND | ERR_INVALID_OBJECT => {
+                crate::system::hresult::ReadDisposition::Unavailable
+            }
+            ERR_INVALID_ARG => crate::system::hresult::ReadDisposition::SettledAbsence,
+            _ => crate::system::hresult::ReadDisposition::Terminal,
+        },
     }
 }
 

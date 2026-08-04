@@ -117,8 +117,12 @@ pub(crate) fn select_by_bounds_hash(
 }
 
 pub(crate) fn stale_ref_error(_entry: &RefEntry) -> AdapterError {
+    let default_retryable = AdapterError::stale_ref("Stored ref does not match any live element")
+        .permits_retry_by_default();
     AdapterError::stale_ref("Stored ref does not match any live element").with_details(json!({
         "kind": "resolve_no_candidate",
+        "complete": true,
+        "retryable": default_retryable,
     }))
 }
 
