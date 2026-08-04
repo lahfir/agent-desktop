@@ -267,10 +267,7 @@ mod tests {
         let stored = entry(Some("icon-1"), "button", None, None, None);
         let live = evidence(None, None, None, Some("icon-1"));
 
-        assert_eq!(
-            candidate_outcome(&stored, &live),
-            CandidateOutcome::Matched
-        );
+        assert_eq!(candidate_outcome(&stored, &live), CandidateOutcome::Matched);
     }
 
     /// A mutable-value role whose name mirrors its current value has no stable
@@ -281,13 +278,16 @@ mod tests {
     /// candidate's drifted name mirrors its own new value.
     #[test]
     fn a_mutable_value_role_with_a_drifted_live_name_still_matches_on_native_id() {
-        let stored = entry(Some("field-1"), "textfield", Some("Old Value"), Some("Old Value"), None);
+        let stored = entry(
+            Some("field-1"),
+            "textfield",
+            Some("Old Value"),
+            Some("Old Value"),
+            None,
+        );
         let live = evidence(Some("New Value"), Some("New Value"), None, Some("field-1"));
 
-        assert_eq!(
-            candidate_outcome(&stored, &live),
-            CandidateOutcome::Matched
-        );
+        assert_eq!(candidate_outcome(&stored, &live), CandidateOutcome::Matched);
     }
 
     /// The same mutable-value role with a **stable** name (a labelled field
@@ -296,8 +296,19 @@ mod tests {
     /// name would. The composition never special-cases mutable roles itself.
     #[test]
     fn a_mutable_value_role_with_a_stable_label_refutes_a_drifted_name() {
-        let stored = entry(Some("field-2"), "textfield", Some("First Name"), Some("Alice"), None);
-        let drifted = evidence(Some("First Name Is Drifted"), Some("Alice"), None, Some("field-2"));
+        let stored = entry(
+            Some("field-2"),
+            "textfield",
+            Some("First Name"),
+            Some("Alice"),
+            None,
+        );
+        let drifted = evidence(
+            Some("First Name Is Drifted"),
+            Some("Alice"),
+            None,
+            Some("field-2"),
+        );
 
         assert_eq!(
             candidate_outcome(&stored, &drifted),
@@ -328,10 +339,7 @@ mod tests {
         let stored = entry(Some("row-1"), "listitem", None, None, None);
         let live = evidence(None, None, None, Some("row-1"));
 
-        assert_eq!(
-            candidate_outcome(&stored, &live),
-            CandidateOutcome::Matched
-        );
+        assert_eq!(candidate_outcome(&stored, &live), CandidateOutcome::Matched);
     }
 
     /// An id `Match` and an unreadable stable-text field is incomplete-

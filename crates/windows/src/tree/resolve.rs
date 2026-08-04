@@ -2,9 +2,9 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, NativeHandle, RefEnt
 
 #[cfg(target_os = "windows")]
 use super::element::UIAElement;
+use super::resolve_match::stale_ref_error;
 #[cfg(target_os = "windows")]
 use super::resolve_match::{CandidateOutcome, ambiguous_target_error};
-use super::resolve_match::stale_ref_error;
 #[cfg(target_os = "windows")]
 use super::resolve_search::{
     MAX_RESOLVE_DEPTH, can_use_path_fast_path, element_at_path, geometry_matches,
@@ -137,7 +137,10 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
 /// resolution verified. The token-less case cannot reach here:
 /// `resolve_window_root` fails closed on it first.
 #[cfg(target_os = "windows")]
-pub(crate) fn into_verified_handle(element: super::element::UIAElement, entry: &RefEntry) -> NativeHandle {
+pub(crate) fn into_verified_handle(
+    element: super::element::UIAElement,
+    entry: &RefEntry,
+) -> NativeHandle {
     element
         .with_verified_process(
             entry.process.pid.get(),
@@ -196,7 +199,10 @@ pub(crate) fn sleep_before_retry(deadline: Deadline) {
 /// details rather than discarding them for a bare `TIMEOUT`.
 #[cfg(target_os = "windows")]
 pub(crate) fn mark_deadline_elapsed(mut error: AdapterError) -> AdapterError {
-    let mut details = error.details.take().unwrap_or_else(|| serde_json::json!({}));
+    let mut details = error
+        .details
+        .take()
+        .unwrap_or_else(|| serde_json::json!({}));
     if let Some(object) = details.as_object_mut() {
         object.insert("deadline_elapsed".into(), serde_json::json!(true));
     } else {
@@ -228,7 +234,10 @@ pub(crate) fn resolve_element_strict(
 /// could not be read) fails closed here rather than searching an unverified
 /// window.
 #[cfg(target_os = "windows")]
-pub(crate) fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElement, AdapterError> {
+pub(crate) fn resolve_window_root(
+    entry: &RefEntry,
+    deadline: Deadline,
+) -> Result<UIAElement, AdapterError> {
     let window_id = entry
         .source
         .source_window_id

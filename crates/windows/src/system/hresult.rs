@@ -71,7 +71,10 @@ impl ReadDisposition {
 pub(crate) fn classify_read_hresult(hresult: i32) -> ReadDisposition {
     match hresult {
         UIA_E_NOTSUPPORTED | E_INVALIDARG | E_POINTER => ReadDisposition::SettledAbsence,
-        UIA_E_TIMEOUT | RPC_E_DISCONNECTED | RPC_E_SERVERFAULT | RPC_S_SERVER_UNAVAILABLE
+        UIA_E_TIMEOUT
+        | RPC_E_DISCONNECTED
+        | RPC_E_SERVERFAULT
+        | RPC_S_SERVER_UNAVAILABLE
         | RPC_S_CALL_FAILED => ReadDisposition::Retryable,
         UIA_E_ELEMENTNOTAVAILABLE => ReadDisposition::Unavailable,
         _ => ReadDisposition::Terminal,
@@ -126,7 +129,6 @@ pub(crate) fn com_hresult_symbol(hresult: i32) -> Option<(&'static str, &'static
     };
     Some(symbol)
 }
-
 
 #[cfg(test)]
 #[path = "hresult_tests.rs"]

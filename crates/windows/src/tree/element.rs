@@ -26,7 +26,10 @@ mod imp {
     /// resolver (`ProcessPayload`), `None` on an element that never verified
     /// one.
     #[derive(Clone)]
-    pub struct UIAElement(pub(crate) uiautomation::UIElement, pub(crate) Option<ProcessPayload>);
+    pub struct UIAElement(
+        pub(crate) uiautomation::UIElement,
+        pub(crate) Option<ProcessPayload>,
+    );
 
     impl From<uiautomation::UIElement> for UIAElement {
         fn from(element: uiautomation::UIElement) -> Self {
@@ -76,7 +79,9 @@ impl UIAElement {
     /// The verified process identity, if this element resolved through the
     /// strict resolver.
     pub(crate) fn verified_process(&self) -> Option<(u32, &str)> {
-        self.1.as_ref().map(|payload| (payload.pid, payload.token.as_str()))
+        self.1
+            .as_ref()
+            .map(|payload| (payload.pid, payload.token.as_str()))
     }
 }
 

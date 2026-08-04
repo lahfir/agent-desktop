@@ -1,6 +1,4 @@
-use super::{
-    live_actions, live_bounds, live_element, live_state, live_value, read_live_element,
-};
+use super::{live_actions, live_bounds, live_element, live_state, live_value, read_live_element};
 use crate::tree::automation::root_from_hwnd;
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
@@ -15,9 +13,10 @@ fn fixture_pid(fixture: &HostedFixture) -> u32 {
 fn verified_handle(fixture: &HostedFixture) -> Result<NativeHandle, AdapterError> {
     let deadline = deadline();
     let root = root_from_hwnd(fixture.handle(), deadline)?;
-    let token = crate::system::process_identity::token_for_pid(ProcessId::new(fixture_pid(fixture)))
-        .expect("a live fixture process has a token")
-        .expect("a token reads for a live fixture");
+    let token =
+        crate::system::process_identity::token_for_pid(ProcessId::new(fixture_pid(fixture)))
+            .expect("a live fixture process has a token")
+            .expect("a token reads for a live fixture");
     Ok(root
         .with_verified_process(fixture_pid(fixture), token)
         .into_native_handle())
@@ -37,7 +36,9 @@ fn each_reader_projects_live_values_from_a_resolved_fixture_handle() {
     assert!(element.states_complete);
     assert!(!element.state.role.is_empty());
     assert!(
-        element.bounds.is_some_and(|rect| rect.width > 0.0 && rect.height > 0.0),
+        element
+            .bounds
+            .is_some_and(|rect| rect.width > 0.0 && rect.height > 0.0),
         "a visible fixture window has positive-area bounds"
     );
 
@@ -66,7 +67,10 @@ fn the_secure_control_s_live_value_is_withheld_at_the_reader_path() {
         .expect("the blank secure ref resolves through path and geometry");
     let read = read_live_element(&handle, deadline()).expect("the shared read succeeds");
     let value = live_value(&read);
-    assert_eq!(value, None, "a secure control's value is absent at the reader");
+    assert_eq!(
+        value, None,
+        "a secure control's value is absent at the reader"
+    );
     let element = live_element(&read).expect("the element projection succeeds");
     assert_eq!(element.state.value, None);
 }
@@ -117,8 +121,12 @@ fn the_payload_type_round_trips_through_a_native_handle() {
     let handle = root
         .with_verified_process(fixture_pid(&fixture), "token".to_string())
         .into_native_handle();
-    let downcast = handle.downcast_ref::<UIAElement>().expect("a UIAElement payload");
-    let (pid, token) = downcast.verified_process().expect("verified process present");
+    let downcast = handle
+        .downcast_ref::<UIAElement>()
+        .expect("a UIAElement payload");
+    let (pid, token) = downcast
+        .verified_process()
+        .expect("verified process present");
     assert_eq!(pid, fixture_pid(&fixture));
     assert_eq!(token, "token");
 }
@@ -137,11 +145,16 @@ fn blank_secure_entry(fixture: &HostedFixture) -> RefEntry {
         .expect("the fixture walk succeeds")
         .expect("a secure element exists");
     let (path, _, evidence, _) = found;
-    let rect = evidence.ref_evidence.bounds.known().expect("positive-area bounds");
+    let rect = evidence
+        .ref_evidence
+        .bounds
+        .known()
+        .expect("positive-area bounds");
     let hash = rect.bounds_hash().expect("a positive-area hash");
-    let token = crate::system::process_identity::token_for_pid(ProcessId::new(fixture.process_id()))
-        .unwrap()
-        .expect("a live fixture token");
+    let token =
+        crate::system::process_identity::token_for_pid(ProcessId::new(fixture.process_id()))
+            .unwrap()
+            .expect("a live fixture token");
     RefEntry {
         process: agent_desktop_core::RefProcess {
             pid: ProcessId::new(fixture.process_id()),
@@ -202,12 +215,8 @@ fn find_secure(
         return Ok(Some((path, properties, node_evidence, failed)));
     }
     let mut ignored = false;
-    let children = crate::tree::resolve_search::enumerate_children(
-        source,
-        element,
-        budget,
-        &mut ignored,
-    )?;
+    let children =
+        crate::tree::resolve_search::enumerate_children(source, element, budget, &mut ignored)?;
     for (index, child) in children.iter().enumerate() {
         prefix.push(index);
         if let Some(found) = find_secure(source, child, depth + 1, budget, prefix)? {

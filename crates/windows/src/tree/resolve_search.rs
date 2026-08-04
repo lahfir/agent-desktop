@@ -10,8 +10,7 @@
 //! stored hash must come from a positive-area rectangle (A17-7).
 
 use agent_desktop_core::{
-    AdapterError, ErrorCode, LocatorEvidence, RefEntry,
-    ref_identity::has_meaningful_identity,
+    AdapterError, ErrorCode, LocatorEvidence, RefEntry, ref_identity::has_meaningful_identity,
 };
 use serde_json::json;
 
@@ -131,7 +130,9 @@ pub(crate) fn search_under(
             super::resolve_match::CandidateOutcome::Matched => {
                 out.push(build_candidate(element, &evidence))
             }
-            super::resolve_match::CandidateOutcome::Incomplete if geometry_matches(entry, &evidence) => {
+            super::resolve_match::CandidateOutcome::Incomplete
+                if geometry_matches(entry, &evidence) =>
+            {
                 out.push(build_candidate(element, &evidence));
             }
             super::resolve_match::CandidateOutcome::Incomplete => *incomplete = true,
@@ -205,9 +206,9 @@ fn descent_failure(
             *incomplete = true;
             Ok(children)
         }
-        crate::system::hresult::ReadDisposition::Terminal => Err(
-            super::automation::uia_failure_error(failure, context),
-        ),
+        crate::system::hresult::ReadDisposition::Terminal => {
+            Err(super::automation::uia_failure_error(failure, context))
+        }
     }
 }
 
@@ -220,14 +221,20 @@ pub(crate) fn build_candidate(element: &UIAElement, evidence: &LocatorEvidence) 
     }
 }
 
-
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::*;
-    use agent_desktop_core::{ElementIdentifier, IdentifierEvidence, IdentifierKind, LocatorField, NodeDescriptor};
     use crate::tree::fixture::ensure_test_apartment;
+    use agent_desktop_core::{
+        ElementIdentifier, IdentifierEvidence, IdentifierKind, LocatorField, NodeDescriptor,
+    };
 
-    fn entry(bounds: Option<agent_desktop_core::Rect>, hash: Option<u64>, name: Option<&str>, native: Option<&str>) -> RefEntry {
+    fn entry(
+        bounds: Option<agent_desktop_core::Rect>,
+        hash: Option<u64>,
+        name: Option<&str>,
+        native: Option<&str>,
+    ) -> RefEntry {
         RefEntry {
             process: agent_desktop_core::RefProcess {
                 pid: agent_desktop_core::ProcessId::new(1),
@@ -243,8 +250,14 @@ mod tests {
                     value: value.to_string(),
                 }),
             },
-            geometry: agent_desktop_core::RefGeometry { bounds, bounds_hash: hash },
-            capabilities: agent_desktop_core::RefCapabilities { states: Vec::new(), available_actions: Vec::new() },
+            geometry: agent_desktop_core::RefGeometry {
+                bounds,
+                bounds_hash: hash,
+            },
+            capabilities: agent_desktop_core::RefCapabilities {
+                states: Vec::new(),
+                available_actions: Vec::new(),
+            },
             source: agent_desktop_core::RefSource {
                 source_app: None,
                 source_window_id: None,
@@ -261,7 +274,12 @@ mod tests {
     }
 
     fn rect(width: f64, height: f64) -> agent_desktop_core::Rect {
-        agent_desktop_core::Rect { x: 10.0, y: 10.0, width, height }
+        agent_desktop_core::Rect {
+            x: 10.0,
+            y: 10.0,
+            width,
+            height,
+        }
     }
 
     fn evidence(bounds_hash: Option<u64>) -> LocatorEvidence {
@@ -331,7 +349,9 @@ mod tests {
 
     #[test]
     fn geometry_matches_only_on_the_live_bounds_hash() {
-        let live_hash = rect(40.0, 20.0).bounds_hash().expect("a positive-area hash");
+        let live_hash = rect(40.0, 20.0)
+            .bounds_hash()
+            .expect("a positive-area hash");
         let stored = entry(Some(rect(40.0, 20.0)), Some(live_hash), None, None);
         assert!(geometry_matches(&stored, &evidence(Some(live_hash))));
         assert!(!geometry_matches(&stored, &evidence(None)));
@@ -348,15 +368,22 @@ mod tests {
         ensure_test_apartment();
         let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
         let source = UiaTreeSource::for_root(
-            &crate::tree::automation::root_from_hwnd(fixture.handle(), crate::tree::walker_fake::deadline())
-                .expect("the fixture resolves"),
+            &crate::tree::automation::root_from_hwnd(
+                fixture.handle(),
+                crate::tree::walker_fake::deadline(),
+            )
+            .expect("the fixture resolves"),
         )
         .expect("a tree source");
-        let prepared = source.prepare_root(
-            &crate::tree::automation::root_from_hwnd(fixture.handle(), crate::tree::walker_fake::deadline())
+        let prepared = source
+            .prepare_root(
+                &crate::tree::automation::root_from_hwnd(
+                    fixture.handle(),
+                    crate::tree::walker_fake::deadline(),
+                )
                 .expect("the fixture resolves"),
-        )
-        .expect("a prepared root");
+            )
+            .expect("a prepared root");
         let budget = WalkBudget::new(10, crate::tree::walker_fake::deadline());
         let mut prefix = Vec::new();
         let found = find_secure(&source, &prepared, 0, &budget, &mut prefix)
@@ -373,7 +400,15 @@ mod tests {
         depth: u8,
         budget: &WalkBudget,
         prefix: &mut Vec<usize>,
-    ) -> Result<Option<(agent_desktop_core::refs::RefPath, crate::tree::properties::ElementProperties, LocatorEvidence, u64)>, AdapterError> {
+    ) -> Result<
+        Option<(
+            agent_desktop_core::refs::RefPath,
+            crate::tree::properties::ElementProperties,
+            LocatorEvidence,
+            u64,
+        )>,
+        AdapterError,
+    > {
         if depth >= 10 {
             return Ok(None);
         }

@@ -33,7 +33,9 @@ pub(crate) fn resolve_locator_anchor(
     entry: &RefEntry,
     deadline: Deadline,
 ) -> Result<NativeHandle, AdapterError> {
-    super::resolve::retry_incomplete_until(deadline, || resolve_locator_anchor_once(entry, deadline))
+    super::resolve::retry_incomplete_until(deadline, || {
+        resolve_locator_anchor_once(entry, deadline)
+    })
 }
 
 /// The non-Windows twin. No UI Automation elements exist there, so every
@@ -47,7 +49,10 @@ pub(crate) fn resolve_locator_anchor(
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_locator_anchor_once(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle, AdapterError> {
+fn resolve_locator_anchor_once(
+    entry: &RefEntry,
+    deadline: Deadline,
+) -> Result<NativeHandle, AdapterError> {
     let root = super::resolve::resolve_window_root(entry, deadline)?;
     let source = UiaTreeSource::for_root(&root)?;
     let prepared = source.prepare_root(&root)?;
@@ -59,7 +64,8 @@ fn resolve_locator_anchor_once(entry: &RefEntry, deadline: Deadline) -> Result<N
         return Err(stale_ref_error(entry));
     }
 
-    let Some(candidate) = anchor_path_landed(&source, &prepared, &entry.scope.path, &budget)? else {
+    let Some(candidate) = anchor_path_landed(&source, &prepared, &entry.scope.path, &budget)?
+    else {
         return Err(stale_ref_error(entry));
     };
     let (_, evidence, _) = source.evidence(&candidate);
@@ -180,11 +186,16 @@ mod windows_only {
             .expect("a secure element exists");
         let stored_path = found.path;
         let evidence = found.evidence;
-        let rect = evidence.ref_evidence.bounds.known().expect("positive-area bounds");
+        let rect = evidence
+            .ref_evidence
+            .bounds
+            .known()
+            .expect("positive-area bounds");
         let hash = rect.bounds_hash().expect("a positive-area hash");
-        let token = crate::system::process_identity::token_for_pid(ProcessId::new(fixture.process_id()))
-            .unwrap()
-            .expect("a live fixture token");
+        let token =
+            crate::system::process_identity::token_for_pid(ProcessId::new(fixture.process_id()))
+                .unwrap()
+                .expect("a live fixture token");
         let chosen_path = if path.is_empty() { stored_path } else { path };
         RefEntry {
             process: agent_desktop_core::RefProcess {
@@ -248,12 +259,8 @@ mod windows_only {
             }));
         }
         let mut ignored = false;
-        let children = crate::tree::resolve_search::enumerate_children(
-            source,
-            element,
-            budget,
-            &mut ignored,
-        )?;
+        let children =
+            crate::tree::resolve_search::enumerate_children(source, element, budget, &mut ignored)?;
         for (index, child) in children.iter().enumerate() {
             prefix.push(index);
             if let Some(found) = walk_first_secure(source, child, depth + 1, budget, prefix)? {

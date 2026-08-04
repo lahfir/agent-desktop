@@ -119,7 +119,9 @@ pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
 
 /// The read-path disposition of a UI Automation failure across both branches,
 /// driving the `complete`/`retryable` stamp on `uia_failure_error`.
-pub(crate) fn uia_failure_disposition(failure: UiaFailure) -> crate::system::hresult::ReadDisposition {
+pub(crate) fn uia_failure_disposition(
+    failure: UiaFailure,
+) -> crate::system::hresult::ReadDisposition {
     match failure {
         UiaFailure::Hresult(hresult) => crate::system::hresult::classify_read_hresult(hresult),
         UiaFailure::Sentinel(sentinel) => match sentinel {
