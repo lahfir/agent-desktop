@@ -46,7 +46,7 @@ mod imp {
     };
     use crate::tree::element::{UIAElement, uia_element};
     use crate::tree::name_evidence::read_label;
-    use crate::tree::properties::{ElementProperties, read_live};
+    use crate::tree::properties::{ElementProperties, read_live_bounded};
     use crate::tree::walker::walk_vocabulary;
     use agent_desktop_core::{AdapterError, Deadline, NativeHandle, ProcessId};
 
@@ -58,12 +58,25 @@ mod imp {
     /// reports the resolved target vanished, and fails retryable
     /// `AppUnresponsive` when an essential slot reads `Unknown` - it never
     /// answers with a partial bundle claiming completeness.
+    ///
+    /// Wires `properties::read_live_bounded` rather than the unbounded
+    /// `read_live`: the property set is 42 properties wide, one cross-process
+    /// call apiece, and nothing checked the operation deadline between them -
+    /// a poll-style caller (`resolve.rs`'s retry loop, core's ref-action poll)
+    /// could overshoot its own user-visible timeout on every single iteration.
+    /// `read_live_bounded` consults the same deadline between property reads
+    /// and truncates the set rather than running past it; a truncated read
+    /// still reaches the completeness gate below, which is the established
+    /// incomplete/retryable shape for "did not finish in time" - no new
+    /// timing abstraction, no change to what a successful read returns.
     pub fn read_live_element(
         handle: &NativeHandle,
         deadline: Deadline,
     ) -> Result<LiveRead, AdapterError> {
         let element = uia_element(handle)?;
-        read_live_element_core(element, deadline, corroborate_verified_process, read_live)
+        read_live_element_core(element, deadline, corroborate_verified_process, |element| {
+            read_live_bounded(element, deadline)
+        })
     }
 
     /// The read's body, generic over how process-instance corroboration and
@@ -220,17 +233,33 @@ fn known_actions(actions: LocatorField<Vec<String>>) -> Result<Vec<String>, Adap
 /// Reports whether the read's own discarded errors already settled the
 /// resolved target as vanished.
 ///
-/// Reuses the classification `automation_classify.rs`/`hresult.rs` already
-/// computed into each error rather than re-deriving it: within
-/// `properties::read_live`'s error vector, `ErrorCode::StaleRef` is produced
-/// exclusively by `ReadDisposition::Unavailable` - `UIA_E_ELEMENTNOTAVAILABLE`
-/// on the HRESULT branch, `ERR_INVALID_OBJECT` on the sentinel branch - and
-/// that disposition is the only one this module treats as a settled-stale
-/// read of the resolved target rather than a retryable transport failure.
+/// Keyed on `error.code` alone, deliberately not on a code-plus-retryable-flag
+/// coincidence. Every entry in the vector this function inspects comes from
+/// `properties::read_live_bounded`, and that vector can only ever be built
+/// two ways: a property-read failure, always classified through
+/// `uia_failure_error` - which decides the code through
+/// `hresult::hresult_record` (HRESULT branch) or `automation_classify.rs`'s
+/// `sentinel_record` (sentinel branch), the only two places `StaleRef` can
+/// enter this vector, each naming it for exactly one family
+/// (`UIA_E_ELEMENTNOTAVAILABLE`, `ERR_INVALID_OBJECT`), both
+/// `ReadDisposition::Unavailable` and exhaustively pinned by
+/// `hresult_tests.rs` and `automation_classify.rs`'s own test module - or the
+/// deadline's own `timeout_error()` push on truncation, which is always
+/// `ErrorCode::Timeout` and never reaches `uia_failure_error` at all. Neither
+/// path can produce a `StaleRef` that means anything else, so a `StaleRef`
+/// code here is unambiguous. (The rest of this crate also constructs
+/// `ErrorCode::StaleRef` directly - `resolve_match.rs`'s `stale_ref_error`,
+/// this module's own `stale_reader_error`, `surfaces.rs` - but none of those
+/// errors can reach this vector, since it only ever collects property-read
+/// failures and the deadline's truncation stamp.) The check also does not
+/// need to lean on whether a later `.with_details` call (as
+/// `properties::property_read_error` makes) preserves a typed retryable
+/// flag: `AdapterError::with_details` only touches `retryability` when the
+/// new details carry their own `retryable` key, so a wrap that omits one -
+/// `property_read_error`'s does - leaves whatever stamp was already there
+/// unchanged, never loses it.
 fn target_read_reports_vanished(errors: &[AdapterError]) -> bool {
-    errors
-        .iter()
-        .any(|error| error.code == ErrorCode::StaleRef && error.is_explicitly_retryable())
+    errors.iter().any(|error| error.code == ErrorCode::StaleRef)
 }
 
 fn essential_live_evidence_complete(evidence: &LocatorEvidence) -> bool {
@@ -265,6 +294,14 @@ fn stale_reader_error() -> AdapterError {
 #[cfg(all(test, target_os = "windows"))]
 #[path = "live_read_tests.rs"]
 mod tests;
+
+/// Split from `live_read_tests.rs` to keep both files under the crate's
+/// per-file line cap: this module owns the one test that mutates the
+/// fixture's content control cross-process, plus the Win32 lookup helpers
+/// that only that test needs.
+#[cfg(all(test, target_os = "windows"))]
+#[path = "live_read_edit_tests.rs"]
+mod edit_tests;
 /// The essential-completeness gate is a pure predicate over the evidence, so
 /// it is pinned without a UI Automation client: any essential slot reading
 /// `Unknown` - the completeness rule - rejects the bundle, and the

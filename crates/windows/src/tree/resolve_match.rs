@@ -35,10 +35,12 @@ pub(crate) enum CandidateOutcome {
 /// index-keyed refs onto a different element). The corroboration tier runs
 /// only when the stored ref carries a stable text identity
 /// (`has_stable_text_identity`): an id `Match` + stable-text `NoMatch` is
-/// refuted, and a `NoMatch` never collapses an `Unknown` - the tier keys the
-/// incomplete flag on a live stable-text field reading `LocatorField::Unknown`,
-/// never on the verdict alone, because `stable_text_match` returns the same
-/// `Unknown` for a structurally-absent live field as for a failed read. An
+/// refuted, and a `NoMatch` never collapses an `Unknown`. The tier keys the
+/// incomplete flag on the verdict itself: an `IdentityMatch::Unknown`, which
+/// core produces when a decisive field reads `LocatorField::Unknown` (a read
+/// that failed), becomes `Incomplete`. A structurally absent field is not
+/// `Unknown` and settles `NoMatch` instead, because `match_primary_identity`
+/// returns `NoMatch` when both the primary and fallback fields are `Absent`. An
 /// id `Match` on a ref with no stored text identity (an icon-only button)
 /// resolves without corroboration, preserving the previous behaviour. An id-less ref
 /// is routed through `identity_match`, which performs the text match itself.
@@ -54,18 +56,21 @@ pub(crate) fn candidate_outcome(entry: &RefEntry, evidence: &LocatorEvidence) ->
         && id_tier == agent_desktop_core::IdentityMatch::Match
         && has_stable_text_identity(entry)
     {
-        return match stable_text_match(
+        return outcome_of(stable_text_match(
             entry,
             &evidence.name,
             &evidence.value,
             &evidence.description,
-        ) {
-            agent_desktop_core::IdentityMatch::Match => CandidateOutcome::Matched,
-            agent_desktop_core::IdentityMatch::NoMatch => CandidateOutcome::Refuted,
-            agent_desktop_core::IdentityMatch::Unknown => CandidateOutcome::Incomplete,
-        };
+        ));
     }
-    match id_tier {
+    outcome_of(id_tier)
+}
+
+/// The one mapping from a core verdict to this resolver's outcome. Written
+/// once so the two tiers cannot drift apart: an unreadable field is always
+/// `Incomplete`, never a refutation.
+fn outcome_of(verdict: agent_desktop_core::IdentityMatch) -> CandidateOutcome {
+    match verdict {
         agent_desktop_core::IdentityMatch::Match => CandidateOutcome::Matched,
         agent_desktop_core::IdentityMatch::NoMatch => CandidateOutcome::Refuted,
         agent_desktop_core::IdentityMatch::Unknown => CandidateOutcome::Incomplete,

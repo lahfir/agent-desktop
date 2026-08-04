@@ -146,23 +146,23 @@ fn live_window_title(handle: super::window_enum::WindowHandle) -> String {
     }
 }
 
-/// Re-verifies a freshly listed window's identity per the two-sided rule: the
-/// strict check on the fresh listing, and the stored-evidence check that
-/// stored resolution will rely on; both exercised so neither goes unused
-/// while a seam is fresh. A window whose process changed mid-listing fails
-/// the inventory rather than emitting a half-identified entry, so this
-/// returns the failure instead of only logging it.
+/// Re-verifies a freshly listed window's identity per the two-sided rule, and
+/// both checks bind: the strict one covers app and title, which the stored
+/// path deliberately does not, while the stored one covers live handle
+/// ownership, which the strict path cannot see because its pid was derived
+/// from that same handle a moment earlier. A window destroyed or re-owned
+/// between assembly and verification fails the inventory rather than
+/// emitting a half-identified entry, so both failures return.
 fn re_verify(info: &WindowInfo) -> Result<(), AdapterError> {
     let handle = parse_handle(&info.id);
     let Some(evidence) = WindowIdentityEvidence::from_info(handle, info) else {
         return Ok(());
     };
     evidence.verify_strict()?;
-    let _ = evidence.verify_stored();
-    Ok(())
+    evidence.verify_stored()
 }
 
-fn parse_handle(id: &str) -> super::window_enum::WindowHandle {
+pub(crate) fn parse_handle(id: &str) -> super::window_enum::WindowHandle {
     id.strip_prefix("w-")
         .and_then(|number| number.parse::<usize>().ok())
         .map(|value| value as super::window_enum::WindowHandle)

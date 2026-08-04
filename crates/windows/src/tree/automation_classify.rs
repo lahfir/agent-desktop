@@ -10,14 +10,21 @@
 //! (`automation.rs`): the table grows every time a newly-observed HRESULT or
 //! sentinel needs a mapping, while the client plumbing does not change with
 //! it.
+//!
+//! Each code family is named exactly once. The HRESULT side is
+//! `hresult::hresult_record` (`crates/windows/src/system/hresult.rs`); the
+//! sentinel side is this module's own `sentinel_record`. Before this, one
+//! code's read-path `ReadDisposition` and its caller-facing `ErrorCode` lived
+//! in two separate matches that agreed only because both were edited by hand
+//! together - `ERR_INVALID_OBJECT`'s `StaleRef`/`Unavailable` pairing was
+//! never itself asserted anywhere. One record per code makes that pairing the
+//! only thing that can be written down.
 
 use agent_desktop_core::{AdapterError, ErrorCode};
 
 use crate::system::hresult::{
-    CO_E_NOTINITIALIZED, E_ACCESSDENIED, E_INVALIDARG, E_POINTER, RPC_E_DISCONNECTED,
-    RPC_E_SERVERFAULT, RPC_S_CALL_FAILED, RPC_S_SERVER_UNAVAILABLE, UIA_E_ELEMENTNOTAVAILABLE,
-    UIA_E_ELEMENTNOTENABLED, UIA_E_INVALIDOPERATION, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT,
-    com_hresult_detail,
+    ReadDisposition, UIA_E_ELEMENTNOTAVAILABLE, classify_read_hresult, com_hresult_detail,
+    hresult_record,
 };
 
 pub const ERR_NONE: i32 = 0;
@@ -30,9 +37,6 @@ pub const ERR_FORMAT: i32 = 6;
 pub const ERR_INVALID_OBJECT: i32 = 7;
 pub const ERR_ALREADY_RUNNING: i32 = 8;
 pub const ERR_INVALID_ARG: i32 = 9;
-
-const COM_UNINITIALIZED_SUGGESTION: &str =
-    "Join the calling thread to the COM multithreaded apartment before observing the desktop";
 
 /// One UI Automation failure, already split on the discriminator the crate's
 /// `Error` type mixes into a single `i32`.
@@ -71,6 +75,10 @@ impl UiaFailure {
 /// resolution retry loop and core's hydration read off the details payload
 /// a settled absence or terminal failure is complete and never retried,
 /// a transport failure or a vanished element is incomplete and retryable.
+/// The disposition and the `ErrorCode` both trace back to the same record -
+/// `hresult_record` or `sentinel_record` - so they can never come from
+/// different facts about the same code, even though this function reaches
+/// them through the thin, separately-testable projections below.
 pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
     let (complete, retryable) = uia_failure_disposition(failure).retry_details();
     let details = serde_json::json!({ "complete": complete, "retryable": retryable });
@@ -95,54 +103,78 @@ pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
 }
 
 /// The read-path disposition of a UI Automation failure across both branches,
-/// driving the `complete`/`retryable` stamp on `uia_failure_error`.
-pub(crate) fn uia_failure_disposition(
-    failure: UiaFailure,
-) -> crate::system::hresult::ReadDisposition {
+/// driving the `complete`/`retryable` stamp on `uia_failure_error`. The
+/// HRESULT branch is `hresult::classify_read_hresult`, itself a one-line
+/// projection of `hresult_record`; the sentinel branch reads
+/// `sentinel_record` directly.
+pub(crate) fn uia_failure_disposition(failure: UiaFailure) -> ReadDisposition {
     match failure {
-        UiaFailure::Hresult(hresult) => crate::system::hresult::classify_read_hresult(hresult),
-        UiaFailure::Sentinel(sentinel) => match sentinel {
-            ERR_TIMEOUT | ERR_INACTIVE => crate::system::hresult::ReadDisposition::Retryable,
-            ERR_NOTFOUND | ERR_INVALID_OBJECT => {
-                crate::system::hresult::ReadDisposition::Unavailable
-            }
-            ERR_INVALID_ARG => crate::system::hresult::ReadDisposition::SettledAbsence,
-            _ => crate::system::hresult::ReadDisposition::Terminal,
+        UiaFailure::Hresult(hresult) => classify_read_hresult(hresult),
+        UiaFailure::Sentinel(sentinel) => sentinel_record(sentinel).disposition,
+    }
+}
+
+/// A one-line projection of `hresult_record`, in the `(ErrorCode, suggestion)`
+/// shape `uia_failure_error`'s HRESULT branch consumes.
+fn hresult_disposition(hresult: i32) -> (ErrorCode, Option<&'static str>) {
+    let record = hresult_record(hresult);
+    (record.code, record.suggestion)
+}
+
+/// One `uiautomation` crate sentinel's complete classification, named exactly
+/// once - the sentinel counterpart to `hresult::HresultRecord`.
+struct SentinelRecord {
+    code: ErrorCode,
+    disposition: ReadDisposition,
+}
+
+/// Names every sentinel this crate's read paths raise, exactly once.
+///
+/// An unlisted code is `Terminal`/`ErrorCode::Internal`, the same default
+/// `hresult_record` uses for an unnamed HRESULT.
+fn sentinel_record(sentinel: i32) -> SentinelRecord {
+    match sentinel {
+        ERR_NOTFOUND => SentinelRecord {
+            code: ErrorCode::ElementNotFound,
+            disposition: ReadDisposition::Unavailable,
+        },
+        ERR_NULL_PTR => SentinelRecord {
+            code: ErrorCode::ElementNotFound,
+            disposition: ReadDisposition::Terminal,
+        },
+        ERR_TIMEOUT => SentinelRecord {
+            code: ErrorCode::Timeout,
+            disposition: ReadDisposition::Retryable,
+        },
+        ERR_INACTIVE => SentinelRecord {
+            code: ErrorCode::AppUnresponsive,
+            disposition: ReadDisposition::Retryable,
+        },
+        ERR_INVALID_OBJECT => SentinelRecord {
+            code: ErrorCode::StaleRef,
+            disposition: ReadDisposition::Unavailable,
+        },
+        ERR_INVALID_ARG => SentinelRecord {
+            code: ErrorCode::InvalidArgs,
+            disposition: ReadDisposition::SettledAbsence,
+        },
+        ERR_NONE | ERR_TYPE | ERR_FORMAT | ERR_ALREADY_RUNNING => SentinelRecord {
+            code: ErrorCode::Internal,
+            disposition: ReadDisposition::Terminal,
+        },
+        _ => SentinelRecord {
+            code: ErrorCode::Internal,
+            disposition: ReadDisposition::Terminal,
         },
     }
 }
 
-fn hresult_disposition(hresult: i32) -> (ErrorCode, Option<&'static str>) {
-    match hresult {
-        E_ACCESSDENIED => (ErrorCode::PermDenied, None),
-        CO_E_NOTINITIALIZED => (ErrorCode::Internal, Some(COM_UNINITIALIZED_SUGGESTION)),
-        E_INVALIDARG | E_POINTER => (ErrorCode::InvalidArgs, None),
-        UIA_E_ELEMENTNOTAVAILABLE => (ErrorCode::StaleRef, None),
-        UIA_E_ELEMENTNOTENABLED => (ErrorCode::ActionFailed, None),
-        UIA_E_NOTSUPPORTED => (ErrorCode::ActionNotSupported, None),
-        UIA_E_TIMEOUT => (ErrorCode::Timeout, None),
-        UIA_E_INVALIDOPERATION => (ErrorCode::ActionFailed, None),
-        RPC_E_DISCONNECTED | RPC_E_SERVERFAULT | RPC_S_SERVER_UNAVAILABLE | RPC_S_CALL_FAILED => {
-            (ErrorCode::AppUnresponsive, None)
-        }
-        _ => (ErrorCode::Internal, None),
-    }
-}
-
-/// Split out so `automation.rs`'s tests can pin every named sentinel's
-/// mapping without a catch-all guess; `pub(crate)` because that pin lives in
-/// `automation`'s own test module, a sibling of this one rather than a
-/// descendant.
+/// A one-line projection of `sentinel_record`, split out so `automation.rs`'s
+/// tests can pin every named sentinel's `ErrorCode` without a catch-all
+/// guess; `pub(crate)` because that pin lives in `automation`'s own test
+/// module, a sibling of this one rather than a descendant.
 pub(crate) fn sentinel_disposition(sentinel: i32) -> ErrorCode {
-    match sentinel {
-        ERR_NOTFOUND | ERR_NULL_PTR => ErrorCode::ElementNotFound,
-        ERR_TIMEOUT => ErrorCode::Timeout,
-        ERR_INACTIVE => ErrorCode::AppUnresponsive,
-        ERR_INVALID_OBJECT => ErrorCode::StaleRef,
-        ERR_INVALID_ARG => ErrorCode::InvalidArgs,
-        ERR_NONE | ERR_TYPE | ERR_FORMAT | ERR_ALREADY_RUNNING => ErrorCode::Internal,
-        _ => ErrorCode::Internal,
-    }
+    sentinel_record(sentinel).code
 }
 
 /// Rewrites a root-resolution failure so a window that no longer exists is
@@ -159,5 +191,50 @@ pub fn root_resolution_error(failure: UiaFailure) -> AdapterError {
             .with_suggestion("List windows again and retry with a current window handle")
         }
         _ => error,
+    }
+}
+
+/// `sentinel_disposition` and `uia_failure_disposition`'s sentinel branch are
+/// both one-line projections of `sentinel_record` rather than independent
+/// matches, so a future edit that reintroduces a second, separately
+/// maintained match cannot drift from the record without failing this test -
+/// exactly the shape that let `ERR_INVALID_OBJECT`'s `StaleRef`/`Unavailable`
+/// pairing go unasserted.
+#[cfg(test)]
+mod tests {
+    use super::{
+        ERR_ALREADY_RUNNING, ERR_FORMAT, ERR_INACTIVE, ERR_INVALID_ARG, ERR_INVALID_OBJECT,
+        ERR_NONE, ERR_NOTFOUND, ERR_NULL_PTR, ERR_TIMEOUT, ERR_TYPE, ErrorCode, ReadDisposition,
+        UiaFailure, sentinel_disposition, sentinel_record, uia_failure_disposition,
+    };
+
+    #[test]
+    fn a_vanished_elements_sentinel_pairs_stale_ref_with_the_unavailable_disposition() {
+        let record = sentinel_record(ERR_INVALID_OBJECT);
+        assert_eq!(record.code, ErrorCode::StaleRef);
+        assert_eq!(record.disposition, ReadDisposition::Unavailable);
+    }
+
+    #[test]
+    fn every_sentinel_familys_public_projections_never_drift_from_the_record() {
+        for sentinel in [
+            ERR_NOTFOUND,
+            ERR_NULL_PTR,
+            ERR_TIMEOUT,
+            ERR_INACTIVE,
+            ERR_INVALID_OBJECT,
+            ERR_INVALID_ARG,
+            ERR_NONE,
+            ERR_TYPE,
+            ERR_FORMAT,
+            ERR_ALREADY_RUNNING,
+        ] {
+            let record = sentinel_record(sentinel);
+            assert_eq!(sentinel_disposition(sentinel), record.code);
+            assert_eq!(
+                uia_failure_disposition(UiaFailure::Sentinel(sentinel)),
+                record.disposition
+            );
+        }
     }
 }

@@ -101,6 +101,19 @@ fn a_ref_with_no_id_text_or_hash_skips_the_fast_path() {
     assert!(!can_use_path_fast_path(&entry(None, None, None, None)));
 }
 
+/// `can_use_path_fast_path` must apply the same positive-area rule
+/// `provisional_geometry_candidate` promotes on, not a bare
+/// `bounds_hash.is_some()`: a zero-extent stored rectangle still hashes
+/// (`Rect::bounds_hash` only rejects an invalid rectangle), so an id-less,
+/// text-less entry backed by one is not eligible for the geometry tier and
+/// must not qualify for the fast path either.
+#[test]
+fn a_zero_extent_bounds_hash_does_not_qualify_for_the_fast_path() {
+    let mut zero_extent = entry(Some(rect(0.0, 0.0)), Some(1), None, None);
+    zero_extent.scope.path.push(0);
+    assert!(!can_use_path_fast_path(&zero_extent));
+}
+
 #[test]
 fn promotion_requires_a_positive_area_stored_bounds() {
     let positive = entry(Some(rect(40.0, 20.0)), Some(1), None, None);
@@ -136,6 +149,38 @@ fn geometry_matches_only_on_the_live_bounds_hash() {
 fn geometry_matches_never_promotes_a_zero_extent_stored_hash() {
     let stored = entry(None, Some(0x1234), None, None);
     assert!(!geometry_matches(&stored, &evidence(Some(0x1234))));
+}
+
+#[test]
+fn an_id_less_textless_zero_extent_ref_is_unverifiable() {
+    let zero_extent = entry(Some(rect(0.0, 0.0)), Some(0x1234), None, None);
+    assert!(entry_is_unverifiable(&zero_extent));
+
+    let no_bounds_at_all = entry(None, None, None, None);
+    assert!(entry_is_unverifiable(&no_bounds_at_all));
+}
+
+#[test]
+fn a_ref_verifiable_by_any_single_tier_is_not_unverifiable() {
+    let named = entry(None, None, Some("name"), None);
+    assert!(!entry_is_unverifiable(&named));
+
+    let identified = entry(None, None, None, Some("id"));
+    assert!(!entry_is_unverifiable(&identified));
+
+    let geometry_only = entry(Some(rect(40.0, 20.0)), Some(0x1234), None, None);
+    assert!(!entry_is_unverifiable(&geometry_only));
+}
+
+#[test]
+fn should_stop_collecting_fires_only_past_one_match_with_no_stored_hash() {
+    let no_hash = entry(None, None, None, None);
+    assert!(!should_stop_collecting(0, &no_hash));
+    assert!(!should_stop_collecting(1, &no_hash));
+    assert!(should_stop_collecting(2, &no_hash));
+
+    let with_hash = entry(None, Some(0x1234), None, None);
+    assert!(!should_stop_collecting(2, &with_hash));
 }
 
 #[test]

@@ -1,6 +1,9 @@
 use super::{
-    E_INVALIDARG, RPC_E_DISCONNECTED, ReadDisposition, UIA_E_ELEMENTNOTAVAILABLE,
-    UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT, classify_read_hresult,
+    CO_E_NOTINITIALIZED, E_ACCESSDENIED, E_FAIL, E_INVALIDARG, E_NOINTERFACE, E_POINTER,
+    RPC_E_DISCONNECTED, RPC_E_SERVERFAULT, RPC_S_CALL_FAILED, RPC_S_SERVER_UNAVAILABLE,
+    ReadDisposition, UIA_E_ELEMENTNOTAVAILABLE, UIA_E_ELEMENTNOTENABLED, UIA_E_INVALIDOPERATION,
+    UIA_E_NOCLICKABLEPOINT, UIA_E_NOTSUPPORTED, UIA_E_PROXYASSEMBLYNOTLOADED, UIA_E_TIMEOUT,
+    classify_read_hresult, hresult_record,
 };
 use crate::tree::automation::{
     ERR_INVALID_ARG, ERR_NOTFOUND, ERR_TIMEOUT, UiaFailure, root_resolution_error,
@@ -82,4 +85,48 @@ fn the_vanished_element_split_keeps_root_resolution_as_window_not_found() {
         root_resolution_error(failure).code,
         ErrorCode::WindowNotFound
     );
+}
+
+/// `classify_read_hresult` is a one-line projection of `hresult_record`
+/// rather than an independent match, walked here over every named HRESULT so
+/// a future edit that reintroduces a second, separately-maintained match
+/// cannot drift from the record without failing this test.
+#[test]
+fn classify_read_hresult_never_drifts_from_the_single_record() {
+    for hresult in [
+        E_NOINTERFACE,
+        E_POINTER,
+        E_FAIL,
+        E_ACCESSDENIED,
+        E_INVALIDARG,
+        CO_E_NOTINITIALIZED,
+        RPC_E_SERVERFAULT,
+        RPC_E_DISCONNECTED,
+        RPC_S_SERVER_UNAVAILABLE,
+        RPC_S_CALL_FAILED,
+        UIA_E_ELEMENTNOTENABLED,
+        UIA_E_ELEMENTNOTAVAILABLE,
+        UIA_E_NOCLICKABLEPOINT,
+        UIA_E_PROXYASSEMBLYNOTLOADED,
+        UIA_E_NOTSUPPORTED,
+        UIA_E_TIMEOUT,
+        UIA_E_INVALIDOPERATION,
+    ] {
+        assert_eq!(
+            classify_read_hresult(hresult),
+            hresult_record(hresult).disposition,
+            "0x{hresult:08X} disagreed with its own record"
+        );
+    }
+}
+
+/// The pairing this crate's read path leans on for `UIA_E_ELEMENTNOTAVAILABLE`
+/// specifically: a vanished target must carry both `ErrorCode::StaleRef` and
+/// the `Unavailable` disposition together, from the one record, not from two
+/// tables that happen to agree.
+#[test]
+fn a_vanished_elements_record_pairs_stale_ref_with_the_unavailable_disposition() {
+    let record = hresult_record(UIA_E_ELEMENTNOTAVAILABLE);
+    assert_eq!(record.code, ErrorCode::StaleRef);
+    assert_eq!(record.disposition, ReadDisposition::Unavailable);
 }

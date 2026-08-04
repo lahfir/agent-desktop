@@ -240,6 +240,37 @@ fn a_zero_candidate_resolution_is_stale_windows() {
     assert_eq!(stale_ref_error(&stored).code, ErrorCode::StaleRef);
 }
 
+/// The settled stale ref sits on two different retry axes at once, and a
+/// regression on either is invisible from the error code alone. It must stay
+/// query-level retryable, because that is what lets the caller's hydration
+/// take its one fresh re-observation after the tree moved; and it must stay
+/// out of the adapter's own loop, because replaying the same walk against the
+/// same stored evidence cannot produce a different answer.
+#[cfg(target_os = "windows")]
+#[test]
+fn a_settled_stale_ref_is_query_retryable_complete_and_not_adapter_loop_retryable() {
+    let stored = entry(Some("btn-1"), "button", Some("Label"), None, None);
+    let error = stale_ref_error(&stored);
+
+    assert!(
+        error.is_explicitly_retryable(),
+        "hydration's fresh re-observation is gated on this stamp"
+    );
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("complete"))
+            .and_then(serde_json::Value::as_bool),
+        Some(true),
+        "a completed search that found nothing is a complete answer"
+    );
+    assert!(
+        !crate::tree::resolve::is_retryable_resolution_error(&error),
+        "the adapter loop must not replay a settled non-match"
+    );
+}
+
 /// Two candidates carrying the same evidence, neither distinguished by
 /// hash, must stay ambiguous - the caller's `AMBIGUOUS_TARGET`, not a
 /// guess at either one.

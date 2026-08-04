@@ -7,8 +7,9 @@ use super::resolve_match::stale_ref_error;
 use super::resolve_match::{CandidateOutcome, ambiguous_target_error};
 #[cfg(target_os = "windows")]
 use super::resolve_search::{
-    MAX_RESOLVE_DEPTH, SearchContext, can_use_path_fast_path, element_at_path, geometry_matches,
-    identity_unknown_error, search_under,
+    MAX_RESOLVE_DEPTH, SearchContext, can_use_path_fast_path, element_at_path,
+    entry_is_unverifiable, geometry_matches, identity_unknown_error, search_under,
+    should_stop_collecting,
 };
 #[cfg(target_os = "windows")]
 use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
@@ -54,6 +55,9 @@ pub(crate) fn resolve_element_strict(
 
 #[cfg(target_os = "windows")]
 fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle, AdapterError> {
+    if entry_is_unverifiable(entry) {
+        return Err(stale_ref_error(entry));
+    }
     let root = resolve_window_root(entry, deadline)?;
     let source = UiaTreeSource::for_root(&root)?;
     let prepared = source.prepare_root(&root)?;
@@ -99,32 +103,74 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
     };
     search_under(&search_ctx, &prepared, 0, &mut searched, &mut incomplete)?;
 
-    match searched.len() {
-        0 if incomplete => Err(identity_unknown_error(entry)),
-        0 => Err(stale_ref_error(entry)),
-        1 => {
-            let Some(candidate) = searched.into_iter().next() else {
+    let candidate_hashes: Vec<Option<u64>> = searched
+        .iter()
+        .map(|candidate| candidate.bounds_hash)
+        .collect();
+    match classify_search(&candidate_hashes, incomplete, entry) {
+        SearchVerdict::Incomplete => Err(identity_unknown_error(entry)),
+        SearchVerdict::Stale => Err(stale_ref_error(entry)),
+        SearchVerdict::Resolved(index) => {
+            let Some(candidate) = searched.into_iter().nth(index) else {
                 return Err(stale_ref_error(entry));
             };
             Ok(into_verified_handle(candidate.element, entry))
         }
-        _ => {
-            let candidate_hashes: Vec<Option<u64>> = searched
-                .iter()
-                .map(|candidate| candidate.bounds_hash)
-                .collect();
-            match super::resolve_match::select_by_bounds_hash(
-                &candidate_hashes,
-                entry.geometry.bounds_hash,
-            ) {
-                super::resolve_match::Selection::Resolved(index) => {
-                    Ok(into_verified_handle(searched[index].element.clone(), entry))
-                }
-                super::resolve_match::Selection::Ambiguous => {
-                    Err(ambiguous_target_error(entry, searched.len()))
-                }
-            }
-        }
+        SearchVerdict::Ambiguous => Err(ambiguous_target_error(entry, searched.len())),
+    }
+}
+
+/// What the completed (or early-stopped) broad search decided, before a
+/// resolved candidate is wired into a live handle.
+#[cfg(target_os = "windows")]
+enum SearchVerdict {
+    /// A candidate or an unrelated region could not be read and the
+    /// verdict is not yet settled - the caller retries.
+    Incomplete,
+    /// No candidate matched and nothing was left unread.
+    Stale,
+    /// Exactly one candidate settles the match; its index into the
+    /// searched list.
+    Resolved(usize),
+    /// Two or more candidates match and no stored hash disambiguates them.
+    Ambiguous,
+}
+
+/// Composes the searched candidates' tie-break hashes with the incomplete
+/// flag into a verdict, mirroring macOS's ordering
+/// (`crates/macos/src/tree/resolve_search.rs:43-58`) even though nothing on
+/// Windows stops the search itself early: `search_under` always walks the
+/// whole depth-bounded subtree, and `should_stop_collecting` is consulted
+/// only here, post-hoc, after collection is done. Two or more matches with
+/// no stored hash to disambiguate is checked first, because no unread region
+/// could turn an already-conclusive ambiguity into anything else. Only below
+/// that threshold does an incomplete region withhold the verdict, so a sole
+/// match found while another region of the tree stayed unreadable is
+/// retried rather than resolved, and a multi-candidate tie-break with a
+/// stored hash still waits on the full picture before it classifies.
+/// Because the walk itself never stops early, `ambiguous_target_error`'s
+/// candidate count is always the full count found across the entire
+/// searched subtree, never a partial one.
+#[cfg(target_os = "windows")]
+fn classify_search(
+    candidate_hashes: &[Option<u64>],
+    incomplete: bool,
+    entry: &RefEntry,
+) -> SearchVerdict {
+    let stop_collecting = should_stop_collecting(candidate_hashes.len(), entry);
+    if incomplete && !stop_collecting {
+        return SearchVerdict::Incomplete;
+    }
+    match candidate_hashes.len() {
+        0 => SearchVerdict::Stale,
+        1 => SearchVerdict::Resolved(0),
+        _ => match super::resolve_match::select_by_bounds_hash(
+            candidate_hashes,
+            entry.geometry.bounds_hash,
+        ) {
+            super::resolve_match::Selection::Resolved(index) => SearchVerdict::Resolved(index),
+            super::resolve_match::Selection::Ambiguous => SearchVerdict::Ambiguous,
+        },
     }
 }
 
@@ -227,12 +273,20 @@ pub(crate) fn resolve_element_strict(
 
 /// Reaches the stored window's root element from the ref's source window id.
 ///
-/// The fail-closed process gate (the A7-3 wrong-target shape exists to
+/// The fail-closed window gate (the A7-3 wrong-target shape exists to
 /// prevent): a stored ref must not search the tree of a different process that
-/// has since recycled the HWND. The macOS resolver verifies process instance
-/// before searching either. A token-less ref (elevated process whose token
-/// could not be read) fails closed here rather than searching an unverified
-/// window.
+/// has since taken over the HWND. The stored window the ref names is
+/// reconstructed and put through the same stored-evidence rule
+/// (`WindowIdentityEvidence::verify_stored`) the listing path uses, so the
+/// live owner of the handle, not merely the liveness of the stored pid,
+/// decides whether the window is still the ref's window. The macOS resolver
+/// verifies its window record before searching in the same position. A
+/// token-less ref (elevated process whose token could not be read) yields no
+/// evidence and fails closed here rather than searching an unverified window.
+///
+/// The rule's own error is `WINDOW_NOT_FOUND`; the resolver reports its
+/// failures as `STALE_REF`, so the verdict is adopted and the error contract
+/// of this path is unchanged.
 #[cfg(target_os = "windows")]
 pub(crate) fn resolve_window_root(
     entry: &RefEntry,
@@ -243,23 +297,25 @@ pub(crate) fn resolve_window_root(
         .source_window_id
         .as_deref()
         .ok_or_else(|| stale_ref_error(entry))?;
-    if let Some(instance) = entry.process.process_instance.as_deref() {
-        if !crate::system::process_identity::matches_instance(entry.process.pid, instance)? {
-            return Err(stale_ref_error(entry));
-        }
-    } else {
-        return Err(stale_ref_error(entry));
-    }
+    let window = agent_desktop_core::WindowInfo {
+        id: window_id.to_string(),
+        title: entry.source.source_window_title.clone().unwrap_or_default(),
+        app: entry.source.source_app.clone().unwrap_or_default(),
+        pid: entry.process.pid,
+        process_instance: entry.process.process_instance.clone(),
+        bounds: None,
+        state: Default::default(),
+    };
+    crate::system::window_identity::WindowIdentityEvidence::from_info(
+        crate::system::window_ops::parse_handle(&window.id),
+        &window,
+    )
+    .ok_or_else(|| stale_ref_error(entry))?
+    .verify_stored()
+    .map_err(|_| stale_ref_error(entry))?;
+
     crate::tree::surfaces::surface_root(
-        agent_desktop_core::ObservationRoot::Window(&agent_desktop_core::WindowInfo {
-            id: window_id.to_string(),
-            title: entry.source.source_window_title.clone().unwrap_or_default(),
-            app: entry.source.source_app.clone().unwrap_or_default(),
-            pid: entry.process.pid,
-            process_instance: entry.process.process_instance.clone(),
-            bounds: None,
-            state: Default::default(),
-        }),
+        agent_desktop_core::ObservationRoot::Window(&window),
         entry.source.source_surface,
         deadline,
     )

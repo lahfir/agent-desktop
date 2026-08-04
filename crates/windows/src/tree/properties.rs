@@ -48,7 +48,7 @@ mod imp {
     use crate::tree::automation::{failure_of, uia_failure_error};
     use crate::tree::element::UIAElement;
     use crate::tree::property_ids::uia_property;
-    use agent_desktop_core::{AdapterError, Rect};
+    use agent_desktop_core::{AdapterError, Deadline, Rect};
     use uiautomation::Error as UiaError;
     use uiautomation::variants::{Value, Variant};
     use windows::Win32::UI::Accessibility::UiaGetReservedNotSupportedValue;
@@ -61,7 +61,23 @@ mod imp {
     /// returned errors carry shape only and feed the walk's incompleteness
     /// accounting.
     pub fn read_live(element: &UIAElement) -> (ElementProperties, Vec<AdapterError>) {
-        read_with(element, live_read)
+        read_with(element, live_read, None)
+    }
+
+    /// The same live read, bounded by an operation deadline consulted between
+    /// each of the set's cross-process calls.
+    ///
+    /// `read_live` never checked the deadline between properties, so a caller
+    /// bounded by its own timeout - `live_read.rs`'s shared element read, and
+    /// through it every poll-style consumer - could pay the full width of the
+    /// property set on every iteration regardless of how little budget
+    /// remained. This is the same reads, the same classification, the same
+    /// `Vec<AdapterError>` shape; it only adds a place to stop early.
+    pub fn read_live_bounded(
+        element: &UIAElement,
+        deadline: Deadline,
+    ) -> (ElementProperties, Vec<AdapterError>) {
+        read_with(element, live_read, Some(deadline))
     }
 
     /// Reads the walk property set from an element's cache.
@@ -71,7 +87,7 @@ mod imp {
     /// `Absent`, so a missing request entry cannot masquerade as a provider
     /// that does not implement the property.
     pub fn read_cached(element: &UIAElement) -> (ElementProperties, Vec<AdapterError>) {
-        read_with(element, cached_read)
+        read_with(element, cached_read, None)
     }
 
     /// Reads one property live, for the cache policy's provider-class probe
@@ -120,15 +136,33 @@ mod imp {
         property_read_error(uia_failure_error(failure_of(error), context), property)
     }
 
+    /// `deadline` is consulted once per property, before that property's own
+    /// cross-process call: `None` (the walk's `read_live`/`read_cached`
+    /// paths, which own their budget elsewhere) never stops early, `Some`
+    /// (`read_live_bounded`) truncates the set the moment it expires, leaving
+    /// the remaining properties unread rather than starting a call that would
+    /// outlast the deadline anyway.
     fn read_with(
         element: &UIAElement,
         read: impl Fn(&UIAElement, TreeProperty) -> Result<PropertyOutcome, AdapterError>,
+        deadline: Option<Deadline>,
     ) -> (ElementProperties, Vec<AdapterError>) {
         let mut reads = Vec::with_capacity(TreeProperty::WALK_SET.len());
         let mut errors = Vec::new();
+        let mut truncated = false;
         for property in TreeProperty::WALK_SET {
             if property.is_element_valued() {
                 continue;
+            }
+            if let Some(deadline) = deadline {
+                if deadline.is_expired() {
+                    if !truncated {
+                        errors.push(deadline.timeout_error());
+                        truncated = true;
+                    }
+                    reads.push((property, PropertyOutcome::Unknown));
+                    continue;
+                }
             }
             match read(element, property) {
                 Ok(outcome) => reads.push((property, outcome)),
@@ -206,7 +240,7 @@ mod imp {
 }
 
 #[cfg(target_os = "windows")]
-pub use imp::{read_cached, read_live, read_one};
+pub use imp::{read_cached, read_live, read_live_bounded, read_one};
 
 #[cfg(test)]
 #[path = "properties_tests.rs"]

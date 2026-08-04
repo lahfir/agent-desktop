@@ -21,7 +21,10 @@ use super::element::UIAElement;
 use super::resolve_match::CandidateOutcome;
 use super::resolve_match::stale_ref_error;
 #[cfg(target_os = "windows")]
-use super::resolve_search::{MAX_RESOLVE_DEPTH, geometry_matches, identity_unknown_error};
+use super::resolve_search::{
+    MAX_RESOLVE_DEPTH, entry_is_locatable, geometry_matches, identity_unknown_error,
+    provisional_geometry_candidate,
+};
 #[cfg(target_os = "windows")]
 use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
 #[cfg(target_os = "windows")]
@@ -48,11 +51,25 @@ pub(crate) fn resolve_locator_anchor(
     Err(stale_ref_error(entry))
 }
 
+/// The pure entry gate runs first, before any of `resolve_window_root`,
+/// `UiaTreeSource::for_root` or `prepare_root` - three cross-process calls a
+/// verdict `entry_is_locatable` can already settle from the stored ref alone
+/// should never pay for. `resolve.rs`'s `resolve_attempt` runs its own
+/// equivalent gate (`entry_is_unverifiable`) in the same first position.
+///
+/// The anchor reuses `entry_is_locatable` directly rather than the fast
+/// path's `can_use_path_fast_path`: an empty path is a valid anchor - the
+/// root element itself can be the stored target - so the anchor omits the
+/// fast path's non-empty-path conjunct.
 #[cfg(target_os = "windows")]
 fn resolve_locator_anchor_once(
     entry: &RefEntry,
     deadline: Deadline,
 ) -> Result<NativeHandle, AdapterError> {
+    if !entry_is_locatable(entry) {
+        return Err(stale_ref_error(entry));
+    }
+
     let root = super::resolve::resolve_window_root(entry, deadline)?;
     let source = UiaTreeSource::for_root(&root)?;
     let prepared = source.prepare_root(&root)?;
@@ -60,15 +77,84 @@ fn resolve_locator_anchor_once(
         .with_max_raw_depth(MAX_RESOLVE_DEPTH)
         .with_max_siblings(DEFAULT_MAX_SIBLINGS);
 
-    if !location_identity_present(entry) {
-        return Err(stale_ref_error(entry));
-    }
-
     let Some(candidate) = anchor_path_landed(&source, &prepared, &entry.scope.path, &budget)?
     else {
         return Err(stale_ref_error(entry));
     };
     let (_, evidence, _) = source.evidence(&candidate);
+    anchor_role_verdict(entry, &evidence)?;
+    match anchor_geometry_verdict(entry, &evidence) {
+        AnchorGeometryVerdict::Promote => {
+            Ok(super::resolve::into_verified_handle(candidate, entry))
+        }
+        AnchorGeometryVerdict::SettleStale => Err(stale_ref_error(entry)),
+        AnchorGeometryVerdict::Retry => Err(identity_unknown_error(entry)),
+    }
+}
+
+/// The three-state verdict `candidate_outcome`'s `Incomplete` answer resolves
+/// to once the geometry tier has had its say.
+#[cfg(target_os = "windows")]
+enum AnchorGeometryVerdict {
+    /// The candidate is the stored element.
+    Promote,
+    /// The candidate is definitively not the stored element: either the
+    /// identity tier refuted it, or the geometry tier ran its comparison and
+    /// the hashes disagreed.
+    SettleStale,
+    /// A field the matcher needed could not be read; this is the only
+    /// verdict the caller's retry loop should replay.
+    Retry,
+}
+
+/// Composes `candidate_outcome` with the geometry promotion tier into the
+/// anchor's settle/retry decision.
+///
+/// A geometry mismatch is only ever a genuinely transient read when the
+/// live bounds themselves came back [`agent_desktop_core::LocatorField::Unknown`]
+/// (the provider could not answer this attempt); a bounds read that
+/// succeeded and simply disagreed with the stored hash is a definitive
+/// answer and settles, the same as a refuted identity tier does.
+#[cfg(target_os = "windows")]
+fn anchor_geometry_verdict(
+    entry: &RefEntry,
+    evidence: &agent_desktop_core::LocatorEvidence,
+) -> AnchorGeometryVerdict {
+    match super::resolve_match::candidate_outcome(entry, evidence) {
+        CandidateOutcome::Matched => AnchorGeometryVerdict::Promote,
+        CandidateOutcome::Incomplete if geometry_matches(entry, evidence) => {
+            AnchorGeometryVerdict::Promote
+        }
+        CandidateOutcome::Incomplete if geometry_comparison_settled(entry, evidence) => {
+            AnchorGeometryVerdict::SettleStale
+        }
+        CandidateOutcome::Incomplete => AnchorGeometryVerdict::Retry,
+        CandidateOutcome::Refuted => AnchorGeometryVerdict::SettleStale,
+    }
+}
+
+/// Whether a failed geometry promotion is a settled mismatch rather than a
+/// transient read: the entry must be eligible for the geometry tier at all
+/// (`provisional_geometry_candidate`), and the candidate's live bounds must
+/// have actually been read rather than come back unreadable this attempt.
+#[cfg(target_os = "windows")]
+fn geometry_comparison_settled(
+    entry: &RefEntry,
+    evidence: &agent_desktop_core::LocatorEvidence,
+) -> bool {
+    provisional_geometry_candidate(entry) && !evidence.ref_evidence.bounds.is_unknown()
+}
+
+/// The anchor's role guard: an [`agent_desktop_core::LocatorField::Unknown`]
+/// role is a failed read, not evidence the element is some other role, so it
+/// stays retryable; anything else is a settled verdict, either a role match
+/// (the walk continues) or a role-refuted landing (the path is a locator,
+/// never an identity by itself).
+#[cfg(target_os = "windows")]
+fn anchor_role_verdict(
+    entry: &RefEntry,
+    evidence: &agent_desktop_core::LocatorEvidence,
+) -> Result<(), AdapterError> {
     if evidence.role.is_unknown() {
         return Err(identity_unknown_error(entry));
     }
@@ -76,27 +162,11 @@ fn resolve_locator_anchor_once(
         .role
         .known()
         .is_some_and(|role| role == &entry.identity.role);
-    if !role_matches {
-        return Err(stale_ref_error(entry));
+    if role_matches {
+        Ok(())
+    } else {
+        Err(stale_ref_error(entry))
     }
-    match super::resolve_match::candidate_outcome(entry, &evidence) {
-        CandidateOutcome::Matched => Ok(super::resolve::into_verified_handle(candidate, entry)),
-        CandidateOutcome::Incomplete if geometry_matches(entry, &evidence) => {
-            Ok(super::resolve::into_verified_handle(candidate, entry))
-        }
-        CandidateOutcome::Incomplete => Err(identity_unknown_error(entry)),
-        CandidateOutcome::Refuted => Err(stale_ref_error(entry)),
-    }
-}
-
-/// The anchor's eligibility gate: it needs something to verify against, and a
-/// path that is window-rooted (empty is valid - the root itself can be the
-/// anchor).
-#[cfg(target_os = "windows")]
-fn location_identity_present(entry: &RefEntry) -> bool {
-    (entry.scope.root_ref.is_none() || entry.scope.path_is_absolute)
-        && (entry.geometry.bounds_hash.is_some()
-            || agent_desktop_core::ref_identity::has_meaningful_identity(entry))
 }
 
 /// Walks the stored child-index path, anchor semantics: a step that lands
@@ -178,148 +248,5 @@ mod selector_wait_tests;
 mod count_agreement_tests;
 
 #[cfg(all(test, target_os = "windows"))]
-mod windows_only {
-    use super::*;
-    use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
-    use crate::tree::walker_fake::deadline;
-    use agent_desktop_core::{ErrorCode, ProcessId, RefEntry};
-
-    fn blank_entry_with_path(fixture: &HostedFixture, path: Vec<usize>) -> RefEntry {
-        let deadline = deadline();
-        let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline)
-            .expect("a fixture root");
-        let source = crate::tree::walker_source::UiaTreeSource::for_root(&root).expect("a source");
-        let prepared = source.prepare_root(&root).expect("a prepared root");
-        let budget = crate::tree::walker::WalkBudget::new(10, deadline);
-        let mut prefix = Vec::new();
-        let found = walk_first_secure(&source, &prepared, 0, &budget, &mut prefix)
-            .expect("the fixture walk succeeds")
-            .expect("a secure element exists");
-        let stored_path = found.path;
-        let evidence = found.evidence;
-        let rect = evidence
-            .ref_evidence
-            .bounds
-            .known()
-            .expect("positive-area bounds");
-        let hash = rect.bounds_hash().expect("a positive-area hash");
-        let token =
-            crate::system::process_identity::token_for_pid(ProcessId::new(fixture.process_id()))
-                .unwrap()
-                .expect("a live fixture token");
-        let chosen_path = if path.is_empty() { stored_path } else { path };
-        RefEntry {
-            process: agent_desktop_core::RefProcess {
-                pid: ProcessId::new(fixture.process_id()),
-                process_instance: Some(token),
-            },
-            identity: agent_desktop_core::RefEntryIdentity {
-                role: evidence.role.known().cloned().unwrap_or_default(),
-                name: None,
-                value: None,
-                description: None,
-                native_id: None,
-            },
-            geometry: agent_desktop_core::RefGeometry {
-                bounds: Some(*rect),
-                bounds_hash: Some(hash),
-            },
-            capabilities: agent_desktop_core::RefCapabilities {
-                states: Vec::new(),
-                available_actions: Vec::new(),
-            },
-            source: agent_desktop_core::RefSource {
-                source_app: Some("fixture.exe".into()),
-                source_window_id: Some(format!("w-{}", fixture.handle())),
-                source_window_title: None,
-                source_window_bounds_hash: None,
-                source_surface: agent_desktop_core::SnapshotSurface::Window,
-            },
-            scope: agent_desktop_core::RefScope {
-                root_ref: None,
-                path_is_absolute: true,
-                path: chosen_path.into(),
-            },
-        }
-    }
-
-    struct FoundSecure {
-        path: Vec<usize>,
-        _properties: crate::tree::properties::ElementProperties,
-        evidence: agent_desktop_core::LocatorEvidence,
-        _failed: u64,
-    }
-
-    fn walk_first_secure(
-        source: &crate::tree::walker_source::UiaTreeSource,
-        element: &UIAElement,
-        depth: u8,
-        budget: &crate::tree::walker::WalkBudget,
-        prefix: &mut Vec<usize>,
-    ) -> Result<Option<FoundSecure>, AdapterError> {
-        if depth >= 10 {
-            return Ok(None);
-        }
-        let (properties, node_evidence, failed) = source.evidence(element);
-        if properties.is_secure() {
-            return Ok(Some(FoundSecure {
-                path: prefix.clone(),
-                _properties: properties,
-                evidence: node_evidence,
-                _failed: failed,
-            }));
-        }
-        let mut ignored = false;
-        let children =
-            crate::tree::resolve_search::enumerate_children(source, element, budget, &mut ignored)?;
-        for (index, child) in children.iter().enumerate() {
-            prefix.push(index);
-            if let Some(found) = walk_first_secure(source, child, depth + 1, budget, prefix)? {
-                return Ok(Some(found));
-            }
-            prefix.pop();
-        }
-        Ok(None)
-    }
-
-    /// A stored anchor path that is exact on the unchanged fixture resolves -
-    /// the hydration happy path.
-    #[test]
-    fn an_exact_anchor_path_resolves_on_the_unchanged_fixture() {
-        ensure_test_apartment();
-        let fixture = HostedFixture::spawn().expect("a fixture host starts");
-        let entry = blank_entry_with_path(&fixture, Vec::new());
-        let handle = resolve_locator_anchor(&entry, deadline())
-            .expect("the exact anchor path resolves the secure element");
-        assert!(handle.downcast_ref::<UIAElement>().is_some());
-    }
-
-    /// A path that points at a sibling beyond the target settles stale - the
-    /// anchor never resolves a neighbour.
-    #[test]
-    fn a_wrong_child_index_settles_stale_never_a_neighbour() {
-        ensure_test_apartment();
-        let fixture = HostedFixture::spawn().expect("a fixture host starts");
-        let entry = blank_entry_with_path(&fixture, vec![999]);
-        let error = match resolve_locator_anchor(&entry, deadline()) {
-            Err(error) => error,
-            Ok(_) => panic!("a path that lands nowhere settles, it does not resolve"),
-        };
-        assert_eq!(error.code, ErrorCode::StaleRef);
-    }
-
-    /// A role-refuted landing settles stale: the stored ref records the secure
-    /// element's role, the path lands on the fixture's button, and the anchor
-    /// refuses - the path is a locator, never an identity by itself.
-    #[test]
-    fn a_role_refuted_landing_settles_stale() {
-        ensure_test_apartment();
-        let fixture = HostedFixture::spawn().expect("a fixture host starts");
-        let entry = blank_entry_with_path(&fixture, vec![0]);
-        let error = match resolve_locator_anchor(&entry, deadline()) {
-            Err(error) => error,
-            Ok(_) => panic!("a role-refuted landing settles stale, it does not resolve"),
-        };
-        assert_eq!(error.code, ErrorCode::StaleRef);
-    }
-}
+#[path = "resolve_anchor_tests.rs"]
+mod windows_only;

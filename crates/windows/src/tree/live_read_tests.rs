@@ -54,8 +54,6 @@ fn each_reader_projects_live_values_from_a_resolved_fixture_handle() {
 
     let actions = live_actions(&read).expect("the actions projection succeeds");
     assert!(actions.iter().all(|action| !action.is_empty()));
-
-    let _ = live_value(&read);
 }
 
 /// The password control's live value is withheld at the reader path: the
@@ -194,6 +192,76 @@ fn a_vanished_resolved_target_settles_stale_not_retryable_unresponsive() {
             .and_then(serde_json::Value::as_bool),
         Some(true),
         "a vanished target settles complete, it is never retried"
+    );
+}
+
+/// The same vanished-target shape, but wrapped through the real
+/// `property_read_error` - the wrapper `properties::read_live_bounded`
+/// actually applies to every error it collects - rather than through
+/// `uia_failure_error` alone. `property_read_error` calls `.with_details`
+/// with a payload that carries no `retryable` key, which fully replaces the
+/// error's details JSON but cannot touch `error.code` at all: `with_details`
+/// only ever writes `code`-independent fields. This test exercises that real
+/// wrapper end to end - the one every property-read failure actually passes
+/// through - rather than only the raw classifier the test above calls
+/// directly, confirming `target_read_reports_vanished`'s `error.code` check
+/// still sees `StaleRef` once the production wrap has run.
+#[test]
+fn a_vanished_target_wrapped_through_the_real_property_read_error_still_settles_stale() {
+    ensure_test_apartment();
+    let fixture = HostedFixture::spawn().expect("a fixture host starts");
+    let handle = verified_handle(&fixture).expect("a verified handle");
+    let element = handle
+        .downcast_ref::<UIAElement>()
+        .expect("a UIAElement payload");
+    let vanished_read = |_: &UIAElement| {
+        let base = uia_failure_error(
+            UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE),
+            "read an element property",
+        );
+        let wrapped = crate::tree::properties::property_read_error(
+            base,
+            crate::tree::property_ids::TreeProperty::Value,
+        );
+        (ElementProperties::from_reads(Vec::new()), vec![wrapped])
+    };
+
+    let error = match read_live_element_core(
+        element,
+        deadline(),
+        corroborate_verified_process,
+        vanished_read,
+    ) {
+        Err(error) => error,
+        Ok(_) => panic!(
+            "a vanished target wrapped through property_read_error must not read as complete"
+        ),
+    };
+    assert_eq!(error.code, ErrorCode::StaleRef);
+}
+
+/// Finding: the shared live read issued roughly 42 cross-process calls with
+/// no deadline check between them, so a poll-style caller could overshoot its
+/// own timeout on every iteration. `read_live_bounded` consults the deadline
+/// before each property; an already-expired one must stop before the first
+/// call rather than running the whole set anyway.
+#[test]
+fn an_expired_deadline_truncates_the_bounded_property_read_before_any_call() {
+    ensure_test_apartment();
+    let fixture = HostedFixture::spawn().expect("a fixture host starts");
+    let root = root_from_hwnd(fixture.handle(), deadline()).expect("a fixture root");
+    let expired = agent_desktop_core::Deadline::after(0).expect("a zero-timeout deadline builds");
+
+    let (properties, errors) = crate::tree::properties::read_live_bounded(&root, expired);
+
+    assert_eq!(
+        properties.get(crate::tree::property_ids::TreeProperty::ClassName),
+        crate::tree::properties::PropertyOutcome::Unknown,
+        "a deadline expired before the first property call must leave it unread"
+    );
+    assert!(
+        errors.iter().any(|error| error.code == ErrorCode::Timeout),
+        "a truncated read must surface the deadline's own timeout error"
     );
 }
 

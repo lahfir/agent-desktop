@@ -3,6 +3,17 @@
 //! Both the permission probe and the UI Automation tree path classify and
 //! format HRESULTs. Holding two tables meant adding a code in one and reading
 //! it as unnamed in the other, so the table lives here and both import it.
+//!
+//! `hresult_record` carries that further: it is the single match naming every
+//! HRESULT's `ReadDisposition` *and* its caller-facing `ErrorCode` together.
+//! `classify_read_hresult` used to run its own separate match over the same
+//! HRESULT set that `crates/windows/src/tree/automation_classify.rs`'s
+//! `hresult_disposition` matched independently - the two tables agreed only
+//! because both were edited by hand together, and nothing forced that. One
+//! record per code makes a code's disposition and its error code the same
+//! fact, written once.
+
+use agent_desktop_core::ErrorCode;
 
 pub(crate) const S_OK: i32 = 0;
 pub(crate) const E_NOINTERFACE: i32 = 0x8000_4002_u32 as i32;
@@ -22,6 +33,9 @@ pub(crate) const UIA_E_PROXYASSEMBLYNOTLOADED: i32 = 0x8004_0203_u32 as i32;
 pub(crate) const UIA_E_NOTSUPPORTED: i32 = 0x8004_0204_u32 as i32;
 pub(crate) const UIA_E_TIMEOUT: i32 = 0x8013_1505_u32 as i32;
 pub(crate) const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
+
+const COM_UNINITIALIZED_SUGGESTION: &str =
+    "Join the calling thread to the COM multithreaded apartment before observing the desktop";
 
 /// The read-path classification the resolution retry loop consumes: whether a failed
 /// read is a settled absence, a transient transport failure, a vanished
@@ -64,21 +78,88 @@ impl ReadDisposition {
     }
 }
 
+/// One HRESULT's complete classification, named exactly once: the read-path
+/// `ReadDisposition` the resolution retry loop drives on, the `ErrorCode` a
+/// caller-facing error carries, and an optional recovery hint.
+///
+/// `classify_read_hresult` and `automation_classify.rs`'s `hresult_disposition`
+/// are both one-line projections of `hresult_record` rather than separate
+/// matches, so a code cannot be classified one way for retry and a different
+/// way for the error surfaced to a caller.
+pub(crate) struct HresultRecord {
+    pub(crate) disposition: ReadDisposition,
+    pub(crate) code: ErrorCode,
+    pub(crate) suggestion: Option<&'static str>,
+}
+
+/// Names every HRESULT this crate's read paths raise, exactly once.
+///
+/// An unlisted code is `Terminal`/`ErrorCode::Internal` - the loop retries
+/// only what is marked retryable, so an unknown failure surfaces rather than
+/// being guessed.
+pub(crate) fn hresult_record(hresult: i32) -> HresultRecord {
+    match hresult {
+        E_ACCESSDENIED => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::PermDenied,
+            suggestion: None,
+        },
+        CO_E_NOTINITIALIZED => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::Internal,
+            suggestion: Some(COM_UNINITIALIZED_SUGGESTION),
+        },
+        E_INVALIDARG | E_POINTER => HresultRecord {
+            disposition: ReadDisposition::SettledAbsence,
+            code: ErrorCode::InvalidArgs,
+            suggestion: None,
+        },
+        UIA_E_ELEMENTNOTAVAILABLE => HresultRecord {
+            disposition: ReadDisposition::Unavailable,
+            code: ErrorCode::StaleRef,
+            suggestion: None,
+        },
+        UIA_E_ELEMENTNOTENABLED => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::ActionFailed,
+            suggestion: None,
+        },
+        UIA_E_NOTSUPPORTED => HresultRecord {
+            disposition: ReadDisposition::SettledAbsence,
+            code: ErrorCode::ActionNotSupported,
+            suggestion: None,
+        },
+        UIA_E_TIMEOUT => HresultRecord {
+            disposition: ReadDisposition::Retryable,
+            code: ErrorCode::Timeout,
+            suggestion: None,
+        },
+        UIA_E_INVALIDOPERATION => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::ActionFailed,
+            suggestion: None,
+        },
+        RPC_E_DISCONNECTED | RPC_E_SERVERFAULT | RPC_S_SERVER_UNAVAILABLE | RPC_S_CALL_FAILED => {
+            HresultRecord {
+                disposition: ReadDisposition::Retryable,
+                code: ErrorCode::AppUnresponsive,
+                suggestion: None,
+            }
+        }
+        _ => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::Internal,
+            suggestion: None,
+        },
+    }
+}
+
 /// Classifies a named read-path HRESULT onto the three-state disposition.
 ///
-/// An unlisted code is `Terminal` - the loop retries only what is marked
-/// retryable, so an unknown failure surfaces rather than being guessed.
+/// A one-line projection of `hresult_record`; see that function for the named
+/// table.
 pub(crate) fn classify_read_hresult(hresult: i32) -> ReadDisposition {
-    match hresult {
-        UIA_E_NOTSUPPORTED | E_INVALIDARG | E_POINTER => ReadDisposition::SettledAbsence,
-        UIA_E_TIMEOUT
-        | RPC_E_DISCONNECTED
-        | RPC_E_SERVERFAULT
-        | RPC_S_SERVER_UNAVAILABLE
-        | RPC_S_CALL_FAILED => ReadDisposition::Retryable,
-        UIA_E_ELEMENTNOTAVAILABLE => ReadDisposition::Unavailable,
-        _ => ReadDisposition::Terminal,
-    }
+    hresult_record(hresult).disposition
 }
 
 /// Renders an HRESULT for `platform_detail`.

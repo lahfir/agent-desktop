@@ -160,3 +160,199 @@ fn the_deadline_stamp_leaks_no_marker_into_message_or_platform_detail() {
 fn unreachable_handle() -> NativeHandle {
     NativeHandle::new(())
 }
+
+fn entry_with_hash(bounds_hash: Option<u64>) -> RefEntry {
+    RefEntry {
+        process: agent_desktop_core::RefProcess {
+            pid: agent_desktop_core::ProcessId::new(1),
+            process_instance: None,
+        },
+        identity: agent_desktop_core::RefEntryIdentity {
+            role: "button".to_string(),
+            name: None,
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: agent_desktop_core::RefGeometry {
+            bounds: None,
+            bounds_hash,
+        },
+        capabilities: agent_desktop_core::RefCapabilities {
+            states: Vec::new(),
+            available_actions: Vec::new(),
+        },
+        source: agent_desktop_core::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: agent_desktop_core::SnapshotSurface::Window,
+        },
+        scope: agent_desktop_core::RefScope {
+            root_ref: None,
+            path_is_absolute: true,
+            path: agent_desktop_core::refs::RefPath::default(),
+        },
+    }
+}
+
+/// A sole match found while another region of the tree was unreadable must
+/// not resolve - the search is not yet conclusive, and the true target (or a
+/// second candidate that would make it ambiguous) could be sitting in the
+/// unread part. Fails against the pre-fix ordering, which consulted
+/// `incomplete` only in the zero-candidate arm.
+#[test]
+fn one_match_with_an_incomplete_region_is_retried_not_resolved() {
+    let entry = entry_with_hash(None);
+    let verdict = classify_search(&[None], true, &entry);
+    assert!(matches!(verdict, SearchVerdict::Incomplete));
+}
+
+/// The same sole match resolves once the search completed without anything
+/// left unread.
+#[test]
+fn one_match_with_a_complete_search_resolves() {
+    let entry = entry_with_hash(None);
+    let verdict = classify_search(&[None], false, &entry);
+    assert!(matches!(verdict, SearchVerdict::Resolved(0)));
+}
+
+/// Two or more matches with no stored hash to disambiguate is conclusively
+/// ambiguous already, so an incomplete region elsewhere must not withhold
+/// that verdict: nothing left unread could turn it into anything but
+/// `AMBIGUOUS_TARGET`. Guards that gating resolution on `incomplete` does
+/// not also gate this already-settled case.
+#[test]
+fn two_matches_with_no_hash_classify_as_ambiguous_even_when_incomplete() {
+    let entry = entry_with_hash(None);
+    let verdict = classify_search(&[None, None], true, &entry);
+    assert!(matches!(verdict, SearchVerdict::Ambiguous));
+}
+
+/// A 2+-candidate case with a stored hash never reaches the early-stop
+/// threshold (`should_stop_collecting` requires no stored hash), so an
+/// incomplete region still withholds the verdict rather than tie-breaking
+/// on a partial candidate set.
+#[test]
+fn two_matches_with_a_stored_hash_and_an_incomplete_region_are_retried() {
+    let entry = entry_with_hash(Some(0xAAAA));
+    let verdict = classify_search(&[Some(0xAAAA), Some(0xBBBB)], true, &entry);
+    assert!(matches!(verdict, SearchVerdict::Incomplete));
+}
+
+/// The 2+-candidate tie-break still classifies normally - resolving on the
+/// sole hash match - once the search is complete, even though a stored hash
+/// was present and the early-stop threshold was never reached.
+#[test]
+fn two_matches_with_a_stored_hash_and_a_complete_search_still_classify() {
+    let entry = entry_with_hash(Some(0xAAAA));
+    let resolved = classify_search(&[Some(0xAAAA), Some(0xBBBB)], false, &entry);
+    assert!(matches!(resolved, SearchVerdict::Resolved(0)));
+
+    let ambiguous = classify_search(&[Some(0xAAAA), Some(0xAAAA)], false, &entry);
+    assert!(matches!(ambiguous, SearchVerdict::Ambiguous));
+}
+
+/// The pre-existing zero-candidate behaviour is unchanged by the fix: an
+/// incomplete empty search stays incomplete, a complete empty search
+/// settles stale.
+#[test]
+fn zero_candidates_preserve_the_prior_incomplete_and_stale_split() {
+    let entry = entry_with_hash(None);
+    assert!(matches!(
+        classify_search(&[], true, &entry),
+        SearchVerdict::Incomplete
+    ));
+    assert!(matches!(
+        classify_search(&[], false, &entry),
+        SearchVerdict::Stale
+    ));
+}
+
+/// An entry with no id, no stable text, and no positive-area bounds hash can
+/// never be verified by any tier. The fixture's secure password control
+/// structurally withholds its name, value, and description even on a fully
+/// successful read - a genuine live candidate that core's identity matcher
+/// can only ever report `Unknown` against. A stored ref that also carries no
+/// distinguishing geometry can never settle a match against it, so
+/// `resolve_attempt` must settle `STALE_REF` in exactly one attempt rather
+/// than searching this tree and burning the retry budget on a candidate
+/// that reads back `Unknown` every time.
+#[test]
+fn a_structurally_unverifiable_entry_settles_stale_in_one_attempt() {
+    crate::tree::fixture::ensure_test_apartment();
+    let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
+    let deadline = crate::tree::walker_fake::deadline();
+    let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline)
+        .expect("the fixture window resolves");
+    let source = UiaTreeSource::for_root(&root).expect("a tree source");
+    let prepared = source.prepare_root(&root).expect("a prepared root");
+    let budget = WalkBudget::new(10, deadline);
+    let mut prefix = Vec::new();
+    let found = find_password(&source, &prepared, 0, &budget, &mut prefix)
+        .expect("the fixture walk succeeds")
+        .expect("a secure password element exists");
+    let (_, _, evidence, _) = found;
+    let role = evidence.role.known().cloned().unwrap_or_default();
+
+    let token = crate::system::process_identity::token_for_pid(
+        agent_desktop_core::ProcessId::from(fixture.process_id()),
+    )
+    .unwrap()
+    .expect("a live fixture process has a token");
+
+    let entry = RefEntry {
+        process: agent_desktop_core::RefProcess {
+            pid: agent_desktop_core::ProcessId::from(fixture.process_id()),
+            process_instance: Some(token),
+        },
+        identity: agent_desktop_core::RefEntryIdentity {
+            role,
+            name: None,
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: agent_desktop_core::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: agent_desktop_core::RefCapabilities {
+            states: Vec::new(),
+            available_actions: Vec::new(),
+        },
+        source: agent_desktop_core::RefSource {
+            source_app: Some("fixture.exe".into()),
+            source_window_id: Some(format!("w-{}", fixture.handle())),
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: agent_desktop_core::SnapshotSurface::Window,
+        },
+        scope: agent_desktop_core::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: agent_desktop_core::refs::RefPath::default(),
+        },
+    };
+
+    assert!(
+        crate::tree::resolve_search::entry_is_unverifiable(&entry),
+        "id-less, textless, geometry-less entry must be structurally unverifiable"
+    );
+
+    let mut attempts = 0;
+    let result = retry_incomplete_until(deadline, || {
+        attempts += 1;
+        resolve_attempt(&entry, deadline)
+    });
+
+    assert_eq!(
+        attempts, 1,
+        "a structurally unverifiable entry must settle in one attempt, never retry-burn"
+    );
+    match result {
+        Err(error) => assert_eq!(error.code, agent_desktop_core::ErrorCode::StaleRef),
+        Ok(_) => panic!("an unverifiable entry must not resolve to a live element"),
+    }
+}

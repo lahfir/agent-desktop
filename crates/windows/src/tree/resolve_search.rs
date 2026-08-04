@@ -44,16 +44,38 @@ pub(crate) fn identity_unknown_error(entry: &RefEntry) -> AdapterError {
     }))
 }
 
+/// Whether the stored path is scoped to the window root rather than to a
+/// drill-down ancestor: no `root_ref` at all, or an absolute path that
+/// overrides one. Shared by every eligibility gate below - the fast path,
+/// the anchor - so window-rootedness is decided in exactly one place.
+pub(crate) fn window_rooted(entry: &RefEntry) -> bool {
+    entry.scope.root_ref.is_none() || entry.scope.path_is_absolute
+}
+
+/// Whether the stored ref is locatable by any resolution tier at all:
+/// window-rooted, and not [`entry_is_unverifiable`] - an id, stable text, or
+/// a positive-area bounds hash eligible for the geometry tier
+/// ([`provisional_geometry_candidate`] is the exact predicate that tier
+/// promotes on, reused rather than re-derived).
+///
+/// This is the anchor's entire eligibility gate, and the fast path's
+/// eligibility gate before its own non-empty-path conjunct. A bare
+/// `RefEntry::geometry.bounds_hash` is not this signal: a zero-extent
+/// rectangle still hashes (`Rect::bounds_hash` only rejects an invalid
+/// rectangle, not an empty one), so a hash-only check would pass an id-less,
+/// text-less entry the geometry tier can never actually promote, land the
+/// path, and only then discover it cannot verify - burning the retry budget
+/// on a landing that was never eligible.
+pub(crate) fn entry_is_locatable(entry: &RefEntry) -> bool {
+    window_rooted(entry) && !entry_is_unverifiable(entry)
+}
+
 /// Whether the stored child-index path may be walked as a fast path.
 ///
-/// Mirrors macOS's `can_use_path_fast_path`: window-rooted (no drill-down
-/// root, or an absolute path) and non-empty, and the ref carries something
-/// the matcher can verify with (an id, stable text, or a positive-area
-/// bounds hash for the geometry tier).
+/// Mirrors macOS's `can_use_path_fast_path`: [`entry_is_locatable`] plus a
+/// non-empty path.
 pub(crate) fn can_use_path_fast_path(entry: &RefEntry) -> bool {
-    (entry.scope.root_ref.is_none() || entry.scope.path_is_absolute)
-        && !entry.scope.path.is_empty()
-        && (entry.geometry.bounds_hash.is_some() || has_meaningful_identity(entry))
+    entry_is_locatable(entry) && !entry.scope.path.is_empty()
 }
 
 /// Walks the stored child-index path from a root, O(depth) child reads.
@@ -101,6 +123,42 @@ pub(crate) fn provisional_geometry_candidate(entry: &RefEntry) -> bool {
 /// otherwise-unreadable candidate to resolved.
 pub(crate) fn geometry_matches(entry: &RefEntry, evidence: &LocatorEvidence) -> bool {
     provisional_geometry_candidate(entry) && bounds_hash_of(evidence) == entry.geometry.bounds_hash
+}
+
+/// Whether the stored ref carries nothing any resolution tier could ever
+/// verify a live candidate against: no id, no stable text, and no
+/// positive-area bounds hash for the geometry tier to promote on.
+///
+/// Meant to be checked once over the entry before the walk runs, because no
+/// amount of successful reading changes the answer for this class: with no
+/// stored name, value or description, core's `stable_text_match` has no
+/// `expected` text to equality-match against, so it can only ever fall
+/// through to `empty_identity_match` over the live candidate's own fields -
+/// which resolves `NoMatch` the instant any of them reads back `Known`, and
+/// `Unknown` only when none of them do. `IdentityMatch::Match` is therefore
+/// unreachable for this class no matter what the walk reads, so an unbounded
+/// walk would spend a full attempt - refuting some candidates, marking
+/// others incomplete - reaching a verdict the entry alone already settles.
+pub(crate) fn entry_is_unverifiable(entry: &RefEntry) -> bool {
+    !has_meaningful_identity(entry) && !provisional_geometry_candidate(entry)
+}
+
+/// Whether an already-collected match count settles `AMBIGUOUS_TARGET` on
+/// its own, with nothing left to read that could change the answer.
+///
+/// Despite the name, nothing here stops `search_under`'s own walk early -
+/// Windows's search always collects the whole depth-bounded subtree, and
+/// this predicate is consulted only after collection finishes, inside
+/// `classify_search`. Two or more matches with no stored hash to
+/// disambiguate is conclusively ambiguous already: nothing left unread could
+/// turn it into anything other than `AMBIGUOUS_TARGET`, so an incomplete
+/// region elsewhere in the tree must not withhold that verdict. Mirrors
+/// macOS's `should_stop_collecting`
+/// (`crates/macos/src/tree/resolve_search.rs:378-380`), which does stop its
+/// walk early on this signal - Windows only reuses its name and its
+/// classification rule, not its early exit.
+pub(crate) fn should_stop_collecting(match_count: usize, entry: &RefEntry) -> bool {
+    match_count > 1 && entry.geometry.bounds_hash.is_none()
 }
 
 /// Bundles the three values that stay invariant across `search_under`'s
