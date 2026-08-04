@@ -1,10 +1,10 @@
-//! The shared single-element live read (U5) and its five projections.
+//! The shared single-element live read and its five projections.
 //!
 //! Mirrors macOS `post_state.rs`'s single shared read: one function takes a
 //! resolved `NativeHandle`, corroborates the verified process identity the
-//! resolver stamped into the handle payload (KTD7 - a dead provider never
+//! resolver stamped into the handle payload - a dead provider never
 //! satisfies completeness, because a corpse's reads can succeed empty on some
-//! builds, A14-9), reads the full walk property set live through
+//! builds (A14-9), reads the full walk property set live through
 //! `properties::read_live`, and projects it through the walk's own vocabulary
 //! composition (`read_label` + `walk_vocabulary` + `into_locator_evidence`).
 //! The five readers are projections over that one read: value, state, actions,
@@ -42,7 +42,7 @@ mod imp {
     /// Fails `STALE_REF`-class when the verified process token has moved on
     /// (the dead-provider shape, driven through a dead token), and fails
     /// retryable `AppUnresponsive` when an essential slot reads `Unknown` - it
-    /// never answers with a partial bundle claiming completeness (KTD6, R8).
+    /// never answers with a partial bundle claiming completeness.
     pub fn read_live_element(
         handle: &NativeHandle,
         deadline: Deadline,
@@ -89,7 +89,7 @@ mod imp {
 pub(crate) use imp::read_live_element;
 
 /// The value projection: a secure field's stored value is `Absent` here by
-/// the shared read's own withholding (KTD10), so nothing secure escapes.
+/// the shared read's own withholding, so nothing secure escapes.
 pub(crate) fn live_value(read: &LiveRead) -> Option<String> {
     read.evidence.value.known().cloned()
 }
@@ -97,9 +97,9 @@ pub(crate) fn live_value(read: &LiveRead) -> Option<String> {
 /// The state projection.
 ///
 /// `enabled` and `offscreen` read the provider's own flags from the property
-/// set - UIA exposes `IsOffscreen` directly, the KTD6 divergence from macOS's
-/// window-bounds arithmetic. `hidden` has no Windows producer (UIA's offscreen
-/// signal is the closest, and reading it twice would double-count), so it
+/// set - UIA exposes `IsOffscreen` directly, the deliberate divergence from
+/// macOS's window-bounds arithmetic. `hidden` has no Windows producer (UIA's
+/// offscreen signal is the closest, and reading it twice would double-count), so it
 /// stays unset.
 pub(crate) fn live_state(read: &LiveRead) -> Result<ElementState, AdapterError> {
     let role = read
@@ -128,7 +128,7 @@ pub(crate) fn live_state(read: &LiveRead) -> Result<ElementState, AdapterError> 
     })
 }
 
-/// The actions projection (KTD9 - a free projection, no pattern invocation).
+/// The actions projection (a free projection, no pattern invocation).
 pub(crate) fn live_actions(read: &LiveRead) -> Result<Vec<String>, AdapterError> {
     known_actions(read.evidence.ref_evidence.available_actions.clone())
 }
@@ -201,7 +201,7 @@ fn stale_reader_error() -> AdapterError {
 mod tests;
 /// The essential-completeness gate is a pure predicate over the evidence, so
 /// it is pinned without a UI Automation client: any essential slot reading
-/// `Unknown` - the KTD6 completeness rule - rejects the bundle, and the
+/// `Unknown` - the completeness rule - rejects the bundle, and the
 /// rejection error is the retryable `AppUnresponsive` the loop retries
 /// instead of a partial answer claiming completeness.
 #[cfg(test)]

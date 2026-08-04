@@ -8,7 +8,7 @@ use crate::tree::automation::{
 };
 use agent_desktop_core::ErrorCode;
 
-/// The three-way read-path disposition (U4) is exercised arm by arm: the
+/// The three-way read-path disposition is exercised arm by arm: the
 /// not-supported family is a settled absence (never retried), transport is
 /// retryable, a vanished element is the granularity case, and the stamp on
 /// `uia_failure_error` carries the typed `complete`/`retryable` pair.
@@ -74,7 +74,7 @@ fn the_sentinel_branches_classify_like_their_hresult_equivalents() {
 
 /// The A14-5 split is carried: at root resolution the vanished-window shape
 /// stays `WINDOW_NOT_FOUND`, while the same HRESULT means a stale element on
-/// the read path (the U5 reader resolves the granularity at the target).
+/// the read path (the live-read path resolves the granularity at the target).
 #[test]
 fn the_vanished_element_split_keeps_root_resolution_as_window_not_found() {
     let failure = UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE);

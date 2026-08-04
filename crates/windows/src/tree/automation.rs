@@ -92,7 +92,7 @@ impl UiaFailure {
 ///
 /// Every error is stamped with the typed `complete`/`retryable` pair the
 /// resolution retry loop and core's hydration read off the details payload
-/// (U4): a settled absence or terminal failure is complete and never retried,
+/// a settled absence or terminal failure is complete and never retried,
 /// a transport failure or a vanished element is incomplete and retryable.
 pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
     let (complete, retryable) = uia_failure_disposition(failure).retry_details();
@@ -118,7 +118,7 @@ pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
 }
 
 /// The read-path disposition of a UI Automation failure across both branches,
-/// driving the `complete`/`retryable` stamp on `uia_failure_error` (U4).
+/// driving the `complete`/`retryable` stamp on `uia_failure_error`.
 pub(crate) fn uia_failure_disposition(failure: UiaFailure) -> crate::system::hresult::ReadDisposition {
     match failure {
         UiaFailure::Hresult(hresult) => crate::system::hresult::classify_read_hresult(hresult),

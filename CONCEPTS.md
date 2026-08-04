@@ -88,6 +88,14 @@ The fail-closed process of re-identifying a ref from stored identity evidence be
 
 Strict ref resolution rejects missing, stale, and ambiguous matches instead of guessing. It is the boundary between an old observation and a live desktop mutation.
 
+### Graded Resolution
+The tiered order a resolver tries to re-identify a ref, on the evidence a ref carries: confirmation by identifier first, then by role-conditional stable text, then - for a ref with no meaningful text identity - the positional path and, as a last resort, unique geometry. Each tier is a locator, never an identity by itself: a path or a bounds match is always verified against the stored identity evidence before it resolves.
+
+The geometry promotion is deliberately narrow: it fires only when the stored bounds hash comes from a positive-area rectangle and the ref has no meaningful text identity, and it resolves only on a unique live match. A zero-extent stored hash never promotes, because offscreen and virtualized elements collapse to shared degenerate rectangles that are structurally non-unique (A17-7).
+
+### Settled Absence
+The retryable-versus-settled split in resolution and live reads, distinct from per-field Evidence Tri-State: a structurally-impossible answer - a property the provider does not implement, a completed search that found nothing, an anchor path that churn has made permanently wrong - is **settled** and is never retried, while a transport failure or an unreadable candidate is **incomplete**, retried within the operation's deadline and then stamped `deadline_elapsed` rather than discarded. A completed-search `STALE_REF` is complete with retryability derived from its error code's default, which is what lets core's hydration do its single fresh re-observation without the adapter burning the deadline replaying a stale search (A14-9, A17-8).
+
 ## Coordination
 
 ### Session

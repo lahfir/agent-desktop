@@ -186,7 +186,7 @@ pub(crate) fn enumerate_children(
     Ok(children)
 }
 
-/// Classifies a descent failure under U4's read disposition: a settled
+/// Classifies a descent failure under the read disposition: a settled
 /// absence means the node enumerates nothing (a real answer, not
 /// incomplete); a transport failure or vanished node marks the search
 /// incomplete and the descent continues - a non-target node dying

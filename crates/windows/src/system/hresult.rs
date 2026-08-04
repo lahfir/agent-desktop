@@ -23,7 +23,7 @@ pub(crate) const UIA_E_NOTSUPPORTED: i32 = 0x8004_0204_u32 as i32;
 pub(crate) const UIA_E_TIMEOUT: i32 = 0x8013_1505_u32 as i32;
 pub(crate) const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
 
-/// The read-path classification U4's retry loop consumes: whether a failed
+/// The read-path classification the resolution retry loop consumes: whether a failed
 /// read is a settled absence, a transient transport failure, a vanished
 /// element, or a terminal error the attempt must surface as-is.
 ///
@@ -52,7 +52,7 @@ pub(crate) enum ReadDisposition {
 }
 
 impl ReadDisposition {
-    /// The typed channel pair U4's loop and core's hydration read: a settled
+    /// The typed channel pair the resolution loop and core's hydration read: a settled
     /// absence or terminal failure is complete and never retried; transport
     /// and a vanished element are incomplete and retryable within the
     /// deadline.

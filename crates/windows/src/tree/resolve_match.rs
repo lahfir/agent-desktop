@@ -13,9 +13,10 @@ pub(crate) struct Candidate {
     pub(crate) bounds_hash: Option<u64>,
 }
 
-/// The three-state outcome KTD3 demands: a candidate either matched, was
-/// refuted, or **could not be read** - and an unreadable candidate makes the
-/// attempt incomplete-and-retryable rather than silently non-matching.
+/// The three-state outcome the composed rule demands: a candidate either
+/// matched, was refuted, or **could not be read** - and an unreadable
+/// candidate makes the attempt incomplete-and-retryable rather than silently
+/// non-matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CandidateOutcome {
     /// The candidate is the stored element.
@@ -26,7 +27,7 @@ pub(crate) enum CandidateOutcome {
     Incomplete,
 }
 
-/// The KTD3 composition of core's verdicts.
+/// The composed rule over core's verdicts.
 ///
 /// `identity_match` settles the id tier for an id-bearing ref, and by itself
 /// would settle on an id hit without consulting text - the exact behaviour
@@ -39,7 +40,7 @@ pub(crate) enum CandidateOutcome {
 /// never on the verdict alone, because `stable_text_match` returns the same
 /// `Unknown` for a structurally-absent live field as for a failed read. An
 /// id `Match` on a ref with no stored text identity (an icon-only button)
-/// resolves without corroboration, preserving 2.4's behaviour. An id-less ref
+/// resolves without corroboration, preserving the previous behaviour. An id-less ref
 /// is routed through `identity_match`, which performs the text match itself.
 pub(crate) fn candidate_outcome(entry: &RefEntry, evidence: &LocatorEvidence) -> CandidateOutcome {
     let id_tier = identity_match(
@@ -260,7 +261,7 @@ mod tests {
     }
 
     /// An id `Match` on a ref with no stored text identity (an icon-only
-    /// button) resolves without corroboration - 2.4's behaviour preserved.
+    /// button) resolves without corroboration - the previous behaviour preserved.
     #[test]
     fn an_id_match_without_stored_text_resolves_without_corroboration() {
         let stored = entry(Some("icon-1"), "button", None, None, None);
@@ -275,7 +276,7 @@ mod tests {
     /// A mutable-value role whose name mirrors its current value has no stable
     /// text identity by core's own `stable_name` rule (name == value is
     /// dropped as volatile), so an id `Match` resolves without corroboration -
-    /// 2.4's pin, carried through core rather than re-implemented on Windows.
+    /// the prior pin, carried through core rather than re-implemented on Windows.
     /// The realistic textfield shape: stored name and value agree, the live
     /// candidate's drifted name mirrors its own new value.
     #[test]

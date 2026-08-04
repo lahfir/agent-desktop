@@ -1,4 +1,4 @@
-//! The locator-anchor resolver (U6): selected-match hydration's path-only
+//! The locator-anchor resolver: selected-match hydration's path-only
 //! variant of `resolve_element_strict`.
 //!
 //! Core's `live_locator::hydrate` re-observes the matched subtree from the

@@ -74,7 +74,7 @@ fn the_secure_control_s_live_value_is_withheld_at_the_reader_path() {
 /// A dead process token fails the reader as `STALE_REF`-class, never as
 /// empty success: the handle's payload carries the verified generation token
 /// and the shared read corroborates against it before answering (A14-9's
-/// rule at the reader path, KTD7). Driven through a token that cannot match
+/// rule at the reader path). Driven through a token that cannot match
 /// the live fixture process for determinism.
 #[test]
 fn a_dead_token_fails_stale_class_never_empty_success() {
@@ -93,8 +93,8 @@ fn a_dead_token_fails_stale_class_never_empty_success() {
     assert_eq!(error.code, ErrorCode::StaleRef);
 }
 
-/// The same shape with a live token answers honestly (the other direction of
-/// the KTD7 pin): verification passes and the read proceeds.
+/// The same shape with a live token answers honestly (the same rule's other
+/// direction): verification passes and the read proceeds.
 #[test]
 fn a_live_token_answers_honestly() {
     ensure_test_apartment();

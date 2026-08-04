@@ -100,7 +100,8 @@ impl ObservationOps for WindowsAdapter {
     /// The five live readers are projections over one shared single-element
     /// read (`crate::tree::live_read`), which corroborates the verified
     /// process token before answering and fails retryable when an essential
-    /// slot could not be read (KTD6, KTD7).
+    /// slot could not be read, and a dead provider token never satisfies
+    /// completeness (A14-9).
     fn get_live_value(
         &self,
         handle: &NativeHandle,

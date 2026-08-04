@@ -2,9 +2,9 @@ use agent_desktop_core::{AdapterError, ErrorCode, NativeHandle};
 
 /// The verified process identity a resolved element carries, so the live-read
 /// path can corroborate that the provider is still the one resolution verified
-/// (KTD7): a dead provider's reads can succeed empty on some builds (A14-9),
-/// and the handle payload is the only place the generation token survives from
-/// resolution to the reader.
+/// (followed by A14-9's rule: a dead provider's reads can succeed empty on
+/// some builds), and the handle payload is the only place the generation token
+/// survives from resolution to the reader.
 #[derive(Debug, Clone)]
 pub(crate) struct ProcessPayload {
     pub(crate) pid: u32,
@@ -68,7 +68,7 @@ impl UIAElement {
     }
 
     /// Stamps the verified process identity onto the element so the live-read
-    /// path can corroborate liveness against it (KTD7).
+    /// path can corroborate liveness against it before answering.
     pub(crate) fn with_verified_process(self, pid: u32, token: String) -> Self {
         Self(self.0, Some(ProcessPayload { pid, token }))
     }

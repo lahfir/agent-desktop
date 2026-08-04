@@ -34,7 +34,7 @@ use super::walker_source::UiaTreeSource;
 /// with 5 landing on a different element - the silent-wrong-target shape
 /// strictness exists to prevent.
 ///
-/// The whole resolution runs through a `deadline`-bounded retry loop (U4)
+/// The whole resolution runs through a `deadline`-bounded retry loop
 /// that retries only what is genuinely incomplete - an `AppUnresponsive`
 /// error stamped explicitly retryable (an unreadable candidate, a vanished
 /// or transient node mid-descent). A settled answer - `STALE_REF` from a
@@ -134,7 +134,7 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
 
 /// Wraps the resolved element with the ref's verified process identity, so the
 /// live-read path can corroborate that the provider is still the one
-/// resolution verified (KTD7). The token-less case cannot reach here:
+/// resolution verified. The token-less case cannot reach here:
 /// `resolve_window_root` fails closed on it first.
 #[cfg(target_os = "windows")]
 pub(crate) fn into_verified_handle(element: super::element::UIAElement, entry: &RefEntry) -> NativeHandle {
@@ -176,7 +176,7 @@ pub(crate) fn retry_incomplete_until(
 }
 
 /// Whether the adapter's own loop should retry an error: only an explicitly
-/// retryable, incomplete read (U4). Mirrors macOS
+/// retryable, incomplete read. Mirrors macOS
 /// (`resolve.rs:275-277`); the granularity split between adapter-loop-settled
 /// and incomplete lives in the `complete`/`retryable` details every resolver
 /// error carries.
