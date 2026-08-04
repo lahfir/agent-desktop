@@ -9,10 +9,17 @@
     WinForms and WPF scratch fixtures, and Obsidian (Chromium/Electron) when
     present - reading the binary's JSON, never the suite's opinion of itself.
     Per target it snapshots, round-trips a find, and reads live values and
-    state off sampled refs (get/is). The WinForms fixture also runs the A7-3
-    judgement: a stored ref is re-resolved after a WM_APP content swap, and the
-    outcome (resolved-correct / stale / ambiguous) is recorded. Obsidian is
-    read shape-only, and its refs' re-resolution STALE_REF rate is reported
+    state off sampled refs (get/is). The WinForms fixture also runs an
+    A7-3-shaped identity-stability judgement: a stored ref's live `value` is
+    captured before and after a WM_APP content swap and compared, not just
+    re-resolved with an `ok:true` on a stored-field read - a value that
+    drifted after a successful resolve is the silent-neighbour signature
+    `ok:true` alone cannot see. A17-2 measured this fixture's ListBox exposes
+    zero ListItems to a COM client, so the swapped rows are never in the
+    walked/reffed tree; the judgement therefore checks whether the sampled
+    (non-list) ref's identity survives an unrelated content-changing message,
+    not A7-3's index-keyed wrong-target shape itself. Obsidian is read
+    shape-only, and its refs' re-resolution STALE_REF rate is reported
     honestly. Every capture is redacted through the corpus gate.
 #>
 [CmdletBinding()]
@@ -148,25 +155,43 @@ try {
         $snapObj = if ($snap.ok) { $snap } else { $null }
         $ref = Get-FirstRef -WindowId $wid
         $reads = ''
+        $preValue = $null
         if ($ref) {
             $g = Invoke-Ad -Arguments @('get',$ref,'--property','bounds')
             $vp = Invoke-Ad -Arguments @('is',$ref,'--property','enabled')
+            $preValue = Invoke-Ad -Arguments @('get',$ref,'--property','value')
             $reads = "get=$($g.ok) is=$($vp.ok)"
         }
         $find = Invoke-Ad -Arguments @('find','--window-id',$wid,'--role','button','--first')
         $matchCount = if ($find.data.PSObject.Properties.Name -contains 'matches') { @($find.data.matches).Count } elseif ($find.data.PSObject.Properties.Name -contains 'match') { 1 } else { 0 }
         $findResult = "ok=$($find.ok) matches=$matchCount"
 
-        # A7-3 judgement: swap the fixture list via WM_APP, then re-resolve the
-        # stored ref; the resolver must either find the same element or go
-        # stale, never silently resolve a neighbour.
+        # A7-3-shaped judgement, scoped honestly (see the header comment and
+        # A17-2): swap the fixture via WM_APP, then re-resolve the stored ref
+        # and compare its LIVE `value` (read off the resolved live element via
+        # get_live_value, not the stored RefEntry) against the value captured
+        # before the swap. A bare `get --property role` success is not enough
+        # - `role` is served from the stored entry and cannot tell a correct
+        # resolve from a silently-resolved neighbour; comparing the live value
+        # can, because a neighbour would very likely carry different content.
         # WM_APP+5 to the fixture window
         $hwndVal = $wid.Replace('w-','')
         Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class AD { [DllImport("user32.dll")] public static extern bool PostMessage(System.IntPtr hWnd, uint msg, System.IntPtr wp, System.IntPtr lp); }'
         $post = [AD]::PostMessage([IntPtr]::new([int64]$hwndVal), 0x8005, [IntPtr]::Zero, [IntPtr]::Zero)
         Start-Sleep -Seconds 1
         $reresolve = if ($ref) { Invoke-Ad -Arguments @('get',$ref,'--property','role') } else { $null }
-        $reresult = if ($null -ne $reresolve -and $reresolve.ok) { 'resolved-correct' } elseif ($null -ne $reresolve) { $reresolve.error.code } else { 'no-ref' }
+        $postValue = if ($ref) { Invoke-Ad -Arguments @('get',$ref,'--property','value') } else { $null }
+        $reresult = if ($null -ne $reresolve -and $reresolve.ok) {
+            $preOk = ($null -ne $preValue) -and $preValue.ok
+            $postOk = ($null -ne $postValue) -and $postValue.ok
+            if ($preOk -and $postOk -and ($preValue.data.value -eq $postValue.data.value)) {
+                'resolved-identity-stable'
+            } elseif ($preOk -and $postOk) {
+                'resolved-identity-drifted'
+            } else {
+                'resolved-unverified'
+            }
+        } elseif ($null -ne $reresolve) { $reresolve.error.code } else { 'no-ref' }
         New-FindRow -Name 'winforms' -Stack 'winforms' -Result 'ran' -Snapshot $snapObj -FindResult $findResult -RefReads ($reads + " re-resolve-after-swap=$reresult")
     } catch {
         New-FindRow -Name 'winforms' -Stack 'winforms' -Result 'skipped' -Reason $_.Exception.Message
