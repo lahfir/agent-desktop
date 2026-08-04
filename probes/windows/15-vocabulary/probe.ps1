@@ -15,6 +15,17 @@
 
     Captures are written beside this script under captures\, BOM-less UTF-8,
     through the corpus redaction gate in ..\common.ps1.
+
+    A pass that runs and answers "no" is data and is recorded as such. A pass
+    that never answered is not data, in either of the two ways it can fail: the
+    probe binary exited non-zero, so the capture holds a placeholder rather than
+    a measurement, or the pass never ran at all and wrote no capture. Under
+    -Label ci the captures declared mandatory below must all exist and all hold
+    measurements; a placeholder or an absent capture fails the run, because CI's
+    only other signal is the artifact upload, which a placeholder satisfies
+    exactly as well as a measurement does and which the passes that did run
+    satisfy on behalf of the ones that did not. A dev-box run keeps the
+    placeholder and stays green; the operator can see it.
 #>
 [CmdletBinding()]
 param(
@@ -33,6 +44,11 @@ $script:CaptureDir = Join-Path $script:ProbeDir 'captures'
 if (-not (Test-Path -LiteralPath $script:CaptureDir)) {
     New-Item -ItemType Directory -Path $script:CaptureDir -Force | Out-Null
 }
+
+Register-MandatoryCapture -Name @(
+    "uia-vocabulary-$Label.json",
+    "uia-vocabulary-wpf-$Label.json"
+)
 
 function Write-VocabularyCapture {
     param(
@@ -53,7 +69,7 @@ function Invoke-VocabularyProbe {
     param([int]$AttachHandle = 0)
     $cargo = Get-Command cargo -ErrorAction SilentlyContinue
     if (-not $cargo) {
-        return [ordered]@{ skipped = 'cargo is not installed on this machine' }
+        return (New-NotMeasuredResult -Reason 'cargo is not installed on this machine')
     }
     $work = Join-Path ([IO.Path]::GetTempPath()) ('agent-desktop-vocabulary-' + [guid]::NewGuid())
     New-Item -ItemType Directory -Path (Join-Path $work 'src') -Force | Out-Null
@@ -94,7 +110,7 @@ windows-sys = { version = "0.61", features = [
         try {
             & cargo build --quiet 2>&1 | Write-Verbose
             if ($LASTEXITCODE -ne 0) {
-                return [ordered]@{ skipped = "cargo build failed with exit code $LASTEXITCODE" }
+                return (New-NotMeasuredResult -Reason "cargo build failed with exit code $LASTEXITCODE")
             }
             if ($AttachHandle -ne 0) {
                 $raw = & cargo run --quiet -- --attach $AttachHandle 2>$null | Out-String
@@ -102,7 +118,7 @@ windows-sys = { version = "0.61", features = [
                 $raw = & cargo run --quiet 2>$null | Out-String
             }
             if ($LASTEXITCODE -ne 0) {
-                return [ordered]@{ skipped = "the probe exited with code $LASTEXITCODE" }
+                return (New-NotMeasuredResult -Reason "the probe exited with code $LASTEXITCODE")
             }
             return ($raw | ConvertFrom-Json)
         } finally {
@@ -115,6 +131,7 @@ windows-sys = { version = "0.61", features = [
 
 $vocabulary = Invoke-VocabularyProbe
 $path = Write-VocabularyCapture -Name "uia-vocabulary-$Label.json" -Content (ConvertTo-Json -InputObject $vocabulary -Depth 30)
+Register-MandatoryPass -Capture $path -Result $vocabulary
 Write-Host "wrote $path"
 
 <#
@@ -128,7 +145,7 @@ Write-Host "wrote $path"
 function Invoke-WpfVocabularyProbe {
     $script = Join-Path $script:ProbeDir '..\scratch\ScratchWpf.ps1'
     if (-not (Test-Path -LiteralPath $script)) {
-        return [ordered]@{ skipped = 'the WPF scratch fixture is not present' }
+        return (New-NotMeasuredResult -Reason 'the WPF scratch fixture is not present')
     }
     $process = Start-Process -FilePath 'powershell.exe' `
         -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-Tag', 'vocab', '-TimeoutSeconds', '180') `
@@ -145,7 +162,7 @@ function Invoke-WpfVocabularyProbe {
             }
         }
         if ($handle -eq 0) {
-            return [ordered]@{ skipped = 'the WPF scratch window never reported a handle' }
+            return (New-NotMeasuredResult -Reason 'the WPF scratch window never reported a handle')
         }
         Start-Sleep -Seconds 2
         return Invoke-VocabularyProbe -AttachHandle $handle
@@ -158,5 +175,19 @@ function Invoke-WpfVocabularyProbe {
 
 $wpf = Invoke-WpfVocabularyProbe
 $wpfPath = Write-VocabularyCapture -Name "uia-vocabulary-wpf-$Label.json" -Content (ConvertTo-Json -InputObject $wpf -Depth 30)
+Register-MandatoryPass -Capture $wpfPath -Result $wpf
 Write-Host "wrote $wpfPath"
+
+$script:measurementGap = Get-MandatoryMeasurementGap
+if ($Label -eq 'ci' -and $null -ne $script:measurementGap) {
+    Write-ProbeResult -Probe '15-vocabulary' -Status 'fail' `
+        -Message 'a mandatory pass produced no capture or recorded a placeholder instead of a measurement' `
+        -Data $script:measurementGap
+    exit 1
+}
+
+Write-ProbeResult -Probe '15-vocabulary' -Status 'ok' -Message 'vocabulary probes captured' -Data @{
+    win32 = Split-Path -Leaf $path
+    wpf = Split-Path -Leaf $wpfPath
+}
 exit 0

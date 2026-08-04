@@ -1,6 +1,10 @@
 ﻿$script:ProbeRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:CapturesRoot = Join-Path $script:ProbeRoot 'captures'
 $script:BoundsBucket = 8
+$script:NotMeasuredKey = 'not_measured'
+$script:MandatoryExpected = New-Object System.Collections.ArrayList
+$script:MandatoryProduced = New-Object System.Collections.ArrayList
+$script:MandatoryDegraded = New-Object System.Collections.ArrayList
 $script:UsersPathPattern = '[A-Za-z]:[\\/]+Users[\\/]+(?!Public[\\/\s"])(?!Default[\\/\s"])(?!All Users[\\/\s"])[^\\/:*?"<>|\s]+'
 
 function Get-ProbeRoot {
@@ -483,6 +487,67 @@ function Start-MediumIntegrityProcess {
         MainWindowHandle = $handle
         IntegritySid     = $sid
         Process          = $proc
+    }
+}
+
+<#
+    A pass that runs and answers "no" is data. A pass that never answered -
+    because the probe binary exited non-zero, or because the pass never ran at
+    all and wrote no capture - is not data, and on CI it is indistinguishable
+    from success unless the harness says so: the artifact upload is CI's only
+    other signal, and it is satisfied by a placeholder or by the surviving
+    captures of the passes that did run. These four helpers let a probe declare
+    which captures a CI run must contain, mark each one as it is produced, and
+    ask at the end whether anything is missing or degraded.
+#>
+function New-NotMeasuredResult {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Reason)
+    return [ordered]@{ not_measured = $true; skipped = $Reason }
+}
+
+function Test-PassNotMeasured {
+    param([Parameter(Mandatory = $true)][AllowNull()]$Result)
+    if ($null -eq $Result) { return $true }
+    if ($Result -is [System.Collections.IDictionary]) {
+        if ($Result.Contains($script:NotMeasuredKey)) { return [bool]$Result[$script:NotMeasuredKey] }
+        return $Result.Contains('skipped')
+    }
+    $properties = $Result.PSObject.Properties
+    $marker = $properties[$script:NotMeasuredKey]
+    if ($null -ne $marker) { return [bool]$marker.Value }
+    return ($null -ne $properties['skipped'])
+}
+
+function Register-MandatoryCapture {
+    param([Parameter(Mandatory = $true)][string[]]$Name)
+    foreach ($entry in $Name) {
+        if (-not $script:MandatoryExpected.Contains($entry)) { [void]$script:MandatoryExpected.Add($entry) }
+    }
+}
+
+function Register-MandatoryPass {
+    param(
+        [Parameter(Mandatory = $true)][string]$Capture,
+        [Parameter(Mandatory = $true)][AllowNull()]$Result
+    )
+    $leaf = Split-Path -Leaf $Capture
+    if (-not $script:MandatoryProduced.Contains($leaf)) { [void]$script:MandatoryProduced.Add($leaf) }
+    if (Test-PassNotMeasured -Result $Result) {
+        if (-not $script:MandatoryDegraded.Contains($leaf)) { [void]$script:MandatoryDegraded.Add($leaf) }
+    }
+}
+
+function Get-MandatoryMeasurementGap {
+    $missing = New-Object System.Collections.ArrayList
+    foreach ($entry in $script:MandatoryExpected) {
+        if (-not $script:MandatoryProduced.Contains($entry)) { [void]$missing.Add($entry) }
+    }
+    if ($missing.Count -eq 0 -and $script:MandatoryDegraded.Count -eq 0) { return $null }
+    return [ordered]@{
+        missing_captures  = @($missing)
+        missing_count     = $missing.Count
+        degraded_captures = @($script:MandatoryDegraded)
+        degraded_count    = $script:MandatoryDegraded.Count
     }
 }
 

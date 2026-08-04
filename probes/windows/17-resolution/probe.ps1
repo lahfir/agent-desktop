@@ -15,6 +15,17 @@
 
     Every capture is written beside this script under captures\, BOM-less UTF-8,
     through the corpus redaction gate in ..\common.ps1.
+
+    A pass that runs and answers "no" is data and is recorded as such. A pass
+    that never answered is not data, in either of the two ways it can fail: the
+    probe binary exited non-zero, so the capture holds a placeholder rather than
+    a measurement, or the pass never ran at all and wrote no capture. Under
+    -Label ci the captures declared mandatory below must all exist and all hold
+    measurements; a placeholder or an absent capture fails the run, because CI's
+    only other signal is the artifact upload, which a placeholder satisfies
+    exactly as well as a measurement does and which the passes that did run
+    satisfy on behalf of the ones that did not. A dev-box run keeps the
+    placeholder and stays green; the operator can see it.
 #>
 [CmdletBinding()]
 param(
@@ -35,6 +46,13 @@ if (-not (Test-Path -LiteralPath $script:CaptureDir)) {
     New-Item -ItemType Directory -Path $script:CaptureDir -Force | Out-Null
 }
 $script:Spawned = New-Object System.Collections.ArrayList
+
+Register-MandatoryCapture -Name @(
+    "resolution-own-$Label.json",
+    "resolution-wpf-$Label.json",
+    "resolution-winforms-$Label.json",
+    "resolution-swap-$Label.json"
+)
 
 function Write-ResolutionCapture {
     param(
@@ -97,7 +115,7 @@ function Invoke-ProbePass {
     )
     $raw = (& $Exe @Arguments 2>$null | Out-String)
     if ($LASTEXITCODE -ne 0) {
-        return [ordered]@{ skipped = "the probe exited with code $LASTEXITCODE" }
+        return (New-NotMeasuredResult -Reason "the probe exited with code $LASTEXITCODE")
     }
     return ($raw | ConvertFrom-Json)
 }
@@ -284,8 +302,13 @@ try {
     $built = Build-ProbeBinary
     if ($built.skipped) {
         Write-Host ("probe binary skipped: " + $built.skipped)
-        if ($Label -eq 'ci' -and $built.buildFailed) {
-            Write-ProbeResult -Probe '17-resolution' -Status 'fail' -Message 'probe build failed on CI' -Data $built
+        if ($Label -eq 'ci') {
+            # A missing prerequisite is a legitimate dev-box skip, but on CI the
+            # workflow installs the toolchain, so either form of skip means no
+            # mandatory pass ran at all - the same failure to measure the gate
+            # below catches, reached before the gate exists.
+            $reason = if ($built.buildFailed) { 'probe build failed on CI' } else { 'the probe binary was unavailable on CI, so no mandatory pass ran' }
+            Write-ProbeResult -Probe '17-resolution' -Status 'fail' -Message $reason -Data $built
             exit 1
         }
         Write-ProbeResult -Probe '17-resolution' -Status 'skip' -Message 'probe build unavailable' -Data $built
@@ -296,6 +319,7 @@ try {
     # --- pass 1: the probe's own Win32 fixture ---------------------------
     $own = Invoke-ProbePass -Exe $exe
     $script:ownPath = Write-ResolutionCapture -Name "resolution-own-$Label.json" -Content (ConvertTo-Json -InputObject $own -Depth 20)
+    Register-MandatoryPass -Capture $script:ownPath -Result $own
     Write-Host "wrote $script:ownPath"
 
     # --- pass 2: the WPF scratch window ----------------------------------
@@ -311,6 +335,7 @@ try {
                 Start-Sleep -Seconds 2
                 $wpf = Invoke-ProbePass -Exe $exe -Arguments @('--attach', $handle.ToString())
                 $script:wpfPath = Write-ResolutionCapture -Name "resolution-wpf-$Label.json" -Content (ConvertTo-Json -InputObject $wpf -Depth 20)
+                Register-MandatoryPass -Capture $script:wpfPath -Result $wpf
                 Write-Host "wrote $script:wpfPath"
             } else {
                 Write-Host 'WPF scratch window never reported a handle; WPF pass skipped'
@@ -336,10 +361,12 @@ try {
                     Start-Sleep -Seconds 2
                     $winformsPass = Invoke-ProbePass -Exe $exe -Arguments @('--attach', $handle.ToString())
                     $script:winformsPath = Write-ResolutionCapture -Name "resolution-winforms-$Label.json" -Content (ConvertTo-Json -InputObject $winformsPass -Depth 20)
+                    Register-MandatoryPass -Capture $script:winformsPath -Result $winformsPass
                     Write-Host "wrote $script:winformsPath"
 
                     $swap = Invoke-ProbePass -Exe $exe -Arguments @('--swap-arm', $handle.ToString())
                     $script:swapPath = Write-ResolutionCapture -Name "resolution-swap-$Label.json" -Content (ConvertTo-Json -InputObject $swap -Depth 20)
+                    Register-MandatoryPass -Capture $script:swapPath -Result $swap
                     Write-Host "wrote $script:swapPath"
                 } else {
                     Write-Host 'ScratchForms never reported a handle; WinForms passes skipped'
@@ -387,6 +414,14 @@ try {
     if ($null -ne $built -and $built.work -and (Test-Path -LiteralPath $built.work)) {
         Remove-Item -LiteralPath $built.work -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+$script:measurementGap = Get-MandatoryMeasurementGap
+if ($Label -eq 'ci' -and $null -ne $script:measurementGap) {
+    Write-ProbeResult -Probe '17-resolution' -Status 'fail' `
+        -Message 'a mandatory pass produced no capture or recorded a placeholder instead of a measurement' `
+        -Data $script:measurementGap
+    exit 1
 }
 
 Write-ProbeResult -Probe '17-resolution' -Status 'ok' -Message 'resolution probes captured' -Data @{

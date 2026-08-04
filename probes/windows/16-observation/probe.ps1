@@ -17,6 +17,18 @@
     UTF-8, through the corpus redaction gate in ..\common.ps1. Chromium item
     captions follow the 2.3 scheduling rule: the Electron row runs first, with
     no other probe window on the desktop, after an idle settle.
+
+    A pass that runs and answers "no" is data and is recorded as such. A pass
+    that never answered is not data, in either of the two ways it can fail: the
+    probe binary exited non-zero, so the capture holds a placeholder rather than
+    a measurement, or the pass never ran at all and wrote no capture. Under
+    -Label ci the captures declared mandatory below must all exist and all hold
+    measurements; a placeholder or an absent capture fails the run, because CI's
+    only other signal is the artifact upload, which a placeholder satisfies
+    exactly as well as a measurement does and which the passes that did run
+    satisfy on behalf of the ones that did not. A dev-box run keeps the
+    placeholder and stays green; the operator can see it. The Chromium passes
+    are dev-box only and are therefore not mandatory.
 #>
 [CmdletBinding()]
 param(
@@ -37,6 +49,13 @@ if (-not (Test-Path -LiteralPath $script:CaptureDir)) {
     New-Item -ItemType Directory -Path $script:CaptureDir -Force | Out-Null
 }
 $script:Spawned = New-Object System.Collections.ArrayList
+
+Register-MandatoryCapture -Name @(
+    "observation-census-$Label.json",
+    "observation-win32-$Label.json",
+    "observation-wpf-$Label.json",
+    "observation-split-integrity-$Label.json"
+)
 
 function Write-ObservationCapture {
     param(
@@ -128,7 +147,7 @@ function Invoke-ProbePass {
     )
     $raw = (& $Exe @Arguments 2>$null | Out-String)
     if ($LASTEXITCODE -ne 0) {
-        return [ordered]@{ skipped = "the probe exited with code $LASTEXITCODE" }
+        return (New-NotMeasuredResult -Reason "the probe exited with code $LASTEXITCODE")
     }
     return ($raw | ConvertFrom-Json)
 }
@@ -259,19 +278,30 @@ try {
     $censusScript = Join-Path $script:ProbeDir 'census.ps1'
     if (Test-Path -LiteralPath $censusScript) {
         & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $censusScript -Label $Label 2>&1 | Write-Verbose
+        $censusExit = $LASTEXITCODE
+        $censusCapture = Join-Path $script:CaptureDir "observation-census-$Label.json"
+        # Presence alone would let a stale capture from an earlier run stand in
+        # for a census that failed this time, so the exit code has to agree.
+        if ($censusExit -eq 0 -and (Test-Path -LiteralPath $censusCapture)) {
+            Register-MandatoryPass -Capture $censusCapture -Result (Get-Content -LiteralPath $censusCapture -Raw | ConvertFrom-Json)
+        } else {
+            Write-Host ("the census script produced no measurement (exit code $censusExit)")
+        }
     }
 
     $built = Build-ProbeBinary
     if ($built.skipped) {
         Write-Host ("probe binary skipped: " + $built.skipped)
-        if ($Label -eq 'ci' -and $built.buildFailed) {
+        if ($Label -eq 'ci') {
             # A missing prerequisite (no cargo) is a legitimate dev-box skip,
-            # but a broken build under -Label ci must fail the workflow
-            # rather than exit 0 through the skip path below: a green run
-            # that silently produced no capture is worse than a red one,
-            # because CI's artifact upload has no other signal that the
+            # but under -Label ci the workflow installs the toolchain, so any
+            # skip here means no mandatory pass ran at all. Either form must
+            # fail the workflow rather than exit 0 through the skip path below:
+            # a green run that silently produced no capture is worse than a red
+            # one, because CI's artifact upload has no other signal that the
             # observation corpus never got built.
-            Write-ProbeResult -Probe '16-observation' -Status 'fail' -Message 'probe build failed on CI' -Data $built
+            $reason = if ($built.buildFailed) { 'probe build failed on CI' } else { 'the probe binary was unavailable on CI, so no mandatory pass ran' }
+            Write-ProbeResult -Probe '16-observation' -Status 'fail' -Message $reason -Data $built
             exit 1
         }
         Write-ProbeResult -Probe '16-observation' -Status 'skip' -Message 'probe build unavailable' -Data $built
@@ -282,6 +312,7 @@ try {
     # --- pass 1: the probe's own Win32 fixture ---------------------------
     $own = Invoke-ProbePass -Exe $exe
     $script:ownPath = Write-ObservationCapture -Name "observation-win32-$Label.json" -Content (ConvertTo-Json -InputObject $own -Depth 20)
+    Register-MandatoryPass -Capture $script:ownPath -Result $own
     Write-Host "wrote $script:ownPath"
 
     # --- pass 2: the WPF scratch window (multicolour provider stack) -------
@@ -304,10 +335,12 @@ try {
                 Start-Sleep -Seconds 2
                 $wpfResult = Invoke-ProbePass -Exe $exe -Arguments @('--attach', $handle.ToString())
                 $script:wpfPath = Write-ObservationCapture -Name "observation-wpf-$Label.json" -Content (ConvertTo-Json -InputObject $wpfResult -Depth 20)
+                Register-MandatoryPass -Capture $script:wpfPath -Result $wpfResult
                 Write-Host "wrote $script:wpfPath"
 
                 $splitReport = Invoke-SplitIntegrityRead -Exe $exe -WindowHandle $handle
                 $script:splitPath = Write-ObservationCapture -Name "observation-split-integrity-$Label.json" -Content (ConvertTo-Json -InputObject $splitReport -Depth 10)
+                Register-MandatoryPass -Capture $script:splitPath -Result $splitReport
                 Write-Host "wrote $script:splitPath"
             } else {
                 Write-Host 'WPF scratch window never reported a handle; WPF and split-integrity passes skipped'
@@ -357,6 +390,14 @@ try {
     if ($null -ne $built -and $built.work -and (Test-Path -LiteralPath $built.work)) {
         Remove-Item -LiteralPath $built.work -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+$script:measurementGap = Get-MandatoryMeasurementGap
+if ($Label -eq 'ci' -and $null -ne $script:measurementGap) {
+    Write-ProbeResult -Probe '16-observation' -Status 'fail' `
+        -Message 'a mandatory pass produced no capture or recorded a placeholder instead of a measurement' `
+        -Data $script:measurementGap
+    exit 1
 }
 
 Write-ProbeResult -Probe '16-observation' -Status 'ok' -Message 'observation probes captured' -Data @{
