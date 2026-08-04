@@ -3,18 +3,16 @@ use agent_desktop_core::{AdapterError, Deadline, NativeHandle, RefEntry};
 #[cfg(target_os = "windows")]
 use super::element::UIAElement;
 #[cfg(target_os = "windows")]
-use super::properties::read_live;
-#[cfg(target_os = "windows")]
-use super::property_ids::TreeProperty;
+use super::resolve_match::{Candidate, CandidateOutcome, ambiguous_target_error, bounds_hash_of};
 use super::resolve_match::stale_ref_error;
-#[cfg(target_os = "windows")]
-use super::resolve_match::{Candidate, NodeIdentity, ambiguous_target_error};
 #[cfg(target_os = "windows")]
 use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
 #[cfg(target_os = "windows")]
 use super::walker_source::UiaTreeSource;
 #[cfg(target_os = "windows")]
-use agent_desktop_core::{ElementIdentifier, IdentifierKind, LocatorField, Rect};
+use agent_desktop_core::{ErrorCode, LocatorEvidence};
+#[cfg(target_os = "windows")]
+use serde_json::json;
 
 /// The resolve-scoped depth cap.
 ///
@@ -24,28 +22,24 @@ use agent_desktop_core::{ElementIdentifier, IdentifierKind, LocatorField, Rect};
 /// search bound rather than the walk bound.
 const MAX_RESOLVE_DEPTH: u8 = 50;
 
-/// Resolves a stored ref to its live element, fail-closed.
+/// Resolves a stored ref to its live element, fail-closed and three-state.
 ///
-/// The search descends from the stored window's root (the source window the
-/// ref was taken from) to a resolve-scoped depth, collecting every element
-/// whose `native_id` matches the stored one by kind and value, corroborated by
-/// role and the role-conditional stable text identity. Then:
+/// The search descends from the stored window's root to a resolve-scoped
+/// depth, reading each candidate with the same composition the walk uses
+/// (`UiaTreeSource::evidence`), gates on role, and runs core's composed
+/// identity rule (`resolve_match::candidate_outcome`). Then:
 ///
-/// - zero candidates -> `STALE_REF`
+/// - zero candidates and every decision was readable -> `STALE_REF`, settled
+/// - zero candidates but one was **unreadable** -> incomplete-and-retryable
+///   (`AppUnresponsive`, the three-state discipline: an `Unknown` verdict is
+///   never a `NoMatch`)
 /// - two or more candidates that all match -> `AMBIGUOUS_TARGET`
 /// - exactly one -> a `NativeHandle` wrapping the live element
 ///
-/// Anything short of an exact match fails closed rather than guessing, because
-/// A7-3 measured Explorer re-resolving 29 of 29 `AutomationId` keys with 5
-/// landing on a different element - the silent-wrong-target shape strictness
-/// exists to prevent.
-///
-/// The bounds hash is the soft signal among several matches: it never refutes
-/// an exact match, only breaks a tie over several matches. A stored ref
-/// without a hash (bounds failed at capture, or hidden by the requester)
-/// cannot be disambiguated by hash, so the lookup fails closed as ambiguous
-/// rather than guessing - a `None == None` comparison never picks a candidate
-/// with no bounds evidence.
+/// Anything short of an exact match fails closed rather than guessing,
+/// because A7-3 measured Explorer re-resolving 29 of 29 `AutomationId` keys
+/// with 5 landing on a different element - the silent-wrong-target shape
+/// strictness exists to prevent.
 #[cfg(target_os = "windows")]
 pub(crate) fn resolve_element_strict(
     entry: &RefEntry,
@@ -56,47 +50,43 @@ pub(crate) fn resolve_element_strict(
     let prepared = source.prepare_root(&root)?;
 
     let mut searched = Vec::new();
+    let mut incomplete = false;
     let budget = WalkBudget::new(MAX_RESOLVE_DEPTH, deadline)
         .with_max_raw_depth(MAX_RESOLVE_DEPTH)
         .with_max_siblings(DEFAULT_MAX_SIBLINGS);
-    search_under(&source, &prepared, 0, &budget, &mut searched)?;
+    search_under(
+        &source,
+        &prepared,
+        0,
+        &budget,
+        entry,
+        &mut searched,
+        &mut incomplete,
+    )?;
 
-    let expected_id = entry.identity.native_id.as_ref();
-    let expected_role = entry.identity.role.as_str();
-    let expected_name = entry.identity.name.as_deref();
-
-    let matches: Vec<Candidate> = searched
-        .into_iter()
-        .filter(|candidate| {
-            super::resolve_match::candidate_matches(
-                &candidate.identity,
-                expected_id,
-                expected_role,
-                expected_name,
-            )
-        })
-        .collect();
-
-    match matches.len() {
+    match searched.len() {
+        0 if incomplete => Err(identity_unknown_error(entry)),
         0 => Err(stale_ref_error(entry)),
-        1 => matches.into_iter().next().map_or_else(
-            || Err(stale_ref_error(entry)),
-            |Candidate { element, .. }| Ok(element.into_native_handle()),
-        ),
+        1 => {
+            let Some(candidate) = searched.into_iter().next() else {
+                return Err(stale_ref_error(entry));
+            };
+            Ok(candidate.element.into_native_handle())
+        }
         _ => {
-            let candidate_hashes: Vec<Option<u64>> = matches
+            let candidate_hashes: Vec<Option<u64>> = searched
                 .iter()
-                .map(|candidate| candidate.identity.bounds_hash)
+                .map(|candidate| candidate.bounds_hash)
                 .collect();
             match super::resolve_match::select_by_bounds_hash(
                 &candidate_hashes,
                 entry.geometry.bounds_hash,
             ) {
                 super::resolve_match::Selection::Resolved(index) => {
-                    Ok(matches[index].element.clone().into_native_handle())
+                    Ok(searched[index].element.clone().into_native_handle())
                 }
                 super::resolve_match::Selection::Ambiguous => {
-                    Err(ambiguous_target_error(entry, matches.len()))
+                    Err(ambiguous_target_error(entry, searched.len()))
                 }
             }
         }
@@ -113,6 +103,24 @@ pub(crate) fn resolve_element_strict(
     _deadline: Deadline,
 ) -> Result<NativeHandle, AdapterError> {
     Err(stale_ref_error(entry))
+}
+
+/// The incomplete-and-retryable answer: a candidate that could not be read is
+/// not a non-match. Mirrors macOS's `identity_unknown` shape exactly, a
+/// `complete: false, retryable: true` stamp so the caller's loop retries it.
+#[cfg(target_os = "windows")]
+fn identity_unknown_error(entry: &RefEntry) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Strict resolution could not determine candidate identity from the live accessibility evidence",
+    )
+    .with_suggestion("Retry after the target application finishes updating its accessibility tree")
+    .with_details(json!({
+        "kind": "resolution_identity_unknown",
+        "role": entry.identity.role,
+        "complete": false,
+        "retryable": true,
+    }))
 }
 
 /// Reaches the stored window's root element from the ref's source window id.
@@ -152,26 +160,42 @@ fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElemen
     )
 }
 
-/// Searches the subtree under `element` to the resolve depth, collecting every
-/// node's identity evidence.
+/// Searches the subtree under `element` to the resolve depth, collecting the
+/// candidates the composed matcher accepted and flagging an unreadable one as
+/// incomplete.
 #[cfg(target_os = "windows")]
 fn search_under(
     source: &UiaTreeSource,
     element: &UIAElement,
     depth: u8,
     budget: &WalkBudget,
+    entry: &RefEntry,
     out: &mut Vec<Candidate>,
+    incomplete: &mut bool,
 ) -> Result<(), AdapterError> {
     if depth >= MAX_RESOLVE_DEPTH {
         return Ok(());
     }
     crate::system::permissions::ensure_budget(budget.deadline)?;
 
-    out.push(read_candidate(element));
+    let (_, evidence, _) = source.evidence(element);
+    let role_matches = evidence
+        .role
+        .known()
+        .is_some_and(|role| role == &entry.identity.role);
+    if role_matches {
+        match super::resolve_match::candidate_outcome(entry, &evidence) {
+            CandidateOutcome::Matched => out.push(build_candidate(element, &evidence)),
+            CandidateOutcome::Incomplete => *incomplete = true,
+            CandidateOutcome::Refuted => {}
+        }
+    } else if evidence.role.is_unknown() {
+        *incomplete = true;
+    }
 
     let children = enumerate_children(source, element, budget)?;
     for child in children {
-        search_under(source, &child, depth + 1, budget, out)?;
+        search_under(source, &child, depth + 1, budget, entry, out, incomplete)?;
     }
     Ok(())
 }
@@ -215,48 +239,34 @@ fn enumerate_children(
     Ok(children)
 }
 
-/// Reads the identity-bearing evidence off one element for comparison, from a
-/// single batched read of the walk property set.
+/// Builds the candidate from the walk-composed evidence the search already
+/// read, projecting the tie-break hash off the same evidence slot.
 #[cfg(target_os = "windows")]
-fn read_candidate(element: &UIAElement) -> Candidate {
-    let (properties, _) = read_live(element);
-    let role = crate::tree::roles::resolve_role(&properties)
-        .known()
-        .cloned();
+fn build_candidate(element: &UIAElement, evidence: &LocatorEvidence) -> Candidate {
     Candidate {
         element: element.clone(),
-        identity: NodeIdentity {
-            native_id: match properties.get(TreeProperty::AutomationId).text() {
-                LocatorField::Known(value) if !value.trim().is_empty() => Some(ElementIdentifier {
-                    kind: IdentifierKind::AutomationId,
-                    value,
-                }),
-                _ => None,
-            },
-            role,
-            name: match properties.get(TreeProperty::Name).text() {
-                LocatorField::Known(value) if !value.trim().is_empty() => Some(value),
-                _ => None,
-            },
-            bounds_hash: properties
-                .get(TreeProperty::BoundingRectangle)
-                .bounds()
-                .known()
-                .and_then(Rect::bounds_hash),
-        },
+        bounds_hash: bounds_hash_of(evidence),
     }
 }
+
+
 
 #[cfg(all(test, target_os = "windows"))]
 mod windows_only {
     use super::*;
-    use agent_desktop_core::{RefEntry, WindowInfo};
+    use agent_desktop_core::{ElementIdentifier, LocatorEvidence, RefEntry, WindowInfo};
 
-    /// The live half of the resolver: the fixture's tree is walked, one
-    /// element carrying a non-empty `AutomationId` is captured, and a ref
-    /// built from that exact evidence resolves back to a live element - the
-    /// `snapshot` -> pick ref -> `--root` drill-down loop, across a real
-    /// process boundary.
+    fn first_identifier(evidence: &LocatorEvidence) -> Option<ElementIdentifier> {
+        evidence
+            .identifiers
+            .identifiers()
+            .iter()
+            .find(|identifier| {
+                matches!(identifier.kind, agent_desktop_core::IdentifierKind::AutomationId)
+            })
+            .cloned()
+    }
+
     #[test]
     fn a_fixture_ref_resolves_to_the_same_element_end_to_end() {
         crate::tree::fixture::ensure_test_apartment();
@@ -289,11 +299,11 @@ mod windows_only {
                 process_instance: Some(token),
             },
             identity: agent_desktop_core::RefEntryIdentity {
-                role: captured.role.clone().unwrap_or_default(),
-                name: captured.name.clone(),
+                role: captured.1.clone().unwrap_or_default(),
+                name: captured.2.clone(),
                 value: None,
                 description: None,
-                native_id: captured.native_id.clone(),
+                native_id: captured.0.clone(),
             },
             geometry: agent_desktop_core::RefGeometry {
                 bounds: None,
@@ -326,12 +336,10 @@ mod windows_only {
         );
     }
 
-    /// Walks the fixture and returns the first element carrying a
-    /// non-empty `AutomationId`, with the identity read off it.
     fn capture_identified(
         root: &UIAElement,
         deadline: agent_desktop_core::Deadline,
-    ) -> Option<NodeIdentity> {
+    ) -> Option<(Option<ElementIdentifier>, Option<String>, Option<String>)> {
         let source = UiaTreeSource::for_root(root).ok()?;
         let prepared = source.prepare_root(root).ok()?;
         let budget = WalkBudget::new(10, deadline);
@@ -343,13 +351,18 @@ mod windows_only {
         element: &UIAElement,
         depth: u8,
         budget: &WalkBudget,
-    ) -> Option<NodeIdentity> {
+    ) -> Option<(Option<ElementIdentifier>, Option<String>, Option<String>)> {
         if depth >= 10 {
             return None;
         }
-        let candidate = read_candidate(element);
-        if candidate.identity.native_id.is_some() {
-            return Some(candidate.identity);
+        let (_, evidence, _) = source.evidence(element);
+        let native_id = first_identifier(&evidence);
+        if native_id.is_some() {
+            return Some((
+                native_id,
+                evidence.role.known().cloned(),
+                evidence.name.known().cloned(),
+            ));
         }
         let children = enumerate_children(source, element, budget).ok()?;
         for child in children {
