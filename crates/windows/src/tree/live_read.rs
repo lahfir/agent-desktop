@@ -45,7 +45,7 @@ mod imp {
         target_read_reports_vanished,
     };
     use crate::tree::element::{UIAElement, uia_element};
-    use crate::tree::name_evidence::read_label;
+    use crate::tree::name_evidence::{LabelOutcome, read_label};
     use crate::tree::properties::{ElementProperties, read_live_bounded};
     use crate::tree::walker::walk_vocabulary;
     use agent_desktop_core::{AdapterError, Deadline, NativeHandle, ProcessId};
@@ -74,26 +74,45 @@ mod imp {
         deadline: Deadline,
     ) -> Result<LiveRead, AdapterError> {
         let element = uia_element(handle)?;
-        read_live_element_core(element, deadline, corroborate_verified_process, |element| {
-            read_live_bounded(element, deadline)
-        })
+        read_live_element_core(
+            element,
+            deadline,
+            corroborate_verified_process,
+            |element| read_live_bounded(element, deadline),
+            |element| read_label(element, false),
+        )
     }
 
     /// The read's body, generic over how process-instance corroboration and
     /// the property read itself are performed.
     ///
-    /// Production always passes the real corroborator and the real
-    /// `properties::read_live`; a test substitutes one or the other to drive
-    /// a specific failure deterministically - a fake corroborator that
-    /// answers live once and dead the next call stands in for a process that
-    /// dies between the pre-read and post-read checks (A14-9's corpse timing,
-    /// which a real process kill cannot reproduce without a race), and a
-    /// fake read stands in for a resolved target that has vanished.
+    /// Production always passes the real corroborator, the real bounded
+    /// property read and the real label read; a test substitutes one of them
+    /// to drive a specific failure deterministically - a fake corroborator
+    /// that answers live once and dead the next call stands in for a process
+    /// that dies between the pre-read and post-read checks (A14-9's corpse
+    /// timing, which a real process kill cannot reproduce without a race), a
+    /// fake read stands in for a resolved target that has vanished or for one
+    /// whose essential slots could not be read at all, and a counting label
+    /// read proves the deadline actually suppresses it.
+    ///
+    /// The label read is skipped outright once the deadline has passed. It
+    /// costs one to three further cross-process calls, and by the time it is
+    /// reached the bounded property read has already stopped issuing its own
+    /// for exactly that reason; spending more after the budget is gone is the
+    /// overshoot the bounded read exists to prevent. A skipped label settles
+    /// `LabelOutcome::Failed`, the outcome for a label that could not be
+    /// read, and never `Unlabelled`, which would claim the provider publishes
+    /// no label relation - a claim nothing measured. No slot the completeness
+    /// gate inspects is derived from the label, so skipping it cannot change
+    /// the verdict; it only leaves the name slot uncertain, which is the
+    /// honest report for work that was never done.
     pub(crate) fn read_live_element_core(
         element: &UIAElement,
         deadline: Deadline,
         corroborate: impl Fn(&UIAElement) -> Result<(), AdapterError>,
         read: impl Fn(&UIAElement) -> (ElementProperties, Vec<AdapterError>),
+        read_label: impl Fn(&UIAElement) -> LabelOutcome,
     ) -> Result<LiveRead, AdapterError> {
         crate::system::permissions::ensure_budget(deadline)?;
         corroborate(element)?;
@@ -104,7 +123,11 @@ mod imp {
         if target_read_reports_vanished(&errors) {
             return Err(stale_reader_error());
         }
-        let label = read_label(element, false);
+        let label = if deadline.is_expired() {
+            LabelOutcome::Failed
+        } else {
+            read_label(element)
+        };
         let vocabulary = walk_vocabulary(&properties, &label);
         let evidence = properties.clone().into_locator_evidence(vocabulary);
         if !essential_live_evidence_complete(&evidence) {
@@ -302,91 +325,18 @@ mod tests;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "live_read_edit_tests.rs"]
 mod edit_tests;
-/// The essential-completeness gate is a pure predicate over the evidence, so
-/// it is pinned without a UI Automation client: any essential slot reading
-/// `Unknown` - the completeness rule - rejects the bundle, and the
-/// rejection error is the retryable `AppUnresponsive` the loop retries
-/// instead of a partial answer claiming completeness.
+
+/// Split from `live_read_tests.rs` for the same reason: this module owns the
+/// tests that drive the shared read through the closures it is generic over,
+/// standing in for failures a real fixture cannot be made to produce on
+/// demand.
+#[cfg(all(test, target_os = "windows"))]
+#[path = "live_read_seam_tests.rs"]
+mod seam_tests;
+
+/// Split out because the completeness gate is a pure predicate over evidence:
+/// its tests need no UI Automation client and run on every target, which the
+/// fixture-driven modules above cannot.
 #[cfg(test)]
-mod completeness_tests {
-    use super::{essential_live_evidence_complete, incomplete_live_evidence};
-    use agent_desktop_core::{
-        ElementIdentifier, IdentifierEvidence, IdentifierKind, LocatorEvidence, LocatorField,
-        LocatorRefEvidence, NodeDescriptor, Rect,
-    };
-
-    fn complete_evidence() -> LocatorEvidence {
-        LocatorEvidence {
-            role: LocatorField::Known("button".to_string()),
-            name: LocatorField::Known("name".to_string()),
-            value: LocatorField::Known("value".to_string()),
-            description: LocatorField::Absent,
-            identifiers: IdentifierEvidence::typed(
-                [ElementIdentifier {
-                    kind: IdentifierKind::AutomationId,
-                    value: "id-1".to_string(),
-                }],
-                None,
-                true,
-            ),
-            states: LocatorField::Known(vec!["enabled".to_string()]),
-            ref_evidence: LocatorRefEvidence {
-                bounds: LocatorField::Known(Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 10.0,
-                    height: 10.0,
-                }),
-                available_actions: LocatorField::Known(vec!["click".to_string()]),
-                descriptors: NodeDescriptor::default(),
-            },
-        }
-    }
-
-    #[test]
-    fn a_complete_bundle_passes_the_gate() {
-        assert!(essential_live_evidence_complete(&complete_evidence()));
-    }
-
-    #[test]
-    fn an_unknown_role_fails_the_gate_retryable() {
-        let evidence = LocatorEvidence {
-            role: LocatorField::Unknown,
-            ..complete_evidence()
-        };
-        assert!(!essential_live_evidence_complete(&evidence));
-        let error = incomplete_live_evidence();
-        assert!(error.is_explicitly_retryable());
-        assert_eq!(error.code, agent_desktop_core::ErrorCode::AppUnresponsive);
-    }
-
-    #[test]
-    fn an_unknown_value_states_bounds_or_actions_fail_the_gate() {
-        for field in [
-            LocatorEvidence {
-                value: LocatorField::Unknown,
-                ..complete_evidence()
-            },
-            LocatorEvidence {
-                states: LocatorField::Unknown,
-                ..complete_evidence()
-            },
-            LocatorEvidence {
-                ref_evidence: LocatorRefEvidence {
-                    bounds: LocatorField::Unknown,
-                    ..complete_evidence().ref_evidence
-                },
-                ..complete_evidence()
-            },
-            LocatorEvidence {
-                ref_evidence: LocatorRefEvidence {
-                    available_actions: LocatorField::Unknown,
-                    ..complete_evidence().ref_evidence
-                },
-                ..complete_evidence()
-            },
-        ] {
-            assert!(!essential_live_evidence_complete(&field));
-        }
-    }
-}
+#[path = "live_read_gate_tests.rs"]
+mod gate_tests;

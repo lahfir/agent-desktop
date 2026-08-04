@@ -97,6 +97,31 @@ pub(crate) struct HresultRecord {
 /// An unlisted code is `Terminal`/`ErrorCode::Internal` - the loop retries
 /// only what is marked retryable, so an unknown failure surfaces rather than
 /// being guessed.
+///
+/// Three codes are unlisted on purpose, because each reads like an oversight
+/// and is not.
+///
+/// `S_OK` cannot arrive here from an enumeration. `uiautomation::Error::result`
+/// answers `Some` only for a negative code, and `UiaFailure::Hresult` is built
+/// only on that `Some`, so a null interface out-param - the end-of-list signal,
+/// which `windows-core` reports as `Error::empty()` carrying `HRESULT(0)` -
+/// splits onto the sentinel branch as `ERR_NONE` and is read as exhaustion,
+/// never as a classified failure. The one path that can reach this arm with
+/// `S_OK` is the client bootstrap, where `CoCreateInstance` reported success
+/// and handed back a null interface; that is a broken class factory, and
+/// terminal is the honest answer.
+///
+/// `UIA_E_NOCLICKABLEPOINT` is not a settled absence. The conditions Microsoft
+/// documents for it - the element obscured by another window or element, or not
+/// scrolled fully into view - are view state a caller can change, unlike a
+/// provider that genuinely lacks a property. It is also not how the client API
+/// reports that absence: `GetClickablePoint` answers `S_OK` with a `FALSE`
+/// out-param, which surfaces as a successful "no point" rather than as an error
+/// at all.
+///
+/// `UIA_E_PROXYASSEMBLYNOTLOADED` reports that a client-side proxy provider's
+/// assembly failed to load. That is this process's UI Automation stack failing,
+/// not an answer about the target, and no retry this crate can run changes it.
 pub(crate) fn hresult_record(hresult: i32) -> HresultRecord {
     match hresult {
         E_ACCESSDENIED => HresultRecord {

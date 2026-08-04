@@ -1,20 +1,23 @@
-use super::imp::{corroborate_verified_process, read_live_element_core};
 use super::{live_actions, live_bounds, live_element, live_state, live_value, read_live_element};
-use crate::system::hresult::UIA_E_ELEMENTNOTAVAILABLE;
-use crate::tree::automation::{UiaFailure, root_from_hwnd, uia_failure_error};
+use crate::tree::automation::root_from_hwnd;
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
-use crate::tree::properties::{ElementProperties, read_live};
+use crate::tree::name_evidence::{LabelOutcome, read_label};
 use crate::tree::walker::TreeSource;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{AdapterError, ErrorCode, NativeHandle, ProcessId, RefEntry};
-use std::cell::Cell;
 
 fn fixture_pid(fixture: &HostedFixture) -> u32 {
     fixture.process_id()
 }
 
-fn verified_handle(fixture: &HostedFixture) -> Result<NativeHandle, AdapterError> {
+/// The production label read, in the shape `read_live_element_core` takes it.
+/// Shared with `live_read_seam_tests.rs`, which counts calls through it.
+pub(super) fn live_label(element: &UIAElement) -> LabelOutcome {
+    read_label(element, false)
+}
+
+pub(super) fn verified_handle(fixture: &HostedFixture) -> Result<NativeHandle, AdapterError> {
     let deadline = deadline();
     let root = root_from_hwnd(fixture.handle(), deadline)?;
     let token =
@@ -108,136 +111,6 @@ fn a_live_token_answers_honestly() {
     let handle = verified_handle(&fixture).expect("a verified handle");
     let read = read_live_element(&handle, deadline()).expect("the shared read succeeds");
     assert!(!read.evidence.role.is_unknown());
-}
-
-/// A regression pin for the corpse race A14-9 measured: a token that reads
-/// live at the pre-read check must not be trusted for the rest of the call.
-/// Driven through the fake-corroborator injection seam on
-/// `read_live_element_core` rather than a real process kill, because timing a
-/// real kill against the read without a race is not possible - the fake
-/// answers live on the pre-read call and dead on every call after, the
-/// deterministic stand-in for a process that dies during the read. Removing
-/// the post-read corroboration call `read_live_element_core` makes would turn
-/// this `Err` into an `Ok` built from a real, successfully-read fixture
-/// element.
-#[test]
-fn a_process_that_dies_during_the_read_settles_stale_not_ok() {
-    ensure_test_apartment();
-    let fixture = HostedFixture::spawn().expect("a fixture host starts");
-    let handle = verified_handle(&fixture).expect("a verified handle");
-    let element = handle
-        .downcast_ref::<UIAElement>()
-        .expect("a UIAElement payload");
-    let calls = Cell::new(0u32);
-    let corroborate = |_: &UIAElement| {
-        let already_called = calls.get();
-        calls.set(already_called + 1);
-        if already_called == 0 {
-            Ok(())
-        } else {
-            Err(super::stale_reader_error())
-        }
-    };
-
-    let error = match read_live_element_core(element, deadline(), corroborate, read_live) {
-        Err(error) => error,
-        Ok(_) => panic!("a token that goes dead mid-call must not read Ok"),
-    };
-    assert_eq!(error.code, ErrorCode::StaleRef);
-    assert_eq!(
-        calls.get(),
-        2,
-        "both the pre-read and the post-read corroboration call must run"
-    );
-}
-
-/// The vanished-but-live-process shape Finding B measured: the owning process
-/// answers corroboration honestly, and only the specific resolved element is
-/// gone. A read whose own errors already carry the
-/// `UIA_E_ELEMENTNOTAVAILABLE` disposition - built through the same
-/// `uia_failure_error` classifier a real UI Automation failure would go
-/// through - must settle a complete `STALE_REF`, never fall through to the
-/// completeness gate's retryable `AppUnresponsive`.
-#[test]
-fn a_vanished_resolved_target_settles_stale_not_retryable_unresponsive() {
-    ensure_test_apartment();
-    let fixture = HostedFixture::spawn().expect("a fixture host starts");
-    let handle = verified_handle(&fixture).expect("a verified handle");
-    let element = handle
-        .downcast_ref::<UIAElement>()
-        .expect("a UIAElement payload");
-    let vanished_read = |_: &UIAElement| {
-        let error = uia_failure_error(
-            UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE),
-            "read an element property",
-        );
-        (ElementProperties::from_reads(Vec::new()), vec![error])
-    };
-
-    let error = match read_live_element_core(
-        element,
-        deadline(),
-        corroborate_verified_process,
-        vanished_read,
-    ) {
-        Err(error) => error,
-        Ok(_) => panic!("a vanished resolved target must not read as complete"),
-    };
-    assert_eq!(error.code, ErrorCode::StaleRef);
-    assert_eq!(
-        error
-            .details
-            .as_ref()
-            .and_then(|details| details.get("complete"))
-            .and_then(serde_json::Value::as_bool),
-        Some(true),
-        "a vanished target settles complete, it is never retried"
-    );
-}
-
-/// The same vanished-target shape, but wrapped through the real
-/// `property_read_error` - the wrapper `properties::read_live_bounded`
-/// actually applies to every error it collects - rather than through
-/// `uia_failure_error` alone. `property_read_error` calls `.with_details`
-/// with a payload that carries no `retryable` key, which fully replaces the
-/// error's details JSON but cannot touch `error.code` at all: `with_details`
-/// only ever writes `code`-independent fields. This test exercises that real
-/// wrapper end to end - the one every property-read failure actually passes
-/// through - rather than only the raw classifier the test above calls
-/// directly, confirming `target_read_reports_vanished`'s `error.code` check
-/// still sees `StaleRef` once the production wrap has run.
-#[test]
-fn a_vanished_target_wrapped_through_the_real_property_read_error_still_settles_stale() {
-    ensure_test_apartment();
-    let fixture = HostedFixture::spawn().expect("a fixture host starts");
-    let handle = verified_handle(&fixture).expect("a verified handle");
-    let element = handle
-        .downcast_ref::<UIAElement>()
-        .expect("a UIAElement payload");
-    let vanished_read = |_: &UIAElement| {
-        let base = uia_failure_error(
-            UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE),
-            "read an element property",
-        );
-        let wrapped = crate::tree::properties::property_read_error(
-            base,
-            crate::tree::property_ids::TreeProperty::Value,
-        );
-        (ElementProperties::from_reads(Vec::new()), vec![wrapped])
-    };
-
-    let error = match read_live_element_core(
-        element,
-        deadline(),
-        corroborate_verified_process,
-        vanished_read,
-    ) {
-        Err(error) => error,
-        Ok(_) => panic!(
-            "a vanished target wrapped through property_read_error must not read as complete"
-        ),
-    };
-    assert_eq!(error.code, ErrorCode::StaleRef);
 }
 
 /// Finding: the shared live read issued roughly 42 cross-process calls with
