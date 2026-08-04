@@ -1,0 +1,189 @@
+//! The bounded sibling enumeration and child-index path descent that both
+//! resolvers drive.
+//!
+//! The broad search and the locator anchor walk the same two cross-process
+//! primitives - one `first_child` followed by a `next_sibling` chain - under
+//! the same sibling cap and the same deadline. They differ in exactly two
+//! decisions: what a failed enumeration step means, and what an expired
+//! deadline means. Those two are the parameters; the loop is written once.
+//!
+//! The loop consults the deadline on every iteration, mirroring the element
+//! walk's own enumeration (`walker_enumerate.rs`). Checking it only around the
+//! enumeration would let a pathological list run the whole sibling cap - up to
+//! `WalkBudget::max_siblings` cross-process calls - after the budget was
+//! already spent.
+
+use agent_desktop_core::AdapterError;
+
+use crate::system::permissions::ensure_budget;
+use crate::tree::automation::{UiaFailure, uia_failure_error};
+use crate::tree::walker::{TreeSource, WalkBudget};
+
+/// What a failed enumeration step means to the resolver that asked for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DescentVerdict {
+    /// The node enumerates nothing further and that is a real answer: keep
+    /// what was collected, and the list still counts as whole.
+    Settled,
+    /// The node enumerates nothing further, but only because a read failed:
+    /// keep what was collected and record that the list is partial.
+    Unfinished,
+    /// The failure is the attempt's answer and propagates as an error.
+    Surfaced,
+}
+
+/// What an expired deadline means to the resolver that asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExpiryPolicy {
+    /// Keep the partial list and record that it is partial. For a resolver
+    /// whose partial answer is already retried, an unfinished enumeration is
+    /// the signal it acts on.
+    Unfinish,
+    /// Surface the timeout. For a resolver that settles in a single attempt, a
+    /// partial list would be read as a settled absence - "the element is gone" -
+    /// when the truth is only that time ran out.
+    Surface,
+}
+
+/// The two decisions that differ between the resolvers, with the shape-only
+/// phrase each enumeration axis reports a surfaced failure under.
+pub(crate) struct DescentPolicy {
+    pub(crate) classify: fn(UiaFailure) -> DescentVerdict,
+    pub(crate) on_expiry: ExpiryPolicy,
+    pub(crate) descend_context: &'static str,
+    pub(crate) sibling_context: &'static str,
+}
+
+/// One node's child list as the enumeration found it.
+#[derive(Debug)]
+pub(crate) struct ChildList<N> {
+    pub(crate) elements: Vec<N>,
+    pub(crate) complete: bool,
+}
+
+/// Where a child-index path walk ended, and whether every enumeration along
+/// the way was whole.
+pub(crate) struct PathLanding<N> {
+    pub(crate) element: Option<N>,
+    pub(crate) complete: bool,
+}
+
+/// Enumerates one element's children, honouring the sibling cap as a hard
+/// bound on pathological lists and the deadline as a bound on time.
+///
+/// The cap is the one place this enumeration's completeness is not literal: a
+/// cap-hit keeps the truncated list and still reports it whole. That is
+/// deliberate. The bound exists to make the loop total against a sibling chain
+/// that never terminates - the ancestor cycle guard cannot see such a chain,
+/// because it revisits no element on any root-to-node path - not to clamp a
+/// large but finite list. Measured breadth is nowhere near it: the widest node
+/// in the probe corpus sits in a virtualized Explorer file list whose entire
+/// tree over `%WINDIR%\System32` is 196 nodes (A1-1), and a WinForms `ListBox`
+/// exposes no items at all to a COM client (A17-2).
+///
+/// Reporting the truncation unfinished would cost more honesty than it buys,
+/// for two reasons. The bound is shared with the walk that issues refs in the
+/// first place: `walk_from_root` enumerates under the same
+/// `WalkBudget::max_siblings` and refuses to present a cap-cut child list as
+/// whole, so no stored ref can name an element past this point in its parent's
+/// sibling list. And an unfinished verdict is not scoped to the node that
+/// truncated - it withholds the entire search's answer, so one oversized list
+/// anywhere in a window would convert a correct settled miss elsewhere in that
+/// window into a retry loop that re-truncates identically on every attempt and
+/// expires as `TIMEOUT`.
+pub(crate) fn read_children<S: TreeSource>(
+    source: &S,
+    element: &S::Node,
+    budget: &WalkBudget,
+    policy: &DescentPolicy,
+) -> Result<ChildList<S::Node>, AdapterError> {
+    let mut elements = Vec::new();
+    let mut current = match source.first_child(element) {
+        Ok(first) => first,
+        Err(failure) if failure.is_exhaustion() => {
+            return Ok(ChildList {
+                elements,
+                complete: true,
+            });
+        }
+        Err(failure) => return classified(failure, elements, policy, policy.descend_context),
+    };
+    loop {
+        if elements.len() >= budget.max_siblings {
+            break;
+        }
+        if let Err(expired) = ensure_budget(budget.deadline) {
+            return match policy.on_expiry {
+                ExpiryPolicy::Unfinish => Ok(ChildList {
+                    elements,
+                    complete: false,
+                }),
+                ExpiryPolicy::Surface => Err(expired),
+            };
+        }
+        let next = source.next_sibling(&current);
+        elements.push(current);
+        match next {
+            Ok(sibling) => current = sibling,
+            Err(failure) if failure.is_exhaustion() => break,
+            Err(failure) => return classified(failure, elements, policy, policy.sibling_context),
+        }
+    }
+    Ok(ChildList {
+        elements,
+        complete: true,
+    })
+}
+
+/// Walks the stored child-index path from a root, O(depth) child reads.
+///
+/// A path step that lands nowhere yields no element; what that absence means
+/// belongs to the caller, not here.
+pub(crate) fn descend_path<S: TreeSource>(
+    source: &S,
+    root: &S::Node,
+    path: &[usize],
+    budget: &WalkBudget,
+    policy: &DescentPolicy,
+) -> Result<PathLanding<S::Node>, AdapterError> {
+    let mut current = root.clone();
+    let mut complete = true;
+    for &index in path {
+        let read = read_children(source, &current, budget, policy)?;
+        complete &= read.complete;
+        let Some(child) = read.elements.get(index) else {
+            return Ok(PathLanding {
+                element: None,
+                complete,
+            });
+        };
+        current = child.clone();
+    }
+    Ok(PathLanding {
+        element: Some(current),
+        complete,
+    })
+}
+
+fn classified<N>(
+    failure: UiaFailure,
+    elements: Vec<N>,
+    policy: &DescentPolicy,
+    context: &str,
+) -> Result<ChildList<N>, AdapterError> {
+    match (policy.classify)(failure) {
+        DescentVerdict::Settled => Ok(ChildList {
+            elements,
+            complete: true,
+        }),
+        DescentVerdict::Unfinished => Ok(ChildList {
+            elements,
+            complete: false,
+        }),
+        DescentVerdict::Surfaced => Err(uia_failure_error(failure, context)),
+    }
+}
+
+#[cfg(test)]
+#[path = "resolve_descent_tests.rs"]
+mod tests;

@@ -7,12 +7,14 @@ use super::resolve_match::stale_ref_error;
 use super::resolve_match::{CandidateOutcome, ambiguous_target_error};
 #[cfg(target_os = "windows")]
 use super::resolve_search::{
-    MAX_RESOLVE_DEPTH, SearchContext, can_use_path_fast_path, element_at_path,
-    entry_is_unverifiable, geometry_matches, identity_unknown_error, search_under,
+    SearchContext, can_use_path_fast_path, element_at_path, entry_is_unverifiable,
+    geometry_matches, identity_unknown_error, resolve_walk_budget, search_under,
     should_stop_collecting,
 };
 #[cfg(target_os = "windows")]
-use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
+use super::walker::TreeSource;
+#[cfg(all(test, target_os = "windows"))]
+use super::walker::WalkBudget;
 #[cfg(target_os = "windows")]
 use super::walker_source::UiaTreeSource;
 
@@ -62,9 +64,7 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
     let source = UiaTreeSource::for_root(&root)?;
     let prepared = source.prepare_root(&root)?;
 
-    let budget = WalkBudget::new(MAX_RESOLVE_DEPTH, deadline)
-        .with_max_raw_depth(MAX_RESOLVE_DEPTH)
-        .with_max_siblings(DEFAULT_MAX_SIBLINGS);
+    let budget = resolve_walk_budget(deadline);
 
     if can_use_path_fast_path(entry) {
         let mut path_incomplete = false;
@@ -324,3 +324,11 @@ pub(crate) fn resolve_window_root(
 #[cfg(all(test, target_os = "windows"))]
 #[path = "resolve_tests.rs"]
 mod windows_only;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_ambiguity_tests.rs"]
+mod ambiguity;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_path_fallback_tests.rs"]
+mod path_fallback;

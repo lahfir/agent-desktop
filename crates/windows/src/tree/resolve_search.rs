@@ -10,14 +10,21 @@
 //! stored hash must come from a positive-area rectangle (A17-7).
 
 use agent_desktop_core::{
-    AdapterError, ErrorCode, LocatorEvidence, RefEntry, ref_identity::has_meaningful_identity,
+    AdapterError, Deadline, ErrorCode, LocatorEvidence, RefEntry,
+    ref_identity::has_meaningful_identity,
 };
 use serde_json::json;
 
+use super::automation::{UiaFailure, uia_failure_disposition};
 use super::element::UIAElement;
 use super::resolve_match::{Candidate, bounds_hash_of};
-use super::walker::{TreeSource, WalkBudget};
+use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
 use super::walker_source::UiaTreeSource;
+use crate::system::hresult::ReadDisposition;
+use descent::{DescentPolicy, DescentVerdict, ExpiryPolicy};
+
+#[path = "resolve_descent.rs"]
+pub(crate) mod descent;
 
 /// The resolve-scoped depth cap.
 ///
@@ -26,6 +33,22 @@ use super::walker_source::UiaTreeSource;
 /// elements commonly sit at depth 25+, so the cap is the search bound rather
 /// than the walk bound.
 pub(crate) const MAX_RESOLVE_DEPTH: u8 = 50;
+
+/// The budget a resolution attempt enumerates under.
+///
+/// The sibling bound is the observation walk's own `DEFAULT_MAX_SIBLINGS`
+/// rather than a resolve-scoped number, and that is load-bearing rather than
+/// incidental. `read_children` reports a cap-hit as a whole child list, so a
+/// truncation here settles `STALE_REF` instead of retrying; that verdict is
+/// only honest while the resolver reaches at least as far as the walk that
+/// issued the ref, which presents no cap-cut list as whole and therefore
+/// allocates no ref past its own bound. A lower bound here would convert
+/// reachable refs into settled misses with nothing else refuting them.
+pub(crate) fn resolve_walk_budget(deadline: Deadline) -> WalkBudget {
+    WalkBudget::new(MAX_RESOLVE_DEPTH, deadline)
+        .with_max_raw_depth(MAX_RESOLVE_DEPTH)
+        .with_max_siblings(DEFAULT_MAX_SIBLINGS)
+}
 
 /// The incomplete-and-retryable answer: a candidate that could not be read is
 /// not a non-match. Mirrors macOS's `identity_unknown` shape exactly, a
@@ -90,15 +113,9 @@ pub(crate) fn element_at_path(
     budget: &WalkBudget,
     incomplete: &mut bool,
 ) -> Result<Option<UIAElement>, AdapterError> {
-    let mut current = root.clone();
-    for &index in path {
-        let children = enumerate_children(source, &current, budget, incomplete)?;
-        let Some(child) = children.get(index) else {
-            return Ok(None);
-        };
-        current = child.clone();
-    }
-    Ok(Some(current))
+    let landing = descent::descend_path(source, root, path, budget, &SEARCH_DESCENT)?;
+    *incomplete |= !landing.complete;
+    Ok(landing.element)
 }
 
 /// The geometry promotion eligibility predicate.
@@ -241,35 +258,23 @@ pub(crate) fn enumerate_children(
     budget: &WalkBudget,
     incomplete: &mut bool,
 ) -> Result<Vec<UIAElement>, AdapterError> {
-    let mut children = Vec::new();
-    let mut current = match source.first_child(element) {
-        Ok(first) => first,
-        Err(failure) if failure.is_exhaustion() => return Ok(children),
-        Err(failure) => {
-            return descent_failure(failure, children, incomplete, "descend to a stored ref");
-        }
-    };
-    loop {
-        if children.len() >= budget.max_siblings {
-            break;
-        }
-        let next = source.next_sibling(&current);
-        children.push(current);
-        match next {
-            Ok(sibling) => current = sibling,
-            Err(failure) if failure.is_exhaustion() => break,
-            Err(failure) => {
-                return descent_failure(
-                    failure,
-                    children,
-                    incomplete,
-                    "walk a stored ref's siblings",
-                );
-            }
-        }
-    }
-    Ok(children)
+    let read = descent::read_children(source, element, budget, &SEARCH_DESCENT)?;
+    *incomplete |= !read.complete;
+    Ok(read.elements)
 }
+
+/// The search's descent policy.
+///
+/// An expired deadline leaves the search unfinished rather than surfacing:
+/// unfinished is exactly what the search's own classification already means by
+/// retryable, and the search did not finish, so a partial collection must not
+/// be classified as a settled absence.
+pub(crate) const SEARCH_DESCENT: DescentPolicy = DescentPolicy {
+    classify: search_descent_verdict,
+    on_expiry: ExpiryPolicy::Unfinish,
+    descend_context: "descend to a stored ref",
+    sibling_context: "walk a stored ref's siblings",
+};
 
 /// Classifies a descent failure under the read disposition: a settled
 /// absence means the node enumerates nothing (a real answer, not
@@ -277,22 +282,11 @@ pub(crate) fn enumerate_children(
 /// incomplete and the descent continues - a non-target node dying
 /// mid-descent under live churn is not evidence the target is gone; a
 /// terminal failure propagates.
-fn descent_failure(
-    failure: super::automation::UiaFailure,
-    children: Vec<UIAElement>,
-    incomplete: &mut bool,
-    context: &str,
-) -> Result<Vec<UIAElement>, AdapterError> {
-    match super::automation::uia_failure_disposition(failure) {
-        crate::system::hresult::ReadDisposition::SettledAbsence => Ok(children),
-        crate::system::hresult::ReadDisposition::Retryable
-        | crate::system::hresult::ReadDisposition::Unavailable => {
-            *incomplete = true;
-            Ok(children)
-        }
-        crate::system::hresult::ReadDisposition::Terminal => {
-            Err(super::automation::uia_failure_error(failure, context))
-        }
+fn search_descent_verdict(failure: UiaFailure) -> DescentVerdict {
+    match uia_failure_disposition(failure) {
+        ReadDisposition::SettledAbsence => DescentVerdict::Settled,
+        ReadDisposition::Retryable | ReadDisposition::Unavailable => DescentVerdict::Unfinished,
+        ReadDisposition::Terminal => DescentVerdict::Surfaced,
     }
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::tree::element::UIAElement;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{

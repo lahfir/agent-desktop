@@ -12,23 +12,30 @@
 //! intact for core's fresh re-observation). Only the unresponsive/transport
 //! class runs through the bounded retry loop, which re-walks the same cheap
 //! O(depth) path rather than replaying an expensive search.
+//!
+//! An expired deadline is the one failure that must not settle. There was no
+//! attempt left to settle: a path walk cut short by the deadline lands short
+//! of the stored index, and reporting that as a miss would tell core the
+//! element is genuinely gone when the truth is only that time ran out. It
+//! surfaces as `TIMEOUT` instead.
 
 use agent_desktop_core::{AdapterError, Deadline, NativeHandle, RefEntry};
 
-#[cfg(target_os = "windows")]
-use super::element::UIAElement;
+use super::automation::{UiaFailure, uia_failure_disposition};
 #[cfg(target_os = "windows")]
 use super::resolve_match::CandidateOutcome;
 use super::resolve_match::stale_ref_error;
+use super::resolve_search::descent::{DescentPolicy, DescentVerdict, ExpiryPolicy};
 #[cfg(target_os = "windows")]
 use super::resolve_search::{
-    MAX_RESOLVE_DEPTH, entry_is_locatable, geometry_matches, identity_unknown_error,
-    provisional_geometry_candidate,
+    entry_is_locatable, geometry_matches, identity_unknown_error, provisional_geometry_candidate,
+    resolve_walk_budget,
 };
 #[cfg(target_os = "windows")]
-use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
+use super::walker::TreeSource;
 #[cfg(target_os = "windows")]
 use super::walker_source::UiaTreeSource;
+use crate::system::hresult::ReadDisposition;
 
 /// Resolves a locator anchor, settled-on-churn and bounded on transport.
 #[cfg(target_os = "windows")]
@@ -73,12 +80,16 @@ fn resolve_locator_anchor_once(
     let root = super::resolve::resolve_window_root(entry, deadline)?;
     let source = UiaTreeSource::for_root(&root)?;
     let prepared = source.prepare_root(&root)?;
-    let budget = WalkBudget::new(MAX_RESOLVE_DEPTH, deadline)
-        .with_max_raw_depth(MAX_RESOLVE_DEPTH)
-        .with_max_siblings(DEFAULT_MAX_SIBLINGS);
+    let budget = resolve_walk_budget(deadline);
 
-    let Some(candidate) = anchor_path_landed(&source, &prepared, &entry.scope.path, &budget)?
-    else {
+    let landing = super::resolve_search::descent::descend_path(
+        &source,
+        &prepared,
+        &entry.scope.path,
+        &budget,
+        &ANCHOR_DESCENT,
+    )?;
+    let Some(candidate) = landing.element else {
         return Err(stale_ref_error(entry));
     };
     let (_, evidence, _) = source.evidence(&candidate);
@@ -169,54 +180,25 @@ fn anchor_role_verdict(
     }
 }
 
-/// Walks the stored child-index path, anchor semantics: a step that lands
-/// nowhere, an unsupported enumeration, or a vanished node is a settled miss
-/// (`None`, never retried); a transport failure propagates so the loop
-/// absorbs it.
-#[cfg(target_os = "windows")]
-fn anchor_path_landed(
-    source: &UiaTreeSource,
-    root: &UIAElement,
-    path: &[usize],
-    budget: &WalkBudget,
-) -> Result<Option<UIAElement>, AdapterError> {
-    let mut current = root.clone();
-    for &index in path {
-        let children = enumerate_anchor_children(source, &current, budget)?;
-        let Some(child) = children.get(index) else {
-            return Ok(None);
-        };
-        current = child.clone();
-    }
-    Ok(Some(current))
-}
+/// The shape-only phrase both anchor enumeration axes report under. The
+/// anchor descends one exact path, so descent and sibling walk are the same
+/// act to a reader of the error.
+const ANCHOR_CONTEXT: &str = "walk a locator anchor's path";
 
-#[cfg(target_os = "windows")]
-fn enumerate_anchor_children(
-    source: &UiaTreeSource,
-    element: &UIAElement,
-    budget: &WalkBudget,
-) -> Result<Vec<UIAElement>, AdapterError> {
-    let mut children = Vec::new();
-    let mut current = match source.first_child(element) {
-        Ok(first) => first,
-        Err(failure) if failure.is_exhaustion() => return Ok(children),
-        Err(failure) => return anchor_descent(failure, children),
-    };
-    loop {
-        if children.len() >= budget.max_siblings {
-            break;
-        }
-        let next = source.next_sibling(&current);
-        children.push(current);
-        match next {
-            Ok(sibling) => current = sibling,
-            Err(failure) if failure.is_exhaustion() => break,
-            Err(failure) => return anchor_descent(failure, children),
-        }
-    }
-    Ok(children)
-}
+/// The anchor's descent policy.
+///
+/// An expired deadline surfaces the timeout rather than yielding a partial
+/// list. This resolver settles in one attempt, so a partial list would land
+/// short of the stored index and report a settled `STALE_REF` - telling the
+/// caller the element is genuinely gone when the truth is only that time ran
+/// out, and consuming the fresh re-observation the settled answer is supposed
+/// to trigger.
+pub(crate) const ANCHOR_DESCENT: DescentPolicy = DescentPolicy {
+    classify: anchor_descent_verdict,
+    on_expiry: ExpiryPolicy::Surface,
+    descend_context: ANCHOR_CONTEXT,
+    sibling_context: ANCHOR_CONTEXT,
+};
 
 /// Anchor descent classification: a settled absence or a vanished node means
 /// the subtree enumerates nothing (a real settled miss, never retried); a
@@ -224,18 +206,10 @@ fn enumerate_anchor_children(
 /// the attempt's error. The stale-produced-by-completion shape (`STALE_REF`
 /// with `complete: true`, retryability derived) is what satisfies core's
 /// hydration retry predicate so the fresh re-observation fires.
-#[cfg(target_os = "windows")]
-fn anchor_descent(
-    failure: super::automation::UiaFailure,
-    children: Vec<UIAElement>,
-) -> Result<Vec<UIAElement>, AdapterError> {
-    match super::automation::uia_failure_disposition(failure) {
-        crate::system::hresult::ReadDisposition::SettledAbsence
-        | crate::system::hresult::ReadDisposition::Unavailable => Ok(children),
-        crate::system::hresult::ReadDisposition::Retryable
-        | crate::system::hresult::ReadDisposition::Terminal => Err(
-            super::automation::uia_failure_error(failure, "walk a locator anchor's path"),
-        ),
+fn anchor_descent_verdict(failure: UiaFailure) -> DescentVerdict {
+    match uia_failure_disposition(failure) {
+        ReadDisposition::SettledAbsence | ReadDisposition::Unavailable => DescentVerdict::Settled,
+        ReadDisposition::Retryable | ReadDisposition::Terminal => DescentVerdict::Surfaced,
     }
 }
 

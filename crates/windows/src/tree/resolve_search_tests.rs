@@ -76,6 +76,36 @@ fn evidence(bounds_hash: Option<u64>) -> LocatorEvidence {
     }
 }
 
+/// Window-rootedness is a disjunction and every other builder in this file
+/// leaves `root_ref` unset, which satisfies it through the first disjunct
+/// alone. Both disjuncts are pinned here, in both directions: dropping the
+/// absolute-path one would settle every drill-down anchor `STALE_REF` while
+/// the rest of this suite stayed green.
+#[test]
+fn a_drill_down_ref_is_window_rooted_only_when_its_path_is_absolute() {
+    let mut absolute_under_a_root = entry(None, Some(1), Some("name"), None);
+    absolute_under_a_root.scope.root_ref = Some("root".to_string());
+    absolute_under_a_root.scope.path_is_absolute = true;
+    assert!(window_rooted(&absolute_under_a_root));
+
+    let mut relative_under_a_root = absolute_under_a_root.clone();
+    relative_under_a_root.scope.path_is_absolute = false;
+    assert!(!window_rooted(&relative_under_a_root));
+}
+
+/// The other disjunct, isolated the same way: a ref with no drill-down root at
+/// all is window-rooted whatever its path flag says.
+#[test]
+fn a_ref_with_no_drill_down_root_is_window_rooted_whatever_its_path_flag() {
+    let mut rootless = entry(None, Some(1), Some("name"), None);
+    rootless.scope.root_ref = None;
+    rootless.scope.path_is_absolute = false;
+    assert!(window_rooted(&rootless));
+
+    rootless.scope.path_is_absolute = true;
+    assert!(window_rooted(&rootless));
+}
+
 #[test]
 fn a_window_rooted_non_empty_path_with_identity_qualifies_for_the_fast_path() {
     let mut absolute = entry(None, Some(1), Some("name"), Some("id"));
