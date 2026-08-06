@@ -72,6 +72,46 @@ if [ "$HAS_RUST_CHANGES" -eq 0 ] && [ "$HAS_FFI_CHANGES" -eq 0 ]; then
     exit 0
 fi
 
+# A cargo invocation with no `-p` resolves through the workspace's
+# default-members, which names every platform crate. agent-desktop-macos cannot
+# build off macOS, so the unscoped `clippy` and `test` below failed on every
+# Windows and Linux clone - and a hook that always fails is a hook everyone
+# bypasses with SKIP_PRECOMMIT, which is how a formatting break and a
+# comment-rule violation reached CI. The sets below mirror the per-OS lanes in
+# .github/workflows/ci.yml: `test` (macOS), `test-windows`, `test-linux`. macOS
+# additionally keeps the two cross-compiling adapter crates that this hook has
+# always covered there, so the GA platform loses nothing.
+HOST_KERNEL="$(uname -s)"
+case "$HOST_KERNEL" in
+    Darwin*)
+        HOST_PACKAGES=(-p agent-desktop-core -p agent-desktop-macos -p agent-desktop-windows
+            -p agent-desktop-linux -p agent-desktop -p agent-desktop-ffi)
+        ;;
+    MINGW* | MSYS* | CYGWIN* | Windows_NT)
+        HOST_PACKAGES=(-p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi)
+        ;;
+    Linux*)
+        HOST_PACKAGES=(-p agent-desktop-core -p agent-desktop-linux -p agent-desktop -p agent-desktop-ffi)
+        ;;
+    *)
+        HOST_PACKAGES=(-p agent-desktop-core -p agent-desktop -p agent-desktop-ffi)
+        printf 'pre-commit: unrecognised host "%s", scoping cargo to the platform-neutral crates\n' "$HOST_KERNEL"
+        ;;
+esac
+
+# The defect being fixed was an unbuildable crate sitting in the package set, so
+# the selection asserts it never names one again.
+case "$HOST_KERNEL:${HOST_PACKAGES[*]}" in
+    Darwin*) ;;
+    *agent-desktop-macos*)
+        echo "pre-commit: package set names agent-desktop-macos on $HOST_KERNEL, which cannot build it" >&2
+        echo "pre-commit: refusing the commit - the cargo gates below would fail for the wrong reason." >&2
+        exit 1
+        ;;
+esac
+
+printf 'pre-commit: host %s, cargo scoped to %s\n' "$HOST_KERNEL" "${HOST_PACKAGES[*]}"
+
 run() {
     local label="$1"
     shift
@@ -87,8 +127,10 @@ run() {
 run "Rust source rules" scripts/check-rust-file-size.sh
 run "No delivery-plan references in source" scripts/check-no-phase-references.sh
 run "cargo fmt --all -- --check" cargo fmt --all -- --check
-run "cargo clippy --all-targets -- -D warnings" cargo clippy --all-targets -- -D warnings
-run "cargo test --lib --workspace" scripts/cargo-test-isolated-home.sh test --lib --workspace
+run "cargo clippy --all-targets -- -D warnings" \
+    cargo clippy "${HOST_PACKAGES[@]}" --all-targets -- -D warnings
+run "cargo test --lib" \
+    scripts/cargo-test-isolated-home.sh test "${HOST_PACKAGES[@]}" --lib
 
 # FFI-specific gates are skipped when no FFI files are staged. Runtime panic
 # and Python smoke proofs remain CI-only to keep commits fast.
