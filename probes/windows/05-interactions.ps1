@@ -591,9 +591,9 @@ try {
                 matchesSubstring  = ($selectedText -eq $mixedPayload.Substring(2, 5))
             }
             caret               = [ordered]@{
-                method           = 'a degenerate range (End collapsed onto Start) is Selected at character offset 4 and the selection is re-read'
+                method           = 'a degenerate range (End collapsed onto Start) is Selected at character offset 4 and the selection is re-read. Emptiness of the read-back text only means a collapsed caret if a range was read back at all: with no ranges the text is empty because nothing was measured, so the range count is part of the assertion rather than beside it.'
                 rangesAfter      = $caretSelection.Count
-                degenerate       = ($caretText.Length -eq 0)
+                degenerate       = (($caretSelection.Count -gt 0) -and ($caretText.Length -eq 0))
             }
             insert              = [ordered]@{
                 method       = 'TextPattern is read-only by contract; insertion is done through ValuePattern.SetValue and verified through the TextPattern read above'

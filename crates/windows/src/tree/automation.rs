@@ -1,26 +1,18 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode};
 
-use crate::system::hresult::{
-    CO_E_NOTINITIALIZED, E_ACCESSDENIED, E_INVALIDARG, E_POINTER, RPC_E_DISCONNECTED,
-    RPC_E_SERVERFAULT, RPC_S_CALL_FAILED, RPC_S_SERVER_UNAVAILABLE, UIA_E_ELEMENTNOTAVAILABLE,
-    UIA_E_ELEMENTNOTENABLED, UIA_E_INVALIDOPERATION, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT,
-    com_hresult_detail,
-};
 use crate::system::permissions::ensure_budget;
 
-pub const ERR_NONE: i32 = 0;
-pub const ERR_NOTFOUND: i32 = 1;
-pub const ERR_TIMEOUT: i32 = 2;
-pub const ERR_INACTIVE: i32 = 3;
-pub const ERR_TYPE: i32 = 4;
-pub const ERR_NULL_PTR: i32 = 5;
-pub const ERR_FORMAT: i32 = 6;
-pub const ERR_INVALID_OBJECT: i32 = 7;
-pub const ERR_ALREADY_RUNNING: i32 = 8;
-pub const ERR_INVALID_ARG: i32 = 9;
+#[path = "automation_classify.rs"]
+mod classify;
 
-const COM_UNINITIALIZED_SUGGESTION: &str =
-    "Join the calling thread to the COM multithreaded apartment before observing the desktop";
+#[cfg(test)]
+pub(crate) use classify::sentinel_disposition;
+pub(crate) use classify::uia_failure_disposition;
+pub use classify::{
+    ERR_ALREADY_RUNNING, ERR_FORMAT, ERR_INACTIVE, ERR_INVALID_ARG, ERR_INVALID_OBJECT, ERR_NONE,
+    ERR_NOTFOUND, ERR_NULL_PTR, ERR_TIMEOUT, ERR_TYPE, UiaFailure, root_resolution_error,
+    uia_failure_error,
+};
 
 /// Longest this crate will wait to learn whether a window thread is pumping.
 ///
@@ -47,7 +39,13 @@ pub const TRANSACTION_TIMEOUT_MS: u32 = 20_000;
 /// Reports a window whose thread is not dispatching messages.
 ///
 /// Distinct from a window that does not exist: the handle is valid, the
-/// provider is simply unreachable, and retrying later can succeed.
+/// provider is simply unreachable, and retrying later can succeed. Stamped
+/// with the same `complete`/`retryable` detail pair `uia_failure_error`
+/// carries off `ReadDisposition::Retryable::retry_details()`: every consumer
+/// that keys retry on this crate's errors - `resolve.rs`'s resolution retry
+/// loop and core's ref-action poll alike - reads that explicit stamp, not the
+/// error code, so a busy-but-alive window must carry it or it settles as a
+/// dead end instead of a transient the caller can wait out.
 pub fn unresponsive_window_error() -> AdapterError {
     AdapterError::new(
         ErrorCode::AppUnresponsive,
@@ -55,102 +53,26 @@ pub fn unresponsive_window_error() -> AdapterError {
     )
     .with_suggestion("Wait for the application to become responsive, then retry")
     .with_platform_detail("WM_GETOBJECT would block: the window thread did not answer WM_NULL")
+    .with_details(serde_json::json!({
+        "kind": "window_not_pumping",
+        "complete": false,
+        "retryable": true,
+    }))
 }
 
-/// One UI Automation failure, already split on the discriminator the crate's
-/// `Error` type mixes into a single `i32`.
-///
-/// `uiautomation::Error` carries its own non-negative sentinels (`ERR_NONE`,
-/// `ERR_NOTFOUND`, …) in the same field as a real HRESULT, so `code()` alone
-/// is ambiguous. `result()` is the only honest branch: `Some` for an HRESULT,
-/// `None` for a crate sentinel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UiaFailure {
-    Hresult(i32),
-    Sentinel(i32),
-}
+/// Pinned separately from `automation_tests.rs` because this crate's other
+/// tests belong to a concurrent change; this predicate is a pure function of
+/// the error the module already builds, so it needs no platform surface to
+/// check.
+#[cfg(test)]
+mod unresponsive_window_error_tests {
+    use super::unresponsive_window_error;
 
-impl UiaFailure {
-    /// Reports whether this failure is the benign end-of-list signal a child
-    /// enumeration must not mistake for a fault.
-    ///
-    /// `windows-core` returns `Error::empty()` for a null interface out-param,
-    /// whose `code()` is `HRESULT(0)`, which `uiautomation` stores verbatim.
-    /// The runtime pair is measured by the CI capability probe rather than
-    /// inferred from that chain.
-    pub fn is_exhaustion(self) -> bool {
-        matches!(self, UiaFailure::Sentinel(ERR_NONE))
-    }
-}
+    #[test]
+    fn it_carries_the_explicit_retryable_stamp_every_consumer_keys_on() {
+        let error = unresponsive_window_error();
 
-/// Builds a structured adapter error from a UI Automation failure.
-///
-/// `context` is a caller-supplied, shape-only phrase. Nothing observed from
-/// the target — a property value, a `Name`, a `ClassName`, a window title, or
-/// a `ProviderDescription` — may reach this function, because
-/// `ref_action.rs` clones adapter error text into session trace segments.
-pub fn uia_failure_error(failure: UiaFailure, context: &str) -> AdapterError {
-    match failure {
-        UiaFailure::Hresult(hresult) => {
-            let (code, suggestion) = hresult_disposition(hresult);
-            let error = AdapterError::new(code, format!("UI Automation could not {context}"))
-                .with_platform_detail(com_hresult_detail(hresult));
-            match suggestion {
-                Some(hint) => error.with_suggestion(hint),
-                None => error,
-            }
-        }
-        UiaFailure::Sentinel(sentinel) => AdapterError::new(
-            sentinel_disposition(sentinel),
-            format!("UI Automation could not {context}"),
-        )
-        .with_platform_detail(format!("UI Automation client status {sentinel}")),
-    }
-}
-
-fn hresult_disposition(hresult: i32) -> (ErrorCode, Option<&'static str>) {
-    match hresult {
-        E_ACCESSDENIED => (ErrorCode::PermDenied, None),
-        CO_E_NOTINITIALIZED => (ErrorCode::Internal, Some(COM_UNINITIALIZED_SUGGESTION)),
-        E_INVALIDARG | E_POINTER => (ErrorCode::InvalidArgs, None),
-        UIA_E_ELEMENTNOTAVAILABLE => (ErrorCode::StaleRef, None),
-        UIA_E_ELEMENTNOTENABLED => (ErrorCode::ActionFailed, None),
-        UIA_E_NOTSUPPORTED => (ErrorCode::ActionNotSupported, None),
-        UIA_E_TIMEOUT => (ErrorCode::Timeout, None),
-        UIA_E_INVALIDOPERATION => (ErrorCode::ActionFailed, None),
-        RPC_E_DISCONNECTED | RPC_E_SERVERFAULT | RPC_S_SERVER_UNAVAILABLE | RPC_S_CALL_FAILED => {
-            (ErrorCode::AppUnresponsive, None)
-        }
-        _ => (ErrorCode::Internal, None),
-    }
-}
-
-fn sentinel_disposition(sentinel: i32) -> ErrorCode {
-    match sentinel {
-        ERR_NOTFOUND | ERR_NULL_PTR => ErrorCode::ElementNotFound,
-        ERR_TIMEOUT => ErrorCode::Timeout,
-        ERR_INACTIVE => ErrorCode::AppUnresponsive,
-        ERR_INVALID_OBJECT => ErrorCode::StaleRef,
-        ERR_INVALID_ARG => ErrorCode::InvalidArgs,
-        ERR_NONE | ERR_TYPE | ERR_FORMAT | ERR_ALREADY_RUNNING => ErrorCode::Internal,
-        _ => ErrorCode::Internal,
-    }
-}
-
-/// Rewrites a root-resolution failure so a window that no longer exists is
-/// reported as a missing window rather than a stale element.
-pub fn root_resolution_error(failure: UiaFailure) -> AdapterError {
-    let error = uia_failure_error(failure, "resolve a window root");
-    match failure {
-        UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE) | UiaFailure::Sentinel(ERR_NOTFOUND) => {
-            AdapterError::new(
-                ErrorCode::WindowNotFound,
-                "UI Automation could not resolve a window root",
-            )
-            .with_platform_detail(error.platform_detail.unwrap_or_default())
-            .with_suggestion("List windows again and retry with a current window handle")
-        }
-        _ => error,
+        assert!(error.is_explicitly_retryable());
     }
 }
 

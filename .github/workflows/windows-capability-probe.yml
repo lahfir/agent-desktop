@@ -12,6 +12,7 @@ on:
       - 'probes/windows/14-ci-capability/**'
       - 'probes/windows/15-vocabulary/**'
       - 'probes/windows/16-observation/**'
+      - 'probes/windows/17-resolution/**'
       - '.github/workflows/windows-capability-probe.yml'
   workflow_dispatch:
 
@@ -51,7 +52,20 @@ jobs:
         run: |
           .\probes\windows\16-observation\probe.ps1 -Label ci -SkipChromium
 
+      - name: Run the resolution probe
+        shell: powershell
+        run: |
+          .\probes\windows\17-resolution\probe.ps1 -Label ci -SkipChromium
+
+      # Uploads on failure as well as success. A probe that fails its mandatory
+      # measurement gate has already written the placeholder captures naming
+      # what did not measure, and on a red run those are the entire evidence
+      # trail - skipping the upload would leave a debugger with an exit code and
+      # nothing else. !cancelled() rather than always(): the concurrency group
+      # above supersedes runs routinely, always() keeps running through a
+      # cancellation and is the documented cause of runs that will not cancel.
       - name: Upload the measured captures
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-capability-probe-captures
@@ -59,4 +73,11 @@ jobs:
             probes/windows/14-ci-capability/captures/*-ci.json
             probes/windows/15-vocabulary/captures/*-ci.json
             probes/windows/16-observation/captures/*-ci.json
-          if-no-files-found: error
+            probes/windows/17-resolution/captures/*-ci.json
+          # warn, not error. A probe that fails before writing anything leaves
+          # nothing to match, and erroring would stack a second "No files were
+          # found" failure on top of the real one and read as the cause. What
+          # asserts that a run measured something is the mandatory measurement
+          # gate inside each probe, which names the missing or degraded capture
+          # instead of firing only when every capture in the job is absent.
+          if-no-files-found: warn

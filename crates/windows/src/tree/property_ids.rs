@@ -91,10 +91,10 @@ impl TreeProperty {
     /// properties on the same walk: 1.22x on the in-process Win32 proxy at 20
     /// nodes, 1.98x on a real out-of-process WPF provider at 81 nodes, min of
     /// seven repeats after a discarded warm-up. That is materially slower, so
-    /// A15-12 built the conditional split the plan pre-committed to - core
-    /// plus availability prefetched, pattern state fetched with one
-    /// `BuildUpdatedCache` round trip per node that advertises a pattern - and
-    /// timed it head to head.
+    /// A15-12 built the obvious alternative and timed it head to head: a
+    /// conditional split that prefetches core plus availability and fetches
+    /// pattern state with one `BuildUpdatedCache` round trip per node that
+    /// advertises a pattern.
     ///
     /// **It does not recover the cost.** Across four runs and two Windows
     /// builds the split measured 0.80x to 1.08x the flat set, and the only
@@ -389,3 +389,11 @@ pub use imp::uia_property;
 #[cfg(test)]
 #[path = "property_ids_tests.rs"]
 mod tests;
+
+/// Split from `property_ids_tests.rs`: this module owns the identity gates -
+/// that every variant is listed, that no two share a structured-error name,
+/// and that no two resolve to the same automation constant - which need the
+/// whole-enum list the other module does not carry.
+#[cfg(test)]
+#[path = "property_ids_identity_tests.rs"]
+mod identity_tests;

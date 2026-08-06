@@ -29,8 +29,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-all.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\run-all.ps1 -Compare
 ```
 
-`run-all.ps1` executes every `NN-*.ps1` in lexical order, each in its own PowerShell
-process, and prints one summary line per probe. It exits:
+`run-all.ps1` executes every top-level `NN-*.ps1` in lexical order, each in its own
+PowerShell process, and prints one summary line per probe. The sub-phase probes that live
+in their own `NN-*/` directory are **not** in that set — their scripts are named
+`probe.ps1`/`census.ps1` and are driven by `.github/workflows/windows-capability-probe.yml`
+or run by hand. The redaction gate below is the exception: it sweeps those directories too,
+so "clean" means clean over every capture in the corpus. It exits:
 
 - `0` — every probe produced a capture, the redaction gate is clean, no spawned process survived.
 - `1` — probe failure, missing capture, redaction residue, surviving process, or (in
@@ -72,14 +76,61 @@ pass through verbatim — the integrity-level SIDs are the point of several prob
 `ControlType`, `AutomationId`, `ClassName`, bounds, patterns, and states stay verbatim, and
 application-chrome names are kept by the caller simply not calling it.
 
+**`Protect-ProbeName` is a call-site reducer, not part of the gate, and a Rust probe cannot
+reach it.** `Protect-ProbeText` and `Test-CaptureRedaction` check operator identity — user
+name, machine and DNS names, profile paths, SIDs — and nothing else; neither has any rule
+for a content node's `Name`, in any probe language. A `.ps1` probe that reads a content
+`Name` calls `Protect-ProbeName` itself; a Rust probe emits its own JSON, which the
+orchestrator only passes through `Protect-ProbeText`, so **a Rust probe must reduce a
+content `Name` at the point of record** — a length, a presence flag, or a stable digest —
+because nothing downstream will do it and nothing downstream will notice. `probe_survival.rs`
+is the worked example: markers are paired across captures by an FNV-1a digest of the name,
+never by the name.
+
 There is no writer that bypasses the gate. `run-all.ps1` re-asserts the gate over every
-capture before exiting and names any offending file.
+capture before exiting and names any offending file — for the identity classes above and for
+the echoed-name residue below, which is what "clean" means here.
+
+### Names a container inherits from its own content
+
+A container carrying no label of its own takes its accessible name from the content beneath
+it, so a document title lands on a `Group` or a `Button` that no content-control-type test can
+see and no window-title comparison catches — the leaked name belongs to a workspace split the
+window title does not name. On a target the caller declared to carry user content
+(`-RedactRootName`), `01-tree-dump.ps1` therefore also reduces any `Name` that contains, as a
+>=4 character substring, the `Name` of a descendant this rule already reduced.
+
+That scope is what separates the rule from evidence destruction, and it was chosen against a
+measurement rather than a guess. Unscoped, the same rule reduces the Settings frame's window
+title, because a system app's title and its home-page header are both the word `Settings` — and
+it reduces it on the frame window and on the core window while leaving the title-bar window
+verbatim, dismantling the frame/host split those three nodes exist to demonstrate. Chrome in a
+content-carrying app survives for a structural reason rather than a lucky one: an explicit
+label owes nothing to the subtree beneath it, and the subtree of a clickable icon is an unnamed
+`Image`. The Electron capture keeps every one of its chrome names — `Close`, `Bookmarks`,
+`New tab`, the ribbon actions, the view actions — verbatim.
+
+`Test-CaptureNameEcho` re-asserts the rule over a committed capture, where the raw strings are
+gone and only lengths survive: inside a pass whose root `Name` is itself reduced — the capture's
+own record that the target was declared to carry user content — a kept `Name` is residue when
+its own subtree holds a reduced `Name` short enough to fit inside it. Length containment is
+weaker than the string containment the reducer applies, so the gate flags a superset and cannot
+miss what the reducer would have caught. A residue line names the two node indexes and their
+lengths, never the value.
+
+**What no predicate here decides.** This rule catches a title a container *echoes* from content
+the corpus has already reduced. A container that carries a document title as its own explicit
+label, with nothing reduced beneath it to compare against and no match against the window
+title, is indistinguishable from chrome by any structural test and would be published verbatim.
+Nothing automatic closes that, so the Electron target's safety is an operator decision, not a
+predicate's.
 
 > Committed captures publish a software fingerprint of this VM: OS build, locale, installed
 > app versions, window class names, and automation ids. That is a deliberate choice — this
 > is a throwaway probe box, and the evidence is worthless if it is redacted to the point of
 > being unverifiable. Do not run this corpus on a machine whose software inventory is
-> sensitive.
+> sensitive, and point the Electron probe at a vault whose note titles are not: the corpus
+> publishes a tree walked over whatever content that vault holds.
 
 ## Safety envelope (KTD5)
 
@@ -158,6 +209,9 @@ expression-bodied members, no `nameof`. Write it plainly and it compiles everywh
 | `Write-ProbeJson -Probe -Name -InputObject` | `ConvertTo-Json -Depth 25`, then `Write-ProbeCapture` |
 | `Get-NormalizedCapture -Text` | KTD9 canonicalization |
 | `Test-CaptureRedaction -Path` | `$true` when clean; logs each residue reason |
+| `Test-CaptureNameEcho -Path` | `$true` when no kept `Name` echoes reduced content beneath it |
+| `Read-ProbeNodeRecords -Path` | node records in a capture, keyed to the pass each belongs to |
+| `ConvertFrom-ProbeJsonEscape -Text` | undo the JSON escaping a committed capture applied |
 | `Start-ScratchProcess -FilePath [-ArgumentList] [-NoActivate] [-TimeoutSec]` | tracked launch |
 | `Stop-ScratchProcess -ProcessId` | terminate and confirm gone |
 | `Get-ScratchProcessIds` | tracked pids still alive |

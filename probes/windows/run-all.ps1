@@ -29,6 +29,33 @@ function Get-CaptureFiles {
         Where-Object { $_.Name -ne '.gitkeep' })
 }
 
+<#
+    Every capture in the corpus, including the ones the probes that live in
+    their own NN-* directory write beside themselves.
+
+    The redaction gate is the only sweep that must see all of them. Scoping it
+    to $capturesRoot alone made "redaction gate clean over N capture file(s)"
+    true of a subset while reading as a statement about the corpus, and the
+    directories it skipped are the ones holding the newest captures. This is
+    deliberately not used by -Compare: the normalized-twin comparison applies
+    to the committed twinned corpus under $capturesRoot, and the per-probe
+    directories write no twin.
+#>
+function Get-AllCaptureFiles {
+    $files = New-Object System.Collections.ArrayList
+    foreach ($file in (Get-CaptureFiles)) { [void]$files.Add($file) }
+    foreach ($dir in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^\d\d-' })) {
+        $probeCaptures = Join-Path $dir.FullName 'captures'
+        if (-not (Test-Path -LiteralPath $probeCaptures)) { continue }
+        foreach ($file in @(Get-ChildItem -LiteralPath $probeCaptures -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -ne '.gitkeep' })) {
+            [void]$files.Add($file)
+        }
+    }
+    return @($files)
+}
+
 function Invoke-CompareMode {
     $drift = New-Object System.Collections.ArrayList
     $missing = New-Object System.Collections.ArrayList
@@ -120,15 +147,19 @@ foreach ($script in $scripts) {
 Write-Host ''
 Write-Host '=== redaction gate ==='
 $residueFiles = New-Object System.Collections.ArrayList
-foreach ($file in (Get-CaptureFiles)) {
+$gatedFiles = @(Get-AllCaptureFiles)
+foreach ($file in $gatedFiles) {
     $clean = $true
-    try { $clean = Test-CaptureRedaction -Path $file.FullName } catch {
+    try {
+        $clean = Test-CaptureRedaction -Path $file.FullName
+        if (-not (Test-CaptureNameEcho -Path $file.FullName)) { $clean = $false }
+    } catch {
         Exit-Harness ('redaction gate could not read ' + $file.FullName + ': ' + $_.Exception.Message)
     }
     if (-not $clean) { [void]$residueFiles.Add($file.FullName) }
 }
 if ($residueFiles.Count -eq 0) {
-    Write-Host ('redaction gate clean over ' + (Get-CaptureFiles).Count + ' capture file(s)')
+    Write-Host ('redaction gate clean over ' + $gatedFiles.Count + ' capture file(s)')
 } else {
     foreach ($f in $residueFiles) { Write-Host ('REDACTION-RESIDUE ' + $f) }
     $failed = $true

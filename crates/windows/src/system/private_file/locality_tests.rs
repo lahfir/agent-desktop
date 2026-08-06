@@ -112,6 +112,39 @@ fn a_forced_control_failure_yields_unknown_and_the_private_write_is_refused() {
         .expect("writes must work again once the control call is restored");
 }
 
+/// The append surface carries its own locality gate, and it is a separate
+/// line from the atomic write's.
+///
+/// Private trace segments are appended, so a segment opened on an
+/// SMB-redirected profile must be refused there too. The seam tests above
+/// drive `write_atomic` only, which left the append surface's gate deletable
+/// with the suite green. The refusal is asserted to name the append target, so
+/// it cannot pass on an enclosing check's refusal instead.
+#[test]
+fn a_forced_remote_locality_refuses_the_append_surface_on_its_own_gate() {
+    let scratch = Scratch::new("locality-remote-append");
+    let ops = WindowsPrivateFile::new();
+    let segment = scratch.path().join("segment.jsonl");
+
+    ops.open_private_append(&segment)
+        .expect("the append surface opens on local storage");
+
+    let refused = with_forced_remote_locality(|| ops.open_private_append(&segment).unwrap_err());
+
+    assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
+    assert!(
+        refused.to_string().contains("private append target"),
+        "the refusal must be the append surface's own gate: {refused}"
+    );
+    assert!(
+        refused.to_string().contains("remote storage"),
+        "the refusal must name the remote storage: {refused}"
+    );
+
+    ops.open_private_append(&segment)
+        .expect("the append surface works again once the locality probe is restored");
+}
+
 #[test]
 fn a_forced_remote_locality_refuses_the_private_write_while_the_control_call_succeeds() {
     let scratch = Scratch::new("locality-remote");

@@ -889,12 +889,19 @@ namespace AgentDesktop.Probe.Uia3
             for (int i = 0; i < signatures.Count; i++) { Bump(signatureCounts, signatures[i]); }
             Dictionary<string, int> coreSignatureCounts = new Dictionary<string, int>();
             for (int i = 0; i < coreSignatures.Count; i++) { Bump(coreSignatureCounts, coreSignatures[i]); }
-            bool stable = signatureCounts.Count <= 1;
-            bool coreStable = coreSignatureCounts.Count <= 1;
+            // A run that observed nothing produces one signature, the empty string,
+            // for every repetition -- which counts as one distinct signature and
+            // would otherwise be reported as stable ordering. Silence is not order,
+            // so stability requires that the one agreed signature carries events.
+            bool stable = signatureCounts.Count == 1 && signatures.Count > 0 && signatures[0].Length > 0;
+            bool coreStable = coreSignatureCounts.Count == 1 && coreSignatures.Count > 0 && coreSignatures[0].Length > 0;
 
             int mainThread = (int)Native.GetCurrentThreadId();
-            bool distinctFromMain = true;
-            bool distinctFromWorker = true;
+            // Seeded from whether any callback thread was seen at all: with an empty
+            // set the loop below cannot falsify anything, and "no callback arrived on
+            // the main thread" would be reported for a run where no callback arrived.
+            bool distinctFromMain = eventThreads.Count > 0;
+            bool distinctFromWorker = eventThreads.Count > 0;
             foreach (int tid in eventThreads)
             {
                 if (tid == mainThread) { distinctFromMain = false; }

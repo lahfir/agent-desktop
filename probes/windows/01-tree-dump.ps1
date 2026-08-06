@@ -23,6 +23,7 @@ $ContentControlTypes = @(
     'ControlType.Document', 'ControlType.Edit', 'ControlType.Text', 'ControlType.ListItem',
     'ControlType.DataItem', 'ControlType.TreeItem', 'ControlType.Hyperlink', 'ControlType.Image'
 )
+$InheritedNameMinLength = 4
 
 $AE = [System.Windows.Automation.AutomationElement]
 $Walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
@@ -66,7 +67,7 @@ function Test-FocusUnchanged {
             $Before.NativeWindowHandle -eq $After.NativeWindowHandle)
 }
 
-$NodeRecordFormat = 'one node per line, space separated key=value fields in fixed order: i=<index> d=<depth> parent=<parent index, -1 at root> ct=<ControlType.ProgrammaticName> cls=<ClassName> fw=<FrameworkId> aid=<AutomationId> pid=<ProcessId> bounds=<ok|empty> left=<px> top=<px> width=<px> height=<px> en=<0|1 IsEnabled> off=<0|1 IsOffscreen> kbf=<0|1 IsKeyboardFocusable> pats=<comma separated pattern short names, the ProgrammaticName with its PatternIdentifiers.Pattern suffix removed; "-" when none> children=<child count, present only on a node truncated at MaxDepth> name=<Name, or <redacted:N chars> on a content node>. left/top/width/height are omitted when bounds=empty. name= is always the last field so a Name containing spaces needs no quoting. Empty string values render as "-".'
+$NodeRecordFormat = 'one node per line, space separated key=value fields in fixed order: i=<index> d=<depth> parent=<parent index, -1 at root> ct=<ControlType.ProgrammaticName> cls=<ClassName> fw=<FrameworkId> aid=<AutomationId> pid=<ProcessId> bounds=<ok|empty> left=<px> top=<px> width=<px> height=<px> en=<0|1 IsEnabled> off=<0|1 IsOffscreen> kbf=<0|1 IsKeyboardFocusable> pats=<comma separated pattern short names, the ProgrammaticName with its PatternIdentifiers.Pattern suffix removed; "-" when none> children=<child count, present only on a node truncated at MaxDepth> name=<Name, or <redacted:N chars> on any node NameRedactionRule reduces>. left/top/width/height are omitted when bounds=empty. name= is always the last field so a Name containing spaces needs no quoting. Empty string values render as "-".'
 
 function Format-NodeField {
     param([string]$Value)
@@ -77,23 +78,26 @@ function Format-NodeField {
 function New-NodeRecord {
     param($Element, [int]$Index, [int]$Depth, [int]$ParentIndex, [bool]$RedactName)
     $rec = [pscustomobject]@{
-        Index = $Index; Depth = $Depth; Line = ''
+        Index = $Index; Depth = $Depth; Parent = $ParentIndex
+        Prefix = ''; Name = ''; HasName = $false; RawName = ''; Reduced = $false
         BoundsEmpty = $true; BoundsZeroArea = $true; BoundsOffscreenOrigin = $false
         ControlTypeKnown = $false; HasAutomationId = $false; PatternCount = 0
     }
     $cur = $null
     try { $cur = $Element.Current } catch { }
     if ($null -eq $cur) {
-        $rec.Line = ('i=' + $Index + ' d=' + $Depth + ' parent=' + $ParentIndex + ' ct=<element-unavailable>')
+        $rec.Prefix = ('i=' + $Index + ' d=' + $Depth + ' parent=' + $ParentIndex + ' ct=<element-unavailable>')
         return $rec
     }
     $controlType = '<unavailable>'
     try { if ($null -ne $cur.ControlType) { $controlType = $cur.ControlType.ProgrammaticName; $rec.ControlTypeKnown = $true } } catch { }
     $name = ''
     try { $name = [string]$cur.Name } catch { }
-    $inheritsDocumentTitle = ($null -ne $script:SensitiveRootName -and $name.Length -ge 4 -and $script:SensitiveRootName.Contains($name))
+    $rec.RawName = $name
+    $inheritsDocumentTitle = ($null -ne $script:SensitiveRootName -and $name.Length -ge $InheritedNameMinLength -and $script:SensitiveRootName.Contains($name))
     if (($RedactName -or $inheritsDocumentTitle -or ($ContentControlTypes -contains $controlType)) -and $name.Length -gt 0) {
         $name = Protect-ProbeName -Name $name
+        $rec.Reduced = $true
     }
     $automationId = ''
     try { $automationId = [string]$cur.AutomationId } catch { }
@@ -123,15 +127,94 @@ function New-NodeRecord {
         try { if ($cur.($s.P)) { $v = '1' } else { $v = '0' } } catch { }
         $states = $states + ' ' + $s.K + '=' + $v
     }
-    $rec.Line = ('i=' + $Index + ' d=' + $Depth + ' parent=' + $ParentIndex +
+    $rec.Prefix = ('i=' + $Index + ' d=' + $Depth + ' parent=' + $ParentIndex +
         ' ct=' + (Format-NodeField $controlType) +
         ' cls=' + (Format-NodeField $className) +
         ' fw=' + (Format-NodeField $frameworkId) +
         ' aid=' + (Format-NodeField $automationId) +
         ' pid=' + $processId + ' ' + $geometry + $states +
-        ' pats=' + (Format-NodeField ($patterns -join ',')) +
-        ' name=' + (Format-NodeField $name))
+        ' pats=' + (Format-NodeField ($patterns -join ',')))
+    $rec.Name = (Format-NodeField $name)
+    $rec.HasName = $true
     return $rec
+}
+
+function Get-NodeLine {
+    param($Record)
+    if (-not $Record.HasName) { return $Record.Prefix }
+    return ($Record.Prefix + ' name=' + $Record.Name)
+}
+
+function Get-NodeChildIndexes {
+    param($ChildIndexes, [int]$Index)
+    if (-not $ChildIndexes.ContainsKey($Index)) { return @() }
+    return @($ChildIndexes[$Index])
+}
+
+function Test-EchoesReducedDescendant {
+    param($Nodes, $ChildIndexes, [int]$Index)
+    $name = [string]$Nodes[$Index].RawName
+    $pending = New-Object System.Collections.Stack
+    foreach ($child in (Get-NodeChildIndexes -ChildIndexes $ChildIndexes -Index $Index)) { $pending.Push($child) }
+    while ($pending.Count -gt 0) {
+        $current = $pending.Pop()
+        $descendant = $Nodes[$current]
+        if ($descendant.Reduced -and $descendant.RawName.Length -ge $InheritedNameMinLength -and $name.Contains($descendant.RawName)) {
+            return $true
+        }
+        foreach ($child in (Get-NodeChildIndexes -ChildIndexes $ChildIndexes -Index $current)) { $pending.Push($child) }
+    }
+    return $false
+}
+
+<#
+    A container carrying no label of its own takes its accessible name from the
+    content beneath it, so a document title lands on a Group or a Button that no
+    content-control-type test can see and no window-title comparison catches -
+    the leak reaches a tab header belonging to a split the window title does not
+    name. This reduces a kept Name once the subtree below it holds a Name this
+    rule already reduced, comparing the real strings while they are still in
+    hand.
+
+    One pass over the nodes settles it, and that is a property of the test
+    rather than an assumption about tree shape: containment is transitive, so a
+    container that would only become an echo once a nested container beneath it
+    was reduced already contains whatever reduced that one, and every node is
+    compared against its whole subtree rather than its direct children.
+
+    It runs only on a target the caller declared to carry user content, and that
+    scope is what keeps it from destroying evidence rather than merely making it
+    quieter. Measured over this corpus: on the Settings frame the window title
+    and the home-page header are both the word Settings, so an unscoped rule
+    reduces the title of a system app holding no user content, on the frame
+    window and the core window but not the title-bar window - dismantling the
+    frame/host split those three nodes exist to demonstrate. Chrome in a
+    content-carrying app is untouched for a structural reason, not a lucky one:
+    an explicit label owes nothing to the subtree, and the subtree of a
+    clickable icon is an unnamed Image.
+#>
+function Update-EchoedContentNames {
+    param($Nodes)
+    $childIndexes = @{}
+    for ($i = 0; $i -lt $Nodes.Count; $i++) {
+        $parent = $Nodes[$i].Parent
+        if ($parent -lt 0) { continue }
+        if (-not $childIndexes.ContainsKey($parent)) { $childIndexes[$parent] = New-Object System.Collections.ArrayList }
+        [void]$childIndexes[$parent].Add($i)
+    }
+    $reduced = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt $Nodes.Count; $i++) {
+        $node = $Nodes[$i]
+        if ($node.Reduced -or -not $node.HasName) { continue }
+        if ([string]::IsNullOrEmpty($node.RawName)) { continue }
+        if (-not (Test-EchoesReducedDescendant -Nodes $Nodes -ChildIndexes $childIndexes -Index $i)) { continue }
+        [void]$reduced.Add($i)
+    }
+    foreach ($i in $reduced) {
+        $Nodes[$i].Name = Protect-ProbeName -Name $Nodes[$i].RawName
+        $Nodes[$i].Reduced = $true
+    }
+    return , $reduced
 }
 
 function Invoke-TreeDump {
@@ -160,7 +243,7 @@ function Invoke-TreeDump {
         $kids = Get-ChildElements -Element $item.Element
         if ($item.Depth -ge $MaxDepth) {
             if ($kids.Count -gt 0) {
-                $nodes[$index].Line = ($nodes[$index].Line -replace ' name=', (' children=' + $kids.Count + ' name='))
+                $nodes[$index].Prefix = ($nodes[$index].Prefix + ' children=' + $kids.Count)
                 [void]$depthCuts.Add($index)
             }
             continue
@@ -169,6 +252,7 @@ function Invoke-TreeDump {
             $order.Push(@{ Element = $kids[$i]; Depth = ($item.Depth + 1); Parent = $index; Redact = $false })
         }
     }
+    if ($RedactRootName) { [void](Update-EchoedContentNames -Nodes $nodes) }
     $withBounds = @($nodes | Where-Object { -not $_.BoundsEmpty }).Count
     $withArea = @($nodes | Where-Object { -not $_.BoundsEmpty -and -not $_.BoundsZeroArea }).Count
     $offscreen = @($nodes | Where-Object { $_.BoundsOffscreenOrigin }).Count
@@ -184,7 +268,7 @@ function Invoke-TreeDump {
         $pctArea = [Math]::Round((100.0 * $withArea / $nodes.Count), 2)
     }
     $serialized = @()
-    if ($IncludeNodes) { $serialized = @($nodes | Select-Object -First $SerializedNodeLimit | ForEach-Object { $_.Line }) }
+    if ($IncludeNodes) { $serialized = @($nodes | Select-Object -First $SerializedNodeLimit | ForEach-Object { Get-NodeLine -Record $_ }) }
     return [ordered]@{
         Label                   = $Label
         Stack                   = $Stack
@@ -205,7 +289,7 @@ function Invoke-TreeDump {
         NodesWithAutomationId   = $withAutomationId
         RefableNodeCount        = $refable
         RefableDefinition       = 'node advertising at least one managed control pattern; the managed stack cannot see the six UIA3-only patterns (KTD1), so this is a floor not a total'
-        NameRedactionRule       = 'R11: Name is reduced to <redacted:N chars> on document/content control types (Document, Edit, Text, ListItem, DataItem, TreeItem, Hyperlink, Image), on a document-titled root when the target carries user content, and on any node whose Name is a >=4 character substring of that root Name — Electron and Win32 chrome panes echo the document title onto themselves. ControlType, AutomationId, ClassName, FrameworkId, bounds, patterns and states stay verbatim, and application-chrome names (button and tab labels) are deliberately kept.'
+        NameRedactionRule       = 'R11: Name is reduced to <redacted:N chars> on document/content control types (Document, Edit, Text, ListItem, DataItem, TreeItem, Hyperlink, Image), on a document-titled root when the target carries user content, on any node whose Name is a >=4 character substring of that root Name — Electron and Win32 chrome panes echo the document title onto themselves — and, on a target declared to carry user content, on any node whose Name contains the >=4 character Name of a descendant this rule already reduced, because a container carrying no label of its own takes its accessible name from the content beneath it and so lands a document title on a Group or Button no content-control-type test can see. ControlType, AutomationId, ClassName, FrameworkId, bounds, patterns and states stay verbatim, and application-chrome names (button and tab labels) are deliberately kept: an explicit label owes nothing to the subtree beneath it, so no clause reaches it.'
         SerializedNodeLimit     = $SerializedNodeLimit
         SerializedNodeCount     = $serialized.Count
         NodeRecordFormat        = $NodeRecordFormat
@@ -328,6 +412,102 @@ function Close-ShellWindowByHandle {
         } catch { }
     }
     return $false
+}
+
+<#
+    The rule's MUST-CATCH / MUST-PASS fixture, driven through the shipped
+    Update-EchoedContentNames so it cannot drift away from a second copy of the
+    rule that agrees with itself. Only the trees and the expected answers are
+    written out here.
+
+    Both halves are driven, and the must-pass half is the one that has to
+    survive. A rule that reduces every Group and Button name would satisfy every
+    catch case and destroy the corpus: Close, Bookmarks and New tab are the
+    evidence, and a redaction that takes them is not a fix. Each pass case is a
+    shape that already exists in the committed captures.
+#>
+function New-EchoFixtureNode {
+    param([int]$Index, [int]$Parent, [AllowEmptyString()][string]$RawName, [bool]$Reduced)
+    $emitted = $RawName
+    if ($Reduced -and $RawName.Length -gt 0) { $emitted = Protect-ProbeName -Name $RawName }
+    return [pscustomobject]@{
+        Index = $Index; Depth = 0; Parent = $Parent
+        Prefix = ('i=' + $Index); Name = (Format-NodeField $emitted); HasName = $true
+        RawName = $RawName; Reduced = $Reduced
+        BoundsEmpty = $true; BoundsZeroArea = $true; BoundsOffscreenOrigin = $false
+        ControlTypeKnown = $true; HasAutomationId = $false; PatternCount = 0
+    }
+}
+
+function Test-EchoedNameRule {
+    $cases = @(
+        @{
+            Case   = 'a tab header taking its name from the reduced Text beneath it'
+            Tree   = @(@('<title>', $true), @('Welcome', $false), @('Welcome', $true), @('Close', $false), @('', $false))
+            Parents = @(-1, 0, 1, 1, 3)
+            Expect = @(1)
+        },
+        @{
+            Case   = 'a header whose name concatenates the reduced title with its own chrome label'
+            Tree   = @(@('<title>', $true), @('WelcomeClose', $false), @('Welcome', $true), @('Close', $false))
+            Parents = @(-1, 0, 1, 1)
+            Expect = @(1)
+        },
+        @{
+            Case   = 'a container two levels above the reduced Text it takes its name from'
+            Tree   = @(@('<title>', $true), @('Welcome', $false), @('', $false), @('Welcome', $true))
+            Parents = @(-1, 0, 1, 2)
+            Expect = @(1)
+        },
+        @{
+            Case   = 'a clickable icon whose only child is an unnamed Image'
+            Tree   = @(@('<title>', $true), @('New tab', $false), @('', $false))
+            Parents = @(-1, 0, 1)
+            Expect = @()
+        },
+        @{
+            Case   = 'a chrome label matching a reduced Name that lives outside its own subtree'
+            Tree   = @(@('<title>', $true), @('Bookmarks', $false), @('', $false), @('Bookmarks', $true))
+            Parents = @(-1, 0, 1, 0)
+            Expect = @()
+        },
+        @{
+            Case   = 'a chrome label above a reduced Name shorter than the inherited-name floor'
+            Tree   = @(@('<title>', $true), @('Close', $false), @('C', $true))
+            Parents = @(-1, 0, 1)
+            Expect = @()
+        }
+    )
+    $failures = New-Object System.Collections.ArrayList
+    foreach ($case in $cases) {
+        $nodes = New-Object System.Collections.ArrayList
+        for ($i = 0; $i -lt $case.Tree.Count; $i++) {
+            [void]$nodes.Add((New-EchoFixtureNode -Index $i -Parent $case.Parents[$i] -RawName $case.Tree[$i][0] -Reduced $case.Tree[$i][1]))
+        }
+        $reduced = Update-EchoedContentNames -Nodes $nodes
+        $expected = @($case.Expect)
+        $missed = @($expected | Where-Object { $reduced -notcontains $_ })
+        $extra = @($reduced | Where-Object { $expected -notcontains $_ })
+        foreach ($m in $missed) {
+            [void]$failures.Add('MUST CATCH, missed: ' + $case.Case + ' left node i=' + $m + ' verbatim')
+        }
+        foreach ($e in $extra) {
+            [void]$failures.Add('MUST PASS, false positive: ' + $case.Case + ' reduced node i=' + $e)
+        }
+        foreach ($i in $reduced) {
+            if (-not $nodes[$i].Reduced -or $nodes[$i].Name -ne (Protect-ProbeName -Name $nodes[$i].RawName)) {
+                [void]$failures.Add('MUST CATCH, unreduced: ' + $case.Case + ' reported node i=' + $i + ' as reduced but did not rewrite its emitted Name')
+            }
+        }
+    }
+    return , $failures
+}
+
+$echoRuleFailures = Test-EchoedNameRule
+if ($echoRuleFailures.Count -gt 0) {
+    foreach ($f in $echoRuleFailures) { Write-ProbeLog -Message ('echoed-name rule self-test: ' + $f) -Level 'error' }
+    Write-ProbeResult -Probe $Probe -Status 'fail' -Message ('the echoed-name rule failed its own self-test, so no capture this run writes can be trusted to be redacted; first: ' + $echoRuleFailures[0])
+    exit 1
 }
 
 $script:FocusInterference = New-Object System.Collections.ArrayList
@@ -472,9 +652,17 @@ try {
         $launched = Start-ScratchProcess -FilePath $obsidianPath -TimeoutSec 30
         Start-Sleep -Seconds 4
         $obsidianPids = @(Get-Process -Name 'Obsidian' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+        $obsidianPidDeadline = (Get-Date).AddSeconds(30)
+        while (@($obsidianPids).Count -eq 0 -and (Get-Date) -lt $obsidianPidDeadline) {
+            Start-Sleep -Milliseconds 500
+            $obsidianPids = @(Get-Process -Name 'Obsidian' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+        }
         foreach ($opid in $obsidianPids) { if ($opid -ne $launched.ProcessId) { Register-ScratchProcessId -ProcessId $opid } }
     } else {
         $obsidianPids = $preObsidian
+    }
+    if (@($obsidianPids).Count -eq 0) {
+        throw 'no Obsidian process is running, so the Chromium window search would carry an empty pid list. Wait-TopLevelWindowHandle treats that as "do not filter by process" and would return any Chrome_WidgetWin_1 window on the desktop, which would be dumped and published as the Electron target'
     }
     $obsidianHandle = Wait-TopLevelWindowHandle -ClassName 'Chrome_WidgetWin_1' -ProcessIds $obsidianPids -TimeoutSec 30
     if ($obsidianHandle -eq 0) { throw 'no Chrome_WidgetWin_1 top-level window owned by an Obsidian process appeared' }

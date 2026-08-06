@@ -145,4 +145,35 @@ mod tests {
         let element = UIAElement::from(CannedElement);
         assert!(!window_is_modal_sheet(&element, true));
     }
+
+    /// The shipped predicate, on the lane that runs it.
+    ///
+    /// The non-Windows arm above drives a stub whose body is `false`, so it
+    /// answers correctly for its own reasons and says nothing about the real
+    /// read. This drives the real one against a live top-level window that is
+    /// not modal, and asserts the provider's own answer first: with the
+    /// provider confirmed to be reporting `false`, a predicate that ignored
+    /// the read or inverted its comparison would classify an ordinary window
+    /// as a `Sheet` surface and fail here.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_live_non_modal_window_is_not_classified_as_a_sheet() {
+        use super::super::fixture::{HostedFixture, ensure_test_apartment};
+        use super::super::walker_fake::deadline;
+
+        ensure_test_apartment();
+        let fixture = HostedFixture::spawn().expect("the fixture spawns");
+        let root = root_from_hwnd(fixture.handle(), deadline()).expect("the fixture window roots");
+
+        assert_eq!(
+            read_one(&root, TreeProperty::WindowIsModal).flag(),
+            Some(false),
+            "the provider must answer this read for the classification below to be tested"
+        );
+        assert!(!window_is_modal_sheet(&root, false));
+        assert!(
+            !window_is_modal_sheet(&root, true),
+            "the chromium flag is not consulted by this classification"
+        );
+    }
 }

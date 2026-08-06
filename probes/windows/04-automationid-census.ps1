@@ -53,6 +53,7 @@ $InteractiveControlTypes = @('Button', 'CheckBox', 'ComboBox', 'DataItem', 'Edit
     'ListItem', 'MenuItem', 'RadioButton', 'Slider', 'Spinner', 'SplitButton', 'Tab', 'TabItem', 'TreeItem')
 $AutomationIdSampleLimit = 45
 $ObsidianSettleMs = 8000
+$UnreadableStatusText = @('<not-found>', '<error>')
 $Pos = @{
     WinFormsDefault = @{ X = 20;   Y = 20 }
     WinFormsHosted  = @{ X = 520;  Y = 20 }
@@ -382,9 +383,17 @@ try {
             $script:ObsidianLaunched = $true
             Start-Sleep -Seconds 4
             $obsidianPids = @(Get-Process -Name 'Obsidian' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+            $obsidianPidDeadline = (Get-Date).AddSeconds(30)
+            while (@($obsidianPids).Count -eq 0 -and (Get-Date) -lt $obsidianPidDeadline) {
+                Start-Sleep -Milliseconds 500
+                $obsidianPids = @(Get-Process -Name 'Obsidian' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+            }
             foreach ($opid in $obsidianPids) {
                 if (-not $script:Spawned.Contains($opid)) { Register-ScratchProcessId -ProcessId $opid; [void]$script:Spawned.Add($opid) }
             }
+        }
+        if (@($obsidianPids).Count -eq 0) {
+            throw 'no Obsidian process is running, so the Chromium window search would carry an empty pid list. Wait-TopLevelElement treats that as "do not filter by process" and would return any Chrome_WidgetWin_1 window on the desktop, which would be published as the Electron coverage row'
         }
         $obsidianWindow = Wait-TopLevelElement -ClassName 'Chrome_WidgetWin_1' -ProcessIds $obsidianPids -TimeoutSec 40
         if ($null -ne $obsidianWindow) {
@@ -516,7 +525,11 @@ try {
     $wpfMutated = Get-NodeRecords -Root $wpf.Element
     $wpfMutationRow = Compare-Identity -Target 'wpf' -Arm 'mutation' -Before $wpfBaseline -After $wpfMutated `
         -Change 'InvokePattern on btnMutateList: same list change as the WinForms arm. The WPF fixture also derives each item AutomationId from the item text (lstItem-<name>), which is the interesting contrast.'
-    $wpfMutationRow['MutationVerifiedByObservation'] = ($wpfStatusBefore -ne $wpfStatusAfter)
+    $wpfMutationRow['MutationVerifiedByObservation'] = (
+        $UnreadableStatusText -notcontains $wpfStatusBefore -and
+        $UnreadableStatusText -notcontains $wpfStatusAfter -and
+        $wpfStatusBefore -ne $wpfStatusAfter)
+    $wpfMutationRow['MutationObservationNote'] = 'Get-StatusText answers <not-found>/<error> when the sink cannot be read at all, and either sentinel differs from a real status string. Comparing the two reads alone therefore reported a mutation as observed precisely when the observation failed, so both reads must first be real.'
     $wpfMutationRow['StatusTextBefore'] = $wpfStatusBefore
     $wpfMutationRow['StatusTextAfter'] = $wpfStatusAfter
     [void]$mutationRows.Add($wpfMutationRow)
@@ -549,6 +562,12 @@ try {
         NameHandling     = 'Name is compared in memory and only equality counts are written. No Name value from any target reaches a capture, so the R11 content rule is satisfied by construction rather than by redaction.'
         Rows             = @($mutationRows)
     }))
+
+    $unobservedMutations = @($mutationRows | Where-Object { -not $_.MutationVerifiedByObservation } | ForEach-Object { $_.Target })
+    if ($unobservedMutations.Count -gt 0) {
+        throw ('mutation arm observed no change on: ' + ($unobservedMutations -join ', ') +
+            '. A mutation arm whose change never landed reports every identity property at 100 pct survival, which reads as perfect stability and is the exact inverse of what the target does once the change lands')
+    }
 
     # --- identity arm 2: restart -------------------------------------------
     $restartRows = New-Object System.Collections.ArrayList

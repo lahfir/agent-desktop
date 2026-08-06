@@ -218,3 +218,7 @@ pub fn walk_vocabulary(
 #[cfg(test)]
 #[path = "walker_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "walker_failure_tests.rs"]
+mod failure_tests;

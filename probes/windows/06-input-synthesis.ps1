@@ -492,6 +492,9 @@ try {
         if ([System.Windows.Forms.Clipboard]::ContainsText()) { $clipObserved = [System.Windows.Forms.Clipboard]::GetText(); $clipReadOk = $true }
     } catch { Write-ProbeLog -Message ('clipboard read failed: ' + $_.Exception.Message) -Level 'warn' }
     $clipObservedShape = Get-TextShape -Text $clipObserved
+    $chordVerified = ($clipReadOk `
+            -and ($chordExpectedShape.sha256Utf16 -eq $chordSourceShape.sha256Utf16) `
+            -and ($chordSourceShape.sha256Utf16 -eq $clipObservedShape.sha256Utf16))
 
     $modifierAfterChord = Get-ModifierState
 
@@ -514,9 +517,9 @@ try {
             sourceRoundTrip      = ($chordExpectedShape.sha256Utf16 -eq $chordSourceShape.sha256Utf16)
             clipboardReadOk      = $clipReadOk
             clipboardObservedShape = $clipObservedShape
-            verifiedByShape      = ($chordSourceShape.sha256Utf16 -eq $clipObservedShape.sha256Utf16)
-            verificationRule     = 'the clipboard is verified by SHAPE against the hash of the string the probe itself typed into the control, never against the observed clipboard value. The operator clipboard could hold a secret; comparing hashes means a non-probe value simply fails to match and nothing about it is recorded beyond its length and hash.'
-            verdict              = $(if ($chordSourceShape.sha256Utf16 -eq $clipObservedShape.sha256Utf16) { 'ok - Ctrl+A then Ctrl+C put exactly the typed string on the clipboard' } else { 'chord-not-registered-or-clipboard-differs' })
+            verifiedByShape      = $chordVerified
+            verificationRule     = 'the clipboard is verified by SHAPE against the hash of the string the probe itself typed into the control, never against the observed clipboard value. The operator clipboard could hold a secret; comparing hashes means a non-probe value simply fails to match and nothing about it is recorded beyond its length and hash. The typed hash is the anchor of the whole chain: the control read-back must equal it and the clipboard must equal that, and the clipboard must have actually been read, so an unregistered chord over an empty control and an empty clipboard - three hashes of the empty string - cannot satisfy it.'
+            verdict              = $(if ($chordVerified) { 'ok - Ctrl+A then Ctrl+C put exactly the typed string on the clipboard' } else { 'chord-not-registered-or-clipboard-differs' })
         }
         modifierStateAfterChord = @($modifierAfterChord)
         modifierStateAfterChordVerdict = $(if (@($modifierAfterChord | Where-Object { $_.asyncKeyIsDown -or $_.keyStateIsDown }).Count -eq 0) { 'no modifier left down by the chord' } else { 'a modifier is still down after the chord' })
@@ -761,7 +764,7 @@ try {
     $resultData['injections'] = $script:Injections
     $resultData['typingRows'] = @($typedRows).Count
     $resultData['astralRoundTrip'] = @($typedRows | Where-Object { $_.payloadKind -eq 'astral-plane' } | ForEach-Object { $_.exactRoundTrip })
-    $resultData['chordVerified'] = ($chordSourceShape.sha256Utf16 -eq $clipObservedShape.sha256Utf16)
+    $resultData['chordVerified'] = $chordVerified
     $resultData['wheelRegistered'] = ($scrollPixelsAfter -gt $scrollPixelsBefore)
     $resultData['dragMonotonic'] = $monotonic
     $resultData['interference'] = ($null -ne $script:Interference)
@@ -826,7 +829,7 @@ try {
             stateBeforeSweep = @($modifierBeforeSweep)
             keysSwept       = @($sweepInjected)
             stateAfterSweep = @($modifierAfterSweep)
-            allClear        = (@($modifierAfterSweep | Where-Object { $_.asyncKeyIsDown -or $_.keyStateIsDown }).Count -eq 0)
+            allClear        = ((@($modifierAfterSweep).Count -gt 0) -and (@($modifierAfterSweep | Where-Object { $_.asyncKeyIsDown -or $_.keyStateIsDown }).Count -eq 0))
         }
         clipboard = [ordered]@{
             snapshotTaken       = $clipSnapshotTaken

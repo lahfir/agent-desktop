@@ -3,6 +3,17 @@
 //! Both the permission probe and the UI Automation tree path classify and
 //! format HRESULTs. Holding two tables meant adding a code in one and reading
 //! it as unnamed in the other, so the table lives here and both import it.
+//!
+//! `hresult_record` carries that further: it is the single match naming every
+//! HRESULT's `ReadDisposition` *and* its caller-facing `ErrorCode` together.
+//! `classify_read_hresult` used to run its own separate match over the same
+//! HRESULT set that `crates/windows/src/tree/automation_classify.rs`'s
+//! `hresult_disposition` matched independently - the two tables agreed only
+//! because both were edited by hand together, and nothing forced that. One
+//! record per code makes a code's disposition and its error code the same
+//! fact, written once.
+
+use agent_desktop_core::ErrorCode;
 
 pub(crate) const S_OK: i32 = 0;
 pub(crate) const E_NOINTERFACE: i32 = 0x8000_4002_u32 as i32;
@@ -22,6 +33,159 @@ pub(crate) const UIA_E_PROXYASSEMBLYNOTLOADED: i32 = 0x8004_0203_u32 as i32;
 pub(crate) const UIA_E_NOTSUPPORTED: i32 = 0x8004_0204_u32 as i32;
 pub(crate) const UIA_E_TIMEOUT: i32 = 0x8013_1505_u32 as i32;
 pub(crate) const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
+
+const COM_UNINITIALIZED_SUGGESTION: &str =
+    "Join the calling thread to the COM multithreaded apartment before observing the desktop";
+
+/// The read-path classification the resolution retry loop consumes: whether a failed
+/// read is a settled absence, a transient transport failure, a vanished
+/// element, or a terminal error the attempt must surface as-is.
+///
+/// The three classes are the `kAXErrorIllegalArgument` lesson ported to
+/// Windows (`crates/macos/src/system/window_bridge.rs:54-103`): a
+/// structurally-impossible answer - the element genuinely lacks the attribute,
+/// the window genuinely has no match - is a **settled absence, never
+/// retryable**; conflating it with a transport failure burns the whole budget
+/// retrying what cannot succeed. Retryable transport turns the attempt
+/// incomplete within its deadline; a vanished element is the granularity case
+/// (`UIA_E_ELEMENTNOTAVAILABLE`) that settles as stale only for a read of the
+/// resolved target and marks a mid-descent node incomplete instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReadDisposition {
+    /// Structurally impossible: the provider answered that the property or
+    /// pattern does not exist, or the request could not be a valid read.
+    /// Settled, never retried.
+    SettledAbsence,
+    /// Transport or timeout: retryable within the operation's deadline.
+    Retryable,
+    /// The element is unavailable: stale for the resolved target, incomplete
+    /// for a node vanishing mid-descent.
+    Unavailable,
+    /// A hard failure with no defined recovery (denial, unknown code).
+    Terminal,
+}
+
+impl ReadDisposition {
+    /// The typed channel pair the resolution loop and core's hydration read: a settled
+    /// absence or terminal failure is complete and never retried; transport
+    /// and a vanished element are incomplete and retryable within the
+    /// deadline.
+    pub(crate) fn retry_details(self) -> (bool, bool) {
+        match self {
+            ReadDisposition::SettledAbsence | ReadDisposition::Terminal => (true, false),
+            ReadDisposition::Retryable | ReadDisposition::Unavailable => (false, true),
+        }
+    }
+}
+
+/// One HRESULT's complete classification, named exactly once: the read-path
+/// `ReadDisposition` the resolution retry loop drives on, the `ErrorCode` a
+/// caller-facing error carries, and an optional recovery hint.
+///
+/// `classify_read_hresult` and `automation_classify.rs`'s `hresult_disposition`
+/// are both one-line projections of `hresult_record` rather than separate
+/// matches, so a code cannot be classified one way for retry and a different
+/// way for the error surfaced to a caller.
+pub(crate) struct HresultRecord {
+    pub(crate) disposition: ReadDisposition,
+    pub(crate) code: ErrorCode,
+    pub(crate) suggestion: Option<&'static str>,
+}
+
+/// Names every HRESULT this crate's read paths raise, exactly once.
+///
+/// An unlisted code is `Terminal`/`ErrorCode::Internal` - the loop retries
+/// only what is marked retryable, so an unknown failure surfaces rather than
+/// being guessed.
+///
+/// Three codes are unlisted on purpose, because each reads like an oversight
+/// and is not.
+///
+/// `S_OK` cannot arrive here from an enumeration. `uiautomation::Error::result`
+/// answers `Some` only for a negative code, and `UiaFailure::Hresult` is built
+/// only on that `Some`, so a null interface out-param - the end-of-list signal,
+/// which `windows-core` reports as `Error::empty()` carrying `HRESULT(0)` -
+/// splits onto the sentinel branch as `ERR_NONE` and is read as exhaustion,
+/// never as a classified failure. The one path that can reach this arm with
+/// `S_OK` is the client bootstrap, where `CoCreateInstance` reported success
+/// and handed back a null interface; that is a broken class factory, and
+/// terminal is the honest answer.
+///
+/// `UIA_E_NOCLICKABLEPOINT` is not a settled absence. The conditions Microsoft
+/// documents for it - the element obscured by another window or element, or not
+/// scrolled fully into view - are view state a caller can change, unlike a
+/// provider that genuinely lacks a property. It is also not how the client API
+/// reports that absence: `GetClickablePoint` answers `S_OK` with a `FALSE`
+/// out-param, which surfaces as a successful "no point" rather than as an error
+/// at all.
+///
+/// `UIA_E_PROXYASSEMBLYNOTLOADED` reports that a client-side proxy provider's
+/// assembly failed to load. That is this process's UI Automation stack failing,
+/// not an answer about the target, and no retry this crate can run changes it.
+pub(crate) fn hresult_record(hresult: i32) -> HresultRecord {
+    match hresult {
+        E_ACCESSDENIED => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::PermDenied,
+            suggestion: None,
+        },
+        CO_E_NOTINITIALIZED => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::Internal,
+            suggestion: Some(COM_UNINITIALIZED_SUGGESTION),
+        },
+        E_INVALIDARG | E_POINTER => HresultRecord {
+            disposition: ReadDisposition::SettledAbsence,
+            code: ErrorCode::InvalidArgs,
+            suggestion: None,
+        },
+        UIA_E_ELEMENTNOTAVAILABLE => HresultRecord {
+            disposition: ReadDisposition::Unavailable,
+            code: ErrorCode::StaleRef,
+            suggestion: None,
+        },
+        UIA_E_ELEMENTNOTENABLED => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::ActionFailed,
+            suggestion: None,
+        },
+        UIA_E_NOTSUPPORTED => HresultRecord {
+            disposition: ReadDisposition::SettledAbsence,
+            code: ErrorCode::ActionNotSupported,
+            suggestion: None,
+        },
+        UIA_E_TIMEOUT => HresultRecord {
+            disposition: ReadDisposition::Retryable,
+            code: ErrorCode::Timeout,
+            suggestion: None,
+        },
+        UIA_E_INVALIDOPERATION => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::ActionFailed,
+            suggestion: None,
+        },
+        RPC_E_DISCONNECTED | RPC_E_SERVERFAULT | RPC_S_SERVER_UNAVAILABLE | RPC_S_CALL_FAILED => {
+            HresultRecord {
+                disposition: ReadDisposition::Retryable,
+                code: ErrorCode::AppUnresponsive,
+                suggestion: None,
+            }
+        }
+        _ => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::Internal,
+            suggestion: None,
+        },
+    }
+}
+
+/// Classifies a named read-path HRESULT onto the three-state disposition.
+///
+/// A one-line projection of `hresult_record`; see that function for the named
+/// table.
+pub(crate) fn classify_read_hresult(hresult: i32) -> ReadDisposition {
+    hresult_record(hresult).disposition
+}
 
 /// Renders an HRESULT for `platform_detail`.
 ///
@@ -71,3 +235,15 @@ pub(crate) fn com_hresult_symbol(hresult: i32) -> Option<(&'static str, &'static
     };
     Some(symbol)
 }
+
+#[cfg(test)]
+#[path = "hresult_tests.rs"]
+mod tests;
+
+/// Split from `hresult_tests.rs`, which sits near the per-file line cap: this
+/// module owns the symbol table's pins, which are a different subject from the
+/// classification arms - the text an operator reads rather than the retry
+/// verdict the loop drives on.
+#[cfg(test)]
+#[path = "hresult_symbol_tests.rs"]
+mod symbol_tests;

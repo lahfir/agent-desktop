@@ -78,6 +78,48 @@ fn write_atomic_refuses_when_the_owner_seam_forces_a_foreign_principal() {
     );
 }
 
+/// The append surface carries the same ownership gate as the atomic write, on
+/// its own leaf check.
+///
+/// Private trace segments are appended, so a segment path a foreign principal
+/// pre-created must be refused. Only `write_atomic` and `read_private_bounded`
+/// were driven through the seam before, which left this one deletable with the
+/// suite green.
+///
+/// The append path is the surface where a leaf gate is reachable at all: it
+/// validates only that its directory chain is reparse-free, so the refusal here
+/// can come from nowhere but the leaf's own ownership check. The lock surface's
+/// leaf check cannot be reached the same way - it calls
+/// `ensure_private_directory_chain` first, and the forced-owner seam is
+/// thread-global, so the parent's ownership check refuses before the leaf is
+/// ever opened and any assertion made through this seam would pass for the
+/// parent's reason.
+#[test]
+fn the_append_surface_refuses_a_foreign_principal_at_its_own_leaf_gate() {
+    let scratch = Scratch::new("owner-foreign-append");
+    let ops = WindowsPrivateFile::new();
+    let appended = scratch.path().join("segment.jsonl");
+
+    ops.open_private_append(&appended)
+        .expect("the append surface opens for this process's own principal");
+
+    let refused = with_forced_foreign_owner(|| ops.open_private_append(&appended).unwrap_err());
+
+    assert_eq!(
+        refused.kind(),
+        ErrorKind::PermissionDenied,
+        "the append surface must refuse a foreign owner"
+    );
+    assert!(
+        refused.to_string().contains("private append target"),
+        "the refusal must be the append leaf's own, not an enclosing check's: {refused}"
+    );
+    assert!(
+        refused.to_string().contains("foreign principal"),
+        "the refused append must name the foreign principal: {refused}"
+    );
+}
+
 #[test]
 fn read_private_bounded_refuses_when_the_owner_seam_forces_a_foreign_principal() {
     let scratch = Scratch::new("owner-foreign-read");

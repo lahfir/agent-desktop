@@ -147,6 +147,12 @@ try {
     Initialize-ProbeNative
     $capturedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
+    $comReferencePath = Join-Path (Join-Path (Get-ProbeRoot) 'captures\08-uia3-com') 'cache-timing.json'
+    if (-not (Test-Path -LiteralPath $comReferencePath)) {
+        throw ('the authoritative UIA3 COM cache measurement is missing at ' + $comReferencePath + '; this probe reports itself as a cross-check against it and has nothing to cross-check against')
+    }
+    $comRef = (ConvertFrom-Json ([IO.File]::ReadAllText($comReferencePath))).shim.result
+
     $notepad = Start-ScratchProcess -FilePath (Join-Path $env:WINDIR 'System32\notepad.exe') -TimeoutSec 20
     $notepadPid = $notepad.ProcessId
     if ($notepad.MainWindowHandle -eq [IntPtr]::Zero) { throw 'notepad produced no main window handle' }
@@ -200,16 +206,28 @@ try {
             Source                       = 'probes/windows/captures/08-uia3-com/cache-timing.json'
             Stack                        = 'uia3-com'
             Target                       = 'explorer folder window over %WINDIR%\System32'
-            NodeCount                    = 220
-            timingComOverallMultiplier   = 2.6942
-            timingComReadPhaseMultiplier = 298.158
-            ComFindPhaseFinding          = 'the cache-building find phase is SLOWER than the uncached find (180.25 ms vs 117.38 ms): building the cache costs time up front and pays it back on reads'
-            ClaimVerdict                 = 'below-3x-claim against the phases.md 3-5x batched-read claim'
+            NodeCount                    = $comRef.nodeCount
+            timingComOverallMultiplier   = $comRef.timingMultiplier
+            timingComReadPhaseMultiplier = $comRef.timingReadPhaseMultiplier
+            ComFindPhaseFinding          = $(if ($comRef.timingCachedFindMs -gt $comRef.timingPerPropertyFindMs) {
+                'the cache-building find phase is SLOWER than the uncached find (' + [Math]::Round($comRef.timingCachedFindMs, 2) + ' ms vs ' + [Math]::Round($comRef.timingPerPropertyFindMs, 2) + ' ms): building the cache costs time up front and pays it back on reads'
+            } else {
+                'the authoritative capture no longer shows a slower cache-building find phase (' + [Math]::Round($comRef.timingCachedFindMs, 2) + ' ms vs ' + [Math]::Round($comRef.timingPerPropertyFindMs, 2) + ' ms), so the phase-split finding this probe cross-checks has changed underneath it'
+            })
+            ClaimVerdict                 = ($comRef.claimVerdict + ' against the phases.md 3-5x batched-read claim')
         }
         Comparison     = 'stated in ComparisonToAuthoritative below; the managed numbers are reported to show whether the managed stack reproduces the COM shape, not to replace it'
         Interpretation = [ordered]@{
-            Notepad  = 'NEW-EDGE: batching is a PESSIMIZATION here — timingOverallMultiplier is below 1.0 on classic Notepad. Notepad is a plain Win32 control tree served by UIAutomationClientsideProviders, which run inside the client process, so an uncached property read costs no cross-process RPC and the CacheRequest adds pure setup cost. A Windows adapter that batches unconditionally will make simple Win32 windows slower.'
-            Explorer = 'on a genuinely out-of-process provider the managed stack reproduces the COM shape exactly: timingFindPhaseMultiplier below 1.0 (building the cache makes the find phase slower) and timingReadPhaseMultiplier in the hundreds, leaving a modest overall multiplier.'
+            Notepad  = $(if ($notepadResult.timingOverallMultiplier -lt 1.0) {
+                'NEW-EDGE: batching is a PESSIMIZATION here — timingOverallMultiplier is below 1.0 on classic Notepad. Notepad is a plain Win32 control tree served by UIAutomationClientsideProviders, which run inside the client process, so an uncached property read costs no cross-process RPC and the CacheRequest adds pure setup cost. A Windows adapter that batches unconditionally will make simple Win32 windows slower.'
+            } else {
+                'this run did NOT reproduce the Notepad pessimization: timingOverallMultiplier is ' + $notepadResult.timingOverallMultiplier + ', at or above 1.0. Read the measured numbers, not this sentence.'
+            })
+            Explorer = $(if ($explorerResult.timingFindPhaseMultiplier -lt 1.0 -and $explorerResult.timingReadPhaseMultiplier -ge 100.0) {
+                'on a genuinely out-of-process provider the managed stack reproduces the COM shape exactly: timingFindPhaseMultiplier below 1.0 (building the cache makes the find phase slower) and timingReadPhaseMultiplier in the hundreds, leaving a modest overall multiplier.'
+            } else {
+                'this run did NOT reproduce the COM phase split on Explorer: timingFindPhaseMultiplier ' + $explorerResult.timingFindPhaseMultiplier + ' (expected below 1.0) and timingReadPhaseMultiplier ' + $explorerResult.timingReadPhaseMultiplier + ' (expected in the hundreds). Read the measured numbers, not this sentence.'
+            })
             Headline  = 'U7 uia3-com stays authoritative at 2.6942x overall and 298.158x on the read phase. The managed cross-check reproduces the direction and the phase split, not the magnitude, and adds the client-side-provider caveat above.'
         }
     }
@@ -217,9 +235,9 @@ try {
     $explorerRead = $explorerResult.timingReadPhaseMultiplier
     $explorerFind = $explorerResult.timingFindPhaseMultiplier
     $capture['ComparisonToAuthoritative'] = [ordered]@{
-        ComOverallMultiplier     = 2.6942
+        ComOverallMultiplier     = $comRef.timingMultiplier
         timingManagedOverallMultiplier   = $explorerOverall
-        ComReadPhaseMultiplier   = 298.158
+        ComReadPhaseMultiplier   = $comRef.timingReadPhaseMultiplier
         timingManagedReadPhaseMultiplier = $explorerRead
         timingManagedFindPhaseMultiplier = $explorerFind
         SameTargetShape          = 'both measure an explorer folder window over %WINDIR%\System32 with the same 8 properties and 5 repetitions; managed NodeCount differs from the COM NodeCount because the two client stacks do not present the same control view (KTD1)'
@@ -231,7 +249,7 @@ try {
         ExplorerNodeCount       = $explorerResult.NodeCount
         timingManagedOverall    = $explorerOverall
         timingManagedReadPhase  = $explorerRead
-        ComAuthoritativeOverall = 2.6942
+        ComAuthoritativeOverall = $comRef.timingMultiplier
     }
     Write-ProbeLog -Message 'wrote cache-timing.json (managed cross-check, non-authoritative)'
     Write-ProbeResult -Probe $Probe -Status 'ok' -Message 'managed batched-vs-per-property cross-check captured against U7 UIA3 COM authority' -Data $resultData

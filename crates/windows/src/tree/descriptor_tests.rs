@@ -156,6 +156,10 @@ fn secure_elements_withhold_value_bearing_placeholder_sources() {
 }
 
 /// The standalone `placeholder_of` helper agrees with the group producer.
+///
+/// The agreement is asserted against `descriptors()` itself rather than
+/// against a literal restated in both places, so a group producer that stopped
+/// calling the helper - filling the slot from its own rule - fails here.
 #[test]
 fn placeholder_of_matches_the_group_producer() {
     let properties = from_reads(&[
@@ -164,4 +168,22 @@ fn placeholder_of_matches_the_group_producer() {
     ]);
 
     assert_eq!(placeholder_of(&properties).as_deref(), Some("Prompt"));
+    assert_eq!(
+        descriptors(&properties).placeholder,
+        placeholder_of(&properties),
+        "the group producer fills its placeholder slot from the standalone rule"
+    );
+
+    let doubling = from_reads(&[(TreeProperty::HelpText, text("Prompt"))]);
+
+    assert_eq!(
+        placeholder_of(&doubling),
+        None,
+        "with no description of its own, HelpText is the description and cannot also be the placeholder"
+    );
+    assert_eq!(
+        descriptors(&doubling).placeholder,
+        placeholder_of(&doubling),
+        "the group producer withholds it too, rather than reading HelpText directly"
+    );
 }

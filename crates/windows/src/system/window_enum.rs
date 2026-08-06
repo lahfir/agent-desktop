@@ -143,10 +143,20 @@ fn window_rect(window: HWND) -> Rect {
     }
 }
 
-#[cfg(test)]
+/// Every assertion here drives the live `EnumWindows` bridge, which the
+/// non-Windows arm of this module does not have, so the whole module is
+/// scoped to the lane that runs it.
+#[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::*;
 
+    /// Both halves of the callback contract: the enumeration keeps calling
+    /// back while the visitor answers true, and stops the moment it answers
+    /// false.
+    ///
+    /// The stopping half alone is satisfied by an enumeration that calls back
+    /// exactly once and then gives up, so the continuing half is driven
+    /// against the same desktop in the same test and the two counts compared.
     #[test]
     fn enumeration_calls_back_for_every_window_and_stops_on_false() {
         let mut visited = Vec::new();
@@ -167,6 +177,18 @@ mod tests {
             visited.len(),
             1,
             "the callback returned false after the first window"
+        );
+
+        let mut every = Vec::new();
+        enumerate_top_level(|window| {
+            every.push(window.handle);
+            true
+        })
+        .expect("enumeration succeeds");
+
+        assert!(
+            every.len() > visited.len(),
+            "a visitor that never stops is called back for more than the one window the stopping visitor saw"
         );
     }
 

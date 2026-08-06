@@ -315,7 +315,8 @@ try {
             scaleRelReportedAfterwards = $after[2]
             registryDpiValueAfterwards = $regValue
             effectiveDpiSeenByAwareArm = $aware.monitorEffectiveDpiX
-            scaleActuallyApplied       = ($aware.monitorEffectiveDpiX -ne 96)
+            armsMeasured               = ($null -eq $aware.fatal -and $null -eq $unaware.fatal -and $null -ne $aware.monitorEffectiveDpiX -and $null -ne $unaware.monitorEffectiveDpiX)
+            scaleActuallyApplied       = ($null -ne $aware.monitorEffectiveDpiX -and $aware.monitorEffectiveDpiX -ne 96)
             awareArm                   = $aware
             unawareArm                 = $unaware
             windowBoundsDelta          = (Get-BoundsDelta -Aware $aware -Unaware $unaware -Field 'uiaBounds_window')
@@ -335,7 +336,8 @@ try {
         displayConfigSetResult     = $restoreResult
         scaleRelReadBackAfterwards = $restored[2]
         registryDpiValueAfterwards = $restoredReg
-        restored                   = ($restored[2] -eq $script:OriginalScaleRel)
+        scaleQueryUsable           = ($range[0] -eq 0 -and $restored[0] -eq 0)
+        restored                   = ($range[0] -eq 0 -and $restored[0] -eq 0 -and $restored[2] -eq $script:OriginalScaleRel)
     }
 
     $capture = [ordered]@{
@@ -357,6 +359,17 @@ try {
         }
     }
     Write-ProbeJson -Probe $Probe -Name 'session-dpi.json' -InputObject $capture | Out-Null
+
+    $unmeasuredPasses = @($passes | Where-Object { -not $_.armsMeasured })
+    if ($unmeasuredPasses.Count -gt 0) {
+        throw ('PROBE-HARNESS: refusing to record a DPI verdict - the aware and unaware arms did not both report a measurement in pass(es): ' +
+            (($unmeasuredPasses | ForEach-Object { $_.pass }) -join ', '))
+    }
+    if (-not $teardown.restored) {
+        throw ('PROBE-HARNESS: display scale restoration is unverified - DisplayConfigGetDeviceInfo returned ' + $range[0] +
+            ' at entry and ' + $restored[0] + ' on read-back, relative scale read back as ' + $restored[2] +
+            ' against the original ' + $script:OriginalScaleRel)
+    }
 
     $summary['sessionId'] = $session.sessionId
     $summary['isRemoteSession'] = $session.isRemoteSession

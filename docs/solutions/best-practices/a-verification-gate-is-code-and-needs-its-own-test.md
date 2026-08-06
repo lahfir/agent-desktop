@@ -2,13 +2,14 @@
 title: A verification gate is code and needs its own test
 date: 2026-08-01
 category: best-practices
-module: scripts/check-no-phase-references.sh
+module: scripts/check-no-phase-references.sh, scripts/check-rust-file-size.sh
 problem_type: process_gap
 component: tooling
 symptoms:
   - "A pre-commit/CI gate step fails with 'Permission denied' the first time it runs on a fresh checkout."
   - "A gate that ran clean on the author's machine reports every version string (v0.5.0, pre-1.0, sub-1.0) as a violation on the CI runner."
   - "The exact pattern a gate exists to catch (phase-2.4) passes, while an innocent prose decimal (a 2.5 ms timeout) is flagged."
+  - "A gate exits 0 on a machine where the interpreter it invokes does not exist, and a clean report is indistinguishable from a clean tree."
 root_cause: process_gap
 resolution_type: added_self_test_and_shared_program_text
 severity: high
@@ -84,34 +85,51 @@ trustworthy.
 
 The fix that actually closes the loop is not the awk rewrite by itself, it's
 the `self_test()` function added alongside it in
-`scripts/check-no-phase-references.sh`. It carries a committed fixture: four `must_catch` lines
-including `phase-2.4` and `2.4 ships the seam`, and six `must_pass` lines
-including `pre-1.0 and sub-1.0`, `v0.5.0`, `"2.1"` on the wire, `1.35x
-against 0.80x`, `a 2.5 ms timeout`, and `uiautomation 0.25.0`. `self_test()`
-runs before `bare_reference_check()` and fails the whole gate if either set
+`scripts/check-no-phase-references.sh`. It carries a committed fixture:
+`must_catch` lines including `phase-2.4` and `2.2 ships the seam`, `must_pass`
+lines including `pre-1.0 and sub-1.0`, `v0.5.0`, `"2.1"` on the wire, `1.35x
+against 0.80x`, `a 2.5 ms timeout`, and `uiautomation 0.25.0`, and two
+wrapped-record fixtures whose phrase exists only across a doc-comment line
+break. `self_test()` runs before any scan and fails the whole gate if any set
 misbehaves.
 
-The detail that makes this trustworthy rather than decorative:
-`BARE_REFERENCE_AWK` is declared once, as a single shell variable (line 65),
-and both `bare_reference_check()` (line 87) and `self_test()` (lines 114 and
-121) invoke `awk "$BARE_REFERENCE_AWK"` against it. Neither reimplements the
-rule. If the fixture instead embedded its own copy of the pattern, it would
-verify that the copy matches the fixture's expectations of itself —
-consistent, and worthless the moment the real rule drifts. A shared variable
-makes the self-test exercise the exact program text the real scan runs, so a
+The detail that makes this trustworthy rather than decorative: each rule is
+declared exactly once, and the tree scan and the fixture both invoke that one
+declaration. The gate has grown to four rule families — `token_rules()` for
+ids and numbered slices, `BARE_REFERENCE_AWK` for a bare `2.4`, `BARE_UNIT_AWK`
+for a bare `U4`, and `PLAN_PROSE_AWK` for authority constructions in prose
+(`per the plan`, `the plan requires`, `exit criteria`) over a two-line window
+that closes the wrap gap. `all_offences()` applies all four to a single line,
+exactly as the real run applies them collectively to the tree, and both
+fixture sets go through it. So every fixture line is checked against every
+rule, and a new rule that false-fires on an old `must_pass` line is caught by
+that old line. If a fixture instead embedded its own copy of a pattern, it
+would verify that the copy matches the fixture's expectations of itself —
+consistent, and worthless the moment the real rule drifts. Sharing the program
+text makes the self-test exercise exactly what the real scan runs, so a
 regression in the shipped rule is a regression the fixture can see.
 
 ## Portability
 
-A gate that runs on more than one OS in CI is itself platform-conditional
-code, and it inherits the same cross-platform rules as anything under
+These gates look like they run everywhere, and they do not. Both
+`check-no-phase-references.sh` and `check-rust-file-size.sh` are steps of the
+macOS-only `Test` job in `.github/workflows/ci.yml`; the Linux and Windows
+lanes never invoke them. Nor does the Windows dev box, whose documented
+invocation of `.githooks/pre-commit` is `SKIP_PRECOMMIT=1` — the hook exits at
+its first line, long before it reaches either script. They are therefore
+authored and edited under a GNU userland and executed only under a BSD one,
+which is exactly how the `\b` bug passed on the machine that wrote it and
+failed the only lane that runs it.
+
+A shell gate is platform-conditional code, and it inherits the same
+cross-platform rules as anything under
 `crates/`: GNU and BSD userlands differ (`\b`, `sed -E` dialects), and the
 difference fails *silently* — the gate keeps exiting 0 on the platform where
 the feature works, or starts flagging everything on the platform where it
 doesn't, and neither failure looks like a crash. Nobody reads a passing
 gate's output closely, so the fix was to make the divergence a `self_test()`
-failure, checkable on every run and every platform, instead of discoverable
-only when a real commit happens to exercise the gap.
+failure, checkable on every run and on whichever userland is running it,
+instead of discoverable only when a real commit happens to exercise the gap.
 
 ## Prevention
 
@@ -122,6 +140,31 @@ only when a real commit happens to exercise the gap.
 - An untested gate is worse than no gate: it converts "we checked" into a
   false claim, silently, until the exact case it exists to catch slips
   through.
+- Test the gate's rule *and* its ability to run at all. These are different
+  failures and only the first announces itself. `scripts/check-rust-file-size.sh`
+  hardcoded `python3`, which does not exist on the Windows dev box where the
+  script is invoked by hand, so its comment half exited without checking
+  anything and 27 violations across 7 files reached CI; probing more names
+  then admitted a Python 2, whose
+  `SyntaxError` would read as a violation rather than as an environment
+  problem. The rule is **finding nothing is a failure, never a skip**:
+  `require_interpreter()` tries `python3`, `python`, `py`, requires each to
+  answer a version probe as 3 or higher, and fails the gate when none does —
+  and `self_test()` drives that rejection branch, failing if the probe ever
+  reports success without a working interpreter behind it.
+- The general shape is **a check that runs, reports success, and asserted
+  nothing**, and it is indistinguishable from a clean result at every level.
+  The interpreter probe checking nothing is one face. Four probe harnesses
+  under `probes/windows/` were another: a pass whose binary exited non-zero
+  wrote a placeholder capture, the run reported ok, and the placeholder
+  satisfied the workflow's artifact gate — the guard failed by going green.
+  The measurement gate built to catch that was a third: with an empty
+  `MandatoryExpected` set, a probe that never declared its captures had
+  nothing to compare against, and `Get-MandatoryMeasurementGap` now reports
+  `the probe declared no mandatory captures, so the run asserted nothing` as a
+  failure in its own right. Recording that nothing was found is data;
+  recording that nothing was looked at is not, and only the check itself can
+  tell them apart.
 - Give every non-trivial gate rule a committed MUST-CATCH / MUST-PASS
   fixture, and make the fixture invoke the same program text as the real
   scan — a shared variable or function, never a duplicated pattern — so the

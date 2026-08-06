@@ -1,108 +1,298 @@
-use agent_desktop_core::{AdapterError, Deadline, NativeHandle, RefEntry};
+use agent_desktop_core::{AdapterError, Deadline, ErrorCode, NativeHandle, RefEntry};
 
 #[cfg(target_os = "windows")]
 use super::element::UIAElement;
+#[cfg(all(test, target_os = "windows"))]
+use super::resolve_match::CandidateOutcome;
 #[cfg(target_os = "windows")]
-use super::properties::read_live;
-#[cfg(target_os = "windows")]
-use super::property_ids::TreeProperty;
+use super::resolve_match::ambiguous_target_error;
 use super::resolve_match::stale_ref_error;
 #[cfg(target_os = "windows")]
-use super::resolve_match::{Candidate, NodeIdentity, ambiguous_target_error};
+use super::resolve_search::descent::PathLanding;
 #[cfg(target_os = "windows")]
-use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
+use super::resolve_search::{
+    SearchContext, accept_path_landing, can_use_path_fast_path, entry_is_unverifiable,
+    identity_unknown_error, resolve_walk_budget, search_under, should_stop_collecting,
+    walk_stored_path,
+};
+#[cfg(all(test, target_os = "windows"))]
+use super::walker::{TreeSource, WalkBudget};
 #[cfg(target_os = "windows")]
 use super::walker_source::UiaTreeSource;
-#[cfg(target_os = "windows")]
-use agent_desktop_core::{ElementIdentifier, IdentifierKind, LocatorField, Rect};
 
-/// The resolve-scoped depth cap.
+/// Resolves a stored ref to its live element, fail-closed and three-state.
 ///
-/// Independently bounded from the walk's own ceiling, mirroring macOS's
-/// `MAX_RESOLVE_DEPTH` (`crates/macos/src/tree/resolve.rs:15`, a distinct
-/// constant). Electron elements commonly sit at depth 25+, so the cap is the
-/// search bound rather than the walk bound.
-const MAX_RESOLVE_DEPTH: u8 = 50;
-
-/// Resolves a stored ref to its live element, fail-closed.
+/// The search descends from the stored window's root to a resolve-scoped
+/// depth, reading each candidate with the same composition the walk uses
+/// (`UiaTreeSource::evidence`), gates on role, and runs core's composed
+/// identity rule (`resolve_match::candidate_outcome`). Then:
 ///
-/// The search descends from the stored window's root (the source window the
-/// ref was taken from) to a resolve-scoped depth, collecting every element
-/// whose `native_id` matches the stored one by kind and value, corroborated by
-/// role and the role-conditional stable text identity. Then:
-///
-/// - zero candidates -> `STALE_REF`
+/// - zero candidates and every decision was readable -> `STALE_REF`, settled
+/// - zero candidates but one was **unreadable** -> incomplete-and-retryable
+///   (`AppUnresponsive`, the three-state discipline: an `Unknown` verdict is
+///   never a `NoMatch`)
 /// - two or more candidates that all match -> `AMBIGUOUS_TARGET`
 /// - exactly one -> a `NativeHandle` wrapping the live element
 ///
-/// Anything short of an exact match fails closed rather than guessing, because
-/// A7-3 measured Explorer re-resolving 29 of 29 `AutomationId` keys with 5
-/// landing on a different element - the silent-wrong-target shape strictness
-/// exists to prevent.
+/// Anything short of an exact match fails closed rather than guessing,
+/// because A7-3 measured Explorer re-resolving 29 of 29 `AutomationId` keys
+/// with 5 landing on a different element - the silent-wrong-target shape
+/// strictness exists to prevent.
 ///
-/// The bounds hash is the soft signal among several matches: it never refutes
-/// an exact match, only breaks a tie over several matches. A stored ref
-/// without a hash (bounds failed at capture, or hidden by the requester)
-/// cannot be disambiguated by hash, so the lookup fails closed as ambiguous
-/// rather than guessing - a `None == None` comparison never picks a candidate
-/// with no bounds evidence.
+/// The whole resolution runs through a `deadline`-bounded retry loop
+/// that retries only what is genuinely incomplete - an `AppUnresponsive`
+/// error stamped explicitly retryable (an unreadable candidate, a vanished
+/// or transient node mid-descent). A settled answer - `STALE_REF` from a
+/// completed search, `AMBIGUOUS_TARGET`, a permission denial - is never
+/// retried. Every re-attempt re-verifies process liveness through
+/// `resolve_window_root` (A14-4's prescribed cure), so a dead process
+/// converts to settled `STALE_REF` on the next attempt instead of burning
+/// the deadline, and final expiry stamps `deadline_elapsed` onto the last
+/// incomplete diagnosis rather than a bare `TIMEOUT` that discards it.
 #[cfg(target_os = "windows")]
 pub(crate) fn resolve_element_strict(
     entry: &RefEntry,
     deadline: Deadline,
 ) -> Result<NativeHandle, AdapterError> {
+    retry_incomplete_until(deadline, || resolve_attempt(entry, deadline))
+}
+
+/// One resolution attempt: the path tier, then the broad search, then the
+/// verdict.
+///
+/// The two tiers report what they left unread separately and keep it separate
+/// all the way to [`attempt_verdict`], because a landing and a region are
+/// different claims. The path tier's landing is decided by
+/// [`accept_path_landing`], which is handed the landed element alone; the
+/// region each tier left unread only ever bears on the *negative* verdict, and
+/// is composed once, at the end, by the function that settles it.
+#[cfg(target_os = "windows")]
+fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle, AdapterError> {
+    if entry_is_unverifiable(entry) {
+        return Err(stale_ref_error(entry));
+    }
     let root = resolve_window_root(entry, deadline)?;
     let source = UiaTreeSource::for_root(&root)?;
     let prepared = source.prepare_root(&root)?;
 
+    let budget = resolve_walk_budget(deadline);
+
+    let path = if can_use_path_fast_path(entry) {
+        walk_stored_path(&source, &prepared, &entry.scope.path, &budget)?
+    } else {
+        PathLanding::not_walked()
+    };
+    if let Some(accepted) = path
+        .element
+        .as_ref()
+        .and_then(|candidate| accept_path_landing(&source, candidate, entry))
+    {
+        return Ok(into_verified_handle(accepted, entry));
+    }
+
     let mut searched = Vec::new();
-    let budget = WalkBudget::new(MAX_RESOLVE_DEPTH, deadline)
-        .with_max_raw_depth(MAX_RESOLVE_DEPTH)
-        .with_max_siblings(DEFAULT_MAX_SIBLINGS);
-    search_under(&source, &prepared, 0, &budget, &mut searched)?;
+    let mut search_unread_region = false;
+    let search_ctx = SearchContext {
+        source: &source,
+        entry,
+        budget: &budget,
+    };
+    search_under(
+        &search_ctx,
+        &prepared,
+        0,
+        &mut searched,
+        &mut search_unread_region,
+    )?;
 
-    let expected_id = entry.identity.native_id.as_ref();
-    let expected_role = entry.identity.role.as_str();
-    let expected_name = entry.identity.name.as_deref();
-
-    let matches: Vec<Candidate> = searched
-        .into_iter()
-        .filter(|candidate| {
-            super::resolve_match::candidate_matches(
-                &candidate.identity,
-                expected_id,
-                expected_role,
-                expected_name,
-            )
-        })
+    let candidate_hashes: Vec<Option<u64>> = searched
+        .iter()
+        .map(|candidate| candidate.bounds_hash)
         .collect();
+    match attempt_verdict(&candidate_hashes, &path, search_unread_region, entry) {
+        SearchVerdict::Incomplete => Err(identity_unknown_error(entry)),
+        SearchVerdict::Stale => Err(stale_ref_error(entry)),
+        SearchVerdict::Resolved(index) => {
+            let Some(candidate) = searched.into_iter().nth(index) else {
+                return Err(stale_ref_error(entry));
+            };
+            Ok(into_verified_handle(candidate.element, entry))
+        }
+        SearchVerdict::Ambiguous => Err(ambiguous_target_error(entry, searched.len())),
+    }
+}
 
-    match matches.len() {
-        0 => Err(stale_ref_error(entry)),
-        1 => matches.into_iter().next().map_or_else(
-            || Err(stale_ref_error(entry)),
-            |Candidate { element, .. }| Ok(element.into_native_handle()),
-        ),
-        _ => {
-            let candidate_hashes: Vec<Option<u64>> = matches
-                .iter()
-                .map(|candidate| candidate.identity.bounds_hash)
-                .collect();
-            match super::resolve_match::select_by_bounds_hash(
-                &candidate_hashes,
-                entry.geometry.bounds_hash,
-            ) {
-                super::resolve_match::Selection::Resolved(index) => {
-                    Ok(matches[index].element.clone().into_native_handle())
-                }
-                super::resolve_match::Selection::Ambiguous => {
-                    Err(ambiguous_target_error(entry, matches.len()))
-                }
+/// What the completed (or early-stopped) broad search decided, before a
+/// resolved candidate is wired into a live handle.
+#[cfg(target_os = "windows")]
+enum SearchVerdict {
+    /// A candidate or an unrelated region could not be read and the
+    /// verdict is not yet settled - the caller retries.
+    Incomplete,
+    /// No candidate matched and nothing was left unread.
+    Stale,
+    /// Exactly one candidate settles the match; its index into the
+    /// searched list.
+    Resolved(usize),
+    /// Two or more candidates match and no stored hash disambiguates them.
+    Ambiguous,
+}
+
+/// Composes every tier's unread region into the one question
+/// [`classify_search`] asks - did this attempt read enough of the tree to
+/// settle a negative verdict - and classifies the collected candidates
+/// against it.
+///
+/// Takes the path tier's landing itself rather than a bare flag, so the tier's
+/// own report is the only thing that can answer for it. A gap met while
+/// walking the stored path is a region this attempt did not read, exactly as
+/// one met in the broad search is, and the path walk is the only tier that
+/// descends past the search's own depth cap - so a gap there can be the sole
+/// signal that the tier able to reach the element never got to look. An
+/// attempt that dropped it would settle `STALE_REF` - "the element is gone" -
+/// off a walk that never finished.
+///
+/// The landing's own `element` is deliberately unread here. Whether the path
+/// found something is settled before this point, by
+/// [`super::resolve_search::accept_path_landing`]; what survives to the
+/// verdict is only what the walk did not see.
+#[cfg(target_os = "windows")]
+fn attempt_verdict(
+    candidate_hashes: &[Option<u64>],
+    path: &PathLanding<UIAElement>,
+    search_unread_region: bool,
+    entry: &RefEntry,
+) -> SearchVerdict {
+    classify_search(
+        candidate_hashes,
+        path.unread_region || search_unread_region,
+        entry,
+    )
+}
+
+/// Composes the searched candidates' tie-break hashes with the unread-region
+/// flag into a verdict, mirroring macOS's ordering
+/// (`crates/macos/src/tree/resolve_search.rs:43-58`) even though nothing on
+/// Windows stops the search itself early: `search_under` always walks the
+/// whole depth-bounded subtree, and `should_stop_collecting` is consulted
+/// only here, post-hoc, after collection is done. Two or more matches with
+/// no stored hash to disambiguate is checked first, because no unread region
+/// could turn an already-conclusive ambiguity into anything else. Only below
+/// that threshold does an incomplete region withhold the verdict, so a sole
+/// match found while another region of the tree stayed unreadable is
+/// retried rather than resolved, and a multi-candidate tie-break with a
+/// stored hash still waits on the full picture before it classifies.
+/// Because the walk itself never stops early, `ambiguous_target_error`'s
+/// candidate count is always the full count found across the entire
+/// searched subtree, never a partial one.
+#[cfg(target_os = "windows")]
+fn classify_search(
+    candidate_hashes: &[Option<u64>],
+    unread_region: bool,
+    entry: &RefEntry,
+) -> SearchVerdict {
+    let stop_collecting = should_stop_collecting(candidate_hashes.len(), entry);
+    if unread_region && !stop_collecting {
+        return SearchVerdict::Incomplete;
+    }
+    match candidate_hashes.len() {
+        0 => SearchVerdict::Stale,
+        1 => SearchVerdict::Resolved(0),
+        _ => match super::resolve_match::select_by_bounds_hash(
+            candidate_hashes,
+            entry.geometry.bounds_hash,
+        ) {
+            super::resolve_match::Selection::Resolved(index) => SearchVerdict::Resolved(index),
+            super::resolve_match::Selection::Ambiguous => SearchVerdict::Ambiguous,
+        },
+    }
+}
+
+/// Wraps the resolved element with the ref's verified process identity, so the
+/// live-read path can corroborate that the provider is still the one
+/// resolution verified. The token-less case cannot reach here:
+/// `resolve_window_root` fails closed on it first.
+#[cfg(target_os = "windows")]
+pub(crate) fn into_verified_handle(
+    element: super::element::UIAElement,
+    entry: &RefEntry,
+) -> NativeHandle {
+    element
+        .with_verified_process(
+            entry.process.pid.get(),
+            entry.process.process_instance.clone().unwrap_or_default(),
+        )
+        .into_native_handle()
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn retry_incomplete_until(
+    deadline: Deadline,
+    mut operation: impl FnMut() -> Result<NativeHandle, AdapterError>,
+) -> Result<NativeHandle, AdapterError> {
+    let mut last_incomplete: Option<AdapterError> = None;
+    loop {
+        if deadline.is_expired() {
+            return Err(last_incomplete
+                .map(mark_deadline_elapsed)
+                .unwrap_or_else(|| deadline.timeout_error()));
+        }
+        match operation() {
+            Ok(value) => return Ok(value),
+            Err(error) if is_retryable_resolution_error(&error) => {
+                last_incomplete = Some(error);
+                sleep_before_retry(deadline);
             }
+            Err(error) if error.code == ErrorCode::Timeout => {
+                return Err(match last_incomplete {
+                    Some(incomplete) => mark_deadline_elapsed(incomplete),
+                    None => error,
+                });
+            }
+            Err(error) => return Err(error),
         }
     }
 }
 
+/// Whether the adapter's own loop should retry an error: only an explicitly
+/// retryable, incomplete read. A provider's own `UIA_E_TIMEOUT` classifies
+/// `Timeout` and is one of those - it is a per-call transport timeout inside
+/// the operation's budget, not the budget running out. Deadline exhaustion
+/// carries no retryable stamp, so it still falls through to the caller. Mirrors macOS
+/// (`resolve.rs:275-277`); the granularity split between adapter-loop-settled
+/// and incomplete lives in the `complete`/`retryable` details every resolver
+/// error carries.
+#[cfg(target_os = "windows")]
+pub(crate) fn is_retryable_resolution_error(error: &AdapterError) -> bool {
+    error.is_explicitly_retryable()
+        && matches!(error.code, ErrorCode::AppUnresponsive | ErrorCode::Timeout)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn sleep_before_retry(deadline: Deadline) {
+    let remaining = deadline.remaining();
+    std::thread::sleep(remaining.min(std::time::Duration::from_millis(25)));
+}
+
+/// Stamps the final incomplete diagnosis with `deadline_elapsed` so the
+/// caller sees why the retries ran out, preserving the incomplete's own
+/// details rather than discarding them for a bare `TIMEOUT`.
+#[cfg(target_os = "windows")]
+pub(crate) fn mark_deadline_elapsed(mut error: AdapterError) -> AdapterError {
+    let mut details = error
+        .details
+        .take()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(object) = details.as_object_mut() {
+        object.insert("deadline_elapsed".into(), serde_json::json!(true));
+    } else {
+        details = serde_json::json!({
+            "evidence": details,
+            "deadline_elapsed": true,
+        });
+    }
+    error.with_details(details)
+}
 /// The non-Windows twin. The crate cross-compiles to the Linux lane with the
 /// resolver reachable, but there are no UI Automation elements there, so every
 /// stored ref fails closed as stale rather than attempting a search that
@@ -117,246 +307,74 @@ pub(crate) fn resolve_element_strict(
 
 /// Reaches the stored window's root element from the ref's source window id.
 ///
-/// The fail-closed process gate (the A7-3 wrong-target shape exists to
+/// The fail-closed window gate (the A7-3 wrong-target shape exists to
 /// prevent): a stored ref must not search the tree of a different process that
-/// has since recycled the HWND. The macOS resolver verifies process instance
-/// before searching either. A token-less ref (elevated process whose token
-/// could not be read) fails closed here rather than searching an unverified
-/// window.
+/// has since taken over the HWND. The stored window the ref names is
+/// reconstructed and put through the same stored-evidence rule
+/// (`WindowIdentityEvidence::verify_stored`) the listing path uses, so the
+/// live owner of the handle, not merely the liveness of the stored pid,
+/// decides whether the window is still the ref's window. The macOS resolver
+/// verifies its window record before searching in the same position. A
+/// token-less ref (elevated process whose token could not be read) yields no
+/// evidence and fails closed here rather than searching an unverified window.
+///
+/// The rule's own error is `WINDOW_NOT_FOUND`; the resolver reports its
+/// failures as `STALE_REF`, so the verdict is adopted and the error contract
+/// of this path is unchanged.
 #[cfg(target_os = "windows")]
-fn resolve_window_root(entry: &RefEntry, deadline: Deadline) -> Result<UIAElement, AdapterError> {
+pub(crate) fn resolve_window_root(
+    entry: &RefEntry,
+    deadline: Deadline,
+) -> Result<UIAElement, AdapterError> {
     let window_id = entry
         .source
         .source_window_id
         .as_deref()
         .ok_or_else(|| stale_ref_error(entry))?;
-    if let Some(instance) = entry.process.process_instance.as_deref() {
-        if !crate::system::process_identity::matches_instance(entry.process.pid, instance)? {
-            return Err(stale_ref_error(entry));
-        }
-    } else {
-        return Err(stale_ref_error(entry));
-    }
+    let window = agent_desktop_core::WindowInfo {
+        id: window_id.to_string(),
+        title: entry.source.source_window_title.clone().unwrap_or_default(),
+        app: entry.source.source_app.clone().unwrap_or_default(),
+        pid: entry.process.pid,
+        process_instance: entry.process.process_instance.clone(),
+        bounds: None,
+        state: Default::default(),
+    };
+    crate::system::window_identity::WindowIdentityEvidence::from_info(
+        crate::system::window_ops::parse_handle(&window.id),
+        &window,
+    )
+    .ok_or_else(|| stale_ref_error(entry))?
+    .verify_stored()
+    .map_err(|_| stale_ref_error(entry))?;
+
     crate::tree::surfaces::surface_root(
-        agent_desktop_core::ObservationRoot::Window(&agent_desktop_core::WindowInfo {
-            id: window_id.to_string(),
-            title: entry.source.source_window_title.clone().unwrap_or_default(),
-            app: entry.source.source_app.clone().unwrap_or_default(),
-            pid: entry.process.pid,
-            process_instance: entry.process.process_instance.clone(),
-            bounds: None,
-            state: Default::default(),
-        }),
+        agent_desktop_core::ObservationRoot::Window(&window),
         entry.source.source_surface,
         deadline,
     )
 }
 
-/// Searches the subtree under `element` to the resolve depth, collecting every
-/// node's identity evidence.
-#[cfg(target_os = "windows")]
-fn search_under(
-    source: &UiaTreeSource,
-    element: &UIAElement,
-    depth: u8,
-    budget: &WalkBudget,
-    out: &mut Vec<Candidate>,
-) -> Result<(), AdapterError> {
-    if depth >= MAX_RESOLVE_DEPTH {
-        return Ok(());
-    }
-    crate::system::permissions::ensure_budget(budget.deadline)?;
-
-    out.push(read_candidate(element));
-
-    let children = enumerate_children(source, element, budget)?;
-    for child in children {
-        search_under(source, &child, depth + 1, budget, out)?;
-    }
-    Ok(())
-}
-
-/// Enumerates one element's children for the search, honouring the sibling cap
-/// as a hard bound on pathological lists.
-#[cfg(target_os = "windows")]
-fn enumerate_children(
-    source: &UiaTreeSource,
-    element: &UIAElement,
-    budget: &WalkBudget,
-) -> Result<Vec<UIAElement>, AdapterError> {
-    let mut children = Vec::new();
-    let mut current = match source.first_child(element) {
-        Ok(first) => first,
-        Err(failure) if failure.is_exhaustion() => return Ok(children),
-        Err(failure) => {
-            return Err(super::automation::uia_failure_error(
-                failure,
-                "descend to a stored ref",
-            ));
-        }
-    };
-    loop {
-        if children.len() >= budget.max_siblings {
-            break;
-        }
-        let next = source.next_sibling(&current);
-        children.push(current);
-        match next {
-            Ok(sibling) => current = sibling,
-            Err(failure) if failure.is_exhaustion() => break,
-            Err(failure) => {
-                return Err(super::automation::uia_failure_error(
-                    failure,
-                    "walk a stored ref's siblings",
-                ));
-            }
-        }
-    }
-    Ok(children)
-}
-
-/// Reads the identity-bearing evidence off one element for comparison, from a
-/// single batched read of the walk property set.
-#[cfg(target_os = "windows")]
-fn read_candidate(element: &UIAElement) -> Candidate {
-    let (properties, _) = read_live(element);
-    let role = crate::tree::roles::resolve_role(&properties)
-        .known()
-        .cloned();
-    Candidate {
-        element: element.clone(),
-        identity: NodeIdentity {
-            native_id: match properties.get(TreeProperty::AutomationId).text() {
-                LocatorField::Known(value) if !value.trim().is_empty() => Some(ElementIdentifier {
-                    kind: IdentifierKind::AutomationId,
-                    value,
-                }),
-                _ => None,
-            },
-            role,
-            name: match properties.get(TreeProperty::Name).text() {
-                LocatorField::Known(value) if !value.trim().is_empty() => Some(value),
-                _ => None,
-            },
-            bounds_hash: properties
-                .get(TreeProperty::BoundingRectangle)
-                .bounds()
-                .known()
-                .and_then(Rect::bounds_hash),
-        },
-    }
-}
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_tests.rs"]
+mod windows_only;
 
 #[cfg(all(test, target_os = "windows"))]
-mod windows_only {
-    use super::*;
-    use agent_desktop_core::{RefEntry, WindowInfo};
+#[path = "resolve_verdict_tests.rs"]
+mod verdict;
 
-    /// The live half of the resolver: the fixture's tree is walked, one
-    /// element carrying a non-empty `AutomationId` is captured, and a ref
-    /// built from that exact evidence resolves back to a live element - the
-    /// `snapshot` -> pick ref -> `--root` drill-down loop, across a real
-    /// process boundary.
-    #[test]
-    fn a_fixture_ref_resolves_to_the_same_element_end_to_end() {
-        crate::tree::fixture::ensure_test_apartment();
-        let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
-        let window = WindowInfo {
-            id: format!("w-{}", fixture.handle()),
-            title: "agent-desktop fixture".into(),
-            app: "fixture.exe".into(),
-            pid: agent_desktop_core::ProcessId::from(fixture.process_id()),
-            process_instance: Some(
-                crate::system::process_identity::token_for_pid(
-                    agent_desktop_core::ProcessId::from(fixture.process_id()),
-                )
-                .unwrap()
-                .expect("a live fixture process has a token"),
-            ),
-            bounds: None,
-            state: Default::default(),
-        };
-        let deadline = crate::tree::walker_fake::deadline();
-        let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline)
-            .expect("the fixture window resolves");
-        let token = window.process_instance.clone().unwrap();
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_pair_window.rs"]
+mod pair_window;
 
-        let captured = capture_identified(&root, deadline).expect("a fixture element has an id");
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_ambiguity_tests.rs"]
+mod ambiguity;
 
-        let entry = RefEntry {
-            process: agent_desktop_core::RefProcess {
-                pid: window.pid,
-                process_instance: Some(token),
-            },
-            identity: agent_desktop_core::RefEntryIdentity {
-                role: captured.role.clone().unwrap_or_default(),
-                name: captured.name.clone(),
-                value: None,
-                description: None,
-                native_id: captured.native_id.clone(),
-            },
-            geometry: agent_desktop_core::RefGeometry {
-                bounds: None,
-                bounds_hash: None,
-            },
-            capabilities: agent_desktop_core::RefCapabilities {
-                states: Vec::new(),
-                available_actions: Vec::new(),
-            },
-            source: agent_desktop_core::RefSource {
-                source_app: Some("fixture.exe".into()),
-                source_window_id: Some(window.id.clone()),
-                source_window_title: None,
-                source_window_bounds_hash: None,
-                source_surface: agent_desktop_core::SnapshotSurface::Window,
-            },
-            scope: agent_desktop_core::RefScope {
-                root_ref: None,
-                path_is_absolute: false,
-                path: agent_desktop_core::refs::RefPath::default(),
-            },
-        };
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_tie_break_tests.rs"]
+mod tie_break;
 
-        let handle = resolve_element_strict(&entry, deadline)
-            .expect("the stored identity re-resolves to a live element");
-
-        assert!(
-            handle.downcast_ref::<UIAElement>().is_some(),
-            "the resolved handle carries a UI Automation element"
-        );
-    }
-
-    /// Walks the fixture and returns the first element carrying a
-    /// non-empty `AutomationId`, with the identity read off it.
-    fn capture_identified(
-        root: &UIAElement,
-        deadline: agent_desktop_core::Deadline,
-    ) -> Option<NodeIdentity> {
-        let source = UiaTreeSource::for_root(root).ok()?;
-        let prepared = source.prepare_root(root).ok()?;
-        let budget = WalkBudget::new(10, deadline);
-        walk_for_identity(&source, &prepared, 0, &budget)
-    }
-
-    fn walk_for_identity(
-        source: &UiaTreeSource,
-        element: &UIAElement,
-        depth: u8,
-        budget: &WalkBudget,
-    ) -> Option<NodeIdentity> {
-        if depth >= 10 {
-            return None;
-        }
-        let candidate = read_candidate(element);
-        if candidate.identity.native_id.is_some() {
-            return Some(candidate.identity);
-        }
-        let children = enumerate_children(source, element, budget).ok()?;
-        for child in children {
-            if let Some(found) = walk_for_identity(source, &child, depth + 1, budget) {
-                return Some(found);
-            }
-        }
-        None
-    }
-}
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_path_fallback_tests.rs"]
+mod path_fallback;

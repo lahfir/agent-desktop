@@ -14,9 +14,10 @@ use std::sync::mpsc::Sender;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, IDC_ARROW, LoadCursorW, MSG,
-    PostQuitMessage, RegisterClassExW, SW_SHOWNOACTIVATE, SendMessageW, SetWindowTextW, ShowWindow,
-    TranslateMessage, WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowTextW, IDC_ARROW,
+    LoadCursorW, MSG, PostQuitMessage, RegisterClassExW, SW_SHOWNOACTIVATE, SendMessageW,
+    SetWindowTextW, ShowWindow, TranslateMessage, WM_DESTROY, WNDCLASSEXW, WS_CHILD,
+    WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 const ES_PASSWORD: u32 = 0x0020;
@@ -96,7 +97,7 @@ fn add_list_item(list: HWND, text: &str) {
 /// between them, so the probe can measure whether a non-secure control can end
 /// up labelled by a secure one - the cross-element case the per-element secure
 /// gate does not cover.
-fn create_controls(window: HWND, secret: &str) {
+fn create_controls(window: HWND, secret: &str) -> Result<(), String> {
     let mut top = 8;
     let mut row = |class: &str, text: &str, style: u32, height: i32| {
         let handle = child(window, class, text, style, top, height);
@@ -128,12 +129,40 @@ fn create_controls(window: HWND, secret: &str) {
         CONTROL_BORDER | LBS_HASSTRINGS | LBS_NOTIFY,
         LIST_HEIGHT,
     );
-    let secret = wide(secret);
-    unsafe { SetWindowTextW(password, secret.as_ptr()) };
+    plant_secret(password, secret)?;
     for list in [multi, single] {
         add_list_item(list, "vocab-item-one");
         add_list_item(list, "vocab-item-two");
     }
+    Ok(())
+}
+
+/// Writes the marker into the secure control and proves it is there by reading
+/// it back off the control.
+///
+/// `secure_content_leaked` is a whole-document scan for this marker, and a
+/// document that never carried it scans clean exactly as a document the
+/// provider withheld it from does. The read-back is what separates those two,
+/// so a plant that did not land stops the fixture rather than letting the
+/// leak verdict rest on an absent secret.
+fn plant_secret(password: HWND, secret: &str) -> Result<(), String> {
+    let planted = wide(secret);
+    if unsafe { SetWindowTextW(password, planted.as_ptr()) } == 0 {
+        return Err("SetWindowTextW failed on the secure control".into());
+    }
+    let mut buffer = vec![0u16; planted.len() + 16];
+    let copied = unsafe { GetWindowTextW(password, buffer.as_mut_ptr(), buffer.len() as i32) };
+    if copied <= 0 {
+        return Err("the secure control read back no text after the plant".into());
+    }
+    let readback = String::from_utf16_lossy(&buffer[..copied as usize]);
+    if readback != secret {
+        return Err(format!(
+            "the secure control holds {} characters that are not the marker",
+            readback.chars().count()
+        ));
+    }
+    Ok(())
 }
 
 /// Creates the fixture window on the calling thread and pumps until it is
@@ -167,7 +196,10 @@ pub fn host_window(class_name: &str, secret: &str, ready: Sender<Result<isize, S
         let _ = ready.send(Err("CreateWindowExW failed".into()));
         return;
     }
-    create_controls(window, secret);
+    if let Err(error) = create_controls(window, secret) {
+        let _ = ready.send(Err(error));
+        return;
+    }
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     let _ = ready.send(Ok(window as isize));
     let mut message = MSG::default();

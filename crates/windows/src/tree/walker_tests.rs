@@ -97,6 +97,10 @@ fn a_real_descent_failure_produces_an_incomplete_tree_and_a_structured_error() {
     assert!(outcome.tree.into_accessibility_tree().is_err());
 }
 
+/// The siblings read before the fault are retired into the tree rather than
+/// discarded with it, and `child_index` is the count that says how many.
+/// Asserting only that the walk went incomplete would accept a loop that threw
+/// the whole partial list away.
 #[test]
 fn a_real_sibling_failure_retires_the_prefix_and_still_reports_incomplete() {
     let fake = FakeTree::default()
@@ -106,36 +110,15 @@ fn a_real_sibling_failure_retires_the_prefix_and_still_reports_incomplete() {
     let outcome = walk(&fake, budget(10));
 
     assert!(!outcome.tree.is_complete());
-    assert!(!outcome.failures.is_empty());
-}
-
-/// The enumeration error carries shape and nothing else: no value, name, class
-/// name, window title, or provider description may reach a message that
-/// `ref_action.rs` clones into session trace segments.
-#[test]
-fn an_enumeration_error_carries_shape_only() {
-    let fake = FakeTree::default()
-        .with_children(1, &[2])
-        .faulting_on_first_child(2);
-
-    let outcome = walk(&fake, budget(10));
     let failure = outcome.failures.first().expect("a structured failure");
     let details = failure.details.as_ref().expect("structured details");
-
-    assert_eq!(details["kind"], "child_enumeration_failed");
-    let keys: Vec<&String> = details
-        .as_object()
-        .expect("a details object")
-        .keys()
-        .collect();
-    assert_eq!(keys, ["axis", "child_index", "kind", "raw_depth"]);
-    assert!(failure.message.contains("UI Automation"));
-    assert!(
-        failure
-            .platform_detail
-            .as_ref()
-            .expect("a platform detail")
-            .contains("0x80004005")
+    assert_eq!(
+        details["axis"], "next_sibling",
+        "a sibling-walk failure must be reported as the sibling axis, not the first-child one"
+    );
+    assert_eq!(
+        details["child_index"], 2,
+        "the two siblings read before the fault are retired, not dropped with it"
     );
 }
 
@@ -352,38 +335,5 @@ fn an_edge_after_a_dropped_sibling_reports_its_prefix_as_incomplete() {
         root.children.len(),
         2,
         "the cycle child is dropped and its siblings retained"
-    );
-}
-
-/// The failure cap keeps one pathological target from flooding a trace
-/// segment, but a consumer that sees the cap and no count would read a
-/// systemic failure as a local one. The count travels even though the dropped
-/// errors do not.
-#[test]
-fn faults_beyond_the_reporting_cap_are_counted_rather_than_vanishing() {
-    let children: Vec<i32> = (2..=40).collect();
-    let mut fake = FakeTree::default().with_children(1, &children);
-    for child in &children {
-        fake = fake.faulting_on_first_child(*child);
-    }
-
-    let outcome = walk(&fake, budget(10));
-
-    assert!(!outcome.tree.is_complete());
-    let suppressed = outcome
-        .failures
-        .last()
-        .and_then(|error| error.details.as_ref())
-        .and_then(|details| details.get("suppressed_failures"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or_default();
-    assert!(
-        suppressed > 0,
-        "a walk that dropped faults must say how many"
-    );
-    assert_eq!(
-        outcome.stats.reads.health.cannot_complete,
-        suppressed + outcome.failures.len() as u64,
-        "the counted total must account for every fault, reported or not"
     );
 }

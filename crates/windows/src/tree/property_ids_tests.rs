@@ -116,55 +116,20 @@ fn no_text_property_reaches_the_walk_without_joining_the_gate() {
 /// `VALUE_BEARING` - and a property that carries target text must be
 /// value-bearing regardless of whether the walk currently reads it, so this
 /// checks the whole enum rather than only `WALK_SET`.
+///
+/// "The whole enum" is enforced rather than asserted: the sweep runs over
+/// `ALL_PROPERTIES`, whose completeness
+/// `the_listed_properties_are_every_variant_the_enum_declares` proves against
+/// the enum's own declaration read out of the source file. A hand-written list
+/// here would silently narrow to a subset the first time a variant was added.
 #[test]
 fn carries_target_text_implies_value_bearing_across_every_property() {
-    for property in [
-        TreeProperty::Name,
-        TreeProperty::AutomationId,
-        TreeProperty::ClassName,
-        TreeProperty::HelpText,
-        TreeProperty::FullDescription,
-        TreeProperty::LabeledBy,
-        TreeProperty::Value,
-        TreeProperty::LegacyValue,
-        TreeProperty::BoundingRectangle,
-        TreeProperty::IsPassword,
-        TreeProperty::IsOffscreen,
-        TreeProperty::IsEnabled,
-        TreeProperty::IsControlElement,
-        TreeProperty::IsContentElement,
-        TreeProperty::IsKeyboardFocusable,
-        TreeProperty::HasKeyboardFocus,
-        TreeProperty::IsRequiredForForm,
-        TreeProperty::IsDataValidForForm,
-        TreeProperty::IsDialog,
-        TreeProperty::ToggleState,
-        TreeProperty::ExpandCollapseState,
-        TreeProperty::SelectionItemIsSelected,
-        TreeProperty::ValueIsReadOnly,
-        TreeProperty::SelectionCanSelectMultiple,
-        TreeProperty::WindowIsModal,
-        TreeProperty::LegacyState,
-        TreeProperty::LegacyDefaultAction,
-        TreeProperty::InvokeAvailable,
-        TreeProperty::ToggleAvailable,
-        TreeProperty::ExpandCollapseAvailable,
-        TreeProperty::SelectionItemAvailable,
-        TreeProperty::SelectionAvailable,
-        TreeProperty::ValueAvailable,
-        TreeProperty::RangeValueAvailable,
-        TreeProperty::ScrollAvailable,
-        TreeProperty::ScrollItemAvailable,
-        TreeProperty::WindowAvailable,
-        TreeProperty::GridItemAvailable,
-        TreeProperty::TableItemAvailable,
-        TreeProperty::LegacyAvailable,
-        TreeProperty::ProviderDescription,
-        TreeProperty::ControlType,
-        TreeProperty::RuntimeId,
-        TreeProperty::LocalizedControlType,
-        TreeProperty::AriaRole,
-    ] {
+    let swept = super::identity_tests::ALL_PROPERTIES;
+    assert!(
+        swept.len() > TreeProperty::WALK_SET.len(),
+        "the sweep must reach past the walk set, or it is not the whole enum"
+    );
+    for property in swept {
         assert!(
             !property.carries_target_text() || property.is_value_bearing(),
             "{} carries target text by its own declaration but is missing from VALUE_BEARING",

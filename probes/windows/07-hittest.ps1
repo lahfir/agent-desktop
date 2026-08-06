@@ -200,12 +200,14 @@ function Test-PointInRect {
     return ($X -ge $l -and $X -lt $r -and $Y -ge $t -and $Y -lt $b)
 }
 
+# A null return is this probe's evidence that btnZeroSize is in no tree walk, so a
+# lookup that failed must not be able to produce one: FindFirst already answers a
+# genuine absence with null, and anything that throws is a broken measurement that
+# has to stop the run rather than be filed as a negative result.
 function Find-ByAutomationId {
     param($Root, [string]$AutomationId, $Scope)
-    try {
-        $c = New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, $AutomationId)
-        return $Root.FindFirst($Scope, $c)
-    } catch { return $null }
+    $c = New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, $AutomationId)
+    return $Root.FindFirst($Scope, $c)
 }
 
 function Measure-Descendants {

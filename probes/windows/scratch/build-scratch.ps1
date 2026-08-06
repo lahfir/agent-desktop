@@ -38,7 +38,7 @@ if (-not (Test-Path -LiteralPath $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir | Out-Null
 }
 
-if ((Test-Path -LiteralPath $outputPath) -and (-not $Force)) {
+if ((Test-Path -LiteralPath $outputPath) -and (Test-Path -LiteralPath $configPath) -and (-not $Force)) {
     $sourceStamp = (Get-Item -LiteralPath $sourcePath).LastWriteTimeUtc
     $outputStamp = (Get-Item -LiteralPath $outputPath).LastWriteTimeUtc
     if ($outputStamp -gt $sourceStamp) {

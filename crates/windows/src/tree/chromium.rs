@@ -167,8 +167,12 @@ mod tests {
         assert!(!is_shell_shaped(&stats, &request));
     }
 
+    /// Depth is not this predicate's business: `reached_full_depth` and
+    /// `is_shell_shaped` decide that, and the tests above drive them. This one
+    /// covers the two clauses `activation_eligible` does consult - the root
+    /// kind and the requested surface.
     #[test]
-    fn activation_is_eligible_only_for_window_rooted_full_depth_observations() {
+    fn activation_is_eligible_only_for_window_rooted_window_surface_observations() {
         let request = request(50);
         assert!(activation_eligible(window_root(), &request));
 
@@ -180,5 +184,67 @@ mod tests {
             Deadline::after(5_000).unwrap(),
         );
         assert!(!activation_eligible(window_root(), &focused));
+    }
+
+    /// The other clause of the same predicate: an element-rooted observation
+    /// is never eligible, whatever its surface.
+    ///
+    /// A drill-down into a shell-shaped subtree must return its thin tree
+    /// rather than demanding activation, because the settle it would demand
+    /// has already run for that window - core's loop would re-walk the same
+    /// subtree indefinitely. Testing only window roots leaves this clause
+    /// deletable with the suite green.
+    #[test]
+    fn an_element_rooted_observation_is_never_eligible_for_activation() {
+        let request = request(50);
+        let entry: &'static agent_desktop_core::RefEntry =
+            Box::leak(Box::new(agent_desktop_core::RefEntry {
+                process: agent_desktop_core::RefProcess {
+                    pid: agent_desktop_core::ProcessId::new(1),
+                    process_instance: None,
+                },
+                identity: agent_desktop_core::RefEntryIdentity {
+                    role: "button".into(),
+                    name: None,
+                    value: None,
+                    description: None,
+                    native_id: None,
+                },
+                geometry: agent_desktop_core::RefGeometry {
+                    bounds: None,
+                    bounds_hash: None,
+                },
+                capabilities: agent_desktop_core::RefCapabilities {
+                    states: Vec::new(),
+                    available_actions: Vec::new(),
+                },
+                source: agent_desktop_core::RefSource {
+                    source_app: None,
+                    source_window_id: None,
+                    source_window_title: None,
+                    source_window_bounds_hash: None,
+                    source_surface: SnapshotSurface::Window,
+                },
+                scope: agent_desktop_core::RefScope {
+                    root_ref: None,
+                    path_is_absolute: true,
+                    path: agent_desktop_core::refs::RefPath::default(),
+                },
+            }));
+        let handle: &'static agent_desktop_core::NativeHandle =
+            Box::leak(Box::new(agent_desktop_core::NativeHandle::new(())));
+
+        let element_root = ObservationRoot::Element {
+            handle,
+            entry,
+            root_ref: None,
+        };
+
+        assert_eq!(
+            request.surface,
+            SnapshotSurface::Window,
+            "the surface clause must be satisfied, so only the root clause can refuse this"
+        );
+        assert!(!activation_eligible(element_root, &request));
     }
 }

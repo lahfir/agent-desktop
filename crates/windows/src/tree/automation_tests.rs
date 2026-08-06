@@ -158,12 +158,25 @@ mod windows_only {
     use crate::tree::fixture::bootstrap;
     use uiautomation::Error as UiaError;
 
+    /// Two calls on one thread hand back the *same* COM object, not two.
+    ///
+    /// Asserting only that both calls succeed passes just as well for a cache
+    /// that was never populated, which would pay a fresh `CoCreateInstance`
+    /// and a fresh first-touch serialization on every walk. The interfaces are
+    /// compared directly, so a reuse regression fails here.
     #[test]
     fn the_client_is_reusable_within_a_thread() {
         bootstrap();
 
-        assert!(automation_client().is_ok());
-        assert!(automation_client().is_ok());
+        let first = automation_client().expect("the first client builds");
+        let second = automation_client().expect("the second client builds");
+
+        let first: &windows::Win32::UI::Accessibility::IUIAutomation = first.as_ref();
+        let second: &windows::Win32::UI::Accessibility::IUIAutomation = second.as_ref();
+        assert_eq!(
+            first, second,
+            "the second call must return this thread's cached client, not a new instance"
+        );
     }
 
     #[test]
