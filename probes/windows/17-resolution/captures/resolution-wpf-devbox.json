@@ -16,24 +16,24 @@
                                                                                        "control_type":  50027
                                                                                    },
                                                                                    {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  5,
+                                                                                       "control_type":  50014
+                                                                                   },
+                                                                                   {
                                                                                        "candidates":  5,
                                                                                        "control_type":  50033
                                                                                    },
                                                                                    {
                                                                                        "candidates":  5,
                                                                                        "control_type":  50014
-                                                                                   },
-                                                                                   {
-                                                                                       "candidates":  5,
-                                                                                       "control_type":  50014
-                                                                                   },
-                                                                                   {
-                                                                                       "candidates":  2,
-                                                                                       "control_type":  50027
-                                                                                   },
-                                                                                   {
-                                                                                       "candidates":  2,
-                                                                                       "control_type":  50027
                                                                                    },
                                                                                    {
                                                                                        "candidates":  2,
@@ -55,7 +55,7 @@
                          "child_process":  {
                                                "attached":  true,
                                                "descendants":  83,
-                                               "handle_int":  28247608,
+                                               "handle_int":  30934330,
                                                "hosted":  false,
                                                "root_resolved":  true
                                            },
@@ -269,19 +269,19 @@
                                                  "target":  "attached",
                                                  "timing_ms":  {
                                                                    "findall_absent_id":  {
-                                                                                             "max":  70.50750000000001,
-                                                                                             "median":  70.1651,
-                                                                                             "min":  67.0042
+                                                                                             "max":  53.3887,
+                                                                                             "median":  40.7389,
+                                                                                             "min":  35.6992
                                                                                          },
                                                                    "findall_one_id":  {
-                                                                                          "max":  85.3724,
-                                                                                          "median":  69.949,
-                                                                                          "min":  55.6139
+                                                                                          "max":  108.50179999999999,
+                                                                                          "median":  42.394,
+                                                                                          "min":  40.6197
                                                                                       },
                                                                    "resolve_scoped_walk":  {
-                                                                                               "max":  515.7501,
-                                                                                               "median":  141.4268,
-                                                                                               "min":  116.4881
+                                                                                               "max":  153.076,
+                                                                                               "median":  107.5334,
+                                                                                               "min":  83.4814
                                                                                            }
                                                                },
                                                  "walk_candidate_reads":  83,
@@ -290,19 +290,41 @@
                          "secure_live_read":  {
                                                   "name_contains_marker":  false,
                                                   "password_control_present":  true,
+                                                  "product_live_read":  {
+                                                                            "drives":  [
+                                                                                           "properties::read_live_bounded",
+                                                                                           "name_evidence::read_label",
+                                                                                           "walker::walk_vocabulary",
+                                                                                           "ElementProperties::into_locator_evidence"
+                                                                                       ],
+                                                                            "name_contains_marker":  false,
+                                                                            "name_slot_published":  false,
+                                                                            "reached":  true,
+                                                                            "secure_gate_closed":  true,
+                                                                            "value_bearing_slots_published":  [
+
+                                                                                                              ],
+                                                                            "value_contains_marker":  false,
+                                                                            "value_slot_published":  false,
+                                                                            "withholding_applied":  true,
+                                                                            "withholding_observable":  false
+                                                                        },
+                                                  "provider_published_slots":  [
+
+                                                                               ],
                                                   "value_contains_marker":  false,
                                                   "value_length":  null
                                               },
                          "timing_ms":  {
                                            "single_element_read":  {
-                                                                       "max":  0.022699999999999998,
+                                                                       "max":  0.0208,
                                                                        "median":  0.0191,
-                                                                       "min":  0.0188
+                                                                       "min":  0.0191
                                                                    },
                                            "single_strict_resolve":  {
-                                                                         "max":  379.0091,
-                                                                         "median":  216.2288,
-                                                                         "min":  201.5854
+                                                                         "max":  203.0862,
+                                                                         "median":  166.3409,
+                                                                         "min":  136.25590000000003
                                                                      }
                                        },
                          "zero_one_n":  {

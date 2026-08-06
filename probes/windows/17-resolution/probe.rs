@@ -9,7 +9,11 @@
 //! reproduction (U1-2) and the Electron path/geometry survival leg (U1-8)
 //! live in the orchestrator, which drives the WinForms fixture and Obsidian.
 //!
-//! Writes one JSON document to stdout. Nothing here is product code.
+//! Writes one JSON document to stdout. Nothing here is product code. The
+//! secure-field arm is the one arm that *calls* product code: the withholding
+//! it measures belongs to the adapter, so measuring it off the raw provider
+//! would report the platform's behaviour under the adapter's name. See
+//! `probe_secure.rs`.
 
 use std::env;
 use std::io::{BufRead, BufReader, Write};
@@ -44,6 +48,10 @@ mod swap;
 #[cfg(target_os = "windows")]
 #[path = "probe_survival.rs"]
 mod survival;
+
+#[cfg(target_os = "windows")]
+#[path = "probe_secure.rs"]
+mod secure;
 
 #[cfg(target_os = "windows")]
 #[path = "probe_run.rs"]

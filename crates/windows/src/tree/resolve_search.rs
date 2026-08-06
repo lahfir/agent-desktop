@@ -18,7 +18,7 @@ use serde_json::json;
 
 use super::automation::{UiaFailure, uia_failure_disposition};
 use super::element::UIAElement;
-use super::resolve_match::{Candidate, bounds_hash_of};
+use super::resolve_match::{Candidate, CandidateOutcome, bounds_hash_of};
 use super::walker::{DEFAULT_MAX_SIBLINGS, TreeSource, WalkBudget};
 use super::walker_source::UiaTreeSource;
 use crate::system::hresult::ReadDisposition;
@@ -211,6 +211,56 @@ fn child_search_is_reachable(depth: u8) -> bool {
     depth + 1 < MAX_RESOLVE_DEPTH
 }
 
+/// What the search does with one node it has read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NodeAdmission {
+    /// The node is a candidate the verdict counts.
+    Collect,
+    /// The node's own evidence could not settle the question, so this region
+    /// of the tree was not read conclusively and the verdict is withheld.
+    Unread,
+    /// The node is refuted, or its role rules it out. Nothing is withheld.
+    Reject,
+}
+
+/// Decides one node's admission from the stored ref and the node's evidence:
+/// the role gate, the composed identity rule, and the geometry promotion.
+///
+/// Pure over evidence rather than over a live element, so each arm is
+/// decidable without a UI Automation provider that can be made to withhold a
+/// property on demand - the separation `select_by_bounds_hash` already draws
+/// for the tie-break.
+///
+/// The promotion arm is reachable only on an `Incomplete` identity, and for
+/// the class it exists to serve that verdict is structural rather than
+/// transient: a ref whose role carries a mutable value and whose stored text
+/// is blank - the shape a secure edit stores - makes core's
+/// `stable_text_match` answer `Unknown` on every attempt, whatever the read
+/// succeeds at. Geometry is the only tier that class has, and only from a
+/// positive-area rectangle: offscreen and virtualized elements collapse to
+/// shared zero-extent bounds that are structurally non-unique (A17-7), so a
+/// zero-extent stored rectangle leaves the node unread rather than promoting
+/// it. An unpromoted `Incomplete` is never a refutation - the tri-state
+/// discipline the whole resolver is built on.
+pub(crate) fn admit_node(entry: &RefEntry, evidence: &LocatorEvidence) -> NodeAdmission {
+    let role_matches = evidence
+        .role
+        .known()
+        .is_some_and(|role| role == &entry.identity.role);
+    if !role_matches {
+        if evidence.role.is_unknown() {
+            return NodeAdmission::Unread;
+        }
+        return NodeAdmission::Reject;
+    }
+    match super::resolve_match::candidate_outcome(entry, evidence) {
+        CandidateOutcome::Matched => NodeAdmission::Collect,
+        CandidateOutcome::Incomplete if geometry_matches(entry, evidence) => NodeAdmission::Collect,
+        CandidateOutcome::Incomplete => NodeAdmission::Unread,
+        CandidateOutcome::Refuted => NodeAdmission::Reject,
+    }
+}
+
 /// Searches the subtree under `element` to the resolve depth, collecting the
 /// candidates the composed matcher accepted and flagging an unreadable one as
 /// incomplete.
@@ -227,25 +277,10 @@ pub(crate) fn search_under(
     crate::system::permissions::ensure_budget(ctx.budget.deadline)?;
 
     let (_, evidence, _) = ctx.source.evidence(element);
-    let role_matches = evidence
-        .role
-        .known()
-        .is_some_and(|role| role == &ctx.entry.identity.role);
-    if role_matches {
-        match super::resolve_match::candidate_outcome(ctx.entry, &evidence) {
-            super::resolve_match::CandidateOutcome::Matched => {
-                out.push(build_candidate(element, &evidence))
-            }
-            super::resolve_match::CandidateOutcome::Incomplete
-                if geometry_matches(ctx.entry, &evidence) =>
-            {
-                out.push(build_candidate(element, &evidence));
-            }
-            super::resolve_match::CandidateOutcome::Incomplete => *incomplete = true,
-            super::resolve_match::CandidateOutcome::Refuted => {}
-        }
-    } else if evidence.role.is_unknown() {
-        *incomplete = true;
+    match admit_node(ctx.entry, &evidence) {
+        NodeAdmission::Collect => out.push(build_candidate(element, &evidence)),
+        NodeAdmission::Unread => *incomplete = true,
+        NodeAdmission::Reject => {}
     }
 
     if child_search_is_reachable(depth) {
@@ -309,3 +344,7 @@ pub(crate) fn build_candidate(element: &UIAElement, evidence: &LocatorEvidence) 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "resolve_search_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_search_admission_tests.rs"]
+mod admission_tests;

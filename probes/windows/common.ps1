@@ -5,6 +5,7 @@ $script:NotMeasuredKey = 'not_measured'
 $script:MandatoryExpected = New-Object System.Collections.ArrayList
 $script:MandatoryProduced = New-Object System.Collections.ArrayList
 $script:MandatoryDegraded = New-Object System.Collections.ArrayList
+$script:MandatoryGateSelfTestFailures = New-Object System.Collections.ArrayList
 $script:UsersPathPattern = '[A-Za-z]:[\\/]+Users[\\/]+(?!Public[\\/\s"])(?!Default[\\/\s"])(?!All Users[\\/\s"])[^\\/:*?"<>|\s]+'
 
 function Get-ProbeRoot {
@@ -542,6 +543,20 @@ function Test-PassNotMeasured {
     return ($null -ne $properties['skipped'])
 }
 
+<#
+    The ledgers are addressable rather than only appendable so the self-test
+    below can drive whole runs - a declaration, its passes and the verdict -
+    through the shipped functions and then hand the next probe the same empty
+    state it would have had. A saved-and-restored reference would work too, but
+    a fresh ledger is exactly what dot-sourcing produces, so there is nothing to
+    get subtly wrong.
+#>
+function Reset-MandatoryMeasurementState {
+    $script:MandatoryExpected = New-Object System.Collections.ArrayList
+    $script:MandatoryProduced = New-Object System.Collections.ArrayList
+    $script:MandatoryDegraded = New-Object System.Collections.ArrayList
+}
+
 function Register-MandatoryCapture {
     param([Parameter(Mandatory = $true)][string[]]$Name)
     foreach ($entry in $Name) {
@@ -588,24 +603,284 @@ function Get-MandatoryMeasurementGap {
 }
 
 <#
-    The verdict, so that no probe hand-rolls it: the gap object carries the
-    message that names what went wrong, and a probe that copies this one line
-    cannot report a misleading reason or forget the -Label ci condition. The
-    label is validated rather than free text, so a run label this gate has no
-    policy for fails the parameter bind instead of quietly skipping the check.
-    The gap is read on every label, not only ci, so a dev-box run exercises the
-    same code path CI depends on.
+    Whether this run fails, and why. Every rule that decides it lives here and
+    nothing here exits, which is what lets the self-test below drive the
+    decision under both labels instead of only being able to watch a healthy
+    run go by. Extracting it was not tidiness: with the decision inlined in the
+    exit path, replacing "fail when there is a gap" with "return" left the gate
+    reporting success on a run that measured nothing, and nothing anywhere
+    noticed - the gate's own defect, one level up, sitting in the gate.
+
+    The label is validated rather than free text, so a run label this gate has
+    no policy for fails the parameter bind instead of quietly skipping the
+    check. The gap is read on every label, not only ci, so a dev-box run
+    exercises the same code path CI depends on.
+
+    A gate whose own rules have stopped detecting would report success having
+    asserted nothing, exactly as a probe that measured nothing would. So the
+    self-test verdict is consulted here too, and before the gap, because a gap
+    of $null means nothing once the rule that computes it is known to be
+    broken.
+#>
+function Get-MandatoryGateSelfTestVerdict {
+    if ($script:MandatoryGateSelfTestFailures.Count -eq 0) { return $null }
+    return [ordered]@{
+        reason                  = 'the mandatory-measurement gate failed its own self-test, so its verdict on this run means nothing'
+        self_test_failed        = $true
+        self_test_failures      = @($script:MandatoryGateSelfTestFailures)
+        self_test_failure_count = $script:MandatoryGateSelfTestFailures.Count
+    }
+}
+
+function Get-MandatoryMeasurementVerdict {
+    param([Parameter(Mandatory = $true)][ValidateSet('devbox', 'ci')][string]$Label)
+    $gap = Get-MandatoryMeasurementGap
+    if ($Label -ne 'ci') { return $null }
+    $selfTest = Get-MandatoryGateSelfTestVerdict
+    if ($null -ne $selfTest) { return $selfTest }
+    return $gap
+}
+
+<#
+    The exit, so that no probe hand-rolls it, and the one part of the gate no
+    in-process test can drive: a test that provoked the exit would end the run
+    it is trying to report on. Everything it could get wrong other than the
+    exit has been moved into Get-MandatoryMeasurementVerdict, which the
+    self-test drives under both labels.
+
+    The second read of the self-test verdict is not a duplicated rule, it is a
+    deliberately independent wire. The first read reaches this function through
+    the label policy and the verdict, and those are two of the things the
+    self-test exists to catch breaking: with the alarm routed through them, a
+    label policy inverted to skip ci silenced every self-test failure the run
+    had just logged and the build went green. An alarm wired through the
+    circuit it monitors is not an alarm. The failures are logged as errors on
+    every label so a dev-box operator sees them, and -Label ci is what turns
+    them into an exit code, exactly as for a gap.
 #>
 function Assert-MandatoryMeasurement {
     param(
         [Parameter(Mandatory = $true)][string]$Probe,
         [Parameter(Mandatory = $true)][ValidateSet('devbox', 'ci')][string]$Label
     )
-    $gap = Get-MandatoryMeasurementGap
-    if ($Label -ne 'ci') { return }
-    if ($null -eq $gap) { return }
-    Write-ProbeResult -Probe $Probe -Status 'fail' -Message ([string]$gap['reason']) -Data $gap
+    $verdict = Get-MandatoryMeasurementVerdict -Label $Label
+    if ($null -eq $verdict -and $Label -eq 'ci') { $verdict = Get-MandatoryGateSelfTestVerdict }
+    if ($null -eq $verdict) { return }
+    Write-ProbeResult -Probe $Probe -Status 'fail' -Message ([string]$verdict['reason']) -Data $verdict
     exit 1
+}
+
+<#
+    The gate's own MUST-CATCH / MUST-PASS fixture.
+
+    Every case below is driven through the shipped functions - the placeholder
+    comes from New-NotMeasuredResult, the marker key from $script:NotMeasuredKey,
+    the ledgers from Register-MandatoryCapture and Register-MandatoryPass, the
+    gap from Get-MandatoryMeasurementGap and the pass/fail decision from
+    Get-MandatoryMeasurementVerdict - so the fixture cannot drift away from the
+    rule by testing a second copy of it that agrees with itself. What is
+    written out here is only the inputs and the expected answers.
+
+    Both halves are driven, because a gate that reports a gap for everything is
+    as useless as one that never reports one, and only the second announces
+    itself. The must-pass half is the one that has to survive: a pass that ran
+    and answered "no" - an empty candidate list inside a result that says so, a
+    false flag, a zero - is a measurement, and a gate that called it a gap would
+    teach every probe author to stop declaring captures.
+
+    It runs at dot-source time, so every probe that uses the gate runs it,
+    including one written next year that never hears about it, and it costs a
+    few milliseconds of in-memory work. The ledger state it leaves behind is a
+    fresh one, identical to what dot-sourcing alone produces.
+
+    What it cannot reach, so that nobody assumes otherwise: the last three
+    lines of Assert-MandatoryMeasurement, where a verdict becomes an exit code,
+    and the alarm in Get-MandatoryGateSelfTestVerdict that carries these
+    failures there. A test that provoked the exit would end the run it is
+    reporting on, and an alarm cannot raise itself once silenced. Breaking
+    either is still visible - every failure below is written to the log on
+    every label - but it is visible as log text on a green run, which is the
+    weakest signal this gate has. Keep both minimal for that reason.
+#>
+function Test-MandatoryMeasurementGate {
+    # Nested so it cannot be mistaken for probe API. It reads whatever ledger
+    # state the scenario around it has just built, through the same verdict
+    # function Assert-MandatoryMeasurement calls, and asserts both halves of
+    # the label policy: ci fails on a gap, and a dev box never fails at all.
+    function Test-VerdictLabelPolicy {
+        param(
+            [Parameter(Mandatory = $true)][string]$Case,
+            [Parameter(Mandatory = $true)][bool]$ExpectCiFailure
+        )
+        $found = New-Object System.Collections.ArrayList
+        $ci = Get-MandatoryMeasurementVerdict -Label 'ci'
+        $devbox = Get-MandatoryMeasurementVerdict -Label 'devbox'
+        if ($ExpectCiFailure -and $null -eq $ci) {
+            [void]$found.Add('MUST CATCH, not failed: ' + $Case + ' did not fail a ci run')
+        }
+        if ($ExpectCiFailure -and $null -ne $ci -and [string]::IsNullOrWhiteSpace([string]$ci['reason'])) {
+            [void]$found.Add('MUST CATCH, unexplained: ' + $Case + ' failed a ci run with no reason for the operator to read')
+        }
+        if ((-not $ExpectCiFailure) -and $null -ne $ci) {
+            [void]$found.Add('MUST PASS, false positive: ' + $Case + ' failed a ci run')
+        }
+        if ($null -ne $devbox) {
+            [void]$found.Add('MUST PASS, false positive: ' + $Case + ' failed a dev-box run, which this gate never does')
+        }
+        return , $found
+    }
+
+    $failures = New-Object System.Collections.ArrayList
+    $alpha = 'gate-self-test-alpha.json'
+    $beta = 'gate-self-test-beta.json'
+    $alphaPath = Join-Path 'C:\gate-self-test' $alpha
+    try {
+        $placeholder = New-NotMeasuredResult -Reason 'the probe exited with code 1'
+        $markerOnly = @{}
+        $markerOnly[$script:NotMeasuredKey] = $true
+        $markerFalse = @{}
+        $markerFalse[$script:NotMeasuredKey] = $false
+        $markerFalse['rows'] = 3
+        $notMeasured = @(
+            @{ Case = 'a pass that returned nothing at all'; Value = $null },
+            @{ Case = 'the placeholder New-NotMeasuredResult returns'; Value = $placeholder },
+            @{ Case = 'a placeholder read back from its own capture'; Value = (ConvertFrom-Json (ConvertTo-Json -InputObject $placeholder -Depth 5)) },
+            @{ Case = 'a not-measured marker carrying no skip reason'; Value = $markerOnly },
+            @{ Case = 'a not-measured marker carrying no skip reason, read back from JSON'; Value = (ConvertFrom-Json (ConvertTo-Json -InputObject $markerOnly -Depth 5)) },
+            @{ Case = 'a skip reason carrying no marker'; Value = @{ skipped = 'cargo is not installed on this machine' } },
+            @{ Case = 'a skip reason carrying no marker, read back from JSON'; Value = (ConvertFrom-Json '{"skipped":"cargo is not installed on this machine"}') },
+            @{ Case = 'an empty list'; Value = @() },
+            @{ Case = 'an empty dictionary'; Value = @{} },
+            @{ Case = 'an empty ordered dictionary'; Value = ([ordered]@{}) },
+            @{ Case = 'an empty string'; Value = '' },
+            @{ Case = 'a blank string'; Value = '   ' }
+        )
+        $measured = @(
+            @{ Case = 'the number zero'; Value = 0 },
+            @{ Case = 'the boolean false'; Value = $false },
+            @{ Case = 'a bare string'; Value = 'RawView' },
+            @{ Case = 'a bare array'; Value = @(1, 2) },
+            @{ Case = 'a measured negative that found nothing and says so'; Value = ([ordered]@{ labeled_by_resolved = $false; candidates = @() }) },
+            @{ Case = 'a measured negative read back from its own capture'; Value = (ConvertFrom-Json '{"labeled_by_resolved":false,"candidates":[]}') },
+            @{ Case = 'a measurement that states the marker is false'; Value = $markerFalse }
+        )
+        foreach ($case in $notMeasured) {
+            if (-not (Test-PassNotMeasured -Result $case.Value)) {
+                [void]$failures.Add('MUST CATCH, missed: ' + $case.Case + ' was accepted as a measurement')
+            }
+        }
+        foreach ($case in $measured) {
+            if (Test-PassNotMeasured -Result $case.Value) {
+                [void]$failures.Add('MUST PASS, false positive: ' + $case.Case + ' was rejected as not measured')
+            }
+        }
+
+        Reset-MandatoryMeasurementState
+        Register-MandatoryCapture -Name @($alpha)
+        Register-MandatoryPass -Capture $alphaPath -Result $placeholder
+        $degradedGap = Get-MandatoryMeasurementGap
+        if ($null -eq $degradedGap) {
+            [void]$failures.Add('MUST CATCH, missed: a mandatory pass that recorded a placeholder was reported as a complete run')
+        } else {
+            if (-not (@($degradedGap['degraded_captures']) -contains $alpha)) {
+                [void]$failures.Add('MUST CATCH, unnamed: the degraded capture ' + $alpha + ' was not named in the gap')
+            }
+            if ($degradedGap['degraded_count'] -ne 1) {
+                [void]$failures.Add('MUST CATCH, miscounted: one degraded capture was reported as ' + $degradedGap['degraded_count'])
+            }
+            if ($degradedGap['empty_declaration']) {
+                [void]$failures.Add('MUST CATCH, misattributed: a degraded pass was reported as an empty declaration')
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$degradedGap['reason'])) {
+                [void]$failures.Add('MUST CATCH, unexplained: the degraded-pass gap carries no reason for the operator to read')
+            }
+        }
+        foreach ($f in (Test-VerdictLabelPolicy -Case 'a mandatory pass that recorded a placeholder' -ExpectCiFailure $true)) {
+            [void]$failures.Add($f)
+        }
+
+        Reset-MandatoryMeasurementState
+        Register-MandatoryCapture -Name @($alpha, $beta)
+        Register-MandatoryPass -Capture $alphaPath -Result ([ordered]@{ rows = 1 })
+        $missingGap = Get-MandatoryMeasurementGap
+        if ($null -eq $missingGap) {
+            [void]$failures.Add('MUST CATCH, missed: a mandatory pass that never ran was reported as a complete run')
+        } else {
+            if (-not (@($missingGap['missing_captures']) -contains $beta)) {
+                [void]$failures.Add('MUST CATCH, unnamed: the absent capture ' + $beta + ' was not named in the gap')
+            }
+            if ($missingGap['missing_count'] -ne 1) {
+                [void]$failures.Add('MUST CATCH, miscounted: one absent capture was reported as ' + $missingGap['missing_count'])
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$missingGap['reason'])) {
+                [void]$failures.Add('MUST CATCH, unexplained: the absent-capture gap carries no reason for the operator to read')
+            }
+        }
+        foreach ($f in (Test-VerdictLabelPolicy -Case 'a mandatory pass that never ran' -ExpectCiFailure $true)) {
+            [void]$failures.Add($f)
+        }
+
+        Reset-MandatoryMeasurementState
+        $emptyGap = Get-MandatoryMeasurementGap
+        if ($null -eq $emptyGap) {
+            [void]$failures.Add('MUST CATCH, missed: a run that declared no mandatory captures was reported as a complete run')
+        } else {
+            if (-not $emptyGap['empty_declaration']) {
+                [void]$failures.Add('MUST CATCH, misattributed: an empty declaration was not reported as one')
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$emptyGap['reason'])) {
+                [void]$failures.Add('MUST CATCH, unexplained: the empty-declaration gap carries no reason for the operator to read')
+            }
+        }
+        foreach ($f in (Test-VerdictLabelPolicy -Case 'a run that declared no mandatory captures' -ExpectCiFailure $true)) {
+            [void]$failures.Add($f)
+        }
+
+        Reset-MandatoryMeasurementState
+        Register-MandatoryCapture -Name @($alpha, $beta)
+        Register-MandatoryPass -Capture $alphaPath -Result ([ordered]@{ labeled_by_resolved = $false; candidates = @() })
+        Register-MandatoryPass -Capture (Join-Path 'C:\gate-self-test' $beta) -Result (ConvertFrom-Json '{"found":false,"rows":[]}')
+        $cleanGap = Get-MandatoryMeasurementGap
+        if ($null -ne $cleanGap) {
+            [void]$failures.Add('MUST PASS, false positive: a run whose passes all measured a negative was reported as a gap - ' + [string]$cleanGap['reason'])
+        }
+        foreach ($f in (Test-VerdictLabelPolicy -Case 'a run whose passes all measured a negative' -ExpectCiFailure $false)) {
+            [void]$failures.Add($f)
+        }
+
+        # The branch that carries this whole self-test into a CI exit code,
+        # driven with an injected failure over an otherwise complete run: no
+        # gap, so a ci failure here can only come from the self-test verdict
+        # being honoured. Without this, a change that ignored the self-test
+        # would leave every case above still passing and reporting nothing.
+        $quietAlarm = Get-MandatoryGateSelfTestVerdict
+        $realFailures = $script:MandatoryGateSelfTestFailures
+        $script:MandatoryGateSelfTestFailures = New-Object System.Collections.ArrayList
+        [void]$script:MandatoryGateSelfTestFailures.Add('injected by the gate self-test')
+        $injectedAlarm = Get-MandatoryGateSelfTestVerdict
+        $injectedCi = Get-MandatoryMeasurementVerdict -Label 'ci'
+        $injectedDevbox = Get-MandatoryMeasurementVerdict -Label 'devbox'
+        $script:MandatoryGateSelfTestFailures = $realFailures
+        if ($null -ne $quietAlarm) {
+            [void]$failures.Add('MUST PASS, false positive: the self-test alarm fired with no self-test failure recorded')
+        }
+        if ($null -eq $injectedAlarm) {
+            [void]$failures.Add('MUST CATCH, not failed: the self-test alarm stayed quiet with a self-test failure recorded')
+        } elseif (-not $injectedAlarm['self_test_failed']) {
+            [void]$failures.Add('MUST CATCH, misattributed: a self-test failure was not reported as one')
+        }
+        if ($null -eq $injectedCi) {
+            [void]$failures.Add('MUST CATCH, not failed: a gate whose own self-test failed did not fail a ci run')
+        }
+        if ($null -ne $injectedDevbox) {
+            [void]$failures.Add('MUST PASS, false positive: a gate whose own self-test failed failed a dev-box run')
+        }
+    } catch {
+        [void]$failures.Add('the gate threw while being tested: ' + $_.Exception.Message)
+    } finally {
+        Reset-MandatoryMeasurementState
+    }
+    return , $failures
 }
 
 function Write-ProbeLog {
@@ -633,3 +908,8 @@ function Write-ProbeResult {
 }
 
 Initialize-ProbeRedaction
+
+$script:MandatoryGateSelfTestFailures = Test-MandatoryMeasurementGate
+foreach ($selfTestFailure in $script:MandatoryGateSelfTestFailures) {
+    Write-ProbeLog -Message ('mandatory-measurement gate self-test: ' + $selfTestFailure) -Level 'error'
+}

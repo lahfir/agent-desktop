@@ -81,7 +81,13 @@ function Build-ProbeBinary {
     $work = Join-Path ([IO.Path]::GetTempPath()) ('agent-desktop-resolution-' + [guid]::NewGuid())
     New-Item -ItemType Directory -Path (Join-Path $work 'src') -Force | Out-Null
     try {
-        $manifest = '  [package]' + "`n" + '  name = "agent-desktop-resolution-probe"' + "`n" + '  version = "0.0.0"' + "`n" + '  edition = "2021"' + "`n" + "`n" + '  [dependencies]' + "`n" + '  serde_json = "1"' + "`n" + '  uiautomation = "=' + $UiAutomationVersion + '"' + "`n" + '  windows-sys = { version = "0.61", features = [' + "`n" + '    "Win32_Foundation",' + "`n" + '    "Win32_Graphics_Gdi",' + "`n" + '    "Win32_System_Com",' + "`n" + '    "Win32_System_LibraryLoader",' + "`n" + '    "Win32_UI_WindowsAndMessaging",' + "`n" + '  ] }' + "`n" + "`n" + '  [workspace]'
+        # The secure-field arm (A17-6) reads the password control twice: once
+        # off the provider, and once through the adapter's own live-read
+        # composition. The second reading is the one that measures the
+        # product's withholding rather than the platform's, so the probe links
+        # the adapter and core by path. Every other arm stays provider-only.
+        $repoRoot = (Resolve-Path -LiteralPath (Join-Path (Get-ProbeRoot) '..\..')).ProviderPath.Replace('\', '/')
+        $manifest = '  [package]' + "`n" + '  name = "agent-desktop-resolution-probe"' + "`n" + '  version = "0.0.0"' + "`n" + '  edition = "2021"' + "`n" + "`n" + '  [dependencies]' + "`n" + '  serde_json = "1"' + "`n" + '  uiautomation = "=' + $UiAutomationVersion + '"' + "`n" + '  agent-desktop-core = { path = "' + $repoRoot + '/crates/core" }' + "`n" + '  agent-desktop-windows = { path = "' + $repoRoot + '/crates/windows" }' + "`n" + '  windows-sys = { version = "0.61", features = [' + "`n" + '    "Win32_Foundation",' + "`n" + '    "Win32_Graphics_Gdi",' + "`n" + '    "Win32_System_Com",' + "`n" + '    "Win32_System_LibraryLoader",' + "`n" + '    "Win32_UI_WindowsAndMessaging",' + "`n" + '  ] }' + "`n" + "`n" + '  [workspace]'
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
         [IO.File]::WriteAllText((Join-Path $work 'Cargo.toml'), $manifest, $utf8NoBom)
         foreach ($file in (Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'probe*.rs' | Select-Object -ExpandProperty Name)) {
@@ -184,6 +190,78 @@ function Wait-ChromiumTopLevelWindow {
         Start-Sleep -Milliseconds 500
     }
     return [IntPtr]::Zero
+}
+
+function Get-Field {
+    param([Parameter(Mandatory = $true)][AllowNull()]$Object, [Parameter(Mandatory = $true)][string]$Name)
+    if ($null -eq $Object) { return $null }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
+<#
+.SYNOPSIS
+    Gates one pass on the adapter's secure-field withholding (A17-6).
+
+.DESCRIPTION
+    The measurement itself always reaches the capture; this decides whether the
+    run is allowed to report success. Two different things are checked, and
+    both matter:
+
+    - No leak. A control reporting IsPassword must reach the adapter's evidence
+      with every value-bearing slot withheld, and neither the provider reading
+      nor the product reading may carry the marker.
+    - The check was not vacuous. -RequireObservable demands that the provider
+      itself answered a value-bearing slot with non-empty text, so there was
+      something for the adapter to withhold. Without that, "no slot published"
+      is satisfied just as well by a provider that published nothing, and the
+      pass would stay green with the adapter's withholding deleted outright.
+
+    The two are gated on separate fields so a failure always names the right
+    cause; withholding_observable in the capture is their conjunction, for a
+    reader who wants one flag.
+#>
+function Test-SecureWithholding {
+    param(
+        [Parameter(Mandatory = $true)][string]$Pass,
+        [Parameter(Mandatory = $true)][AllowNull()]$Result,
+        [switch]$RequireObservable
+    )
+    $failures = New-Object System.Collections.ArrayList
+    $secure = Get-Field -Object (Get-Field -Object $Result -Name 'measurements') -Name 'secure_live_read'
+    if ($null -eq $secure) {
+        if ($RequireObservable) { [void]$failures.Add("${Pass} reported no secure-field reading at all") }
+        return $failures
+    }
+    if ((Get-Field -Object $secure -Name 'password_control_present') -ne $true) {
+        if ($RequireObservable) { [void]$failures.Add("${Pass} found no control reporting IsPassword") }
+        return $failures
+    }
+    if ((Get-Field -Object $secure -Name 'name_contains_marker') -eq $true -or
+        (Get-Field -Object $secure -Name 'value_contains_marker') -eq $true) {
+        [void]$failures.Add("${Pass}: the provider handed a live reader the password marker")
+    }
+    $product = Get-Field -Object $secure -Name 'product_live_read'
+    if ((Get-Field -Object $product -Name 'reached') -ne $true) {
+        [void]$failures.Add("${Pass}: the adapter live-read composition never ran on the secure control")
+        return $failures
+    }
+    if ((Get-Field -Object $product -Name 'secure_gate_closed') -ne $true) {
+        [void]$failures.Add("${Pass}: the adapter did not treat the control as secure")
+    }
+    if ((Get-Field -Object $product -Name 'withholding_applied') -ne $true) {
+        $published = @(Get-Field -Object $product -Name 'value_bearing_slots_published') -join ','
+        [void]$failures.Add("${Pass}: the adapter published value-bearing slots on a secure control ($published)")
+    }
+    if ((Get-Field -Object $product -Name 'name_contains_marker') -eq $true -or
+        (Get-Field -Object $product -Name 'value_contains_marker') -eq $true) {
+        [void]$failures.Add("${Pass}: the adapter's evidence carried the password marker")
+    }
+    if ($RequireObservable -and @(Get-Field -Object $secure -Name 'provider_published_slots').Count -eq 0) {
+        [void]$failures.Add("${Pass}: the provider answered no value-bearing slot with text, so this pass proves nothing about the adapter's withholding")
+    }
+    return $failures
 }
 
 function Get-MarkerMap {
@@ -294,6 +372,8 @@ function Invoke-ElectronSurvivalLeg {
     }
 }
 
+$script:ownResult = $null
+$script:wpfResult = $null
 $script:ownPath = $null
 $script:wpfPath = $null
 $script:swapPath = $null
@@ -321,6 +401,7 @@ try {
 
     # --- pass 1: the probe's own Win32 fixture ---------------------------
     $own = Invoke-ProbePass -Exe $exe
+    $script:ownResult = $own
     $script:ownPath = Write-ResolutionCapture -Name "resolution-own-$Label.json" -Content (ConvertTo-Json -InputObject $own -Depth 20)
     Register-MandatoryPass -Capture $script:ownPath -Result $own
     Write-Host "wrote $script:ownPath"
@@ -337,6 +418,7 @@ try {
             if ($handle -ne [IntPtr]::Zero) {
                 Start-Sleep -Seconds 2
                 $wpf = Invoke-ProbePass -Exe $exe -Arguments @('--attach', $handle.ToString())
+                $script:wpfResult = $wpf
                 $script:wpfPath = Write-ResolutionCapture -Name "resolution-wpf-$Label.json" -Content (ConvertTo-Json -InputObject $wpf -Depth 20)
                 Register-MandatoryPass -Capture $script:wpfPath -Result $wpf
                 Write-Host "wrote $script:wpfPath"
@@ -420,6 +502,21 @@ try {
 }
 
 Assert-MandatoryMeasurement -Probe '17-resolution' -Label $Label
+
+$secureFailures = New-Object System.Collections.ArrayList
+foreach ($failure in (Test-SecureWithholding -Pass 'own-fixture' -Result $script:ownResult -RequireObservable)) {
+    [void]$secureFailures.Add($failure)
+}
+foreach ($failure in (Test-SecureWithholding -Pass 'wpf' -Result $script:wpfResult)) {
+    [void]$secureFailures.Add($failure)
+}
+if ($secureFailures.Count -gt 0) {
+    Write-ProbeResult -Probe '17-resolution' -Status 'fail' -Message ($secureFailures -join '; ') -Data @{
+        secure_withholding = 'violated'
+        failures           = @($secureFailures)
+    }
+    exit 1
+}
 
 Write-ProbeResult -Probe '17-resolution' -Status 'ok' -Message 'resolution probes captured' -Data @{
     own = if ($script:ownPath) { Split-Path -Leaf $script:ownPath } else { '<none>' }

@@ -7,9 +7,10 @@ use super::*;
 /// live 0/1/N candidate counts over the fixture's own identifiers, the
 /// single-element strict-resolve timing envelope (one resolve-scoped walk plus
 /// the exact-match filter, per stored ref), the shared single-element read
-/// cost, and a secure-field leak check that reads the password control's name
-/// and value and tests them for the marker. Every timing is min-of-seven after
-/// a discarded warm-up, the A15-13 methodology.
+/// cost, and the secure-field leak check in `probe_secure.rs`, which reads the
+/// password control twice - once off the provider and once through the
+/// adapter's own live-read composition. Every timing is min-of-seven after a
+/// discarded warm-up, the A15-13 methodology.
 pub(crate) fn measure() -> Value {
     let apartment = win::join_multithreaded_apartment();
     let automation = match UIAutomation::new_direct() {
@@ -116,35 +117,7 @@ pub(crate) fn measure() -> Value {
         Ok(())
     });
 
-    let marker = "obs-pwd-marker-15ch";
-    let secure = {
-        let password = elements.iter().find(|element| {
-            element
-                .get_property_value(uiautomation::types::UIProperty::IsPassword)
-                .ok()
-                .and_then(|variant| measure::boolean_of(&variant))
-                .unwrap_or(false)
-        });
-        match password {
-            Some(element) => {
-                let name = element
-                    .get_property_value(uiautomation::types::UIProperty::Name)
-                    .ok()
-                    .and_then(|variant| variant.get_string().ok());
-                let value = element
-                    .get_property_value(uiautomation::types::UIProperty::ValueValue)
-                    .ok()
-                    .and_then(|variant| variant.get_string().ok());
-                json!({
-                    "password_control_present": true,
-                    "name_contains_marker": name.map(|text| text.contains(marker)).unwrap_or(false),
-                    "value_contains_marker": value.as_ref().map(|text| text.contains(marker)).unwrap_or(false),
-                    "value_length": value.map(|text| text.chars().count()),
-                })
-            }
-            None => json!({ "password_control_present": false }),
-        }
-    };
+    let secure = secure::measure_secure(&elements);
 
     let findall_pass = findall::measure_findall(&automation, &root, target);
 

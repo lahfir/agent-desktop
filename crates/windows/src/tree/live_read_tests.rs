@@ -2,7 +2,10 @@ use super::{live_actions, live_bounds, live_element, live_state, live_value, rea
 use crate::tree::automation::root_from_hwnd;
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
+use crate::tree::fixture_window::SECURE_MARKER;
 use crate::tree::name_evidence::{LabelOutcome, read_label};
+use crate::tree::properties::{PropertyOutcome, PropertyValue, read_one};
+use crate::tree::property_ids::TreeProperty;
 use crate::tree::walker::TreeSource;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{AdapterError, ErrorCode, NativeHandle, ProcessId, RefEntry};
@@ -59,9 +62,27 @@ fn each_reader_projects_live_values_from_a_resolved_fixture_handle() {
     assert!(actions.iter().all(|action| !action.is_empty()));
 }
 
-/// The password control's live value is withheld at the reader path: the
-/// shared read inherits the `IsPassword` gate, so the secure value is `Absent`
-/// and no marker reaches the reader's output.
+/// The password control's live value is withheld at the reader path, and the
+/// withholding is the adapter's own rather than the provider's.
+///
+/// Three assertions, and none of them is sufficient alone:
+///
+/// - **The shape.** `live_value` and the element projection's `value` are
+///   `None`. A regression that published real content while keeping that shape
+///   would satisfy this and nothing else.
+/// - **The marker pin.** `SECURE_MARKER` is the text the fixture writes into
+///   its `ES_PASSWORD` control; it must appear nowhere in the projected element
+///   or in the property set behind it, which carries the slots the projection
+///   drops.
+/// - **The withheld-slot assertion.** Every value-bearing property must come
+///   back withheld, and the provider must have answered at least one of them
+///   with non-empty text for there to be anything to withhold. This is the one
+///   that fails when the adapter's withholding is removed: A14-6 measured that
+///   the in-box provider blanks a password control's `Value`,
+///   `LegacyIAccessibleValue` and `HelpText` by itself, so a marker pin alone
+///   would stay green with the withholding deleted. `read_one` reads the same
+///   slots straight off the provider, bypassing the gate, so the comparison is
+///   between what the platform offered and what the adapter passed on.
 #[test]
 fn the_secure_control_s_live_value_is_withheld_at_the_reader_path() {
     ensure_test_apartment();
@@ -78,6 +99,35 @@ fn the_secure_control_s_live_value_is_withheld_at_the_reader_path() {
     );
     let element = live_element(&read).expect("the element projection succeeds");
     assert_eq!(element.state.value, None);
+
+    let rendered = format!("{element:?}|{:?}", read.properties);
+    assert!(
+        !rendered.contains(SECURE_MARKER),
+        "the reader path published the secure control's own text"
+    );
+
+    let target = crate::tree::element::uia_element(&handle).expect("a UIAElement payload");
+    let offered: Vec<&'static str> = TreeProperty::VALUE_BEARING
+        .into_iter()
+        .filter(|property| {
+            matches!(
+                read_one(target, *property),
+                PropertyOutcome::Known(PropertyValue::Text(ref text)) if !text.trim().is_empty()
+            )
+        })
+        .map(TreeProperty::as_str)
+        .collect();
+    assert!(
+        !offered.is_empty(),
+        "the provider answered no value-bearing slot with text on the secure control, so this fixture cannot show the adapter withholding one"
+    );
+    for property in TreeProperty::VALUE_BEARING {
+        assert!(
+            !matches!(read.properties.get(property), PropertyOutcome::Known(_)),
+            "the reader path published {} on a secure control the provider offered {offered:?}",
+            property.as_str()
+        );
+    }
 }
 
 /// A dead process token fails the reader as `STALE_REF`-class, never as
