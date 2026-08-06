@@ -472,10 +472,14 @@ Success:
     "app": "Finder",
     "window": { "id": "w-4521", "title": "Documents" },
     "ref_count": 14,
+    "snapshot_id": "s8f3k2p9",
+    "complete": true,
     "tree": { ... }
   }
 }
 ```
+
+`data.complete` is present on every snapshot. A snapshot that exhausts its observation budget succeeds with `"complete": false`, the tree it did observe, `"truncated": true`, and `"nodes_observed"` — envelope 2.2 replaced the 2.1 `TIMEOUT` error on that path, so a consumer that branched on the error code to detect an oversized tree must read `complete` instead. Nodes whose descendants were cut short carry `"subtree_truncated": true`, serialized only when true. A `--root` drill-down replaces refs inside an existing snapshot, so an incomplete observation there still returns `TIMEOUT` rather than a partial tree.
 
 Error:
 ```json
