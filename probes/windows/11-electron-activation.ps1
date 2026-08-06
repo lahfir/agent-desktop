@@ -244,6 +244,12 @@ try {
             }
             $rawFc = $cell.firstContact['latencyFirstContactRawViewNodes']
             $rawSt = $cell.afterSettle['settledRawViewNodes']
+            if ($null -eq $rawFc -or $null -eq $rawSt) {
+                $fcText = if ($null -eq $rawFc) { 'missing' } else { [string]$rawFc }
+                $stText = if ($null -eq $rawSt) { 'missing' } else { [string]$rawSt }
+                throw ('PROBE-HARNESS: arm ' + $flagArm.Name + '/' + $stack + ' produced no RawView node count (first contact ' +
+                    $fcText + ', settled ' + $stText + '), so the activation verdict would compare against nothing')
+            }
             $cell['latencyRawViewGrowthRatio'] = if ($rawFc -gt 0) { [math]::Round(($rawSt / [double]$rawFc), 2) } else { $null }
             $cell['activatedWithoutFlag'] = ($flagArm.Name -eq 'no-flag' -and $rawSt -gt $rawFc)
             $cells += $cell

@@ -23,6 +23,14 @@ const LIST_ITEM_NATIVE: i32 = 50007;
 const ITEM_PREFIX: &str = "Item-";
 const WM_APP_MUTATE: u32 = 0x8000 + 5;
 
+/// Classifies how a stored list identity survives a content swap.
+///
+/// The classification is published only when it had subjects and the content
+/// actually changed under them, because either precondition failing produces
+/// something that reads as a result and is not one: with no list items the
+/// block is all zeroes, and with items but no mutation every item matches
+/// itself and the sweep comes out clean. The unmet precondition is reported
+/// in place of the counts it would otherwise have manufactured.
 pub fn measure_list_swap(
     automation: &UIAutomation,
     root: &uiautomation::UIElement,
@@ -99,6 +107,24 @@ pub fn measure_list_swap(
         }
     }
 
+    let classification = if before_items.is_empty() {
+        json!({
+            "not_measured": "the fixture exposed no list items, so nothing was classified",
+        })
+    } else if !mutants_created {
+        json!({
+            "not_measured": "the mutation did not land, so every item would classify as unchanged",
+        })
+    } else {
+        json!({
+            "landed_correct_exact": landed_correct,
+            "caught_by_name_corroboration": caught_refuted,
+            "id_only_would_misresolve": id_only_would_misresolve,
+            "gone": gone,
+            "ambiguous": ambiguous,
+        })
+    };
+
     json!({
         "before_items": before_items.len(),
         "after_items": after_items.len(),
@@ -108,13 +134,7 @@ pub fn measure_list_swap(
         "mutation_applied": mutants_created,
         "tree_shape": shape,
         "list_item_reachability": measure_list_item_reachability(automation, root, walker_list_item_count),
-        "classification": {
-            "landed_correct_exact": landed_correct,
-            "caught_by_name_corroboration": caught_refuted,
-            "id_only_would_misresolve": id_only_would_misresolve,
-            "gone": gone,
-            "ambiguous": ambiguous,
-        },
+        "classification": classification,
     })
 }
 

@@ -12,24 +12,24 @@
                                         "id_census":  {
                                                           "collision_groups":  [
                                                                                    {
-                                                                                       "candidates":  2,
-                                                                                       "control_type":  50027
-                                                                                   },
-                                                                                   {
-                                                                                       "candidates":  2,
-                                                                                       "control_type":  50027
-                                                                                   },
-                                                                                   {
-                                                                                       "candidates":  2,
-                                                                                       "control_type":  50027
-                                                                                   },
-                                                                                   {
                                                                                        "candidates":  5,
                                                                                        "control_type":  50014
                                                                                    },
                                                                                    {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   },
+                                                                                   {
                                                                                        "candidates":  5,
                                                                                        "control_type":  50033
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
                                                                                    },
                                                                                    {
                                                                                        "candidates":  5,
@@ -55,7 +55,7 @@
                          "child_process":  {
                                                "attached":  true,
                                                "descendants":  83,
-                                               "handle_int":  30934330,
+                                               "handle_int":  1247642,
                                                "hosted":  false,
                                                "root_resolved":  true
                                            },
@@ -269,19 +269,19 @@
                                                  "target":  "attached",
                                                  "timing_ms":  {
                                                                    "findall_absent_id":  {
-                                                                                             "max":  53.3887,
-                                                                                             "median":  40.7389,
-                                                                                             "min":  35.6992
+                                                                                             "max":  118.0754,
+                                                                                             "median":  110.3066,
+                                                                                             "min":  74.45609999999999
                                                                                          },
                                                                    "findall_one_id":  {
-                                                                                          "max":  108.50179999999999,
-                                                                                          "median":  42.394,
-                                                                                          "min":  40.6197
+                                                                                          "max":  141.0728,
+                                                                                          "median":  93.1679,
+                                                                                          "min":  72.8069
                                                                                       },
                                                                    "resolve_scoped_walk":  {
-                                                                                               "max":  153.076,
-                                                                                               "median":  107.5334,
-                                                                                               "min":  83.4814
+                                                                                               "max":  147.2863,
+                                                                                               "median":  100.7898,
+                                                                                               "min":  95.04360000000001
                                                                                            }
                                                                },
                                                  "walk_candidate_reads":  83,
@@ -317,20 +317,23 @@
                                               },
                          "timing_ms":  {
                                            "single_element_read":  {
-                                                                       "max":  0.0208,
+                                                                       "max":  0.0206,
                                                                        "median":  0.0191,
-                                                                       "min":  0.0191
+                                                                       "min":  0.0188
                                                                    },
                                            "single_strict_resolve":  {
-                                                                         "max":  203.0862,
-                                                                         "median":  166.3409,
-                                                                         "min":  136.25590000000003
+                                                                         "max":  283.67569999999995,
+                                                                         "median":  207.2658,
+                                                                         "min":  153.6168
                                                                      }
                                        },
                          "zero_one_n":  {
                                             "absent_id_candidates":  0,
                                             "duplicate_id_candidates":  2,
                                             "duplicate_key_present":  true,
+                                            "resolution_walk_elements":  83,
+                                            "resolved_against":  "an independent second walk, not the map the keys were selected from",
+                                            "selection_walk_elements":  83,
                                             "unique_id_candidates":  1,
                                             "unique_key_present":  true
                                         }

@@ -31,7 +31,7 @@
                          "child_process":  {
                                                "attached":  false,
                                                "descendants":  18,
-                                               "handle_int":  39454058,
+                                               "handle_int":  70321376,
                                                "hosted":  true,
                                                "root_resolved":  true
                                            },
@@ -107,19 +107,19 @@
                                                  "target":  "own-fixture",
                                                  "timing_ms":  {
                                                                    "findall_absent_id":  {
-                                                                                             "max":  14.53,
-                                                                                             "median":  12.495,
-                                                                                             "min":  11.9071
+                                                                                             "max":  40.5622,
+                                                                                             "median":  14.5864,
+                                                                                             "min":  12.4458
                                                                                          },
                                                                    "findall_one_id":  {
-                                                                                          "max":  13.12,
-                                                                                          "median":  12.4299,
-                                                                                          "min":  11.8362
+                                                                                          "max":  14.062399999999998,
+                                                                                          "median":  12.4577,
+                                                                                          "min":  12.333200000000001
                                                                                       },
                                                                    "resolve_scoped_walk":  {
-                                                                                               "max":  50.0942,
-                                                                                               "median":  15.3962,
-                                                                                               "min":  12.8369
+                                                                                               "max":  60.8616,
+                                                                                               "median":  19.741600000000002,
+                                                                                               "min":  12.958300000000001
                                                                                            }
                                                                },
                                                  "walk_candidate_reads":  18,
@@ -155,20 +155,23 @@
                                               },
                          "timing_ms":  {
                                            "single_element_read":  {
-                                                                       "max":  0.07150000000000001,
-                                                                       "median":  0.06849999999999999,
-                                                                       "min":  0.067
+                                                                       "max":  0.07239999999999999,
+                                                                       "median":  0.06820000000000001,
+                                                                       "min":  0.0671
                                                                    },
                                            "single_strict_resolve":  {
-                                                                         "max":  17.6692,
-                                                                         "median":  16.8496,
-                                                                         "min":  16.531
+                                                                         "max":  17.890900000000002,
+                                                                         "median":  17.159399999999998,
+                                                                         "min":  16.769099999999998
                                                                      }
                                        },
                          "zero_one_n":  {
                                             "absent_id_candidates":  0,
                                             "duplicate_id_candidates":  2,
                                             "duplicate_key_present":  true,
+                                            "resolution_walk_elements":  18,
+                                            "resolved_against":  "an independent second walk, not the map the keys were selected from",
+                                            "selection_walk_elements":  18,
                                             "unique_id_candidates":  1,
                                             "unique_key_present":  true
                                         }

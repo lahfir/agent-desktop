@@ -86,7 +86,7 @@ rust_lines() {
 # no cleanup trap that a later edit can leave stale. Only exit status is
 # asserted, so the `/dev/fd/N` name that reaches the report text is immaterial.
 self_test() {
-    local failures
+    local failures interpreter
     failures=0
 
     if oversize_report <(rust_lines "$((limit + 1))") >/dev/null 2>&1; then
@@ -135,6 +135,25 @@ self_test() {
     ) >/dev/null 2>&1; then
         printf 'self-test FAIL: the interpreter probe accepted a command that is not a Python 3\n' >&2
         failures=1
+    fi
+
+    # The cap rule's fixtures are above; the comment rule's fixtures live in
+    # scripts/check_rust_comments_test.py, and nothing ran them. The fmt lane's
+    # unittest discovery is scoped to tests/e2e with a `test_*.py` pattern that
+    # this filename does not match, so the scanner that enforces the no-comment
+    # rule over every .rs file in the tree shipped with an unexecuted test
+    # suite - a rule that could stop detecting comments with nothing to say so.
+    # They run here because this is the script that runs the scanner.
+    #
+    # A missing interpreter is not skipped past: `require_interpreter` below
+    # fails the gate outright on the same machine, so the condition cannot hide
+    # a rule that never ran.
+    if interpreter="$(resolve_interpreter)"; then
+        if ! "$interpreter" scripts/check_rust_comments_test.py >/dev/null 2>&1; then
+            printf 'self-test FAIL: the comment scanner does not satisfy its own fixtures\n' >&2
+            printf '  rerun for detail: %s scripts/check_rust_comments_test.py\n' "$interpreter" >&2
+            failures=1
+        fi
     fi
 
     if [ "$failures" -ne 0 ]; then

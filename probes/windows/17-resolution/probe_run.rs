@@ -11,6 +11,14 @@ use super::*;
 /// password control twice - once off the provider and once through the
 /// adapter's own live-read composition. Every timing is min-of-seven after a
 /// discarded warm-up, the A15-13 methodology.
+///
+/// The 0/1/N counts are resolved against a second, independent walk rather
+/// than against the evidence the keys were chosen from. Counting the selected
+/// keys in that same evidence would restate the selection criterion: the
+/// unique key reports one and the duplicate key two however the tree actually
+/// resolved, and neither number could say anything else. Against a fresh walk
+/// a key that has since gone, changed identity or gained a twin reports the
+/// zero or the N it now has.
 pub(crate) fn measure() -> Value {
     let apartment = win::join_multithreaded_apartment();
     let automation = match UIAutomation::new_direct() {
@@ -81,8 +89,11 @@ pub(crate) fn measure() -> Value {
         .find(|((id, _), count)| id.is_some() && **count == 2)
         .and_then(|((id, role), _)| id.clone().map(|value| (value, *role)));
 
+    let live_elements = measure::collect_descendants(&walker, &root, measure::WALK_DEPTH_LIMIT);
+    let live_evidence: Vec<measure::Evidence> =
+        live_elements.iter().map(measure::read_evidence).collect();
     let count_for = |id: &str, role: i32, name: Option<&str>| {
-        evidence
+        live_evidence
             .iter()
             .filter(|item| {
                 item.native_id.as_deref() == Some(id)
@@ -92,6 +103,9 @@ pub(crate) fn measure() -> Value {
             .count()
     };
     let zero_one_n = json!({
+        "resolved_against": "an independent second walk, not the map the keys were selected from",
+        "selection_walk_elements": evidence.len(),
+        "resolution_walk_elements": live_evidence.len(),
         "unique_id_candidates": unique_key.as_ref().map(|(id, role)| count_for(id, *role, None)),
         "unique_key_present": unique_key.is_some(),
         "duplicate_id_candidates": duplicate_key.as_ref().map(|(id, role)| count_for(id, *role, None)),

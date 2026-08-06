@@ -258,10 +258,79 @@ function Test-SecureWithholding {
         (Get-Field -Object $product -Name 'value_contains_marker') -eq $true) {
         [void]$failures.Add("${Pass}: the adapter's evidence carried the password marker")
     }
-    if ($RequireObservable -and @(Get-Field -Object $secure -Name 'provider_published_slots').Count -eq 0) {
+    # @($null).Count is 1, not 0. Wrapping a missing or null property in @()
+    # produces a one-element array holding $null, so a -eq 0 test alone never
+    # fires on the one input this guard exists to reject: a capture that does
+    # not carry provider_published_slots at all. The null is tested first.
+    $providerSlots = Get-Field -Object $secure -Name 'provider_published_slots'
+    if ($RequireObservable -and (($null -eq $providerSlots) -or (@($providerSlots).Count -eq 0))) {
         [void]$failures.Add("${Pass}: the provider answered no value-bearing slot with text, so this pass proves nothing about the adapter's withholding")
     }
     return $failures
+}
+
+<#
+    Compares two sequences by their joined text.
+
+    -join binds tighter than -eq, so `$b.path -join ',' -eq $a.path -join ','`
+    is not a comparison at all: it parses as a join whose separator is the
+    result of `',' -eq $a.path`, and yields a non-empty String. Every non-empty
+    string is truthy, so the four survival fields this feeds reduced to "the
+    marker reappeared" and reported an unchanged path and unchanged bounds for
+    markers whose path and bounds had both entirely changed. Each side is
+    parenthesised and wrapped in @() so a scalar, a null and an array all join
+    the same way.
+#>
+function Test-SameSequence {
+    param(
+        [Parameter(Mandatory = $true)][AllowNull()]$Left,
+        [Parameter(Mandatory = $true)][AllowNull()]$Right,
+        [Parameter(Mandatory = $true)][bool]$RightPresent
+    )
+    if (-not $RightPresent) { return $false }
+    return ((@($Left) -join ',') -eq (@($Right) -join ','))
+}
+
+<#
+    Drives Test-SameSequence in both directions on every invocation. The bug it
+    replaces failed by reporting survival, so nothing downstream could notice
+    it; a comparison that answers $true for everything and one that answers
+    $false for everything are equally useless and only one announces itself.
+#>
+function Test-SameSequenceSelfTest {
+    $failures = New-Object System.Collections.ArrayList
+    if (Test-SameSequence -Left @('root', 'win') -Right @('OTHER', 'TREE') -RightPresent $true) {
+        [void]$failures.Add('two different paths compared equal')
+    }
+    if (Test-SameSequence -Left @(1, 2, 3, 4) -Right @(99, 99, 99, 99) -RightPresent $true) {
+        [void]$failures.Add('two different bounds tuples compared equal')
+    }
+    if (Test-SameSequence -Left @('root', 'win') -Right $null -RightPresent $true) {
+        [void]$failures.Add('a null right-hand side compared equal to a real path')
+    }
+    if (Test-SameSequence -Left @('root') -Right @('root') -RightPresent $false) {
+        [void]$failures.Add('an absent marker was reported as surviving')
+    }
+    if (-not (Test-SameSequence -Left @('root', 'win') -Right @('root', 'win') -RightPresent $true)) {
+        [void]$failures.Add('two identical paths compared unequal')
+    }
+    if (-not (Test-SameSequence -Left @() -Right @() -RightPresent $true)) {
+        [void]$failures.Add('two empty sequences compared unequal')
+    }
+    return $failures
+}
+
+# @() is load-bearing: a function returning an empty ArrayList unrolls to
+# $null on the way out, and $null.Count is a terminating error under this
+# script's strict mode. Without the wrapper the self-test aborts the probe on
+# exactly the runs where it passes.
+$script:sameSequenceFailures = @(Test-SameSequenceSelfTest)
+if ($script:sameSequenceFailures.Count -gt 0) {
+    foreach ($sameSequenceFailure in $script:sameSequenceFailures) {
+        Write-ProbeLog -Message ('survival comparison self-test: ' + $sameSequenceFailure) -Level 'error'
+    }
+    Write-ProbeResult -Probe '17-resolution' -Status 'fail' -Message 'the survival comparison does not behave as documented' -Data @{ failures = @($script:sameSequenceFailures) }
+    exit 1
 }
 
 function Get-MarkerMap {
@@ -340,10 +409,10 @@ function Invoke-ElectronSurvivalLeg {
             $a = $mapA[$digest]
             $b = $mapB[$digest]
             $c = $mapC[$digest]
-            $bPathSame = ($null -ne $b) -and ($b.path -join ',' -eq $a.path -join ',')
-            $cPathSame = ($null -ne $c) -and ($c.path -join ',' -eq $a.path -join ',')
-            $bBoundsSame = ($null -ne $b) -and ($b.bounds -join ',' -eq $a.bounds -join ',')
-            $cBoundsSame = ($null -ne $c) -and ($c.bounds -join ',' -eq $a.bounds -join ',')
+            $bPathSame = Test-SameSequence -Left $a.path -Right $b.path -RightPresent ($null -ne $b)
+            $cPathSame = Test-SameSequence -Left $a.path -Right $c.path -RightPresent ($null -ne $c)
+            $bBoundsSame = Test-SameSequence -Left $a.bounds -Right $b.bounds -RightPresent ($null -ne $b)
+            $cBoundsSame = Test-SameSequence -Left $a.bounds -Right $c.bounds -RightPresent ($null -ne $c)
             [void]$rows.Add([ordered]@{
                 name_digest = $digest
                 name_length = $a.name_length

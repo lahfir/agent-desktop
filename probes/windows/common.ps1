@@ -7,6 +7,10 @@ $script:MandatoryProduced = New-Object System.Collections.ArrayList
 $script:MandatoryDegraded = New-Object System.Collections.ArrayList
 $script:MandatoryGateSelfTestFailures = New-Object System.Collections.ArrayList
 $script:UsersPathPattern = '[A-Za-z]:[\\/]+Users[\\/]+(?!Public[\\/\s"])(?!Default[\\/\s"])(?!All Users[\\/\s"])[^\\/:*?"<>|\s]+'
+$script:NodeRecordNameField = ' name='
+$script:NodeRecordPatternField = ' pats='
+$script:ReducedNamePattern = '^<redacted:(\d+) chars>$'
+$script:EchoedNameMinLength = 4
 
 function Get-ProbeRoot {
     return $script:ProbeRoot
@@ -166,6 +170,155 @@ function Test-CaptureRedaction {
     if ($residue.Count -gt 0) {
         foreach ($r in $residue) {
             Write-ProbeLog -Message ('redaction residue in ' + $Path + ': ' + $r) -Level 'error'
+        }
+        return $false
+    }
+    return $true
+}
+
+<#
+    A node record's fields are JSON-escaped by the time they reach a committed
+    capture - `<` and `>` become \u003c and \u003e, an apostrophe becomes
+    \u0027 - so the reduction marker cannot be recognised, and a Name's length
+    cannot be counted, without undoing that first. Done in one left-to-right
+    pass rather than a chain of Replace calls: a Name carrying a literal
+    backslash arrives as `C:\\new`, and any chain that looks for `\n` before
+    it has consumed the escaped backslash turns that into a newline.
+#>
+function ConvertFrom-ProbeJsonEscape {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    return [regex]::Replace($Text, '\\(u[0-9a-fA-F]{4}|.)', {
+            param($m)
+            $token = $m.Groups[1].Value
+            if ($token.Length -eq 5) { return ([string][char][Convert]::ToInt32($token.Substring(1), 16)) }
+            if ($token -eq 'n') { return "`n" }
+            if ($token -eq 'r') { return "`r" }
+            if ($token -eq 't') { return "`t" }
+            if ($token -eq 'b') { return "`b" }
+            if ($token -eq 'f') { return "`f" }
+            return $token
+        })
+}
+
+<#
+    Every node record in a capture, whatever probe wrote it, keyed back to the
+    pass it belongs to. A pass restarts its index at 0, which is what separates
+    one dump from the next inside a single capture file.
+
+    The Name is read from the first ' name=' at or after ' pats=' rather than
+    from the last one in the line: the field order is fixed and pats/children
+    carry no spaces, so that lands on the real field even when a Name itself
+    contains the text ' name='. A line whose header has no digits - the
+    NodeRecordFormat prose describing the shape - never matches.
+#>
+function Read-ProbeNodeRecords {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $records = New-Object System.Collections.ArrayList
+    $pass = -1
+    foreach ($line in [IO.File]::ReadAllLines($Path)) {
+        $header = [regex]::Match($line, 'i=(\d+) d=\d+ parent=(-?\d+) ')
+        if (-not $header.Success) { continue }
+        $body = ([string]$line).Substring($header.Index).TrimEnd()
+        if ($body.EndsWith(',')) { $body = $body.Substring(0, $body.Length - 1) }
+        if ($body.EndsWith('"')) { $body = $body.Substring(0, $body.Length - 1) }
+        $patternAt = $body.IndexOf($script:NodeRecordPatternField)
+        if ($patternAt -lt 0) { continue }
+        $nameAt = $body.IndexOf($script:NodeRecordNameField, $patternAt)
+        if ($nameAt -lt 0) { continue }
+        $index = [int]$header.Groups[1].Value
+        if ($index -eq 0) { $pass++ }
+        $name = ConvertFrom-ProbeJsonEscape -Text $body.Substring($nameAt + $script:NodeRecordNameField.Length)
+        $reduced = [regex]::Match($name, $script:ReducedNamePattern)
+        $length = 0
+        if ($reduced.Success) {
+            $length = [int]$reduced.Groups[1].Value
+        } elseif ($name -ne '-') {
+            $length = $name.Length
+        }
+        [void]$records.Add([pscustomobject]@{
+                Pass    = $pass
+                Index   = $index
+                Parent  = [int]$header.Groups[2].Value
+                Reduced = $reduced.Success
+                Length  = $length
+                Named   = ($name -ne '-' -and $name.Length -gt 0)
+            })
+    }
+    return , $records
+}
+
+function Find-ReducedDescendant {
+    param($ByIndex, $Children, [int]$Index, [int]$MaxLength)
+    $pending = New-Object System.Collections.Stack
+    if ($Children.ContainsKey($Index)) { foreach ($c in $Children[$Index]) { $pending.Push($c) } }
+    while ($pending.Count -gt 0) {
+        $current = $pending.Pop()
+        $node = $null
+        if ($ByIndex.ContainsKey($current)) { $node = $ByIndex[$current] }
+        if ($null -ne $node -and $node.Reduced -and $node.Length -ge $script:EchoedNameMinLength -and $node.Length -le $MaxLength) {
+            return $current
+        }
+        if (-not $Children.ContainsKey($current)) { continue }
+        foreach ($c in $Children[$current]) {
+            if ($c -gt $current) { $pending.Push($c) }
+        }
+    }
+    return -1
+}
+
+<#
+    A container with no label of its own takes its accessible name from the
+    content beneath it, so a document title reaches a Group or a Button that no
+    content-control-type test can see. The reducer that writes a capture
+    catches that at the point of record by comparing the real strings. This is
+    the same rule re-asserted over a committed capture, where the raw strings
+    are gone and only lengths survive: a kept Name is residue when its own
+    subtree holds a reduced Name short enough to fit inside it.
+
+    Length containment is deliberately weaker than the string containment the
+    reducer applies, so this gate flags a superset and can never miss what the
+    reducer would have caught.
+
+    Both are scoped to a pass whose root Name is itself reduced, which is the
+    capture's own record that the caller declared this target to carry user
+    content. Measured over the corpus, that scope is what separates the rule
+    from evidence destruction rather than making it merely quieter: on the
+    Settings frame the window title and the home-page header are both the word
+    Settings, so an unscoped rule reduces the title of a system app that holds
+    no user content at all - and reduces it on the frame window and the core
+    window while leaving the title-bar window verbatim, dismantling the
+    frame/host split those three nodes exist to demonstrate.
+#>
+function Test-CaptureNameEcho {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $records = Read-ProbeNodeRecords -Path $Path
+    if ($records.Count -eq 0) { return $true }
+    $residue = New-Object System.Collections.ArrayList
+    foreach ($pass in ($records | Group-Object -Property Pass)) {
+        $byIndex = @{}
+        $children = @{}
+        foreach ($record in $pass.Group) {
+            $byIndex[$record.Index] = $record
+            if ($record.Parent -lt 0) { continue }
+            if (-not $children.ContainsKey($record.Parent)) { $children[$record.Parent] = New-Object System.Collections.ArrayList }
+            [void]$children[$record.Parent].Add($record.Index)
+        }
+        if (-not $byIndex.ContainsKey(0)) { continue }
+        if (-not $byIndex[0].Reduced) { continue }
+        foreach ($record in $pass.Group) {
+            if ($record.Reduced) { continue }
+            if (-not $record.Named) { continue }
+            $echo = Find-ReducedDescendant -ByIndex $byIndex -Children $children -Index $record.Index -MaxLength $record.Length
+            if ($echo -ge 0) {
+                [void]$residue.Add('pass ' + $pass.Name + ' node i=' + $record.Index + ' keeps a ' + $record.Length +
+                    '-character Name verbatim while its descendant i=' + $echo + ' carries a reduced Name that fits inside it')
+            }
+        }
+    }
+    if ($residue.Count -gt 0) {
+        foreach ($r in $residue) {
+            Write-ProbeLog -Message ('name-echo residue in ' + $Path + ': ' + $r) -Level 'error'
         }
         return $false
     }
@@ -540,7 +693,23 @@ function Test-PassNotMeasured {
     $properties = $Result.PSObject.Properties
     $marker = $properties[$script:NotMeasuredKey]
     if ($null -ne $marker) { return [bool]$marker.Value }
-    return ($null -ne $properties['skipped'])
+    if ($null -ne $properties['skipped']) { return $true }
+    # ConvertFrom-Json '{}' returns a PSCustomObject with no properties, which
+    # is neither IDictionary nor ICollection, so neither branch above sees it.
+    # That is the exact shape every probe pass produces when its Rust probe
+    # prints an empty document and exits 0, and it was reaching the gate as a
+    # measurement carrying nothing. The dictionary branch already treats a
+    # property-less bag as no content; this applies the same rule to the type
+    # ConvertFrom-Json actually returns.
+    #
+    # The test is on PSCustomObject specifically, not on "has no properties":
+    # a bare 0 and a bare $false also expose no properties here, and both are
+    # legitimate measurements. Widening this to every type made the gate's own
+    # must-pass fixtures fail, which is what those fixtures are for.
+    if ($Result -is [System.Management.Automation.PSCustomObject]) {
+        return (@($properties).Count -eq 0)
+    }
+    return $false
 }
 
 <#
@@ -753,7 +922,8 @@ function Test-MandatoryMeasurementGate {
             @{ Case = 'an empty dictionary'; Value = @{} },
             @{ Case = 'an empty ordered dictionary'; Value = ([ordered]@{}) },
             @{ Case = 'an empty string'; Value = '' },
-            @{ Case = 'a blank string'; Value = '   ' }
+            @{ Case = 'a blank string'; Value = '   ' },
+            @{ Case = 'an empty JSON object read back from its own capture'; Value = (ConvertFrom-Json '{}') }
         )
         $measured = @(
             @{ Case = 'the number zero'; Value = 0 },
@@ -762,7 +932,8 @@ function Test-MandatoryMeasurementGate {
             @{ Case = 'a bare array'; Value = @(1, 2) },
             @{ Case = 'a measured negative that found nothing and says so'; Value = ([ordered]@{ labeled_by_resolved = $false; candidates = @() }) },
             @{ Case = 'a measured negative read back from its own capture'; Value = (ConvertFrom-Json '{"labeled_by_resolved":false,"candidates":[]}') },
-            @{ Case = 'a measurement that states the marker is false'; Value = $markerFalse }
+            @{ Case = 'a measurement that states the marker is false'; Value = $markerFalse },
+            @{ Case = 'a JSON object whose only property is itself empty'; Value = (ConvertFrom-Json '{"measurements":{}}') }
         )
         foreach ($case in $notMeasured) {
             if (-not (Test-PassNotMeasured -Result $case.Value)) {

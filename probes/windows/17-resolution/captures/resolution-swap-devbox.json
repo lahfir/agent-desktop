@@ -3,11 +3,7 @@
                          "after_items":  0,
                          "before_items":  0,
                          "classification":  {
-                                                "ambiguous":  0,
-                                                "caught_by_name_corroboration":  0,
-                                                "gone":  0,
-                                                "id_only_would_misresolve":  0,
-                                                "landed_correct_exact":  0
+                                                "not_measured":  "the fixture exposed no list items, so nothing was classified"
                                             },
                          "index_id_ratio_percent":  0.0,
                          "items_carrying_index_id":  0.0,

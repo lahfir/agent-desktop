@@ -22,13 +22,46 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
-if git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.(rs|toml)$'; then
+# `grep -q` stops reading at its first match, which leaves the producer writing
+# into a closed pipe. The producer dies of SIGPIPE, and under `set -o pipefail`
+# that non-zero producer status becomes the whole pipeline's status - so a
+# match, the very thing being looked for, made the `if` read false. Once the
+# staged name list outgrew the pipe buffer this hook announced "no Rust or FFI
+# changes staged", skipped every gate below and exited 0. Letting grep consume
+# all of its input removes the race, and reading the list once removes the
+# second `git` call with it.
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+staged_matches() {
+    printf '%s\n' "$2" | grep -E "$1" >/dev/null
+}
+
+# Both directions are driven against a list far larger than any pipe buffer,
+# because the failure this guards against announced itself as success. The
+# fixture calls the same `staged_matches` the decision below calls, so it
+# cannot drift away from the rule it is testing.
+selftest_haystack="$(
+    printf 'crates/core/src/lib.rs\n'
+    awk 'BEGIN { for (i = 0; i < 20000; i++) print "docs/filler/note-" i ".md" }'
+)"
+if ! staged_matches '\.(rs|toml)$' "$selftest_haystack"; then
+    echo "pre-commit: staged-file matching reported no match for a staged .rs file" >&2
+    echo "pre-commit: refusing the commit - the gate selection below cannot be trusted." >&2
+    exit 1
+fi
+if staged_matches '^crates/ffi/' "$selftest_haystack"; then
+    echo "pre-commit: staged-file matching reported a match that is not present" >&2
+    echo "pre-commit: refusing the commit - the gate selection below cannot be trusted." >&2
+    exit 1
+fi
+
+if staged_matches '\.(rs|toml)$' "$staged_files"; then
     HAS_RUST_CHANGES=1
 else
     HAS_RUST_CHANGES=0
 fi
 
-if git diff --cached --name-only --diff-filter=ACMR | grep -q '^crates/ffi/'; then
+if staged_matches '^crates/ffi/' "$staged_files"; then
     HAS_FFI_CHANGES=1
 else
     HAS_FFI_CHANGES=0

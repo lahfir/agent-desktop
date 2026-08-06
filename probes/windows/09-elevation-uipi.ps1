@@ -401,7 +401,8 @@ try {
             targetStateAfterInjection      = $after
             targetStateChanged             = ($before -ne $after)
             markerPresentInTargetAfterwards = ($null -ne $after -and $after.Contains($armSpec.Marker))
-            observedBy                     = 'parent High-integrity WM_GETTEXT on the notepad Edit child, independent of SendInput return'
+            injectionExecutedUnderVerifiedForeground = ($null -ne $workerData -and $workerData.foregroundAssertPre -eq 'ok' -and $null -ne $workerData.sendInputEventsAccepted)
+            observedBy                     = 'parent High-integrity WM_GETTEXT on the notepad Edit child for the arm marker specifically; the trailing PostMessage(WM_CHAR) writes its own character, so any-change is not evidence about SendInput'
             worker                         = $workerData
         }
         try { Stop-ScratchProcess -ProcessId $workerPid } catch { Write-ProbeLog -Message ('worker teardown: ' + $_.Exception.Message) -Level 'warn' }
@@ -431,13 +432,19 @@ try {
         arms             = $arms
         findings         = [ordered]@{
             uiaReadFromMediumAgainstHigh = if ($medium -and $medium.worker) { $medium.worker.uiaRead.fromHandle } else { 'unavailable' }
-            sendInputFromHighLanded      = if ($high) { $high.targetStateChanged } else { $null }
-            sendInputFromMediumLanded    = if ($medium) { $medium.targetStateChanged } else { $null }
+            sendInputFromHighLanded      = if ($high) { $high.markerPresentInTargetAfterwards } else { $null }
+            sendInputFromMediumLanded    = if ($medium) { $medium.markerPresentInTargetAfterwards } else { $null }
             sendInputReturnIsNotEvidence = 'SendInput reports the event count it accepted in both arms; only the re-read of the target distinguishes them'
             wmGetTextFromMediumBlocked   = if ($medium -and $medium.worker) { ($null -eq $medium.worker.wmGetTextFromWorker.returned -or $medium.worker.wmGetTextFromWorker.returned -eq '') } else { $null }
         }
     }
     Write-ProbeJson -Probe $Probe -Name 'uipi.json' -InputObject $capture | Out-Null
+
+    $unmeasuredArms = @($arms | Where-Object { -not $_.injectionExecutedUnderVerifiedForeground })
+    if ($unmeasuredArms.Count -gt 0) {
+        $names = (($unmeasuredArms | ForEach-Object { $_.arm + ' (' + $_.parentForegroundHandoff + ')' }) -join '; ')
+        throw ('PROBE-HARNESS: refusing to record a UIPI verdict - SendInput never ran under a verified foreground in arm(s): ' + $names)
+    }
 
     $summary['sessionIntegritySid'] = $uac['sessionIntegritySid']
     $summary['targetIntegritySid'] = $targetSid

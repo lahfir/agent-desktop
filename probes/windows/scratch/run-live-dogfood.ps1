@@ -11,16 +11,20 @@
     Per target it snapshots, round-trips a find, and reads live values and
     state off sampled refs (get/is). The WinForms fixture also runs an
     A7-3-shaped identity-stability judgement: a stored ref's live `value` is
-    captured before and after a WM_APP content swap and compared, not just
+    captured before and after a fixture content swap and compared, not just
     re-resolved with an `ok:true` on a stored-field read - a value that
     drifted after a successful resolve is the silent-neighbour signature
     `ok:true` alone cannot see. A17-2 measured this fixture's ListBox exposes
     zero ListItems to a COM client, so the swapped rows are never in the
     walked/reffed tree; the judgement therefore checks whether the sampled
     (non-list) ref's identity survives an unrelated content-changing message,
-    not A7-3's index-keyed wrong-target shape itself. Obsidian is read
-    shape-only, and its refs' re-resolution STALE_REF rate is reported
-    honestly. Every capture is redacted through the corpus gate.
+    not A7-3's index-keyed wrong-target shape itself. The swap is driven
+    through the control the fixture actually implements, `btnMutateList`, and
+    is witnessed independently on the fixture's own status text: a judgement
+    taken across a swap that did not happen would report stability no matter
+    what the resolver did, so an unwitnessed swap is reported as such instead.
+    Obsidian is read shape-only, and its refs' re-resolution STALE_REF rate is
+    reported honestly. Every capture is redacted through the corpus gate.
 #>
 [CmdletBinding()]
 param(
@@ -56,8 +60,24 @@ function Start-LiveProcess {
 function Invoke-Ad {
     param([string[]]$Arguments)
     $raw = (& $script:Binary @Arguments 2>$null | Out-String)
-    if ($LASTEXITCODE -ne 0) { return [ordered]@{ skipped = "binary exit $LASTEXITCODE" } }
-    return ($raw | ConvertFrom-Json)
+    $exitCode = $LASTEXITCODE
+    $parsed = $null
+    if ($raw -and $raw.Trim()) {
+        try { $parsed = ($raw | ConvertFrom-Json) } catch { $parsed = $null }
+    }
+    # A non-zero exit still prints the error envelope, and that envelope carries
+    # the code the caller needs. Returning a bare placeholder instead loses it
+    # and, under this script's strict mode, turns every caller's `.ok` read into
+    # a PowerShell property error that is then recorded as the target's reason -
+    # so a run where the binary failed on every target reads as a harness bug.
+    if ($null -ne $parsed) { return $parsed }
+    return [pscustomobject]@{
+        ok    = $false
+        error = [pscustomobject]@{
+            code    = 'BINARY_NO_JSON'
+            message = ('agent-desktop exited ' + $exitCode + ' with no JSON for: ' + ($Arguments -join ' '))
+        }
+    }
 }
 function Find-WindowIdFor {
     param([Parameter(Mandatory = $true)][string]$AppNamePattern)
@@ -77,6 +97,19 @@ function Get-FirstRef {
         $m = [regex]::Match($snapText, '"(?<r>@[A-Za-z0-9_:-]+)"')
     }
     return $m.Groups['r'].Value
+}
+
+function Get-FixtureElement {
+    param([Parameter(Mandatory = $true)]$Root, [Parameter(Mandatory = $true)][string]$AutomationId)
+    $condition = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::AutomationIdProperty), $AutomationId
+    return $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+}
+
+function Get-FixtureStatusText {
+    param([Parameter(Mandatory = $true)]$Root)
+    $status = Get-FixtureElement -Root $Root -AutomationId 'lblStatus'
+    if ($null -eq $status) { return '' }
+    return [string]$status.Current.Name
 }
 
 $script:Results = New-Object System.Collections.Generic.List[object]
@@ -167,24 +200,43 @@ try {
         $findResult = "ok=$($find.ok) matches=$matchCount"
 
         # A7-3-shaped judgement, scoped honestly (see the header comment and
-        # A17-2): swap the fixture via WM_APP, then re-resolve the stored ref
-        # and compare its LIVE `value` (read off the resolved live element via
-        # get_live_value, not the stored RefEntry) against the value captured
-        # before the swap. A bare `get --property role` success is not enough
-        # - `role` is served from the stored entry and cannot tell a correct
-        # resolve from a silently-resolved neighbour; comparing the live value
-        # can, because a neighbour would very likely carry different content.
-        # WM_APP+5 to the fixture window
+        # A17-2): swap the fixture's list contents, then re-resolve the stored
+        # ref and compare its LIVE `value` (read off the resolved live element
+        # via get_live_value, not the stored RefEntry) against the value
+        # captured before the swap. A bare `get --property role` success is not
+        # enough - `role` is served from the stored entry and cannot tell a
+        # correct resolve from a silently-resolved neighbour; comparing the
+        # live value can, because a neighbour would very likely carry different
+        # content.
+        #
+        # The swap is driven with BM_CLICK on btnMutateList, the only mutation
+        # path this fixture implements, and is witnessed on the fixture's own
+        # status text rather than assumed from the PostMessage return, which is
+        # true for a message nothing handles. Without that witness the whole
+        # judgement degenerates: with no swap the two value reads are the same
+        # read twice and 'stable' is guaranteed whatever the resolver does.
         $hwndVal = $wid.Replace('w-','')
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
         Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class AD { [DllImport("user32.dll")] public static extern bool PostMessage(System.IntPtr hWnd, uint msg, System.IntPtr wp, System.IntPtr lp); }'
-        $post = [AD]::PostMessage([IntPtr]::new([int64]$hwndVal), 0x8005, [IntPtr]::Zero, [IntPtr]::Zero)
+        $fixtureRoot = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]::new([int64]$hwndVal))
+        $statusBefore = Get-FixtureStatusText -Root $fixtureRoot
+        $mutateButton = Get-FixtureElement -Root $fixtureRoot -AutomationId 'btnMutateList'
+        $posted = $false
+        if ($null -ne $mutateButton -and $mutateButton.Current.NativeWindowHandle -ne 0) {
+            $posted = [AD]::PostMessage([IntPtr]::new([int64]$mutateButton.Current.NativeWindowHandle), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
+        }
         Start-Sleep -Seconds 1
+        $statusAfter = Get-FixtureStatusText -Root $fixtureRoot
+        $swapObserved = ($posted -and $statusBefore -ne $statusAfter)
         $reresolve = if ($ref) { Invoke-Ad -Arguments @('get',$ref,'--property','role') } else { $null }
         $postValue = if ($ref) { Invoke-Ad -Arguments @('get',$ref,'--property','value') } else { $null }
         $reresult = if ($null -ne $reresolve -and $reresolve.ok) {
             $preOk = ($null -ne $preValue) -and $preValue.ok
             $postOk = ($null -ne $postValue) -and $postValue.ok
-            if ($preOk -and $postOk -and ($preValue.data.value -eq $postValue.data.value)) {
+            if (-not $swapObserved) {
+                'resolved-but-swap-not-observed'
+            } elseif ($preOk -and $postOk -and ($preValue.data.value -eq $postValue.data.value)) {
                 'resolved-identity-stable'
             } elseif ($preOk -and $postOk) {
                 'resolved-identity-drifted'
@@ -192,7 +244,7 @@ try {
                 'resolved-unverified'
             }
         } elseif ($null -ne $reresolve) { $reresolve.error.code } else { 'no-ref' }
-        New-FindRow -Name 'winforms' -Stack 'winforms' -Result 'ran' -Snapshot $snapObj -FindResult $findResult -RefReads ($reads + " re-resolve-after-swap=$reresult")
+        New-FindRow -Name 'winforms' -Stack 'winforms' -Result 'ran' -Snapshot $snapObj -FindResult $findResult -RefReads ($reads + " swap-witness=$statusBefore->$statusAfter re-resolve-after-swap=$reresult")
     } catch {
         New-FindRow -Name 'winforms' -Stack 'winforms' -Result 'skipped' -Reason $_.Exception.Message
     }
@@ -275,4 +327,9 @@ $redacted = Protect-ProbeText -Text $summaryJson
 if (-not (Test-CaptureRedaction -Path $summaryPath)) { throw "redaction residue in $summaryPath" }
 Write-Output "wrote $summaryPath"
 $script:Results | ForEach-Object { Write-Output ("  " + $_.name + ": " + $_.result + " ref=" + $_.ref_count) }
+$measuredTargets = @($script:Results | Where-Object { $_.result -eq 'ran' -and $_.snapshot_ok -eq $true })
+if ($measuredTargets.Count -eq 0) {
+    Write-Output 'no target produced a snapshot, so this run asserted nothing about the live loop'
+    exit 1
+}
 exit 0
