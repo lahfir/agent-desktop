@@ -337,8 +337,16 @@ pub(crate) fn resolve_window_root(
 mod windows_only;
 
 #[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_pair_window.rs"]
+mod pair_window;
+
+#[cfg(all(test, target_os = "windows"))]
 #[path = "resolve_ambiguity_tests.rs"]
 mod ambiguity;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_tie_break_tests.rs"]
+mod tie_break;
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "resolve_path_fallback_tests.rs"]

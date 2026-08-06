@@ -239,3 +239,11 @@ pub(crate) fn com_hresult_symbol(hresult: i32) -> Option<(&'static str, &'static
 #[cfg(test)]
 #[path = "hresult_tests.rs"]
 mod tests;
+
+/// Split from `hresult_tests.rs`, which sits near the per-file line cap: this
+/// module owns the symbol table's pins, which are a different subject from the
+/// classification arms - the text an operator reads rather than the retry
+/// verdict the loop drives on.
+#[cfg(test)]
+#[path = "hresult_symbol_tests.rs"]
+mod symbol_tests;

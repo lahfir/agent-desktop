@@ -389,3 +389,11 @@ pub use imp::uia_property;
 #[cfg(test)]
 #[path = "property_ids_tests.rs"]
 mod tests;
+
+/// Split from `property_ids_tests.rs`: this module owns the identity gates -
+/// that every variant is listed, that no two share a structured-error name,
+/// and that no two resolve to the same automation constant - which need the
+/// whole-enum list the other module does not carry.
+#[cfg(test)]
+#[path = "property_ids_identity_tests.rs"]
+mod identity_tests;

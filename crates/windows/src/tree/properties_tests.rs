@@ -281,12 +281,22 @@ fn a_whitespace_only_automation_id_is_not_promoted_to_an_identifier() {
     assert!(evidence.identifiers.is_complete());
 }
 
+/// The interpreted slots carry what the vocabulary resolved, not what the
+/// read set happens to hold.
+///
+/// The name and description the vocabulary supplies are deliberately
+/// **different** from anything in the read set: core composes the name from a
+/// label relation the raw `Name` property does not carry, so a projection that
+/// quietly recomputed it from `Name`/`HelpText` would be a real regression and
+/// would be invisible if both sources agreed. `Name` reads one string here and
+/// the vocabulary another; `HelpText` reads text while the vocabulary's
+/// description is `Absent`.
 #[test]
 fn the_evidence_projection_fills_every_slot_the_walk_owns() {
     let evidence = reads(&[
         (TreeProperty::Name, text("Save")),
         (TreeProperty::Value, text("draft")),
-        (TreeProperty::HelpText, PropertyOutcome::Absent),
+        (TreeProperty::HelpText, text("press to save the draft")),
         (
             TreeProperty::BoundingRectangle,
             PropertyOutcome::Known(PropertyValue::Bounds(Rect {
@@ -301,7 +311,7 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
         role: LocatorField::Known("button".into()),
         available_actions: LocatorField::Known(Vec::new()),
         states: LocatorField::Known(vec!["focused".into()]),
-        name: LocatorField::Known("Save".into()),
+        name: LocatorField::Known("Save (labelled)".into()),
         description: LocatorField::Absent,
     });
 
@@ -309,10 +319,14 @@ fn the_evidence_projection_fills_every_slot_the_walk_owns() {
     assert!(!evidence.ref_evidence.bounds.is_unknown());
     assert_eq!(
         evidence.name,
-        LocatorField::Known("Save".into()),
-        "the name is core's, carried through rather than recomputed from the read set"
+        LocatorField::Known("Save (labelled)".into()),
+        "the name is the vocabulary's, carried through rather than recomputed from the read set"
     );
-    assert_eq!(evidence.description, LocatorField::Absent);
+    assert_eq!(
+        evidence.description,
+        LocatorField::Absent,
+        "the description is the vocabulary's absence, not the read set's help text"
+    );
     assert_eq!(evidence.role, LocatorField::Known("button".into()));
     assert_eq!(
         evidence.states,

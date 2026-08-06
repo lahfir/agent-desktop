@@ -310,6 +310,15 @@ fn an_enumerations_end_of_list_never_classifies_through_the_success_catch_all() 
     assert!(failure.is_exhaustion());
 }
 
+/// The sentinel table and the HRESULT table answer the same way for the same
+/// condition.
+///
+/// The literal dispositions below say what each sentinel classifies as; the
+/// cross-check says it is the *same* answer its HRESULT equivalent gets, which
+/// is what the two tables existing side by side is a risk to. Without it, one
+/// table could be re-classified alone and the retry loop would drive a
+/// condition differently depending on which of the two ways the provider
+/// happened to report it.
 #[test]
 fn the_sentinel_branches_classify_like_their_hresult_equivalents() {
     assert_eq!(
@@ -324,6 +333,22 @@ fn the_sentinel_branches_classify_like_their_hresult_equivalents() {
         uia_failure_disposition(UiaFailure::Sentinel(ERR_INVALID_ARG)),
         ReadDisposition::SettledAbsence
     );
+
+    for (sentinel, equivalent, condition) in [
+        (ERR_TIMEOUT, UIA_E_TIMEOUT, "an operation that timed out"),
+        (
+            ERR_NOTFOUND,
+            UIA_E_ELEMENTNOTAVAILABLE,
+            "an element that is gone",
+        ),
+        (ERR_INVALID_ARG, E_INVALIDARG, "a structurally invalid read"),
+    ] {
+        assert_eq!(
+            uia_failure_disposition(UiaFailure::Sentinel(sentinel)),
+            uia_failure_disposition(UiaFailure::Hresult(equivalent)),
+            "{condition} must classify the same whichever table reports it"
+        );
+    }
 }
 
 /// The A14-5 split is carried: at root resolution the vanished-window shape

@@ -78,6 +78,7 @@ fn a_fixture_ref_resolves_to_the_same_element_end_to_end() {
     let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline)
         .expect("the fixture window resolves");
     let token = window.process_instance.clone().unwrap();
+    let expected_stamp = (window.pid.get(), token.clone());
 
     let captured = capture_identified(&root, deadline).expect("a fixture element has an id");
 
@@ -118,9 +119,30 @@ fn a_fixture_ref_resolves_to_the_same_element_end_to_end() {
     let handle = resolve_element_strict(&entry, deadline)
         .expect("the stored identity re-resolves to a live element");
 
-    assert!(
-        handle.downcast_ref::<UIAElement>().is_some(),
-        "the resolved handle carries a UI Automation element"
+    assert_verified_stamp(&handle, &expected_stamp, "the broad search");
+}
+
+/// Every handle the resolver hands back carries the ref's verified process
+/// identity, so the shared live read can corroborate that the provider
+/// answering is still the generation resolution verified.
+///
+/// Without the stamp the corroboration is skipped for every resolved handle,
+/// and A14-9's finding - a dead provider's reads succeeding empty on some
+/// builds - lands as an answer rather than a `STALE_REF`. The live-read tests
+/// build their own stamp, so nothing there notices a resolver that stops
+/// producing one; this is the assertion that sees it.
+fn assert_verified_stamp(
+    handle: &agent_desktop_core::NativeHandle,
+    expected: &(u32, String),
+    tier: &str,
+) {
+    let resolved = handle
+        .downcast_ref::<UIAElement>()
+        .expect("the resolved handle carries a UI Automation element");
+    assert_eq!(
+        resolved.verified_process(),
+        Some((expected.0, expected.1.as_str())),
+        "{tier} must stamp the ref's verified process identity onto the handle it returns"
     );
 }
 
@@ -148,16 +170,16 @@ fn a_blank_secure_ref_resolves_through_the_path_and_geometry_tier() {
     let rect = evidence.ref_evidence.bounds.known().expect("a bounds");
     let hash = rect.bounds_hash().expect("a positive-area hash");
 
+    let pid = agent_desktop_core::ProcessId::from(fixture.process_id());
+    let token = crate::system::process_identity::token_for_pid(pid)
+        .unwrap()
+        .expect("a live fixture process has a token");
+    let expected_stamp = (pid.get(), token.clone());
+
     let entry = RefEntry {
         process: agent_desktop_core::RefProcess {
-            pid: agent_desktop_core::ProcessId::from(fixture.process_id()),
-            process_instance: Some(
-                crate::system::process_identity::token_for_pid(
-                    agent_desktop_core::ProcessId::from(fixture.process_id()),
-                )
-                .unwrap()
-                .expect("a live fixture process has a token"),
-            ),
+            pid,
+            process_instance: Some(token),
         },
         identity: agent_desktop_core::RefEntryIdentity {
             role: role.clone().unwrap_or_default(),
@@ -200,10 +222,7 @@ fn a_blank_secure_ref_resolves_through_the_path_and_geometry_tier() {
     let handle = resolve_element_strict(&entry, deadline)
         .expect("the blank secure ref resolves through path and geometry");
 
-    assert!(
-        handle.downcast_ref::<UIAElement>().is_some(),
-        "the resolved handle carries a UI Automation element"
-    );
+    assert_verified_stamp(&handle, &expected_stamp, "the path and geometry tier");
 }
 
 fn find_password(
@@ -351,3 +370,6 @@ fn code_of(error: AdapterError) -> ErrorCode {
 
 #[path = "resolve_retry_tests.rs"]
 mod retry;
+
+#[path = "resolve_retry_classification_tests.rs"]
+mod retry_classification;

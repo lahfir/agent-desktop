@@ -216,86 +216,14 @@ pub fn root_resolution_error(failure: UiaFailure) -> AdapterError {
     }
 }
 
-/// `sentinel_disposition` and `uia_failure_disposition`'s sentinel branch are
-/// both one-line projections of `sentinel_record` rather than independent
-/// matches, so a future edit that reintroduces a second, separately
-/// maintained match cannot drift from the record without failing this test -
-/// exactly the shape that let `ERR_INVALID_OBJECT`'s `StaleRef`/`Unavailable`
-/// pairing go unasserted.
+/// Split into its own file so the sentinel table's expectations can be stated
+/// as literals without pushing this module past the per-file line cap.
+///
+/// Those expectations are deliberately written out rather than read back from
+/// `sentinel_record`. `sentinel_disposition` and `uia_failure_disposition`'s
+/// sentinel branch are one-line projections of that record, so comparing a
+/// projection against the record asserts `f(x) == f(x)` and holds for every
+/// possible table - including one whose arms are wrong.
 #[cfg(test)]
-mod tests {
-    use super::{
-        ERR_ALREADY_RUNNING, ERR_FORMAT, ERR_INACTIVE, ERR_INVALID_ARG, ERR_INVALID_OBJECT,
-        ERR_NONE, ERR_NOTFOUND, ERR_NULL_PTR, ERR_TIMEOUT, ERR_TYPE, ErrorCode, ReadDisposition,
-        UIA_E_ELEMENTNOTAVAILABLE, UiaFailure, root_resolution_error, sentinel_disposition,
-        sentinel_record, uia_failure_disposition,
-    };
-
-    #[test]
-    fn a_vanished_elements_sentinel_pairs_stale_ref_with_the_unavailable_disposition() {
-        let record = sentinel_record(ERR_INVALID_OBJECT);
-        assert_eq!(record.code, ErrorCode::StaleRef);
-        assert_eq!(record.disposition, ReadDisposition::Unavailable);
-    }
-
-    #[test]
-    fn every_sentinel_familys_public_projections_never_drift_from_the_record() {
-        for sentinel in [
-            ERR_NOTFOUND,
-            ERR_NULL_PTR,
-            ERR_TIMEOUT,
-            ERR_INACTIVE,
-            ERR_INVALID_OBJECT,
-            ERR_INVALID_ARG,
-            ERR_NONE,
-            ERR_TYPE,
-            ERR_FORMAT,
-            ERR_ALREADY_RUNNING,
-        ] {
-            let record = sentinel_record(sentinel);
-            assert_eq!(sentinel_disposition(sentinel), record.code);
-            assert_eq!(
-                uia_failure_disposition(UiaFailure::Sentinel(sentinel)),
-                record.disposition
-            );
-        }
-    }
-
-    /// The consequence, not the payload. Every core retry consumer keys on the
-    /// typed retryability `with_details` derives from the `retryable` key, so
-    /// a rewritten error that carries no details reads as retry-permitting and
-    /// sends a caller polling a window that is gone. Asserting a key exists
-    /// would pass on a wrong value; these assert what the gate answers.
-    #[test]
-    fn a_missing_window_root_settles_rather_than_permitting_a_pointless_retry() {
-        for failure in [
-            UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE),
-            UiaFailure::Sentinel(ERR_NOTFOUND),
-        ] {
-            let error = root_resolution_error(failure);
-
-            assert_eq!(error.code, ErrorCode::WindowNotFound);
-            assert!(
-                !error.is_explicitly_retryable(),
-                "a window that is gone must not be marked retryable"
-            );
-            assert!(
-                !error.permits_retry_by_default(),
-                "an unstamped rewrite reads as retry-permitting; the stamp must deny it"
-            );
-        }
-    }
-
-    /// The rewrite is narrow: a root failure that is not a missing window is
-    /// passed through with the disposition its own record decided, so
-    /// re-stamping the missing-window branch cannot flatten the rest.
-    #[test]
-    fn a_root_failure_that_is_not_a_missing_window_keeps_its_own_retry_stamp() {
-        let transport = root_resolution_error(UiaFailure::Sentinel(ERR_TIMEOUT));
-        let settled = root_resolution_error(UiaFailure::Sentinel(ERR_INVALID_ARG));
-
-        assert!(transport.is_explicitly_retryable());
-        assert!(!settled.is_explicitly_retryable());
-        assert!(!settled.permits_retry_by_default());
-    }
-}
+#[path = "automation_classify_tests.rs"]
+mod tests;

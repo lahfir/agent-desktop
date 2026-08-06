@@ -185,6 +185,14 @@ fn push_legacy_state(properties: &ElementProperties, states: &mut Vec<String>) {
 #[path = "states_tests.rs"]
 mod tests;
 
+/// Split from `states_tests.rs`, which sits near the per-file line cap: this
+/// module owns the per-source token table, which pins each producer to the
+/// token it emits rather than asking only whether the emitted tokens are
+/// vocabulary members.
+#[cfg(test)]
+#[path = "states_tokens_tests.rs"]
+mod token_tests;
+
 #[cfg(test)]
 #[path = "states_walk_tests.rs"]
 mod walk_tests;
