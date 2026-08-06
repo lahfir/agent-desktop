@@ -47,8 +47,10 @@ this run's judgement uses in place of a bare `get --property role` success,
 since `role` is served from the stored entry and cannot by itself distinguish
 a correct resolve from a silently-resolved neighbour. This result does **not**
 exercise the A7-3 index-keyed wrong-target shape, and does not corroborate it:
-A17-2 measured that this fixture's `ListBox` (`lstItems`) exposes zero
-`ListItem`s to a COM client through any resolver search (raw-walker count 0,
+A17-2 measured that this fixture's single plain `ListBox` (`lstItems`) - the
+default provider's index-keyed list, extended for this arm precisely because
+index keying is the shape A7-3 found - exposes zero `ListItem`s to a COM
+client through any resolver search (raw-walker count 0,
 `find_all` count 0 both by children and by descendants), so the rows the
 `WM_APP` message swaps are never in the walked/reffed tree at all. The ref
 sampled here is the snapshot's first ref - on this fixture that is a control
@@ -97,7 +99,7 @@ from 2.4) still stands and is not re-litigated here.
 | residual | owner | status |
 | --- | --- | --- |
 | Obsidian web-content STALE_REF rate inside the file tree is unmeasurable on this host (first-contact shell) | 2.12 self-hosted-runner environment (A17-8) | recorded, `closure: 2.12` |
-| The WinForms fixture's `ListBox` (`lstItems`) exposes zero `ListItem`s to a COM client (raw-walker and `find_all` both 0, by children and by descendants), so no owned fixture reproduces A7-3's index-keyed wrong-target shape and this run's swap judgement cannot exercise it - it checks a non-list ref's identity stability instead | A17-2, pin stays the synthetic unit evidence U2 carries (`a_matching_native_id_with_a_mismatched_role_does_not_resolve`) | recorded, not reproducible under any owned fixture |
+| The WinForms fixture's single plain `ListBox` (`lstItems`, the default provider's index-keyed list) exposes zero `ListItem`s to a COM client (raw-walker and `find_all` both 0, by children and by descendants), so no owned fixture reproduces A7-3's index-keyed wrong-target shape and this run's swap judgement cannot exercise it - it checks a non-list ref's identity stability instead | A17-2, pin stays the synthetic unit evidence U2 carries (`a_matching_native_id_with_a_mismatched_role_does_not_resolve`) | recorded, not reproducible under any owned fixture |
 | WPF live reads (`get`/`is`) not sampled in this run - the WPF leg records snapshot only | U7-next / dogfood extension | recorded |
 | `find --count` vs materialized agreement not asserted on a real app (no CI assertion may name a real-app count) | per VC "Evidence honesty" | **closed on fixtures** - agreement is now pinned against the hosted fixture, where a count is repo-controlled rather than an `app/provider` fact |
 | Traced correction to this sub-phase's own framing: `wait --selector` polls through `resolve_query` with materialization `None`, which reaches `observe_tree` only - it never calls `resolve_locator_anchor`. The anchor carries default `find`'s selected-match hydration, not the selector wait. The wait path is pinned against the mechanism it actually uses | read from `crates/core/src/commands/wait_selector.rs` while closing the coverage gap | recorded, and the pin added |

@@ -64,7 +64,7 @@ Resolution on Windows must survive three measured hazards. A7-3: an `AutomationI
 
 - Collapsing macOS's `required_complete` (`crates/macos/src/tree/query/node_evidence.rs`) onto core's `LocatorEvidence::satisfies`, which it restates clause for clause while core's own copy has no production caller. Carried since 2.3 and not this sub-phase's work: it is a macOS-crate behavioural change with no Windows leg, and Windows adds no third copy here — the read path's `essential_live_evidence_complete` is the narrower five-slot rule paired with macOS's `post_state.rs`, not this one. Owned by **Core-Owned Rules Must Have a Production Caller** under Cross-Phase Requirements (`docs/phases.md`), which states what closes it and holds every platform to the no-further-copy rule; it is bound to no platform phase and can land as a standalone macOS PR at any time.
 - Promoting the resolution error payload — `identity_unknown_error` and `mark_deadline_elapsed`, mirrored verbatim from macOS's `identity_unknown` (`crates/macos/src/tree/resolve_errors.rs`) and `mark_deadline_elapsed` (`crates/macos/src/tree/resolve.rs`) — into core so both adapters call one constructor pair. The duplicated thing is the `details` object core reads back for retryability (`crates/core/src/retryability.rs` → `is_explicitly_retryable` / `permits_retry_by_default`), so per-platform copies can drift into a one-OS-only retry regression that neither crate's tests catch. Owned by **§2.15** (`docs/phases.md`), which states what closes it: promotion needs a second core touch past KTD3's single sanctioned visibility promotion, and it changes the macOS crate — the GA line for the whole platform phase.
-- The mutation-path five-way delivery classifier (macOS `ax_mutation::classify`) — 2.6/2.7 own it; U4's read-path classifier is deliberately not overloaded to serve mutations.
+- The mutation-path five-way delivery classifier (macOS `ax_mutation::classify`) — **§2.7** owns it (`docs/phases.md`), the first sub-phase to invoke a UIA pattern and the owner of the `ActionStep` delivery report the classifier's output becomes; 2.6's one mutating call, `ScrollItemPattern.ScrollIntoView`, is routed through it there. U4's read-path classifier is deliberately not overloaded to serve mutations: the transport codes it marks retryable for a read are exactly the ones a write may already have delivered.
 - A standing Windows performance harness — U1 measures this sub-phase's own costs per the corpus methodology, as 2.3 and 2.4 did.
 
 ---
@@ -340,7 +340,6 @@ flowchart LR
 ## Open Questions
 
 - **Does the repo-wide performance-baseline DoD apply to Windows sub-phases?** Carried from 2.2–2.4; U1 measures this sub-phase's own costs; still cheap to leave open.
-- **Where does the mutation-path delivery classifier land?** Deliberately 2.6/2.7 (Scope Boundaries); flagged so the 2.6 planner budgets it rather than assuming U4's read classifier covers actions.
 - **Does core's `anchor_matches` bounds-hash acceptance need the degenerate-rect discipline core-side?** The adapter-side gate fails first on Windows, so 2.5 is safe; whether core's own predicate should refuse zero-extent equality is core-owned and belongs to whichever sub-phase next touches the hydration contract — recorded here so it is a decision, not a discovery.
 
 ## Sources & Research
