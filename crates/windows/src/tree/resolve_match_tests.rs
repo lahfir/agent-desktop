@@ -271,6 +271,72 @@ fn a_settled_stale_ref_is_query_retryable_complete_and_not_adapter_loop_retryabl
     );
 }
 
+/// The settled stale ref is what an agent reads, so its message is pinned
+/// verbatim. Routing a whole sentence through core's `stale_ref` constructor,
+/// whose parameter is a ref id it interpolates into `"{ref_id} not found in
+/// current RefMap"`, produced a message that was both ungrammatical and wrong
+/// about the cause - it reported a ref missing from the RefMap when the ref
+/// had in fact resolved and lost against the live evidence. The suggestion and
+/// the not-delivered disposition are pinned alongside it, because dropping
+/// either is invisible from the message alone.
+#[test]
+fn the_settled_stale_ref_message_names_the_evidence_mismatch_not_a_missing_refmap_entry() {
+    let stored = entry(Some("btn-1"), "button", Some("Label"), None, None);
+    let error = stale_ref_error(&stored);
+
+    assert_eq!(error.message, "Stored ref does not match any live element");
+    assert!(
+        !error.message.contains("RefMap"),
+        "a resolved-but-refuted ref is not a missing RefMap entry: {}",
+        error.message
+    );
+    assert_eq!(
+        error.suggestion.as_deref(),
+        Some("Run 'snapshot' to refresh, then retry with the updated ref.")
+    );
+    assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+    assert!(
+        error.is_explicitly_retryable() && error.permits_retry_by_default(),
+        "the derived retryability must survive the construction change"
+    );
+}
+
+/// The ambiguous verdict sits on the same two retry axes as its stale sibling
+/// and used to stamp neither, so a regression on either was invisible. It is
+/// complete because `classify_search` only reaches this arm with a conclusive
+/// answer, and non-retryable because the same search over the same stored
+/// evidence cannot separate the candidates on a second attempt - the stamp is
+/// what keeps it out of core's resolution poll loop, which retries only an
+/// explicitly retryable failure.
+#[test]
+fn an_ambiguous_target_is_complete_and_settled_rather_than_retried() {
+    let stored = entry(Some("btn-1"), "button", Some("Label"), None, None);
+    let error = ambiguous_target_error(&stored, 2);
+
+    assert_eq!(error.code, ErrorCode::AmbiguousTarget);
+    assert_eq!(flag(&error, "complete"), Some(true));
+    assert_eq!(flag(&error, "retryable"), Some(false));
+    assert!(!error.is_explicitly_retryable());
+    assert!(!error.permits_retry_by_default());
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("candidate_count"))
+            .and_then(serde_json::Value::as_u64),
+        Some(2),
+        "the shape-only candidate count must survive the added stamps"
+    );
+}
+
+fn flag(error: &agent_desktop_core::AdapterError, key: &str) -> Option<bool> {
+    error
+        .details
+        .as_ref()
+        .and_then(|details| details.get(key))
+        .and_then(serde_json::Value::as_bool)
+}
+
 /// Two candidates carrying the same evidence, neither distinguished by
 /// hash, must stay ambiguous - the caller's `AMBIGUOUS_TARGET`, not a
 /// guess at either one.

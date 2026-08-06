@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    AdapterError, LocatorEvidence, LocatorField, RefEntry,
+    AdapterError, DeliverySemantics, ErrorCode, LocatorEvidence, LocatorField, RefEntry,
     ref_identity::{has_stable_text_identity, identity_match, stable_text_match},
 };
 use serde_json::json;
@@ -122,8 +122,27 @@ pub(crate) fn select_by_bounds_hash(
     }
 }
 
+/// The one `STALE_REF` constructor shared by the resolver and the live
+/// reader.
+///
+/// Built field by field rather than through `AdapterError::stale_ref`, whose
+/// parameter is a **ref id** it interpolates into `"{ref_id} not found in
+/// current RefMap"`. Neither failure this covers is a missing RefMap entry:
+/// the ref was found and read, and it was the live evidence that refused it.
+/// Handing that constructor a whole sentence produced a message an agent acts
+/// on which was both ungrammatical and wrong about the cause. Mirrors macOS's
+/// own resolver error shape - `ErrorCode::StaleRef`, a message naming what was
+/// observed, the snapshot-refresh suggestion, and the not-delivered
+/// disposition every ref-action failure carries - and leaves the
+/// `kind`/`complete`/`retryable` details to the caller that knows them.
+pub(crate) fn stale_evidence_error(message: &str) -> AdapterError {
+    AdapterError::new(ErrorCode::StaleRef, message)
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered())
+}
+
 pub(crate) fn stale_ref_error(_entry: &RefEntry) -> AdapterError {
-    let error = AdapterError::stale_ref("Stored ref does not match any live element");
+    let error = stale_evidence_error("Stored ref does not match any live element");
     let default_retryable = error.permits_retry_by_default();
     error.with_details(json!({
         "kind": "resolve_no_candidate",
@@ -132,12 +151,29 @@ pub(crate) fn stale_ref_error(_entry: &RefEntry) -> AdapterError {
     }))
 }
 
+/// The settled `AMBIGUOUS_TARGET`, stamped on both retry axes like every
+/// other resolver verdict.
+///
+/// `complete` is true because every path that reaches here has a conclusive
+/// answer: `classify_search` withholds the verdict as `Incomplete` whenever an
+/// unread region could still change it, and the one case it lets through with
+/// an unread region (`should_stop_collecting`: two or more matches and no
+/// stored bounds hash to separate them) cannot be resolved by any further
+/// candidate, only made more ambiguous.
+///
+/// `retryable` is false because nothing about a re-attempt differs: the stored
+/// evidence is fixed, and the search that produced several equally-matching
+/// candidates is deterministic over the same tree. The stamp keeps that
+/// verdict out of core's poll loop, which retries a resolution failure only
+/// when it is explicitly retryable.
 pub(crate) fn ambiguous_target_error(_entry: &RefEntry, count: usize) -> AdapterError {
     AdapterError::ambiguous_target("Multiple live elements match the stored identity")
         .with_suggestion("Take a fresh snapshot and use its new ref")
         .with_details(json!({
             "kind": "resolve_ambiguous",
             "candidate_count": count,
+            "complete": true,
+            "retryable": false,
         }))
 }
 

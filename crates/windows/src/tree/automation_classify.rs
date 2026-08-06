@@ -179,16 +179,38 @@ pub(crate) fn sentinel_disposition(sentinel: i32) -> ErrorCode {
 
 /// Rewrites a root-resolution failure so a window that no longer exists is
 /// reported as a missing window rather than a stale element.
+///
+/// The rewrite re-stamps the `complete`/`retryable` pair from this module's
+/// own disposition table rather than inheriting the replaced error's, because
+/// changing the granularity changes the answer. At element granularity an
+/// unavailable target is `ReadDisposition::Unavailable` - incomplete and worth
+/// another attempt, since a descent may find it again. At window-root
+/// granularity the same failure says the handle addresses no resolvable
+/// window, and a destroyed window never answers the same handle again (A14-5):
+/// that is `ReadDisposition::SettledAbsence`, and the suggestion says the same
+/// thing in words, since recovery is a *new* handle rather than a repeat of
+/// this call.
+///
+/// Carrying no stamp at all is the third answer and the wrong one.
+/// `permits_retry_by_default` reads an unstamped error as retryable, so a
+/// caller polling for a window to settle would spend its whole budget on a
+/// window that is already gone.
 pub fn root_resolution_error(failure: UiaFailure) -> AdapterError {
     let error = uia_failure_error(failure, "resolve a window root");
     match failure {
         UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE) | UiaFailure::Sentinel(ERR_NOTFOUND) => {
+            let (complete, retryable) = ReadDisposition::SettledAbsence.retry_details();
             AdapterError::new(
                 ErrorCode::WindowNotFound,
                 "UI Automation could not resolve a window root",
             )
             .with_platform_detail(error.platform_detail.unwrap_or_default())
             .with_suggestion("List windows again and retry with a current window handle")
+            .with_details(serde_json::json!({
+                "kind": "window_root_missing",
+                "complete": complete,
+                "retryable": retryable,
+            }))
         }
         _ => error,
     }
@@ -205,7 +227,8 @@ mod tests {
     use super::{
         ERR_ALREADY_RUNNING, ERR_FORMAT, ERR_INACTIVE, ERR_INVALID_ARG, ERR_INVALID_OBJECT,
         ERR_NONE, ERR_NOTFOUND, ERR_NULL_PTR, ERR_TIMEOUT, ERR_TYPE, ErrorCode, ReadDisposition,
-        UiaFailure, sentinel_disposition, sentinel_record, uia_failure_disposition,
+        UIA_E_ELEMENTNOTAVAILABLE, UiaFailure, root_resolution_error, sentinel_disposition,
+        sentinel_record, uia_failure_disposition,
     };
 
     #[test]
@@ -236,5 +259,43 @@ mod tests {
                 record.disposition
             );
         }
+    }
+
+    /// The consequence, not the payload. Every core retry consumer keys on the
+    /// typed retryability `with_details` derives from the `retryable` key, so
+    /// a rewritten error that carries no details reads as retry-permitting and
+    /// sends a caller polling a window that is gone. Asserting a key exists
+    /// would pass on a wrong value; these assert what the gate answers.
+    #[test]
+    fn a_missing_window_root_settles_rather_than_permitting_a_pointless_retry() {
+        for failure in [
+            UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE),
+            UiaFailure::Sentinel(ERR_NOTFOUND),
+        ] {
+            let error = root_resolution_error(failure);
+
+            assert_eq!(error.code, ErrorCode::WindowNotFound);
+            assert!(
+                !error.is_explicitly_retryable(),
+                "a window that is gone must not be marked retryable"
+            );
+            assert!(
+                !error.permits_retry_by_default(),
+                "an unstamped rewrite reads as retry-permitting; the stamp must deny it"
+            );
+        }
+    }
+
+    /// The rewrite is narrow: a root failure that is not a missing window is
+    /// passed through with the disposition its own record decided, so
+    /// re-stamping the missing-window branch cannot flatten the rest.
+    #[test]
+    fn a_root_failure_that_is_not_a_missing_window_keeps_its_own_retry_stamp() {
+        let transport = root_resolution_error(UiaFailure::Sentinel(ERR_TIMEOUT));
+        let settled = root_resolution_error(UiaFailure::Sentinel(ERR_INVALID_ARG));
+
+        assert!(transport.is_explicitly_retryable());
+        assert!(!settled.is_explicitly_retryable());
+        assert!(!settled.permits_retry_by_default());
     }
 }

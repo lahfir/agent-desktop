@@ -305,13 +305,18 @@ fn incomplete_live_evidence() -> AdapterError {
     }))
 }
 
+/// The vanished-target answer, built through the resolver's shared
+/// `STALE_REF` constructor so the two sites cannot drift into two different
+/// payloads for the same class of failure. It carries no `retryable` key on
+/// purpose: `with_details` only overwrites the typed retryability when the
+/// details name it, so this error keeps the code's default rather than
+/// claiming a verdict it has not earned.
 fn stale_reader_error() -> AdapterError {
-    AdapterError::stale_ref("Element became invalid while reading live state").with_details(
-        serde_json::json!({
+    super::resolve_match::stale_evidence_error("Element became invalid while reading live state")
+        .with_details(serde_json::json!({
             "kind": "live_element_invalid",
             "complete": true,
-        }),
-    )
+        }))
 }
 
 #[cfg(all(test, target_os = "windows"))]

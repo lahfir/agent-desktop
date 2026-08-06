@@ -10,10 +10,10 @@
 //! element in `live_read_seam_tests.rs`, because it is only observable
 //! through a read that reaches the gate.
 
-use super::{essential_live_evidence_complete, incomplete_live_evidence};
+use super::{essential_live_evidence_complete, incomplete_live_evidence, stale_reader_error};
 use agent_desktop_core::{
-    ElementIdentifier, IdentifierEvidence, IdentifierKind, LocatorEvidence, LocatorField,
-    LocatorRefEvidence, NodeDescriptor, Rect,
+    DeliverySemantics, ElementIdentifier, ErrorCode, IdentifierEvidence, IdentifierKind,
+    LocatorEvidence, LocatorField, LocatorRefEvidence, NodeDescriptor, Rect,
 };
 
 fn complete_evidence() -> LocatorEvidence {
@@ -59,6 +59,47 @@ fn an_unknown_role_fails_the_gate_retryable() {
     let error = incomplete_live_evidence();
     assert!(error.is_explicitly_retryable());
     assert_eq!(error.code, agent_desktop_core::ErrorCode::AppUnresponsive);
+}
+
+/// The vanished-target message is what an agent reads, so it is pinned
+/// verbatim here as well as at the resolver. Core's `stale_ref` constructor
+/// takes a **ref id** and interpolates it into `"{ref_id} not found in current
+/// RefMap"`; handing it this sentence produced a message that was
+/// ungrammatical and blamed a missing RefMap entry for an element that had
+/// resolved and then went invalid mid-read. The retryability is pinned
+/// alongside: this error names no `retryable` key, so it must keep the code's
+/// default rather than acquire an explicit verdict.
+#[test]
+fn the_live_read_stale_error_names_the_invalid_element_not_a_missing_refmap_entry() {
+    let error = stale_reader_error();
+
+    assert_eq!(
+        error.message,
+        "Element became invalid while reading live state"
+    );
+    assert!(
+        !error.message.contains("RefMap"),
+        "an element that went invalid mid-read is not a missing RefMap entry: {}",
+        error.message
+    );
+    assert_eq!(error.code, ErrorCode::StaleRef);
+    assert_eq!(
+        error.suggestion.as_deref(),
+        Some("Run 'snapshot' to refresh, then retry with the updated ref.")
+    );
+    assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+    assert!(
+        !error.is_explicitly_retryable() && error.permits_retry_by_default(),
+        "the derived retryability must survive the construction change"
+    );
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("complete"))
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
 }
 
 #[test]
