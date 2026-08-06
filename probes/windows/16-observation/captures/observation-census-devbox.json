@@ -245,8 +245,10 @@
                 "system_dpi":  96
             },
     "virtual_desktop_manager":  {
-                                    "clsid_registered":  false,
+                                    "clsid_registered":  true,
+                                    "clsid_inproc_server":  "C:\\Windows\\system32\\twinapi.dll",
+                                    "clsid_lookup_error":  null,
                                     "interface_in_pinned_crates":  "the VirtualDesktopManager CLSID constant exists in windows-sys 0.61 (Win32_UI_Shell), but no IVirtualDesktopManager interface is generated in windows-sys or the windows crate - reaching the interface requires a hand-declared COM declaration, i.e. a new dependency",
-                                    "verdict":  "unreachable through the pinned crates without a new dependency"
+                                    "verdict":  "the COM class is registered on this machine, but the interface is unreachable through the pinned crates without a new dependency"
                                 }
 }

@@ -151,7 +151,7 @@ try {
         UserSid           = $userSid
         SidAuthority      = 'S-1-5-21 (local machine authority)'
         WellKnownRid      = $rid
-        RidMeaning        = 'RID 500 is the built-in Administrator account'
+        RidMeaning        = $(if ($rid -eq '500') { 'RID 500 is the built-in Administrator account' } else { 'RID ' + $rid + ' is not the built-in Administrator RID, so every conclusion this ledger draws from RID 500 has to be re-derived' })
         TokenOwnerSid     = $identity.Owner.Value
         TokenOwnerAccount = (Get-SidAccountOrUnmapped -Sid $identity.Owner.Value)
         IsAuthenticated   = $identity.IsAuthenticated
@@ -165,14 +165,20 @@ try {
     Initialize-ProbeNative
     $integritySid = [AgentDesktopProbe.Native]::GetIntegritySid($PID)
     $policyPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    $filterAdminToken = Get-RegistryValueOrUnset -Path $policyPath -Name 'FilterAdministratorToken'
+    $adminApprovalOff = ($rid -eq '500' -and ($filterAdminToken -eq '<unset>' -or "$filterAdminToken" -eq '0'))
     $integrity = [ordered]@{
         ProcessId                 = $PID
         MandatoryLabelSid         = $integritySid
         MandatoryLabelName        = (Get-IntegrityLevelName -Sid $integritySid)
         EnableLua                 = (Get-RegistryValueOrUnset -Path $policyPath -Name 'EnableLUA')
-        FilterAdministratorToken  = (Get-RegistryValueOrUnset -Path $policyPath -Name 'FilterAdministratorToken')
+        FilterAdministratorToken  = $filterAdminToken
         ConsentPromptBehaviorAdmin = (Get-RegistryValueOrUnset -Path $policyPath -Name 'ConsentPromptBehaviorAdmin')
-        AdminApprovalModeActive   = 'no — built-in Administrator (RID 500) with FilterAdministratorToken unset runs a full High-IL token; Start-Process -Verb RunAs yields High-vs-High and no integrity boundary'
+        AdminApprovalModeActive   = $(if ($adminApprovalOff) {
+            'no — built-in Administrator (RID 500) with FilterAdministratorToken unset runs a full High-IL token; Start-Process -Verb RunAs yields High-vs-High and no integrity boundary'
+        } else {
+            'yes or undetermined — this account is RID ' + $rid + ' and FilterAdministratorToken reads ' + $filterAdminToken + ', so the High-vs-High conclusion this ledger draws does not follow and the elevation boundary has to be re-measured'
+        })
     }
 
     Set-Content -LiteralPath $AclSamplePath -Value 'agent-desktop probe acl sample' -Encoding ASCII
@@ -258,7 +264,11 @@ try {
     }
     $uia3Evidence = [ordered]@{
         Question                    = 'Does the GAC UIAutomationClient assembly expose the UIA3 COM types (IUIAutomation / CUIAutomation)?'
-        Answer                      = 'no — it is the managed System.Windows.Automation stack; UIA3 COM requires a csc-compiled interop shim against the registered COM server'
+        Answer                      = $(if (-not $hasIUIAutomation -and -not $hasCUIAutomation) {
+            'no — it is the managed System.Windows.Automation stack; UIA3 COM requires a csc-compiled interop shim against the registered COM server'
+        } else {
+            'yes — this assembly exports the UIA3 COM types (IUIAutomation ' + $hasIUIAutomation + ', CUIAutomation ' + $hasCUIAutomation + '), so the hand-declared interop shim the corpus builds is not the only route and KTD1 has to be re-argued'
+        })
         AssemblyFullName            = $uiaClient.FullName
         AssemblyLocation            = $uiaClient.Location
         ExportedTypeCount           = $uiaTypes.Count

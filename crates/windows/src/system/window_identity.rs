@@ -5,11 +5,11 @@ use super::process_identity;
 /// The immutable identity evidence a resolved window must match.
 ///
 /// Fresh-list verification is strict (title included), while stored-evidence
-/// resolution treats pid + token + app as the immutable identity and tolerates
-/// title drift, logging it as telemetry - a live window's title legitimately
-/// changes (a dirty-marker asterisk, an Electron target retitling per
-/// document), and a hard title check there would fail drill-down on the very
-/// windows this module exists to serve.
+/// resolution treats the handle's live owner plus that owner's generation as
+/// the immutable identity and tolerates title drift, logging it as telemetry -
+/// a live window's title legitimately changes (a dirty-marker asterisk, an
+/// Electron target retitling per document), and a hard title check there would
+/// fail drill-down on the very windows this module exists to serve.
 pub(crate) struct WindowIdentityEvidence<'a> {
     pub(crate) handle: super::window_enum::WindowHandle,
     pub(crate) pid: ProcessId,
@@ -55,9 +55,22 @@ impl<'a> WindowIdentityEvidence<'a> {
         Ok(())
     }
 
-    /// The stored-evidence check: pid + token + app are the immutable
-    /// identity; a title that drifted is logged as telemetry, not a failure.
+    /// The stored-evidence check: the handle's live owning process is the
+    /// stored pid and that process is still the stored generation; a title
+    /// that drifted is logged as telemetry, not a failure.
+    ///
+    /// The ownership predicate is what a generation token alone cannot
+    /// answer. A stored pid that is alive and unchanged says nothing about
+    /// which window a recycled HWND now belongs to: an application that
+    /// closes one window and keeps running leaves its process corroboration
+    /// intact while the handle passes to whatever the window manager hands it
+    /// to next. Without this, a stored ref would resolve into a second
+    /// application's tree and every check downstream - which re-verifies the
+    /// same stored pid and token - would agree it was the right one.
     pub(crate) fn verify_stored(&self) -> Result<(), AdapterError> {
+        if live_window_owner(self.handle) != Some(self.pid) {
+            return Err(window_identity_mismatch(self.handle));
+        }
         if !process_identity::matches_instance(self.pid, self.process_instance)? {
             return Err(window_identity_mismatch(self.handle));
         }
@@ -69,6 +82,31 @@ impl<'a> WindowIdentityEvidence<'a> {
             tracing::debug!("window title changed while immutable source identity remained valid");
         }
         Ok(())
+    }
+}
+
+/// Reads the process that owns a window handle right now - the fact that
+/// binds a handle to a pid, rather than merely asserting the pid is alive.
+///
+/// `None` is every kind of unanswerable: a destroyed handle, a handle the
+/// window manager no longer knows, and the non-Windows lane where no window
+/// server is reachable. Callers treat it as a failed match, never as an
+/// absent constraint, so an unreadable owner fails closed.
+fn live_window_owner(handle: super::window_enum::WindowHandle) -> Option<ProcessId> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+        let mut pid: u32 = 0;
+        unsafe { GetWindowThreadProcessId(handle, &mut pid) };
+        if pid == 0 {
+            return None;
+        }
+        Some(ProcessId::from(pid))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = handle;
+        None
     }
 }
 
@@ -168,33 +206,90 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
-    #[test]
-    fn a_fresh_token_passes_stored_and_strict_fails_on_a_mismatched_live_title() {
-        use super::process_identity::token_for_pid;
-        use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
+    mod windows_only {
+        use super::*;
+        use crate::system::window_enum::WindowHandle;
 
-        let pid = ProcessId::from(std::process::id());
-        let Some(token) = token_for_pid(pid).unwrap() else {
-            return;
-        };
-        let desktop = unsafe { GetDesktopWindow() };
-        let mut win = fake_window(pid, &token, "a-title-that-is-not-the-desktop-title");
-        win.app = process_identity::process_image_name(pid).unwrap_or_default();
-        let evidence = WindowIdentityEvidence::from_info(desktop, &win)
-            .expect("a process with a token derives its evidence");
+        const DRIFTED: &str = "a-title-no-fixture-window-carries";
 
-        assert!(
-            evidence.verify_stored().is_ok(),
-            "stored verification trusts pid + token + app, which match"
-        );
-
-        let live = live_window_title(desktop);
-        if live.as_deref() == Some("a-title-that-is-not-the-desktop-title") {
-            return;
+        fn this_process_evidence() -> Option<(ProcessId, String, String)> {
+            let pid = ProcessId::from(std::process::id());
+            let token = process_identity::token_for_pid(pid).ok().flatten()?;
+            Some((
+                pid,
+                token,
+                process_identity::process_image_name(pid).unwrap_or_default(),
+            ))
         }
-        assert!(
-            evidence.verify_strict().is_err(),
-            "strict verification rejects a title the live window does not have"
-        );
+
+        /// Both directions of the stored/strict split, pinned against a window
+        /// this process genuinely owns - the pairing the rule is about. The
+        /// stored path tolerates a title the live window does not carry
+        /// because ownership and generation still hold; the strict path,
+        /// which does consult the title, refuses the same drift.
+        #[test]
+        fn an_owned_window_passes_stored_with_a_drifted_title_and_fails_strict() {
+            crate::tree::fixture::bootstrap();
+            let fixture =
+                crate::tree::fixture::LocalFixture::create().expect("a fixture window is created");
+            let Some((pid, token, app)) = this_process_evidence() else {
+                return;
+            };
+            let mut win = fake_window(pid, &token, DRIFTED);
+            win.app = app;
+            let handle = fixture.handle() as WindowHandle;
+            let evidence = WindowIdentityEvidence::from_info(handle, &win)
+                .expect("a process with a token derives its evidence");
+
+            assert_eq!(
+                live_window_owner(handle),
+                Some(pid),
+                "the fixture window is owned by the test process"
+            );
+            assert!(
+                evidence.verify_stored().is_ok(),
+                "an owned, same-generation window resolves however its title drifted"
+            );
+
+            if live_window_title(handle).as_deref() == Some(DRIFTED) {
+                return;
+            }
+            assert!(
+                evidence.verify_strict().is_err(),
+                "strict verification rejects a title the live window does not have"
+            );
+        }
+
+        /// The cross-process recycle shape: a handle whose live owner is a
+        /// different application must fail stored verification even though
+        /// the stored pid is alive and of the stored generation - which is
+        /// precisely the state an application that closed one window while
+        /// continuing to run leaves behind.
+        #[test]
+        fn a_handle_owned_by_another_process_fails_stored_verification() {
+            crate::tree::fixture::bootstrap();
+            let fixture =
+                crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
+            let Some((pid, token, app)) = this_process_evidence() else {
+                return;
+            };
+            let mut win = fake_window(pid, &token, "");
+            win.app = app;
+            let handle = fixture.handle() as WindowHandle;
+            let evidence = WindowIdentityEvidence::from_info(handle, &win)
+                .expect("a process with a token derives its evidence");
+
+            assert!(
+                process_identity::matches_instance(pid, &token)
+                    .expect("the generation check answers"),
+                "the stored process is alive and of the stored generation"
+            );
+
+            let error = evidence
+                .verify_stored()
+                .expect_err("a handle another process owns is not the stored window");
+
+            assert_eq!(error.code, ErrorCode::WindowNotFound);
+        }
     }
 }

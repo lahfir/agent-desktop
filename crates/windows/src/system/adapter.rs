@@ -160,8 +160,11 @@ mod tests {
         .expect("activation is the settle, which succeeds");
     }
 
+    /// The sheet surface specifically, reached through the `SystemOps` trait
+    /// object rather than the inherent method. The full advertised vector is
+    /// asserted by `supported_surfaces_advertises_window_focused_and_sheet`.
     #[test]
-    fn the_advertised_surfaces_cover_sheet_observations() {
+    fn sheet_is_among_the_surfaces_advertised_through_the_trait() {
         use agent_desktop_core::{SnapshotSurface, SystemOps as _};
 
         let surfaces = WindowsAdapter::new().supported_surfaces();

@@ -129,6 +129,15 @@ function Invoke-ShareModeCase {
     }
 }
 
+function Get-OwnerSource {
+    param([Parameter(Mandatory = $true)][AllowNull()]$Record)
+    if ($null -eq $Record -or -not $Record.FileOwnerSid) { return 'not-measured' }
+    if ($Record.OwnerMatchesTokenOwner -and -not $Record.OwnerMatchesTokenUser) { return 'TokenOwner' }
+    if ($Record.OwnerMatchesTokenUser -and -not $Record.OwnerMatchesTokenOwner) { return 'TokenUser' }
+    if ($Record.OwnerMatchesTokenUser -and $Record.OwnerMatchesTokenOwner) { return 'TokenUser==TokenOwner' }
+    return 'neither'
+}
+
 function Get-AclRecord {
     param([Parameter(Mandatory = $true)][string]$Path, [bool]$IsDirectory = $false)
     $acl = Get-Acl -LiteralPath $Path
@@ -245,7 +254,15 @@ try {
             }
         }
     }
-    $unexpectedSuccess = @($shareRows | Where-Object { $_.HandleOn -ne 'none' -and $_.Verdict -eq 'succeeded' -and (-not $_.HandleShareDelete) })
+    $handleCases = @($shareRows | Where-Object { $_.HandleOn -ne 'none' })
+    $handleOpenFailures = @($handleCases | Where-Object { $_.OpenStatus -ne 'opened' })
+    if ($handleOpenFailures.Count -gt 0) {
+        $first = $handleOpenFailures[0]
+        throw ('PROBE-HARNESS: refusing to record a share-mode verdict without a concurrently open handle - ' +
+            $handleOpenFailures.Count + ' of ' + $handleCases.Count + ' handle cases failed to open, first ' +
+            $first.Operation + '/' + $first.HandleOn + '/' + $first.Access + '/' + $first.Share + ' ' + $first.OpenErrorName)
+    }
+    $unexpectedSuccess = @($shareRows | Where-Object { $_.OpenStatus -eq 'opened' -and $_.Verdict -eq 'succeeded' -and (-not $_.HandleShareDelete) })
     [void](Write-ProbeJson -Probe $Probe -Name 'share-mode-rename.json' -InputObject ([pscustomobject]@{
                 Experiment          = 'share-mode rename over a concurrently open validation handle'
                 Question            = 'does atomic rename over a concurrently open handle require FILE_SHARE_DELETE'
@@ -253,6 +270,7 @@ try {
                 MoveFileExFlags     = 'MOVEFILE_REPLACE_EXISTING (0x1)'
                 ReplaceFileFlags    = '0x0'
                 CaseCount           = $shareRows.Count
+                CasesHoldingAnOpenHandle = $handleCases.Count
                 SharingViolations   = @($shareRows | Where-Object { $_.Verdict -eq 'sharing-violation-32' }).Count
                 Successes           = @($shareRows | Where-Object { $_.Verdict -eq 'succeeded' }).Count
                 SuccessWithoutShareDelete = @($unexpectedSuccess | ForEach-Object { $_.Operation + '/' + $_.HandleOn + '/' + $_.Access + '/' + $_.Share })
@@ -325,6 +343,12 @@ Start-Sleep -Seconds 4
     } else {
         throw 'PROBE-HARNESS: medium-integrity child produced no result file'
     }
+    if ($mediumRecord.ChildError) {
+        throw ('PROBE-HARNESS: refusing to record an ownership verdict - the medium-integrity child measured nothing: ' + $mediumRecord.ChildError)
+    }
+    if (-not $mediumRecord.FileOwnerSid) {
+        throw 'PROBE-HARNESS: refusing to record an ownership verdict - the medium-integrity child reported no file owner'
+    }
     $mediumRecord | Add-Member -NotePropertyName 'IntegritySid' -NotePropertyValue $medium.IntegritySid -Force
 
     [void](Write-ProbeJson -Probe $Probe -Name 'ownership-under-elevation.json' -InputObject ([pscustomobject]@{
@@ -333,8 +357,8 @@ Start-Sleep -Seconds 4
                 MediumLaunch     = 'Start-MediumIntegrityProcess (DuplicateTokenEx + SetTokenInformation(TokenIntegrityLevel) + CreateProcessAsUser), label asserted S-1-16-8192'
                 HighIntegrity    = $highRecord
                 MediumIntegrity  = $mediumRecord
-                OwnerSourceHigh  = $(if ($highRecord.OwnerMatchesTokenOwner -and -not $highRecord.OwnerMatchesTokenUser) { 'TokenOwner' } elseif ($highRecord.OwnerMatchesTokenUser -and -not $highRecord.OwnerMatchesTokenOwner) { 'TokenUser' } elseif ($highRecord.OwnerMatchesTokenUser -and $highRecord.OwnerMatchesTokenOwner) { 'TokenUser==TokenOwner' } else { 'neither' })
-                OwnerSourceMedium = $(if ($mediumRecord.OwnerMatchesTokenOwner -and -not $mediumRecord.OwnerMatchesTokenUser) { 'TokenOwner' } elseif ($mediumRecord.OwnerMatchesTokenUser -and -not $mediumRecord.OwnerMatchesTokenOwner) { 'TokenUser' } elseif ($mediumRecord.OwnerMatchesTokenUser -and $mediumRecord.OwnerMatchesTokenOwner) { 'TokenUser==TokenOwner' } else { 'neither' })
+                OwnerSourceHigh  = (Get-OwnerSource -Record $highRecord)
+                OwnerSourceMedium = (Get-OwnerSource -Record $mediumRecord)
                 EnvironmentLimit = 'single built-in Administrator account on this VM; a non-admin CI account could not be exercised here'
             }))
 
@@ -419,6 +443,9 @@ Start-Sleep -Seconds 4
                 [System.Security.AccessControl.PropagationFlags]::None,
                 [System.Security.AccessControl.AccessControlType]::Allow)))
     Set-Acl -LiteralPath $protectedDir -AclObject $protectedAcl
+    if (-not (Get-Acl -LiteralPath $protectedDir).AreAccessRulesProtected) {
+        throw ('PROBE-HARNESS: the protected-parent arm requires an inheritance-protected parent, but ' + $protectedDir + ' reads back AreAccessRulesProtected false after Set-Acl')
+    }
     $protectedFile = Join-Path $protectedDir 'protected-leaf.txt'
     [IO.File]::WriteAllText($protectedFile, 'PROTECTED')
     $protectedDirRecord = Get-AclRecord -Path $protectedDir -IsDirectory $true
@@ -440,8 +467,8 @@ Start-Sleep -Seconds 4
         ShareModeCases            = $shareRows.Count
         ShareModeSharingViolations = @($shareRows | Where-Object { $_.Verdict -eq 'sharing-violation-32' }).Count
         ShareModeSuccessWithoutShareDelete = $unexpectedSuccess.Count
-        OwnerSourceHigh           = $(if ($highRecord.OwnerMatchesTokenOwner) { 'TokenOwner' } else { 'TokenUser' })
-        OwnerSourceMedium         = $(if ($mediumRecord.OwnerMatchesTokenOwner) { 'TokenOwner' } else { 'TokenUser' })
+        OwnerSourceHigh           = (Get-OwnerSource -Record $highRecord)
+        OwnerSourceMedium         = (Get-OwnerSource -Record $mediumRecord)
         LocalityLocalSucceeding   = $localOk.Count
         LocalityRemoteSucceeding  = $remoteOk.Count
         PlainLeafAceCount         = $plainRecord.AceCount

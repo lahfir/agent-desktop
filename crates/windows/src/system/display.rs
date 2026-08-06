@@ -171,14 +171,15 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn live_listing_returns_at_least_one_primary_display() {
+    fn live_listing_returns_exactly_one_primary_display() {
         crate::tree::fixture::ensure_test_apartment();
         let displays = list_displays_live(agent_desktop_core::Deadline::after(5_000).unwrap())
             .expect("live display enumeration succeeds");
 
-        assert!(
-            displays.iter().any(|display| display.is_primary),
-            "exactly one primary display"
+        assert_eq!(
+            displays.iter().filter(|display| display.is_primary).count(),
+            1,
+            "Windows has one primary display; a listing that marks several has lost the flag"
         );
         assert!(
             displays

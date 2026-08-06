@@ -90,9 +90,11 @@ failing half.
   provider said no," write `== Some(false)` against the `Option<bool>` (or
   the underlying tri-state) directly — never `!is_true(...)`.
 - When a helper flattens a richer type to `bool`, document which position it
-  is safe in. `is_true`'s own doc comment now states it is a read "through its
-  gate" for a positive check; this doc is the record of why the negated form
-  was removed rather than merely discouraged.
+  is safe in. `gated_flag`'s doc comment in `element_properties.rs` carries the
+  gate discipline — it is a read "through its gate," the only safe way to read
+  one — but no helper's doc comment states the positional asymmetry, so this
+  doc is the record of it, and of why the negated form was removed rather than
+  merely discouraged.
 - Grep for the failure shape before trusting a fix is complete: a search of
   `crates/windows/src/` for `!properties.is_true` and `!self.is_true` turns up
   zero matches as of this writing — every remaining boolean-gate check is

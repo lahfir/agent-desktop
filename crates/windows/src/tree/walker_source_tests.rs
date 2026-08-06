@@ -235,10 +235,13 @@ mod windows_only {
         );
     }
 
-    /// The three-run stability clause of the Verification Contract's "Live
-    /// vocabulary" row: a live fixture walk's role, action list and state
-    /// tokens must reproduce across three consecutive walks of the same
-    /// provider, not merely appear once.
+    /// A live fixture walk's role, action list and state tokens must
+    /// reproduce across three consecutive walks of the same provider, not
+    /// merely appear once. A single walk cannot tell a settled vocabulary
+    /// from a reading taken while the provider was still warming its cache;
+    /// repeating the walk proves the vocabulary belongs to the provider
+    /// rather than to the moment, and three runs is the smallest count where
+    /// a disagreement also identifies which run was the outlier.
     ///
     /// Only self-consistency is asserted - run two and three reproduce run
     /// one, node for node - never a specific role, count, or token, which

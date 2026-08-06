@@ -147,7 +147,41 @@ fn every_emitted_action_is_a_member_of_core_capability_vocabulary() {
             "{action} is not in core's capability vocabulary"
         );
     }
-    assert!(!known_actions(&actions).is_empty());
+
+    assert_eq!(
+        known_actions(&actions),
+        &[
+            capability::CLICK.to_string(),
+            capability::TOGGLE.to_string(),
+            capability::EXPAND.to_string(),
+            capability::COLLAPSE.to_string(),
+            capability::SELECT.to_string(),
+            capability::SET_VALUE.to_string(),
+            capability::SCROLL.to_string(),
+            capability::SCROLL_TO.to_string(),
+            capability::SET_FOCUS.to_string(),
+        ],
+        "the answer for an all-patterns-available read is exact, in emission order"
+    );
+
+    for unreachable in [
+        capability::RIGHT_CLICK,
+        capability::PRESS_KEY,
+        capability::KEY_DOWN,
+        capability::KEY_UP,
+        capability::TYPE_TEXT,
+        capability::HOVER,
+        capability::DRAG,
+        capability::CHECK,
+        capability::UNCHECK,
+    ] {
+        assert!(
+            !known_actions(&actions)
+                .iter()
+                .any(|action| action == unreachable),
+            "{unreachable} is in the vocabulary but this producer cannot emit it, so advertising it would promise an affordance the adapter cannot perform"
+        );
+    }
 }
 
 #[test]

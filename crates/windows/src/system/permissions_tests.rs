@@ -1,10 +1,25 @@
 use super::*;
 
+/// An expired budget is answered from the deadline alone.
+///
+/// The probe and the report builder are handed in as closures that panic if
+/// they are ever entered, so "without native calls" is asserted rather than
+/// inferred from the error code: a gate moved below the probe would still
+/// report `TIMEOUT` while having already gone out to the COM runtime.
 #[test]
 fn expired_permission_deadline_fails_without_native_calls() {
     let error = report(Deadline::after(0).unwrap()).unwrap_err();
 
     assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+
+    let requested = request_report_with(
+        Deadline::after(0).unwrap(),
+        || panic!("an expired deadline must not reach the native UI Automation probe"),
+        |_, _| panic!("an expired deadline must not reach the report builder"),
+    )
+    .unwrap_err();
+
+    assert_eq!(requested.code, agent_desktop_core::ErrorCode::Timeout);
 }
 
 #[test]
@@ -69,8 +84,12 @@ fn unnamed_hresults_format_without_inventing_a_name() {
     assert!(crate::system::hresult::com_hresult_symbol(0x8007_0002_u32 as i32).is_none());
 }
 
+/// Two representative codes render named through the permission path's own
+/// re-export of the shared table. The whole named set is asserted exhaustively
+/// by `hresult_symbol_tests.rs`; this pins that the permission path reads the
+/// same table rather than a second one of its own.
 #[test]
-fn the_ui_automation_hresults_the_tree_path_raises_are_named() {
+fn two_shared_hresults_render_named_through_the_permission_paths_detail() {
     assert_eq!(
         com_hresult_detail(0x8004_0201_u32 as i32),
         "COM HRESULT 0x80040201 (UIA_E_ELEMENTNOTAVAILABLE: The element is not available)"

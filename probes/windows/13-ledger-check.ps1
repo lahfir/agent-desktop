@@ -152,25 +152,29 @@ try {
     }
 
     $mappedRowIds = @{}
+    $hunksWithoutBacking = 0
     foreach ($hunkRow in $hunkRows) {
         if ($hunkRow.BackingRows.Count -lt 1) {
             [void]$failures.Add('hunk ' + $hunkRow.Hunk + ' names no backing ledger row')
+            $hunksWithoutBacking++
             continue
         }
+        $resolvedBacking = 0
         foreach ($refId in $hunkRow.BackingRows) {
             if (-not $seenIds.ContainsKey($refId)) {
                 [void]$failures.Add('hunk ' + $hunkRow.Hunk + ' cites row ' + $refId + ' which does not exist in the ledger')
                 continue
             }
             $mappedRowIds[$refId] = $true
+            $resolvedBacking++
         }
+        if ($resolvedBacking -lt 1) { $hunksWithoutBacking++ }
     }
 
     $contradictsRows = @($rows | Where-Object { $_.Verdict -eq 'CONTRADICTS' })
-    foreach ($row in $contradictsRows) {
-        if (-not $mappedRowIds.ContainsKey($row.Id)) {
-            [void]$failures.Add('CONTRADICTS row ' + $row.Id + ' is not backed by any phases.md hunk')
-        }
+    $unmappedContradicts = @($contradictsRows | Where-Object { -not $mappedRowIds.ContainsKey($_.Id) })
+    foreach ($row in $unmappedContradicts) {
+        [void]$failures.Add('CONTRADICTS row ' + $row.Id + ' is not backed by any phases.md hunk')
     }
 
     $verdictCounts = [ordered]@{}
@@ -198,7 +202,7 @@ try {
         HunkIndexRowCount    = $hunkRows.Count
         ContradictsRowCount  = $contradictsRows.Count
         ContradictsRowsMapped = @($contradictsRows | Where-Object { $mappedRowIds.ContainsKey($_.Id) }).Count
-        BijectionHolds       = ($failures.Count -eq 0)
+        BijectionHolds       = ($hunkRows.Count -eq $measuredHunkCount -and $hunksWithoutBacking -eq 0 -and $unmappedContradicts.Count -eq 0)
         Failures             = $failures.ToArray()
         HunkCountSource      = 'git -C <repo> diff -U0 main -- docs/phases.md, counting lines matching ^@@ -[0-9]; the measured count is authoritative over any count written in prose'
     }

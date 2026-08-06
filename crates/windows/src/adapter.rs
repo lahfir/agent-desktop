@@ -1,7 +1,7 @@
 use agent_desktop_core::{
-    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, InputOps, NativeHandle,
-    ObservationOps, ObservationRequest, ObservationRoot, ProcessIdentity, RefEntry, TreeOptions,
-    WindowFilter, WindowInfo,
+    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, ElementState, InputOps,
+    LiveElement, NativeHandle, ObservationOps, ObservationRequest, ObservationRoot,
+    ProcessIdentity, Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -87,6 +87,64 @@ impl ObservationOps for WindowsAdapter {
         deadline: Deadline,
     ) -> Result<NativeHandle, AdapterError> {
         crate::tree::resolve::resolve_element_strict(entry, deadline)
+    }
+
+    fn resolve_locator_anchor(
+        &self,
+        entry: &RefEntry,
+        deadline: Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        crate::tree::resolve_anchor::resolve_locator_anchor(entry, deadline)
+    }
+
+    /// The five live readers are projections over one shared single-element
+    /// read (`crate::tree::live_read`), which corroborates the verified
+    /// process token before answering and fails retryable when an essential
+    /// slot could not be read, and a dead provider token never satisfies
+    /// completeness (A14-9).
+    fn get_live_value(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        let read = crate::tree::live_read::read_live_element(handle, deadline)?;
+        Ok(crate::tree::live_read::live_value(&read))
+    }
+
+    fn get_live_state(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
+        let read = crate::tree::live_read::read_live_element(handle, deadline)?;
+        Ok(Some(crate::tree::live_read::live_state(&read)?))
+    }
+
+    fn get_live_actions(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        let read = crate::tree::live_read::read_live_element(handle, deadline)?;
+        Ok(Some(crate::tree::live_read::live_actions(&read)?))
+    }
+
+    fn get_live_element(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<LiveElement, AdapterError> {
+        let read = crate::tree::live_read::read_live_element(handle, deadline)?;
+        crate::tree::live_read::live_element(&read)
+    }
+
+    fn get_element_bounds(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        let read = crate::tree::live_read::read_live_element(handle, deadline)?;
+        Ok(crate::tree::live_read::live_bounds(&read))
     }
 
     fn list_windows(

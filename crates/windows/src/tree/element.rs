@@ -1,7 +1,20 @@
 use agent_desktop_core::{AdapterError, ErrorCode, NativeHandle};
 
+/// The verified process identity a resolved element carries, so the live-read
+/// path can corroborate that the provider is still the one resolution verified
+/// (followed by A14-9's rule: a dead provider's reads can succeed empty on
+/// some builds), and the handle payload is the only place the generation token
+/// survives from resolution to the reader.
+#[derive(Debug, Clone)]
+pub(crate) struct ProcessPayload {
+    pub(crate) pid: u32,
+    pub(crate) token: String,
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
+    use super::ProcessPayload;
+
     /// Owns one UI Automation element for the crate.
     ///
     /// Refcounting is delegated on purpose. `uiautomation::UIElement` wraps a
@@ -9,28 +22,36 @@ mod imp {
     /// is `Release`, so a hand-written pair here would release twice. The
     /// encapsulation the macOS wrapper establishes is kept: the inner field is
     /// crate-visible only, there is no `Copy`, and there is no raw accessor.
+    /// The second field is the verified process identity captured by the
+    /// resolver (`ProcessPayload`), `None` on an element that never verified
+    /// one.
     #[derive(Clone)]
-    pub struct UIAElement(pub(crate) uiautomation::UIElement);
+    pub struct UIAElement(
+        pub(crate) uiautomation::UIElement,
+        pub(crate) Option<ProcessPayload>,
+    );
 
     impl From<uiautomation::UIElement> for UIAElement {
         fn from(element: uiautomation::UIElement) -> Self {
-            Self(element)
+            Self(element, None)
         }
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 mod imp {
+    use super::ProcessPayload;
+
     /// Canned stand-in so every tree module compiles on a non-Windows lane.
     #[derive(Clone)]
-    pub struct UIAElement(pub(crate) CannedElement);
+    pub struct UIAElement(pub(crate) CannedElement, pub(crate) Option<ProcessPayload>);
 
     #[derive(Clone, Default)]
     pub struct CannedElement;
 
     impl From<CannedElement> for UIAElement {
         fn from(element: CannedElement) -> Self {
-            Self(element)
+            Self(element, None)
         }
     }
 }
@@ -47,6 +68,20 @@ impl UIAElement {
     /// wrapper through this path.
     pub fn into_native_handle(self) -> NativeHandle {
         NativeHandle::new(self)
+    }
+
+    /// Stamps the verified process identity onto the element so the live-read
+    /// path can corroborate liveness against it before answering.
+    pub(crate) fn with_verified_process(self, pid: u32, token: String) -> Self {
+        Self(self.0, Some(ProcessPayload { pid, token }))
+    }
+
+    /// The verified process identity, if this element resolved through the
+    /// strict resolver.
+    pub(crate) fn verified_process(&self) -> Option<(u32, &str)> {
+        self.1
+            .as_ref()
+            .map(|payload| (payload.pid, payload.token.as_str()))
     }
 }
 

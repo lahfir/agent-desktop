@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Automation;
@@ -289,6 +289,9 @@ namespace AgentDesktop.Scratch
             mutate.Click += OnMutateClick;
 
             Place(this, new Button(), "btnZeroSize", 140, 140, 0, 0).Text = "zero";
+
+            Place(this, new Button(), "btnDupPair", 16, 300, 90, 26).Text = "dup-a";
+            Place(this, new Button(), "btnDupPair", 112, 300, 90, 26).Text = "dup-b";
 
             Place(this, slider, "tbSlider", 16, 176, 320, 45);
             slider.Minimum = 0;

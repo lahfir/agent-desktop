@@ -341,10 +341,19 @@ Every command produces a response envelope:
     "app": "Finder",
     "window": { "id": "w-4521", "title": "Documents" },
     "ref_count": 14,
+    "snapshot_id": "s8f3k2p9",
+    "complete": true,
     "tree": { ... }
   }
 }
 ```
+
+`data.complete` is present on every snapshot. A snapshot that exhausts its
+observation budget succeeds with `"complete": false`, the tree it did observe,
+`"truncated": true`, and `"nodes_observed"`; each node whose descendants were
+cut short carries `"subtree_truncated": true`, serialized only when true. A
+`--root` drill-down replaces refs inside an existing snapshot, so an incomplete
+observation there returns `TIMEOUT` rather than a partial tree.
 
 Error responses:
 

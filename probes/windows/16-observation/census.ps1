@@ -316,15 +316,37 @@ namespace AgentDesktopCensusDpi {
 }
 
 function Measure-VirtualDesktopManager {
+    # HKCR: is not a mounted PSDrive in Windows PowerShell - only HKCU: and
+    # HKLM: are - so a query against it throws DriveNotFound before it reads
+    # anything. Catching that into a plain $false published a definite "not
+    # registered" for a lookup that never ran, and no registration state could
+    # change the answer. HKEY_CLASSES_ROOT is the merge of the HKLM and HKCU
+    # Classes subtrees; the machine registration lives under the HKLM one.
+    # A failed lookup is now its own outcome rather than a negative result.
+    # Test-Path is not used to decide this: it answers $false for an
+    # unreachable hive exactly as it does for an absent class, which is the
+    # same conflation in a new place. Only ItemNotFound is a real negative.
+    $clsidKey = 'HKLM:\SOFTWARE\Classes\CLSID\{aa509086-5ca9-4c25-8f95-589d3c07b48a}'
     $clsidRegistered = $false
+    $inprocServer = $null
+    $lookupError = $null
     try {
-        $key = Get-ItemProperty 'HKCR:\CLSID\{aa509086-5ca9-4c25-8f95-589d3c07b48a}' -ErrorAction Stop
+        Get-Item -LiteralPath $clsidKey -ErrorAction Stop | Out-Null
         $clsidRegistered = $true
-    } catch { $clsidRegistered = $false }
+        $server = Get-ItemProperty -LiteralPath (Join-Path $clsidKey 'InProcServer32') -ErrorAction Stop
+        $defaultValue = $server.PSObject.Properties['(default)']
+        if ($null -ne $defaultValue) { $inprocServer = [string]$defaultValue.Value }
+    } catch [System.Management.Automation.ItemNotFoundException] {
+        $lookupError = $null
+    } catch {
+        $lookupError = $_.Exception.Message
+    }
     return [ordered]@{
         clsid_registered = $clsidRegistered
+        clsid_inproc_server = $inprocServer
+        clsid_lookup_error = $lookupError
         interface_in_pinned_crates = 'the VirtualDesktopManager CLSID constant exists in windows-sys 0.61 (Win32_UI_Shell), but no IVirtualDesktopManager interface is generated in windows-sys or the windows crate - reaching the interface requires a hand-declared COM declaration, i.e. a new dependency'
-        verdict = 'unreachable through the pinned crates without a new dependency'
+        verdict = 'the COM class is registered on this machine, but the interface is unreachable through the pinned crates without a new dependency'
     }
 }
 

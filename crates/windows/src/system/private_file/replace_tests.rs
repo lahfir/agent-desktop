@@ -1,7 +1,7 @@
 use super::Scratch;
 use crate::system::private_file::WindowsPrivateFile;
 use crate::system::private_file::replace::{
-    replace_file_call, replace_style_failure_detail, to_wide_null,
+    promote_temp_to_destination, replace_file_call, replace_style_failure_detail, to_wide_null,
 };
 use agent_desktop_core::PrivateFileOps;
 use std::fs::{File, OpenOptions};
@@ -156,6 +156,42 @@ fn move_file_ex_fails_5_not_32_over_an_open_target_even_at_full_share() {
     );
     drop(held);
     assert_eq!(std::fs::read(&destination).unwrap(), b"old bytes");
+}
+
+/// The diagnosis is wired into the promotion, not merely available beside it.
+///
+/// `replace_style_failure_detail` is pinned as a formatter below, but nothing
+/// asserted that a real failed promotion carries it: dropping the annotation
+/// from `promote_temp_to_destination` leaves every atomic-replace failure
+/// reporting a bare OS error, and the 5-vs-32 diagnosis - the thing that says
+/// whether a caller is looking at a permission problem or a file someone else
+/// holds open - is what an operator has to work from.
+#[test]
+fn a_failed_promotion_carries_the_replace_style_diagnosis_into_its_message() {
+    let scratch = Scratch::new("promote-annotated");
+    let (destination, replacement) = seeded_pair(&scratch);
+    let held = open_reader_with_share(&replacement, FILE_SHARE_DELETE);
+
+    assert_eq!(
+        replace_file_call(&destination, &replacement)
+            .unwrap_err()
+            .raw_os_error(),
+        Some(ERROR_SHARING_VIOLATION as i32),
+        "the open source must be what fails here, so the diagnosis below is the one under test"
+    );
+
+    let refused = promote_temp_to_destination(&destination, &replacement).unwrap_err();
+
+    let message = refused.to_string();
+    assert!(
+        message.contains("atomic replace failed"),
+        "the promotion must annotate its failure: {message}"
+    );
+    assert!(
+        message.contains(replace_style_failure_detail(ERROR_SHARING_VIOLATION)),
+        "the annotation must carry this code's own diagnosis: {message}"
+    );
+    drop(held);
 }
 
 #[test]

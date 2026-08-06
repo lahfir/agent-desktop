@@ -32,11 +32,78 @@ pub fn extent(near: i32, far: i32) -> f64 {
 /// Builds the structured error for a property read that failed, carrying the
 /// property's name and never its value, so a failure cannot leak content
 /// through the error path.
+///
+/// The base's own details are merged into rather than replaced, so the
+/// `complete`/`retryable` pair the classifier decided for that failure
+/// survives into the payload a caller and a trace segment read. It is
+/// deliberately not re-decided here: what an unreadable property means depends
+/// on why it could not be read, and the classifier already separates those
+/// families - a provider that does not implement the property is a settled
+/// absence, a transport timeout is incomplete and retryable. Flattening them
+/// to one value would be the wrong stamp on whichever family it did not match.
+///
+/// Merging also leaves the typed retryability every core retry consumer gates
+/// on exactly where it was: the `retryable` key that goes back in is the
+/// base's own, so the value derived from it is the value already derived.
+///
+/// Only the payload is at stake. A wrap whose details omit `retryable`
+/// preserves the typed stamp too, because `with_details` overwrites it only
+/// when the new details carry that key - the property that lets
+/// `live_read.rs`'s vanished-target check key on the error code alone.
 pub fn property_read_error(base: AdapterError, property: TreeProperty) -> AdapterError {
-    base.with_details(serde_json::json!({
-        "kind": "property_read_failed",
-        "property": property.as_str(),
-    }))
+    let mut details = base
+        .details
+        .clone()
+        .filter(serde_json::Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(object) = details.as_object_mut() {
+        object.insert("kind".into(), "property_read_failed".into());
+        object.insert("property".into(), property.as_str().into());
+    }
+    base.with_details(details)
+}
+
+/// Pinned here rather than in `properties_tests.rs`, which sits at the
+/// per-file line cap; this is a pure function of the error the classifier
+/// already built, so it needs no property set and no platform surface.
+#[cfg(test)]
+mod property_read_error_tests {
+    use super::{TreeProperty, property_read_error};
+    use crate::tree::automation::{ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, uia_failure_error};
+
+    /// A property read failure's disposition is the classifier's, carried
+    /// through the wrap rather than re-decided by it. Both halves are
+    /// asserted: the typed retryability every core retry consumer gates on
+    /// must be identical either side of the wrap, and the payload must still
+    /// say the same thing, since a consumer reading only the JSON would
+    /// otherwise see a failure carrying no disposition at all. Asserting the
+    /// keys merely exist would pass on a wrong value, so each is checked
+    /// against its own family's answer - a transport timeout is incomplete
+    /// and retryable, an invalid request is a settled absence.
+    #[test]
+    fn wrapping_a_read_failure_carries_the_classifiers_disposition_through_intact() {
+        for (sentinel, retryable, complete) in
+            [(ERR_TIMEOUT, true, false), (ERR_INVALID_ARG, false, true)]
+        {
+            let base =
+                uia_failure_error(UiaFailure::Sentinel(sentinel), "read an element property");
+            let base_explicit = base.is_explicitly_retryable();
+            let base_default = base.permits_retry_by_default();
+
+            let wrapped = property_read_error(base, TreeProperty::Name);
+
+            assert_eq!(wrapped.is_explicitly_retryable(), base_explicit);
+            assert_eq!(wrapped.permits_retry_by_default(), base_default);
+            assert_eq!(wrapped.is_explicitly_retryable(), retryable);
+            let details = wrapped
+                .details
+                .expect("a wrapped read failure carries details");
+            assert_eq!(details["kind"], "property_read_failed");
+            assert_eq!(details["property"], TreeProperty::Name.as_str());
+            assert_eq!(details["retryable"], serde_json::json!(retryable));
+            assert_eq!(details["complete"], serde_json::json!(complete));
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -48,7 +115,7 @@ mod imp {
     use crate::tree::automation::{failure_of, uia_failure_error};
     use crate::tree::element::UIAElement;
     use crate::tree::property_ids::uia_property;
-    use agent_desktop_core::{AdapterError, Rect};
+    use agent_desktop_core::{AdapterError, Deadline, Rect};
     use uiautomation::Error as UiaError;
     use uiautomation::variants::{Value, Variant};
     use windows::Win32::UI::Accessibility::UiaGetReservedNotSupportedValue;
@@ -61,7 +128,23 @@ mod imp {
     /// returned errors carry shape only and feed the walk's incompleteness
     /// accounting.
     pub fn read_live(element: &UIAElement) -> (ElementProperties, Vec<AdapterError>) {
-        read_with(element, live_read)
+        read_with(element, live_read, None)
+    }
+
+    /// The same live read, bounded by an operation deadline consulted between
+    /// each of the set's cross-process calls.
+    ///
+    /// `read_live` never checked the deadline between properties, so a caller
+    /// bounded by its own timeout - `live_read.rs`'s shared element read, and
+    /// through it every poll-style consumer - could pay the full width of the
+    /// property set on every iteration regardless of how little budget
+    /// remained. This is the same reads, the same classification, the same
+    /// `Vec<AdapterError>` shape; it only adds a place to stop early.
+    pub fn read_live_bounded(
+        element: &UIAElement,
+        deadline: Deadline,
+    ) -> (ElementProperties, Vec<AdapterError>) {
+        read_with(element, live_read, Some(deadline))
     }
 
     /// Reads the walk property set from an element's cache.
@@ -71,7 +154,7 @@ mod imp {
     /// `Absent`, so a missing request entry cannot masquerade as a provider
     /// that does not implement the property.
     pub fn read_cached(element: &UIAElement) -> (ElementProperties, Vec<AdapterError>) {
-        read_with(element, cached_read)
+        read_with(element, cached_read, None)
     }
 
     /// Reads one property live, for the cache policy's provider-class probe
@@ -120,15 +203,33 @@ mod imp {
         property_read_error(uia_failure_error(failure_of(error), context), property)
     }
 
+    /// `deadline` is consulted once per property, before that property's own
+    /// cross-process call: `None` (the walk's `read_live`/`read_cached`
+    /// paths, which own their budget elsewhere) never stops early, `Some`
+    /// (`read_live_bounded`) truncates the set the moment it expires, leaving
+    /// the remaining properties unread rather than starting a call that would
+    /// outlast the deadline anyway.
     fn read_with(
         element: &UIAElement,
         read: impl Fn(&UIAElement, TreeProperty) -> Result<PropertyOutcome, AdapterError>,
+        deadline: Option<Deadline>,
     ) -> (ElementProperties, Vec<AdapterError>) {
         let mut reads = Vec::with_capacity(TreeProperty::WALK_SET.len());
         let mut errors = Vec::new();
+        let mut truncated = false;
         for property in TreeProperty::WALK_SET {
             if property.is_element_valued() {
                 continue;
+            }
+            if let Some(deadline) = deadline {
+                if deadline.is_expired() {
+                    if !truncated {
+                        errors.push(deadline.timeout_error());
+                        truncated = true;
+                    }
+                    reads.push((property, PropertyOutcome::Unknown));
+                    continue;
+                }
             }
             match read(element, property) {
                 Ok(outcome) => reads.push((property, outcome)),
@@ -206,7 +307,7 @@ mod imp {
 }
 
 #[cfg(target_os = "windows")]
-pub use imp::{read_cached, read_live, read_one};
+pub use imp::{read_cached, read_live, read_live_bounded, read_one};
 
 #[cfg(test)]
 #[path = "properties_tests.rs"]

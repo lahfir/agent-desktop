@@ -9,10 +9,10 @@ use std::sync::mpsc::Sender;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowRect, IDC_ARROW,
-    IsWindowVisible, LoadCursorW, MSG, PostQuitMessage, RegisterClassExW, SW_SHOWNOACTIVATE,
-    SetWindowTextW, ShowWindow, TranslateMessage, WM_DESTROY, WNDCLASSEXW, WS_CHILD,
-    WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowRect, GetWindowTextW,
+    IDC_ARROW, IsWindowVisible, LoadCursorW, MSG, PostQuitMessage, RegisterClassExW,
+    SW_SHOWNOACTIVATE, SetWindowTextW, ShowWindow, TranslateMessage, WM_DESTROY, WNDCLASSEXW,
+    WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 const ES_PASSWORD: u32 = 0x0020;
@@ -26,6 +26,36 @@ pub struct WindowGeometry {
 
 fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Writes the marker into the password control and proves it is there by
+/// reading it back off the control.
+///
+/// The read-back is what makes the leak report a measurement. Every property
+/// the report reads comes back marker-free from a control that never held the
+/// marker, exactly as it does from one the provider is withholding, so a plant
+/// that silently failed would produce the same four green verdicts and the
+/// report would be answering a question no fixture had asked. An unverified
+/// plant is therefore a hard failure: the fixture refuses to become ready
+/// rather than let a leak verdict rest on an absent secret.
+fn plant_secret(password: HWND, secret: &str) -> Result<(), String> {
+    let planted = wide(secret);
+    if unsafe { SetWindowTextW(password, planted.as_ptr()) } == 0 {
+        return Err("SetWindowTextW failed on the password control".into());
+    }
+    let mut buffer = vec![0u16; planted.len() + 16];
+    let copied = unsafe { GetWindowTextW(password, buffer.as_mut_ptr(), buffer.len() as i32) };
+    if copied <= 0 {
+        return Err("the password control read back no text after the plant".into());
+    }
+    let readback = String::from_utf16_lossy(&buffer[..copied as usize]);
+    if readback != secret {
+        return Err(format!(
+            "the password control holds {} characters that are not the marker",
+            readback.chars().count()
+        ));
+    }
+    Ok(())
 }
 
 unsafe extern "system" fn window_proc(
@@ -113,8 +143,10 @@ pub fn host_window(class_name: &str, secret: &str, ready: Sender<Result<isize, S
     child(window, "STATIC", "probe-static", 0, 40);
     child(window, "EDIT", "probe-edit", CONTROL_BORDER, 72);
     let password = child(window, "EDIT", "", CONTROL_BORDER | ES_PASSWORD, 104);
-    let secret = wide(secret);
-    unsafe { SetWindowTextW(password, secret.as_ptr()) };
+    if let Err(error) = plant_secret(password, secret) {
+        let _ = ready.send(Err(error));
+        return;
+    }
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     let _ = ready.send(Ok(window as isize));
     let mut message = MSG::default();
