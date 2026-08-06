@@ -215,8 +215,7 @@ fn main() {
         println!("{rendered}");
         return;
     }
-    if swap_prefix.is_some() {
-        let prefix = swap_prefix.unwrap();
+    if let Some(prefix) = swap_prefix {
         let document = json!({
             "probe": "17-resolution",
             "uiautomation_version": option_env!("PROBE_UIAUTOMATION_VERSION").unwrap_or("unrecorded"),

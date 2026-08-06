@@ -72,8 +72,20 @@ pass through verbatim — the integrity-level SIDs are the point of several prob
 `ControlType`, `AutomationId`, `ClassName`, bounds, patterns, and states stay verbatim, and
 application-chrome names are kept by the caller simply not calling it.
 
+**`Protect-ProbeName` is a call-site reducer, not part of the gate, and a Rust probe cannot
+reach it.** `Protect-ProbeText` and `Test-CaptureRedaction` check operator identity — user
+name, machine and DNS names, profile paths, SIDs — and nothing else; neither has any rule
+for a content node's `Name`, in any probe language. A `.ps1` probe that reads a content
+`Name` calls `Protect-ProbeName` itself; a Rust probe emits its own JSON, which the
+orchestrator only passes through `Protect-ProbeText`, so **a Rust probe must reduce a
+content `Name` at the point of record** — a length, a presence flag, or a stable digest —
+because nothing downstream will do it and nothing downstream will notice. `probe_survival.rs`
+is the worked example: markers are paired across captures by an FNV-1a digest of the name,
+never by the name.
+
 There is no writer that bypasses the gate. `run-all.ps1` re-asserts the gate over every
-capture before exiting and names any offending file.
+capture before exiting and names any offending file — for the identity classes above, which
+is what "clean" means here.
 
 > Committed captures publish a software fingerprint of this VM: OS build, locale, installed
 > app versions, window class names, and automation ids. That is a deliberate choice — this

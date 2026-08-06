@@ -74,11 +74,11 @@ pub(crate) fn measure() -> Value {
     let unique_key = id_groups
         .iter()
         .find(|((id, _), count)| id.is_some() && **count == 1)
-        .map(|((id, role), _)| (id.clone().unwrap(), *role));
+        .and_then(|((id, role), _)| id.clone().map(|value| (value, *role)));
     let duplicate_key = id_groups
         .iter()
         .find(|((id, _), count)| id.is_some() && **count == 2)
-        .map(|((id, role), _)| (id.clone().unwrap(), *role));
+        .and_then(|((id, role), _)| id.clone().map(|value| (value, *role)));
 
     let count_for = |id: &str, role: i32, name: Option<&str>| {
         evidence

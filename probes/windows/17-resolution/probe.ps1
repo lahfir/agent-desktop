@@ -191,7 +191,7 @@ function Get-MarkerMap {
     $map = @{}
     if ($null -eq $Doc.measurements.marker_rows) { return $map }
     foreach ($row in @($Doc.measurements.marker_rows)) {
-        if ($row.marker) { $map[$row.name] = $row }
+        if ($row.marker -and $row.name_digest) { $map[$row.name_digest] = $row }
     }
     return $map
 }
@@ -256,18 +256,19 @@ function Invoke-ElectronSurvivalLeg {
         $mapA = Get-MarkerMap -Doc $phaseA
         $mapB = Get-MarkerMap -Doc $phaseB
         $mapC = Get-MarkerMap -Doc $phaseC
-        $names = @($mapA.Keys | Sort-Object)
+        $digests = @($mapA.Keys | Sort-Object)
         $rows = New-Object System.Collections.ArrayList
-        foreach ($name in $names) {
-            $a = $mapA[$name]
-            $b = $mapB[$name]
-            $c = $mapC[$name]
+        foreach ($digest in $digests) {
+            $a = $mapA[$digest]
+            $b = $mapB[$digest]
+            $c = $mapC[$digest]
             $bPathSame = ($null -ne $b) -and ($b.path -join ',' -eq $a.path -join ',')
             $cPathSame = ($null -ne $c) -and ($c.path -join ',' -eq $a.path -join ',')
             $bBoundsSame = ($null -ne $b) -and ($b.bounds -join ',' -eq $a.bounds -join ',')
             $cBoundsSame = ($null -ne $c) -and ($c.bounds -join ',' -eq $a.bounds -join ',')
             [void]$rows.Add([ordered]@{
-                name = $name
+                name_digest = $digest
+                name_length = $a.name_length
                 in_after_mutation = ($null -ne $b)
                 path_survived_mutation = $bPathSame
                 bounds_same_after_mutation = $bBoundsSame
@@ -283,7 +284,7 @@ function Invoke-ElectronSurvivalLeg {
                 after_relaunch = ($mapC.Count)
             }
             marker_rows = $rows
-            report_note = 'marker paths compared by name; a path change under mutation or relaunch is the churn the geometry tier must survive'
+            report_note = 'marker paths paired by content-free name digest, never by the note name itself; a path change under mutation or relaunch is the churn the geometry tier must survive'
         }
     } finally {
         Get-Process -Name 'Obsidian' -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
