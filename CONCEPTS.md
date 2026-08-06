@@ -44,11 +44,11 @@ The canonical kind of a control, drawn from a closed set core owns.
 Each platform maps its own taxonomy onto it — macOS from `AXRole` plus its subrole fold, Windows from UIA's `ControlType` refined by pattern availability — and never invents a token. The platform taxonomies are not parallel: UIA's `Tab` is the container and its `TabItem` is the page selector, which is the inverse of the ARIA naming core follows, and several canonical roles (`switch`, `colorwell`) have no control type at all and are reachable only through refinement or not at all. A role core does not recognise is `unknown`, which is a positive statement about the element and is distinct from a read that failed.
 
 ### State Vocabulary
-The closed set of state tokens a node may carry, defined by core's `STATE_VOCABULARY`.
+The closed set of state tokens a node may carry, owned by core rather than by any adapter.
 
 Adapters emit only members of it, and a membership assertion is paired with a negative control so it cannot pass vacuously. A token is emitted only where the platform evidenced it: where a platform has no source for a reserved token, the token stays unproduced rather than defaulted. Emitting from an ungated source is the characteristic failure here — a property that reports a plausible value on an element whose provider never implemented the underlying pattern will decorate every inert node in the tree with states it does not have.
 
-A role mapping can put a reserved token permanently out of reach on one platform without the token itself being wrong. The same logical control — a toggle button — surfaces as `role: button` with state `pressed` on macOS, because macOS keeps the control's role as `button` and reads its toggle value as `pressed`. Windows resolves the identical control to `role: switch` with state `checked` instead, because Windows reclassifies any `Button` control type that advertises toggle support to `switch` before states resolve, so the `role == button` precondition a `pressed` arm would need can never hold there. `pressed` therefore stays unproduced on Windows, deliberately, and the two adapters disagree on both the role and the state token for the same UI. This is a known, deliberate divergence for the current phase, not a bug — the cross-platform convergence question is owned by the Hardening & Integration Review sub-phase in `docs/phases.md`.
+A role mapping can put a reserved token permanently out of reach on one platform without the token itself being wrong. The same logical control — a toggle button — surfaces as `role: button` with state `pressed` on macOS, because macOS keeps the control's role as `button` and reads its toggle value as `pressed`. Windows resolves the identical control to `role: switch` with state `checked` instead, because Windows reclassifies any `Button` control type that advertises toggle support to `switch` before states resolve, so the `role == button` precondition a `pressed` arm would need can never hold there. `pressed` therefore stays unproduced on Windows, deliberately, and the two adapters disagree on both the role and the state token for the same UI. That divergence is a consequence of two correct role mappings meeting the same control, not a defect in either.
 
 ### Name Evidence
 The raw slots an adapter supplies so that **core**, not the adapter, computes the accessible name.
@@ -93,8 +93,32 @@ The tiered order a resolver tries to re-identify a ref, on the evidence a ref ca
 
 The geometry promotion is deliberately narrow: it fires only when the stored bounds hash comes from a positive-area rectangle and the ref has no meaningful text identity, and it resolves only on a unique live match. A zero-extent stored hash never promotes, because offscreen and virtualized elements collapse to shared degenerate rectangles that are structurally non-unique (A17-7).
 
+## Read Outcomes
+
+The four-way verdict a failed native read is classified into before anything decides what to do about it. The verdict settles two things and nothing else settles them: whether the answer is final, and whether repeating the read could change it. Collapsing any two of the four is the characteristic failure — treating a structurally impossible answer as a transport failure burns an entire deadline retrying what cannot succeed, and treating a transport failure as final reports a property as absent when nothing ever asked the target successfully.
+
 ### Settled Absence
-The retryable-versus-settled split in resolution and live reads, distinct from per-field Evidence Tri-State: a structurally-impossible answer - a property the provider does not implement, a completed search that found nothing, an anchor path that churn has made permanently wrong - is **settled** and is never retried, while a transport failure or an unreadable candidate is **incomplete**, retried within the operation's deadline and then stamped `deadline_elapsed` rather than discarded. A completed-search `STALE_REF` is complete with retryability derived from its error code's default, which is what lets core's hydration do its single fresh re-observation without the adapter burning the deadline replaying a stale search (A14-9, A17-8).
+A final answer that what was asked for does not exist — the provider does not implement the property or pattern, a completed search matched nothing, an anchor path that churn has made permanently wrong — so the read is never retried.
+
+Distinct from Evidence Tri-State, which grades one field of one read that succeeded; this grades the read itself. A completed search that resolved nothing is settled the same way, and reports its retryability from its error's own default rather than asserting a verdict of its own — that is what lets a caller spend its one fresh re-observation without the adapter first burning the deadline replaying a search it already knows will fail (A14-9, A17-8).
+
+### Retryable Failure
+A non-answer about the transport rather than about the target — the call timed out, faulted, or could not complete — which leaves the operation incomplete and the same read worth repeating until the operation's deadline, at which point it is stamped as having run out of budget rather than silently discarded.
+
+*Avoid:* transient failure, transport error.
+
+### Unavailable Element
+A report that the element itself has gone, whose finality depends on where it was hit: for the element a command already resolved it settles as a stale ref, while for a node met part-way down a walk it only marks that branch incomplete and leaves it retryable.
+
+### Terminal Failure
+A failure with no defined recovery — a denial, or a code nothing has classified — final in the same way a settled absence is, but saying nothing about the target, and surfaced to the caller as it stands.
+
+An unrecognised failure code lands here by default, so a read nobody has classified surfaces rather than being guessed into a retry loop.
+
+### Enumeration Exhaustion
+A child enumeration ending because it ran out of children, which the platform reports through the same error channel as a genuine fault and must be split back out from it.
+
+Retiring both through one arm is how a hung or faulting target becomes a truncated tree that reports itself complete: exhaustion ends the list and leaves the subtree complete, while anything else marks it incomplete and surfaces a structured error. The values that distinguish the two are measured against the real platform, never inferred from the client library's types.
 
 ## Coordination
 
@@ -150,7 +174,7 @@ Each adapter maps native primitives into this shared vocabulary before core eval
 ### Interaction Policy
 The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input. The CLI exposes two: **headless** (the default — accessibility-only, no cursor, fails closed when the semantic path is unavailable) and **headed** (opt-in via the global `--headed` flag — authorizes the action's declared focus and cursor preconditions). A third, **focus fallback**, sits between them: it permits focus but not cursor movement. It is not reachable from the CLI flag — it is the base policy of an explicit key press, and language bindings may select it directly.
 
-Core owns those preconditions through `HeadedRequirement`: `FocusedWindow` for keyboard or focus-sensitive work, and `FocusedWindowAndCursor` for pointer delivery. For ref actions, core focuses the exact source window before dispatch and resolves a verified target point for pointer work; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. On macOS, headed `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and the remaining semantic actions stay semantic after the core focus precondition.
+Core owns the precondition each action declares — a focused window for keyboard or focus-sensitive work, a focused window plus a verified cursor target for pointer delivery — and satisfies it before dispatch. For ref actions core focuses the exact source window, not merely the owning application; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. Which actions a headed policy makes physical rather than semantic is per-action and per-platform, and is settled by that action's own chain rather than by the policy.
 
 ### Headless Ref Action
 A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
@@ -179,11 +203,74 @@ The requirement that language bindings using refs follow the same strict resolut
 ## Platform Evidence
 
 ### Probe Corpus
-The committed, re-runnable set of raw platform scripts under `probes/<platform>/` that a platform exploration sub-phase (2.0, 3.0) uses to observe real OS behavior before any adapter code exists. Probes capture their outputs beside the scripts; they never modify product code.
+The committed, re-runnable set of raw platform scripts a platform's exploration work uses to observe real OS behavior before any adapter code for that platform exists.
+
+Probes write their captures beside the scripts and never modify product code, so the corpus can be re-run years later against a changed OS and its answers compared with what was originally observed.
+
+### Capture
+One probe pass's committed output: a redacted, machine-readable record of what the OS actually did, stored beside the probe that produced it and cited by the findings ledger.
+
+Every capture is committed alongside a normalized twin whose run-varying values — handles, process and thread ids, timings, coordinates beyond a fixed tolerance — are canonicalized, so re-running the corpus later diffs empty unless the platform genuinely changed. A non-empty diff is real drift, which is precisely what a later re-runner needs to see.
+
+### Placeholder Capture
+A file written where a capture should be, recording that a pass did not run or produced nothing — as distinct from a capture whose content is a negative result.
+
+The distinction is the whole point: recording that nothing was found is data, recording that nothing was looked at is not. A placeholder satisfies any check that asks only whether an artifact exists, which is how a run that measured nothing reports success.
+
+### Redaction Gate
+The mandatory pass every capture is written through, replacing the operator's identity — user name, machine and host names, profile paths, the machine-unique parts of security identifiers — with stable placeholders so evidence can be committed.
+
+The gate covers operator identity and nothing else. Reducing a content node's own text — a document title, someone's file name showing through the accessibility tree — is the probe author's job at the call site, in whatever language the probe is written; assuming the gate does it is how private content reaches a committed capture.
+
+### Census
+A measurement that tallies how often something occurs across a whole real application tree — which control kinds appear, how many carry an identifier, what actions and states are observed under each — committed in place of a per-node dump.
+
+Preferred because a full dump repeats itself hundreds of times over and most of its per-node values cannot be asserted against at all; the tally is what a reviewer can actually judge a mapping by.
 
 ### Findings Ledger
-The `FINDINGS.md` file inside a probe corpus mapping every experiment to observed behavior and a doc-alignment verdict (confirms / contradicts / new edge) against `docs/phases.md`. A contradicts verdict obligates a same-PR correction of `docs/phases.md`; the ledger being complete is the gate that unblocks the platform's adapter sub-phases.
+The document inside a probe corpus mapping every experiment to what was observed, the client stack and environment that produced it, and a verdict on whether it confirms, contradicts, or extends the product contract.
+
+A contradicting verdict obligates correcting the product contract in the same change that discovered it, and the ledger being complete is what unblocks that platform's adapter work. Each row carries a stable id naming its area and its position in that area (`A15-7`), and that id is the project's citation form for a measurement: unlike a reference to the delivery plan, a row id stays true however the roadmap moves, so shipped source may cite one the way it would cite a CVE.
+
+### Dev Box
+The single interactive development machine a probe corpus runs on, whose full environment is recorded once in the ledger so every row is read against it.
+
+A number measured only here is a fact about this machine, not about the design — repetition removes noise but never removes environment, and a result that looked like a design win on the dev box alone has already turned out to be a dev-box artifact once.
+
+### Hosted Runner
+The ephemeral CI machine a probe is re-run on, differing from the dev box in core count, power profile and contention, and therefore the second environment a cost or capability claim must survive before it is written down as fact.
+
+Every run and every capture is labelled with which of the two produced it, so a reader comparing two numbers never has to guess whether they are comparable.
+
+## Verification And Dogfooding
+
+### Mandatory Measurement Gate
+A probe run's own assertion that it produced every measurement it declared it would, failing the run when a declared capture is missing or turns out to be a placeholder.
+
+Declaring nothing fails too, and for the same reason: a run that asserted nothing is indistinguishable from a clean one, so an empty declaration is reported as a gap in its own right rather than passing vacuously. The gap is computed on every run, and enforced where no human is reading the output.
+
+### Gate Self-Test
+A committed fixture an automated verification check runs against itself before every real scan, so a check that has quietly stopped detecting anything fails loudly instead of reporting a clean tree.
+
+Two rules make it worth having. The fixture must invoke the same rule declaration the real scan invokes — a shared program text, never a copied pattern — or it proves only that the copy still agrees with itself while the shipped rule drifts away from both. And it must cover the check's ability to run at all, not merely its rule: a gate whose interpreter is absent, whose file never got its executable bit, or whose regex dialect is a silent no-op on the platform that actually runs it exits clean and is indistinguishable from a passing tree. Finding nothing is a failure, never a skip.
+
+### Must-Catch / Must-Pass Fixture
+The two halves of a gate self-test: the lines the rule is required to flag, and the lines it is required to leave alone.
+
+Both halves are load-bearing in opposite directions — a rule loosened until the very case it exists to catch escapes fails the first half, a rule tightened until innocent text trips it fails the second — and every fixture line is run through every rule collectively, so a newly added rule is checked against the old lines it must not start breaking.
+
+### Dogfood Run
+Driving the shipped release binary against real software nobody in this repository wrote and judging it by reading its output, because correctness against real providers is not something a runner-hosted assertion can encode.
+
+This is where a platform adapter's correctness is actually established; a green build proves totality and wiring, not that a mapping is right. Anything the run could not exercise is reported as unexercised rather than presented as verified, and every target shows content the repository controls so the record can be committed.
+
+### Dogfood Report
+The committed, durable record of one dogfood run: its environment, its target matrix, its per-target judgements, what it fixed, and what it left open.
+
+The run is the measurement and the report is bookkeeping over it; neither substitutes for the other. A run with no report leaves the next planner nothing to read, and writing a report is not itself a measurement — what makes a claim in one trustworthy is the run behind it, so a report states what was exercised and what was not rather than reading as uniform verification. Anything the run leaves unmeasured is additionally written into the scope that now owns it, because a residual recorded only in a report is read by this change's reviewer and by no one after.
 
 ## Relationships
 
-A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected by ID within that same namespace. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether the action can safely dispatch. In headed mode, core applies the action's focus/cursor requirement before the platform adapter executes the action-specific chain under its own deadline. FFI ref-action parity keeps that same relationship true for language bindings.
+A session owns one latest-snapshot pointer, an optional manifest-gated trace directory, and persisted snapshot refmaps. A snapshot persists a ref map and can be selected by ID within that same namespace. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether the action can safely dispatch. In headed mode, core applies the action's focus/cursor requirement before the platform adapter executes the action-specific chain under its own deadline. FFI ref-action parity keeps that same relationship true for language bindings. Every native read along that path lands on one of the read outcomes, and it is the outcome — not the error text — that decides whether the resolver retries within its deadline or stops.
+
+Evidence flows the other way. A probe writes captures, the findings ledger cites them by row id, a contradicting row corrects the product contract, and the adapter is then built against measured behavior. What the corpus cannot settle, a dogfood run does against real software, and its report is what the next planner reads. The mandatory measurement gate and gate self-tests exist so that neither a probe run nor a verification check can report success having asserted nothing.

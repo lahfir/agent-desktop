@@ -58,10 +58,17 @@ deletion without treating a mock as a platform oracle.
   user data or depend on an arbitrary foreground application.
 - Record a skipped native gate as skipped, not green.
 
-## Recurrence
+## Standing practice on Windows
 
-The Windows vocabulary work (2026-08-01) ran the same gate on a platform with no fixture harness
-yet, and the gate took a different shape: `probes/windows/scratch/run-dogfood.ps1` drove the
+Windows carries no fixture harness, so the gate takes the form of a scripted
+dogfood run against off-the-shelf software, and every sub-phase does one before
+it merges. The committed reports in `docs/dogfood-reports/` are the record: the
+macOS enhanced-reliability run that set the pattern, then vocabulary
+(sub-phase 2.3), the observation read path (2.4), and resolution and the live
+locator (2.5). This is not a rule that recurred; it is how each layer of the
+adapter enters the product.
+
+The vocabulary run shows what the shape buys. `probes/windows/scratch/run-dogfood.ps1` drove the
 `ControlType`→`Role`, action, and state vocabulary against four real UI stacks nobody in this
 repository wrote — classic Notepad (Win32 `EDIT` proxy), Explorer (DirectUI shell), and
 WinForms/WPF scratch fixtures. It found one real defect no unit test had: `invalid` was
@@ -76,11 +83,9 @@ in `.gitignore`), because a census can carry a real application's on-screen text
 report describing shapes and counts does not — the durable record is the report, not the
 capture.
 
-This confirms the rule is not macOS- or fixture-specific: a platform-neutral vocabulary layer
-still needs its own real-app pass, and that pass can take the form of a scripted dogfood run
-against off-the-shelf software instead of a purpose-built fixture app, provided it keeps the
-same discipline — real software, effects verified independently, skips recorded honestly, and
-raw captures kept out of the repository while the judgement drawn from them is kept in it.
+A run substitutes for the fixture app only while it keeps the fixture app's discipline — real
+software, effects verified independently, skips recorded honestly, and raw captures kept out of
+the repository while the judgement drawn from them is kept in it.
 
 ## Related
 
