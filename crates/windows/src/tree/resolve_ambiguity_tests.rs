@@ -221,18 +221,18 @@ fn assert_redacted(error: &AdapterError, secret: &str, slot: &str) {
 }
 
 /// The `AMBIGUOUS_TARGET` branch, driven end to end against two live
-/// controls no tier can separate, with the redaction commitment asserted
-/// rather than eyeballed.
+/// controls no tier can separate, with the error's redaction guarantee
+/// asserted rather than eyeballed.
 ///
 /// The pair shares role, name, `AutomationId` and rectangle, so the identity
 /// tiers both match and the bounds tie-break is handed two equal hashes plus
 /// the stored one - the arm that must stay ambiguous rather than pick a
 /// candidate, since picking one is the silent-wrong-target shape A7-3
-/// measured. The plan's own note is what the second half pins: macOS embeds
-/// entry name, description and window title in its ambiguous details, and
-/// Windows deliberately does not, so the resolver's answer carries shape
-/// only - kind and candidate count - with no application-derived text in the
-/// message, the suggestion, the platform detail or the details.
+/// measured. The second half pins a deliberate divergence from macOS, which
+/// embeds entry name, description and window title in its ambiguous details:
+/// here the resolver's answer carries shape only - kind and candidate count -
+/// with no application-derived text in the message, the suggestion, the
+/// platform detail or the details.
 #[test]
 fn duplicate_evidence_candidates_settle_ambiguous_target_carrying_no_application_text() {
     crate::tree::fixture::ensure_test_apartment();

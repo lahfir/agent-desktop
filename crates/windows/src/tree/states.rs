@@ -65,9 +65,13 @@ const READ_HEALTH_PROBES: [TreeProperty; 6] = [
 /// unusable source, but a role vocabulary the producer can never see because
 /// an earlier stage has already claimed it for `switch`. The same logical
 /// control therefore surfaces as `button` + `pressed` on macOS and `switch` +
-/// `checked` on Windows. That divergence is deliberate; see `CONCEPTS.md`'s
-/// State Vocabulary entry and `docs/phases.md`'s Hardening & Integration
-/// Review scope for the owning decision.
+/// `checked` on Windows. The divergence is deliberate and unreconciled: it is
+/// the honest reading of what each platform's tree says, and collapsing it
+/// would mean either re-deriving a role this stack never exposes or emitting
+/// a state with no source behind it. The cost is that a caller matching on
+/// `button` + `pressed` will not find this control on Windows.
+/// `CONCEPTS.md`'s State Vocabulary entry defines the tokens both adapters
+/// answer to.
 ///
 /// # Known vs Unknown
 /// `LocatorField::Unknown` is returned only when every [`READ_HEALTH_PROBES`]
