@@ -339,6 +339,41 @@ fn a_stored_index_past_the_sibling_cap_settles_the_anchor_rather_than_retrying()
     assert!(landing.complete);
 }
 
+/// The seam that carries a path walk's own gap out to the resolution that
+/// asked for it. Landing nowhere has two causes that must never be conflated:
+/// the stored index is genuinely absent, or the enumeration that would have
+/// reached it faulted. Only the second leaves a region unread, and
+/// `element_at_path` is where the caller learns which it was. Losing that
+/// distinction settles `STALE_REF` - "the element is gone" - off a walk that
+/// never finished, and the path walk is the one tier descending past the broad
+/// search's depth cap, so its gap can be the only evidence left to read.
+#[test]
+fn a_faulted_path_step_lands_nowhere_and_reports_the_walk_unfinished() {
+    let walk = |tree: &StubTree| {
+        let mut incomplete = false;
+        let landed = crate::tree::resolve_search::element_at_path(
+            tree,
+            &0,
+            &[2],
+            &live_budget(),
+            &mut incomplete,
+        )
+        .expect("a transport fault never surfaces for the search");
+        (landed, incomplete)
+    };
+
+    assert_eq!(
+        walk(&StubTree::with_children(3).failing_on_siblings(UiaFailure::Sentinel(ERR_TIMEOUT))),
+        (None, true),
+        "a step that could not be read lands nowhere and is a gap the resolution must see"
+    );
+    assert_eq!(
+        walk(&StubTree::with_children(3)),
+        (Some(3), false),
+        "the control reaches the stored index on a whole walk, so the pin above is not vacuous"
+    );
+}
+
 /// The shape-only phrases each axis reports under are part of the two
 /// policies, not of the shared loop, so a caller cannot lose its own wording
 /// by reusing the enumeration.

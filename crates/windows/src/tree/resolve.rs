@@ -55,6 +55,18 @@ pub(crate) fn resolve_element_strict(
     retry_incomplete_until(deadline, || resolve_attempt(entry, deadline))
 }
 
+/// One resolution attempt: the path fast-path, then the broad search, then the
+/// verdict.
+///
+/// Both walks fold into a single incompleteness flag, and declaring it before
+/// the fast path rather than beside the search is what makes that true. A
+/// transport gap or a vanished node met while walking the stored path is a
+/// region this attempt did not read, exactly as one met in the broad search is,
+/// and the path walk is the only tier that descends past the search's own depth
+/// cap - so a gap there can be the sole signal that the tier able to reach the
+/// element never got to look. A second flag scoped to the fast path would let
+/// that gap die with it, and the attempt would settle `STALE_REF` - "the
+/// element is gone" - off a walk that never finished.
 #[cfg(target_os = "windows")]
 fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle, AdapterError> {
     if entry_is_unverifiable(entry) {
@@ -65,15 +77,15 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
     let prepared = source.prepare_root(&root)?;
 
     let budget = resolve_walk_budget(deadline);
+    let mut incomplete = false;
 
     if can_use_path_fast_path(entry) {
-        let mut path_incomplete = false;
         if let Some(candidate) = element_at_path(
             &source,
             &prepared,
             &entry.scope.path,
             &budget,
-            &mut path_incomplete,
+            &mut incomplete,
         )? {
             let (_, evidence, _) = source.evidence(&candidate);
             let role_matches = evidence
@@ -95,7 +107,6 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
     }
 
     let mut searched = Vec::new();
-    let mut incomplete = false;
     let search_ctx = SearchContext {
         source: &source,
         entry,

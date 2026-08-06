@@ -1,13 +1,14 @@
 //! The resolution search family: the bounded broad search, the path
 //! fast-path, and the geometry promotion.
 //!
-//! Split from `resolve.rs` to keep both files under the 400-line cap as the
-//! resolver grows (the plan's file-size note names this seam). Everything here
-//! mirrors a macOS shape: the search's role gate and incomplete tracking
-//! (`resolve_search.rs:192-309`), the path fast-path and its eligibility gate
-//! (`resolve.rs:280-290`), and the geometry promotion predicate
-//! (`resolve_search.rs:330-333`) with one Windows-measured addition - the
-//! stored hash must come from a positive-area rectangle (A17-7).
+//! Split from `resolve.rs` so that neither file crosses the 400-line cap.
+//! Everything here mirrors a shape the macOS adapter already settled: the
+//! search's role gate and its incomplete tracking, the path fast-path behind
+//! `can_use_path_fast_path` (`crates/macos/src/tree/resolve.rs`), and the
+//! geometry promotion predicate `provisional_geometry_candidate`
+//! (`crates/macos/src/tree/resolve_search.rs`) - with one Windows-measured
+//! addition, that the stored hash must come from a positive-area rectangle
+//! (A17-7).
 
 use agent_desktop_core::{
     AdapterError, Deadline, ErrorCode, LocatorEvidence, RefEntry,
@@ -105,14 +106,20 @@ pub(crate) fn can_use_path_fast_path(entry: &RefEntry) -> bool {
 ///
 /// A path step that lands nowhere yields `None`; the caller treats that as
 /// a miss and falls back to the broad search, never as a verdict that the
-/// target is gone.
-pub(crate) fn element_at_path(
-    source: &UiaTreeSource,
-    root: &UIAElement,
+/// target is gone. A step that could not be *read*, though, is folded into the
+/// caller's incompleteness flag, because landing nowhere for want of a
+/// successful read is not the same answer as landing nowhere.
+///
+/// Generic over the tree source so the two are separable: what a gap on this
+/// walk means to the resolution as a whole can be exercised without a live UI
+/// Automation provider to fault on demand.
+pub(crate) fn element_at_path<S: TreeSource>(
+    source: &S,
+    root: &S::Node,
     path: &[usize],
     budget: &WalkBudget,
     incomplete: &mut bool,
-) -> Result<Option<UIAElement>, AdapterError> {
+) -> Result<Option<S::Node>, AdapterError> {
     let landing = descent::descend_path(source, root, path, budget, &SEARCH_DESCENT)?;
     *incomplete |= !landing.complete;
     Ok(landing.element)

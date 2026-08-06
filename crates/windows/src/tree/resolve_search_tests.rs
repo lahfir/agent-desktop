@@ -213,8 +213,19 @@ fn should_stop_collecting_fires_only_past_one_match_with_no_stored_hash() {
     assert!(!should_stop_collecting(2, &with_hash));
 }
 
+/// The geometry tier's promotion decision, taken against a live control rather
+/// than a hand-built one.
+///
+/// The fixture's password edit is the shape the tier exists for: a ref stored
+/// for secure content carries no text identity, so positive-area geometry is
+/// the only evidence left to verify it against. What is asserted is the
+/// promotion itself - `geometry_matches` over the evidence the walk actually
+/// read - and each condition that produces it is withdrawn in turn, so
+/// weakening either one of them shows up here. Asserting only that the fixture
+/// has a secure element would survive inverting the promotion predicate
+/// outright, pinning the fixture instead of the tier.
 #[test]
-fn the_live_fixture_exposes_a_promotion_eligible_password_edit() {
+fn a_ref_stored_for_the_live_secure_edit_promotes_on_geometry_alone() {
     ensure_test_apartment();
     let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
     let source = UiaTreeSource::for_root(
@@ -239,9 +250,37 @@ fn the_live_fixture_exposes_a_promotion_eligible_password_edit() {
     let found = find_secure(&source, &prepared, 0, &budget, &mut prefix)
         .expect("the fixture walk succeeds")
         .expect("a secure element exists");
-    let (_, properties, evidence, _) = found;
-    assert!(properties.is_secure());
-    assert!(evidence.role.known().is_some());
+    let (_, properties, live, _) = found;
+    assert!(
+        properties.is_secure(),
+        "the control under test is the secure edit, not some other element"
+    );
+    let live_bounds = *live.ref_evidence.bounds.known().expect("live bounds");
+    let live_hash = live_bounds
+        .bounds_hash()
+        .expect("the live secure edit occupies a positive-area rectangle");
+
+    let stored = entry(Some(live_bounds), Some(live_hash), None, None);
+    assert!(
+        provisional_geometry_candidate(&stored),
+        "a ref with no text identity and a positive-area hash is what the tier promotes"
+    );
+    assert!(
+        geometry_matches(&stored, &live),
+        "the stored geometry must promote against the evidence the walk read"
+    );
+
+    let named = entry(Some(live_bounds), Some(live_hash), Some("Password"), None);
+    assert!(
+        !geometry_matches(&named, &live),
+        "a ref with a text identity has a tier of its own and must never promote on geometry"
+    );
+
+    let flattened = entry(Some(rect(0.0, 0.0)), Some(live_hash), None, None);
+    assert!(
+        !geometry_matches(&flattened, &live),
+        "a zero-extent stored rectangle is structurally non-unique and must never promote"
+    );
 }
 
 fn find_secure(

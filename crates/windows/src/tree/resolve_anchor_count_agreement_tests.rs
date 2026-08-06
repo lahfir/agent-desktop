@@ -21,14 +21,21 @@ fn fixture_window(fixture: &HostedFixture) -> WindowInfo {
     }
 }
 
-/// The dogfood report's own residual: "`find --count` vs materialized
-/// agreement not asserted on a real app". A real application's count is
-/// still off limits (the plan forbids naming one in CI), but the hosted
-/// fixture is repo-controlled and deterministic, so it is exactly the
-/// control this residual asks for. The fixture exposes two `textfield`
-/// controls (the plain edit and the password field), so a real divergence
-/// between the two selection modes - not a coincidental single-match count -
-/// is what this pins.
+/// `find --count` and a materialized `find` must select the same set from the
+/// same query.
+///
+/// The two run different paths - count mode resolves a total without ever
+/// materializing a match - so a divergence between them is invisible to any
+/// test that exercises one alone. What is pinned is the agreement relation,
+/// never a literal total: the number is a property of today's fixture and
+/// changes when a control is added, while the relation is the requirement and
+/// holds whatever the fixture grows. The query is chosen to match more than one
+/// control, because a single-match query satisfies agreement no matter how
+/// either mode selected.
+///
+/// A real application is a poor control here, since its own count moves
+/// underneath the assertion; the hosted fixture is repo-owned and
+/// deterministic, so a disagreement can only come from the code under test.
 #[test]
 fn find_count_and_materialized_find_agree_on_the_same_query() {
     ensure_test_apartment();
@@ -63,9 +70,10 @@ fn find_count_and_materialized_find_agree_on_the_same_query() {
     )
     .expect("materialized resolution succeeds on the fixture");
 
-    assert_eq!(
-        counted.meta.total_matches, 2,
-        "the fixture exposes exactly its plain and password textfields"
+    assert!(
+        counted.meta.total_matches > 1,
+        "the query must match more than one control, or agreement holds trivially and the two \
+         selection modes have no way to disagree"
     );
     assert_eq!(
         materialized.meta.total_matches, counted.meta.total_matches,
