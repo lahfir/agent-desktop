@@ -336,30 +336,23 @@ fn a_stored_index_past_the_sibling_cap_settles_the_anchor_rather_than_retrying()
         landing.element.is_none(),
         "an index the truncated list does not reach lands nowhere"
     );
-    assert!(landing.complete);
+    assert!(!landing.unread_region);
 }
 
 /// The seam that carries a path walk's own gap out to the resolution that
 /// asked for it. Landing nowhere has two causes that must never be conflated:
 /// the stored index is genuinely absent, or the enumeration that would have
 /// reached it faulted. Only the second leaves a region unread, and
-/// `element_at_path` is where the caller learns which it was. Losing that
+/// `walk_stored_path` is where the caller learns which it was. Losing that
 /// distinction settles `STALE_REF` - "the element is gone" - off a walk that
 /// never finished, and the path walk is the one tier descending past the broad
 /// search's depth cap, so its gap can be the only evidence left to read.
 #[test]
 fn a_faulted_path_step_lands_nowhere_and_reports_the_walk_unfinished() {
     let walk = |tree: &StubTree| {
-        let mut incomplete = false;
-        let landed = crate::tree::resolve_search::element_at_path(
-            tree,
-            &0,
-            &[2],
-            &live_budget(),
-            &mut incomplete,
-        )
-        .expect("a transport fault never surfaces for the search");
-        (landed, incomplete)
+        let landing = crate::tree::resolve_search::walk_stored_path(tree, &0, &[2], &live_budget())
+            .expect("a transport fault never surfaces for the search");
+        (landing.element, landing.unread_region)
     };
 
     assert_eq!(

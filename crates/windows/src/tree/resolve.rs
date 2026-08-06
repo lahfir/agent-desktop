@@ -2,19 +2,21 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, NativeHandle, RefEnt
 
 #[cfg(target_os = "windows")]
 use super::element::UIAElement;
+#[cfg(all(test, target_os = "windows"))]
+use super::resolve_match::CandidateOutcome;
+#[cfg(target_os = "windows")]
+use super::resolve_match::ambiguous_target_error;
 use super::resolve_match::stale_ref_error;
 #[cfg(target_os = "windows")]
-use super::resolve_match::{CandidateOutcome, ambiguous_target_error};
+use super::resolve_search::descent::PathLanding;
 #[cfg(target_os = "windows")]
 use super::resolve_search::{
-    SearchContext, can_use_path_fast_path, element_at_path, entry_is_unverifiable,
-    geometry_matches, identity_unknown_error, resolve_walk_budget, search_under,
-    should_stop_collecting,
+    SearchContext, accept_path_landing, can_use_path_fast_path, entry_is_unverifiable,
+    identity_unknown_error, resolve_walk_budget, search_under, should_stop_collecting,
+    walk_stored_path,
 };
-#[cfg(target_os = "windows")]
-use super::walker::TreeSource;
 #[cfg(all(test, target_os = "windows"))]
-use super::walker::WalkBudget;
+use super::walker::{TreeSource, WalkBudget};
 #[cfg(target_os = "windows")]
 use super::walker_source::UiaTreeSource;
 
@@ -55,18 +57,15 @@ pub(crate) fn resolve_element_strict(
     retry_incomplete_until(deadline, || resolve_attempt(entry, deadline))
 }
 
-/// One resolution attempt: the path fast-path, then the broad search, then the
+/// One resolution attempt: the path tier, then the broad search, then the
 /// verdict.
 ///
-/// Both walks fold into a single incompleteness flag, and declaring it before
-/// the fast path rather than beside the search is what makes that true. A
-/// transport gap or a vanished node met while walking the stored path is a
-/// region this attempt did not read, exactly as one met in the broad search is,
-/// and the path walk is the only tier that descends past the search's own depth
-/// cap - so a gap there can be the sole signal that the tier able to reach the
-/// element never got to look. A second flag scoped to the fast path would let
-/// that gap die with it, and the attempt would settle `STALE_REF` - "the
-/// element is gone" - off a walk that never finished.
+/// The two tiers report what they left unread separately and keep it separate
+/// all the way to [`attempt_verdict`], because a landing and a region are
+/// different claims. The path tier's landing is decided by
+/// [`accept_path_landing`], which is handed the landed element alone; the
+/// region each tier left unread only ever bears on the *negative* verdict, and
+/// is composed once, at the end, by the function that settles it.
 #[cfg(target_os = "windows")]
 fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle, AdapterError> {
     if entry_is_unverifiable(entry) {
@@ -77,48 +76,40 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
     let prepared = source.prepare_root(&root)?;
 
     let budget = resolve_walk_budget(deadline);
-    let mut incomplete = false;
 
-    if can_use_path_fast_path(entry) {
-        if let Some(candidate) = element_at_path(
-            &source,
-            &prepared,
-            &entry.scope.path,
-            &budget,
-            &mut incomplete,
-        )? {
-            let (_, evidence, _) = source.evidence(&candidate);
-            let role_matches = evidence
-                .role
-                .known()
-                .is_some_and(|role| role == &entry.identity.role);
-            if role_matches {
-                match super::resolve_match::candidate_outcome(entry, &evidence) {
-                    CandidateOutcome::Matched => {
-                        return Ok(into_verified_handle(candidate, entry));
-                    }
-                    CandidateOutcome::Incomplete if geometry_matches(entry, &evidence) => {
-                        return Ok(into_verified_handle(candidate, entry));
-                    }
-                    _ => {}
-                }
-            }
-        }
+    let path = if can_use_path_fast_path(entry) {
+        walk_stored_path(&source, &prepared, &entry.scope.path, &budget)?
+    } else {
+        PathLanding::not_walked()
+    };
+    if let Some(accepted) = path
+        .element
+        .as_ref()
+        .and_then(|candidate| accept_path_landing(&source, candidate, entry))
+    {
+        return Ok(into_verified_handle(accepted, entry));
     }
 
     let mut searched = Vec::new();
+    let mut search_unread_region = false;
     let search_ctx = SearchContext {
         source: &source,
         entry,
         budget: &budget,
     };
-    search_under(&search_ctx, &prepared, 0, &mut searched, &mut incomplete)?;
+    search_under(
+        &search_ctx,
+        &prepared,
+        0,
+        &mut searched,
+        &mut search_unread_region,
+    )?;
 
     let candidate_hashes: Vec<Option<u64>> = searched
         .iter()
         .map(|candidate| candidate.bounds_hash)
         .collect();
-    match classify_search(&candidate_hashes, incomplete, entry) {
+    match attempt_verdict(&candidate_hashes, &path, search_unread_region, entry) {
         SearchVerdict::Incomplete => Err(identity_unknown_error(entry)),
         SearchVerdict::Stale => Err(stale_ref_error(entry)),
         SearchVerdict::Resolved(index) => {
@@ -147,7 +138,39 @@ enum SearchVerdict {
     Ambiguous,
 }
 
-/// Composes the searched candidates' tie-break hashes with the incomplete
+/// Composes every tier's unread region into the one question
+/// [`classify_search`] asks - did this attempt read enough of the tree to
+/// settle a negative verdict - and classifies the collected candidates
+/// against it.
+///
+/// Takes the path tier's landing itself rather than a bare flag, so the tier's
+/// own report is the only thing that can answer for it. A gap met while
+/// walking the stored path is a region this attempt did not read, exactly as
+/// one met in the broad search is, and the path walk is the only tier that
+/// descends past the search's own depth cap - so a gap there can be the sole
+/// signal that the tier able to reach the element never got to look. An
+/// attempt that dropped it would settle `STALE_REF` - "the element is gone" -
+/// off a walk that never finished.
+///
+/// The landing's own `element` is deliberately unread here. Whether the path
+/// found something is settled before this point, by
+/// [`super::resolve_search::accept_path_landing`]; what survives to the
+/// verdict is only what the walk did not see.
+#[cfg(target_os = "windows")]
+fn attempt_verdict(
+    candidate_hashes: &[Option<u64>],
+    path: &PathLanding<UIAElement>,
+    search_unread_region: bool,
+    entry: &RefEntry,
+) -> SearchVerdict {
+    classify_search(
+        candidate_hashes,
+        path.unread_region || search_unread_region,
+        entry,
+    )
+}
+
+/// Composes the searched candidates' tie-break hashes with the unread-region
 /// flag into a verdict, mirroring macOS's ordering
 /// (`crates/macos/src/tree/resolve_search.rs:43-58`) even though nothing on
 /// Windows stops the search itself early: `search_under` always walks the
@@ -165,11 +188,11 @@ enum SearchVerdict {
 #[cfg(target_os = "windows")]
 fn classify_search(
     candidate_hashes: &[Option<u64>],
-    incomplete: bool,
+    unread_region: bool,
     entry: &RefEntry,
 ) -> SearchVerdict {
     let stop_collecting = should_stop_collecting(candidate_hashes.len(), entry);
-    if incomplete && !stop_collecting {
+    if unread_region && !stop_collecting {
         return SearchVerdict::Incomplete;
     }
     match candidate_hashes.len() {
@@ -335,6 +358,10 @@ pub(crate) fn resolve_window_root(
 #[cfg(all(test, target_os = "windows"))]
 #[path = "resolve_tests.rs"]
 mod windows_only;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_verdict_tests.rs"]
+mod verdict;
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "resolve_pair_window.rs"]

@@ -80,6 +80,77 @@ fn stored_entry(
     }
 }
 
+/// The path tier's positive half, driven against a live tree, and the shape a
+/// static reading of the resolver mistook for unsound: the tier settles on the
+/// element the stored path names, from that element's own evidence and nothing
+/// else. No completeness of the surrounding walk is in scope for it - the
+/// signature has no room for one - because a landing is the child the stored
+/// index names whatever else an enumeration failed to read. What a truncation
+/// removes is a suffix, and it lies past the index the walk already used.
+///
+/// Both directions are pinned on the same live elements: the stored ref's own
+/// landing settles, and a same-role landing the stored identity refutes does
+/// not. A tier that accepted everything, or nothing, fails one of the two.
+#[test]
+fn the_path_tier_settles_on_the_element_the_stored_path_names_and_on_no_other() {
+    crate::tree::fixture::ensure_test_apartment();
+    let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
+    let deadline = crate::tree::walker_fake::deadline();
+    let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline)
+        .expect("the fixture window resolves");
+    let source = UiaTreeSource::for_root(&root).expect("a tree source");
+    let prepared = source.prepare_root(&root).expect("a prepared root");
+    let budget = WalkBudget::new(10, deadline);
+
+    let mut prefix = Vec::new();
+    let mut catalogued = Vec::new();
+    catalogue(&source, &prepared, 0, &budget, &mut prefix, &mut catalogued);
+
+    let (target_path, target) = catalogued
+        .iter()
+        .find(|(_, evidence)| {
+            evidence
+                .name
+                .known()
+                .is_some_and(|name| name == TARGET_NAME)
+        })
+        .cloned()
+        .expect("the fixture exposes its named button");
+    let (decoy_path, _) = catalogued
+        .iter()
+        .find(|(path, evidence)| {
+            path != &target_path
+                && evidence.role.known() == target.role.known()
+                && evidence.name.known() != target.name.known()
+        })
+        .cloned()
+        .expect("the fixture exposes a same-role control with a different identity");
+
+    let entry = stored_entry(
+        fixture.handle(),
+        fixture.process_id(),
+        &target,
+        target_path.clone(),
+    );
+    let land = |path: &RefPath| {
+        crate::tree::resolve_search::walk_stored_path(&source, &prepared, path, &budget)
+            .expect("the path walk answers")
+            .element
+            .expect("the stored path still lands on a live element")
+    };
+
+    assert!(
+        crate::tree::resolve_search::accept_path_landing(&source, &land(&target_path), &entry)
+            .is_some(),
+        "the tier must settle on the element the stored path names"
+    );
+    assert!(
+        crate::tree::resolve_search::accept_path_landing(&source, &land(&decoy_path), &entry)
+            .is_none(),
+        "a same-role landing the stored identity refutes is never this tier's answer"
+    );
+}
+
 /// The path fast-path's fall-through, driven against a live tree.
 ///
 /// The stored child-index path still lands on a live element - so this is
@@ -135,15 +206,14 @@ fn a_refuted_element_at_the_stored_path_falls_through_to_the_broad_search() {
         "the fast path must actually run, or the fall-through is never reached"
     );
 
-    let mut path_incomplete = false;
-    let landed = crate::tree::resolve_search::element_at_path(
+    let landed = crate::tree::resolve_search::walk_stored_path(
         &source,
         &prepared,
         &entry.scope.path,
         &budget,
-        &mut path_incomplete,
     )
     .expect("the path walk answers")
+    .element
     .expect("the stored path still lands on a live element");
     let (_, landed_evidence, _) = source.evidence(&landed);
     assert_eq!(

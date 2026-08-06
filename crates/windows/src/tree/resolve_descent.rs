@@ -61,11 +61,43 @@ pub(crate) struct ChildList<N> {
     pub(crate) complete: bool,
 }
 
-/// Where a child-index path walk ended, and whether every enumeration along
-/// the way was whole.
+/// Where a child-index path walk ended, and what that walk left unread.
+///
+/// The two are separate facts about separate parts of the tree, returned
+/// unfolded because folding them loses the only property that makes either one
+/// usable.
+///
+/// `element` is trustworthy on its own terms. [`read_children`] only ever
+/// appends, and every exit it can take - the sibling cap, an expired deadline,
+/// a failed read - breaks the loop rather than skipping an entry, so the list
+/// it returns is always a *prefix* of the node's real child list. An index that
+/// prefix reaches therefore names the same child the whole list would name at
+/// that index, and [`descend_path`] descends only through indices the prefix
+/// reached: a stored index past a truncation reads `None` and lands nowhere. So
+/// a landed element is the element the stored path names, and anything an
+/// enumeration on the way down failed to read lies strictly *after* the index
+/// this walk used at that level.
+///
+/// `unread_region` is a fact about that unread remainder and never about the
+/// landing. It says this walk did not see the whole tree, so a verdict that
+/// depends on having seen the whole of it - above all a negative one, "the
+/// stored element is gone" - is not this walk's to settle.
 pub(crate) struct PathLanding<N> {
     pub(crate) element: Option<N>,
-    pub(crate) complete: bool,
+    pub(crate) unread_region: bool,
+}
+
+impl<N> PathLanding<N> {
+    /// The landing of a path walk that was never run, for a caller whose
+    /// eligibility gate declined the tier. It read nothing, so it lands
+    /// nowhere and leaves no region unread of its own - the tiers below it
+    /// still cover the whole tree.
+    pub(crate) fn not_walked() -> Self {
+        Self {
+            element: None,
+            unread_region: false,
+        }
+    }
 }
 
 /// Enumerates one element's children, honouring the sibling cap as a hard
@@ -138,7 +170,10 @@ pub(crate) fn read_children<S: TreeSource>(
 /// Walks the stored child-index path from a root, O(depth) child reads.
 ///
 /// A path step that lands nowhere yields no element; what that absence means
-/// belongs to the caller, not here.
+/// belongs to the caller, not here. The index is taken against the raw
+/// enumeration, the same space the walk that issued the ref recorded its
+/// stored index in, so a walk that omitted a sibling from its own output still
+/// leaves the stored index pointing at the child it named.
 pub(crate) fn descend_path<S: TreeSource>(
     source: &S,
     root: &S::Node,
@@ -147,21 +182,21 @@ pub(crate) fn descend_path<S: TreeSource>(
     policy: &DescentPolicy,
 ) -> Result<PathLanding<S::Node>, AdapterError> {
     let mut current = root.clone();
-    let mut complete = true;
+    let mut unread_region = false;
     for &index in path {
         let read = read_children(source, &current, budget, policy)?;
-        complete &= read.complete;
+        unread_region |= !read.complete;
         let Some(child) = read.elements.get(index) else {
             return Ok(PathLanding {
                 element: None,
-                complete,
+                unread_region,
             });
         };
         current = child.clone();
     }
     Ok(PathLanding {
         element: Some(current),
-        complete,
+        unread_region,
     })
 }
 
@@ -187,3 +222,7 @@ fn classified<N>(
 #[cfg(test)]
 #[path = "resolve_descent_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "resolve_landing_tests.rs"]
+mod landing_tests;

@@ -104,25 +104,59 @@ pub(crate) fn can_use_path_fast_path(entry: &RefEntry) -> bool {
 
 /// Walks the stored child-index path from a root, O(depth) child reads.
 ///
-/// A path step that lands nowhere yields `None`; the caller treats that as
+/// Hands back both of [`descent::PathLanding`]'s facts unfolded, which is the
+/// whole reason it returns a landing rather than an element and an
+/// incompleteness output parameter. The landing is what
+/// [`accept_path_landing`] decides on; the unread region is what an attempt's
+/// *negative* verdict is withheld by. Merging them into one flag makes an
+/// accepted landing look like it ignored an obligation, and makes a dropped
+/// region look like a tidy scope.
+///
+/// A path step that lands nowhere yields no element; the caller treats that as
 /// a miss and falls back to the broad search, never as a verdict that the
-/// target is gone. A step that could not be *read*, though, is folded into the
-/// caller's incompleteness flag, because landing nowhere for want of a
-/// successful read is not the same answer as landing nowhere.
+/// target is gone.
 ///
 /// Generic over the tree source so the two are separable: what a gap on this
 /// walk means to the resolution as a whole can be exercised without a live UI
 /// Automation provider to fault on demand.
-pub(crate) fn element_at_path<S: TreeSource>(
+pub(crate) fn walk_stored_path<S: TreeSource>(
     source: &S,
     root: &S::Node,
     path: &[usize],
     budget: &WalkBudget,
-    incomplete: &mut bool,
-) -> Result<Option<S::Node>, AdapterError> {
-    let landing = descent::descend_path(source, root, path, budget, &SEARCH_DESCENT)?;
-    *incomplete |= !landing.complete;
-    Ok(landing.element)
+) -> Result<descent::PathLanding<S::Node>, AdapterError> {
+    descent::descend_path(source, root, path, budget, &SEARCH_DESCENT)
+}
+
+/// Decides the element the stored path landed on, from that element's own
+/// evidence and nothing else.
+///
+/// The signature is the argument. This tier is handed the element the path
+/// names and the ref it is matched against, and no completeness of the
+/// surrounding walk is in scope for it to consult. That is a property, not an
+/// omission: a landing is the element the stored path names whatever else the
+/// walk failed to read (see [`descent::PathLanding`]), and the claim this tier
+/// makes is positional - the ref named *this* location and the element there
+/// still answers to the stored identity - never a uniqueness claim over the
+/// tree. Uniqueness is the broad search's claim to make, and a ref this tier
+/// declines falls through to it.
+///
+/// Declining is therefore never a verdict. `None` says only that this tier
+/// could not settle the match, and the attempt continues.
+///
+/// The admission rule is [`admit_node`] itself rather than a second copy of
+/// the role gate, the composed identity rule and the geometry promotion, so
+/// the two tiers cannot drift into accepting different elements.
+pub(crate) fn accept_path_landing(
+    source: &UiaTreeSource,
+    candidate: &UIAElement,
+    entry: &RefEntry,
+) -> Option<UIAElement> {
+    let (_, evidence, _) = source.evidence(candidate);
+    match admit_node(entry, &evidence) {
+        NodeAdmission::Collect => Some(candidate.clone()),
+        NodeAdmission::Unread | NodeAdmission::Reject => None,
+    }
 }
 
 /// The geometry promotion eligibility predicate.
@@ -262,14 +296,14 @@ pub(crate) fn admit_node(entry: &RefEntry, evidence: &LocatorEvidence) -> NodeAd
 }
 
 /// Searches the subtree under `element` to the resolve depth, collecting the
-/// candidates the composed matcher accepted and flagging an unreadable one as
-/// incomplete.
+/// candidates the composed matcher accepted and recording every part of the
+/// subtree it could not read.
 pub(crate) fn search_under(
     ctx: &SearchContext<'_>,
     element: &UIAElement,
     depth: u8,
     out: &mut Vec<Candidate>,
-    incomplete: &mut bool,
+    unread_region: &mut bool,
 ) -> Result<(), AdapterError> {
     if depth >= MAX_RESOLVE_DEPTH {
         return Ok(());
@@ -279,14 +313,14 @@ pub(crate) fn search_under(
     let (_, evidence, _) = ctx.source.evidence(element);
     match admit_node(ctx.entry, &evidence) {
         NodeAdmission::Collect => out.push(build_candidate(element, &evidence)),
-        NodeAdmission::Unread => *incomplete = true,
+        NodeAdmission::Unread => *unread_region = true,
         NodeAdmission::Reject => {}
     }
 
     if child_search_is_reachable(depth) {
-        let children = enumerate_children(ctx.source, element, ctx.budget, incomplete)?;
+        let children = enumerate_children(ctx.source, element, ctx.budget, unread_region)?;
         for child in children {
-            search_under(ctx, &child, depth + 1, out, incomplete)?;
+            search_under(ctx, &child, depth + 1, out, unread_region)?;
         }
     }
     Ok(())
@@ -298,10 +332,10 @@ pub(crate) fn enumerate_children(
     source: &UiaTreeSource,
     element: &UIAElement,
     budget: &WalkBudget,
-    incomplete: &mut bool,
+    unread_region: &mut bool,
 ) -> Result<Vec<UIAElement>, AdapterError> {
     let read = descent::read_children(source, element, budget, &SEARCH_DESCENT)?;
-    *incomplete |= !read.complete;
+    *unread_region |= !read.complete;
     Ok(read.elements)
 }
 
