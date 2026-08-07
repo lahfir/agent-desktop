@@ -241,7 +241,9 @@ mod imp {
         }
     }
 
-    fn require_scroll_delivery(classified: Result<bool, AdapterError>) -> Result<(), AdapterError> {
+    pub(crate) fn require_scroll_delivery(
+        classified: Result<bool, AdapterError>,
+    ) -> Result<(), AdapterError> {
         match classified {
             Ok(true) => Ok(()),
             Ok(false) => Err(AdapterError::new(
@@ -267,6 +269,9 @@ mod imp {
 }
 
 pub(crate) use imp::ancestor_ladder;
+
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) use imp::require_scroll_delivery;
 
 /// Ladder seam: a scrollable ancestor replaces the unsupported / not-delivered
 /// terminal; no ancestor keeps that terminal byte-identical.
