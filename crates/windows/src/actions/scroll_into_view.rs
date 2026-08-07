@@ -13,9 +13,31 @@ use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect,
 };
 
+/// Reports whether a provider rectangle is measurable and encloses real area.
+///
+/// Finiteness is part of the test rather than decoration. A provider that
+/// answers `NaN` or an infinity satisfies a bare positive-dimension comparison,
+/// and accepting that rectangle turns an unmeasurable answer into a verified
+/// one — the exact false positive the post-invoke re-read exists to prevent.
+///
+/// Crate-visible because the scroll-viewport ancestor walk is not the only
+/// reader that must decide whether a rectangle can be trusted; a second copy of
+/// this predicate is a second chance for the two to disagree.
+#[cfg(target_os = "windows")]
+pub(crate) fn rect_has_area(rect: Rect) -> bool {
+    rect.x.is_finite()
+        && rect.y.is_finite()
+        && rect.width.is_finite()
+        && rect.height.is_finite()
+        && rect.width > 0.0
+        && rect.height > 0.0
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::{AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect};
+    use super::{
+        AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect, rect_has_area,
+    };
     use crate::system::hresult::com_hresult_detail;
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
@@ -155,15 +177,6 @@ mod imp {
             Some(viewport) => intersects(bounds, viewport),
             None => false,
         }
-    }
-
-    pub(crate) fn rect_has_area(rect: Rect) -> bool {
-        rect.x.is_finite()
-            && rect.y.is_finite()
-            && rect.width.is_finite()
-            && rect.height.is_finite()
-            && rect.width > 0.0
-            && rect.height > 0.0
     }
 
     pub(crate) fn intersects(left: Rect, right: Rect) -> bool {
@@ -333,8 +346,8 @@ pub(crate) use imp::scroll_into_view_impl;
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::{
-    VisibilitySample, finish_observation, rect_has_area, scroll_effect_observed,
-    scroll_into_view_judged_for, unsupported_error, visibility_verified,
+    VisibilitySample, finish_observation, scroll_effect_observed, scroll_into_view_judged_for,
+    unsupported_error, visibility_verified,
 };
 
 #[cfg(all(test, target_os = "windows"))]
