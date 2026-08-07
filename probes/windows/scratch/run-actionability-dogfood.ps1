@@ -11,6 +11,19 @@
 
     Zero-foreground interference: minimize/restore and SetWindowPos only on
     processes this script started. Foreign windows are never raised.
+
+    PLATFORM_NOT_SUPPORTED is ambiguous on its own while execute_action is
+    unimplemented: a click that scrolled, passed the gate and reached dispatch
+    carries it, and so does a click whose scroll seam fell through to the
+    trait default without ever reaching dispatch. The envelope names the
+    method that was unsupported, so every judgement that accepts
+    PLATFORM_NOT_SUPPORTED demands execute_action by name and fails on any
+    other, which is the signature of an unimplemented seam answering for the
+    whole command.
+
+    Exits non-zero when any judgement recorded 'fail', after the summary is
+    written. A judgement that fails and a run that reports success are the
+    same defect this suite exists to catch, one level up.
 #>
 [CmdletBinding()]
 param(
@@ -58,6 +71,9 @@ if (-not ('AgentDesktopActionabilityDogfood.Native' -as [type])) {
 $script:LaunchedPids = New-Object System.Collections.Generic.List[int]
 $script:Judgements = New-Object System.Collections.Generic.List[object]
 $script:Envelopes = New-Object System.Collections.Generic.List[object]
+$script:NoJsonCode = 'BINARY_NO_JSON'
+$script:DispatchMethod = 'execute_action'
+$script:ScrollMethod = 'scroll_into_view'
 
 function Start-DogfoodProcess {
     param(
@@ -107,7 +123,7 @@ function Invoke-Ad {
         Envelope = [pscustomobject]@{
             ok = $false
             error = [pscustomobject]@{
-                code = 'BINARY_NO_JSON'
+                code = $script:NoJsonCode
                 message = ('agent-desktop exited ' + $exitCode + ' with no JSON for: ' + ($Arguments -join ' '))
             }
         }
@@ -124,6 +140,54 @@ function Find-WindowIdFor {
     return $rec[0].id
 }
 
+<#
+    Which adapter method an error names, as a boolean, never the text that
+    said so. A capture from this runner is committed, so the raw message - it
+    can carry a window title, a file name or a path - stays inside this
+    function and only the answer leaves it. The word-boundary guard is what
+    keeps 'scroll_into_view' from also matching a sentence about
+    'scroll_into_view_unsupported'.
+#>
+function Test-EnvelopeNamesMethod {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Message,
+        [AllowNull()][AllowEmptyString()][string]$Suggestion,
+        [Parameter(Mandatory = $true)][string]$Method
+    )
+    $pattern = '(?<![A-Za-z0-9_])' + [regex]::Escape($Method) + '(?![A-Za-z0-9_])'
+    foreach ($text in @($Message, $Suggestion)) {
+        if ([string]::IsNullOrEmpty($text)) { continue }
+        if ([regex]::IsMatch($text, $pattern)) { return $true }
+    }
+    return $false
+}
+
+function Test-EnvelopeFromBinary {
+    param([Parameter(Mandatory = $true)]$Shape)
+    return ($Shape.code -ne $script:NoJsonCode)
+}
+
+<#
+    Dispatch was reached, so everything before it - resolve, preflight,
+    scroll_into_view - answered. This is the only honest PLATFORM_NOT_SUPPORTED
+    while execute_action is unimplemented.
+#>
+function Test-DispatchReached {
+    param([Parameter(Mandatory = $true)]$Shape)
+    return (($Shape.code -eq 'PLATFORM_NOT_SUPPORTED') -and ($Shape.message_names_execute_action -eq $true))
+}
+
+<#
+    A seam short of dispatch answered for the whole command: the scroll
+    override missing and the trait default propagating, or any other adapter
+    method still on its default. Indistinguishable from a healthy dispatch by
+    code alone, which is why the method name is read.
+#>
+function Test-UnsupportedSeamBeforeDispatch {
+    param([Parameter(Mandatory = $true)]$Shape)
+    return (($Shape.code -eq 'PLATFORM_NOT_SUPPORTED') -and ($Shape.message_names_execute_action -ne $true))
+}
+
 function Get-EnvelopeShape {
     param([Parameter(Mandatory = $true)]$Envelope)
     $shape = [ordered]@{
@@ -138,16 +202,28 @@ function Get-EnvelopeShape {
         occluder_role_present = $null
         occluder_name_present = $null
         suggestion_present = $null
+        message_names_execute_action = $null
+        message_names_scroll_into_view = $null
     }
     if ($Envelope.PSObject.Properties.Name -contains 'command') { $shape.command = [string]$Envelope.command }
     if (-not $Envelope.ok -and ($Envelope.PSObject.Properties.Name -contains 'error')) {
         $err = $Envelope.error
         if ($err.PSObject.Properties.Name -contains 'code') { $shape.code = [string]$err.code }
+        $suggestionText = ''
         if ($err.PSObject.Properties.Name -contains 'suggestion' -and $err.suggestion) {
             $shape.suggestion_present = $true
+            $suggestionText = [string]$err.suggestion
         } else {
             $shape.suggestion_present = $false
         }
+        $messageText = ''
+        if ($err.PSObject.Properties.Name -contains 'message' -and $err.message) {
+            $messageText = [string]$err.message
+        }
+        $shape.message_names_execute_action = (Test-EnvelopeNamesMethod `
+                -Message $messageText -Suggestion $suggestionText -Method $script:DispatchMethod)
+        $shape.message_names_scroll_into_view = (Test-EnvelopeNamesMethod `
+                -Message $messageText -Suggestion $suggestionText -Method $script:ScrollMethod)
         if ($err.PSObject.Properties.Name -contains 'disposition') {
             $d = $err.disposition
             if ($d.PSObject.Properties.Name -contains 'delivery') { $shape.disposition_delivery = [string]$d.delivery }
@@ -404,13 +480,25 @@ try {
         $clear = Invoke-HeadedClick -Ref $actionRef2 -TimeoutMs 0
         $clearShape = Get-EnvelopeShape -Envelope $clear.Envelope
         Add-EnvelopeRecord -Id 'J2-gate-pass-dispatch' -Shape $clearShape
-        $j2Ok = (-not $clear.Envelope.ok) -and ($clearShape.code -eq 'PLATFORM_NOT_SUPPORTED')
+        $j2Seam = Test-UnsupportedSeamBeforeDispatch -Shape $clearShape
+        $j2Ok = (-not $clear.Envelope.ok) -and (Test-DispatchReached -Shape $clearShape)
+        $j2Verdict = if ($j2Ok) {
+            'PLATFORM_NOT_SUPPORTED naming execute_action, so the gate passed and dispatch was reached'
+        } elseif ($j2Seam) {
+            'unimplemented seam answered before dispatch, the gate never proved it passed'
+        } elseif (-not (Test-EnvelopeFromBinary -Shape $clearShape)) {
+            'binary produced no JSON envelope'
+        } else {
+            'unexpected code after gate pass'
+        }
         Add-Judgement -Id 'J2' -Claim 'unoccluded headed click reaches honest pre-2.7 dispatch' `
             -Target 'ScratchForms btnAction after Notepad dismissed' `
             -Result $(if ($j2Ok) { 'pass' } else { 'fail' }) `
-            -Verdict $(if ($j2Ok) { 'PLATFORM_NOT_SUPPORTED at dispatch' } else { 'unexpected code after gate pass' }) `
+            -Verdict $j2Verdict `
             -Shape $clearShape `
-            -Notes ('code=' + $clearShape.code)
+            -Notes ('code=' + $clearShape.code +
+                ' names_execute_action=' + $clearShape.message_names_execute_action +
+                ' names_scroll_into_view=' + $clearShape.message_names_scroll_into_view)
 
         # ---------------------------------------------------------------------
         # J3: same-root overlay (btnCovered under btnOverlay)
@@ -503,17 +591,31 @@ try {
                 }).Count -gt 0
             # Headed focus restores the window before hit_test; the guard still
             # holds when the envelope never invents a phantom InterceptedBy.
-            $j6Ok = (-not $namedOccluder) -and (-not $minClick.Envelope.ok)
+            # "No occluder was named" is only evidence when something judged
+            # the click: a crashed binary and a seam that answered before any
+            # guard ran both name no occluder while proving nothing.
+            $j6FromBinary = Test-EnvelopeFromBinary -Shape $minShape
+            $j6Seam = Test-UnsupportedSeamBeforeDispatch -Shape $minShape
+            $j6Ok = $j6FromBinary -and (-not $j6Seam) -and (-not $namedOccluder) -and (-not $minClick.Envelope.ok)
+            $j6Verdict = if ($j6Ok) {
+                'no occluder-named envelope (pre_click_iconic=' + $iconic + ' code=' + $minShape.code + ')'
+            } elseif (-not $j6FromBinary) {
+                'binary produced no JSON envelope, so nothing judged the minimized target'
+            } elseif ($j6Seam) {
+                'unimplemented seam answered before any guard ran, the guard was never exercised'
+            } elseif ($namedOccluder) {
+                'invented occlusion against minimized target'
+            } else {
+                'headed click reported success against a minimized target'
+            }
             Add-Judgement -Id 'J6' -Claim 'minimized-window guard does not invent InterceptedBy' `
                 -Target 'minimized ScratchForms btnAction' `
                 -Result $(if ($j6Ok) { 'pass' } else { 'fail' }) `
-                -Verdict $(if ($j6Ok) {
-                        'no occluder-named envelope (pre_click_iconic=' + $iconic + ' code=' + $minShape.code + ')'
-                    } else {
-                        'invented occlusion against minimized target'
-                    }) `
+                -Verdict $j6Verdict `
                 -Shape $minShape `
-                -Notes ('is_iconic_before_click=' + $iconic + ' named_occluder=' + $namedOccluder)
+                -Notes ('is_iconic_before_click=' + $iconic + ' named_occluder=' + $namedOccluder +
+                    ' code=' + $minShape.code +
+                    ' names_execute_action=' + $minShape.message_names_execute_action)
             [void][AgentDesktopActionabilityDogfood.Native]::ShowWindow($wfHwnd, [AgentDesktopActionabilityDogfood.Native]::SW_RESTORE)
         } catch {
             Add-Judgement -Id 'J6' -Claim 'minimized-window guard does not invent InterceptedBy' `
@@ -575,16 +677,28 @@ try {
             $scrollClick = Invoke-Ad -Arguments @('click', $offscreenRef, '--timeout-ms', '3000')
             $scrollShape = Get-EnvelopeShape -Envelope $scrollClick.Envelope
             Add-EnvelopeRecord -Id 'J4-explorer-scroll' -Shape $scrollShape
-            $scrolled = ($scrollShape.code -eq 'PLATFORM_NOT_SUPPORTED')
+            # The leg the scroll seam exists for, so it is the leg that must
+            # not accept the seam's absence. A click that scrolled and reached
+            # dispatch and a click whose scroll_into_view fell through to the
+            # trait default both carry PLATFORM_NOT_SUPPORTED; only the method
+            # named in the envelope separates them.
+            $fromBinary = Test-EnvelopeFromBinary -Shape $scrollShape
+            $seamBeforeDispatch = Test-UnsupportedSeamBeforeDispatch -Shape $scrollShape
+            $scrolled = Test-DispatchReached -Shape $scrollShape
             $unsupported = ($scrollShape.details_kind -eq 'scroll_into_view_unsupported')
             $visibleFail = @($scrollShape.checks | Where-Object { $_.name -eq 'visible' -and $_.status -eq 'fail' }).Count -gt 0
             $observedUnverified = ($scrollShape.code -eq 'ACTION_FAILED' -and `
                 $scrollShape.disposition_delivery -eq 'delivered_unverified')
             $notDelivered = ($scrollShape.code -eq 'ACTION_FAILED' -and `
                 $scrollShape.disposition_delivery -eq 'not_delivered')
-            $j4Ok = $scrolled -or $unsupported -or $visibleFail -or $observedUnverified -or $notDelivered
-            $verdict = if ($scrolled) {
-                'scroll verified then honest PLATFORM_NOT_SUPPORTED'
+            $j4Ok = $fromBinary -and (-not $seamBeforeDispatch) -and `
+                ($scrolled -or $unsupported -or $visibleFail -or $observedUnverified -or $notDelivered)
+            $verdict = if ($seamBeforeDispatch) {
+                'unimplemented seam answered before dispatch: scroll_into_view never carried the below-fold item to the gate'
+            } elseif (-not $fromBinary) {
+                'binary produced no JSON envelope'
+            } elseif ($scrolled) {
+                'scroll verified then honest PLATFORM_NOT_SUPPORTED naming execute_action'
             } elseif ($unsupported) {
                 'honest scroll_into_view_unsupported / not_delivered'
             } elseif ($observedUnverified) {
@@ -602,7 +716,9 @@ try {
                 -Verdict $verdict `
                 -Shape $scrollShape `
                 -Notes ('candidates=' + @($listRefs).Count + ' code=' + $scrollShape.code +
-                    ' delivery=' + $scrollShape.disposition_delivery + ' kind=' + $scrollShape.details_kind)
+                    ' delivery=' + $scrollShape.disposition_delivery + ' kind=' + $scrollShape.details_kind +
+                    ' names_execute_action=' + $scrollShape.message_names_execute_action +
+                    ' names_scroll_into_view=' + $scrollShape.message_names_scroll_into_view)
         }
     } catch {
         Add-Judgement -Id 'J4' -Claim 'below-fold Explorer auto-scroll or honest unsupported' `
@@ -664,9 +780,13 @@ try {
                     }).Count -gt 0
                 if ($named) {
                     $branch = 'same_root_intercepted_by'
-                } elseif ($clickShape.code -eq 'PLATFORM_NOT_SUPPORTED') {
+                } elseif (Test-DispatchReached -Shape $clickShape) {
                     # Gate passed: ReachesTarget or Unknown (ancestor/pane) — both fail-open to dispatch.
                     $branch = 'gate_pass_reaches_or_unknown_ancestor'
+                } elseif (Test-UnsupportedSeamBeforeDispatch -Shape $clickShape) {
+                    # Not a gate pass: a seam short of dispatch answered, so this
+                    # run measured nothing about the Chromium hit-test branch.
+                    $branch = 'unsupported_seam_before_dispatch'
                 } else {
                     $branch = 'other_envelope_' + $clickShape.code
                 }
@@ -765,5 +885,10 @@ if (-not (Test-CaptureRedaction -Path $summaryPath)) {
 Write-Host ('dogfood: wrote ' + $summaryPath)
 $script:Judgements | ForEach-Object {
     Write-Host ('  ' + $_.id + ': ' + $_.result + ' - ' + $_.verdict)
+}
+$failed = @($script:Judgements | Where-Object { $_.result -eq 'fail' })
+if ($failed.Count -gt 0) {
+    Write-Host ('dogfood: ' + $failed.Count + ' judgement(s) failed: ' + (($failed | ForEach-Object { $_.id }) -join ', '))
+    exit 1
 }
 exit 0
