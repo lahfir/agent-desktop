@@ -1,6 +1,4 @@
-use super::{
-    OCCLUDER_EVIDENCE_PROPERTIES, interception_agreed, occluder_from_properties,
-};
+use super::{OCCLUDER_EVIDENCE_PROPERTIES, interception_agreed, occluder_from_properties};
 use crate::tree::element_properties::ElementProperties;
 use crate::tree::name_evidence::LabelOutcome;
 use crate::tree::property_ids::TreeProperty;

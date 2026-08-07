@@ -1,10 +1,10 @@
 use agent_desktop_core::{
     Action, ActionOps, ActionRequest, AdapterError, DeliveryDisposition, DeliverySemantics,
     ElementState, ErrorCode, IdentifierEvidence, InputOps, InteractionLease, LiveElement,
-    LiveIdentity, LocatorField, NativeHandle, ObservationOps, Point, ProcessId, Rect, RefCapabilities,
-    RefEntry, RefEntryIdentity, RefGeometry, RefProcess, RefScope, RefSource, RetryDisposition,
-    SnapshotSurface, SystemOps, WindowInfo, capability, hit_test::HitTestResult, ref_action,
-    state::VisibilityEvidence,
+    LiveIdentity, LocatorField, NativeHandle, ObservationOps, Point, ProcessId, Rect,
+    RefCapabilities, RefEntry, RefEntryIdentity, RefGeometry, RefProcess, RefScope, RefSource,
+    RetryDisposition, SnapshotSurface, SystemOps, WindowInfo, capability, hit_test::HitTestResult,
+    ref_action, state::VisibilityEvidence,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -270,13 +270,8 @@ fn disabled_auto_wait_times_out_with_actionability_timeout() {
     assert_not_delivered(&error);
     let details = error.details.expect("timeout details");
     assert_eq!(details["kind"], "actionability_timeout");
-    let last = details
-        .get("last_report")
-        .expect("last_report on timeout");
-    let report = last
-        .get("report")
-        .cloned()
-        .unwrap_or_else(|| last.clone());
+    let last = details.get("last_report").expect("last_report on timeout");
+    let report = last.get("report").cloned().unwrap_or_else(|| last.clone());
     let enabled = find_check(&report, "enabled");
     assert_eq!(enabled["status"], "fail");
     assert_eq!(enabled["reason"], "live enabled state is false");

@@ -92,11 +92,7 @@ impl SystemOps for WindowsAdapter {
         crate::system::window_resolve::resolve_window_strict(win, deadline)
     }
 
-    fn focus_window(
-        &self,
-        win: &WindowInfo,
-        lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
+    fn focus_window(&self, win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
         crate::system::window_resolve::focus_window(win, lease)
     }
 

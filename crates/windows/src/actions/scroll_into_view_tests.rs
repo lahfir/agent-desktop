@@ -1,6 +1,6 @@
 use super::{
-    finish_observation, rect_has_area, scroll_effect_observed, scroll_into_view_judged_for,
-    unsupported_error, visibility_verified, VisibilitySample,
+    VisibilitySample, finish_observation, rect_has_area, scroll_effect_observed,
+    scroll_into_view_judged_for, unsupported_error, visibility_verified,
 };
 use crate::system::hresult::{
     UIA_E_ELEMENTNOTAVAILABLE, classify_read_hresult, com_hresult_detail, hresult_record,
@@ -73,10 +73,7 @@ fn unsupported_is_action_failed_not_platform_not_supported() {
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_ne!(error.code, ErrorCode::PlatformNotSupported);
     assert_eq!(error.disposition, DeliverySemantics::not_delivered());
-    assert_ne!(
-        error.disposition,
-        DeliverySemantics::delivered_unverified()
-    );
+    assert_ne!(error.disposition, DeliverySemantics::delivered_unverified());
     let details = error.details.expect("unsupported carries details");
     assert_eq!(details["kind"], "scroll_into_view_unsupported");
     assert_eq!(details["complete"], serde_json::json!(true));
@@ -106,10 +103,7 @@ fn unchanged_geometry_is_not_delivered_not_unverified() {
     let error = finish_observation(Some(bounds), Some(bounds), None).expect_err("unchanged");
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(error.disposition, DeliverySemantics::not_delivered());
-    assert_ne!(
-        error.disposition,
-        DeliverySemantics::delivered_unverified()
-    );
+    assert_ne!(error.disposition, DeliverySemantics::delivered_unverified());
 }
 
 #[test]
@@ -119,10 +113,7 @@ fn moved_but_unproven_is_delivered_unverified_not_not_delivered() {
     assert!(scroll_effect_observed(before, after));
     let error = finish_observation(Some(before), Some(after), None).expect_err("unproven");
     assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_eq!(
-        error.disposition,
-        DeliverySemantics::delivered_unverified()
-    );
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_ne!(error.disposition, DeliverySemantics::not_delivered());
 }
 
@@ -130,20 +121,22 @@ fn moved_but_unproven_is_delivered_unverified_not_not_delivered() {
 fn observation_failure_is_delivered_unverified_never_bare_read_err() {
     let before = rect(10.0, 10.0, 20.0, 20.0);
     let calls = Cell::new(0);
-    let error = scroll_into_view_judged_for(short_deadline(), Some(before), None, Duration::from_millis(800), || {
-        calls.set(calls.get() + 1);
-        Err(AdapterError::new(
-            ErrorCode::StaleRef,
-            "provider died during observation",
-        )
-        .with_details(serde_json::json!({ "complete": false, "retryable": true })))
-    })
+    let error = scroll_into_view_judged_for(
+        short_deadline(),
+        Some(before),
+        None,
+        Duration::from_millis(800),
+        || {
+            calls.set(calls.get() + 1);
+            Err(
+                AdapterError::new(ErrorCode::StaleRef, "provider died during observation")
+                    .with_details(serde_json::json!({ "complete": false, "retryable": true })),
+            )
+        },
+    )
     .expect_err("observation failure");
     assert_eq!(calls.get(), 1);
-    assert_eq!(
-        error.disposition,
-        DeliverySemantics::delivered_unverified()
-    );
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_ne!(error.disposition, DeliverySemantics::not_delivered());
     assert_ne!(error.disposition, DeliverySemantics::unknown());
 }
@@ -153,10 +146,7 @@ fn degenerate_after_state_is_delivered_unverified_not_not_delivered() {
     let before = rect(10.0, 10.0, 20.0, 20.0);
     let error = finish_observation(Some(before), Some(rect(0.0, 0.0, 0.0, 0.0)), None)
         .expect_err("degenerate after");
-    assert_eq!(
-        error.disposition,
-        DeliverySemantics::delivered_unverified()
-    );
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_ne!(error.disposition, DeliverySemantics::not_delivered());
 }
 
@@ -168,10 +158,7 @@ fn degenerate_before_and_after_is_delivered_unverified() {
         None,
     )
     .expect_err("degenerate both");
-    assert_eq!(
-        error.disposition,
-        DeliverySemantics::delivered_unverified()
-    );
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_ne!(error.disposition, DeliverySemantics::not_delivered());
 }
 

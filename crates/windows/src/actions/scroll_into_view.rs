@@ -9,7 +9,9 @@
 //! The write's HRESULT is diagnostic `platform_detail` only: the read-path
 //! classifier is never consulted here.
 
-use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect};
+use agent_desktop_core::{
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect,
+};
 
 #[cfg(target_os = "windows")]
 mod imp {
@@ -331,8 +333,8 @@ pub(crate) use imp::scroll_into_view_impl;
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::{
-    finish_observation, rect_has_area, scroll_effect_observed, scroll_into_view_judged_for,
-    unsupported_error, visibility_verified, VisibilitySample,
+    VisibilitySample, finish_observation, rect_has_area, scroll_effect_observed,
+    scroll_into_view_judged_for, unsupported_error, visibility_verified,
 };
 
 #[cfg(all(test, target_os = "windows"))]

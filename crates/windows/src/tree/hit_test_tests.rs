@@ -8,16 +8,12 @@ use super::imp::{
     pre_read_fate_for_test, resolve_classification, saturate_coord,
 };
 use crate::system::hresult::{E_ACCESSDENIED, E_FAIL, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT};
-use crate::tree::automation::{
-    ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, root_from_hwnd,
-};
+use crate::tree::automation::{ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, root_from_hwnd};
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
 use crate::tree::fixture_window;
 use crate::tree::walker::NodeKey;
 use crate::tree::walker_fake::deadline;
-use agent_desktop_core::{
-    AdapterError, ErrorCode, Point, Rect, hit_test::HitTestResult,
-};
+use agent_desktop_core::{AdapterError, ErrorCode, Point, Rect, hit_test::HitTestResult};
 use std::cell::Cell;
 use std::collections::HashMap;
 
@@ -262,10 +258,7 @@ fn dead_token_preamble_escapes_as_stale_reader_err() {
 fn saturating_physical_point_never_panics() {
     assert_eq!(saturate_coord(f64::from(i32::MAX) + 10.0), i32::MAX);
     assert_eq!(saturate_coord(f64::from(i32::MIN) - 10.0), i32::MIN);
-    let point = physical_point(&Point {
-        x: 12.7,
-        y: -3.2,
-    });
+    let point = physical_point(&Point { x: 12.7, y: -3.2 });
     assert_eq!(point.get_x(), 12);
     assert_eq!(point.get_y(), -3);
 }

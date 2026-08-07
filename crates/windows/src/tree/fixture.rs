@@ -274,11 +274,7 @@ impl Drop for StalledFixture {
     }
 }
 
-fn stalled_window(
-    class_name: &str,
-    ready: Sender<Result<isize, String>>,
-    stop: Arc<AtomicBool>,
-) {
+fn stalled_window(class_name: &str, ready: Sender<Result<isize, String>>, stop: Arc<AtomicBool>) {
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DestroyWindow, SW_SHOWNOACTIVATE, ShowWindow, WS_OVERLAPPEDWINDOW,

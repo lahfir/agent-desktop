@@ -145,10 +145,7 @@ mod imp {
             Ok(rectangle) => Ok(Some(Rect {
                 x: f64::from(rectangle.get_left()),
                 y: f64::from(rectangle.get_top()),
-                width: crate::tree::properties::extent(
-                    rectangle.get_left(),
-                    rectangle.get_right(),
-                ),
+                width: crate::tree::properties::extent(rectangle.get_left(), rectangle.get_right()),
                 height: crate::tree::properties::extent(
                     rectangle.get_top(),
                     rectangle.get_bottom(),

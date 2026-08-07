@@ -278,10 +278,28 @@ pub(crate) fn find_button(parent: isize) -> *mut c_void {
 }
 
 fn create_controls(window: HWND) -> FixtureControls {
-    let button = control(window, "BUTTON", "fixture-button", WS_VISIBLE | CONTROL_BORDER, 8);
+    let button = control(
+        window,
+        "BUTTON",
+        "fixture-button",
+        WS_VISIBLE | CONTROL_BORDER,
+        8,
+    );
     control(window, "STATIC", "fixture-static", WS_VISIBLE, 40);
-    let edit = control(window, "EDIT", CONTENT_MARKER, WS_VISIBLE | CONTROL_BORDER, 72);
-    let password = control(window, "EDIT", "", WS_VISIBLE | CONTROL_BORDER | ES_PASSWORD, 104);
+    let edit = control(
+        window,
+        "EDIT",
+        CONTENT_MARKER,
+        WS_VISIBLE | CONTROL_BORDER,
+        72,
+    );
+    let password = control(
+        window,
+        "EDIT",
+        "",
+        WS_VISIBLE | CONTROL_BORDER | ES_PASSWORD,
+        104,
+    );
     let secret = wide(SECURE_MARKER);
     unsafe { SetWindowTextW(password, secret.as_ptr()) };
     let _overlay = fixture_overlay::create_hidden_overlay(window);
