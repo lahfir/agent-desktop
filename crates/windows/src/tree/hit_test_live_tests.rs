@@ -13,6 +13,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, HWND_TOPMOST, SWP_SHOWWINDOW, SetWindowPos,
 };
 
+/// The window text the fixture gives its overlay child. An interception that
+/// names it is the staged occluder; any other name is a window this repository
+/// does not own, and the pin it would satisfy is not the one being made.
+const OVERLAY_LABEL: &str = "fixture-overlay";
+
 #[test]
 fn on_screen_fixture_center_reaches_target() {
     ensure_test_apartment();
@@ -25,13 +30,16 @@ fn on_screen_fixture_center_reaches_target() {
         x: bounds.x + bounds.width / 2.0,
         y: bounds.y + bounds.height / 2.0,
     };
-    let result = hit_test_impl(&handle, point, deadline()).expect("hit_test succeeds");
-    match result {
-        HitTestResult::ReachesTarget => {}
-        HitTestResult::InterceptedBy { name, .. } if foreign_occluder_name(name.as_deref()) => {
-            eprintln!("skip on-screen ReachesTarget: foreign occluder present");
-        }
-        other => panic!("on-screen center must ReachesTarget, got {other:?}"),
+    let result = hit_test_impl(&handle, point.clone(), deadline()).expect("hit_test succeeds");
+    let owner = win32_root_at(&point);
+    if owner == fixture.handle() {
+        assert_eq!(
+            result,
+            HitTestResult::ReachesTarget,
+            "the window manager gives the point to the fixture, so nothing occludes it"
+        );
+    } else {
+        eprintln!("{}", foreign_owner_skip("on-screen ReachesTarget", owner));
     }
     fixture_overlay::clear_topmost(fixture.handle());
 }
@@ -51,10 +59,6 @@ fn minimized_on_screen_fixture_yields_unknown() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     let result = hit_test_impl(&handle, point, deadline()).expect("hit_test succeeds");
     assert_eq!(result, HitTestResult::Unknown);
-    assert!(
-        !matches!(result, HitTestResult::InterceptedBy { .. }),
-        "IsIconic guard must not invent InterceptedBy"
-    );
 }
 
 #[test]
@@ -72,10 +76,21 @@ fn same_root_overlay_reports_intercepted_by() {
     let overlay = fixture_overlay::stage_sibling_overlay(fixture.handle());
     assert!(!overlay.is_null(), "overlay stages over the primary button");
     std::thread::sleep(std::time::Duration::from_millis(50));
-    let result = hit_test_impl(&handle, point, deadline()).expect("hit_test succeeds");
+    let result = hit_test_impl(&handle, point.clone(), deadline()).expect("hit_test succeeds");
+    let owner = win32_root_at(&point);
+    if owner != fixture.handle() {
+        eprintln!("{}", foreign_owner_skip("same-root InterceptedBy", owner));
+        fixture_overlay::clear_topmost(fixture.handle());
+        return;
+    }
     match result {
-        HitTestResult::InterceptedBy { role, .. } => {
+        HitTestResult::InterceptedBy { role, name, .. } => {
             assert!(role.is_some(), "occluder role is always present");
+            assert!(
+                name.as_deref()
+                    .is_some_and(|label| label.contains(OVERLAY_LABEL)),
+                "the interception must name the staged fixture overlay, got {name:?}"
+            );
         }
         other => panic!("same-root overlay must InterceptedBy, got {other:?}"),
     }
@@ -109,15 +124,29 @@ fn cross_window_overlap_reports_intercepted_and_uncovered_reaches() {
         x: covered_bounds.x + covered_bounds.width / 2.0,
         y: covered_bounds.y + covered_bounds.height / 2.0,
     };
-    let covered = hit_test_impl(&under_handle, covered_point, deadline()).expect("covered probe");
+    let covered =
+        hit_test_impl(&under_handle, covered_point.clone(), deadline()).expect("covered probe");
     match covered {
         HitTestResult::InterceptedBy { role, .. } => {
             assert!(role.is_some(), "occluder role is always present");
         }
         HitTestResult::Unknown => {
-            eprintln!(
-                "skip cross-window InterceptedBy: covered probe returned Unknown (foreign z-order contamination)"
+            let owner = win32_root_at(&covered_point);
+            assert_ne!(
+                owner,
+                over.handle(),
+                "Win32 independently names the over fixture at the covered point, so Unknown is a hit-test regression and not z-order contamination"
             );
+            if owner == under.handle() {
+                eprintln!(
+                    "skip cross-window InterceptedBy: Win32 still names the under fixture at the covered point, so the overlap never staged"
+                );
+            } else {
+                eprintln!(
+                    "{}",
+                    foreign_owner_skip("cross-window InterceptedBy", owner)
+                );
+            }
             fixture_overlay::clear_topmost(over.handle());
             return;
         }
@@ -144,21 +173,48 @@ fn cross_window_overlap_reports_intercepted_and_uncovered_reaches() {
         y: over_bounds.y + over_bounds.height / 2.0,
     };
     let uncovered =
-        hit_test_impl(&over_handle, uncovered_point, deadline()).expect("uncovered probe");
-    match uncovered {
-        HitTestResult::ReachesTarget => {}
-        HitTestResult::InterceptedBy { name, .. } if foreign_occluder_name(name.as_deref()) => {
-            eprintln!(
-                "skip uncovered ReachesTarget: foreign occluder present; covered InterceptedBy already proven"
-            );
-        }
-        other => panic!("uncovered control must ReachesTarget, got {other:?}"),
+        hit_test_impl(&over_handle, uncovered_point.clone(), deadline()).expect("uncovered probe");
+    let owner = win32_root_at(&uncovered_point);
+    if owner == over.handle() {
+        assert_eq!(
+            uncovered,
+            HitTestResult::ReachesTarget,
+            "the window manager gives the point to the uncovered fixture, so nothing occludes it"
+        );
+    } else {
+        eprintln!(
+            "{}",
+            foreign_owner_skip(
+                "uncovered ReachesTarget (covered InterceptedBy already proven)",
+                owner
+            )
+        );
     }
     fixture_overlay::clear_topmost(over.handle());
 }
 
-fn foreign_occluder_name(name: Option<&str>) -> bool {
-    name.is_some_and(|label| !label.contains("fixture"))
+/// The independent second opinion, read by the test rather than taken from the
+/// code under test: a soft skip is only honest when something outside
+/// `hit_test` agrees the point belongs to a window this repository does not own.
+fn win32_root_at(point: &Point) -> isize {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, WindowFromPoint};
+
+    let physical = POINT {
+        x: point.x as i32,
+        y: point.y as i32,
+    };
+    let hwnd = unsafe { WindowFromPoint(physical) };
+    if hwnd.is_null() {
+        return 0;
+    }
+    unsafe { GetAncestor(hwnd, GA_ROOT) as isize }
+}
+
+fn foreign_owner_skip(pin: &str, owner: isize) -> String {
+    format!(
+        "skip {pin}: Win32 names window {owner:#x} at the point, which is no fixture of this repository — foreign z-order contamination"
+    )
 }
 
 fn control_handle(fixture: &LocalFixture) -> Result<NativeHandle, AdapterError> {

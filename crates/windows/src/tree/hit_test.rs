@@ -11,9 +11,15 @@
 //! outcome when a render-host pane answers for non-hit-addressable web content.
 //!
 //! Unrelated hits reach window-attribution corroboration (`hit_test_corroborate`):
-//! `InterceptedBy` only on two-opinion agreement. Same-root demotion for points
-//! outside `target ∩ scroll viewport` (A18-2 unclipped provider rects) is
-//! applied before that seam.
+//! `InterceptedBy` only on two-opinion agreement. The demotion for points
+//! outside `target ∩ scroll viewport` (A18-2 unclipped provider rects) answers
+//! a same-window question — an unclipped rect puts candidate points over
+//! neighbours sharing the target's root — so it is applied to the same-root arm
+//! inside that seam and never silences a corroborated cross-window occluder.
+//!
+//! Everything after the probe walks ancestors across process boundaries, so
+//! each walk step consults the operation deadline and a truncated walk answers
+//! `Unknown` rather than deciding on partial evidence.
 
 use agent_desktop_core::{
     AdapterError, Deadline, ErrorCode, Point, Rect, hit_test::HitTestResult,
@@ -30,7 +36,7 @@ mod corroborate;
 
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::classify::{self, point_in_rect};
+    use super::classify;
     use super::corroborate;
     use super::{AdapterError, Deadline, ErrorCode, HitTestResult, NativeHandle, Point, Rect};
     use crate::system::hresult::ReadDisposition;
@@ -48,6 +54,10 @@ mod imp {
         GetSystemMetrics, IsIconic, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
         SM_YVIRTUALSCREEN,
     };
+
+    /// The operation budget ran out between two cross-process calls.
+    #[derive(Debug)]
+    pub(super) struct BudgetExpired;
 
     /// Hit-tests `point` via bounded `ElementFromPoint`, then classifies the
     /// frontmost result against `target`. Every probe failure, guard trip, and
@@ -77,7 +87,11 @@ mod imp {
             None => return Ok(HitTestResult::Unknown),
         };
         corroborate_verified_process(target)?;
-        if let Some(unknown) = pre_probe_guard(&bounds, &point, target, client) {
+        let Ok(walker) = client.get_raw_view_walker() else {
+            return Ok(HitTestResult::Unknown);
+        };
+        let target_root = corroborate::element_root_hwnd(target, &walker, deadline);
+        if let Some(unknown) = pre_probe_guard(&bounds, &point, target_root) {
             return Ok(unknown);
         }
         crate::system::permissions::ensure_budget(deadline)?;
@@ -85,58 +99,59 @@ mod imp {
             Some(hit) => hit,
             None => return result_for_failed_probe(),
         };
-        let walker = match client.get_raw_view_walker() {
-            Ok(walker) => walker,
-            Err(_) => return Ok(HitTestResult::Unknown),
-        };
-        let same = |left: &UIAElement, right: &UIAElement| same_element(client, left, right);
-        let identity = |node: &UIAElement| element_identity(node);
-        let parent_of = |node: &UIAElement| parent_step(&walker, node);
-        let Some(classification) =
-            classify::classify_hit_with(target, &hit, &same, &identity, &parent_of)
-        else {
-            return Ok(HitTestResult::Unknown);
-        };
-        let viewport = nearest_scroll_viewport_bounds(target, &walker);
-        let demote = classify::should_demote_outside_viewport(&point, &bounds, viewport.as_ref());
-        Ok(finish_classification(
-            classification,
-            demote,
+        let context = corroborate::InterceptionContext {
             target,
-            &hit,
+            target_root,
+            hit: &hit,
             point,
-            &walker,
-        ))
+            walker: &walker,
+            deadline,
+        };
+        Ok(judge_hit(&context, &bounds, client))
     }
 
-    fn finish_classification(
-        classification: classify::HitClassification,
-        demote_for_viewport: bool,
-        target: &UIAElement,
-        hit: &UIAElement,
-        point: Point,
-        walker: &UITreeWalker,
+    fn judge_hit(
+        context: &corroborate::InterceptionContext<'_>,
+        bounds: &Rect,
+        client: &UIAutomation,
     ) -> HitTestResult {
-        resolve_classification(classification, demote_for_viewport, || {
-            corroborate::corroborate_interception(target, hit, point, walker)
+        let same = |left: &UIAElement, right: &UIAElement| same_element(client, left, right);
+        let identity = |node: &UIAElement| element_identity(node);
+        let parent_of = |node: &UIAElement| parent_step(context.walker, node);
+        let walk = classify::AncestryWalk {
+            same_element: &same,
+            identity: &identity,
+            parent_of: &parent_of,
+            deadline: context.deadline,
+        };
+        let Some(classification) = classify::classify_hit_with(context.target, context.hit, &walk)
+        else {
+            return classify::result_for_incomplete_walk();
+        };
+        let viewport = match nearest_scroll_viewport_bounds(
+            context.target,
+            context.walker,
+            context.deadline,
+        ) {
+            Ok(viewport) => viewport,
+            Err(BudgetExpired) => return classify::result_for_incomplete_walk(),
+        };
+        let demote =
+            classify::should_demote_outside_viewport(&context.point, bounds, viewport.as_ref());
+        resolve_classification(classification, demote, |demote_for_viewport| {
+            corroborate::corroborate_interception(context, demote_for_viewport)
         })
     }
 
     pub(super) fn resolve_classification(
         classification: classify::HitClassification,
         demote_for_viewport: bool,
-        corroborate: impl FnOnce() -> HitTestResult,
+        corroborate: impl FnOnce(bool) -> HitTestResult,
     ) -> HitTestResult {
         match classification {
             classify::HitClassification::ReachesTarget => HitTestResult::ReachesTarget,
             classify::HitClassification::AncestorOfTarget => HitTestResult::Unknown,
-            classify::HitClassification::Unrelated => {
-                if demote_for_viewport {
-                    HitTestResult::Unknown
-                } else {
-                    corroborate()
-                }
-            }
+            classify::HitClassification::Unrelated => corroborate(demote_for_viewport),
         }
     }
 
@@ -179,34 +194,21 @@ mod imp {
     fn pre_probe_guard(
         bounds: &Rect,
         point: &Point,
-        target: &UIAElement,
-        client: &UIAutomation,
+        target_root: Option<isize>,
     ) -> Option<HitTestResult> {
-        if bounds.width <= 0.0 || bounds.height <= 0.0 {
-            return Some(result_for_zero_area_guard());
-        }
-        if root_is_iconic(target, client).unwrap_or(true) {
-            return Some(HitTestResult::Unknown);
-        }
-        let screen = virtual_screen_rect();
-        if !point_in_rect(point, &screen) || !rect_intersects_screen(bounds, &screen) {
-            return Some(HitTestResult::Unknown);
-        }
-        if !point_in_rect(point, bounds) {
-            return Some(HitTestResult::Unknown);
-        }
-        None
+        classify::pre_probe_decision(
+            bounds,
+            point,
+            &virtual_screen_rect(),
+            root_is_iconic(target_root),
+        )
+        .map(classify::result_for_guard)
     }
 
     /// Probe miss / failure collapses to `Unknown` so a flaky ElementFromPoint
     /// cannot abort the battery as `Err` (core propagates non-PlatformNotSupported).
     pub(super) fn result_for_failed_probe() -> Result<HitTestResult, AdapterError> {
         Ok(HitTestResult::Unknown)
-    }
-
-    /// Zero-area geometry is not hit-testable; never invent an interception.
-    pub(super) fn result_for_zero_area_guard() -> HitTestResult {
-        HitTestResult::Unknown
     }
 
     fn probe_element_from_point(client: &UIAutomation, point: &Point) -> Option<UIAElement> {
@@ -247,18 +249,13 @@ mod imp {
         }
     }
 
-    fn rect_intersects_screen(bounds: &Rect, screen: &Rect) -> bool {
-        intersect_screen(bounds, screen).is_some()
-    }
-
-    fn intersect_screen(bounds: &Rect, screen: &Rect) -> Option<Rect> {
-        super::classify::intersect_rects(*bounds, *screen)
-    }
-
-    fn root_is_iconic(target: &UIAElement, client: &UIAutomation) -> Option<bool> {
-        let walker = client.get_raw_view_walker().ok()?;
-        let root = corroborate::element_root_hwnd(target, &walker)?;
-        Some(unsafe { IsIconic(root as *mut std::ffi::c_void) != 0 })
+    /// An unresolved root reads as minimized: the window question went
+    /// unanswered, and an unanswered question never authorizes a probe.
+    fn root_is_iconic(target_root: Option<isize>) -> bool {
+        match target_root {
+            Some(root) => unsafe { IsIconic(root as *mut std::ffi::c_void) != 0 },
+            None => true,
+        }
     }
 
     fn same_element(client: &UIAutomation, left: &UIAElement, right: &UIAElement) -> bool {
@@ -272,7 +269,10 @@ mod imp {
         }
     }
 
-    fn parent_step(walker: &UITreeWalker, node: &UIAElement) -> Result<Option<UIAElement>, ()> {
+    pub(super) fn parent_step(
+        walker: &UITreeWalker,
+        node: &UIAElement,
+    ) -> Result<Option<UIAElement>, ()> {
         match walker.get_parent(&node.0) {
             Ok(parent) => Ok(Some(UIAElement::from(parent))),
             Err(error) => {
@@ -285,26 +285,35 @@ mod imp {
         }
     }
 
-    fn nearest_scroll_viewport_bounds(target: &UIAElement, walker: &UITreeWalker) -> Option<Rect> {
+    fn nearest_scroll_viewport_bounds(
+        target: &UIAElement,
+        walker: &UITreeWalker,
+        deadline: Deadline,
+    ) -> Result<Option<Rect>, BudgetExpired> {
         let mut current = target.clone();
-        for _ in 0..super::classify::ancestry_limit() {
+        for _ in 0..classify::ancestry_limit() {
+            if deadline.is_expired() {
+                return Err(BudgetExpired);
+            }
             let parent = match parent_step(walker, &current) {
                 Ok(Some(parent)) => parent,
-                Ok(None) | Err(()) => return None,
+                Ok(None) | Err(()) => return Ok(None),
             };
             if read_one(&parent, TreeProperty::ScrollAvailable).flag() == Some(true) {
-                return match read_one(&parent, TreeProperty::BoundingRectangle).bounds() {
-                    agent_desktop_core::LocatorField::Known(bounds)
-                        if bounds.width > 0.0 && bounds.height > 0.0 =>
-                    {
-                        Some(bounds)
-                    }
-                    _ => None,
-                };
+                return Ok(
+                    match read_one(&parent, TreeProperty::BoundingRectangle).bounds() {
+                        agent_desktop_core::LocatorField::Known(bounds)
+                            if classify::rect_has_area(&bounds) =>
+                        {
+                            Some(bounds)
+                        }
+                        _ => None,
+                    },
+                );
             }
             current = parent;
         }
-        None
+        Ok(None)
     }
 
     #[cfg(test)]
@@ -313,22 +322,6 @@ mod imp {
             PreReadFate::Unknown => Ok(()),
             PreReadFate::Escape(error) => Err(error),
         }
-    }
-
-    #[cfg(test)]
-    pub(super) fn guard_zero_area(bounds: &Rect) -> bool {
-        bounds.width <= 0.0 || bounds.height <= 0.0
-    }
-
-    #[cfg(test)]
-    pub(super) fn guard_point_outside_bounds(point: &Point, bounds: &Rect) -> bool {
-        !point_in_rect(point, bounds)
-    }
-
-    #[cfg(test)]
-    pub(super) fn guard_outside_virtual_screen(point: &Point, bounds: &Rect) -> bool {
-        let screen = virtual_screen_rect();
-        !point_in_rect(point, &screen) || !rect_intersects_screen(bounds, &screen)
     }
 }
 
@@ -354,6 +347,10 @@ pub(crate) use imp::hit_test_impl;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "hit_test_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "hit_test_guard_tests.rs"]
+mod guard_tests;
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "hit_test_live_tests.rs"]

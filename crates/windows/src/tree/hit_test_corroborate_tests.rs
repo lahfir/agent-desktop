@@ -1,152 +1,157 @@
-use super::{OCCLUDER_EVIDENCE_PROPERTIES, interception_agreed, occluder_from_properties};
+use super::{
+    Attribution, OCCLUDER_EVIDENCE_PROPERTIES, interception_attribution, interception_outcome,
+    occluder_from_properties,
+};
 use crate::tree::element_properties::ElementProperties;
 use crate::tree::name_evidence::LabelOutcome;
 use crate::tree::property_ids::TreeProperty;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
 use agent_desktop_core::{LocatorField, Rect, hit_test::HitTestResult};
+use std::cell::Cell;
 
 #[test]
 fn arm1_same_root_agrees() {
-    assert!(interception_agreed(
-        Some(10),
-        Some(10),
-        Some(10),
-        Some(1),
-        Some(1),
-        Some(1)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), Some(10), Some(10), Some(1), Some(1), Some(1)),
+        Attribution::SameRoot
+    );
 }
 
 #[test]
 fn arm2_cross_window_roots_agree() {
-    assert!(interception_agreed(
-        Some(10),
-        Some(20),
-        Some(20),
-        Some(1),
-        Some(2),
-        Some(2)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), Some(20), Some(20), Some(1), Some(2), Some(2)),
+        Attribution::CrossWindow
+    );
 }
 
 #[test]
 fn arm3_pid_widening_when_hit_root_unobtainable() {
-    assert!(interception_agreed(
-        Some(10),
-        None,
-        Some(20),
-        Some(1),
-        Some(2),
-        Some(2)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), None, Some(20), Some(1), Some(2), Some(2)),
+        Attribution::CrossWindow
+    );
 }
 
 #[test]
 fn arm3_pid_equal_never_widens() {
-    assert!(!interception_agreed(
-        Some(10),
-        None,
-        Some(20),
-        Some(1),
-        Some(1),
-        Some(1)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), None, Some(20), Some(1), Some(1), Some(1)),
+        Attribution::Contradicted
+    );
 }
 
 #[test]
 fn win32_skip_cell_is_unknown() {
-    assert!(!interception_agreed(
-        Some(10),
-        Some(20),
-        Some(10),
-        Some(1),
-        Some(2),
-        Some(1)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), Some(20), Some(10), Some(1), Some(2), Some(1)),
+        Attribution::Contradicted
+    );
 }
 
 #[test]
 fn three_distinct_roots_is_unknown() {
-    assert!(!interception_agreed(
-        Some(10),
-        Some(20),
-        Some(30),
-        Some(1),
-        Some(2),
-        Some(3)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), Some(20), Some(30), Some(1), Some(2), Some(3)),
+        Attribution::Contradicted
+    );
 }
 
 #[test]
 fn target_root_failure_is_unknown() {
-    assert!(!interception_agreed(
-        None,
-        Some(20),
-        Some(20),
-        Some(1),
-        Some(2),
-        Some(2)
-    ));
+    assert_eq!(
+        interception_attribution(None, Some(20), Some(20), Some(1), Some(2), Some(2)),
+        Attribution::Contradicted
+    );
 }
 
 #[test]
 fn win32_root_failure_is_unknown() {
-    assert!(!interception_agreed(
-        Some(10),
-        Some(20),
-        None,
-        Some(1),
-        Some(2),
-        None
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), Some(20), None, Some(1), Some(2), None),
+        Attribution::Contradicted
+    );
 }
 
 #[test]
 fn unreadable_pid_blocks_widening() {
-    assert!(!interception_agreed(
-        Some(10),
-        None,
-        Some(20),
-        Some(1),
-        None,
-        Some(2)
-    ));
-    assert!(!interception_agreed(
-        Some(10),
-        None,
-        Some(20),
-        None,
-        Some(2),
-        Some(2)
-    ));
-    assert!(!interception_agreed(
-        Some(10),
-        None,
-        Some(20),
-        Some(1),
-        Some(2),
-        None
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), None, Some(20), Some(1), None, Some(2)),
+        Attribution::Contradicted
+    );
+    assert_eq!(
+        interception_attribution(Some(10), None, Some(20), None, Some(2), Some(2)),
+        Attribution::Contradicted
+    );
+    assert_eq!(
+        interception_attribution(Some(10), None, Some(20), Some(1), Some(2), None),
+        Attribution::Contradicted
+    );
 }
 
 #[test]
 fn zero_handles_are_treated_as_unobtainable() {
-    assert!(!interception_agreed(
-        Some(0),
-        Some(20),
-        Some(20),
-        Some(1),
-        Some(2),
-        Some(2)
-    ));
-    assert!(interception_agreed(
-        Some(10),
-        Some(0),
-        Some(20),
-        Some(1),
-        Some(2),
-        Some(2)
-    ));
+    assert_eq!(
+        interception_attribution(Some(0), Some(20), Some(20), Some(1), Some(2), Some(2)),
+        Attribution::Contradicted
+    );
+    assert_eq!(
+        interception_attribution(Some(10), Some(0), Some(20), Some(1), Some(2), Some(2)),
+        Attribution::CrossWindow,
+        "a zero hit root is unobtainable, which is the pid-widening row"
+    );
+}
+
+/// The unclipped-rect demotion answers a same-window question, so it silences
+/// the same-root arm only: a cross-window occluder both opinions agree on is
+/// evidence wherever the candidate point falls inside the target's rect.
+#[test]
+fn the_viewport_demotion_silences_only_the_same_root_arm() {
+    assert_eq!(
+        interception_outcome(Attribution::SameRoot, true, evidence_stub),
+        HitTestResult::Unknown
+    );
+    assert_eq!(
+        interception_outcome(Attribution::CrossWindow, true, evidence_stub),
+        intercepted_stub(),
+        "a corroborated cross-window occluder survives the demotion"
+    );
+    assert_eq!(
+        interception_outcome(Attribution::SameRoot, false, evidence_stub),
+        intercepted_stub()
+    );
+    assert_eq!(
+        interception_outcome(Attribution::CrossWindow, false, evidence_stub),
+        intercepted_stub()
+    );
+}
+
+#[test]
+fn a_demoted_or_contradicted_outcome_never_reads_evidence() {
+    for (attribution, demote) in [
+        (Attribution::Contradicted, false),
+        (Attribution::Contradicted, true),
+        (Attribution::SameRoot, true),
+    ] {
+        let read = Cell::new(false);
+        let result = interception_outcome(attribution, demote, || {
+            read.set(true);
+            Some(intercepted_stub())
+        });
+        assert_eq!(result, HitTestResult::Unknown);
+        assert!(
+            !read.get(),
+            "{attribution:?} with demote={demote} must not spend an evidence batch"
+        );
+    }
+}
+
+#[test]
+fn unassembled_evidence_is_unknown_not_a_nameless_interception() {
+    assert_eq!(
+        interception_outcome(Attribution::CrossWindow, false, || None),
+        HitTestResult::Unknown
+    );
 }
 
 #[test]
@@ -244,24 +249,28 @@ fn resolve_role_unknown_maps_to_some_unknown_string() {
 
 #[test]
 fn flipped_arm1_must_not_agree_when_win32_differs() {
-    assert!(!interception_agreed(
-        Some(10),
-        Some(10),
-        Some(20),
-        Some(1),
-        Some(1),
-        Some(2)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), Some(10), Some(20), Some(1), Some(1), Some(2)),
+        Attribution::Contradicted
+    );
 }
 
 #[test]
 fn flipped_arm2_must_not_agree_when_win32_matches_target() {
-    assert!(!interception_agreed(
-        Some(10),
-        Some(20),
-        Some(10),
-        Some(1),
-        Some(2),
-        Some(1)
-    ));
+    assert_eq!(
+        interception_attribution(Some(10), Some(20), Some(10), Some(1), Some(2), Some(1)),
+        Attribution::Contradicted
+    );
+}
+
+fn evidence_stub() -> Option<HitTestResult> {
+    Some(intercepted_stub())
+}
+
+fn intercepted_stub() -> HitTestResult {
+    HitTestResult::InterceptedBy {
+        role: Some("pane".into()),
+        name: None,
+        bounds: None,
+    }
 }

@@ -1,12 +1,11 @@
 use super::classify::{
-    Ancestry, HitClassification, ancestry_with, classify_hit_with, classify_relation,
-    remember_ancestor_key, should_demote_outside_viewport,
+    Ancestry, AncestryWalk, HitClassification, ancestry_with, classify_hit_with, classify_relation,
+    remember_ancestor_key, result_for_incomplete_walk, should_demote_outside_viewport,
 };
 use super::hit_test_impl;
 use super::imp::{
-    guard_outside_virtual_screen, guard_point_outside_bounds, guard_zero_area, physical_point,
-    pre_read_fate_for_test, resolve_classification, result_for_failed_probe,
-    result_for_zero_area_guard, saturate_coord,
+    physical_point, pre_read_fate_for_test, resolve_classification, result_for_failed_probe,
+    saturate_coord,
 };
 use crate::system::hresult::{E_ACCESSDENIED, E_FAIL, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT};
 use crate::tree::automation::{ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, root_from_hwnd};
@@ -14,7 +13,7 @@ use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
 use crate::tree::fixture_window;
 use crate::tree::walker::NodeKey;
 use crate::tree::walker_fake::deadline;
-use agent_desktop_core::{ErrorCode, Point, Rect, hit_test::HitTestResult};
+use agent_desktop_core::{Deadline, ErrorCode, Point, Rect, hit_test::HitTestResult};
 use std::cell::Cell;
 use std::collections::HashMap;
 
@@ -38,7 +37,7 @@ fn descendant_relation_reaches_target() {
 fn ancestor_hit_classifies_unknown_not_intercepted() {
     let classification = classify_relation(false, true);
     assert_eq!(classification, HitClassification::AncestorOfTarget);
-    let result = resolve_classification(classification, false, intercepted_stub);
+    let result = resolve_classification(classification, false, |_| intercepted_stub());
     assert_eq!(result, HitTestResult::Unknown);
     assert!(
         !matches!(result, HitTestResult::InterceptedBy { .. }),
@@ -49,8 +48,9 @@ fn ancestor_hit_classifies_unknown_not_intercepted() {
 #[test]
 fn unrelated_hit_reaches_corroboration_seam() {
     let called = Cell::new(false);
-    let result = resolve_classification(HitClassification::Unrelated, false, || {
+    let result = resolve_classification(HitClassification::Unrelated, false, |demote| {
         called.set(true);
+        assert!(!demote, "an in-viewport point demotes nothing");
         HitTestResult::Unknown
     });
     assert!(
@@ -58,6 +58,24 @@ fn unrelated_hit_reaches_corroboration_seam() {
         "unrelated hits must invoke the corroboration seam"
     );
     assert_eq!(result, HitTestResult::Unknown);
+}
+
+/// The demotion is a same-root concern, so it travels *into* corroboration
+/// rather than short-circuiting it: silencing every unrelated hit would lose
+/// the cross-window occluder two independent opinions already agreed on.
+#[test]
+fn viewport_demotion_reaches_the_seam_carrying_its_flag() {
+    let observed = Cell::new(None);
+    let result = resolve_classification(HitClassification::Unrelated, true, |demote| {
+        observed.set(Some(demote));
+        intercepted_stub()
+    });
+    assert_eq!(
+        observed.get(),
+        Some(true),
+        "corroboration decides the demotion, so it must receive the flag"
+    );
+    assert_eq!(result, intercepted_stub());
 }
 
 #[test]
@@ -69,78 +87,29 @@ fn classify_hit_self_and_descendant_and_ancestor_arms() {
     };
     let same = |left: &i32, right: &i32| left == right;
     let identity = |node: &i32| NodeKey::Runtime(vec![*node]);
+    let walk = AncestryWalk {
+        same_element: &same,
+        identity: &identity,
+        parent_of: &parent_of,
+        deadline: deadline(),
+    };
 
     assert_eq!(
-        classify_hit_with(&1, &1, &same, &identity, &parent_of),
+        classify_hit_with(&1, &1, &walk),
         Some(HitClassification::ReachesTarget)
     );
     assert_eq!(
-        classify_hit_with(&1, &2, &same, &identity, &parent_of),
+        classify_hit_with(&1, &2, &walk),
         Some(HitClassification::ReachesTarget)
     );
     assert_eq!(
-        classify_hit_with(&2, &1, &same, &identity, &parent_of),
+        classify_hit_with(&2, &1, &walk),
         Some(HitClassification::AncestorOfTarget)
     );
     assert_eq!(
-        classify_hit_with(&2, &3, &same, &identity, &parent_of),
+        classify_hit_with(&2, &3, &walk),
         Some(HitClassification::Unrelated)
     );
-}
-
-#[test]
-fn viewport_demotion_skips_corroboration_seam() {
-    let called = Cell::new(false);
-    let result = resolve_classification(HitClassification::Unrelated, true, || {
-        called.set(true);
-        intercepted_stub()
-    });
-    assert!(!called.get());
-    assert_eq!(result, HitTestResult::Unknown);
-}
-
-#[test]
-fn zero_area_guard_is_unknown_not_intercept_or_err() {
-    let bounds = Rect {
-        x: 10.0,
-        y: 10.0,
-        width: 0.0,
-        height: 20.0,
-    };
-    assert!(guard_zero_area(&bounds));
-    let outcome = result_for_zero_area_guard();
-    assert_eq!(outcome, HitTestResult::Unknown);
-    assert!(
-        !matches!(outcome, HitTestResult::InterceptedBy { .. }),
-        "zero-area must not invent InterceptedBy"
-    );
-}
-
-#[test]
-fn point_outside_bounds_guard_is_unknown() {
-    let bounds = Rect {
-        x: 100.0,
-        y: 100.0,
-        width: 40.0,
-        height: 40.0,
-    };
-    let point = Point { x: 10.0, y: 10.0 };
-    assert!(guard_point_outside_bounds(&point, &bounds));
-}
-
-#[test]
-fn virtual_screen_guard_rejects_freed_coordinates() {
-    let bounds = Rect {
-        x: -32_000.0,
-        y: -32_000.0,
-        width: 100.0,
-        height: 100.0,
-    };
-    let point = Point {
-        x: -32_000.0,
-        y: -32_000.0,
-    };
-    assert!(guard_outside_virtual_screen(&point, &bounds));
 }
 
 #[test]
@@ -176,19 +145,63 @@ fn demotion_outside_target_viewport_intersection() {
 fn ancestry_cycle_terminates_as_incomplete_never_hangs() {
     let parents: HashMap<i32, i32> = [(1, 2), (2, 1)].into_iter().collect();
     let steps = Cell::new(0);
-    let result = ancestry_with(
-        &1,
-        &99,
-        50,
-        &|left, right| left == right,
-        &|node| NodeKey::Runtime(vec![*node]),
-        &|node| {
-            steps.set(steps.get() + 1);
-            assert!(steps.get() <= 60, "cycle walk must not hang");
-            Ok(Some(parents[node]))
-        },
+    let same = |left: &i32, right: &i32| left == right;
+    let identity = |node: &i32| NodeKey::Runtime(vec![*node]);
+    let parent_of = |node: &i32| {
+        steps.set(steps.get() + 1);
+        assert!(steps.get() <= 60, "cycle walk must not hang");
+        Ok(Some(parents[node]))
+    };
+    let walk = AncestryWalk {
+        same_element: &same,
+        identity: &identity,
+        parent_of: &parent_of,
+        deadline: deadline(),
+    };
+    assert_eq!(ancestry_with(&1, &99, 50, &walk), Ancestry::Incomplete);
+}
+
+/// Each ancestor step is a cross-process call, so a budget consulted only
+/// before the phase lets a long chain run arbitrarily far past the deadline.
+#[test]
+fn an_expired_budget_truncates_the_walk_mid_chain_to_unknown() {
+    const CHAIN: i32 = 8;
+    let parents: HashMap<i32, i32> = (1..CHAIN).map(|node| (node, node + 1)).collect();
+    let steps = Cell::new(0);
+    let same = |left: &i32, right: &i32| left == right;
+    let identity = |node: &i32| NodeKey::Runtime(vec![*node]);
+    let parent_of = |node: &i32| {
+        steps.set(steps.get() + 1);
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        Ok(parents.get(node).copied())
+    };
+    let walk = AncestryWalk {
+        same_element: &same,
+        identity: &identity,
+        parent_of: &parent_of,
+        deadline: Deadline::after(200).expect("a bounded budget"),
+    };
+
+    assert_eq!(ancestry_with(&1, &99, 50, &walk), Ancestry::Incomplete);
+    assert!(
+        steps.get() >= 1,
+        "the budget must be spent by real steps, not refused before the first"
     );
-    assert_eq!(result, Ancestry::Incomplete);
+    assert!(
+        steps.get() < CHAIN,
+        "an expired budget must truncate the walk instead of running the chain out"
+    );
+    assert_eq!(
+        classify_hit_with(&1, &99, &walk),
+        None,
+        "a truncated walk leaves the relation unproven"
+    );
+    let result = result_for_incomplete_walk();
+    assert_eq!(result, HitTestResult::Unknown);
+    assert!(
+        !matches!(result, HitTestResult::InterceptedBy { .. }),
+        "a truncated walk must never invent InterceptedBy"
+    );
 }
 
 #[test]
