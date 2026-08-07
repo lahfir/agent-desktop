@@ -1,10 +1,9 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, ProcessId, WindowInfo,
-    WindowState,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, WindowInfo, WindowState,
 };
 
 use super::window_enum::enumerate_top_level;
-use super::window_identity::{WindowIdentityEvidence, live_window_owner, live_window_title};
+use super::window_identity::{WindowIdentityEvidence, live_window_title};
 use super::window_ops::{is_foreground_window, parse_handle, passes_filter};
 
 /// Resolves a live window by `WindowInfo.id`, corroborating pid and process
@@ -75,12 +74,12 @@ pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result
         ));
     };
     evidence.verify_stored()?;
-    restore_if_iconic(handle, win.pid)?;
-    if is_owned_foreground(handle, win.pid) {
+    restore_if_iconic(handle, &evidence)?;
+    if is_owned_foreground(handle, &evidence) {
         return Ok(());
     }
-    bring_to_foreground(handle, win.pid)?;
-    if is_owned_foreground(handle, win.pid) {
+    bring_to_foreground(handle, &evidence)?;
+    if is_owned_foreground(handle, &evidence) {
         return Ok(());
     }
     Err(AdapterError::new(
@@ -146,29 +145,41 @@ fn window_exists(_handle: super::window_enum::WindowHandle) -> bool {
 }
 
 /// Whether the handle is the foreground window **and** is still owned by the
-/// expected process. Handle equality alone would accept a recycled HWND, so
-/// the ownership term is what makes this a safe success predicate.
+/// stored process instance.
+///
+/// Handle equality alone would accept a recycled HWND; pid equality alone
+/// would accept a replacement process that inherited a recycled pid. The
+/// success predicate therefore asks the same full-identity question the
+/// admission check asks, and an unreadable answer is not a success — a
+/// generation read that fails leaves the window unproven, so this reports
+/// false and the caller returns not-delivered.
 #[cfg(target_os = "windows")]
-fn is_owned_foreground(handle: super::window_enum::WindowHandle, expected: ProcessId) -> bool {
-    is_foreground_window(handle) && live_window_owner(handle) == Some(expected)
+fn is_owned_foreground(
+    handle: super::window_enum::WindowHandle,
+    evidence: &WindowIdentityEvidence<'_>,
+) -> bool {
+    is_foreground_window(handle) && evidence.owns_handle_now().unwrap_or(false)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn is_owned_foreground(_handle: super::window_enum::WindowHandle, _expected: ProcessId) -> bool {
+fn is_owned_foreground(
+    _handle: super::window_enum::WindowHandle,
+    _evidence: &WindowIdentityEvidence<'_>,
+) -> bool {
     false
 }
 
 #[cfg(target_os = "windows")]
 fn restore_if_iconic(
     handle: super::window_enum::WindowHandle,
-    expected: ProcessId,
+    evidence: &WindowIdentityEvidence<'_>,
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, SW_RESTORE, ShowWindow};
     unsafe {
         if IsIconic(handle) == 0 {
             return Ok(());
         }
-        if live_window_owner(handle) != Some(expected) {
+        if !evidence.owns_handle_now()? {
             return Err(recycled_before_foreground());
         }
         ShowWindow(handle, SW_RESTORE);
@@ -179,7 +190,7 @@ fn restore_if_iconic(
 #[cfg(not(target_os = "windows"))]
 fn restore_if_iconic(
     _handle: super::window_enum::WindowHandle,
-    _expected: ProcessId,
+    _evidence: &WindowIdentityEvidence<'_>,
 ) -> Result<(), AdapterError> {
     Ok(())
 }
@@ -187,7 +198,7 @@ fn restore_if_iconic(
 #[cfg(target_os = "windows")]
 fn bring_to_foreground(
     handle: super::window_enum::WindowHandle,
-    expected: ProcessId,
+    evidence: &WindowIdentityEvidence<'_>,
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -196,7 +207,7 @@ fn bring_to_foreground(
     };
 
     unsafe {
-        if live_window_owner(handle) != Some(expected) {
+        if !evidence.owns_handle_now()? {
             return Err(recycled_before_foreground());
         }
         if IsWindowVisible(handle) == 0 {
@@ -204,7 +215,7 @@ fn bring_to_foreground(
         }
         let mut target_pid = 0u32;
         let target_tid = GetWindowThreadProcessId(handle, &mut target_pid);
-        if target_tid == 0 || ProcessId::from(target_pid) != expected {
+        if target_tid == 0 || !evidence.owns_handle_now()? {
             return Err(recycled_before_foreground());
         }
         let foreground = GetForegroundWindow();
@@ -221,7 +232,7 @@ fn bring_to_foreground(
         let attached_target = target_tid != 0
             && target_tid != current_tid
             && AttachThreadInput(current_tid, target_tid, 1) != 0;
-        let still_owned = live_window_owner(handle) == Some(expected);
+        let still_owned = evidence.owns_handle_now().unwrap_or(false);
         if still_owned {
             let _ = SetForegroundWindow(handle);
         }

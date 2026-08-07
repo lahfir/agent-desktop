@@ -112,6 +112,39 @@ fn focus_window_refuses_a_destroyed_handle_before_any_window_write() {
 /// outcome: whether a lane can take the foreground at all depends on the
 /// desktop it runs on, so this asserts the implication rather than the
 /// result. `Ok` must mean the foreground window is the target **and** is
+/// Every point-of-use guard asks the full-identity question, not the pid
+/// alone. A pid that Windows recycled to a replacement process satisfies pid
+/// equality while the generation token does not, so a guard weakened to pid
+/// equality would admit exactly the window the admission check refused. This
+/// drives the shared predicate with a live fixture and with a generation
+/// token that cannot match, and the second case fails if any guard is
+/// reverted to comparing the owning pid.
+#[cfg(target_os = "windows")]
+#[test]
+fn a_recycled_generation_is_refused_even_when_the_owning_pid_matches() {
+    let (_fixture, expected) = listed_fixture_window();
+    let handle = parse_handle(&expected.id);
+
+    let genuine = WindowIdentityEvidence::from_info(handle, &expected).expect("stored evidence");
+    assert!(
+        genuine.owns_handle_now().expect("owner read"),
+        "the live fixture window must satisfy its own stored evidence"
+    );
+
+    let mut impostor_info = expected.clone();
+    impostor_info.process_instance = Some("windows-proc-v1:0:0".into());
+    let impostor =
+        WindowIdentityEvidence::from_info(handle, &impostor_info).expect("stored evidence");
+    assert!(
+        !impostor.owns_handle_now().expect("owner read"),
+        "a stale generation token must be refused even though the owning pid still matches"
+    );
+    assert!(
+        !is_owned_foreground(handle, &impostor),
+        "the success predicate must refuse a matching pid on a stale generation"
+    );
+}
+
 /// still owned by the expected process; a lane that cannot focus must say
 /// so as a not-delivered failure. The forbidden state is `Ok` while some
 /// other process owns the foreground.
@@ -123,8 +156,10 @@ fn focus_window_reports_ok_only_when_the_expected_process_owns_the_foreground() 
     match focus_window(&expected, &lease) {
         Ok(()) => {
             let handle = parse_handle(&expected.id);
+            let evidence =
+                WindowIdentityEvidence::from_info(handle, &expected).expect("stored evidence");
             assert!(
-                is_owned_foreground(handle, expected.pid),
+                is_owned_foreground(handle, &evidence),
                 "focus_window returned Ok while the foreground was not the owned target"
             );
         }
