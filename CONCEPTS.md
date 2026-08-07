@@ -156,6 +156,21 @@ The refusal is enforced where the close happens, so CLI, FFI, and any future con
 ### Actionability
 The pre-dispatch judgement that a resolved element is safe to act on, based on native evidence such as visibility, stability, enabled state, supported action, policy, and editability.
 
+### Auto-Wait
+The default-on bounded poll that holds a ref action until its target becomes actionable, then fails with `TIMEOUT` if the budget expires.
+
+The bound is 5000ms; `--timeout-ms 0` restores single-shot act-immediately behavior. Transient checks (visibility, stability, enabled, occlusion) are polled; terminal checks (supported action, policy, editability) fail fast without waiting out the budget.
+
+### Actionability Battery
+The shared pre-dispatch set of live checks core runs against a resolved element — visible, stable, enabled, supported action, policy, editable, and receiving events — before any adapter dispatch.
+
+Two hit-test shapes must not be conflated. The battery's `receives_events` check sweeps **five** candidate points from the element's bounds (center plus four quadrant points) and passes if *any* reaches the target, asking whether the element is reachable at all so a partially occluded control still passes. The pointer pipeline asks a different question at the **single** coordinate it has already resolved and will move the cursor to; a target that satisfies the battery can still fail that single-point check.
+
+### Occlusion Gate / Hit Test
+The three-way probe that asks whether another element visibly intercepts the action point: `ReachesTarget`, `InterceptedBy { role, name, bounds }`, or `Unknown`.
+
+The gate fails open on `Unknown`: unavailable evidence never false-fails an action the dispatch outcome will judge. `InterceptedBy` requires positive evidence — within an agreed window attribution the platform's hit-test verdict alone, or two-opinion agreement when the hit belongs to another window — so an inconclusive probe cannot invent an occluder.
+
 ### Delivery Semantics
 What a failed or uncertain action says about whether input actually reached the application, and therefore whether repeating it is safe.
 

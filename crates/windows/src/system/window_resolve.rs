@@ -8,7 +8,7 @@ use super::window_identity::WindowIdentityEvidence;
 use super::window_ops::{parse_handle, passes_filter};
 
 /// Resolves a live window by `WindowInfo.id`, corroborating pid and process
-/// generation against the handle's current owner (2.5 stored-evidence rule).
+/// generation against the handle's current owner (stored-evidence rule).
 pub(crate) fn resolve_window_strict(
     expected: &WindowInfo,
     _deadline: Deadline,
