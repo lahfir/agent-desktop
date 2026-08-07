@@ -178,6 +178,16 @@ What a failed or uncertain action says about whether input actually reached the 
 
 The distinction that matters is not success versus failure but delivered versus not: an action that never reached the target can be retried freely, while one that may have landed cannot be repeated without risking a duplicate. Verification is a third axis — an action can be known-delivered yet unverified, meaning the input was posted but its effect was not confirmed. Errors carry this alongside the recovery hint so a caller never has to infer retry safety from an error code.
 
+### Mutation Classifier
+The write-path table that turns a failed native mutation into a delivery verdict before any chain step or error envelope is built.
+
+It answers whether the write was delivered, whether the affordance is genuinely absent (fall through to the next chain rung), or which structured failure and disposition apply. It is the write-side counterpart of Read Outcomes and must never reuse that cluster: the read table's retryable transport codes are exactly the HRESULTs a write may already have delivered, so consulting it would authorize a double-dispatch (A19-2; Windows `actions/mutation.rs`, macOS `ax_mutation::classify`).
+
+### Secure Field
+An element whose content must never appear in observation or action surfaces once the platform marks it secret (`IsPassword` on Windows; equivalent password/secure-text roles on macOS).
+
+The contract spans both sides of KTD10: the **read side** withholds value and related text evidence and resolves by content-free fingerprint; the **action side** may write into the field but never echoes the attempted or observed value in steps, messages, `details`, `platform_detail`, or post-state, and reports `verified: None` when a re-read cannot confirm without leaking (A19-3).
+
 ### Interaction Lease
 Machine-wide exclusivity over desktop input, held by one process at a time so concurrent callers cannot interleave synthetic input into each other's actions.
 
