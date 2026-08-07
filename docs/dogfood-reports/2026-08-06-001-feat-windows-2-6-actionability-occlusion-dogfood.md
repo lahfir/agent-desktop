@@ -1,11 +1,17 @@
 # Dogfood report - Actionability & occlusion (sub-phase 2.6 U6)
 
-**Date:** 2026-08-06 · **Branch:** `feat/windows-2.6-actionability` · **Plan:** `docs/plans/2026-08-06-001-feat-windows-actionability-occlusion-plan.md`
+**Date:** 2026-08-07 · **Branch:** `feat/windows-2.6-actionability` · **Plan:** `docs/plans/2026-08-06-001-feat-windows-actionability-occlusion-plan.md`
 
 The occlusion gate, corroboration honesty, and scroll path cannot be validated by
 a test that restates them. This run drives the release binary against real
 software — including a foreign-process occluder the repository does not own —
-and judges by reading JSON envelopes, never the suite's opinion of itself.
+and judges by reading JSON envelopes, never the suite's opinion of itself. The
+judgements themselves are now proof-checked against the defect they hunt: every
+verdict that accepts `PLATFORM_NOT_SUPPORTED` requires a redaction-safe boolean
+discriminator on the envelope's `message` — does it name `execute_action`,
+proving dispatch was actually reached, rather than a seam short of it
+answering in its place — and the runner exits non-zero on any judgement
+failure instead of always exiting 0.
 
 ## Environment
 
@@ -13,7 +19,7 @@ and judges by reading JSON envelopes, never the suite's opinion of itself.
 | --- | --- |
 | OS | Windows Server 2019 Datacenter, build 17763 |
 | UIA runtime | UIA3 COM (`CUIAutomation8`), `uiautomation` crate 0.25.0 |
-| Binary | `target/release/agent-desktop.exe` (2,060,800 B release build) |
+| Binary | `target/release/agent-desktop.exe` (2,063,872 B release build) |
 | Runner | `probes/windows/scratch/run-actionability-dogfood.ps1`, release binary driven directly, JSON read |
 | Capture | `docs/dogfood-reports/2026-08-06-001-captures/actionability-dogfood-run.json` (redaction gate passed) |
 | Targets | WinForms scratch (+ Notepad occluder), Explorer, Obsidian, WPF scratch corroboration |
@@ -54,10 +60,14 @@ Same target after Notepad dismissed. Gate passes; dispatch fails closed.
 **Envelope shape:**
 
 - `ok: false`, `error.code: "PLATFORM_NOT_SUPPORTED"`
-- `message` names `execute_action` (pre-2.7 honest arm)
+- `message_names_execute_action: true` — the discriminator, not the code
+  alone, is what proves the pre-2.7 honest arm
 - `disposition.delivery: "not_delivered"`, `disposition.retry: "safe"`
 
-**Verdict:** pass — gate ordering holds.
+**Verdict:** pass — `PLATFORM_NOT_SUPPORTED` naming `execute_action`, so the
+gate passed and dispatch was reached. The code alone is not proof: a seam
+short of dispatch (for example an unimplemented scroll override falling
+through to the trait default) carries the identical code.
 
 ## J3. Same-root in-window overlay names the occluder
 
@@ -83,11 +93,19 @@ the auto-scroll seam fires without requiring hit-test focus.
 
 - `ok: false`, `error.code: "ACTION_FAILED"`
 - `disposition.delivery: "delivered_unverified"`, `disposition.retry: "unsafe"`
+- `message_names_execute_action: false`, `message_names_scroll_into_view: false`
+  — names neither not-supported seam
 
-**Verdict:** pass — honest observation-judged arm (KTD5), not
-`PLATFORM_NOT_SUPPORTED` from the pre-2.6 trait default. Scroll was invoked;
-post-invoke visibility was not proven within the verification window on this
-Explorer surface. Not assumed to be verified-visible scroll success.
+**Verdict:** pass — honest observation-judged arm (KTD5). The code is
+`ACTION_FAILED`/`delivered_unverified`, not `PLATFORM_NOT_SUPPORTED` — so this
+is neither the pre-2.6 trait default nor the identically-coded R6 defect (a
+missing `scroll_into_view` falling through to the trait default also reads
+`PLATFORM_NOT_SUPPORTED`). The rebuilt judgement additionally would refuse a
+`PLATFORM_NOT_SUPPORTED` result here unless its `message` named
+`execute_action`, closing the hole the old logic had on that branch. Scroll
+was invoked; post-invoke visibility was not proven within the verification
+window on this Explorer surface. Delivered but unverified is the honest
+outcome here, not a failure.
 
 ## J5. Chromium hit-test (A18-3) — U6 measurement of record
 
@@ -95,16 +113,22 @@ Obsidian after cold launch: snapshot completed with **15 refs**, `complete:
 true`, **0** positive-area leaves among twelve sampled refs —
 `target_absent_or_shell_bound`. Matches A18-3 / A16-11 / A17-8 first-contact
 shell. Five-point web-content classification remains unobtainable on this host.
+The judgement now carries the same dispatch-reached discriminator as J2/J4/J6
+for the branch where a positive-area leaf is found and headed-clicked, but
+zero positive-area leaves means that branch is not exercised here — recorded
+as unexercised, never presented as a verified Chromium hit-test.
 
-**Verdict:** ran — shell-bound branch taken; this run is the measurement of
-record for U6 (as U1 deferred).
+**Verdict:** ran — shell-bound branch taken, unchanged from the prior run;
+this run is the measurement of record for U6 (as U1 deferred).
 
 ## J6. Minimized-window guard does not invent InterceptedBy
 
 Owned ScratchForms minimized (`IsIconic` true before click). Headed focus
 restores the window before `hit_test` runs; the product envelope is
-`PLATFORM_NOT_SUPPORTED` with **no** `receives_events` / `"occluded by <role>"`
-check — no phantom desktop occluder.
+`PLATFORM_NOT_SUPPORTED`, `message_names_execute_action: true`, with **no**
+`receives_events` / `"occluded by <role>"` check — no phantom desktop
+occluder, and the discriminator confirms dispatch was actually reached rather
+than an earlier seam answering in its place.
 
 **Verdict:** pass — guard holds on the binary path (no invented occlusion).
 Direct `hit_test` IsIconic→`Unknown` remains pinned by
@@ -117,6 +141,17 @@ Direct `hit_test` IsIconic→`Unknown` remains pinned by
 run. Thin Windows implementations of `resolve_window_strict` and `focus_window`
 were added over existing 2.5 window identity (`crates/windows/src/system/window_resolve.rs`),
 with regression tests, so the headed product path reaches `hit_test`.
+
+The dogfood judgements themselves shared the blind spot they were built to
+catch. The old J4 accepted any `PLATFORM_NOT_SUPPORTED` as "scroll verified,
+then honest `PLATFORM_NOT_SUPPORTED`" — but that code is exactly what the R6
+defect (a missing `scroll_into_view` falling through to the trait default)
+also produces, so the gate passed on the defect it existed to catch. J2, J5,
+and J6 carried the same class of hole. `run-actionability-dogfood.ps1` now
+reads a redaction-safe boolean discriminator off the envelope's `message` —
+does it name `execute_action`, proving dispatch was actually reached, versus
+a seam short of it — and requires the correct one per judgement. It also now
+exits non-zero when any judgement fails; it previously always exited 0.
 
 ## Residuals (owners for U7)
 
@@ -137,7 +172,7 @@ with regression tests, so the headed product path reaches `hit_test`.
 | --- | --- |
 | run with repo-controlled content | yes — synthetic notepad/explorer content, repo fixtures, Obsidian shapes-only |
 | skips reasoned | yes — none absent; J5 shell-bound recorded rather than faked |
-| findings closed-with-failing-test or escalated | headed path unblocked with `window_resolve` tests; residuals escalated with owners above |
+| findings closed-with-failing-test or escalated | headed path unblocked with `window_resolve` tests; judgement blind spot closed (message discriminator, non-zero exit on failure); residuals escalated with owners above |
 | durable redaction-compliant report | this report + capture JSON (redaction gate passed) |
 | environment header + per-target matrix | above |
 | every judgement backed by a quoted envelope | J1–J6 above; capture JSON retains shapes/counts only |

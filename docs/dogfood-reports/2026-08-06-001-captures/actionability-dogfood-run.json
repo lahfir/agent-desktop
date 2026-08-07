@@ -3,8 +3,8 @@
                         "os_caption":  "Microsoft Windows Server 2019 Datacenter",
                         "os_build":  "17763",
                         "binary":  "agent-desktop.exe",
-                        "binary_bytes":  2060800,
-                        "generated":  "2026-08-06T23:38:42.0138697-06:00"
+                        "binary_bytes":  2063872,
+                        "generated":  "2026-08-07T02:51:45.0077892-06:00"
                     },
     "judgements":  [
                        {
@@ -67,7 +67,9 @@
                                                   "details_kind":  null,
                                                   "occluder_role_present":  true,
                                                   "occluder_name_present":  true,
-                                                  "suggestion_present":  true
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_scroll_into_view":  false
                                               },
                            "notes":  "code=ACTION_FAILED recovery="
                        },
@@ -76,7 +78,7 @@
                            "claim":  "unoccluded headed click reaches honest pre-2.7 dispatch",
                            "target":  "ScratchForms btnAction after Notepad dismissed",
                            "result":  "pass",
-                           "verdict":  "PLATFORM_NOT_SUPPORTED at dispatch",
+                           "verdict":  "PLATFORM_NOT_SUPPORTED naming execute_action, so the gate passed and dispatch was reached",
                            "envelope_shape":  {
                                                   "ok":  false,
                                                   "command":  "click",
@@ -90,9 +92,11 @@
                                                   "details_kind":  null,
                                                   "occluder_role_present":  null,
                                                   "occluder_name_present":  null,
-                                                  "suggestion_present":  true
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  true,
+                                                  "message_names_scroll_into_view":  false
                                               },
-                           "notes":  "code=PLATFORM_NOT_SUPPORTED"
+                           "notes":  "code=PLATFORM_NOT_SUPPORTED names_execute_action=True names_scroll_into_view=False"
                        },
                        {
                            "id":  "J3",
@@ -154,7 +158,9 @@
                                                   "details_kind":  null,
                                                   "occluder_role_present":  true,
                                                   "occluder_name_present":  true,
-                                                  "suggestion_present":  true
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_scroll_into_view":  false
                                               },
                            "notes":  "code=ACTION_FAILED occluder_role=button"
                        },
@@ -177,9 +183,11 @@
                                                   "details_kind":  null,
                                                   "occluder_role_present":  null,
                                                   "occluder_name_present":  null,
-                                                  "suggestion_present":  true
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  true,
+                                                  "message_names_scroll_into_view":  false
                                               },
-                           "notes":  "is_iconic_before_click=True named_occluder=False"
+                           "notes":  "is_iconic_before_click=True named_occluder=False code=PLATFORM_NOT_SUPPORTED names_execute_action=True"
                        },
                        {
                            "id":  "J4",
@@ -200,9 +208,11 @@
                                                   "details_kind":  null,
                                                   "occluder_role_present":  null,
                                                   "occluder_name_present":  null,
-                                                  "suggestion_present":  false
+                                                  "suggestion_present":  false,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_scroll_into_view":  false
                                               },
-                           "notes":  "candidates=19 code=ACTION_FAILED delivery=delivered_unverified kind="
+                           "notes":  "candidates=19 code=ACTION_FAILED delivery=delivered_unverified kind= names_execute_action=False names_scroll_into_view=False"
                        },
                        {
                            "id":  "J5",
@@ -232,7 +242,9 @@
                                                   "details_kind":  null,
                                                   "occluder_role_present":  null,
                                                   "occluder_name_present":  null,
-                                                  "suggestion_present":  true
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  true,
+                                                  "message_names_scroll_into_view":  false
                                               },
                            "notes":  "code=PLATFORM_NOT_SUPPORTED"
                        }
@@ -294,7 +306,9 @@
                                         "details_kind":  null,
                                         "occluder_role_present":  true,
                                         "occluder_name_present":  true,
-                                        "suggestion_present":  true
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_scroll_into_view":  false
                                     },
                           "raw_redacted_keys_only":  true,
                           "note":  ""
@@ -314,7 +328,9 @@
                                         "details_kind":  null,
                                         "occluder_role_present":  null,
                                         "occluder_name_present":  null,
-                                        "suggestion_present":  true
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  true,
+                                        "message_names_scroll_into_view":  false
                                     },
                           "raw_redacted_keys_only":  true,
                           "note":  ""
@@ -375,7 +391,9 @@
                                         "details_kind":  null,
                                         "occluder_role_present":  true,
                                         "occluder_name_present":  true,
-                                        "suggestion_present":  true
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_scroll_into_view":  false
                                     },
                           "raw_redacted_keys_only":  true,
                           "note":  ""
@@ -395,7 +413,9 @@
                                         "details_kind":  null,
                                         "occluder_role_present":  null,
                                         "occluder_name_present":  null,
-                                        "suggestion_present":  true
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  true,
+                                        "message_names_scroll_into_view":  false
                                     },
                           "raw_redacted_keys_only":  true,
                           "note":  ""
@@ -415,7 +435,9 @@
                                         "details_kind":  null,
                                         "occluder_role_present":  null,
                                         "occluder_name_present":  null,
-                                        "suggestion_present":  false
+                                        "suggestion_present":  false,
+                                        "message_names_execute_action":  false,
+                                        "message_names_scroll_into_view":  false
                                     },
                           "raw_redacted_keys_only":  true,
                           "note":  ""
@@ -435,7 +457,9 @@
                                         "details_kind":  null,
                                         "occluder_role_present":  null,
                                         "occluder_name_present":  null,
-                                        "suggestion_present":  true
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  true,
+                                        "message_names_scroll_into_view":  false
                                     },
                           "raw_redacted_keys_only":  true,
                           "note":  ""
