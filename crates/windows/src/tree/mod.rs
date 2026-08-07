@@ -30,6 +30,10 @@ pub mod walker_source;
 #[cfg(test)]
 mod walker_fake;
 
+#[cfg(test)]
+#[path = "hit_test_scan_tests.rs"]
+mod hit_test_scan_tests;
+
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture;
 #[cfg(all(test, target_os = "windows"))]
