@@ -92,7 +92,12 @@ impl<'a> WindowIdentityEvidence<'a> {
 /// window manager no longer knows, and the non-Windows lane where no window
 /// server is reachable. Callers treat it as a failed match, never as an
 /// absent constraint, so an unreadable owner fails closed.
-fn live_window_owner(handle: super::window_enum::WindowHandle) -> Option<ProcessId> {
+///
+/// The out-parameter is what decides the answer rather than the returned thread
+/// id: both are zero exactly when the call fails, since an invalid handle leaves
+/// the pre-zeroed variable untouched and a live window belongs to a process
+/// whose id is never zero.
+pub(crate) fn live_window_owner(handle: super::window_enum::WindowHandle) -> Option<ProcessId> {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
@@ -112,7 +117,7 @@ fn live_window_owner(handle: super::window_enum::WindowHandle) -> Option<Process
 
 /// Reads the live title of a window handle, the one piece of the strict check
 /// only the OS can answer for.
-fn live_window_title(handle: super::window_enum::WindowHandle) -> Option<String> {
+pub(crate) fn live_window_title(handle: super::window_enum::WindowHandle) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
