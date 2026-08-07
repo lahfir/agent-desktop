@@ -11,8 +11,9 @@ use super::window_ops::{parse_handle, passes_filter};
 /// generation against the handle's current owner (stored-evidence rule).
 pub(crate) fn resolve_window_strict(
     expected: &WindowInfo,
-    _deadline: Deadline,
+    deadline: Deadline,
 ) -> Result<WindowInfo, AdapterError> {
+    super::permissions::ensure_budget(deadline)?;
     let handle = parse_handle(&expected.id);
     if handle.is_null() {
         return Err(AdapterError::new(
@@ -66,7 +67,7 @@ pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result
         ));
     };
     evidence.verify_stored()?;
-    let _ = lease;
+    super::permissions::ensure_budget(lease.deadline())?;
     restore_if_iconic(handle, win.pid)?;
     if is_owned_foreground(handle, win.pid) {
         return Ok(());
@@ -339,6 +340,40 @@ mod tests {
         let lease = InteractionLease::guarded(Deadline::after(1_000).unwrap(), ()).expect("lease");
         let err = focus_window(&win, &lease).unwrap_err();
         assert_eq!(err.code, ErrorCode::WindowNotFound);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn focus_window_refuses_an_expired_lease_before_any_window_write() {
+        crate::tree::fixture::ensure_test_apartment();
+        let fixture = crate::tree::fixture::HostedFixture::spawn().expect("fixture host starts");
+        let windows = list_windows_live(&WindowFilter::default()).expect("list");
+        let expected = windows
+            .into_iter()
+            .find(|window| window.pid == agent_desktop_core::ProcessId::from(fixture.process_id()))
+            .expect("fixture window listed");
+        let lease = InteractionLease::guarded(Deadline::after(1).unwrap(), ()).expect("lease");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let err = focus_window(&expected, &lease).unwrap_err();
+        assert_eq!(err.code, ErrorCode::Timeout);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn resolve_window_strict_refuses_an_expired_deadline() {
+        let win = WindowInfo {
+            id: "w-1".into(),
+            title: "gone".into(),
+            app: "none.exe".into(),
+            pid: agent_desktop_core::ProcessId::from(1u32),
+            process_instance: Some("windows-proc-v1:0:0".into()),
+            bounds: None,
+            state: WindowState::default(),
+        };
+        let deadline = Deadline::after(1).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let err = resolve_window_strict(&win, deadline).unwrap_err();
+        assert_eq!(err.code, ErrorCode::Timeout);
     }
 
     #[cfg(target_os = "windows")]

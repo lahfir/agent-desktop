@@ -29,7 +29,7 @@ fn on_screen_fixture_center_reaches_target() {
     match result {
         HitTestResult::ReachesTarget => {}
         HitTestResult::InterceptedBy { name, .. } if foreign_occluder_name(name.as_deref()) => {
-            eprintln!("skip on-screen ReachesTarget: foreign occluder present ({name:?})");
+            eprintln!("skip on-screen ReachesTarget: foreign occluder present");
         }
         other => panic!("on-screen center must ReachesTarget, got {other:?}"),
     }
@@ -149,7 +149,7 @@ fn cross_window_overlap_reports_intercepted_and_uncovered_reaches() {
         HitTestResult::ReachesTarget => {}
         HitTestResult::InterceptedBy { name, .. } if foreign_occluder_name(name.as_deref()) => {
             eprintln!(
-                "skip uncovered ReachesTarget: foreign occluder present ({name:?}); covered InterceptedBy already proven"
+                "skip uncovered ReachesTarget: foreign occluder present; covered InterceptedBy already proven"
             );
         }
         other => panic!("uncovered control must ReachesTarget, got {other:?}"),
