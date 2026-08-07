@@ -147,6 +147,15 @@ impl ObservationOps for WindowsAdapter {
         Ok(crate::tree::live_read::live_bounds(&read))
     }
 
+    fn hit_test(
+        &self,
+        handle: &NativeHandle,
+        point: agent_desktop_core::Point,
+        deadline: Deadline,
+    ) -> Result<agent_desktop_core::hit_test::HitTestResult, AdapterError> {
+        crate::tree::hit_test::hit_test_impl(handle, point, deadline)
+    }
+
     fn list_windows(
         &self,
         filter: &WindowFilter,

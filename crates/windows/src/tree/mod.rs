@@ -3,6 +3,7 @@ pub mod automation;
 pub(crate) mod cache;
 pub mod chromium;
 pub mod descriptor;
+pub(crate) mod hit_test;
 pub(crate) mod live_read;
 pub mod name_evidence;
 pub(crate) mod observe;

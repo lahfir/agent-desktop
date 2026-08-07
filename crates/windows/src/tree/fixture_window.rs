@@ -26,8 +26,8 @@ const ES_PASSWORD: u32 = 0x0020;
 /// `E_FAIL`.
 const WM_FIXTURE_READY: u32 = 0x0400 + 1;
 const CONTROL_BORDER: u32 = 0x0080_0000;
-const OFFSCREEN_LEFT: i32 = 2_000;
-const OFFSCREEN_TOP: i32 = 2_000;
+pub(crate) const OFFSCREEN_LEFT: i32 = 2_000;
+pub(crate) const OFFSCREEN_TOP: i32 = 2_000;
 const WINDOW_WIDTH: i32 = 420;
 const WINDOW_HEIGHT: i32 = 320;
 
@@ -176,19 +176,20 @@ fn control(parent: HWND, class: &str, text: &str, style: u32, top: i32) -> HWND 
     }
 }
 
-/// Creates the fixture window on the calling thread and pumps its message
-/// queue until the window is destroyed.
-///
-/// The caller must be a thread that does nothing else afterwards.
-/// `ElementFromHandle` sends `WM_GETOBJECT`, and a cross-thread `SendMessage`
-/// blocks until the receiving thread dispatches it, so a thread that both
-/// hosts the window and waits on a UI Automation result deadlocks.
-///
-/// The window is shown with `SW_SHOWNOACTIVATE` at an off-screen origin and a
-/// non-zero size: `HwndProxyElementProvider` excludes windows that fail
-/// `IsWindowVisible` or report a zero-area rect, so `SW_HIDE` and a
-/// message-only window are both unusable here.
 pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, String>>) {
+    host_window_at(class_name, ready, OFFSCREEN_LEFT, OFFSCREEN_TOP);
+}
+
+/// Creates the fixture window at a caller-chosen origin, then pumps until
+/// destroyed. Live hit-test legs need an origin inside the virtual screen
+/// rect; the default off-screen parking at (2000,2000) is refused by that
+/// guard (A18-6).
+pub(crate) fn host_window_at(
+    class_name: &str,
+    ready: Sender<Result<PumpHandle, String>>,
+    left: i32,
+    top: i32,
+) {
     activate_common_controls_v6();
     if let Err(error) = register_class(class_name) {
         let _ = ready.send(Err(error));
@@ -202,8 +203,8 @@ pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, Str
             name.as_ptr(),
             title.as_ptr(),
             WS_OVERLAPPEDWINDOW,
-            OFFSCREEN_LEFT,
-            OFFSCREEN_TOP,
+            left,
+            top,
             WINDOW_WIDTH,
             WINDOW_HEIGHT,
             std::ptr::null_mut(),
@@ -223,6 +224,35 @@ pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, Str
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     unsafe { PostMessageW(window, WM_FIXTURE_READY, 0, 0) };
     pump_until_destroyed(window as isize, ready);
+}
+
+/// An origin inset inside the virtual screen so live hit-test fixtures clear
+/// the virtual-screen membership guard.
+pub(crate) fn on_screen_origin() -> (i32, i32) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    };
+    const INSET: i32 = 80;
+    unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN) + INSET,
+            GetSystemMetrics(SM_YVIRTUALSCREEN) + INSET,
+        )
+    }
+}
+
+/// Locates the fixture's single `BUTTON` child by class name.
+pub(crate) fn find_button(parent: isize) -> *mut c_void {
+    use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowExW;
+    let class = wide("BUTTON");
+    unsafe {
+        FindWindowExW(
+            parent as *mut c_void,
+            std::ptr::null_mut(),
+            class.as_ptr(),
+            std::ptr::null(),
+        )
+    }
 }
 
 fn create_controls(window: HWND) -> FixtureControls {

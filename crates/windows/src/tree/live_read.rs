@@ -172,6 +172,10 @@ mod imp {
     }
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) use imp::{corroborate_verified_process, read_live_element};
+
+#[cfg(not(target_os = "windows"))]
 pub(crate) use imp::read_live_element;
 
 /// The value projection: a secure field's stored value is `Absent` here by

@@ -159,11 +159,20 @@ pub(crate) struct LocalFixture {
 
 impl LocalFixture {
     pub(crate) fn create() -> Result<Self, String> {
+        Self::create_at(
+            fixture_window::OFFSCREEN_LEFT,
+            fixture_window::OFFSCREEN_TOP,
+        )
+    }
+
+    /// Parks the fixture at a caller-chosen origin so live hit-test legs can
+    /// place the window inside the virtual screen rect.
+    pub(crate) fn create_at(left: i32, top: i32) -> Result<Self, String> {
         let class_name = fixture_window::unique_class_name();
         let (sender, receiver) = channel();
         let pump = spawn({
             let class_name = class_name.clone();
-            move || host_on_this_thread(&class_name, sender)
+            move || host_on_this_thread_at(&class_name, sender, left, top)
         });
         let running = match receiver.recv_timeout(READY_TIMEOUT) {
             Ok(Ok(running)) => running,
@@ -264,11 +273,13 @@ impl Drop for StalledFixture {
     }
 }
 
-fn host_on_this_thread(
+fn host_on_this_thread_at(
     class_name: &str,
     ready: Sender<Result<fixture_window::PumpHandle, String>>,
+    left: i32,
+    top: i32,
 ) {
-    fixture_window::host_window(class_name, ready);
+    fixture_window::host_window_at(class_name, ready, left, top);
 }
 
 /// Blocks until the window actually resolves to a UI Automation root.
