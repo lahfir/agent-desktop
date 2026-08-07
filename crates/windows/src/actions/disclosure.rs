@@ -11,6 +11,7 @@ use crate::actions::chain::{
     ALREADY_LABEL, ChainDef, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step,
     capped_verification_end, execute_chain,
 };
+use crate::actions::post_state::after_delivery;
 use crate::tree::element::UIAElement;
 
 pub(crate) const EXPAND_LABEL: &str = "ExpandCollapsePattern.Expand";
@@ -91,8 +92,8 @@ mod imp {
     use super::{
         ALREADY_LABEL, ActionStep, AdapterError, COLLAPSE_LABEL, ChainRung, DISCLOSURE_CHAIN,
         DISCLOSURE_TIMEOUT, Deadline, DeliveryOutcome, DisclosureInput, EXPAND_LABEL, ExpandKind,
-        INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE, UIAElement, build_step,
-        capped_verification_end, disclosure_plan, execute_chain, invoke_allowed,
+        INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE, UIAElement, after_delivery,
+        build_step, capped_verification_end, disclosure_plan, execute_chain, invoke_allowed,
     };
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::system::permissions::ensure_budget;
@@ -209,7 +210,7 @@ mod imp {
         }
         Ok(DeliveryOutcome::from_delivery(
             true,
-            poll_target(want_expanded, deadline, element)?,
+            poll_target(want_expanded, deadline, element).map_err(after_delivery)?,
         ))
     }
 

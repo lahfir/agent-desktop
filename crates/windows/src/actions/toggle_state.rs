@@ -7,6 +7,7 @@ use crate::actions::chain::{
     ALREADY_LABEL, ChainDef, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step,
     capped_verification_end, execute_chain,
 };
+use crate::actions::post_state::after_delivery;
 use crate::tree::element::UIAElement;
 
 pub(crate) const TOGGLE_LABEL: &str = "TogglePattern.Toggle";
@@ -52,7 +53,7 @@ mod imp {
         ALREADY_LABEL, ActionStep, AdapterError, CHECK_SUGGESTION, ChainRung, Deadline,
         DeliveryOutcome, ErrorCode, INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE,
         TOGGLE_CHAIN, TOGGLE_LABEL, TOGGLE_STABLE, TOGGLE_TIMEOUT, ToggleKind, UIAElement,
-        build_step, capped_verification_end, execute_chain,
+        after_delivery, build_step, capped_verification_end, execute_chain,
     };
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::post_state::delivery_occurred;
@@ -181,7 +182,8 @@ mod imp {
                     break;
                 }
                 let last = attempt == 1;
-                let verified = poll_checked(want_checked, deadline, &mut read_state, !last)?;
+                let verified = poll_checked(want_checked, deadline, &mut read_state, !last)
+                    .map_err(after_delivery)?;
                 steps.push(build_step(
                     TOGGLE_LABEL,
                     DeliveryOutcome::from_delivery(true, verified),
@@ -194,7 +196,8 @@ mod imp {
         if invoke_ok && !steps.iter().any(|step| step.verified() == Some(true)) {
             ensure_budget(deadline)?;
             if invoke()? {
-                let verified = poll_checked(want_checked, deadline, &mut read_state, false)?;
+                let verified = poll_checked(want_checked, deadline, &mut read_state, false)
+                    .map_err(after_delivery)?;
                 steps.push(build_step(
                     INVOKE_LABEL,
                     DeliveryOutcome::from_delivery(true, verified),
@@ -220,7 +223,7 @@ mod imp {
         }
         Ok(DeliveryOutcome::from_delivery(
             true,
-            observe_change(before, deadline, element)?,
+            observe_change(before, deadline, element).map_err(after_delivery)?,
         ))
     }
 

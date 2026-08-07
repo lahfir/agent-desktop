@@ -327,3 +327,7 @@ pub(crate) use imp::click_chain_judged_for;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "dispatch_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "dispatch_r2_tests.rs"]
+mod r2_tests;

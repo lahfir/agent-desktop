@@ -167,6 +167,17 @@ fn ten_rungs_exhausted_is_delivered_unverified() {
 }
 
 #[test]
+fn absence_ok_false_does_not_count_as_scroll_delivery() {
+    let error = super::require_scroll_delivery(Ok(false)).expect_err("absence");
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
+    assert!(super::require_scroll_delivery(Ok(true)).is_ok());
+}
+
+#[test]
 fn classified_write_error_aborts_without_further_scrolls() {
     let calls = Cell::new(0u8);
     let mut next = || Ok(Some(Direction::Down));

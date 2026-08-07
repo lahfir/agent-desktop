@@ -109,13 +109,14 @@ fn budget_disposition(scrolled: bool, error: AdapterError) -> AdapterError {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        AdapterError, Deadline, DeliveryOutcome, Direction, LADDER_SCROLL_LABEL, UIAElement,
-        VisibilitySample, direction_for_visibility, ladder_judged_for, visibility_verified,
+        AdapterError, Deadline, DeliveryOutcome, DeliverySemantics, Direction, LADDER_SCROLL_LABEL,
+        UIAElement, VisibilitySample, direction_for_visibility, ladder_judged_for,
+        visibility_verified,
     };
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::scroll::scroll_amounts;
     use crate::system::permissions::ensure_budget;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
+    use crate::tree::automation::automation_client;
     use crate::tree::live_read::corroborate_verified_process;
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
@@ -220,14 +221,13 @@ mod imp {
         corroborate_verified_process(ancestor)?;
         let pattern = match ancestor.0.get_pattern::<UIScrollPattern>() {
             Ok(pattern) => pattern,
-            Err(error) => match failure_of(&error) {
-                UiaFailure::Sentinel(ERR_NONE) => return Ok(()),
-                other if other.is_exhaustion() => return Ok(()),
-                failure => {
-                    classify_mutation("Scroll", LADDER_SCROLL_LABEL, &failure)?;
-                    return Ok(());
-                }
-            },
+            Err(error) => {
+                return require_scroll_delivery(classify_write(
+                    "get_pattern",
+                    LADDER_SCROLL_LABEL,
+                    &error,
+                ));
+            }
         };
         let (horizontal, vertical) = scroll_amounts(direction);
         match pattern.scroll(horizontal, vertical) {
@@ -235,14 +235,21 @@ mod imp {
                 classify_success()?;
                 Ok(())
             }
-            Err(error) => match failure_of(&error) {
-                UiaFailure::Sentinel(ERR_NONE) => Ok(()),
-                other if other.is_exhaustion() => Ok(()),
-                failure => {
-                    classify_mutation("Scroll", LADDER_SCROLL_LABEL, &failure)?;
-                    Ok(())
-                }
-            },
+            Err(error) => {
+                require_scroll_delivery(classify_write("Scroll", LADDER_SCROLL_LABEL, &error))
+            }
+        }
+    }
+
+    fn require_scroll_delivery(classified: Result<bool, AdapterError>) -> Result<(), AdapterError> {
+        match classified {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "ScrollPattern is not available on the scroll ancestor",
+            )
+            .with_disposition(DeliverySemantics::not_delivered())),
+            Err(error) => Err(error),
         }
     }
 }
