@@ -1,6 +1,6 @@
 use super::{
-    VisibilitySample, finish_observation, rect_has_area, scroll_effect_observed,
-    scroll_into_view_judged_for, unsupported_error, visibility_verified,
+    VisibilitySample, finish_observation, scroll_effect_observed, scroll_into_view_judged_for,
+    unsupported_error, visibility_verified,
 };
 use crate::adapter::WindowsAdapter;
 use crate::system::hresult::{
@@ -10,7 +10,7 @@ use crate::tree::automation::automation_client;
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
 use crate::tree::fixture_window;
-use crate::tree::properties::read_one;
+use crate::tree::properties::{read_one, rect_has_area};
 use crate::tree::property_ids::TreeProperty;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
 use agent_desktop_core::{
@@ -53,9 +53,9 @@ fn short_deadline() -> Deadline {
 
 #[test]
 fn area_requires_finite_positive_dimensions() {
-    assert!(rect_has_area(rect(0.0, 0.0, 10.0, 10.0)));
-    assert!(!rect_has_area(rect(0.0, 0.0, 0.0, 10.0)));
-    assert!(!rect_has_area(rect(f64::NAN, 0.0, 10.0, 10.0)));
+    assert!(rect_has_area(&rect(0.0, 0.0, 10.0, 10.0)));
+    assert!(!rect_has_area(&rect(0.0, 0.0, 0.0, 10.0)));
+    assert!(!rect_has_area(&rect(f64::NAN, 0.0, 10.0, 10.0)));
 }
 
 #[test]

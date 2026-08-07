@@ -29,7 +29,7 @@ use agent_desktop_core::{Deadline, LocatorField, Point, hit_test::HitTestResult}
 use uiautomation::core::UITreeWalker;
 
 use super::classify::ancestry_limit;
-use super::imp::{parent_step, saturate_coord};
+use super::imp::saturate_coord;
 use crate::tree::element::UIAElement;
 use crate::tree::element_properties::ElementProperties;
 use crate::tree::name_evidence::{LabelOutcome, name_fields, read_label};
@@ -37,6 +37,7 @@ use crate::tree::properties::read_one;
 use crate::tree::property_ids::TreeProperty;
 use crate::tree::property_outcome::PropertyOutcome;
 use crate::tree::roles::resolve_role;
+use crate::tree::walker_source::parent_step;
 
 /// Properties the occluder evidence batch must read together. `IsPassword`
 /// gates value-bearing text in [`ElementProperties::from_reads`]; omitting it
@@ -72,27 +73,40 @@ pub(crate) enum Attribution {
     Contradicted,
 }
 
+/// One window as a single opinion reports it: the root handle that opinion
+/// resolved, and the process owning it. The two travel together because they
+/// describe the same window, and separating them into parallel argument lists
+/// is what lets a caller transpose one window's pid onto another's root.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WindowOpinion {
+    pub(crate) root: Option<isize>,
+    pub(crate) pid: Option<u32>,
+}
+
 /// Pure window-attribution decision over the target's, hit's, and
-/// `WindowFromPoint`'s roots; evidence is assembled separately.
+/// `WindowFromPoint`'s opinions; evidence is assembled separately.
 pub(crate) fn interception_attribution(
-    target_root: Option<isize>,
-    hit_root: Option<isize>,
-    win32_root: Option<isize>,
-    target_pid: Option<u32>,
-    hit_pid: Option<u32>,
-    win32_owner_pid: Option<u32>,
+    target: WindowOpinion,
+    hit: WindowOpinion,
+    win32: WindowOpinion,
 ) -> Attribution {
-    let Some(target) = nonzero(target_root) else {
+    let Some(target_root) = nonzero(target.root) else {
         return Attribution::Contradicted;
     };
-    let Some(win32) = nonzero(win32_root) else {
+    let Some(win32_root) = nonzero(win32.root) else {
         return Attribution::Contradicted;
     };
-    match nonzero(hit_root) {
-        Some(hit) if hit == target && win32 == target => Attribution::SameRoot,
-        Some(hit) if hit != target && win32 != target && win32 == hit => Attribution::CrossWindow,
+    match nonzero(hit.root) {
+        Some(hit_root) if hit_root == target_root && win32_root == target_root => {
+            Attribution::SameRoot
+        }
+        Some(hit_root)
+            if hit_root != target_root && win32_root != target_root && win32_root == hit_root =>
+        {
+            Attribution::CrossWindow
+        }
         Some(_) => Attribution::Contradicted,
-        None => pid_widened(target, win32, target_pid, hit_pid, win32_owner_pid),
+        None => pid_widened(target_root, win32_root, target.pid, hit.pid, win32.pid),
     }
 }
 
@@ -204,14 +218,10 @@ pub(crate) fn window_from_point_root(point: &Point) -> Option<isize> {
 }
 
 pub(crate) fn pid_of_hwnd(hwnd: isize) -> Option<u32> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
     if hwnd == 0 {
         return None;
     }
-    let mut pid = 0u32;
-    unsafe { GetWindowThreadProcessId(hwnd as *mut std::ffi::c_void, &mut pid) };
-    (pid != 0).then_some(pid)
+    crate::system::window_identity::live_window_owner(hwnd as *mut std::ffi::c_void).map(u32::from)
 }
 
 fn process_id_of(element: &UIAElement) -> Option<u32> {
@@ -292,6 +302,10 @@ fn occluder_role(properties: &ElementProperties) -> String {
     }
 }
 
+/// The element pids are read only when the hit element's root is unobtainable,
+/// which is the sole arm that consults them. `CurrentProcessId` is a
+/// cross-process call, so reading the pair unconditionally spent two of them per
+/// hit test on evidence the decision then discarded.
 pub(crate) fn corroborate_interception(
     context: &InterceptionContext<'_>,
     demote_for_viewport: bool,
@@ -302,13 +316,20 @@ pub(crate) fn corroborate_interception(
     if context.deadline.is_expired() {
         return HitTestResult::Unknown;
     }
+    let widens = nonzero(hit_root).is_none();
     let attribution = interception_attribution(
-        context.target_root,
-        hit_root,
-        win32_root,
-        process_id_of(context.target),
-        process_id_of(context.hit),
-        win32_owner_pid,
+        WindowOpinion {
+            root: context.target_root,
+            pid: widens.then(|| process_id_of(context.target)).flatten(),
+        },
+        WindowOpinion {
+            root: hit_root,
+            pid: widens.then(|| process_id_of(context.hit)).flatten(),
+        },
+        WindowOpinion {
+            root: win32_root,
+            pid: win32_owner_pid,
+        },
     );
     interception_outcome(attribution, demote_for_viewport, || {
         occluder_evidence(context.hit, context.deadline)

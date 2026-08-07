@@ -13,40 +13,18 @@ use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect,
 };
 
-/// Reports whether a provider rectangle is measurable and encloses real area.
-///
-/// Finiteness is part of the test rather than decoration. A provider that
-/// answers `NaN` or an infinity satisfies a bare positive-dimension comparison,
-/// and accepting that rectangle turns an unmeasurable answer into a verified
-/// one — the exact false positive the post-invoke re-read exists to prevent.
-///
-/// Crate-visible because the scroll-viewport ancestor walk is not the only
-/// reader that must decide whether a rectangle can be trusted; a second copy of
-/// this predicate is a second chance for the two to disagree.
-#[cfg(target_os = "windows")]
-pub(crate) fn rect_has_area(rect: Rect) -> bool {
-    rect.x.is_finite()
-        && rect.y.is_finite()
-        && rect.width.is_finite()
-        && rect.height.is_finite()
-        && rect.width > 0.0
-        && rect.height > 0.0
-}
-
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::{
-        AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect, rect_has_area,
-    };
+    use super::{AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect};
     use crate::system::hresult::com_hresult_detail;
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
     use crate::tree::element::{UIAElement, uia_element};
     use crate::tree::live_read::corroborate_verified_process;
-    use crate::tree::properties::read_one;
+    use crate::tree::properties::{read_one, rect_has_area};
     use crate::tree::property_ids::TreeProperty;
     use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
-    use crate::tree::walker::DEFAULT_MAX_RAW_DEPTH;
+    use crate::tree::walker_source::{nearest_scroll_viewport, viewport_bounds};
     use agent_desktop_core::LocatorField;
     use agent_desktop_core::native_handle::NativeHandle;
     use std::time::{Duration, Instant};
@@ -91,13 +69,36 @@ mod imp {
         let client = automation_client()?;
         let walker = client.get_raw_view_walker().ok();
         let before = read_bounds_opt(element);
+        let viewport = resolve_scroll_viewport(element, walker.as_ref(), deadline);
         let invoke_hr = match invoke_scroll_into_view(element) {
             InvokeOutcome::EmptyPattern => return Err(unsupported_error()),
             InvokeOutcome::Failed(hresult) => Some(hresult),
             InvokeOutcome::Succeeded => None,
         };
         scroll_into_view_judged_for(deadline, before, invoke_hr, VERIFY_WINDOW, || {
-            observe_visibility(element, deadline, walker.as_ref())
+            observe_visibility(element, deadline, viewport.as_ref())
+        })
+    }
+
+    /// Resolves which ancestor clips the target, once per operation.
+    ///
+    /// Which ancestor is the scroll viewport cannot change inside one
+    /// verification window; only its rectangle can. Re-deriving it per poll tick
+    /// spent an ancestor climb of up to `DEFAULT_MAX_RAW_DEPTH` cross-process
+    /// steps, forty times over, to rediscover an answer already in hand.
+    ///
+    /// A climb the budget truncates leaves the viewport unresolved, which is the
+    /// same answer as a target with no scroll ancestor at all: visibility cannot
+    /// be verified, and the poll's own budget check is what reports the timeout.
+    fn resolve_scroll_viewport(
+        element: &UIAElement,
+        walker: Option<&UITreeWalker>,
+        deadline: Deadline,
+    ) -> Option<UIAElement> {
+        walker.and_then(|walker| {
+            nearest_scroll_viewport(element, walker, deadline)
+                .ok()
+                .flatten()
         })
     }
 
@@ -167,7 +168,7 @@ mod imp {
         let Some(bounds) = sample.bounds else {
             return false;
         };
-        if !rect_has_area(bounds) {
+        if !rect_has_area(&bounds) {
             return false;
         }
         if sample.offscreen != Some(false) {
@@ -241,7 +242,7 @@ mod imp {
     }
 
     fn completed_bounds(bounds: Option<Rect>) -> Option<Rect> {
-        bounds.filter(|rect| rect_has_area(*rect))
+        bounds.filter(rect_has_area)
     }
 
     fn scroll_item_available(element: &UIAElement) -> bool {
@@ -270,7 +271,7 @@ mod imp {
     fn observe_visibility(
         element: &UIAElement,
         deadline: Deadline,
-        walker: Option<&UITreeWalker>,
+        viewport: Option<&UIAElement>,
     ) -> Result<VisibilitySample, AdapterError> {
         ensure_budget(deadline)?;
         corroborate_verified_process(element)?;
@@ -295,11 +296,10 @@ mod imp {
             }
             PropertyOutcome::Known(_) => None,
         };
-        let viewport = walker.and_then(|walker| nearest_scroll_viewport_bounds(element, walker));
         Ok(VisibilitySample {
             bounds,
             offscreen,
-            viewport,
+            viewport: viewport.and_then(viewport_bounds),
         })
     }
 
@@ -308,24 +308,6 @@ mod imp {
             LocatorField::Known(bounds) => Some(bounds),
             _ => None,
         }
-    }
-
-    fn nearest_scroll_viewport_bounds(target: &UIAElement, walker: &UITreeWalker) -> Option<Rect> {
-        let mut current = target.clone();
-        for _ in 0..DEFAULT_MAX_RAW_DEPTH as usize {
-            let parent = match walker.get_parent(&current.0) {
-                Ok(parent) => UIAElement::from(parent),
-                Err(_) => return None,
-            };
-            if read_one(&parent, TreeProperty::ScrollAvailable).flag() == Some(true) {
-                return match read_one(&parent, TreeProperty::BoundingRectangle).bounds() {
-                    LocatorField::Known(bounds) if rect_has_area(bounds) => Some(bounds),
-                    _ => None,
-                };
-            }
-            current = parent;
-        }
-        None
     }
 }
 

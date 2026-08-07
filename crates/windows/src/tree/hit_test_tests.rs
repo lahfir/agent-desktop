@@ -37,7 +37,7 @@ fn descendant_relation_reaches_target() {
 fn ancestor_hit_classifies_unknown_not_intercepted() {
     let classification = classify_relation(false, true);
     assert_eq!(classification, HitClassification::AncestorOfTarget);
-    let result = resolve_classification(classification, false, |_| intercepted_stub());
+    let result = resolve_classification(classification, intercepted_stub);
     assert_eq!(result, HitTestResult::Unknown);
     assert!(
         !matches!(result, HitTestResult::InterceptedBy { .. }),
@@ -48,9 +48,8 @@ fn ancestor_hit_classifies_unknown_not_intercepted() {
 #[test]
 fn unrelated_hit_reaches_corroboration_seam() {
     let called = Cell::new(false);
-    let result = resolve_classification(HitClassification::Unrelated, false, |demote| {
+    let result = resolve_classification(HitClassification::Unrelated, || {
         called.set(true);
-        assert!(!demote, "an in-viewport point demotes nothing");
         HitTestResult::Unknown
     });
     assert!(
@@ -60,22 +59,64 @@ fn unrelated_hit_reaches_corroboration_seam() {
     assert_eq!(result, HitTestResult::Unknown);
 }
 
-/// The demotion is a same-root concern, so it travels *into* corroboration
+/// The demotion is a same-root concern, so it is raised *inside* corroboration
 /// rather than short-circuiting it: silencing every unrelated hit would lose
 /// the cross-window occluder two independent opinions already agreed on.
+/// Nothing between the classification and the seam may filter what the seam
+/// answers, whatever the flag.
 #[test]
 fn viewport_demotion_reaches_the_seam_carrying_its_flag() {
+    let target = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 100.0,
+        height: 200.0,
+    };
+    let viewport = Rect {
+        x: 0.0,
+        y: 50.0,
+        width: 100.0,
+        height: 100.0,
+    };
+    let outside = Point { x: 50.0, y: 10.0 };
     let observed = Cell::new(None);
-    let result = resolve_classification(HitClassification::Unrelated, true, |demote| {
-        observed.set(Some(demote));
+    let result = resolve_classification(HitClassification::Unrelated, || {
+        observed.set(Some(should_demote_outside_viewport(
+            &outside,
+            &target,
+            Some(&viewport),
+        )));
         intercepted_stub()
     });
     assert_eq!(
         observed.get(),
         Some(true),
-        "corroboration decides the demotion, so it must receive the flag"
+        "corroboration decides the demotion, so the flag must be raised inside the seam"
     );
     assert_eq!(result, intercepted_stub());
+}
+
+/// The viewport climb is corroboration's input and nobody else's. A budget
+/// that expires inside it answers `Unknown` for the arm that asked and for no
+/// other, so a verdict the ancestry already determined cannot be unmade by a
+/// walk whose answer that verdict would have discarded — and never pays for
+/// the walk in the first place, which is the common case of an unoccluded hit.
+#[test]
+fn a_budget_expiring_in_the_viewport_walk_cannot_unmake_reaches_target() {
+    let climbed = Cell::new(false);
+    let result = resolve_classification(HitClassification::ReachesTarget, || {
+        climbed.set(true);
+        result_for_incomplete_walk()
+    });
+    assert_eq!(
+        result,
+        HitTestResult::ReachesTarget,
+        "a truncated viewport climb must not demote a determined verdict"
+    );
+    assert!(
+        !climbed.get(),
+        "a reaching hit must not spend the viewport climb at all"
+    );
 }
 
 #[test]

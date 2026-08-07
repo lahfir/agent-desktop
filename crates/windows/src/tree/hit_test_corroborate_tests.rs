@@ -1,6 +1,6 @@
 use super::{
-    Attribution, OCCLUDER_EVIDENCE_PROPERTIES, interception_attribution, interception_outcome,
-    occluder_from_properties,
+    Attribution, OCCLUDER_EVIDENCE_PROPERTIES, WindowOpinion, interception_attribution,
+    interception_outcome, occluder_from_properties,
 };
 use crate::tree::element_properties::ElementProperties;
 use crate::tree::name_evidence::LabelOutcome;
@@ -12,7 +12,11 @@ use std::cell::Cell;
 #[test]
 fn arm1_same_root_agrees() {
     assert_eq!(
-        interception_attribution(Some(10), Some(10), Some(10), Some(1), Some(1), Some(1)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(10), Some(1)),
+            opinion(Some(10), Some(1)),
+        ),
         Attribution::SameRoot
     );
 }
@@ -20,7 +24,11 @@ fn arm1_same_root_agrees() {
 #[test]
 fn arm2_cross_window_roots_agree() {
     assert_eq!(
-        interception_attribution(Some(10), Some(20), Some(20), Some(1), Some(2), Some(2)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(20), Some(2)),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::CrossWindow
     );
 }
@@ -28,7 +36,11 @@ fn arm2_cross_window_roots_agree() {
 #[test]
 fn arm3_pid_widening_when_hit_root_unobtainable() {
     assert_eq!(
-        interception_attribution(Some(10), None, Some(20), Some(1), Some(2), Some(2)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(None, Some(2)),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::CrossWindow
     );
 }
@@ -36,7 +48,11 @@ fn arm3_pid_widening_when_hit_root_unobtainable() {
 #[test]
 fn arm3_pid_equal_never_widens() {
     assert_eq!(
-        interception_attribution(Some(10), None, Some(20), Some(1), Some(1), Some(1)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(None, Some(1)),
+            opinion(Some(20), Some(1)),
+        ),
         Attribution::Contradicted
     );
 }
@@ -44,7 +60,11 @@ fn arm3_pid_equal_never_widens() {
 #[test]
 fn win32_skip_cell_is_unknown() {
     assert_eq!(
-        interception_attribution(Some(10), Some(20), Some(10), Some(1), Some(2), Some(1)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(20), Some(2)),
+            opinion(Some(10), Some(1)),
+        ),
         Attribution::Contradicted
     );
 }
@@ -52,7 +72,11 @@ fn win32_skip_cell_is_unknown() {
 #[test]
 fn three_distinct_roots_is_unknown() {
     assert_eq!(
-        interception_attribution(Some(10), Some(20), Some(30), Some(1), Some(2), Some(3)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(20), Some(2)),
+            opinion(Some(30), Some(3)),
+        ),
         Attribution::Contradicted
     );
 }
@@ -60,7 +84,11 @@ fn three_distinct_roots_is_unknown() {
 #[test]
 fn target_root_failure_is_unknown() {
     assert_eq!(
-        interception_attribution(None, Some(20), Some(20), Some(1), Some(2), Some(2)),
+        interception_attribution(
+            opinion(None, Some(1)),
+            opinion(Some(20), Some(2)),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::Contradicted
     );
 }
@@ -68,7 +96,11 @@ fn target_root_failure_is_unknown() {
 #[test]
 fn win32_root_failure_is_unknown() {
     assert_eq!(
-        interception_attribution(Some(10), Some(20), None, Some(1), Some(2), None),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(20), Some(2)),
+            opinion(None, None),
+        ),
         Attribution::Contradicted
     );
 }
@@ -76,15 +108,27 @@ fn win32_root_failure_is_unknown() {
 #[test]
 fn unreadable_pid_blocks_widening() {
     assert_eq!(
-        interception_attribution(Some(10), None, Some(20), Some(1), None, Some(2)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(None, None),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::Contradicted
     );
     assert_eq!(
-        interception_attribution(Some(10), None, Some(20), None, Some(2), Some(2)),
+        interception_attribution(
+            opinion(Some(10), None),
+            opinion(None, Some(2)),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::Contradicted
     );
     assert_eq!(
-        interception_attribution(Some(10), None, Some(20), Some(1), Some(2), None),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(None, Some(2)),
+            opinion(Some(20), None),
+        ),
         Attribution::Contradicted
     );
 }
@@ -92,11 +136,19 @@ fn unreadable_pid_blocks_widening() {
 #[test]
 fn zero_handles_are_treated_as_unobtainable() {
     assert_eq!(
-        interception_attribution(Some(0), Some(20), Some(20), Some(1), Some(2), Some(2)),
+        interception_attribution(
+            opinion(Some(0), Some(1)),
+            opinion(Some(20), Some(2)),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::Contradicted
     );
     assert_eq!(
-        interception_attribution(Some(10), Some(0), Some(20), Some(1), Some(2), Some(2)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(0), Some(2)),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::CrossWindow,
         "a zero hit root is unobtainable, which is the pid-widening row"
     );
@@ -250,7 +302,11 @@ fn resolve_role_unknown_maps_to_some_unknown_string() {
 #[test]
 fn flipped_arm1_must_not_agree_when_win32_differs() {
     assert_eq!(
-        interception_attribution(Some(10), Some(10), Some(20), Some(1), Some(1), Some(2)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(10), Some(1)),
+            opinion(Some(20), Some(2)),
+        ),
         Attribution::Contradicted
     );
 }
@@ -258,9 +314,19 @@ fn flipped_arm1_must_not_agree_when_win32_differs() {
 #[test]
 fn flipped_arm2_must_not_agree_when_win32_matches_target() {
     assert_eq!(
-        interception_attribution(Some(10), Some(20), Some(10), Some(1), Some(2), Some(1)),
+        interception_attribution(
+            opinion(Some(10), Some(1)),
+            opinion(Some(20), Some(2)),
+            opinion(Some(10), Some(1)),
+        ),
         Attribution::Contradicted
     );
+}
+
+/// One window's pair, named at the call site so a root can never be read
+/// as another window's pid.
+fn opinion(root: Option<isize>, pid: Option<u32>) -> WindowOpinion {
+    WindowOpinion { root, pid }
 }
 
 fn evidence_stub() -> Option<HitTestResult> {

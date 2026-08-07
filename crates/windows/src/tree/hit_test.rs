@@ -45,19 +45,13 @@ mod imp {
     };
     use crate::tree::element::{UIAElement, uia_element};
     use crate::tree::live_read::corroborate_verified_process;
-    use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
-    use crate::tree::walker::NodeKey;
+    use crate::tree::properties::rect_from_uia;
+    use crate::tree::walker_source;
     use uiautomation::UIAutomation;
-    use uiautomation::core::UITreeWalker;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetSystemMetrics, IsIconic, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
         SM_YVIRTUALSCREEN,
     };
-
-    /// The operation budget ran out between two cross-process calls.
-    #[derive(Debug)]
-    pub(super) struct BudgetExpired;
 
     /// Hit-tests `point` via bounded `ElementFromPoint`, then classifies the
     /// frontmost result against `target`. Every probe failure, guard trip, and
@@ -115,9 +109,11 @@ mod imp {
         bounds: &Rect,
         client: &UIAutomation,
     ) -> HitTestResult {
-        let same = |left: &UIAElement, right: &UIAElement| same_element(client, left, right);
-        let identity = |node: &UIAElement| element_identity(node);
-        let parent_of = |node: &UIAElement| parent_step(context.walker, node);
+        let same = |left: &UIAElement, right: &UIAElement| {
+            walker_source::same_element(client, left, right)
+        };
+        let identity = |node: &UIAElement| walker_source::identity(node);
+        let parent_of = |node: &UIAElement| walker_source::parent_step(context.walker, node);
         let walk = classify::AncestryWalk {
             same_element: &same,
             identity: &identity,
@@ -128,44 +124,49 @@ mod imp {
         else {
             return classify::result_for_incomplete_walk();
         };
-        let viewport = match nearest_scroll_viewport_bounds(
+        resolve_classification(classification, || {
+            corroborate_with_viewport(context, bounds)
+        })
+    }
+
+    /// The viewport climb is corroboration's input and nobody else's: it asks
+    /// whether an unrelated hit is a same-window artefact of an unclipped
+    /// provider rect (A18-2). Resolving it here rather than ahead of the
+    /// classification keeps a determined verdict out of its reach - a climb the
+    /// budget truncates answers `Unknown` for the arm that asked and for no
+    /// other - and spares every reaching hit an ancestor climb of up to
+    /// `DEFAULT_MAX_RAW_DEPTH` cross-process steps whose answer it would discard.
+    fn corroborate_with_viewport(
+        context: &corroborate::InterceptionContext<'_>,
+        bounds: &Rect,
+    ) -> HitTestResult {
+        let viewport = match walker_source::nearest_scroll_viewport_bounds(
             context.target,
             context.walker,
             context.deadline,
         ) {
             Ok(viewport) => viewport,
-            Err(BudgetExpired) => return classify::result_for_incomplete_walk(),
+            Err(walker_source::BudgetExpired) => return classify::result_for_incomplete_walk(),
         };
         let demote =
             classify::should_demote_outside_viewport(&context.point, bounds, viewport.as_ref());
-        resolve_classification(classification, demote, |demote_for_viewport| {
-            corroborate::corroborate_interception(context, demote_for_viewport)
-        })
+        corroborate::corroborate_interception(context, demote)
     }
 
     pub(super) fn resolve_classification(
         classification: classify::HitClassification,
-        demote_for_viewport: bool,
-        corroborate: impl FnOnce(bool) -> HitTestResult,
+        corroborate: impl FnOnce() -> HitTestResult,
     ) -> HitTestResult {
         match classification {
             classify::HitClassification::ReachesTarget => HitTestResult::ReachesTarget,
             classify::HitClassification::AncestorOfTarget => HitTestResult::Unknown,
-            classify::HitClassification::Unrelated => corroborate(demote_for_viewport),
+            classify::HitClassification::Unrelated => corroborate(),
         }
     }
 
     fn read_target_bounds(target: &UIAElement) -> Result<Option<Rect>, AdapterError> {
         match target.0.get_bounding_rectangle() {
-            Ok(rectangle) => Ok(Some(Rect {
-                x: f64::from(rectangle.get_left()),
-                y: f64::from(rectangle.get_top()),
-                width: crate::tree::properties::extent(rectangle.get_left(), rectangle.get_right()),
-                height: crate::tree::properties::extent(
-                    rectangle.get_top(),
-                    rectangle.get_bottom(),
-                ),
-            })),
+            Ok(rectangle) => Ok(Some(rect_from_uia(rectangle))),
             Err(error) => match pre_read_fate(failure_of(&error)) {
                 PreReadFate::Unknown => Ok(None),
                 PreReadFate::Escape(error) => Err(error),
@@ -236,11 +237,25 @@ mod imp {
         }
     }
 
+    /// The virtual screen's origin and extent, in the physical pixels every
+    /// other coordinate here already speaks.
+    ///
+    /// The raw tuple is the shared primitive: a caller that only needs to park
+    /// a window inside the desktop wants the four metrics, not a `Rect` it
+    /// would immediately narrow back to `i32`.
+    pub(crate) fn virtual_screen_metrics() -> (i32, i32, i32, i32) {
+        unsafe {
+            (
+                GetSystemMetrics(SM_XVIRTUALSCREEN),
+                GetSystemMetrics(SM_YVIRTUALSCREEN),
+                GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                GetSystemMetrics(SM_CYVIRTUALSCREEN),
+            )
+        }
+    }
+
     fn virtual_screen_rect() -> Rect {
-        let left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-        let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-        let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-        let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+        let (left, top, width, height) = virtual_screen_metrics();
         Rect {
             x: f64::from(left),
             y: f64::from(top),
@@ -256,64 +271,6 @@ mod imp {
             Some(root) => unsafe { IsIconic(root as *mut std::ffi::c_void) != 0 },
             None => true,
         }
-    }
-
-    fn same_element(client: &UIAutomation, left: &UIAElement, right: &UIAElement) -> bool {
-        client.compare_elements(&left.0, &right.0).unwrap_or(false)
-    }
-
-    fn element_identity(node: &UIAElement) -> NodeKey {
-        match node.0.get_runtime_id() {
-            Ok(runtime_id) if !runtime_id.is_empty() => NodeKey::Runtime(runtime_id),
-            _ => NodeKey::Unavailable,
-        }
-    }
-
-    pub(super) fn parent_step(
-        walker: &UITreeWalker,
-        node: &UIAElement,
-    ) -> Result<Option<UIAElement>, ()> {
-        match walker.get_parent(&node.0) {
-            Ok(parent) => Ok(Some(UIAElement::from(parent))),
-            Err(error) => {
-                if failure_of(&error).is_exhaustion() {
-                    Ok(None)
-                } else {
-                    Err(())
-                }
-            }
-        }
-    }
-
-    fn nearest_scroll_viewport_bounds(
-        target: &UIAElement,
-        walker: &UITreeWalker,
-        deadline: Deadline,
-    ) -> Result<Option<Rect>, BudgetExpired> {
-        let mut current = target.clone();
-        for _ in 0..classify::ancestry_limit() {
-            if deadline.is_expired() {
-                return Err(BudgetExpired);
-            }
-            let parent = match parent_step(walker, &current) {
-                Ok(Some(parent)) => parent,
-                Ok(None) | Err(()) => return Ok(None),
-            };
-            if read_one(&parent, TreeProperty::ScrollAvailable).flag() == Some(true) {
-                return Ok(
-                    match read_one(&parent, TreeProperty::BoundingRectangle).bounds() {
-                        agent_desktop_core::LocatorField::Known(bounds)
-                            if classify::rect_has_area(&bounds) =>
-                        {
-                            Some(bounds)
-                        }
-                        _ => None,
-                    },
-                );
-            }
-            current = parent;
-        }
-        Ok(None)
     }
 
     #[cfg(test)]
@@ -343,6 +300,9 @@ pub(crate) use imp::hit_test_impl;
 
 #[cfg(not(target_os = "windows"))]
 pub(crate) use imp::hit_test_impl;
+
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) use imp::virtual_screen_metrics;
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "hit_test_tests.rs"]

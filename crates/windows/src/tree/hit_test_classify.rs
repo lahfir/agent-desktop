@@ -17,6 +17,7 @@
 //! screen's far edge addresses the first pixel outside it, and A18-6 measured
 //! `ElementFromPoint` answering with the desktop at exactly such coordinates.
 
+use crate::tree::properties::rect_has_area;
 use crate::tree::walker::{DEFAULT_MAX_RAW_DEPTH, NodeKey};
 use agent_desktop_core::{Deadline, Point, Rect, hit_test::HitTestResult};
 
@@ -108,18 +109,6 @@ pub(crate) fn point_in_rect(point: &Point, bounds: &Rect) -> bool {
         && point.y >= bounds.y
         && point.x < bounds.x + bounds.width
         && point.y < bounds.y + bounds.height
-}
-
-/// Positive extents *and* finite coordinates: a non-finite rectangle compares
-/// false against every point, so treating it as real geometry would carry an
-/// unanswerable question into the probe.
-pub(crate) fn rect_has_area(rect: &Rect) -> bool {
-    rect.x.is_finite()
-        && rect.y.is_finite()
-        && rect.width.is_finite()
-        && rect.height.is_finite()
-        && rect.width > 0.0
-        && rect.height > 0.0
 }
 
 pub(crate) fn intersect_rects(left: Rect, right: Rect) -> Option<Rect> {
