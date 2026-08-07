@@ -18,7 +18,6 @@ use crate::system::permissions::ensure_budget;
 pub(crate) enum DeliveryOutcome {
     NotDelivered,
     /// Already-at-target arms (toggle / disclosure) construct this outcome.
-    #[allow(dead_code)]
     SatisfiedNoDelivery,
     DeliveredUnverified,
     DeliveredVerified,

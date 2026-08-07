@@ -1,13 +1,12 @@
 //! `execute_action` match over every `Action` variant.
 //!
 //! Click routes through the Invoke + Legacy chain. SetValue / Clear route
-//! through `value_write` with post-state attachment. SetFocus routes through
-//! `focus`. ScrollTo reuses the shipped ScrollIntoView spine. Capabilities
-//! that need key synthesis or physical multi-click fail
-//! `PLATFORM_NOT_SUPPORTED` naming the missing machinery. Toggle / disclosure
-//! / select / scroll modules replace their placeholder arms when those
-//! modules land — the placeholders are deliberate `ACTION_FAILED` outcomes,
-//! never the trait-default `execute_action` message.
+//! through `value_write` with post-state attachment. Toggle / Check / Uncheck
+//! and Expand / Collapse attach post-state after delivery. SetFocus routes
+//! through `focus`. ScrollTo reuses the shipped ScrollIntoView spine.
+//! Capabilities that need key synthesis or physical multi-click fail
+//! `PLATFORM_NOT_SUPPORTED` naming the missing machinery. Select / scroll
+//! modules replace their placeholder arms when those modules land.
 
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode,
@@ -23,10 +22,12 @@ mod imp {
     use crate::actions::chain::{
         CLICK_CHAIN, ChainRung, DeliveryOutcome, execute_chain,
     };
+    use crate::actions::disclosure::{collapse_steps, expand_steps};
     use crate::actions::focus::focus_element;
     use crate::actions::mutation::{classify_mutation, classify_success};
     use crate::actions::post_state::post_state_for_steps;
     use crate::actions::scroll_into_view::scroll_into_view_impl;
+    use crate::actions::toggle_state::{check_steps, toggle_steps, uncheck_steps};
     use crate::actions::value_write::{clear_steps, set_value_steps};
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
@@ -71,8 +72,11 @@ mod imp {
                 execute_set_value(element, value, request.policy, deadline)
             }
             Action::Clear => execute_clear(element, request.policy, deadline),
-            Action::Toggle | Action::Check | Action::Uncheck => Err(unwired("toggle")),
-            Action::Expand | Action::Collapse => Err(unwired("disclosure")),
+            Action::Toggle => execute_toggle(element, request.policy, deadline),
+            Action::Check => execute_check(element, request.policy, deadline),
+            Action::Uncheck => execute_uncheck(element, request.policy, deadline),
+            Action::Expand => execute_expand(element, request.policy, deadline),
+            Action::Collapse => execute_collapse(element, request.policy, deadline),
             Action::Select(_) => Err(unwired("select")),
             Action::Scroll(_, _) => Err(unwired("scroll")),
         }
@@ -98,6 +102,56 @@ mod imp {
         let steps = clear_steps(element, policy, deadline)?;
         let post_state = post_state_for_steps(element, &Action::Clear, &steps, deadline)?;
         ActionResult::from_execution(&Action::Clear, steps, post_state)
+    }
+
+    fn execute_toggle(
+        element: &UIAElement,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = toggle_steps(element, policy, deadline)?;
+        let post_state = post_state_for_steps(element, &Action::Toggle, &steps, deadline)?;
+        ActionResult::from_execution(&Action::Toggle, steps, post_state)
+    }
+
+    fn execute_check(
+        element: &UIAElement,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = check_steps(element, policy, deadline)?;
+        let post_state = post_state_for_steps(element, &Action::Check, &steps, deadline)?;
+        ActionResult::from_execution(&Action::Check, steps, post_state)
+    }
+
+    fn execute_uncheck(
+        element: &UIAElement,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = uncheck_steps(element, policy, deadline)?;
+        let post_state = post_state_for_steps(element, &Action::Uncheck, &steps, deadline)?;
+        ActionResult::from_execution(&Action::Uncheck, steps, post_state)
+    }
+
+    fn execute_expand(
+        element: &UIAElement,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = expand_steps(element, policy, deadline)?;
+        let post_state = post_state_for_steps(element, &Action::Expand, &steps, deadline)?;
+        ActionResult::from_execution(&Action::Expand, steps, post_state)
+    }
+
+    fn execute_collapse(
+        element: &UIAElement,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = collapse_steps(element, policy, deadline)?;
+        let post_state = post_state_for_steps(element, &Action::Collapse, &steps, deadline)?;
+        ActionResult::from_execution(&Action::Collapse, steps, post_state)
     }
 
     fn null_handle_action(action: &Action) -> Result<ActionResult, AdapterError> {

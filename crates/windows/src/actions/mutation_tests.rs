@@ -209,6 +209,8 @@ fn write_path_sources_never_reach_the_read_classification_table() {
         ("actions/chain.rs", include_str!("chain.rs")),
         ("actions/value_write.rs", include_str!("value_write.rs")),
         ("actions/post_state.rs", include_str!("post_state.rs")),
+        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
+        ("actions/disclosure.rs", include_str!("disclosure.rs")),
     ];
     for (name, source) in sources {
         for line in source.lines() {
@@ -245,6 +247,8 @@ fn actions_never_construct_stale_via_adapter_error_stale_ref() {
         ("actions/chain.rs", include_str!("chain.rs")),
         ("actions/value_write.rs", include_str!("value_write.rs")),
         ("actions/post_state.rs", include_str!("post_state.rs")),
+        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
+        ("actions/disclosure.rs", include_str!("disclosure.rs")),
     ];
     for (name, source) in sources {
         for line in source.lines() {
