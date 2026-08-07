@@ -13,6 +13,7 @@ on:
       - 'probes/windows/15-vocabulary/**'
       - 'probes/windows/16-observation/**'
       - 'probes/windows/17-resolution/**'
+      - 'probes/windows/18-actionability/**'
       - '.github/workflows/windows-capability-probe.yml'
   workflow_dispatch:
 
@@ -57,6 +58,11 @@ jobs:
         run: |
           .\probes\windows\17-resolution\probe.ps1 -Label ci -SkipChromium
 
+      - name: Run the actionability probe
+        shell: powershell
+        run: |
+          .\probes\windows\18-actionability\probe.ps1 -Label ci -SkipChromium
+
       # Uploads on failure as well as success. A probe that fails its mandatory
       # measurement gate has already written the placeholder captures naming
       # what did not measure, and on a red run those are the entire evidence
@@ -74,6 +80,7 @@ jobs:
             probes/windows/15-vocabulary/captures/*-ci.json
             probes/windows/16-observation/captures/*-ci.json
             probes/windows/17-resolution/captures/*-ci.json
+            probes/windows/18-actionability/captures/*-ci.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were
           # found" failure on top of the real one and read as the cause. What
