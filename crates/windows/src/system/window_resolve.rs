@@ -1,5 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, WindowInfo, WindowState,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, ProcessId, WindowInfo,
+    WindowState,
 };
 
 use super::window_enum::enumerate_top_level;
@@ -37,6 +38,11 @@ pub(crate) fn resolve_window_strict(
 
 /// Raises and focuses the exact window after `resolve_window_strict`.
 ///
+/// Ownership is revalidated at the point of use: the stored pid and process
+/// generation are verified against the handle's current owner before any
+/// window-state write, and the owning pid is re-read immediately before
+/// `SetForegroundWindow`, so a handle destroyed and recycled to another
+/// process after selection is refused rather than restored or foregrounded.
 /// Confirms foreground membership before returning. Foreground-lock bypass
 /// uses the thread-attach pattern; a failure to become foreground is
 /// `ACTION_FAILED` with `physical_delivery_started: false`.
@@ -48,12 +54,19 @@ pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result
             "window id is not a Windows HWND-shaped id",
         ));
     }
+    let Some(evidence) = WindowIdentityEvidence::from_info(handle, win) else {
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
+            "headed focus requires a process-instance token on the stored window",
+        ));
+    };
+    evidence.verify_stored()?;
     let _ = lease;
     restore_if_iconic(handle);
     if is_foreground(handle) {
         return Ok(());
     }
-    bring_to_foreground(handle)?;
+    bring_to_foreground(handle, win.pid)?;
     if is_foreground(handle) {
         return Ok(());
     }
@@ -144,17 +157,23 @@ fn restore_if_iconic(handle: super::window_enum::WindowHandle) {
 fn restore_if_iconic(_handle: super::window_enum::WindowHandle) {}
 
 #[cfg(target_os = "windows")]
-fn bring_to_foreground(handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
+fn bring_to_foreground(
+    handle: super::window_enum::WindowHandle,
+    expected: ProcessId,
+) -> Result<(), AdapterError> {
     use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetForegroundWindow, GetWindowThreadProcessId, SW_SHOW, SetForegroundWindow, ShowWindow,
     };
 
     unsafe {
-        ShowWindow(handle, SW_SHOW);
-        let foreground = GetForegroundWindow();
         let mut target_pid = 0u32;
         let target_tid = GetWindowThreadProcessId(handle, &mut target_pid);
+        if target_tid == 0 || ProcessId::from(target_pid) != expected {
+            return Err(recycled_before_foreground());
+        }
+        ShowWindow(handle, SW_SHOW);
+        let foreground = GetForegroundWindow();
         let mut fore_pid = 0u32;
         let fore_tid = if foreground.is_null() {
             0
@@ -180,8 +199,23 @@ fn bring_to_foreground(handle: super::window_enum::WindowHandle) -> Result<(), A
 }
 
 #[cfg(not(target_os = "windows"))]
-fn bring_to_foreground(_handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
+fn bring_to_foreground(
+    _handle: super::window_enum::WindowHandle,
+    _expected: ProcessId,
+) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("focus_window"))
+}
+
+/// The handle's owner changed between selection and the foreground write; the
+/// write is refused so a recycled HWND never foregrounds a foreign window.
+#[cfg(target_os = "windows")]
+fn recycled_before_foreground() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::WindowNotFound,
+        "Target window handle changed ownership before foreground delivery",
+    )
+    .with_details(serde_json::json!({ "physical_delivery_started": false }))
+    .with_disposition(DeliverySemantics::not_delivered())
 }
 
 #[cfg(target_os = "windows")]
@@ -238,5 +272,39 @@ mod tests {
         };
         let err = resolve_window_strict(&win, Deadline::after(1_000).unwrap()).unwrap_err();
         assert_eq!(err.code, ErrorCode::WindowNotFound);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn focus_window_refuses_a_destroyed_handle_before_any_window_write() {
+        let win = WindowInfo {
+            id: "w-1".into(),
+            title: "gone".into(),
+            app: "none.exe".into(),
+            pid: agent_desktop_core::ProcessId::from(1u32),
+            process_instance: Some("windows-proc-v1:0:0".into()),
+            bounds: None,
+            state: WindowState::default(),
+        };
+        let lease = InteractionLease::guarded(Deadline::after(1_000).unwrap(), ()).expect("lease");
+        let err = focus_window(&win, &lease).unwrap_err();
+        assert_eq!(err.code, ErrorCode::WindowNotFound);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn focus_window_requires_a_process_instance_token() {
+        let win = WindowInfo {
+            id: "w-1".into(),
+            title: "gone".into(),
+            app: "none.exe".into(),
+            pid: agent_desktop_core::ProcessId::from(1u32),
+            process_instance: None,
+            bounds: None,
+            state: WindowState::default(),
+        };
+        let lease = InteractionLease::guarded(Deadline::after(1_000).unwrap(), ()).expect("lease");
+        let err = focus_window(&win, &lease).unwrap_err();
+        assert_eq!(err.code, ErrorCode::StaleRef);
     }
 }
