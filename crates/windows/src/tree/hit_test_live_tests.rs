@@ -18,43 +18,74 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 /// does not own, and the pin it would satisfy is not the one being made.
 const OVERLAY_LABEL: &str = "fixture-overlay";
 
+/// A probe together with Win32's independent opinion of the same point, read
+/// on both sides of it.
+///
+/// Reading that opinion only after the probe cannot say which desktop the
+/// probe saw. `hit_test` consults `WindowFromPoint` itself while it runs, so a
+/// window raised and dropped across the probe leaves the two describing
+/// different desktops: the probe reports the occluder it was handed, the later
+/// reading attributes the point to the fixture, and the test then asserts an
+/// unoccluded verdict against one taken while something was in the way.
+/// Agreement between the two readings is the evidence that no such movement
+/// happened, and it is what every strong assertion below is conditioned on.
+struct BracketedProbe {
+    result: HitTestResult,
+    before: isize,
+    after: isize,
+}
+
+impl BracketedProbe {
+    /// The window both readings agree owns the point, or `None` when they
+    /// disagree and the desktop moved across the probe.
+    fn stable_owner(&self) -> Option<isize> {
+        (self.before == self.after).then_some(self.after)
+    }
+}
+
+/// Probes `point` between two independent Win32 readings of that same point.
+fn probe_between_win32_readings(handle: &NativeHandle, point: &Point) -> BracketedProbe {
+    let before = win32_root_at(point);
+    let result = hit_test_impl(handle, point.clone(), deadline()).expect("hit_test succeeds");
+    let after = win32_root_at(point);
+    BracketedProbe {
+        result,
+        before,
+        after,
+    }
+}
+
 #[test]
 fn on_screen_fixture_center_reaches_target() {
+    let _stage = fixture_window::on_screen_stage();
     ensure_test_apartment();
     let (left, top) = fixture_window::on_screen_origin();
     let fixture = LocalFixture::create_at(left, top).expect("on-screen fixture starts");
     fixture_overlay::raise_window(fixture.handle());
     let handle = control_handle(&fixture).expect("button handle");
-    let bounds = window_bounds(fixture_window::find_button(fixture.handle()));
-    let point = Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    };
-    let result = hit_test_impl(&handle, point.clone(), deadline()).expect("hit_test succeeds");
-    let owner = win32_root_at(&point);
-    if owner == fixture.handle() {
-        assert_eq!(
-            result,
+    let point = center(window_bounds(fixture_window::find_button(fixture.handle())));
+    let probe = probe_between_win32_readings(&handle, &point);
+    const PIN: &str = "on-screen ReachesTarget";
+    match probe.stable_owner() {
+        Some(owner) if owner == fixture.handle() => assert_eq!(
+            probe.result,
             HitTestResult::ReachesTarget,
             "the window manager gives the point to the fixture, so nothing occludes it"
-        );
-    } else {
-        eprintln!("{}", foreign_owner_skip("on-screen ReachesTarget", owner));
+        ),
+        Some(owner) => eprintln!("{}", foreign_owner_skip(PIN, owner)),
+        None => eprintln!("{}", moved_z_order_skip(PIN, &probe)),
     }
     fixture_overlay::clear_topmost(fixture.handle());
 }
 
 #[test]
 fn minimized_on_screen_fixture_yields_unknown() {
+    let _stage = fixture_window::on_screen_stage();
     ensure_test_apartment();
     let (left, top) = fixture_window::on_screen_origin();
     let fixture = LocalFixture::create_at(left, top).expect("on-screen fixture starts");
     let handle = control_handle(&fixture).expect("button handle");
-    let bounds = window_bounds(fixture_window::find_button(fixture.handle()));
-    let point = Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    };
+    let point = center(window_bounds(fixture_window::find_button(fixture.handle())));
     fixture.minimize();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let result = hit_test_impl(&handle, point, deadline()).expect("hit_test succeeds");
@@ -63,26 +94,27 @@ fn minimized_on_screen_fixture_yields_unknown() {
 
 #[test]
 fn same_root_overlay_reports_intercepted_by() {
+    let _stage = fixture_window::on_screen_stage();
     ensure_test_apartment();
     let (left, top) = fixture_window::on_screen_origin();
     let fixture = LocalFixture::create_at(left, top).expect("on-screen fixture starts");
     fixture_overlay::raise_window(fixture.handle());
     let handle = control_handle(&fixture).expect("covered button handle");
-    let bounds = window_bounds(fixture_window::find_button(fixture.handle()));
-    let point = Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    };
+    let point = center(window_bounds(fixture_window::find_button(fixture.handle())));
     let overlay = fixture_overlay::stage_sibling_overlay(fixture.handle());
     assert!(!overlay.is_null(), "overlay stages over the primary button");
     std::thread::sleep(std::time::Duration::from_millis(50));
-    let result = hit_test_impl(&handle, point.clone(), deadline()).expect("hit_test succeeds");
-    let owner = win32_root_at(&point);
-    if owner != fixture.handle() {
-        eprintln!("{}", foreign_owner_skip("same-root InterceptedBy", owner));
-        fixture_overlay::clear_topmost(fixture.handle());
-        return;
+    let probe = probe_between_win32_readings(&handle, &point);
+    const PIN: &str = "same-root InterceptedBy";
+    match probe.stable_owner() {
+        Some(owner) if owner == fixture.handle() => assert_names_the_staged_overlay(probe.result),
+        Some(owner) => eprintln!("{}", foreign_owner_skip(PIN, owner)),
+        None => eprintln!("{}", moved_z_order_skip(PIN, &probe)),
     }
+    fixture_overlay::clear_topmost(fixture.handle());
+}
+
+fn assert_names_the_staged_overlay(result: HitTestResult) {
     match result {
         HitTestResult::InterceptedBy { role, name, .. } => {
             assert!(role.is_some(), "occluder role is always present");
@@ -94,11 +126,11 @@ fn same_root_overlay_reports_intercepted_by() {
         }
         other => panic!("same-root overlay must InterceptedBy, got {other:?}"),
     }
-    fixture_overlay::clear_topmost(fixture.handle());
 }
 
 #[test]
 fn cross_window_overlap_reports_intercepted_and_uncovered_reaches() {
+    let _stage = fixture_window::on_screen_stage();
     ensure_test_apartment();
     let (left, top) = fixture_window::on_screen_origin();
     let under = LocalFixture::create_at(left, top).expect("under fixture");
@@ -106,47 +138,22 @@ fn cross_window_overlap_reports_intercepted_and_uncovered_reaches() {
     let over = LocalFixture::create_at(over_left, over_top).expect("over fixture");
     let under_button = fixture_window::find_button(under.handle());
     let covered_bounds = window_bounds(under_button);
-    unsafe {
-        SetWindowPos(
-            over.handle() as *mut std::ffi::c_void,
-            HWND_TOPMOST,
-            covered_bounds.x as i32 - 40,
-            covered_bounds.y as i32 - 40,
-            420,
-            320,
-            SWP_SHOWWINDOW,
-        );
-    }
+    place_topmost(
+        over.handle(),
+        covered_bounds.x as i32 - 40,
+        covered_bounds.y as i32 - 40,
+    );
     std::thread::sleep(std::time::Duration::from_millis(80));
 
     let under_handle = control_handle(&under).expect("under button");
-    let covered_point = Point {
-        x: covered_bounds.x + covered_bounds.width / 2.0,
-        y: covered_bounds.y + covered_bounds.height / 2.0,
-    };
-    let covered =
-        hit_test_impl(&under_handle, covered_point.clone(), deadline()).expect("covered probe");
-    match covered {
+    let covered_point = center(covered_bounds);
+    let covered = probe_between_win32_readings(&under_handle, &covered_point);
+    match covered.result {
         HitTestResult::InterceptedBy { role, .. } => {
             assert!(role.is_some(), "occluder role is always present");
         }
         HitTestResult::Unknown => {
-            let owner = win32_root_at(&covered_point);
-            assert_ne!(
-                owner,
-                over.handle(),
-                "Win32 independently names the over fixture at the covered point, so Unknown is a hit-test regression and not z-order contamination"
-            );
-            if owner == under.handle() {
-                eprintln!(
-                    "skip cross-window InterceptedBy: Win32 still names the under fixture at the covered point, so the overlap never staged"
-                );
-            } else {
-                eprintln!(
-                    "{}",
-                    foreign_owner_skip("cross-window InterceptedBy", owner)
-                );
-            }
+            report_uncorroborated_cover(&covered, under.handle(), over.handle());
             fixture_overlay::clear_topmost(over.handle());
             return;
         }
@@ -154,43 +161,73 @@ fn cross_window_overlap_reports_intercepted_and_uncovered_reaches() {
     }
 
     let (clean_left, clean_top) = fixture_window::on_screen_origin();
+    place_topmost(over.handle(), clean_left, clean_top);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let over_handle = control_handle(&over).expect("over button");
+    let uncovered_point = center(window_bounds(fixture_window::find_button(over.handle())));
+    let uncovered = probe_between_win32_readings(&over_handle, &uncovered_point);
+    const PIN: &str = "uncovered ReachesTarget (covered InterceptedBy already proven)";
+    match uncovered.stable_owner() {
+        Some(owner) if owner == over.handle() => assert_eq!(
+            uncovered.result,
+            HitTestResult::ReachesTarget,
+            "the window manager gives the point to the uncovered fixture, so nothing occludes it"
+        ),
+        Some(owner) => eprintln!("{}", foreign_owner_skip(PIN, owner)),
+        None => eprintln!("{}", moved_z_order_skip(PIN, &uncovered)),
+    }
+    fixture_overlay::clear_topmost(over.handle());
+}
+
+/// Decides whether an uncovered-by-`Unknown` cover is contamination or the
+/// regression the pin exists for, and says which.
+///
+/// Win32 naming the over fixture on *both* sides of the probe is a desktop that
+/// held still with the cover genuinely staged, so `Unknown` there is the hit
+/// test failing to attribute a window it was handed - a broken root recipe -
+/// and must fail the run rather than be excused.
+fn report_uncorroborated_cover(covered: &BracketedProbe, under: isize, over: isize) {
+    const PIN: &str = "cross-window InterceptedBy";
+    match covered.stable_owner() {
+        Some(owner) => {
+            assert_ne!(
+                owner, over,
+                "Win32 independently names the over fixture at the covered point on both sides of the probe, so Unknown is a hit-test regression and not z-order contamination"
+            );
+            if owner == under {
+                eprintln!(
+                    "skip {PIN}: Win32 still names the under fixture at the covered point, so the overlap never staged"
+                );
+            } else {
+                eprintln!("{}", foreign_owner_skip(PIN, owner));
+            }
+        }
+        None => eprintln!("{}", moved_z_order_skip(PIN, covered)),
+    }
+}
+
+/// The point a click would land on, which is where every probe here aims.
+fn center(bounds: Rect) -> Point {
+    Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    }
+}
+
+/// Moves a fixture window to `left`/`top` above every non-topmost window,
+/// keeping the extent the fixture was created with.
+fn place_topmost(handle: isize, left: i32, top: i32) {
     unsafe {
         SetWindowPos(
-            over.handle() as *mut std::ffi::c_void,
+            handle as *mut std::ffi::c_void,
             HWND_TOPMOST,
-            clean_left,
-            clean_top,
-            420,
-            320,
+            left,
+            top,
+            fixture_window::WINDOW_WIDTH,
+            fixture_window::WINDOW_HEIGHT,
             SWP_SHOWWINDOW,
         );
     }
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    let over_handle = control_handle(&over).expect("over button");
-    let over_bounds = window_bounds(fixture_window::find_button(over.handle()));
-    let uncovered_point = Point {
-        x: over_bounds.x + over_bounds.width / 2.0,
-        y: over_bounds.y + over_bounds.height / 2.0,
-    };
-    let uncovered =
-        hit_test_impl(&over_handle, uncovered_point.clone(), deadline()).expect("uncovered probe");
-    let owner = win32_root_at(&uncovered_point);
-    if owner == over.handle() {
-        assert_eq!(
-            uncovered,
-            HitTestResult::ReachesTarget,
-            "the window manager gives the point to the uncovered fixture, so nothing occludes it"
-        );
-    } else {
-        eprintln!(
-            "{}",
-            foreign_owner_skip(
-                "uncovered ReachesTarget (covered InterceptedBy already proven)",
-                owner
-            )
-        );
-    }
-    fixture_overlay::clear_topmost(over.handle());
 }
 
 /// The independent second opinion, read by the test rather than taken from the
@@ -213,7 +250,14 @@ fn win32_root_at(point: &Point) -> isize {
 
 fn foreign_owner_skip(pin: &str, owner: isize) -> String {
     format!(
-        "skip {pin}: Win32 names window {owner:#x} at the point, which is no fixture of this repository — foreign z-order contamination"
+        "skip {pin}: Win32 names window {owner:#x} at the point on both sides of the probe, which is no fixture of this repository — foreign z-order contamination"
+    )
+}
+
+fn moved_z_order_skip(pin: &str, probe: &BracketedProbe) -> String {
+    format!(
+        "skip {pin}: Win32 names window {:#x} at the point before the probe and {:#x} after it, so the z-order moved across the probe and the two opinions describe different desktops",
+        probe.before, probe.after
     )
 }
 

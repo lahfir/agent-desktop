@@ -56,6 +56,14 @@ fn live_disabled_button_projects_enabled_false() {
 /// skipping. A lane that claims to run this and then quietly runs nothing is
 /// indistinguishable from a lane that ran it and passed, which is how coverage
 /// disappears with nothing to announce it.
+///
+/// The stage lock is held for as long as the host is alive. This leg reads no
+/// z-order itself, but it parks a window inside the virtual screen, and the
+/// legs that do read z-order decide whether to assert or to skip on who owns a
+/// point. A host sitting over one of their slots costs them their assertion
+/// silently — the skip is honest and the coverage is gone — and which slots it
+/// reaches is a function of the runner's resolution, so the display that hides
+/// the collision here is not the display CI has.
 #[test]
 fn live_wpf_zero_bounds_is_visible_false_when_stageable() {
     ensure_test_apartment();
@@ -65,6 +73,7 @@ fn live_wpf_zero_bounds_is_visible_false_when_stageable() {
         );
         return;
     }
+    let _stage = fixture_window::on_screen_stage();
     let Some((mut child, handle)) = stage_wpf_zero_button() else {
         panic!(
             "{LIVE_WPF_VARIABLE} is set, so this lane owns staging ScratchWpf, but its btnZeroSize did not reach the tree within {WPF_STAGE_BUDGET:?}"
@@ -142,18 +151,7 @@ fn stage_wpf_zero_button() -> Option<(std::process::Child, NativeHandle)> {
 }
 
 fn spawn_wpf_host(script: &std::path::Path) -> Option<std::process::Child> {
-    let (vx, vy, vw, vh) = unsafe {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-            SM_YVIRTUALSCREEN,
-        };
-        (
-            GetSystemMetrics(SM_XVIRTUALSCREEN),
-            GetSystemMetrics(SM_YVIRTUALSCREEN),
-            GetSystemMetrics(SM_CXVIRTUALSCREEN),
-            GetSystemMetrics(SM_CYVIRTUALSCREEN),
-        )
-    };
+    let (vx, vy, vw, vh) = crate::tree::hit_test::virtual_screen_metrics();
     let left = (vx + vw - 420).max(vx);
     let top = (vy + vh - 520).max(vy);
     std::process::Command::new("powershell.exe")

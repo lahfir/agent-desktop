@@ -29,8 +29,8 @@ const WM_FIXTURE_READY: u32 = 0x0400 + 1;
 const CONTROL_BORDER: u32 = 0x0080_0000;
 pub(crate) const OFFSCREEN_LEFT: i32 = 2_000;
 pub(crate) const OFFSCREEN_TOP: i32 = 2_000;
-const WINDOW_WIDTH: i32 = 420;
-const WINDOW_HEIGHT: i32 = 320;
+pub(crate) const WINDOW_WIDTH: i32 = 420;
+pub(crate) const WINDOW_HEIGHT: i32 = 320;
 
 /// The `comctl32` v6 side-by-side manifest. Without an activation context the
 /// v5 common controls are bound, and the standard controls the fixture creates
@@ -229,6 +229,32 @@ pub(crate) fn host_window_at(
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     unsafe { PostMessageW(window, WM_FIXTURE_READY, 0, 0) };
     pump_until_destroyed(window as isize, ready);
+}
+
+/// Serializes the live legs that stage on-screen windows and then read the
+/// desktop's z-order.
+///
+/// Slot rotation alone is not enough: the slot counter wraps once placements
+/// exceed the display's slot grid, and a short or remote display can offer
+/// only one row, so two parallel legs can hold the same rect. Even on distinct
+/// rects the legs are not independent — one of them deliberately raises a
+/// topmost window over a point a neighbour is about to probe.
+///
+/// The legs read Win32's opinion of their point on both sides of the probe, so
+/// a neighbour moving the z-order underneath one cannot make it assert against
+/// a desktop it never saw; what it can still do is own the point on both
+/// readings, which turns the leg's assertion into an honest skip and takes the
+/// coverage with it. Holding this while a leg stages and probes is what keeps
+/// those assertions running rather than merely truthful.
+///
+/// A poisoned lock is adopted rather than propagated: the mutex guards screen
+/// real estate, not data, so one failing leg must not cascade into every other
+/// leg reporting a lock error instead of its own verdict.
+pub(crate) fn on_screen_stage() -> std::sync::MutexGuard<'static, ()> {
+    static STAGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    STAGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// An origin inset inside the virtual screen so live hit-test fixtures clear
