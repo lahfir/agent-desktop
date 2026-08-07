@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, WindowInfo,
-    WindowState,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, WindowInfo, WindowState,
 };
 
 use super::window_enum::enumerate_top_level;
@@ -41,10 +40,7 @@ pub(crate) fn resolve_window_strict(
 /// Confirms foreground membership before returning. Foreground-lock bypass
 /// uses the thread-attach pattern; a failure to become foreground is
 /// `ACTION_FAILED` with `physical_delivery_started: false`.
-pub(crate) fn focus_window(
-    win: &WindowInfo,
-    lease: &InteractionLease,
-) -> Result<(), AdapterError> {
+pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
     let handle = parse_handle(&win.id);
     if handle.is_null() {
         return Err(AdapterError::new(
@@ -208,8 +204,8 @@ fn live_title(_handle: super::window_enum::WindowHandle) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::WindowFilter;
     use crate::system::window_ops::list_windows_live;
+    use agent_desktop_core::WindowFilter;
 
     #[cfg(target_os = "windows")]
     #[test]
