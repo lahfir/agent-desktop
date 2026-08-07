@@ -1,6 +1,7 @@
 pub(crate) mod chain;
 pub(crate) mod disclosure;
 pub(crate) mod dispatch;
+pub(crate) mod envelope_parity;
 pub(crate) mod focus;
 pub(crate) mod mutation;
 pub(crate) mod post_state;
