@@ -4,30 +4,31 @@
 //! through `value_write` with post-state attachment. Toggle / Check / Uncheck
 //! and Expand / Collapse attach post-state after delivery. Select and Scroll
 //! route through their dedicated modules. SetFocus routes through `focus`.
-//! ScrollTo reuses the shipped ScrollIntoView spine. Capabilities that need
+//! ScrollTo runs the ScrollIntoView spine plus the ancestor ladder when
+//! ScrollItem is absent or leaves geometry unchanged. Capabilities that need
 //! key synthesis or physical multi-click fail `PLATFORM_NOT_SUPPORTED`
 //! naming the missing machinery.
 
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, Direction, ErrorCode,
-    InteractionLease, InteractionPolicy, NativeHandle, StepMechanism, action_request::ActionRequest,
+    InteractionLease, InteractionPolicy, NativeHandle, action_request::ActionRequest,
 };
 
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
         Action, ActionResult, ActionStep, AdapterError, Deadline, Direction, ErrorCode,
-        InteractionLease, InteractionPolicy, NativeHandle, StepMechanism, ActionRequest,
+        InteractionLease, InteractionPolicy, NativeHandle, ActionRequest,
     };
     use crate::actions::chain::{
-        CLICK_CHAIN, ChainRung, DeliveryOutcome, execute_chain,
+        CLICK_CHAIN, ChainRung, DeliveryOutcome, build_step, execute_chain,
     };
     use crate::actions::disclosure::{collapse_steps, expand_steps};
     use crate::actions::focus::focus_element;
     use crate::actions::mutation::{classify_mutation, classify_success};
     use crate::actions::post_state::post_state_for_steps;
     use crate::actions::scroll::scroll_steps;
-    use crate::actions::scroll_into_view::scroll_into_view_impl;
+    use crate::actions::scroll_into_view::scroll_into_view_outcome;
     use crate::actions::select::select_steps;
     use crate::actions::toggle_state::{check_steps, toggle_steps, uncheck_steps};
     use crate::actions::value_write::{clear_steps, set_value_steps};
@@ -211,14 +212,10 @@ mod imp {
         handle: &NativeHandle,
         lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
-        scroll_into_view_impl(handle, lease)?;
+        let done = scroll_into_view_outcome(handle, lease)?;
         ActionResult::from_execution(
             &Action::ScrollTo,
-            vec![
-                ActionStep::succeeded("ScrollItemPattern.ScrollIntoView")
-                    .with_mechanism(StepMechanism::SemanticApi)
-                    .with_verified(true),
-            ],
+            vec![build_step(done.label, done.outcome)],
             None,
         )
     }

@@ -1,24 +1,28 @@
 //! `ScrollItemPattern.ScrollIntoView` with delivery judged by observation.
 //!
-//! Census reality (A18-1): `ScrollItem` is rare — mostly WPF `ListItem` /
-//! `TreeItem` — so the unsupported arm is the common case and must stay an
-//! honest `ACTION_FAILED` `not_delivered` rather than `PLATFORM_NOT_SUPPORTED`.
-//! Provider rects are unclipped against their scroll viewport (A18-2), so
-//! verified visibility requires viewport intersection, not `IsOffscreen` alone.
-//!
-//! Invoke failures keep their tagged `UiaFailure` through the observation
-//! spine. Terminal constructors take code/message/`platform_detail` from
-//! `classify_mutation` while a completed observation's disposition stands
-//! (A18 geometry judgment outranks the classifier).
+//! When the gate is unavailable or invoke leaves geometry unchanged, a
+//! scrollable ancestor runs the ladder (A19-7); without one the unsupported /
+//! not-delivered arms stay unchanged. Provider rects are unclipped (A18-2), so
+//! verified visibility needs viewport intersection. Invoke failures keep tagged
+//! `UiaFailure`; completed observation disposition outranks the classifier
+//! (A18).
 
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect,
 };
 
+use crate::actions::chain::DeliveryOutcome;
+
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::{AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect};
+    use super::{
+        AdapterError, Deadline, DeliveryOutcome, DeliverySemantics, ErrorCode, InteractionLease,
+        Rect,
+    };
     use crate::actions::mutation::classify_mutation;
+    use crate::actions::scroll_ladder::{
+        LADDER_SCROLL_LABEL, ancestor_ladder, apply_ladder_seam,
+    };
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
     use crate::tree::element::{UIAElement, uia_element};
@@ -35,7 +39,7 @@ mod imp {
 
     const VERIFY_WINDOW: Duration = Duration::from_millis(800);
     const POLL_SLICE: Duration = Duration::from_millis(20);
-    const SCROLL_INTO_VIEW_API: &str = "ScrollItemPattern.ScrollIntoView";
+    pub(crate) const SCROLL_INTO_VIEW_API: &str = "ScrollItemPattern.ScrollIntoView";
     const SCROLL_INTO_VIEW_OP: &str = "ScrollIntoView";
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,10 +56,23 @@ mod imp {
         pub(crate) viewport: Option<Rect>,
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) struct ScrollIntoViewDone {
+        pub(crate) label: &'static str,
+        pub(crate) outcome: DeliveryOutcome,
+    }
+
     pub fn scroll_into_view_impl(
         handle: &NativeHandle,
         lease: &InteractionLease,
     ) -> Result<(), AdapterError> {
+        scroll_into_view_outcome(handle, lease).map(|_| ())
+    }
+
+    pub(crate) fn scroll_into_view_outcome(
+        handle: &NativeHandle,
+        lease: &InteractionLease,
+    ) -> Result<ScrollIntoViewDone, AdapterError> {
         let element = uia_element(handle)?;
         let deadline = lease.deadline();
         ensure_budget(deadline)?;
@@ -66,34 +83,49 @@ mod imp {
     fn scroll_into_view_element(
         element: &UIAElement,
         deadline: Deadline,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<ScrollIntoViewDone, AdapterError> {
         if !scroll_item_available(element) {
-            return Err(unsupported_error());
+            return ladder_from_terminal(unsupported_error(), element, deadline);
         }
         let client = automation_client()?;
         let walker = client.get_raw_view_walker().ok();
         let before = read_bounds_opt(element);
         let viewport = resolve_scroll_viewport(element, walker.as_ref(), deadline);
         let invoke_failure = match invoke_scroll_into_view(element) {
-            InvokeOutcome::EmptyPattern => return Err(unsupported_error()),
+            InvokeOutcome::EmptyPattern => {
+                return ladder_from_terminal(unsupported_error(), element, deadline);
+            }
             InvokeOutcome::Failed(failure) => Some(failure),
             InvokeOutcome::Succeeded => None,
         };
-        scroll_into_view_judged_for(deadline, before, invoke_failure, VERIFY_WINDOW, || {
+        match scroll_into_view_judged_for(deadline, before, invoke_failure, VERIFY_WINDOW, || {
             observe_visibility(element, deadline, viewport.as_ref())
+        }) {
+            Ok(()) => Ok(ScrollIntoViewDone {
+                label: SCROLL_INTO_VIEW_API,
+                outcome: DeliveryOutcome::DeliveredVerified,
+            }),
+            Err(error) if error.disposition == DeliverySemantics::not_delivered() => {
+                ladder_from_terminal(error, element, deadline)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn ladder_from_terminal(
+        fallback: AdapterError,
+        element: &UIAElement,
+        deadline: Deadline,
+    ) -> Result<ScrollIntoViewDone, AdapterError> {
+        apply_ladder_seam(fallback, ancestor_ladder(element, deadline)).map(|outcome| {
+            ScrollIntoViewDone {
+                label: LADDER_SCROLL_LABEL,
+                outcome,
+            }
         })
     }
 
-    /// Resolves which ancestor clips the target, once per operation.
-    ///
-    /// Which ancestor is the scroll viewport cannot change inside one
-    /// verification window; only its rectangle can. Re-deriving it per poll tick
-    /// spent an ancestor climb of up to `DEFAULT_MAX_RAW_DEPTH` cross-process
-    /// steps, forty times over, to rediscover an answer already in hand.
-    ///
-    /// A climb the budget truncates leaves the viewport unresolved, which is the
-    /// same answer as a target with no scroll ancestor at all: visibility cannot
-    /// be verified, and the poll's own budget check is what reports the timeout.
+    /// Climb once per operation; a truncated climb leaves the viewport unresolved.
     fn resolve_scroll_viewport(
         element: &UIAElement,
         walker: Option<&UITreeWalker>,
@@ -172,10 +204,7 @@ mod imp {
         let Some(bounds) = sample.bounds else {
             return false;
         };
-        if !rect_has_area(&bounds) {
-            return false;
-        }
-        if sample.offscreen != Some(false) {
+        if !rect_has_area(&bounds) || sample.offscreen != Some(false) {
             return false;
         }
         match sample.viewport {
@@ -234,9 +263,7 @@ mod imp {
         error.with_disposition(DeliverySemantics::delivered_unverified())
     }
 
-    /// Overlays classifier code/message/`platform_detail` onto the observation
-    /// disposition. A completed observation's delivery verdict stands even when
-    /// the invoke HRESULT was transport-uncertain (A18).
+    /// Observation disposition stands over transport-uncertain invoke HRESULTs (A18).
     fn overlay_invoke_classification(
         observation: AdapterError,
         invoke_failure: Option<UiaFailure>,
@@ -333,8 +360,13 @@ mod imp {
 
 #[cfg(not(target_os = "windows"))]
 mod imp {
-    use super::{AdapterError, InteractionLease};
+    use super::{AdapterError, DeliveryOutcome, InteractionLease};
     use agent_desktop_core::native_handle::NativeHandle;
+
+    pub(crate) struct ScrollIntoViewDone {
+        pub(crate) label: &'static str,
+        pub(crate) outcome: DeliveryOutcome,
+    }
 
     pub fn scroll_into_view_impl(
         _handle: &NativeHandle,
@@ -342,9 +374,16 @@ mod imp {
     ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("scroll_into_view"))
     }
+
+    pub(crate) fn scroll_into_view_outcome(
+        _handle: &NativeHandle,
+        _lease: &InteractionLease,
+    ) -> Result<ScrollIntoViewDone, AdapterError> {
+        Err(AdapterError::not_supported("scroll_into_view"))
+    }
 }
 
-pub(crate) use imp::scroll_into_view_impl;
+pub(crate) use imp::{scroll_into_view_impl, scroll_into_view_outcome};
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::{

@@ -217,12 +217,16 @@ fn write_path_sources_never_reach_the_read_classification_table() {
     );
 }
 
-fn mutation_sources() -> [(&'static str, &'static str); 12] {
+fn mutation_sources() -> [(&'static str, &'static str); 13] {
     [
         ("actions/mutation.rs", include_str!("mutation.rs")),
         (
             "actions/scroll_into_view.rs",
             include_str!("scroll_into_view.rs"),
+        ),
+        (
+            "actions/scroll_ladder.rs",
+            include_str!("scroll_ladder.rs"),
         ),
         ("actions/dispatch.rs", include_str!("dispatch.rs")),
         ("actions/focus.rs", include_str!("focus.rs")),

@@ -3,6 +3,7 @@
 /// than leave it widening the ban for nothing.
 const PATTERN_ALLOWLIST: &[&str] = &[
     "actions/scroll_into_view.rs",
+    "actions/scroll_ladder.rs",
     "actions/dispatch.rs",
     "actions/value_write.rs",
     "actions/toggle_state.rs",
@@ -24,10 +25,14 @@ const HIT_TEST_FAMILY: [(&str, &str); 3] = [
     ),
 ];
 
-const GATE_SUPPORT: [(&str, &str); 9] = [
+const GATE_SUPPORT: [(&str, &str); 10] = [
     (
         "actions/scroll_into_view.rs",
         include_str!("../actions/scroll_into_view.rs"),
+    ),
+    (
+        "actions/scroll_ladder.rs",
+        include_str!("../actions/scroll_ladder.rs"),
     ),
     (
         "actions/dispatch.rs",

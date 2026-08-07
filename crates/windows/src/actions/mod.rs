@@ -6,6 +6,7 @@ pub(crate) mod mutation;
 pub(crate) mod post_state;
 pub(crate) mod scroll;
 pub(crate) mod scroll_into_view;
+pub(crate) mod scroll_ladder;
 pub(crate) mod select;
 pub(crate) mod select_search;
 pub(crate) mod toggle_state;
