@@ -342,6 +342,46 @@ mod tests {
         assert_eq!(err.code, ErrorCode::WindowNotFound);
     }
 
+    /// The success contract, pinned without asserting a machine-specific
+    /// outcome: whether a lane can take the foreground at all depends on the
+    /// desktop it runs on, so this asserts the implication rather than the
+    /// result. `Ok` must mean the foreground window is the target **and** is
+    /// still owned by the expected process; a lane that cannot focus must say
+    /// so as a not-delivered failure. The forbidden state is `Ok` while some
+    /// other process owns the foreground.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn focus_window_reports_ok_only_when_the_expected_process_owns_the_foreground() {
+        crate::tree::fixture::ensure_test_apartment();
+        let fixture = crate::tree::fixture::HostedFixture::spawn().expect("fixture host starts");
+        let windows = list_windows_live(&WindowFilter::default()).expect("list");
+        let expected = windows
+            .into_iter()
+            .find(|window| window.pid == agent_desktop_core::ProcessId::from(fixture.process_id()))
+            .expect("fixture window listed");
+        let lease = InteractionLease::guarded(Deadline::after(5_000).unwrap(), ()).expect("lease");
+        match focus_window(&expected, &lease) {
+            Ok(()) => {
+                let handle = parse_handle(&expected.id);
+                assert!(
+                    is_owned_foreground(handle, expected.pid),
+                    "focus_window returned Ok while the foreground was not the owned target"
+                );
+            }
+            Err(error) => {
+                assert_eq!(error.code, ErrorCode::ActionFailed);
+                assert_eq!(
+                    error
+                        .details
+                        .as_ref()
+                        .and_then(|details| details.get("physical_delivery_started")),
+                    Some(&serde_json::Value::Bool(false)),
+                    "a focus failure must report that no input was delivered"
+                );
+            }
+        }
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn focus_window_refuses_an_expired_lease_before_any_window_write() {
