@@ -204,6 +204,9 @@ fn write_path_sources_never_reach_the_read_classification_table() {
             "actions/scroll_into_view.rs",
             include_str!("scroll_into_view.rs"),
         ),
+        ("actions/dispatch.rs", include_str!("dispatch.rs")),
+        ("actions/focus.rs", include_str!("focus.rs")),
+        ("actions/chain.rs", include_str!("chain.rs")),
     ];
     for (name, source) in sources {
         for line in source.lines() {
@@ -235,6 +238,9 @@ fn actions_never_construct_stale_via_adapter_error_stale_ref() {
             "actions/scroll_into_view.rs",
             include_str!("scroll_into_view.rs"),
         ),
+        ("actions/dispatch.rs", include_str!("dispatch.rs")),
+        ("actions/focus.rs", include_str!("focus.rs")),
+        ("actions/chain.rs", include_str!("chain.rs")),
     ];
     for (name, source) in sources {
         for line in source.lines() {

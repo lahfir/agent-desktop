@@ -1,7 +1,10 @@
 /// Files the `get_pattern` ban is lifted for. Each entry must still contain a
 /// live call site — the per-entry tripwire deletes a dead exception rather
 /// than leave it widening the ban for nothing.
-const PATTERN_ALLOWLIST: &[&str] = &["actions/scroll_into_view.rs"];
+const PATTERN_ALLOWLIST: &[&str] = &[
+    "actions/scroll_into_view.rs",
+    "actions/dispatch.rs",
+];
 
 const HIT_TEST_FAMILY: [(&str, &str); 3] = [
     ("tree/hit_test.rs", include_str!("hit_test.rs")),
@@ -15,10 +18,14 @@ const HIT_TEST_FAMILY: [(&str, &str); 3] = [
     ),
 ];
 
-const GATE_SUPPORT: [(&str, &str); 2] = [
+const GATE_SUPPORT: [(&str, &str); 3] = [
     (
         "actions/scroll_into_view.rs",
         include_str!("../actions/scroll_into_view.rs"),
+    ),
+    (
+        "actions/dispatch.rs",
+        include_str!("../actions/dispatch.rs"),
     ),
     (
         "system/window_resolve.rs",
