@@ -114,7 +114,8 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
     Ok(windows)
 }
 
-fn is_foreground_window(handle: super::window_enum::WindowHandle) -> bool {
+/// Whether a handle is the desktop's foreground window right now.
+pub(crate) fn is_foreground_window(handle: super::window_enum::WindowHandle) -> bool {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;

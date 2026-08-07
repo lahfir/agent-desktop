@@ -19,9 +19,10 @@ tags: [code-review, ci, exhaustiveness, tooling, delegation]
 
 ## Problem
 
-Three times on `feat/windows-2.3-vocabulary`, a review named one occurrence of
-a defect, and fixing only the named occurrence would have left the same
-defect live elsewhere in the same tree.
+Four times now — three on `feat/windows-2.3-vocabulary`, a fourth two
+sub-phases later — a review named one occurrence of a defect, and fixing only
+the named occurrence would have left the same defect live elsewhere in the
+same tree.
 
 **Enumeration fault-vs-exhaustion.** UI Automation signals both end-of-list
 and a real cross-process fault as `Err`, distinguished only by
@@ -54,6 +55,22 @@ by cutting documentation, which is the wrong trade the cap exists to prevent.
 Both were split by responsibility instead — `render_node.rs` /
 `render_node_tests.rs` out of `render.rs`, `states_walk_tests.rs` out of
 `states_tests.rs`.
+
+**Duplicated geometry and walker helpers.** A 2.6 code-review finding named
+two duplicated helpers: `rect_has_area` and `nearest_scroll_viewport_bounds`.
+`rect_has_area`'s copies had already drifted apart by the time anyone was
+fixing them — one checked that a rectangle's dimensions were finite before
+trusting them, its twin did not, so a provider answering `NaN` or an infinity
+satisfied the twin's bare positive-dimension comparison — this doc's thesis
+demonstrated rather than argued, not merely predicted. Enumerating the
+predicate behind the second finding — an ancestor-walk primitive
+reimplemented at each call site instead of owned once by the tree source —
+found the class was six, not one: `same_element`, `identity`, `parent_step`,
+`nearest_scroll_viewport`, `viewport_bounds`, and
+`nearest_scroll_viewport_bounds`. Commit `4918c25` gave the six one home in
+`crates/windows/src/tree/walker_source.rs` and gave `rect_has_area` its own
+single definition in `properties.rs`, touching four files for both fixes
+together.
 
 ## Root cause
 

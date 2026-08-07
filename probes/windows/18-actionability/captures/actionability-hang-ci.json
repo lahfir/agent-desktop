@@ -1,0 +1,33 @@
+{
+    "connection_timeout_ms":  2000,
+    "element_from_handle":  {
+                                "bounded_by_connection_timeout":  true,
+                                "call":  "ElementFromHandle",
+                                "elapsed_ms":  2000.9421,
+                                "failure":  {
+                                                "code":  -2146233083,
+                                                "result_hex":  "0x80131505"
+                                            },
+                                "ok":  false
+                            },
+    "element_from_point":  {
+                               "bounded_by_connection_timeout":  true,
+                               "call":  "ElementFromPoint",
+                               "elapsed_ms":  2001.1005000000002,
+                               "failure":  {
+                                               "code":  -2146233083,
+                                               "result_hex":  "0x80131505"
+                                           },
+                               "ok":  false
+                           },
+    "hang_defense_branch":  "connection_timeout_bounds_swallow_to_unknown",
+    "hit_root_ancestor_walk":  {
+                                   "skipped":  "no hit element to walk"
+                               },
+    "occluder_evidence_read":  {
+                                   "skipped":  "no hit element to read"
+                               },
+    "probe_point":  "240,180",
+    "stack":  "uia3-com-product-CUIAutomation8",
+    "stalled_fixture":  true
+}

@@ -9,11 +9,105 @@ mod imp {
     use crate::tree::cache::{build_walk_cache_request, policy_for_root};
     use crate::tree::element::UIAElement;
     use crate::tree::name_evidence::read_label;
-    use crate::tree::properties::{read_cached, read_live};
-    use crate::tree::walker::{NodeKey, TreeSource, walk_vocabulary};
-    use agent_desktop_core::AdapterError;
+    use crate::tree::properties::{read_cached, read_live, read_one, rect_has_area};
+    use crate::tree::property_ids::TreeProperty;
+    use crate::tree::walker::{DEFAULT_MAX_RAW_DEPTH, NodeKey, TreeSource, walk_vocabulary};
+    use agent_desktop_core::{AdapterError, Deadline, LocatorField, Rect};
     use uiautomation::UIAutomation;
     use uiautomation::core::{UICacheRequest, UITreeWalker};
+
+    /// The operation budget ran out between two cross-process walker calls.
+    #[derive(Debug)]
+    pub struct BudgetExpired;
+
+    /// Whether two proxies address the same element.
+    ///
+    /// UI Automation hands back a new `IUIAutomationElement` per query, so
+    /// asking the client is the only answer available. A free function because
+    /// the enumeration walk and the ancestor climbs both need it, and a second
+    /// copy is a second chance for the two to disagree.
+    pub fn same_element(client: &UIAutomation, left: &UIAElement, right: &UIAElement) -> bool {
+        client.compare_elements(&left.0, &right.0).unwrap_or(false)
+    }
+
+    /// The identity every cycle guard keys on: the runtime id when the provider
+    /// publishes one, and otherwise the marker that sends the guard to
+    /// [`same_element`].
+    pub fn identity(node: &UIAElement) -> NodeKey {
+        match node.0.get_runtime_id() {
+            Ok(runtime_id) if !runtime_id.is_empty() => NodeKey::Runtime(runtime_id),
+            _ => NodeKey::Unavailable,
+        }
+    }
+
+    /// One step toward the root.
+    ///
+    /// Exhaustion is `Ok(None)` - the climb reached the top - while any other
+    /// fault is `Err`, so a caller can tell "there is no parent" from "the
+    /// parent could not be read" and refuse to decide on the second.
+    pub fn parent_step(walker: &UITreeWalker, node: &UIAElement) -> Result<Option<UIAElement>, ()> {
+        match walker.get_parent(&node.0) {
+            Ok(parent) => Ok(Some(UIAElement::from(parent))),
+            Err(error) => {
+                if failure_of(&error).is_exhaustion() {
+                    Ok(None)
+                } else {
+                    Err(())
+                }
+            }
+        }
+    }
+
+    /// The nearest ancestor that advertises a scrollable viewport.
+    ///
+    /// Every step is a cross-process call, so the deadline is consulted once per
+    /// step and a truncated climb is `Err` rather than a confident "no
+    /// viewport" - which a caller would read as licence to skip the clipping
+    /// question entirely.
+    pub fn nearest_scroll_viewport(
+        target: &UIAElement,
+        walker: &UITreeWalker,
+        deadline: Deadline,
+    ) -> Result<Option<UIAElement>, BudgetExpired> {
+        let mut current = target.clone();
+        for _ in 0..DEFAULT_MAX_RAW_DEPTH as usize {
+            if deadline.is_expired() {
+                return Err(BudgetExpired);
+            }
+            let parent = match parent_step(walker, &current) {
+                Ok(Some(parent)) => parent,
+                Ok(None) | Err(()) => return Ok(None),
+            };
+            if read_one(&parent, TreeProperty::ScrollAvailable).flag() == Some(true) {
+                return Ok(Some(parent));
+            }
+            current = parent;
+        }
+        Ok(None)
+    }
+
+    /// A resolved viewport's rectangle right now.
+    ///
+    /// Which ancestor clips the target is fixed for the life of one operation;
+    /// its rectangle is not. A poller re-reads this and never the climb.
+    pub fn viewport_bounds(viewport: &UIAElement) -> Option<Rect> {
+        match read_one(viewport, TreeProperty::BoundingRectangle).bounds() {
+            LocatorField::Known(bounds) if rect_has_area(&bounds) => Some(bounds),
+            _ => None,
+        }
+    }
+
+    /// The nearest scroll viewport's rectangle, for a caller that climbs once
+    /// and reads once.
+    pub fn nearest_scroll_viewport_bounds(
+        target: &UIAElement,
+        walker: &UITreeWalker,
+        deadline: Deadline,
+    ) -> Result<Option<Rect>, BudgetExpired> {
+        Ok(nearest_scroll_viewport(target, walker, deadline)?
+            .as_ref()
+            .and_then(viewport_bounds))
+    }
 
     /// The production enumeration surface: the raw view walker, plus the cache
     /// request the provider class earned.
@@ -96,16 +190,11 @@ mod imp {
         }
 
         fn identity(&self, node: &UIAElement) -> NodeKey {
-            match node.0.get_runtime_id() {
-                Ok(runtime_id) if !runtime_id.is_empty() => NodeKey::Runtime(runtime_id),
-                _ => NodeKey::Unavailable,
-            }
+            identity(node)
         }
 
         fn same_element(&self, left: &UIAElement, right: &UIAElement) -> bool {
-            self.client
-                .compare_elements(&left.0, &right.0)
-                .unwrap_or(false)
+            same_element(&self.client, left, right)
         }
 
         fn evidence(
@@ -209,6 +298,12 @@ mod imp {
 }
 
 pub use imp::UiaTreeSource;
+
+#[cfg(target_os = "windows")]
+pub(crate) use imp::{
+    BudgetExpired, identity, nearest_scroll_viewport, nearest_scroll_viewport_bounds, parent_step,
+    same_element, viewport_bounds,
+};
 
 /// Walks a live UI Automation subtree from an arbitrary root element.
 ///

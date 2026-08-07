@@ -88,6 +88,10 @@ agent-desktop-windows --examples`) to `.github/workflows/ci.yml`, and pinning th
 command string as an assertion in `src/cli/contract_tests.rs` so the step cannot silently
 disappear from the workflow file the way the coverage gap itself was invisible.
 
+This incident is retold from the coverage side, as shape 3 of six, in
+[A test that cannot fail is not coverage](a-test-that-cannot-fail-is-not-coverage.md)
+— that telling and this one must not drift apart.
+
 ## Rules
 
 - A `#[cfg]` branch that CI cannot execute is not shipped code, it is a hypothesis. Either

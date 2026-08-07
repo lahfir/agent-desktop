@@ -29,6 +29,29 @@ pub fn extent(near: i32, far: i32) -> f64 {
     f64::from(far.saturating_sub(near).max(0))
 }
 
+/// Reports whether a rectangle is measurable and encloses real area.
+///
+/// Finiteness is part of the test rather than decoration. A provider is free to
+/// answer `NaN` or an infinity, and such a value satisfies a bare
+/// positive-dimension comparison while comparing false against every point.
+/// Accepting it turns an unmeasurable answer into a verified one - the exact
+/// false positive a post-write re-read exists to prevent - and carries an
+/// unanswerable question into a hit-test probe.
+///
+/// One definition, because the readers that must decide whether a rectangle can
+/// be trusted - the pre-probe guard ladder, the scroll-viewport ancestor climb
+/// and the post-invoke visibility judgement - are otherwise three chances for
+/// the same predicate to disagree.
+#[cfg(target_os = "windows")]
+pub(crate) fn rect_has_area(rect: &agent_desktop_core::Rect) -> bool {
+    rect.x.is_finite()
+        && rect.y.is_finite()
+        && rect.width.is_finite()
+        && rect.height.is_finite()
+        && rect.width > 0.0
+        && rect.height > 0.0
+}
+
 /// Builds the structured error for a property read that failed, carrying the
 /// property's name and never its value, so a failure cannot leak content
 /// through the error path.
@@ -248,13 +271,21 @@ mod imp {
     /// negative-sized. It collapses to zero extent, which is the same shape a
     /// minimized top-level window reports (A14-8), rather than travelling
     /// downstream as a negative width that no consumer expects.
-    fn rect_outcome(rectangle: uiautomation::types::Rect) -> PropertyOutcome {
-        PropertyOutcome::Known(PropertyValue::Bounds(Rect {
+    ///
+    /// Crate-visible because a reader that needs the provider's own failure -
+    /// rather than the tri-state this module's classification produces from it -
+    /// still has to convert the rectangle the same way.
+    pub(crate) fn rect_from_uia(rectangle: uiautomation::types::Rect) -> Rect {
+        Rect {
             x: f64::from(rectangle.get_left()),
             y: f64::from(rectangle.get_top()),
             width: super::extent(rectangle.get_left(), rectangle.get_right()),
             height: super::extent(rectangle.get_top(), rectangle.get_bottom()),
-        }))
+        }
+    }
+
+    fn rect_outcome(rectangle: uiautomation::types::Rect) -> PropertyOutcome {
+        PropertyOutcome::Known(PropertyValue::Bounds(rect_from_uia(rectangle)))
     }
 
     /// Turns one variant into the tri-state.
@@ -308,6 +339,9 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 pub use imp::{read_cached, read_live, read_live_bounded, read_one};
+
+#[cfg(target_os = "windows")]
+pub(crate) use imp::rect_from_uia;
 
 #[cfg(test)]
 #[path = "properties_tests.rs"]

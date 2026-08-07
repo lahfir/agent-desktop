@@ -1,0 +1,88 @@
+{
+    "guard_prevents":  "desktop_answer_at_freed_or_offscreen_coordinates_reaching_corroboration_as_interception",
+    "ktd4_branch":  "any_point_outside_virtual_screen_guarded_to_unknown_before_call",
+    "points":  [
+                   {
+                       "element_from_point":  {
+                                                  "hit":  {
+                                                              "automation_id_digest":  null,
+                                                              "automation_id_len":  null,
+                                                              "bounds":  "-8,-8,1655,708",
+                                                              "control_type":  50032,
+                                                              "has_area":  true,
+                                                              "is_offscreen":  false,
+                                                              "native_hwnd_nonzero":  true,
+                                                              "scroll_item_available":  true
+                                                          },
+                                                  "ok":  true
+                                              },
+                       "guard_would_skip":  true,
+                       "inside_virtual_screen":  false,
+                       "label":  "neg_one",
+                       "point":  "-1,-1",
+                       "win32_root":  330044
+                   },
+                   {
+                       "element_from_point":  {
+                                                  "hit":  {
+                                                              "automation_id_digest":  null,
+                                                              "automation_id_len":  null,
+                                                              "bounds":  "0,0,1639,692",
+                                                              "control_type":  50026,
+                                                              "has_area":  true,
+                                                              "is_offscreen":  false,
+                                                              "native_hwnd_nonzero":  false,
+                                                              "scroll_item_available":  true
+                                                          },
+                                                  "ok":  true
+                                              },
+                       "guard_would_skip":  false,
+                       "inside_virtual_screen":  true,
+                       "label":  "origin",
+                       "point":  "0,0",
+                       "win32_root":  330044
+                   },
+                   {
+                       "element_from_point":  {
+                                                  "hit":  {
+                                                              "automation_id_digest":  null,
+                                                              "automation_id_len":  null,
+                                                              "bounds":  "0,0,1639,732",
+                                                              "control_type":  50033,
+                                                              "has_area":  true,
+                                                              "is_offscreen":  false,
+                                                              "native_hwnd_nonzero":  true,
+                                                              "scroll_item_available":  false
+                                                          },
+                                                  "ok":  true
+                                              },
+                       "guard_would_skip":  true,
+                       "inside_virtual_screen":  false,
+                       "label":  "beyond_virtual_screen",
+                       "point":  "1703,796",
+                       "win32_root":  0
+                   },
+                   {
+                       "element_from_point":  {
+                                                  "hit":  {
+                                                              "automation_id_digest":  null,
+                                                              "automation_id_len":  null,
+                                                              "bounds":  "0,0,1639,732",
+                                                              "control_type":  50033,
+                                                              "has_area":  true,
+                                                              "is_offscreen":  false,
+                                                              "native_hwnd_nonzero":  true,
+                                                              "scroll_item_available":  false
+                                                          },
+                                                  "ok":  true
+                                              },
+                       "guard_would_skip":  true,
+                       "inside_virtual_screen":  false,
+                       "label":  "minimized_anchor_region",
+                       "point":  "-32000,-32000",
+                       "win32_root":  0
+                   }
+               ],
+    "stack":  "uia3-com-product-CUIAutomation8",
+    "virtual_screen":  "0,0,1639,732"
+}

@@ -96,3 +96,11 @@ rejected"* on the honest range, not on the best case.
 - A single unrepeated timed sample is not evidence. Treat it the same as an
   untested assumption: cheap to produce, and capable of pointing the
   decision the wrong way.
+- The discipline also justifies declining a change at an unmeasured site, not
+  only correcting a wrong claim already made: during 2.6 a proposed batching
+  optimization for the six-property occluder-evidence read in
+  `hit_test_corroborate.rs` was declined on this rule alone — A6-2 measured
+  unconditional cache batching as a net pessimization against in-process
+  providers (0.5763x), and this new call site had no measurement of its own,
+  so the round-trip count was reported as the fact and the latency delta was
+  explicitly marked unmeasured.

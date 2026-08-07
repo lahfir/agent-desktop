@@ -113,13 +113,26 @@ regression in the shipped rule is a regression the fixture can see.
 
 These gates look like they run everywhere, and they do not. Both
 `check-no-phase-references.sh` and `check-rust-file-size.sh` are steps of the
-macOS-only `Test` job in `.github/workflows/ci.yml`; the Linux and Windows
-lanes never invoke them. Nor does the Windows dev box, whose documented
-invocation of `.githooks/pre-commit` is `SKIP_PRECOMMIT=1` — the hook exits at
-its first line, long before it reaches either script. They are therefore
-authored and edited under a GNU userland and executed only under a BSD one,
-which is exactly how the `\b` bug passed on the machine that wrote it and
-failed the only lane that runs it.
+macOS-only `Test` job in `.github/workflows/ci.yml` (lines 126-130); the Linux
+and Windows CI lanes (`test-linux`, `test-windows`) never invoke them.
+`.githooks/pre-commit` used to be the reason neither script ran on the
+Windows dev box at all, back when its documented invocation there was
+`SKIP_PRECOMMIT=1` and the hook exited at its first line before reaching
+either one. Commit `adf2c36` restructured it: today the hook exits early only
+on an explicit `SKIP_PRECOMMIT` or when nothing staged matches a Rust/FFI
+path (lines 13-16, 58-73). Once a Rust change is staged, it computes a
+per-OS `HOST_PACKAGES` scope from `uname -s` — the `HOST_KERNEL` case
+matching `MINGW*|MSYS*|CYGWIN*|Windows_NT` for the Windows dev box (lines
+84-100) — but that scope only ever changes which cargo packages the later
+`clippy` and `test` steps build against; `check-rust-file-size.sh` and
+`check-no-phase-references.sh` both run ahead of it, unconditionally, on
+every host (lines 127-128). The two scripts are therefore no longer
+"authored under GNU, executed only under BSD": the Windows dev box's own Git
+Bash now runs them on every Rust commit, in the same GNU userland they are
+authored and edited in, and the macOS CI job is the one place they still
+meet a BSD `sed`/`grep` at all — which is why that job, and not the
+pre-commit hook, remains the lane a GNU-only regex escape like the `\b` bug
+depends on to be caught.
 
 A shell gate is platform-conditional code, and it inherits the same
 cross-platform rules as anything under
@@ -162,9 +175,21 @@ instead of discoverable only when a real commit happens to exercise the gap.
   `MandatoryExpected` set, a probe that never declared its captures had
   nothing to compare against, and `Get-MandatoryMeasurementGap` now reports
   `the probe declared no mandatory captures, so the run asserted nothing` as a
-  failure in its own right. Recording that nothing was found is data;
-  recording that nothing was looked at is not, and only the check itself can
-  tell them apart.
+  failure in its own right. A fourth face is quieter than the other three: an
+  env-var-gated test is a permanently disabled test unless something actually
+  sets the variable. A live WPF zero-bounds regression was gated behind
+  `AGENT_DESKTOP_LIVE_WPF`, set nowhere in the repo, its workflows, or its
+  docs, so the body skipped on every run and reported green forever —
+  indistinguishable, again, from a test that ran and found nothing wrong. The
+  fix set the variable on the CI lane that owns staging the fixture
+  (`.github/workflows/ci.yml:339-342`) and added
+  `the_windows_lane_stages_the_live_wpf_host`
+  (`crates/windows/src/tree/envelope_live_tests.rs:108-124`), which reads
+  `ci.yml` itself and asserts the assignment sits on the step that runs the
+  library tests, so the variable cannot silently vanish from the one place
+  that makes it real. Recording that nothing was found is data; recording
+  that nothing was looked at is not, and only the check itself can tell them
+  apart.
 - Give every non-trivial gate rule a committed MUST-CATCH / MUST-PASS
   fixture, and make the fixture invoke the same program text as the real
   scan — a shared variable or function, never a duplicated pattern — so the

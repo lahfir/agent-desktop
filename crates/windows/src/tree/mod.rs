@@ -3,6 +3,7 @@ pub mod automation;
 pub(crate) mod cache;
 pub mod chromium;
 pub mod descriptor;
+pub(crate) mod hit_test;
 pub(crate) mod live_read;
 pub mod name_evidence;
 pub(crate) mod observe;
@@ -29,7 +30,13 @@ pub mod walker_source;
 #[cfg(test)]
 mod walker_fake;
 
+#[cfg(test)]
+#[path = "hit_test_scan_tests.rs"]
+mod hit_test_scan_tests;
+
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod fixture_overlay;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture_window;
