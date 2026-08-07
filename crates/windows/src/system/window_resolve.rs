@@ -38,14 +38,19 @@ pub(crate) fn resolve_window_strict(
 
 /// Raises and focuses the exact window after `resolve_window_strict`.
 ///
-/// Ownership is revalidated at the point of use: the stored pid and process
-/// generation are verified against the handle's current owner before any
-/// window-state write, and the owning pid is re-read immediately before
-/// `SetForegroundWindow`, so a handle destroyed and recycled to another
-/// process after selection is refused rather than restored or foregrounded.
-/// Confirms foreground membership before returning. Foreground-lock bypass
-/// uses the thread-attach pattern; a failure to become foreground is
-/// `ACTION_FAILED` with `physical_delivery_started: false`.
+/// A handle destroyed and recycled to another process after selection can
+/// never be restored, foregrounded, or reported as focused. Check-then-act
+/// on an HWND cannot be made atomic, so ownership is enforced on both sides
+/// of every write rather than once at entry: the stored pid and process
+/// generation are verified here, each native write re-reads the owning pid
+/// immediately before issuing it, and success itself is ownership-qualified:
+/// `is_owned_foreground` requires the foreground window to be this handle
+/// **and** still owned by the expected process. A recycle that wins the
+/// residual race therefore fails closed as not-delivered instead of
+/// reporting focus over a foreign window and licensing headed input into it.
+/// Foreground-lock bypass uses the thread-attach pattern; a failure to
+/// become foreground is `ACTION_FAILED` with `physical_delivery_started`
+/// false.
 pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
     let handle = parse_handle(&win.id);
     if handle.is_null() {
@@ -62,12 +67,12 @@ pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result
     };
     evidence.verify_stored()?;
     let _ = lease;
-    restore_if_iconic(handle);
-    if is_foreground(handle) {
+    restore_if_iconic(handle, win.pid)?;
+    if is_owned_foreground(handle, win.pid) {
         return Ok(());
     }
     bring_to_foreground(handle, win.pid)?;
-    if is_foreground(handle) {
+    if is_owned_foreground(handle, win.pid) {
         return Ok(());
     }
     Err(AdapterError::new(
@@ -143,18 +148,54 @@ fn is_foreground(_handle: super::window_enum::WindowHandle) -> bool {
     false
 }
 
+/// Whether the handle is the foreground window **and** is still owned by the
+/// expected process. Handle equality alone would accept a recycled HWND, so
+/// the ownership term is what makes this a safe success predicate.
 #[cfg(target_os = "windows")]
-fn restore_if_iconic(handle: super::window_enum::WindowHandle) {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, SW_RESTORE, ShowWindow};
-    unsafe {
-        if IsIconic(handle) != 0 {
-            ShowWindow(handle, SW_RESTORE);
-        }
-    }
+fn is_owned_foreground(handle: super::window_enum::WindowHandle, expected: ProcessId) -> bool {
+    is_foreground(handle) && owning_pid(handle) == Some(expected)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn restore_if_iconic(_handle: super::window_enum::WindowHandle) {}
+fn is_owned_foreground(_handle: super::window_enum::WindowHandle, _expected: ProcessId) -> bool {
+    false
+}
+
+/// The process that currently owns the handle, or `None` when the handle has
+/// no owning thread (destroyed between calls).
+#[cfg(target_os = "windows")]
+fn owning_pid(handle: super::window_enum::WindowHandle) -> Option<ProcessId> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+    let mut pid = 0u32;
+    let thread = unsafe { GetWindowThreadProcessId(handle, &mut pid) };
+    (thread != 0).then(|| ProcessId::from(pid))
+}
+
+#[cfg(target_os = "windows")]
+fn restore_if_iconic(
+    handle: super::window_enum::WindowHandle,
+    expected: ProcessId,
+) -> Result<(), AdapterError> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, SW_RESTORE, ShowWindow};
+    unsafe {
+        if IsIconic(handle) == 0 {
+            return Ok(());
+        }
+        if owning_pid(handle) != Some(expected) {
+            return Err(recycled_before_foreground());
+        }
+        ShowWindow(handle, SW_RESTORE);
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn restore_if_iconic(
+    _handle: super::window_enum::WindowHandle,
+    _expected: ProcessId,
+) -> Result<(), AdapterError> {
+    Ok(())
+}
 
 #[cfg(target_os = "windows")]
 fn bring_to_foreground(
@@ -167,12 +208,15 @@ fn bring_to_foreground(
     };
 
     unsafe {
+        if owning_pid(handle) != Some(expected) {
+            return Err(recycled_before_foreground());
+        }
+        ShowWindow(handle, SW_SHOW);
         let mut target_pid = 0u32;
         let target_tid = GetWindowThreadProcessId(handle, &mut target_pid);
         if target_tid == 0 || ProcessId::from(target_pid) != expected {
             return Err(recycled_before_foreground());
         }
-        ShowWindow(handle, SW_SHOW);
         let foreground = GetForegroundWindow();
         let mut fore_pid = 0u32;
         let fore_tid = if foreground.is_null() {
@@ -187,12 +231,18 @@ fn bring_to_foreground(
         let attached_target = target_tid != 0
             && target_tid != current_tid
             && AttachThreadInput(current_tid, target_tid, 1) != 0;
-        let _ = SetForegroundWindow(handle);
+        let still_owned = owning_pid(handle) == Some(expected);
+        if still_owned {
+            let _ = SetForegroundWindow(handle);
+        }
         if attached_target {
             AttachThreadInput(current_tid, target_tid, 0);
         }
         if attached_fore {
             AttachThreadInput(current_tid, fore_tid, 0);
+        }
+        if !still_owned {
+            return Err(recycled_before_foreground());
         }
     }
     Ok(())
