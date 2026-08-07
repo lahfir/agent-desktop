@@ -4,9 +4,9 @@ use super::{
 };
 use crate::adapter::WindowsAdapter;
 use crate::system::hresult::{
-    UIA_E_ELEMENTNOTAVAILABLE, classify_read_hresult, com_hresult_detail, hresult_record,
+    E_ACCESSDENIED, RPC_E_DISCONNECTED, UIA_E_ELEMENTNOTAVAILABLE, com_hresult_detail,
 };
-use crate::tree::automation::automation_client;
+use crate::tree::automation::{UiaFailure, automation_client};
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
 use crate::tree::fixture_window;
@@ -49,6 +49,10 @@ fn hidden_sample(bounds: Rect) -> VisibilitySample {
 
 fn short_deadline() -> Deadline {
     Deadline::after(2_000).expect("deadline")
+}
+
+fn invoke_hr(hresult: i32) -> Option<UiaFailure> {
+    Some(UiaFailure::Hresult(hresult))
 }
 
 #[test]
@@ -176,58 +180,68 @@ fn degenerate_before_and_after_is_delivered_unverified() {
 }
 
 #[test]
-fn failed_invoke_unchanged_geometry_keeps_action_failed_and_platform_detail() {
+fn failed_invoke_unchanged_geometry_overlays_classifier_code_and_platform_detail() {
     let bounds = rect(12.0, 12.0, 40.0, 18.0);
     let hresult = UIA_E_ELEMENTNOTAVAILABLE;
-    let classified = hresult_record(hresult);
-    assert_eq!(
-        classified.code,
-        ErrorCode::StaleRef,
-        "precondition: the read classifier maps this HRESULT to StaleRef"
-    );
-    let _ = classify_read_hresult(hresult);
-    let error =
-        finish_observation(Some(bounds), Some(bounds), Some(hresult)).expect_err("not delivered");
-    assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_ne!(error.code, classified.code);
+    let error = finish_observation(Some(bounds), Some(bounds), invoke_hr(hresult))
+        .expect_err("not delivered");
+    assert_eq!(error.code, ErrorCode::StaleRef);
     assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+    assert_ne!(error.disposition, DeliverySemantics::delivered_unverified());
     let expected = com_hresult_detail(hresult);
-    assert_eq!(error.platform_detail.as_deref(), Some(expected.as_str()));
+    assert!(
+        error
+            .platform_detail
+            .as_deref()
+            .expect("failed invoke carries platform_detail")
+            .contains(&expected)
+    );
 }
 
-/// Bans every name that reaches the read-path classification table, not one
-/// projection of it.
-///
-/// `classify_read_hresult` is a one-line projection of `hresult_record`, and
-/// `uia_failure_disposition` is that same table reached through the failure
-/// enum, so pinning only the projection leaves two unguarded doors into the
-/// table the write path is forbidden to consult. The formatting helpers stay
-/// allowed on purpose: rendering an HRESULT symbol into `platform_detail` is
-/// what the write path is supposed to do with a failed invoke.
-///
-/// Each name is spelled in halves so this file's own text cannot be mistaken
-/// for a violation by a source scan reading either file.
 #[test]
-fn write_path_source_never_reaches_the_read_classification_table() {
-    let banned = [
-        concat!("classify_read_", "hresult"),
-        concat!("hresult_", "record"),
-        concat!("uia_failure_", "disposition"),
-    ];
-    let source = include_str!("scroll_into_view.rs");
-    for line in source.lines() {
-        let is_prose = line.trim_start().starts_with("///") || line.trim_start().starts_with("//!");
-        for name in banned {
-            assert!(
-                is_prose || !line.contains(name),
-                "the write path must not consult {name}: {line}"
-            );
-        }
-    }
-    assert!(
-        source.contains("com_hresult_detail"),
-        "failed invokes format through com_hresult_detail only"
+fn denied_invoke_unchanged_geometry_is_perm_denied_not_delivered() {
+    let bounds = rect(20.0, 20.0, 30.0, 16.0);
+    let error = finish_observation(Some(bounds), Some(bounds), invoke_hr(E_ACCESSDENIED))
+        .expect_err("denied");
+    assert_eq!(error.code, ErrorCode::PermDenied);
+    assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
     );
+    assert_ne!(error.disposition, DeliverySemantics::uncertain());
+}
+
+#[test]
+fn transport_failed_invoke_unchanged_completed_observation_is_not_delivered() {
+    let bounds = rect(18.0, 22.0, 28.0, 14.0);
+    let error = finish_observation(Some(bounds), Some(bounds), invoke_hr(RPC_E_DISCONNECTED))
+        .expect_err("transport with unchanged geometry");
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+    assert_ne!(error.disposition, DeliverySemantics::uncertain());
+    assert_ne!(error.disposition, DeliverySemantics::delivered_unverified());
+}
+
+#[test]
+fn transport_failed_invoke_with_failed_observation_is_delivered_unverified() {
+    let before = rect(10.0, 10.0, 20.0, 20.0);
+    let error = scroll_into_view_judged_for(
+        short_deadline(),
+        Some(before),
+        invoke_hr(RPC_E_DISCONNECTED),
+        Duration::from_millis(800),
+        || {
+            Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "observation could not re-read bounds",
+            ))
+        },
+    )
+    .expect_err("observation failure");
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
+    assert_ne!(error.disposition, DeliverySemantics::not_delivered());
+    assert_ne!(error.disposition, DeliverySemantics::uncertain());
 }
 
 /// Drives the shipped gate against a real provider instead of a fake.

@@ -6,8 +6,10 @@
 //! Provider rects are unclipped against their scroll viewport (A18-2), so
 //! verified visibility requires viewport intersection, not `IsOffscreen` alone.
 //!
-//! The write's HRESULT is diagnostic `platform_detail` only: the read-path
-//! classifier is never consulted here.
+//! Invoke failures keep their tagged `UiaFailure` through the observation
+//! spine. Terminal constructors take code/message/`platform_detail` from
+//! `classify_mutation` while a completed observation's disposition stands
+//! (A18 geometry judgment outranks the classifier).
 
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect,
@@ -16,7 +18,7 @@ use agent_desktop_core::{
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionLease, Rect};
-    use crate::system::hresult::com_hresult_detail;
+    use crate::actions::mutation::classify_mutation;
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
     use crate::tree::element::{UIAElement, uia_element};
@@ -33,11 +35,13 @@ mod imp {
 
     const VERIFY_WINDOW: Duration = Duration::from_millis(800);
     const POLL_SLICE: Duration = Duration::from_millis(20);
+    const SCROLL_INTO_VIEW_API: &str = "ScrollItemPattern.ScrollIntoView";
+    const SCROLL_INTO_VIEW_OP: &str = "ScrollIntoView";
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) enum InvokeOutcome {
         Succeeded,
-        Failed(i32),
+        Failed(UiaFailure),
         EmptyPattern,
     }
 
@@ -70,12 +74,12 @@ mod imp {
         let walker = client.get_raw_view_walker().ok();
         let before = read_bounds_opt(element);
         let viewport = resolve_scroll_viewport(element, walker.as_ref(), deadline);
-        let invoke_hr = match invoke_scroll_into_view(element) {
+        let invoke_failure = match invoke_scroll_into_view(element) {
             InvokeOutcome::EmptyPattern => return Err(unsupported_error()),
-            InvokeOutcome::Failed(hresult) => Some(hresult),
+            InvokeOutcome::Failed(failure) => Some(failure),
             InvokeOutcome::Succeeded => None,
         };
-        scroll_into_view_judged_for(deadline, before, invoke_hr, VERIFY_WINDOW, || {
+        scroll_into_view_judged_for(deadline, before, invoke_failure, VERIFY_WINDOW, || {
             observe_visibility(element, deadline, viewport.as_ref())
         })
     }
@@ -105,7 +109,7 @@ mod imp {
     pub(crate) fn scroll_into_view_judged_for(
         deadline: Deadline,
         before: Option<Rect>,
-        invoke_hr: Option<i32>,
+        invoke_failure: Option<UiaFailure>,
         verify_window: Duration,
         mut observe: impl FnMut() -> Result<VisibilitySample, AdapterError>,
     ) -> Result<(), AdapterError> {
@@ -129,7 +133,7 @@ mod imp {
                 )));
             }
             if Instant::now() >= local_end {
-                return finish_observation(before, last_bounds, invoke_hr);
+                return finish_observation(before, last_bounds, invoke_failure);
             }
             let pause = deadline
                 .remaining_slice(POLL_SLICE)
@@ -141,26 +145,26 @@ mod imp {
     pub(crate) fn finish_observation(
         before: Option<Rect>,
         after: Option<Rect>,
-        invoke_hr: Option<i32>,
+        invoke_failure: Option<UiaFailure>,
     ) -> Result<(), AdapterError> {
         let Some(after) = completed_bounds(after) else {
             return Err(unverified_error(
                 "ScrollIntoView completed without an observable after-state",
-                invoke_hr,
+                invoke_failure,
             ));
         };
         let Some(before) = completed_bounds(before) else {
             return Err(unverified_error(
                 "ScrollIntoView completed without a comparable before-state",
-                invoke_hr,
+                invoke_failure,
             ));
         };
         if !scroll_effect_observed(before, after) {
-            return Err(not_delivered_error(invoke_hr));
+            return Err(not_delivered_error(invoke_failure));
         }
         Err(unverified_error(
             "ScrollIntoView moved the target but visibility was not verified",
-            invoke_hr,
+            invoke_failure,
         ))
     }
 
@@ -207,22 +211,22 @@ mod imp {
         .with_disposition(DeliverySemantics::not_delivered())
     }
 
-    fn not_delivered_error(invoke_hr: Option<i32>) -> AdapterError {
-        attach_invoke_detail(
+    fn not_delivered_error(invoke_failure: Option<UiaFailure>) -> AdapterError {
+        overlay_invoke_classification(
             AdapterError::new(
                 ErrorCode::ActionFailed,
                 "ScrollIntoView did not change target geometry",
             )
             .with_disposition(DeliverySemantics::not_delivered()),
-            invoke_hr,
+            invoke_failure,
         )
     }
 
-    fn unverified_error(message: &str, invoke_hr: Option<i32>) -> AdapterError {
-        attach_invoke_detail(
+    fn unverified_error(message: &str, invoke_failure: Option<UiaFailure>) -> AdapterError {
+        overlay_invoke_classification(
             AdapterError::new(ErrorCode::ActionFailed, message)
                 .with_disposition(DeliverySemantics::delivered_unverified()),
-            invoke_hr,
+            invoke_failure,
         )
     }
 
@@ -230,14 +234,32 @@ mod imp {
         error.with_disposition(DeliverySemantics::delivered_unverified())
     }
 
-    /// Formats a failed write's HRESULT for `platform_detail` only.
-    ///
-    /// Deliberately does not call the read-path HRESULT classifier: that table
-    /// is forbidden on the write path, and delivery stays observation-derived.
-    fn attach_invoke_detail(error: AdapterError, invoke_hr: Option<i32>) -> AdapterError {
-        match invoke_hr {
-            Some(hresult) => error.with_platform_detail(com_hresult_detail(hresult)),
-            None => error,
+    /// Overlays classifier code/message/`platform_detail` onto the observation
+    /// disposition. A completed observation's delivery verdict stands even when
+    /// the invoke HRESULT was transport-uncertain (A18).
+    fn overlay_invoke_classification(
+        observation: AdapterError,
+        invoke_failure: Option<UiaFailure>,
+    ) -> AdapterError {
+        let Some(failure) = invoke_failure else {
+            return observation;
+        };
+        match classify_mutation(SCROLL_INTO_VIEW_OP, SCROLL_INTO_VIEW_API, &failure) {
+            Ok(_) => observation,
+            Err(classified) => {
+                let mut error = AdapterError::new(classified.code, classified.message)
+                    .with_disposition(observation.disposition);
+                if let Some(detail) = classified.platform_detail {
+                    error = error.with_platform_detail(detail);
+                }
+                if let Some(suggestion) = classified.suggestion {
+                    error = error.with_suggestion(suggestion);
+                }
+                if let Some(details) = observation.details {
+                    error = error.with_details(details);
+                }
+                error
+            }
         }
     }
 
@@ -254,16 +276,14 @@ mod imp {
             Ok(pattern) => match pattern.scroll_into_view() {
                 Ok(()) => InvokeOutcome::Succeeded,
                 Err(error) => match failure_of(&error) {
-                    UiaFailure::Hresult(hresult) => InvokeOutcome::Failed(hresult),
                     UiaFailure::Sentinel(ERR_NONE) => InvokeOutcome::EmptyPattern,
-                    UiaFailure::Sentinel(code) => InvokeOutcome::Failed(code),
+                    failure => InvokeOutcome::Failed(failure),
                 },
             },
             Err(error) => match failure_of(&error) {
                 UiaFailure::Sentinel(ERR_NONE) => InvokeOutcome::EmptyPattern,
                 other if other.is_exhaustion() => InvokeOutcome::EmptyPattern,
-                UiaFailure::Hresult(hresult) => InvokeOutcome::Failed(hresult),
-                UiaFailure::Sentinel(code) => InvokeOutcome::Failed(code),
+                failure => InvokeOutcome::Failed(failure),
             },
         }
     }
