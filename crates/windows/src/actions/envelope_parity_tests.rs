@@ -285,7 +285,6 @@ fn assert_cost_capture_spread(label: &str, raw: &str) {
 
 #[test]
 fn a19_8_semantic_cost_captures_carry_min_median_max_both_environments() {
-    // A19-8: probes/windows/19-semantic-actions/captures/semantic-cost-{devbox,ci}.json
     assert_cost_capture_spread(
         "semantic-cost-devbox",
         include_str!(
@@ -302,7 +301,6 @@ fn a19_8_semantic_cost_captures_carry_min_median_max_both_environments() {
 
 #[test]
 fn a18_7_target_pre_read_baseline_still_present_for_shared_primitive() {
-    // Shared pre-read primitive compared by A19-8 DoD; numbers live in A18-7 captures.
     for (label, raw) in [
         (
             "actionability-cost-devbox",
