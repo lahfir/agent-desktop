@@ -1,7 +1,7 @@
 use agent_desktop_core::{
     AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, ElementState, InputOps,
-    LiveElement, NativeHandle, ObservationOps, ObservationRequest, ObservationRoot,
-    ProcessIdentity, Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
+    InteractionLease, LiveElement, NativeHandle, ObservationOps, ObservationRequest,
+    ObservationRoot, ProcessIdentity, Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -168,7 +168,15 @@ impl ObservationOps for WindowsAdapter {
         crate::system::app_ops::list_apps_live()
     }
 }
-impl ActionOps for WindowsAdapter {}
+impl ActionOps for WindowsAdapter {
+    fn scroll_into_view(
+        &self,
+        handle: &NativeHandle,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::actions::scroll_into_view::scroll_into_view_impl(handle, lease)
+    }
+}
 impl InputOps for WindowsAdapter {}
 
 #[cfg(test)]
