@@ -67,6 +67,8 @@ The durable identity of a window, used when observation resolves a snapshot root
 
 Window handles can be recycled: after a window is destroyed, the OS may hand its handle to a different window. A handle alone therefore names the wrong window after churn. Identity is the handle corroborated by a process-generation token — a value derived from the owning process's creation time — so a recycled handle whose process generation no longer matches fails closed rather than resolving to the new occupant. The corroboration is strict for a window freshly listed in the same invocation, and tolerant of title drift for a stored ref (titles legitimately change under a live window), per platform: Windows pairs the HWND with a creation-time token, macOS the window number with a process start-time token.
 
+A handle's identity can be invalidated at any point between an observation and a later action on it, and checking it once at the start of that gap only proves it was valid then. Where the check and the act cannot be a single atomic operation, the corroboration has to be repeated immediately before each write the action performs, and the action's own success check must itself be identity-qualified — confirming the responding resource is still the expected occupant, not merely that some resource at the expected handle responded — or a recycle occurring late in the gap reports success over the wrong resource.
+
 ### Ref
 A short element identifier assigned by agent-desktop to an actionable or drillable node in a snapshot.
 
