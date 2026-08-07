@@ -191,14 +191,17 @@ fn bring_to_foreground(
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId, SW_SHOW, SetForegroundWindow, ShowWindow,
+        GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible, SW_SHOW,
+        SetForegroundWindow, ShowWindow,
     };
 
     unsafe {
         if live_window_owner(handle) != Some(expected) {
             return Err(recycled_before_foreground());
         }
-        ShowWindow(handle, SW_SHOW);
+        if IsWindowVisible(handle) == 0 {
+            ShowWindow(handle, SW_SHOW);
+        }
         let mut target_pid = 0u32;
         let target_tid = GetWindowThreadProcessId(handle, &mut target_pid);
         if target_tid == 0 || ProcessId::from(target_pid) != expected {
@@ -245,6 +248,19 @@ fn bring_to_foreground(
 
 /// The handle's owner changed between selection and the foreground write; the
 /// write is refused so a recycled HWND never foregrounds a foreign window.
+///
+/// What this cannot promise, stated so it is a known limit rather than a
+/// missed case: Win32 offers no atomic "act on this window only while that
+/// process still owns it", so an ownership read and the native call it guards
+/// are always two instructions. A recycle landing between them mutates the
+/// replacement window, and nothing can undo that. Three things bound it: the
+/// read sits immediately before each write, the only unconditional write left
+/// is the foreground call itself (the visibility write is skipped when the
+/// window is already visible, which it is on every path that reaches here),
+/// and success is ownership-qualified — so the outcome of losing the race is
+/// a foreign window raised once and an honest not-delivered refusal, never
+/// input delivered to it. Closing it entirely needs a kernel primitive that
+/// does not exist.
 #[cfg(target_os = "windows")]
 fn recycled_before_foreground() -> AdapterError {
     AdapterError::new(
