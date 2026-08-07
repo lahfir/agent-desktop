@@ -49,8 +49,8 @@ pub(crate) struct SelectOps<'a> {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        POLL_SLICE, SELECT_LABEL, VERIFY_TIMEOUT, ActionStep, AdapterError, Cell, Deadline,
-        DeliveryOutcome, ErrorCode, Instant, RefCell, SelectOps, SelectPlan, UIAElement, build_step,
+        ActionStep, AdapterError, Cell, Deadline, DeliveryOutcome, ErrorCode, Instant, POLL_SLICE,
+        RefCell, SELECT_LABEL, SelectOps, SelectPlan, UIAElement, VERIFY_TIMEOUT, build_step,
         resolve_select_verification,
     };
     use crate::actions::disclosure::ExpandKind;

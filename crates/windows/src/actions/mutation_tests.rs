@@ -224,10 +224,7 @@ fn mutation_sources() -> [(&'static str, &'static str); 13] {
             "actions/scroll_into_view.rs",
             include_str!("scroll_into_view.rs"),
         ),
-        (
-            "actions/scroll_ladder.rs",
-            include_str!("scroll_ladder.rs"),
-        ),
+        ("actions/scroll_ladder.rs", include_str!("scroll_ladder.rs")),
         ("actions/dispatch.rs", include_str!("dispatch.rs")),
         ("actions/focus.rs", include_str!("focus.rs")),
         ("actions/chain.rs", include_str!("chain.rs")),

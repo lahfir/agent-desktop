@@ -1,6 +1,4 @@
-use super::{
-    SCROLL_LABEL, ScrollPlan, axis_name, scroll_effect_verified, scroll_judged_for,
-};
+use super::{SCROLL_LABEL, ScrollPlan, axis_name, scroll_effect_verified, scroll_judged_for};
 use agent_desktop_core::{
     ActionStepOutcome, AdapterError, Deadline, DeliveryDisposition, Direction, ErrorCode, Rect,
 };
@@ -83,10 +81,25 @@ fn percent_unavailable_falls_back_to_bounds_change() {
         width: 10.0,
         height: 10.0,
     };
-    assert!(scroll_effect_verified(None, None, Some(before), Some(after)));
-    assert!(!scroll_effect_verified(None, None, Some(before), Some(before)));
+    assert!(scroll_effect_verified(
+        None,
+        None,
+        Some(before),
+        Some(after)
+    ));
+    assert!(!scroll_effect_verified(
+        None,
+        None,
+        Some(before),
+        Some(before)
+    ));
     assert!(scroll_effect_verified(Some(0.0), Some(10.0), None, None));
-    assert!(!scroll_effect_verified(Some(5.0), Some(5.0), Some(before), Some(before)));
+    assert!(!scroll_effect_verified(
+        Some(5.0),
+        Some(5.0),
+        Some(before),
+        Some(before)
+    ));
 }
 
 #[test]

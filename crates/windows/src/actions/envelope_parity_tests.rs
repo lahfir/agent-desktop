@@ -47,13 +47,11 @@ fn assert_disposition_matches_projection(json: &Value, semantics: DeliverySemant
         "wire disposition must equal DeliverySemantics projection"
     );
     assert_eq!(
-        json["disposition"]["delivery"],
-        projected["delivery"],
+        json["disposition"]["delivery"], projected["delivery"],
         "delivery wire string"
     );
     assert_eq!(
-        json["disposition"]["retry"],
-        projected["retry"],
+        json["disposition"]["retry"], projected["retry"],
         "retry wire string"
     );
 }
@@ -133,7 +131,10 @@ fn verified_delivery_wire_is_delivered_verified_unsafe() {
         Some(state_bearing("done")),
     );
 
-    assert_eq!(result.disposition(), DeliverySemantics::delivered_verified());
+    assert_eq!(
+        result.disposition(),
+        DeliverySemantics::delivered_verified()
+    );
     assert_disposition_matches_projection(&json, DeliverySemantics::delivered_verified());
     assert_eq!(json["disposition"]["delivery"], "delivered_verified");
     assert_eq!(json["disposition"]["retry"], "unsafe");
@@ -206,7 +207,10 @@ fn error_disposition_json(error: agent_desktop_core::AdapterError) -> Value {
 fn classifier_error_disposition_wire_matches_projection() {
     let cases: &[(i32, DeliverySemantics)] = &[
         (E_ACCESSDENIED, DeliverySemantics::not_delivered()),
-        (UIA_E_ELEMENTNOTAVAILABLE, DeliverySemantics::not_delivered()),
+        (
+            UIA_E_ELEMENTNOTAVAILABLE,
+            DeliverySemantics::not_delivered(),
+        ),
         (E_INVALIDARG, DeliverySemantics::not_delivered()),
         (UIA_E_ELEMENTNOTENABLED, DeliverySemantics::not_delivered()),
         (RPC_E_SERVERFAULT, DeliverySemantics::uncertain()),
@@ -274,8 +278,7 @@ fn assert_cost_capture_spread(label: &str, raw: &str) {
         );
     }
     assert_eq!(
-        value["methodology"],
-        "min-of-seven discard warm-up (A15-13)",
+        value["methodology"], "min-of-seven discard warm-up (A15-13)",
         "{label} methodology"
     );
 }
@@ -285,11 +288,15 @@ fn a19_8_semantic_cost_captures_carry_min_median_max_both_environments() {
     // A19-8: probes/windows/19-semantic-actions/captures/semantic-cost-{devbox,ci}.json
     assert_cost_capture_spread(
         "semantic-cost-devbox",
-        include_str!("../../../../probes/windows/19-semantic-actions/captures/semantic-cost-devbox.json"),
+        include_str!(
+            "../../../../probes/windows/19-semantic-actions/captures/semantic-cost-devbox.json"
+        ),
     );
     assert_cost_capture_spread(
         "semantic-cost-ci",
-        include_str!("../../../../probes/windows/19-semantic-actions/captures/semantic-cost-ci.json"),
+        include_str!(
+            "../../../../probes/windows/19-semantic-actions/captures/semantic-cost-ci.json"
+        ),
     );
 }
 

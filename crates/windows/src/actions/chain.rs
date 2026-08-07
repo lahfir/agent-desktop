@@ -148,8 +148,7 @@ pub(crate) fn record_step_outcome(
 ) -> bool {
     steps.push(build_step(label, outcome));
     outcome.terminates_chain()
-        && !(continue_after_unverified_delivery
-            && outcome == DeliveryOutcome::DeliveredUnverified)
+        && !(continue_after_unverified_delivery && outcome == DeliveryOutcome::DeliveredUnverified)
 }
 
 #[cfg(test)]

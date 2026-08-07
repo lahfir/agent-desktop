@@ -13,8 +13,8 @@ use agent_desktop_core::{
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        Action, ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode,
-        InteractionPolicy, StepMechanism, ActionRequest,
+        Action, ActionRequest, ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics,
+        ErrorCode, InteractionPolicy, StepMechanism,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
     use crate::system::permissions::ensure_budget;
@@ -35,7 +35,11 @@ mod imp {
         }
         ensure_budget(deadline)?;
         let delivered = invoke_focus(element)?;
-        focus_from_delivery(request.policy, Ok(delivered), focus_matches_target(element)?)
+        focus_from_delivery(
+            request.policy,
+            Ok(delivered),
+            focus_matches_target(element)?,
+        )
     }
 
     fn invoke_focus(element: &UIAElement) -> Result<bool, AdapterError> {
@@ -98,7 +102,7 @@ mod imp {
 
 #[cfg(not(target_os = "windows"))]
 mod imp {
-    use super::{ActionResult, AdapterError, Deadline, ActionRequest};
+    use super::{ActionRequest, ActionResult, AdapterError, Deadline};
     use crate::tree::element::UIAElement;
 
     pub(crate) fn focus_element(

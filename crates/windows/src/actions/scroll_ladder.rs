@@ -75,7 +75,7 @@ fn budget_disposition(scrolled: bool, error: AdapterError) -> AdapterError {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        LADDER_SCROLL_LABEL, AdapterError, Deadline, DeliveryOutcome, Direction, UIAElement,
+        AdapterError, Deadline, DeliveryOutcome, Direction, LADDER_SCROLL_LABEL, UIAElement,
         direction_for_visibility, ladder_judged_for,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
@@ -163,9 +163,9 @@ mod imp {
         let (Some(bounds), Some(viewport)) = (sample.bounds, sample.viewport) else {
             return Ok(Some(Direction::Down));
         };
-        Ok(Some(direction_for_visibility(bounds, viewport).unwrap_or(
-            Direction::Down,
-        )))
+        Ok(Some(
+            direction_for_visibility(bounds, viewport).unwrap_or(Direction::Down),
+        ))
     }
 
     fn observe_visibility(

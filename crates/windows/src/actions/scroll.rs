@@ -49,9 +49,9 @@ pub(crate) fn scroll_effect_verified(
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        MAX_SCROLL_AMOUNT, SCROLL_LABEL, ActionStep, AdapterError, Deadline, DeliveryOutcome,
-        Direction, ErrorCode, InteractionPolicy, ScrollPlan, UIAElement, axis_name, build_step,
-        scroll_effect_verified,
+        ActionStep, AdapterError, Deadline, DeliveryOutcome, Direction, ErrorCode,
+        InteractionPolicy, MAX_SCROLL_AMOUNT, SCROLL_LABEL, ScrollPlan, UIAElement, axis_name,
+        build_step, scroll_effect_verified,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
     use crate::system::permissions::ensure_budget;
@@ -206,7 +206,9 @@ mod imp {
             "ScrollPattern is not available on this element",
         )
         .with_disposition(DeliverySemantics::not_delivered())
-        .with_suggestion("Target an element that advertises Scroll, or scroll a containing viewport.")
+        .with_suggestion(
+            "Target an element that advertises Scroll, or scroll a containing viewport.",
+        )
     }
 
     fn axis_not_scrollable(axis: &str) -> AdapterError {
@@ -219,7 +221,9 @@ mod imp {
             "kind": "axis_not_scrollable",
             "axis": axis,
         }))
-        .with_suggestion("Scroll along the axis the control exposes, or target a different container.")
+        .with_suggestion(
+            "Scroll along the axis the control exposes, or target a different container.",
+        )
     }
 
     fn partial_scroll_error(completed: u32, requested: u32) -> AdapterError {
@@ -251,7 +255,9 @@ mod imp {
 
 #[cfg(not(target_os = "windows"))]
 mod imp {
-    use super::{ActionStep, AdapterError, Deadline, Direction, InteractionPolicy, ScrollPlan, UIAElement};
+    use super::{
+        ActionStep, AdapterError, Deadline, Direction, InteractionPolicy, ScrollPlan, UIAElement,
+    };
 
     pub(crate) fn scroll_steps(
         _element: &UIAElement,

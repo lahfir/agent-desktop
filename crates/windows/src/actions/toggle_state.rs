@@ -48,9 +48,9 @@ impl ToggleKind {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        ALREADY_LABEL, CHECK_SUGGESTION, INVOKE_LABEL, POLL_SLICE, TOGGLE_CHAIN, TOGGLE_LABEL,
-        TOGGLE_STABLE, TOGGLE_TIMEOUT, ActionStep, AdapterError, ChainRung, Deadline,
-        DeliveryOutcome, ErrorCode, Instant, InteractionPolicy, ToggleKind, UIAElement,
+        ALREADY_LABEL, ActionStep, AdapterError, CHECK_SUGGESTION, ChainRung, Deadline,
+        DeliveryOutcome, ErrorCode, INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE,
+        TOGGLE_CHAIN, TOGGLE_LABEL, TOGGLE_STABLE, TOGGLE_TIMEOUT, ToggleKind, UIAElement,
         build_step, execute_chain,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
@@ -177,8 +177,7 @@ mod imp {
                     break;
                 }
                 let last = attempt == 1;
-                let verified =
-                    poll_checked(want_checked, deadline, &mut read_state, !last)?;
+                let verified = poll_checked(want_checked, deadline, &mut read_state, !last)?;
                 steps.push(build_step(
                     TOGGLE_LABEL,
                     DeliveryOutcome::from_delivery(true, verified),
@@ -200,10 +199,12 @@ mod imp {
             }
             steps.push(build_step(INVOKE_LABEL, DeliveryOutcome::NotDelivered));
         }
-        if steps
-            .iter()
-            .any(|step| matches!(step.outcome, agent_desktop_core::ActionStepOutcome::Succeeded))
-        {
+        if steps.iter().any(|step| {
+            matches!(
+                step.outcome,
+                agent_desktop_core::ActionStepOutcome::Succeeded
+            )
+        }) {
             return Ok(steps);
         }
         Err(exhausted())
@@ -318,8 +319,9 @@ mod imp {
                 Some(state) if state.matches_checked(want_checked) => return Ok(true),
                 Some(_) if early_exit_on_known_miss => {
                     sleep_poll(deadline)?;
-                    return Ok(read_state()
-                        .is_some_and(|state| state.matches_checked(want_checked)));
+                    return Ok(
+                        read_state().is_some_and(|state| state.matches_checked(want_checked))
+                    );
                 }
                 _ => {}
             }
@@ -369,13 +371,25 @@ mod imp {
 mod imp {
     use super::{ActionStep, AdapterError, Deadline, InteractionPolicy, UIAElement};
 
-    pub(crate) fn toggle_steps(_: &UIAElement, _: InteractionPolicy, _: Deadline) -> Result<Vec<ActionStep>, AdapterError> {
+    pub(crate) fn toggle_steps(
+        _: &UIAElement,
+        _: InteractionPolicy,
+        _: Deadline,
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         Err(AdapterError::not_supported("Toggle"))
     }
-    pub(crate) fn check_steps(_: &UIAElement, _: InteractionPolicy, _: Deadline) -> Result<Vec<ActionStep>, AdapterError> {
+    pub(crate) fn check_steps(
+        _: &UIAElement,
+        _: InteractionPolicy,
+        _: Deadline,
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         Err(AdapterError::not_supported("Check"))
     }
-    pub(crate) fn uncheck_steps(_: &UIAElement, _: InteractionPolicy, _: Deadline) -> Result<Vec<ActionStep>, AdapterError> {
+    pub(crate) fn uncheck_steps(
+        _: &UIAElement,
+        _: InteractionPolicy,
+        _: Deadline,
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         Err(AdapterError::not_supported("Uncheck"))
     }
 }

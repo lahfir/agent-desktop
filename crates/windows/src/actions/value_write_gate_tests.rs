@@ -94,8 +94,8 @@ fn known_false_is_password_reads_and_compares() {
     assert_eq!(verified, Some(true));
     assert_eq!(reads.get(), 1);
 
-    let mismatch = gated_value_compare(known_flag(false), "abc", || Ok("xyz".into()))
-        .expect("mismatch");
+    let mismatch =
+        gated_value_compare(known_flag(false), "abc", || Ok("xyz".into())).expect("mismatch");
     assert_eq!(mismatch, Some(false));
 }
 
@@ -121,10 +121,7 @@ fn pattern_get_value_lives_only_inside_value_write_gate() {
             "actions/scroll_into_view.rs",
             include_str!("scroll_into_view.rs"),
         ),
-        (
-            "actions/scroll_ladder.rs",
-            include_str!("scroll_ladder.rs"),
-        ),
+        ("actions/scroll_ladder.rs", include_str!("scroll_ladder.rs")),
         ("actions/dispatch.rs", include_str!("dispatch.rs")),
         ("actions/focus.rs", include_str!("focus.rs")),
         ("actions/chain.rs", include_str!("chain.rs")),

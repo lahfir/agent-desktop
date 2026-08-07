@@ -88,9 +88,9 @@ pub(crate) struct DisclosureInput {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        ALREADY_LABEL, COLLAPSE_LABEL, DISCLOSURE_CHAIN, DISCLOSURE_TIMEOUT, DisclosureInput,
-        EXPAND_LABEL, INVOKE_LABEL, POLL_SLICE, ActionStep, AdapterError, ChainRung, Deadline,
-        DeliveryOutcome, ExpandKind, Instant, InteractionPolicy, UIAElement, build_step,
+        ALREADY_LABEL, ActionStep, AdapterError, COLLAPSE_LABEL, ChainRung, DISCLOSURE_CHAIN,
+        DISCLOSURE_TIMEOUT, Deadline, DeliveryOutcome, DisclosureInput, EXPAND_LABEL, ExpandKind,
+        INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE, UIAElement, build_step,
         disclosure_plan, execute_chain, invoke_allowed,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
@@ -144,8 +144,7 @@ mod imp {
         mut pattern: impl FnMut() -> Result<DeliveryOutcome, AdapterError>,
         mut invoke: impl FnMut() -> Result<DeliveryOutcome, AdapterError>,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        let (satisfied, _leaf, allow_pattern) =
-            disclosure_plan(input.current, input.want_expanded);
+        let (satisfied, _leaf, allow_pattern) = disclosure_plan(input.current, input.want_expanded);
         if satisfied {
             return Ok(vec![build_step(
                 ALREADY_LABEL,

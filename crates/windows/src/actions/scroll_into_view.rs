@@ -20,9 +20,7 @@ mod imp {
         Rect,
     };
     use crate::actions::mutation::classify_mutation;
-    use crate::actions::scroll_ladder::{
-        LADDER_SCROLL_LABEL, ancestor_ladder, apply_ladder_seam,
-    };
+    use crate::actions::scroll_ladder::{LADDER_SCROLL_LABEL, ancestor_ladder, apply_ladder_seam};
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
     use crate::tree::element::{UIAElement, uia_element};

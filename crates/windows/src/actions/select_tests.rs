@@ -1,6 +1,4 @@
-use super::{
-    SELECT_LABEL, SelectOps, SelectPlan, resolve_select_verification, select_judged_for,
-};
+use super::{SELECT_LABEL, SelectOps, SelectPlan, resolve_select_verification, select_judged_for};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::value_write::gated_value_compare;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
@@ -75,7 +73,11 @@ fn value_mismatch_is_element_not_found_with_char_count_not_text() {
     )
     .expect_err("miss");
     assert_eq!(error.code, ErrorCode::ElementNotFound);
-    assert!(error.message.contains(&format!("{} chars", marker.chars().count())));
+    assert!(
+        error
+            .message
+            .contains(&format!("{} chars", marker.chars().count()))
+    );
     assert!(
         !error.message.contains(marker),
         "must never echo the requested value text"
@@ -183,11 +185,10 @@ fn collapsed_combobox_expands_first_and_collapses_on_failure() {
             v.push("select");
             v
         });
-        Err(AdapterError::new(
-            ErrorCode::ActionFailed,
-            "select failed after expand",
+        Err(
+            AdapterError::new(ErrorCode::ActionFailed, "select failed after expand")
+                .with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified()),
         )
-        .with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified()))
     };
     let error = select_judged_for(
         deadline(),

@@ -1,6 +1,4 @@
-use super::{
-    DisclosureInput, ExpandKind, disclosure_judged_for, disclosure_plan, invoke_allowed,
-};
+use super::{DisclosureInput, ExpandKind, disclosure_judged_for, disclosure_plan, invoke_allowed};
 use crate::actions::chain::DeliveryOutcome;
 use agent_desktop_core::{
     ActionStepOutcome, Deadline, DeliveryDisposition, ErrorCode, InteractionPolicy,

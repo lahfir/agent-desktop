@@ -202,7 +202,8 @@ fn every_action_variant_returns_a_deliberate_outcome() {
     let fixture = LocalFixture::create().expect("fixture");
     let handle = control_handle(fixture_window::find_button(fixture.handle())).expect("handle");
     for action in all_actions() {
-        let result = execute_action_impl(&handle, ActionRequest::headless(action.clone()), &lease());
+        let result =
+            execute_action_impl(&handle, ActionRequest::headless(action.clone()), &lease());
         match result {
             Ok(ok) => {
                 assert!(
@@ -237,10 +238,7 @@ fn set_focus_call_site_lives_only_in_focus_rs() {
             "actions/scroll_into_view.rs",
             include_str!("scroll_into_view.rs"),
         ),
-        (
-            "actions/scroll_ladder.rs",
-            include_str!("scroll_ladder.rs"),
-        ),
+        ("actions/scroll_ladder.rs", include_str!("scroll_ladder.rs")),
         ("actions/chain.rs", include_str!("chain.rs")),
         ("actions/dispatch.rs", include_str!("dispatch.rs")),
         ("actions/focus.rs", include_str!("focus.rs")),
@@ -341,9 +339,12 @@ fn r2_focusable_advertisement_reaches_set_focus_arm() {
     let known = actions.known().expect("Known actions");
     assert!(known.iter().any(|action| action == capability::SET_FOCUS));
 
-    let result = focus_from_delivery(InteractionPolicy::headed(), Ok(true), true)
-        .expect("SetFocus arm");
-    assert!(matches!(result.steps[0].outcome, ActionStepOutcome::Succeeded));
+    let result =
+        focus_from_delivery(InteractionPolicy::headed(), Ok(true), true).expect("SetFocus arm");
+    assert!(matches!(
+        result.steps[0].outcome,
+        ActionStepOutcome::Succeeded
+    ));
 }
 
 #[test]
@@ -554,12 +555,8 @@ fn headless_set_focus_on_live_element_is_policy_denied() {
     ensure_test_apartment();
     let fixture = LocalFixture::create().expect("fixture");
     let handle = control_handle(fixture_window::find_button(fixture.handle())).expect("handle");
-    let error = execute_action_impl(
-        &handle,
-        ActionRequest::headless(Action::SetFocus),
-        &lease(),
-    )
-    .expect_err("headless SetFocus");
+    let error = execute_action_impl(&handle, ActionRequest::headless(Action::SetFocus), &lease())
+        .expect_err("headless SetFocus");
     assert_eq!(error.code, ErrorCode::PolicyDenied);
     assert!(
         error

@@ -8,9 +8,7 @@ use agent_desktop_core::{
     ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
 };
 
-use crate::actions::chain::{
-    ChainDef, ChainRung, DeliveryOutcome, execute_chain,
-};
+use crate::actions::chain::{ChainDef, ChainRung, DeliveryOutcome, execute_chain};
 use crate::tree::element::UIAElement;
 
 pub(crate) const VALUE_LABEL: &str = "ValuePattern.SetValue";
@@ -29,9 +27,9 @@ pub(crate) const CLEAR_CHAIN: ChainDef = ChainDef {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        CLEAR_CHAIN, RANGE_LABEL, VALUE_LABEL, VALUE_WRITE_CHAIN, ActionStep, AdapterError,
-        ChainRung, Deadline, DeliveryOutcome, DeliverySemantics, ErrorCode, InteractionPolicy,
-        UIAElement, execute_chain,
+        ActionStep, AdapterError, CLEAR_CHAIN, ChainRung, Deadline, DeliveryOutcome,
+        DeliverySemantics, ErrorCode, InteractionPolicy, RANGE_LABEL, UIAElement, VALUE_LABEL,
+        VALUE_WRITE_CHAIN, execute_chain,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
     use crate::actions::post_state::after_delivery;
@@ -149,7 +147,10 @@ mod imp {
     }
 
     pub(crate) fn parse_finite_f64(value: &str) -> Option<f64> {
-        value.parse::<f64>().ok().filter(|number| number.is_finite())
+        value
+            .parse::<f64>()
+            .ok()
+            .filter(|number| number.is_finite())
     }
 
     fn invoke_value_set(
@@ -208,15 +209,19 @@ mod imp {
         element: &UIAElement,
         expected: &str,
     ) -> Result<Option<bool>, AdapterError> {
-        gated_value_compare(read_one(element, TreeProperty::IsPassword), expected, || {
-            let pattern = element
-                .0
-                .get_pattern::<UIValuePattern>()
-                .map_err(|error| read_failed("ValuePattern.get_value", &error))?;
-            pattern
-                .get_value()
-                .map_err(|error| read_failed("ValuePattern.get_value", &error))
-        })
+        gated_value_compare(
+            read_one(element, TreeProperty::IsPassword),
+            expected,
+            || {
+                let pattern = element
+                    .0
+                    .get_pattern::<UIValuePattern>()
+                    .map_err(|error| read_failed("ValuePattern.get_value", &error))?;
+                pattern
+                    .get_value()
+                    .map_err(|error| read_failed("ValuePattern.get_value", &error))
+            },
+        )
     }
 
     /// IsPassword-gated RangeValuePattern readback. The only
@@ -225,15 +230,19 @@ mod imp {
         element: &UIAElement,
         expected: f64,
     ) -> Result<Option<bool>, AdapterError> {
-        gated_range_compare(read_one(element, TreeProperty::IsPassword), expected, || {
-            let pattern = element
-                .0
-                .get_pattern::<UIRangeValuePattern>()
-                .map_err(|error| read_failed("RangeValuePattern.get_value", &error))?;
-            pattern
-                .get_value()
-                .map_err(|error| read_failed("RangeValuePattern.get_value", &error))
-        })
+        gated_range_compare(
+            read_one(element, TreeProperty::IsPassword),
+            expected,
+            || {
+                let pattern = element
+                    .0
+                    .get_pattern::<UIRangeValuePattern>()
+                    .map_err(|error| read_failed("RangeValuePattern.get_value", &error))?;
+                pattern
+                    .get_value()
+                    .map_err(|error| read_failed("RangeValuePattern.get_value", &error))
+            },
+        )
     }
 
     /// Shared secure-field gate for string value verification (reusable by Select).
@@ -344,9 +353,7 @@ mod imp {
 pub(crate) use imp::{clear_steps, set_value_steps};
 
 #[allow(unused_imports)]
-pub(crate) use imp::{
-    gated_pattern_value_equals, gated_range_compare, gated_value_compare,
-};
+pub(crate) use imp::{gated_pattern_value_equals, gated_range_compare, gated_value_compare};
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::{clear_judged_for, parse_finite_f64, set_value_judged_for};

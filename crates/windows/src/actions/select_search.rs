@@ -11,7 +11,7 @@ const MAX_REALIZE_SCROLLS: u32 = 16;
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        MAX_REALIZE_SCROLLS, MAX_SELECT_DEPTH, MAX_SELECT_NODES, AdapterError, Deadline, ErrorCode,
+        AdapterError, Deadline, ErrorCode, MAX_REALIZE_SCROLLS, MAX_SELECT_DEPTH, MAX_SELECT_NODES,
         UIAElement,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};

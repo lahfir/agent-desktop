@@ -1,6 +1,4 @@
-use super::{
-    MAX_ANCESTOR_SCROLLS, apply_ladder_seam, direction_for_visibility, ladder_judged_for,
-};
+use super::{MAX_ANCESTOR_SCROLLS, apply_ladder_seam, direction_for_visibility, ladder_judged_for};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::scroll_into_view::{VisibilitySample, visibility_verified};
 use agent_desktop_core::{
@@ -164,10 +162,7 @@ fn ten_rungs_exhausted_is_delivered_unverified() {
     };
     let error = ladder_judged_for(deadline(), &mut next, &mut scroll).expect_err("exhausted");
     assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_eq!(
-        error.disposition,
-        DeliverySemantics::delivered_unverified()
-    );
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_eq!(calls.get(), MAX_ANCESTOR_SCROLLS as u8);
 }
 
@@ -241,7 +236,7 @@ fn seam_no_ancestor_keeps_unsupported_terminal() {
 #[test]
 fn seam_with_ancestor_ladders_instead_of_unsupported() {
     let fallback = crate::actions::scroll_into_view::unsupported_error();
-    let outcome = apply_ladder_seam(fallback, Ok(Some(DeliveryOutcome::DeliveredVerified)))
-        .expect("ladder");
+    let outcome =
+        apply_ladder_seam(fallback, Ok(Some(DeliveryOutcome::DeliveredVerified))).expect("ladder");
     assert_eq!(outcome, DeliveryOutcome::DeliveredVerified);
 }

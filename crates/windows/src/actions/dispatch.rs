@@ -17,8 +17,8 @@ use agent_desktop_core::{
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        Action, ActionResult, ActionStep, AdapterError, Deadline, Direction, ErrorCode,
-        InteractionLease, InteractionPolicy, NativeHandle, ActionRequest,
+        Action, ActionRequest, ActionResult, ActionStep, AdapterError, Deadline, Direction,
+        ErrorCode, InteractionLease, InteractionPolicy, NativeHandle,
     };
     use crate::actions::chain::{
         CLICK_CHAIN, ChainRung, DeliveryOutcome, build_step, execute_chain,
@@ -65,15 +65,11 @@ mod imp {
             Action::DoubleClick | Action::TripleClick => {
                 Err(AdapterError::not_supported("multi-click"))
             }
-            Action::RightClick => {
-                Err(AdapterError::not_supported("physical context-menu click"))
-            }
+            Action::RightClick => Err(AdapterError::not_supported("physical context-menu click")),
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
                 adapter_level_rejection(request.action.name())
             }
-            Action::SetValue(value) => {
-                execute_set_value(element, value, request.policy, deadline)
-            }
+            Action::SetValue(value) => execute_set_value(element, value, request.policy, deadline),
             Action::Clear => execute_clear(element, request.policy, deadline),
             Action::Toggle => execute_toggle(element, request.policy, deadline),
             Action::Check => execute_check(element, request.policy, deadline),
@@ -326,7 +322,7 @@ mod imp {
 
 #[cfg(not(target_os = "windows"))]
 mod imp {
-    use super::{ActionResult, AdapterError, InteractionLease, NativeHandle, ActionRequest};
+    use super::{ActionRequest, ActionResult, AdapterError, InteractionLease, NativeHandle};
 
     pub(crate) fn execute_action_impl(
         _handle: &NativeHandle,

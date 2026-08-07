@@ -68,7 +68,9 @@ fn pointer_scroll_and_focus_attach_none() {
 
 #[test]
 fn delivery_occurred_requires_a_succeeded_step() {
-    assert!(!delivery_occurred(&[ActionStep::skipped("ValuePattern.SetValue")]));
+    assert!(!delivery_occurred(&[ActionStep::skipped(
+        "ValuePattern.SetValue"
+    )]));
     assert!(delivery_occurred(&[
         ActionStep::skipped("ValuePattern.SetValue"),
         ActionStep::succeeded("RangeValuePattern.SetValue"),
@@ -91,13 +93,8 @@ fn after_delivery_forces_delivered_unverified() {
 fn post_state_absent_when_no_delivery() {
     with_fixture_button(|element| {
         let steps = vec![ActionStep::skipped("ValuePattern.SetValue")];
-        let post = post_state_for_steps(
-            element,
-            &Action::SetValue("x".into()),
-            &steps,
-            deadline(),
-        )
-        .expect("no delivery skips post-state");
+        let post = post_state_for_steps(element, &Action::SetValue("x".into()), &steps, deadline())
+            .expect("no delivery skips post-state");
         assert!(post.is_none());
     });
 }

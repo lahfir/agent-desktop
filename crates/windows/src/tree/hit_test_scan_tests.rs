@@ -50,10 +50,7 @@ const GATE_SUPPORT: [(&str, &str); 10] = [
         "actions/disclosure.rs",
         include_str!("../actions/disclosure.rs"),
     ),
-    (
-        "actions/select.rs",
-        include_str!("../actions/select.rs"),
-    ),
+    ("actions/select.rs", include_str!("../actions/select.rs")),
     (
         "actions/select_search.rs",
         include_str!("../actions/select_search.rs"),
