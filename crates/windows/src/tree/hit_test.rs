@@ -10,10 +10,10 @@
 //! retry — UIA has no scoped `ElementFromPoint`. That is the designed Chromium
 //! outcome when a render-host pane answers for non-hit-addressable web content.
 //!
-//! Unrelated hits reach [`corroborate_interception`]; until window-attribution
-//! evidence lands, that seam returns `Unknown` rather than a false
-//! `InterceptedBy`. Same-root demotion for points outside `target ∩ scroll
-//! viewport` (A18-2 unclipped provider rects) is applied before that seam.
+//! Unrelated hits reach window-attribution corroboration (`hit_test_corroborate`):
+//! `InterceptedBy` only on two-opinion agreement. Same-root demotion for points
+//! outside `target ∩ scroll viewport` (A18-2 unclipped provider rects) is
+//! applied before that seam.
 
 use agent_desktop_core::{
     AdapterError, Deadline, ErrorCode, Point, Rect, hit_test::HitTestResult,
@@ -25,8 +25,13 @@ use agent_desktop_core::{
 mod classify;
 
 #[cfg(target_os = "windows")]
+#[path = "hit_test_corroborate.rs"]
+mod corroborate;
+
+#[cfg(target_os = "windows")]
 mod imp {
     use super::classify::{self, point_in_rect};
+    use super::corroborate;
     use super::{AdapterError, Deadline, ErrorCode, HitTestResult, NativeHandle, Point, Rect};
     use crate::system::hresult::ReadDisposition;
     use crate::tree::automation::{
@@ -39,11 +44,9 @@ mod imp {
     use crate::tree::walker::NodeKey;
     use uiautomation::UIAutomation;
     use uiautomation::core::UITreeWalker;
-    use uiautomation::types::Handle;
-    use windows::Win32::Foundation::HWND;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GA_ROOT, GetAncestor, GetSystemMetrics, IsIconic, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        GetSystemMetrics, IsIconic, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
     };
 
     /// Hit-tests `point` via bounded `ElementFromPoint`, then classifies the
@@ -102,6 +105,7 @@ mod imp {
             target,
             &hit,
             point,
+            &walker,
         ))
     }
 
@@ -111,9 +115,10 @@ mod imp {
         target: &UIAElement,
         hit: &UIAElement,
         point: Point,
+        walker: &UITreeWalker,
     ) -> HitTestResult {
         resolve_classification(classification, demote_for_viewport, || {
-            corroborate_interception(target, hit, point)
+            corroborate::corroborate_interception(target, hit, point, walker)
         })
     }
 
@@ -133,16 +138,6 @@ mod imp {
                 }
             }
         }
-    }
-
-    /// Window-attribution corroboration seam. Filled by later work; until then
-    /// unrelated hits never claim interception.
-    pub(crate) fn corroborate_interception(
-        _target: &UIAElement,
-        _hit: &UIAElement,
-        _point: Point,
-    ) -> HitTestResult {
-        HitTestResult::Unknown
     }
 
     fn read_target_bounds(target: &UIAElement) -> Result<Option<Rect>, AdapterError> {
@@ -254,37 +249,8 @@ mod imp {
 
     fn root_is_iconic(target: &UIAElement, client: &UIAutomation) -> Option<bool> {
         let walker = client.get_raw_view_walker().ok()?;
-        let hwnd = first_native_hwnd(target, &walker)?;
-        if hwnd == 0 {
-            return None;
-        }
-        let root = unsafe { GetAncestor(hwnd as *mut std::ffi::c_void, GA_ROOT) };
-        if root.is_null() {
-            return None;
-        }
-        Some(unsafe { IsIconic(root) != 0 })
-    }
-
-    fn first_native_hwnd(start: &UIAElement, walker: &UITreeWalker) -> Option<isize> {
-        let mut current = start.clone();
-        for _ in 0..super::classify::ancestry_limit() {
-            if let Ok(handle) = current.0.get_native_window_handle() {
-                let value = hwnd_isize(handle);
-                if value != 0 {
-                    return Some(value);
-                }
-            }
-            match parent_step(walker, &current) {
-                Ok(Some(parent)) => current = parent,
-                Ok(None) | Err(()) => return None,
-            }
-        }
-        None
-    }
-
-    fn hwnd_isize(handle: Handle) -> isize {
-        let hwnd: HWND = handle.into();
-        hwnd.0 as isize
+        let root = corroborate::element_root_hwnd(target, &walker)?;
+        Some(unsafe { IsIconic(root as *mut std::ffi::c_void) != 0 })
     }
 
     fn same_element(client: &UIAutomation, left: &UIAElement, right: &UIAElement) -> bool {
@@ -380,3 +346,7 @@ pub(crate) use imp::hit_test_impl;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "hit_test_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "hit_test_live_tests.rs"]
+mod live_tests;

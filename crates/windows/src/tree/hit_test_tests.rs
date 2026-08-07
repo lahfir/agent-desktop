@@ -2,27 +2,24 @@ use super::classify::{
     Ancestry, HitClassification, ancestry_with, classify_hit_with, classify_relation,
     remember_ancestor_key, should_demote_outside_viewport,
 };
+use super::hit_test_impl;
 use super::imp::{
     guard_outside_virtual_screen, guard_point_outside_bounds, guard_zero_area, physical_point,
     pre_read_fate_for_test, resolve_classification, saturate_coord,
 };
-use super::hit_test_impl;
 use crate::system::hresult::{E_ACCESSDENIED, E_FAIL, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT};
 use crate::tree::automation::{
-    ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, automation_client, root_from_hwnd,
+    ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, root_from_hwnd,
 };
-use crate::tree::element::UIAElement;
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
 use crate::tree::fixture_window;
 use crate::tree::walker::NodeKey;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{
-    AdapterError, ErrorCode, Point, Rect, hit_test::HitTestResult, native_handle::NativeHandle,
+    AdapterError, ErrorCode, Point, Rect, hit_test::HitTestResult,
 };
 use std::cell::Cell;
 use std::collections::HashMap;
-use uiautomation::types::Handle;
-use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
 
 #[test]
 fn self_hit_reaches_target() {
@@ -64,10 +61,6 @@ fn unrelated_hit_reaches_corroboration_seam() {
         "unrelated hits must invoke the corroboration seam"
     );
     assert_eq!(result, HitTestResult::Unknown);
-    assert!(
-        !matches!(result, HitTestResult::InterceptedBy { .. }),
-        "the open corroboration seam must not claim InterceptedBy"
-    );
 }
 
 #[test]
@@ -248,8 +241,7 @@ fn permission_pre_read_escapes_as_err() {
 #[test]
 fn dead_token_preamble_escapes_as_stale_reader_err() {
     ensure_test_apartment();
-    let (left, top) = fixture_window::on_screen_origin();
-    let fixture = LocalFixture::create_at(left, top).expect("on-screen fixture starts");
+    let fixture = LocalFixture::create().expect("off-screen fixture starts");
     let root = root_from_hwnd(fixture.handle(), deadline()).expect("fixture root");
     let handle = root
         .with_verified_process(std::process::id(), "dead-token-for-hit-test".into())
@@ -257,8 +249,8 @@ fn dead_token_preamble_escapes_as_stale_reader_err() {
     let error = hit_test_impl(
         &handle,
         Point {
-            x: f64::from(left + 20),
-            y: f64::from(top + 20),
+            x: f64::from(fixture_window::OFFSCREEN_LEFT + 20),
+            y: f64::from(fixture_window::OFFSCREEN_TOP + 20),
         },
         deadline(),
     )
@@ -299,75 +291,10 @@ fn remember_ancestor_detects_runtime_id_cycles() {
     ));
 }
 
-#[test]
-fn on_screen_fixture_center_reaches_target() {
-    ensure_test_apartment();
-    let (left, top) = fixture_window::on_screen_origin();
-    let fixture = LocalFixture::create_at(left, top).expect("on-screen fixture starts");
-    let handle = control_handle(&fixture).expect("button handle");
-    let bounds = window_bounds(fixture_window::find_button(fixture.handle()));
-    let point = Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    };
-    let result = hit_test_impl(&handle, point, deadline()).expect("hit_test succeeds");
-    assert_eq!(result, HitTestResult::ReachesTarget);
-}
-
-#[test]
-fn minimized_on_screen_fixture_yields_unknown() {
-    ensure_test_apartment();
-    let (left, top) = fixture_window::on_screen_origin();
-    let fixture = LocalFixture::create_at(left, top).expect("on-screen fixture starts");
-    let handle = control_handle(&fixture).expect("button handle");
-    let bounds = window_bounds(fixture_window::find_button(fixture.handle()));
-    let point = Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    };
-    fixture.minimize();
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    let result = hit_test_impl(&handle, point, deadline()).expect("hit_test succeeds");
-    assert_eq!(result, HitTestResult::Unknown);
-    assert!(
-        !matches!(result, HitTestResult::InterceptedBy { .. }),
-        "IsIconic guard must not invent InterceptedBy"
-    );
-}
-
 fn intercepted_stub() -> HitTestResult {
     HitTestResult::InterceptedBy {
         role: Some("pane".into()),
         name: None,
         bounds: None,
-    }
-}
-
-fn control_handle(fixture: &LocalFixture) -> Result<NativeHandle, AdapterError> {
-    let _ = root_from_hwnd(fixture.handle(), deadline())?;
-    let button = fixture_window::find_button(fixture.handle());
-    assert!(!button.is_null(), "fixture exposes a BUTTON");
-    let client = automation_client()?;
-    let element = client
-        .element_from_handle(Handle::from(button as isize))
-        .map_err(|error| {
-            crate::tree::automation::uia_error(&error, "resolve the fixture button")
-        })?;
-    Ok(UIAElement::from(element).into_native_handle())
-}
-
-fn window_bounds(hwnd: *mut std::ffi::c_void) -> Rect {
-    let mut rect = windows_sys::Win32::Foundation::RECT {
-        left: 0,
-        top: 0,
-        right: 0,
-        bottom: 0,
-    };
-    unsafe { GetWindowRect(hwnd, &mut rect) };
-    Rect {
-        x: f64::from(rect.left),
-        y: f64::from(rect.top),
-        width: f64::from(rect.right - rect.left),
-        height: f64::from(rect.bottom - rect.top),
     }
 }
