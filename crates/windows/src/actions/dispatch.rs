@@ -1,12 +1,13 @@
 //! `execute_action` match over every `Action` variant.
 //!
-//! Click routes through the Invoke + Legacy chain. SetFocus routes through
+//! Click routes through the Invoke + Legacy chain. SetValue / Clear route
+//! through `value_write` with post-state attachment. SetFocus routes through
 //! `focus`. ScrollTo reuses the shipped ScrollIntoView spine. Capabilities
 //! that need key synthesis or physical multi-click fail
-//! `PLATFORM_NOT_SUPPORTED` naming the missing machinery. Value-write /
-//! toggle / disclosure / select / scroll modules replace their placeholder
-//! arms when those modules land — the placeholders are deliberate
-//! `ACTION_FAILED` outcomes, never the trait-default `execute_action` message.
+//! `PLATFORM_NOT_SUPPORTED` naming the missing machinery. Toggle / disclosure
+//! / select / scroll modules replace their placeholder arms when those
+//! modules land — the placeholders are deliberate `ACTION_FAILED` outcomes,
+//! never the trait-default `execute_action` message.
 
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode,
@@ -24,7 +25,9 @@ mod imp {
     };
     use crate::actions::focus::focus_element;
     use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::post_state::post_state_for_steps;
     use crate::actions::scroll_into_view::scroll_into_view_impl;
+    use crate::actions::value_write::{clear_steps, set_value_steps};
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
     use crate::tree::element::{UIAElement, uia_element};
@@ -64,12 +67,37 @@ mod imp {
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
                 adapter_level_rejection(request.action.name())
             }
-            Action::SetValue(_) | Action::Clear => Err(unwired("value-write")),
+            Action::SetValue(value) => {
+                execute_set_value(element, value, request.policy, deadline)
+            }
+            Action::Clear => execute_clear(element, request.policy, deadline),
             Action::Toggle | Action::Check | Action::Uncheck => Err(unwired("toggle")),
             Action::Expand | Action::Collapse => Err(unwired("disclosure")),
             Action::Select(_) => Err(unwired("select")),
             Action::Scroll(_, _) => Err(unwired("scroll")),
         }
+    }
+
+    fn execute_set_value(
+        element: &UIAElement,
+        value: &str,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let action = Action::SetValue(value.to_string());
+        let steps = set_value_steps(element, value, policy, deadline)?;
+        let post_state = post_state_for_steps(element, &action, &steps, deadline)?;
+        ActionResult::from_execution(&action, steps, post_state)
+    }
+
+    fn execute_clear(
+        element: &UIAElement,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = clear_steps(element, policy, deadline)?;
+        let post_state = post_state_for_steps(element, &Action::Clear, &steps, deadline)?;
+        ActionResult::from_execution(&Action::Clear, steps, post_state)
     }
 
     fn null_handle_action(action: &Action) -> Result<ActionResult, AdapterError> {
@@ -108,7 +136,7 @@ mod imp {
         )
         .with_disposition(DeliverySemantics::not_delivered())
         .with_suggestion(
-            "Use a capability that is already wired, or target an element whose advertised action is Click, SetFocus, or ScrollTo.",
+            "Use a capability that is already wired, or target an element whose advertised action is Click, SetValue, Clear, SetFocus, or ScrollTo.",
         )
     }
 

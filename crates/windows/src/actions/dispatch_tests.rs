@@ -1,6 +1,7 @@
 use super::{click_chain_judged_for, execute_action_impl};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::focus::focus_from_delivery;
+use crate::actions::value_write::set_value_judged_for;
 use crate::tree::actions::resolve_actions;
 use crate::tree::automation::automation_client;
 use crate::tree::element::UIAElement;
@@ -235,6 +236,8 @@ fn set_focus_call_site_lives_only_in_focus_rs() {
         ("actions/chain.rs", include_str!("chain.rs")),
         ("actions/dispatch.rs", include_str!("dispatch.rs")),
         ("actions/focus.rs", include_str!("focus.rs")),
+        ("actions/value_write.rs", include_str!("value_write.rs")),
+        ("actions/post_state.rs", include_str!("post_state.rs")),
     ];
     let banned = concat!(".", "set_focus(");
     for (name, source) in sources {
@@ -328,6 +331,36 @@ fn r2_focusable_advertisement_reaches_set_focus_arm() {
     let result = focus_from_delivery(InteractionPolicy::headed(), Ok(true), true)
         .expect("SetFocus arm");
     assert!(matches!(result.steps[0].outcome, ActionStepOutcome::Succeeded));
+}
+
+#[test]
+fn r2_set_value_advertisement_reaches_value_rung() {
+    let mut reads = inert_reads();
+    reads.retain(|(property, _)| {
+        *property != TreeProperty::ValueAvailable && *property != TreeProperty::ValueIsReadOnly
+    });
+    reads.push((TreeProperty::ValueAvailable, known_flag(true)));
+    reads.push((TreeProperty::ValueIsReadOnly, known_flag(false)));
+    let actions = resolve_actions(&ElementProperties::from_reads(reads));
+    let known = actions.known().expect("Known actions");
+    assert!(known.iter().any(|action| action == capability::SET_VALUE));
+
+    let value = Cell::new(0u8);
+    let steps = set_value_judged_for(
+        short_deadline(),
+        InteractionPolicy::headless(),
+        "x",
+        true,
+        false,
+        || {
+            value.set(value.get() + 1);
+            Ok(DeliveryOutcome::DeliveredVerified)
+        },
+        || Ok(DeliveryOutcome::NotDelivered),
+    )
+    .expect("value rung");
+    assert_eq!(value.get(), 1);
+    assert!(matches!(steps[0].outcome, ActionStepOutcome::Succeeded));
 }
 
 #[test]

@@ -4,6 +4,7 @@
 const PATTERN_ALLOWLIST: &[&str] = &[
     "actions/scroll_into_view.rs",
     "actions/dispatch.rs",
+    "actions/value_write.rs",
 ];
 
 const HIT_TEST_FAMILY: [(&str, &str); 3] = [
@@ -18,7 +19,7 @@ const HIT_TEST_FAMILY: [(&str, &str); 3] = [
     ),
 ];
 
-const GATE_SUPPORT: [(&str, &str); 3] = [
+const GATE_SUPPORT: [(&str, &str); 4] = [
     (
         "actions/scroll_into_view.rs",
         include_str!("../actions/scroll_into_view.rs"),
@@ -26,6 +27,10 @@ const GATE_SUPPORT: [(&str, &str); 3] = [
     (
         "actions/dispatch.rs",
         include_str!("../actions/dispatch.rs"),
+    ),
+    (
+        "actions/value_write.rs",
+        include_str!("../actions/value_write.rs"),
     ),
     (
         "system/window_resolve.rs",

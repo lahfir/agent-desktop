@@ -22,6 +22,8 @@ pub(crate) enum DeliveryOutcome {
     SatisfiedNoDelivery,
     DeliveredUnverified,
     DeliveredVerified,
+    /// Delivered, but verification was withheld (secure / unreadable IsPassword).
+    DeliveredUnobserved,
 }
 
 impl DeliveryOutcome {
@@ -33,10 +35,27 @@ impl DeliveryOutcome {
         }
     }
 
-    pub(crate) fn was_delivered(self) -> bool {
-        matches!(self, Self::DeliveredUnverified | Self::DeliveredVerified)
+    /// Maps a delivered write's observation onto a chain outcome.
+    ///
+    /// `None` is the secure-field shape: the write landed and no value was
+    /// re-read, so the step must not claim `verified: true` or `false`.
+    pub(crate) fn from_observation(verified: Option<bool>) -> Self {
+        match verified {
+            Some(true) => Self::DeliveredVerified,
+            Some(false) => Self::DeliveredUnverified,
+            None => Self::DeliveredUnobserved,
+        }
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn was_delivered(self) -> bool {
+        matches!(
+            self,
+            Self::DeliveredUnverified | Self::DeliveredVerified | Self::DeliveredUnobserved
+        )
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn was_verified(self) -> bool {
         matches!(self, Self::SatisfiedNoDelivery | Self::DeliveredVerified)
     }
@@ -111,18 +130,14 @@ pub(crate) fn exhaustion_disposition(steps: &[ActionStep]) -> DeliverySemantics 
 }
 
 pub(crate) fn build_step(label: &'static str, outcome: DeliveryOutcome) -> ActionStep {
-    let mut built = match outcome {
+    let built = match outcome {
         DeliveryOutcome::NotDelivered => ActionStep::skipped(label),
         DeliveryOutcome::SatisfiedNoDelivery => ActionStep::skipped(label).with_verified(true),
-        DeliveryOutcome::DeliveredUnverified | DeliveryOutcome::DeliveredVerified => {
-            ActionStep::succeeded(label)
-        }
+        DeliveryOutcome::DeliveredUnobserved => ActionStep::succeeded(label),
+        DeliveryOutcome::DeliveredUnverified => ActionStep::succeeded(label).with_verified(false),
+        DeliveryOutcome::DeliveredVerified => ActionStep::succeeded(label).with_verified(true),
     };
-    built = built.with_mechanism(StepMechanism::SemanticApi);
-    if outcome.was_delivered() {
-        built = built.with_verified(outcome.was_verified());
-    }
-    built
+    built.with_mechanism(StepMechanism::SemanticApi)
 }
 
 /// Records `outcome` and returns whether the chain should stop.

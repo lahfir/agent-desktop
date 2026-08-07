@@ -53,6 +53,19 @@ fn build_step_marks_delivered_unverified_explicitly() {
 }
 
 #[test]
+fn build_step_leaves_verified_absent_when_observation_withheld() {
+    let built = build_step(
+        "ValuePattern.SetValue",
+        DeliveryOutcome::from_observation(None),
+    );
+    assert_eq!(built.mechanism(), Some(StepMechanism::SemanticApi));
+    assert!(matches!(built.outcome, ActionStepOutcome::Succeeded));
+    assert!(built.verified().is_none());
+    assert!(DeliveryOutcome::DeliveredUnobserved.was_delivered());
+    assert!(!DeliveryOutcome::DeliveredUnobserved.was_verified());
+}
+
+#[test]
 fn satisfied_without_delivery_stops_fallback_and_is_skipped_verified() {
     let mut steps = Vec::new();
     assert!(record_step_outcome(
