@@ -42,6 +42,10 @@ fn scroll_list_vertical(list: &uiautomation::UIElement, vertical_percent: f64) -
     }
 }
 
+/// Measures one `ScrollIntoView` case. The below-fold leg first records
+/// whether virtualization hid the item while the list sat at the top, then
+/// scrolls far enough to realize it without invoking `ScrollIntoView`, so
+/// the measured invoke starts from a realized, out-of-view element.
 fn measure_scroll_case(
     automation: &UIAutomation,
     hwnd: isize,
@@ -68,8 +72,6 @@ fn measure_scroll_case(
     };
     let present_before_scroll = find_by_automation_id(&elements, automation_id).is_some()
         || find_realized_or_by_id(automation, &root, &elements, automation_id).is_some();
-    // For below-fold: first record whether virtualization hid the item at the top,
-    // then scroll the list far enough to realize it without ScrollIntoView yet.
     let mut realization_note = json!(null);
     let elements = if label == "below_fold" {
         let top_present = present_before_scroll;
@@ -131,6 +133,10 @@ fn measure_scroll_case(
     })
 }
 
+/// Measures whether `BoundingRectangle` is viewport-clipped for an item
+/// straddling the fold. After realizing nearby items, the list is nudged a
+/// final fractional scroll so one item genuinely straddles the viewport
+/// edge before the clipped-versus-unclipped comparison runs.
 fn measure_straddling(automation: &UIAutomation, hwnd: isize) -> Value {
     let root = match root_from_hwnd(automation, hwnd) {
         Ok(root) => root,
@@ -168,7 +174,6 @@ fn measure_straddling(automation: &UIAutomation, hwnd: isize) -> Value {
         let _ = invoke_scroll_into_view(&near);
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    // Nudge the list so an item straddles the viewport edge.
     if let Ok(tree) = walk_tree(automation, &root) {
         if let Some(list) = find_by_automation_id(&tree, "lstItems") {
             let _ = scroll_list_vertical(list, 45.0);

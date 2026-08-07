@@ -233,7 +233,6 @@ pub fn measure_corroborate(
             } else {
                 legs.push(json!({ "leg": "same_process_overlap", "error": "root unresolved" }));
             }
-            // Hosts drop here after legs finish.
             drop(over);
             drop(under);
         }

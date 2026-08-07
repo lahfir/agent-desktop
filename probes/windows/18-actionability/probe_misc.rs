@@ -195,13 +195,17 @@ pub fn measure_cost(
     })
 }
 
+/// Probes all five candidate points of a settled Chromium leaf. The
+/// fresh-client settle protocol (A16-11) is orchestrator-owned: the runner
+/// rebuilds the client after the settle, and this arm probes through the
+/// product's bounded client. The leaf filter excludes the host shapes -
+/// Window (50032), Pane (50033), Document (50030), and Group (50026) - so
+/// the target is real content, never the render-host chrome.
 pub fn measure_chromium(automation: &UIAutomation, hwnd: isize) -> Value {
     let root = match root_from_hwnd(automation, hwnd) {
         Ok(root) => root,
         Err(error) => return json!({ "error": error }),
     };
-    // Fresh client protocol (A16-11): rebuild client after settle is orchestrator-owned;
-    // this arm still uses the product bounded client for the probes themselves.
     let elements = match walk_tree(automation, &root) {
         Ok(elements) => elements,
         Err(error) => return json!({ "error": error }),
@@ -216,7 +220,7 @@ pub fn measure_chromium(automation: &UIAutomation, hwnd: isize) -> Value {
             && bounds.height() > 16
             && bounds.width() < 800
             && bounds.height() < 400
-            && !matches!(ct, 50032 | 50033 | 50030 | 50026) // Window/Pane/Document/Group hosts
+            && !matches!(ct, 50032 | 50033 | 50030 | 50026)
     });
     let Some(target) = leaf else {
         return json!({

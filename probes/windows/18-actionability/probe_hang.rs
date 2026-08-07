@@ -34,6 +34,11 @@ fn timed_call<T>(label: &str, work: impl FnOnce() -> Result<T, uiautomation::Err
     }
 }
 
+/// Measures whether the bounded client's connection timeout binds
+/// `ElementFromPoint`, `ElementFromHandle`, and the hit-root ancestor walk
+/// against a never-pumping window. The stalled host is dropped only after
+/// every timed call, held through a closing sleep so no measurement races
+/// its teardown.
 pub fn measure_hang(automation: &UIAutomation) -> Value {
     let stalled = match win::spawn_stalled() {
         Ok(stalled) => stalled,
@@ -120,7 +125,6 @@ pub fn measure_hang(automation: &UIAutomation) -> Value {
         "does_not_bound_needs_windowfrompoint_preprobe"
     };
 
-    // Keep the stalled host alive through the timed calls above.
     std::thread::sleep(Duration::from_millis(50));
     drop(stalled);
 
