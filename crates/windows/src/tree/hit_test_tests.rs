@@ -5,7 +5,8 @@ use super::classify::{
 use super::hit_test_impl;
 use super::imp::{
     guard_outside_virtual_screen, guard_point_outside_bounds, guard_zero_area, physical_point,
-    pre_read_fate_for_test, resolve_classification, saturate_coord,
+    pre_read_fate_for_test, resolve_classification, result_for_failed_probe,
+    result_for_zero_area_guard, saturate_coord,
 };
 use crate::system::hresult::{E_ACCESSDENIED, E_FAIL, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT};
 use crate::tree::automation::{ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, root_from_hwnd};
@@ -13,7 +14,7 @@ use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
 use crate::tree::fixture_window;
 use crate::tree::walker::NodeKey;
 use crate::tree::walker_fake::deadline;
-use agent_desktop_core::{AdapterError, ErrorCode, Point, Rect, hit_test::HitTestResult};
+use agent_desktop_core::{ErrorCode, Point, Rect, hit_test::HitTestResult};
 use std::cell::Cell;
 use std::collections::HashMap;
 
@@ -107,13 +108,11 @@ fn zero_area_guard_is_unknown_not_intercept_or_err() {
         height: 20.0,
     };
     assert!(guard_zero_area(&bounds));
-    assert_ne!(
-        HitTestResult::Unknown,
-        HitTestResult::InterceptedBy {
-            role: Some("desktop".into()),
-            name: None,
-            bounds: None,
-        }
+    let outcome = result_for_zero_area_guard();
+    assert_eq!(outcome, HitTestResult::Unknown);
+    assert!(
+        !matches!(outcome, HitTestResult::InterceptedBy { .. }),
+        "zero-area must not invent InterceptedBy"
     );
 }
 
@@ -194,16 +193,12 @@ fn ancestry_cycle_terminates_as_incomplete_never_hangs() {
 
 #[test]
 fn fake_probe_failure_shape_is_unknown_not_err() {
-    let probe_failed = true;
-    let outcome: Result<HitTestResult, AdapterError> = if probe_failed {
-        Ok(HitTestResult::Unknown)
-    } else {
-        Err(AdapterError::new(
-            ErrorCode::Timeout,
-            "probe failures must not escape as Err",
-        ))
-    };
-    assert_eq!(outcome.unwrap(), HitTestResult::Unknown);
+    let outcome = result_for_failed_probe().expect("probe miss is Ok(Unknown)");
+    assert_eq!(outcome, HitTestResult::Unknown);
+    assert!(
+        result_for_failed_probe().is_ok(),
+        "probe failures must not escape as Err"
+    );
 }
 
 #[test]

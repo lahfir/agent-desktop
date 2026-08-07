@@ -60,7 +60,7 @@ fn verified_requires_on_screen_area_and_viewport_intersection() {
         offscreen: Some(false),
         viewport: Some(viewport),
     }));
-    assert!(visibility_verified(&VisibilitySample {
+    assert!(!visibility_verified(&VisibilitySample {
         bounds: Some(bounds),
         offscreen: Some(false),
         viewport: None,

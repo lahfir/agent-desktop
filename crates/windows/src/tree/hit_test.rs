@@ -83,7 +83,7 @@ mod imp {
         crate::system::permissions::ensure_budget(deadline)?;
         let hit = match probe_element_from_point(client, &point) {
             Some(hit) => hit,
-            None => return Ok(HitTestResult::Unknown),
+            None => return result_for_failed_probe(),
         };
         let walker = match client.get_raw_view_walker() {
             Ok(walker) => walker,
@@ -183,7 +183,7 @@ mod imp {
         client: &UIAutomation,
     ) -> Option<HitTestResult> {
         if bounds.width <= 0.0 || bounds.height <= 0.0 {
-            return Some(HitTestResult::Unknown);
+            return Some(result_for_zero_area_guard());
         }
         if root_is_iconic(target, client).unwrap_or(true) {
             return Some(HitTestResult::Unknown);
@@ -196,6 +196,17 @@ mod imp {
             return Some(HitTestResult::Unknown);
         }
         None
+    }
+
+    /// Probe miss / failure collapses to `Unknown` so a flaky ElementFromPoint
+    /// cannot abort the battery as `Err` (core propagates non-PlatformNotSupported).
+    pub(super) fn result_for_failed_probe() -> Result<HitTestResult, AdapterError> {
+        Ok(HitTestResult::Unknown)
+    }
+
+    /// Zero-area geometry is not hit-testable; never invent an interception.
+    pub(super) fn result_for_zero_area_guard() -> HitTestResult {
+        HitTestResult::Unknown
     }
 
     fn probe_element_from_point(client: &UIAutomation, point: &Point) -> Option<UIAElement> {

@@ -66,14 +66,14 @@ mod imp {
         if !scroll_item_available(element) {
             return Err(unsupported_error());
         }
+        let client = automation_client()?;
+        let walker = client.get_raw_view_walker().ok();
         let before = read_bounds_opt(element);
         let invoke_hr = match invoke_scroll_into_view(element) {
             InvokeOutcome::EmptyPattern => return Err(unsupported_error()),
             InvokeOutcome::Failed(hresult) => Some(hresult),
             InvokeOutcome::Succeeded => None,
         };
-        let client = automation_client()?;
-        let walker = client.get_raw_view_walker().ok();
         scroll_into_view_judged_for(deadline, before, invoke_hr, VERIFY_WINDOW, || {
             observe_visibility(element, deadline, walker.as_ref())
         })
@@ -153,7 +153,7 @@ mod imp {
         }
         match sample.viewport {
             Some(viewport) => intersects(bounds, viewport),
-            None => true,
+            None => false,
         }
     }
 
