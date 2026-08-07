@@ -2,21 +2,21 @@
 //!
 //! Click routes through the Invoke + Legacy chain. SetValue / Clear route
 //! through `value_write` with post-state attachment. Toggle / Check / Uncheck
-//! and Expand / Collapse attach post-state after delivery. SetFocus routes
-//! through `focus`. ScrollTo reuses the shipped ScrollIntoView spine.
-//! Capabilities that need key synthesis or physical multi-click fail
-//! `PLATFORM_NOT_SUPPORTED` naming the missing machinery. Select / scroll
-//! modules replace their placeholder arms when those modules land.
+//! and Expand / Collapse attach post-state after delivery. Select and Scroll
+//! route through their dedicated modules. SetFocus routes through `focus`.
+//! ScrollTo reuses the shipped ScrollIntoView spine. Capabilities that need
+//! key synthesis or physical multi-click fail `PLATFORM_NOT_SUPPORTED`
+//! naming the missing machinery.
 
 use agent_desktop_core::{
-    Action, ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode,
+    Action, ActionResult, ActionStep, AdapterError, Deadline, Direction, ErrorCode,
     InteractionLease, InteractionPolicy, NativeHandle, StepMechanism, action_request::ActionRequest,
 };
 
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        Action, ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode,
+        Action, ActionResult, ActionStep, AdapterError, Deadline, Direction, ErrorCode,
         InteractionLease, InteractionPolicy, NativeHandle, StepMechanism, ActionRequest,
     };
     use crate::actions::chain::{
@@ -26,7 +26,9 @@ mod imp {
     use crate::actions::focus::focus_element;
     use crate::actions::mutation::{classify_mutation, classify_success};
     use crate::actions::post_state::post_state_for_steps;
+    use crate::actions::scroll::scroll_steps;
     use crate::actions::scroll_into_view::scroll_into_view_impl;
+    use crate::actions::select::select_steps;
     use crate::actions::toggle_state::{check_steps, toggle_steps, uncheck_steps};
     use crate::actions::value_write::{clear_steps, set_value_steps};
     use crate::system::permissions::ensure_budget;
@@ -77,9 +79,31 @@ mod imp {
             Action::Uncheck => execute_uncheck(element, request.policy, deadline),
             Action::Expand => execute_expand(element, request.policy, deadline),
             Action::Collapse => execute_collapse(element, request.policy, deadline),
-            Action::Select(_) => Err(unwired("select")),
-            Action::Scroll(_, _) => Err(unwired("scroll")),
+            Action::Select(value) => execute_select(element, value, deadline),
+            Action::Scroll(direction, amount) => {
+                execute_scroll(element, direction, *amount, request.policy, deadline)
+            }
         }
+    }
+
+    fn execute_select(
+        element: &UIAElement,
+        value: &str,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = select_steps(element, value, deadline)?;
+        ActionResult::from_execution(&Action::Select(value.to_string()), steps, None)
+    }
+
+    fn execute_scroll(
+        element: &UIAElement,
+        direction: &Direction,
+        amount: u32,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
+        let steps = scroll_steps(element, direction, amount, policy, deadline)?;
+        ActionResult::from_execution(&Action::Scroll(direction.clone(), amount), steps, None)
     }
 
     fn execute_set_value(
@@ -181,17 +205,6 @@ mod imp {
         .with_suggestion(
             "Use the top-level command (e.g. 'hover', 'drag', 'key-down') instead of targeting an element.",
         ))
-    }
-
-    fn unwired(module: &str) -> AdapterError {
-        AdapterError::new(
-            ErrorCode::ActionFailed,
-            format!("{module} action awaits a dedicated semantic module"),
-        )
-        .with_disposition(DeliverySemantics::not_delivered())
-        .with_suggestion(
-            "Use a capability that is already wired, or target an element whose advertised action is Click, SetValue, Clear, SetFocus, or ScrollTo.",
-        )
     }
 
     fn execute_scroll_to(

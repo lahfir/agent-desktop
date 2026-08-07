@@ -126,6 +126,11 @@ fn pattern_get_value_lives_only_inside_value_write_gate() {
         ("actions/chain.rs", include_str!("chain.rs")),
         ("actions/post_state.rs", include_str!("post_state.rs")),
         ("actions/value_write.rs", include_str!("value_write.rs")),
+        ("actions/select.rs", include_str!("select.rs")),
+        ("actions/select_search.rs", include_str!("select_search.rs")),
+        ("actions/scroll.rs", include_str!("scroll.rs")),
+        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
+        ("actions/disclosure.rs", include_str!("disclosure.rs")),
     ];
     let get_value = concat!(".", "get_value(");
     for (name, source) in actions_sources {

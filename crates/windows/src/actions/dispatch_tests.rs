@@ -2,6 +2,8 @@ use super::{click_chain_judged_for, execute_action_impl};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::disclosure::{DisclosureInput, ExpandKind, disclosure_judged_for};
 use crate::actions::focus::focus_from_delivery;
+use crate::actions::scroll::{ScrollPlan, scroll_judged_for};
+use crate::actions::select::{SelectOps, SelectPlan, select_judged_for};
 use crate::actions::toggle_state::toggle_judged_for;
 use crate::actions::value_write::set_value_judged_for;
 use crate::tree::actions::resolve_actions;
@@ -242,6 +244,9 @@ fn set_focus_call_site_lives_only_in_focus_rs() {
         ("actions/post_state.rs", include_str!("post_state.rs")),
         ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
         ("actions/disclosure.rs", include_str!("disclosure.rs")),
+        ("actions/select.rs", include_str!("select.rs")),
+        ("actions/select_search.rs", include_str!("select_search.rs")),
+        ("actions/scroll.rs", include_str!("scroll.rs")),
     ];
     let banned = concat!(".", "set_focus(");
     for (name, source) in sources {
@@ -422,6 +427,75 @@ fn r2_expand_collapse_advertisement_reaches_disclosure_rung() {
     .expect("expand rung");
     assert_eq!(expand.get(), 1);
     assert_eq!(steps[0].label(), "ExpandCollapsePattern.Expand");
+}
+
+#[test]
+fn r2_selection_item_advertisement_reaches_select_arm() {
+    let mut reads = inert_reads();
+    reads.retain(|(property, _)| *property != TreeProperty::SelectionItemAvailable);
+    reads.push((TreeProperty::SelectionItemAvailable, known_flag(true)));
+    let actions = resolve_actions(&ElementProperties::from_reads(reads));
+    let known = actions.known().expect("Known actions");
+    assert!(known.iter().any(|action| action == capability::SELECT));
+
+    let select = Cell::new(0u8);
+    let mut expand = || Ok(());
+    let mut collapse = || {};
+    let mut find = || Ok(false);
+    let mut realize = || Ok(());
+    let mut select_item = || {
+        select.set(select.get() + 1);
+        Ok(DeliveryOutcome::DeliveredVerified)
+    };
+    let steps = select_judged_for(
+        short_deadline(),
+        SelectPlan {
+            self_match: true,
+            needs_expand: false,
+            value_chars: 1,
+        },
+        SelectOps {
+            expand: &mut expand,
+            collapse: &mut collapse,
+            find: &mut find,
+            realize: &mut realize,
+            select_item: &mut select_item,
+        },
+    )
+    .expect("select arm");
+    assert_eq!(select.get(), 1);
+    assert_eq!(steps[0].label(), "SelectionItemPattern.Select");
+}
+
+#[test]
+fn r2_scroll_advertisement_reaches_scroll_arm() {
+    let mut reads = inert_reads();
+    reads.retain(|(property, _)| *property != TreeProperty::ScrollAvailable);
+    reads.push((TreeProperty::ScrollAvailable, known_flag(true)));
+    let actions = resolve_actions(&ElementProperties::from_reads(reads));
+    let known = actions.known().expect("Known actions");
+    assert!(known.iter().any(|action| action == capability::SCROLL));
+
+    let scrolls = Cell::new(0u8);
+    let mut scroll_once = || {
+        scrolls.set(scrolls.get() + 1);
+        Ok(())
+    };
+    let mut observe = || true;
+    let steps = scroll_judged_for(
+        short_deadline(),
+        ScrollPlan {
+            scroll_available: true,
+            axis_scrollable: true,
+            axis_name: "vertical",
+            amount: 1,
+        },
+        &mut scroll_once,
+        &mut observe,
+    )
+    .expect("scroll arm");
+    assert_eq!(scrolls.get(), 1);
+    assert_eq!(steps[0].label(), "ScrollPattern.Scroll");
 }
 
 #[test]

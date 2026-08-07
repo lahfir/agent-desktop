@@ -198,20 +198,7 @@ fn write_path_sources_never_reach_the_read_classification_table() {
         concat!("hresult_", "record"),
         concat!("uia_failure_", "disposition"),
     ];
-    let sources = [
-        ("actions/mutation.rs", include_str!("mutation.rs")),
-        (
-            "actions/scroll_into_view.rs",
-            include_str!("scroll_into_view.rs"),
-        ),
-        ("actions/dispatch.rs", include_str!("dispatch.rs")),
-        ("actions/focus.rs", include_str!("focus.rs")),
-        ("actions/chain.rs", include_str!("chain.rs")),
-        ("actions/value_write.rs", include_str!("value_write.rs")),
-        ("actions/post_state.rs", include_str!("post_state.rs")),
-        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
-        ("actions/disclosure.rs", include_str!("disclosure.rs")),
-    ];
+    let sources = mutation_sources();
     for (name, source) in sources {
         for line in source.lines() {
             let is_prose =
@@ -230,13 +217,8 @@ fn write_path_sources_never_reach_the_read_classification_table() {
     );
 }
 
-/// The stale arm must be built with `AdapterError::new(ErrorCode::StaleRef, …)`
-/// so it never inherits `stale_ref`'s RefMap-shaped message. A19-2's killed
-/// provider lands this arm.
-#[test]
-fn actions_never_construct_stale_via_adapter_error_stale_ref() {
-    let banned = concat!("AdapterError::", "stale_ref");
-    let sources = [
+fn mutation_sources() -> [(&'static str, &'static str); 12] {
+    [
         ("actions/mutation.rs", include_str!("mutation.rs")),
         (
             "actions/scroll_into_view.rs",
@@ -249,7 +231,19 @@ fn actions_never_construct_stale_via_adapter_error_stale_ref() {
         ("actions/post_state.rs", include_str!("post_state.rs")),
         ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
         ("actions/disclosure.rs", include_str!("disclosure.rs")),
-    ];
+        ("actions/select.rs", include_str!("select.rs")),
+        ("actions/select_search.rs", include_str!("select_search.rs")),
+        ("actions/scroll.rs", include_str!("scroll.rs")),
+    ]
+}
+
+/// The stale arm must be built with `AdapterError::new(ErrorCode::StaleRef, …)`
+/// so it never inherits `stale_ref`'s RefMap-shaped message. A19-2's killed
+/// provider lands this arm.
+#[test]
+fn actions_never_construct_stale_via_adapter_error_stale_ref() {
+    let banned = concat!("AdapterError::", "stale_ref");
+    let sources = mutation_sources();
     for (name, source) in sources {
         for line in source.lines() {
             let is_prose =

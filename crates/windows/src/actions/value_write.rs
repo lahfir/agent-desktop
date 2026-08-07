@@ -317,6 +317,13 @@ mod imp {
         Err(AdapterError::not_supported("Clear"))
     }
 
+    pub(crate) fn gated_pattern_value_equals(
+        _element: &UIAElement,
+        _expected: &str,
+    ) -> Result<Option<bool>, AdapterError> {
+        Err(AdapterError::not_supported("gated_pattern_value_equals"))
+    }
+
     pub(crate) fn gated_value_compare(
         _is_password: PropertyOutcome,
         _expected: &str,
@@ -337,7 +344,9 @@ mod imp {
 pub(crate) use imp::{clear_steps, set_value_steps};
 
 #[allow(unused_imports)]
-pub(crate) use imp::{gated_range_compare, gated_value_compare};
+pub(crate) use imp::{
+    gated_pattern_value_equals, gated_range_compare, gated_value_compare,
+};
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::{clear_judged_for, parse_finite_f64, set_value_judged_for};
