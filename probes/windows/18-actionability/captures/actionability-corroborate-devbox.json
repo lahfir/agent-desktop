@@ -1,0 +1,304 @@
+{
+    "corroborate":  {
+                        "elevated_occluder":  {
+                                                  "note":  "elevated High-over-Medium staged by orchestrator",
+                                                  "staged_here":  false
+                                              },
+                        "legs":  [
+                                     {
+                                         "extra":  {
+                                                       "over":  7341878,
+                                                       "under":  14223258
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "85687fa0833f6adb",
+                                                     "automation_id_len":  24,
+                                                     "bounds":  "60,179,246,36",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "same_process_overlap",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "60,179,246,36",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "200,180",
+                                         "relation":  "unrelated_cross_root",
+                                         "target_pid":  10512,
+                                         "target_root":  14223258,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     },
+                                     {
+                                         "extra":  {
+                                                       "foreign":  27723520,
+                                                       "foreign_pid":  11760,
+                                                       "pids_differ":  true,
+                                                       "same_process_fallback":  false,
+                                                       "target_pid":  10512
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "0e749f7c50799f18",
+                                                     "automation_id_len":  13,
+                                                     "bounds":  "60,215,246,36",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "foreign_process_occluder",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "60,215,246,36",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "300,240",
+                                         "relation":  "unrelated_cross_root",
+                                         "target_pid":  10512,
+                                         "target_root":  14223258,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     },
+                                     {
+                                         "extra":  {
+                                                       "foreign":  27723520,
+                                                       "raised_nothing":  true,
+                                                       "third":  6817678,
+                                                       "under":  14223258
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "0e749f7c50799f18",
+                                                     "automation_id_len":  13,
+                                                     "bounds":  "60,215,246,36",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "three_window_stack",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "60,215,246,36",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "300,240",
+                                         "relation":  "unrelated_cross_root",
+                                         "target_pid":  10512,
+                                         "target_root":  14223258,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     },
+                                     {
+                                         "extra":  {
+                                                       "child_hwnd_vs_native":  {
+                                                                                    "child_matches_hit_native":  false,
+                                                                                    "hit_native_hwnd":  0,
+                                                                                    "informative_only":  true,
+                                                                                    "win32_child_hwnd":  66058
+                                                                                },
+                                                       "stack":  "wpf"
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "d864fd80d020ea37",
+                                                     "automation_id_len":  38,
+                                                     "bounds":  "60,359,246,36",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "same_root_overlay",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "60,359,246,36",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "160,390",
+                                         "relation":  "unrelated_cross_root",
+                                         "stack":  "wpf",
+                                         "target_pid":  9384,
+                                         "target_root":  28115860,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     },
+                                     {
+                                         "extra":  {
+                                                       "child_hwnd_vs_native":  {
+                                                                                    "child_matches_hit_native":  false,
+                                                                                    "hit_native_hwnd":  0,
+                                                                                    "informative_only":  true,
+                                                                                    "win32_child_hwnd":  66058
+                                                                                },
+                                                       "stack":  "winforms"
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "783adc57e1205710",
+                                                     "automation_id_len":  38,
+                                                     "bounds":  "324,357,100,100",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "same_root_overlay",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "324,357,100,100",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "367,406",
+                                         "relation":  "unrelated_cross_root",
+                                         "stack":  "winforms",
+                                         "target_pid":  4252,
+                                         "target_root":  12977384,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     },
+                                     {
+                                         "extra":  {
+                                                       "occluder_hwnd":  13043504,
+                                                       "occluder_rect":  "120,110,280,180"
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "85687fa0833f6adb",
+                                                     "automation_id_len":  24,
+                                                     "bounds":  "60,179,246,36",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "ws_ex_layered",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "60,179,246,36",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "260,200",
+                                         "relation":  "unrelated_cross_root",
+                                         "target_pid":  10512,
+                                         "target_root":  6031200,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     },
+                                     {
+                                         "extra":  {
+                                                       "occluder_hwnd":  13109040,
+                                                       "occluder_rect":  "120,110,280,180"
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "85687fa0833f6adb",
+                                                     "automation_id_len":  24,
+                                                     "bounds":  "60,179,246,36",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "ws_ex_transparent",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "60,179,246,36",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "260,200",
+                                         "relation":  "unrelated_cross_root",
+                                         "target_pid":  10512,
+                                         "target_root":  6031200,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     },
+                                     {
+                                         "extra":  {
+                                                       "occluder_hwnd":  13174576,
+                                                       "occluder_rect":  "120,110,280,180"
+                                                   },
+                                         "hit":  {
+                                                     "automation_id_digest":  "85687fa0833f6adb",
+                                                     "automation_id_len":  24,
+                                                     "bounds":  "60,179,246,36",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                         "hit_native_hwnd":  0,
+                                         "hit_pid":  1760,
+                                         "hit_root":  66058,
+                                         "ktd3_arm":  "cross_window_intercepted",
+                                         "leg":  "ws_disabled",
+                                         "occluder_evidence":  {
+                                                                   "bounds":  "60,179,246,36",
+                                                                   "evidence_read_ok":  true,
+                                                                   "name_withheld":  true,
+                                                                   "role_control_type":  50007
+                                                               },
+                                         "point":  "260,200",
+                                         "relation":  "unrelated_cross_root",
+                                         "target_pid":  10512,
+                                         "target_root":  6031200,
+                                         "win32_child":  66058,
+                                         "win32_pid":  1760,
+                                         "win32_root":  66058
+                                     }
+                                 ],
+                        "stack":  "uia3-com-product-CUIAutomation8"
+                    },
+    "elevated_occluder":  {
+                              "not_measured":  true,
+                              "skipped":  "elevated leg: A required privilege is not held by the client"
+                          }
+}

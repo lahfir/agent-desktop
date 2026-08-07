@@ -2,7 +2,7 @@
 title: A test that cannot fail is not coverage
 date: 2026-08-01
 category: best-practices
-module: crates/windows/src/tree, crates/windows/examples/uia_tree_dump
+module: crates/core/src/accname.rs, crates/windows/src/tree, crates/windows/examples/uia_tree_dump
 problem_type: process_gap
 component: tooling
 symptoms:
@@ -11,6 +11,7 @@ symptoms:
   - "A security-redaction test lives under crates/windows/examples/ and the CI lane runs cargo test -p agent-desktop-windows --lib."
   - "A census tool's redaction guard still passes when a call site is reverted to render text verbatim, because the guard tests the helper, not the call site."
   - "A second hand-maintained list (VALUE_BEARING) can miss an entry the first list (WALK_SET) gained, and nothing fails."
+  - "A #[cfg(test)] helper re-types the same boolean expression a production function inlines, so inverting production leaves the mirrored test green."
 root_cause: process_gap
 resolution_type: label_relocate_extract_seam_or_exhaustive_match
 severity: high
@@ -51,6 +52,12 @@ unrelated to what they claimed to prove:
    which properties actually carry target text elsewhere in the walk — a text
    property added to `WALK_SET` without a matching `VALUE_BEARING` entry would
    leak silently.
+6. **Test-only mirror.** `crates/windows/src/tree/hit_test.rs`'s pre-probe
+   guard ladder was inlined directly in production, and its `#[cfg(test)]`
+   coverage (`guard_zero_area`, `guard_point_outside_bounds`,
+   `guard_outside_virtual_screen`) re-typed the same boolean expressions
+   rather than calling them. The tests drove their own mirror, so inverting
+   the production guard left every one of them green.
 
 ## Root cause
 
@@ -69,7 +76,11 @@ for the lane-flags half of this and
 [A verification gate is code and needs its own test](a-verification-gate-is-code-and-needs-its-own-test.md)
 for the gate that already names shape 3. Shape 5 is a duplicate-source-of-truth
 bug: a test that checks one hand-kept list against another proves the copies
-match each other, never that either is complete.
+match each other, never that either is complete. Shape 6 is adjacent to shape
+1's delegation trick but sharper: the test did not call the production
+expression at all, it re-derived it independently, so production and test
+could silently diverge without either side ever calling the other — inverting
+production proved nothing, because the test's own mirror never moved.
 
 ## Solution
 
@@ -101,15 +112,41 @@ None of the fixes were "delete the test":
    catch-all — adding a variant without extending it is a compile error, not a
    silent `false`. `property_ids_tests.rs` asserts it implies
    `is_value_bearing()` across the whole enum, not only `WALK_SET`.
+6. **Extract one pure function and let both sides drive the same copy.**
+   `pre_probe_decision` (`crates/windows/src/tree/hit_test_classify.rs:59-78`)
+   is now the only place the guard ladder is expressed. Production calls it
+   from `pre_probe_guard` (`hit_test.rs:195-207`); `hit_test_guard_tests.rs`
+   calls it directly. Production and test read the identical logic instead of
+   two independently maintained copies of it.
 
 ## Prevention
 
-The one check that catches all five cheaply is **invert the thing under test
+The one check that catches all six cheaply is **invert the thing under test
 and confirm the test goes red**: revert the delegation to two independent
 implementations, feed the producer an input the role mapper would never
 produce, revert a `text_presence` call site to `slot()`, drop an enum variant
-from the exhaustive match. If nothing turns red, the test is not coverage.
+from the exhaustive match, trip one arm of the pre-probe guard ladder and
+check that only that arm's own test fails. If nothing turns red, the test is
+not coverage.
 
+Shape 6 shows that inversion alone can still lie. The first extraction of the
+guard ladder returned a bare `Option<HitTestResult>`, and every guard trip
+produced the identical `Some(Unknown)`. Inverting the zero-area arm under that
+shape still turned a test red — but for the wrong reason: the geometry fell
+through to a *different* guard, which answered `Some(Unknown)` in its place,
+so the arm supposedly under test was never the one actually exercised.
+Falsifiability needed a result each arm could be blamed for individually:
+`PreProbeGuard` (`hit_test_classify.rs:40-45`) is four named variants —
+`ZeroArea`, `IconicRoot`, `OutsideVirtualScreen`, `OutsideTargetBounds` — and
+`hit_test_guard_tests.rs` asserts each one by name, so an arm silently
+absorbed by a sibling now produces the wrong variant instead of the same
+`Unknown` its sibling would have produced too.
+
+- "Invert it and confirm the test goes red" is necessary but not sufficient
+  when several arms collapse to the same output value: check that it goes red
+  because *that* arm's own assertion failed, not because a sibling arm caught
+  the case in its place. Give each arm a distinguishable result, or the
+  inversion is absorbed by a sibling.
 - Before trusting a "these two agree" test, check whether one side is defined
   in terms of the other.
 - Before trusting a states/role test, check the role mapper can actually

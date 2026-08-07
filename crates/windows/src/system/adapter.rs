@@ -84,6 +84,18 @@ impl SystemOps for WindowsAdapter {
         Ok(windows.into_iter().next())
     }
 
+    fn resolve_window_strict(
+        &self,
+        win: &WindowInfo,
+        deadline: Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::system::window_resolve::resolve_window_strict(win, deadline)
+    }
+
+    fn focus_window(&self, win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
+        crate::system::window_resolve::focus_window(win, lease)
+    }
+
     fn list_displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         crate::system::display::list_displays_live(deadline)
     }

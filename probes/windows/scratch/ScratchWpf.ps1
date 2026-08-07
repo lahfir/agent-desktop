@@ -47,7 +47,8 @@ $xaml = @'
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
@@ -70,35 +71,49 @@ $xaml = @'
       <Button x:Name="btnAction" AutomationProperties.AutomationId="btnAction"
               Content="Do Action" Width="110" Height="26" Margin="0,0,8,0"/>
       <Button x:Name="btnMutateList" AutomationProperties.AutomationId="btnMutateList"
-              Content="Mutate List" Width="110" Height="26"/>
+              Content="Mutate List" Width="110" Height="26" Margin="0,0,8,0"/>
+      <Button x:Name="btnDisabled" AutomationProperties.AutomationId="btnDisabled"
+              Content="Disabled" Width="90" Height="26" IsEnabled="False" Margin="0,0,8,0"/>
+      <Button x:Name="btnZeroSize" AutomationProperties.AutomationId="btnZeroSize"
+              Content="zero" Width="0" Height="0"/>
     </StackPanel>
-    <ListBox x:Name="lstItems" Grid.Row="4" Margin="0,4"
+    <ListBox x:Name="lstItems" Grid.Row="4" Margin="0,4" Height="140"
+             VirtualizingStackPanel.IsVirtualizing="True"
+             VirtualizingStackPanel.VirtualizationMode="Recycling"
+             ScrollViewer.CanContentScroll="True"
              AutomationProperties.AutomationId="lstItems"/>
-    <TextBox x:Name="txtStatusMirror" Grid.Row="5" Margin="0,4" Height="24" IsReadOnly="True"
+    <Canvas x:Name="pnlOverlay" Grid.Row="5" Margin="0,4" Height="56"
+            AutomationProperties.AutomationId="pnlOverlay">
+      <Button x:Name="btnCovered" Canvas.Left="8" Canvas.Top="8" Width="120" Height="36"
+              AutomationProperties.AutomationId="btnCovered" Content="Covered"/>
+      <Button x:Name="btnOverlay" Canvas.Left="40" Canvas.Top="16" Width="120" Height="36"
+              AutomationProperties.AutomationId="btnOverlay" Content="Overlay"/>
+    </Canvas>
+    <TextBox x:Name="txtStatusMirror" Grid.Row="6" Margin="0,4" Height="24" IsReadOnly="True"
              AutomationProperties.AutomationId="txtStatusMirror" Text="status:ready"/>
-    <TextBlock x:Name="lblStatus" Grid.Row="6" Margin="0,4"
+    <TextBlock x:Name="lblStatus" Grid.Row="7" Margin="0,4"
                AutomationProperties.AutomationId="lblStatus" Text="status:ready"/>
-    <StackPanel Grid.Row="7" Orientation="Horizontal" Margin="0,4">
+    <StackPanel Grid.Row="8" Orientation="Horizontal" Margin="0,4">
       <TextBlock x:Name="lblFieldName" AutomationProperties.AutomationId="lblFieldName"
                  Text="Field label" VerticalAlignment="Center" Margin="0,0,8,0"/>
       <TextBox x:Name="txtLabelled" AutomationProperties.AutomationId="txtLabelled"
                AutomationProperties.LabeledBy="{Binding ElementName=lblFieldName}"
                Width="140" Height="24"/>
     </StackPanel>
-    <StackPanel Grid.Row="8" Orientation="Horizontal" Margin="0,4">
+    <StackPanel Grid.Row="9" Orientation="Horizontal" Margin="0,4">
       <PasswordBox x:Name="pwdSecret" AutomationProperties.AutomationId="pwdSecret"
                    Width="120" Height="24" Margin="0,0,8,0"/>
       <TextBox x:Name="txtLabelledBySecret" AutomationProperties.AutomationId="txtLabelledBySecret"
                AutomationProperties.LabeledBy="{Binding ElementName=pwdSecret}"
                Width="140" Height="24"/>
     </StackPanel>
-    <TabControl x:Name="tabMain" Grid.Row="9" Margin="0,4"
+    <TabControl x:Name="tabMain" Grid.Row="10" Margin="0,4"
                 AutomationProperties.AutomationId="tabMain">
       <TabItem x:Name="tabAlpha" Header="Tab-Alpha" AutomationProperties.AutomationId="tabAlpha"/>
       <TabItem x:Name="tabBravo" Header="Tab-Bravo" AutomationProperties.AutomationId="tabBravo"/>
       <TabItem x:Name="tabCharlie" Header="Tab-Charlie" AutomationProperties.AutomationId="tabCharlie"/>
     </TabControl>
-    <StackPanel Grid.Row="10" Orientation="Horizontal" Margin="0,4">
+    <StackPanel Grid.Row="11" Orientation="Horizontal" Margin="0,4">
       <ToggleButton x:Name="btnToggle" AutomationProperties.AutomationId="btnToggle"
                     Content="Toggle Mode" Width="120" Height="26" Margin="0,0,8,0"/>
       <DataGrid x:Name="dgvRows" Margin="0,0,0,0" Width="380" Height="120"
@@ -131,8 +146,8 @@ $lblStatus = $window.FindName('lblStatus')
 $txtStatusMirror = $window.FindName('txtStatusMirror')
 $dgvRows = $window.FindName('dgvRows')
 
-$script:BaselineItems = @('Item-Alpha', 'Item-Bravo', 'Item-Charlie', 'Item-Delta', 'Item-Echo')
-$script:MutatedItems = @('Item-Alpha', 'Item-Charlie', 'Item-Delta', 'Item-Echo', 'Item-Foxtrot', 'Item-Golf')
+$script:BaselineItems = @(0..39 | ForEach-Object { 'Item-{0:D2}' -f $_ })
+$script:MutatedItems = @(0..39 | ForEach-Object { 'Item-{0:D2}' -f (($_ + 3) % 40) })
 $script:ListMutated = [bool]$MutateList
 $script:ActionCount = 0
 

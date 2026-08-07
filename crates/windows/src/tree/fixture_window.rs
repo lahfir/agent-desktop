@@ -2,6 +2,8 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
 
+use super::fixture_overlay;
+
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::System::ApplicationInstallationAndServicing::{
     ACTCTXW, ActivateActCtx, CreateActCtxW,
@@ -17,8 +19,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 const ES_PASSWORD: u32 = 0x0020;
-/// Private message the host posts to itself before entering its pump, so
-/// readiness is announced from inside the pump rather than before it.
+/// Private message posted before the pump so readiness is announced from inside it.
 ///
 /// `ElementFromHandle` sends `WM_GETOBJECT` and a cross-thread `SendMessage`
 /// blocks until the receiving thread dispatches, so a handle announced before
@@ -26,10 +27,10 @@ const ES_PASSWORD: u32 = 0x0020;
 /// `E_FAIL`.
 const WM_FIXTURE_READY: u32 = 0x0400 + 1;
 const CONTROL_BORDER: u32 = 0x0080_0000;
-const OFFSCREEN_LEFT: i32 = 2_000;
-const OFFSCREEN_TOP: i32 = 2_000;
-const WINDOW_WIDTH: i32 = 420;
-const WINDOW_HEIGHT: i32 = 320;
+pub(crate) const OFFSCREEN_LEFT: i32 = 2_000;
+pub(crate) const OFFSCREEN_TOP: i32 = 2_000;
+pub(crate) const WINDOW_WIDTH: i32 = 420;
+pub(crate) const WINDOW_HEIGHT: i32 = 320;
 
 /// The `comctl32` v6 side-by-side manifest. Without an activation context the
 /// v5 common controls are bound, and the standard controls the fixture creates
@@ -77,7 +78,7 @@ pub(crate) struct WindowGeometry {
     pub(crate) height: i32,
 }
 
-fn wide(text: &str) -> Vec<u16> {
+pub(crate) fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
@@ -99,6 +100,10 @@ unsafe extern "system" fn window_proc(
 ) -> LRESULT {
     if message == WM_DESTROY {
         unsafe { PostQuitMessage(0) };
+        return 0;
+    }
+    if message == fixture_overlay::STAGE_OVERLAY_MESSAGE {
+        fixture_overlay::show_overlay_child(window);
         return 0;
     }
     unsafe { DefWindowProcW(window, message, wparam, lparam) }
@@ -132,7 +137,7 @@ fn install_common_controls_v6() {
     }
 }
 
-fn register_class(class_name: &str) -> Result<(), String> {
+pub(crate) fn register_class(class_name: &str) -> Result<(), String> {
     let name = wide(class_name);
     let class = WNDCLASSEXW {
         cbSize: size_of::<WNDCLASSEXW>() as u32,
@@ -163,7 +168,7 @@ fn control(parent: HWND, class: &str, text: &str, style: u32, top: i32) -> HWND 
             0,
             class.as_ptr(),
             text.as_ptr(),
-            WS_CHILD | WS_VISIBLE | style,
+            WS_CHILD | style,
             8,
             top,
             200,
@@ -176,19 +181,20 @@ fn control(parent: HWND, class: &str, text: &str, style: u32, top: i32) -> HWND 
     }
 }
 
-/// Creates the fixture window on the calling thread and pumps its message
-/// queue until the window is destroyed.
-///
-/// The caller must be a thread that does nothing else afterwards.
-/// `ElementFromHandle` sends `WM_GETOBJECT`, and a cross-thread `SendMessage`
-/// blocks until the receiving thread dispatches it, so a thread that both
-/// hosts the window and waits on a UI Automation result deadlocks.
-///
-/// The window is shown with `SW_SHOWNOACTIVATE` at an off-screen origin and a
-/// non-zero size: `HwndProxyElementProvider` excludes windows that fail
-/// `IsWindowVisible` or report a zero-area rect, so `SW_HIDE` and a
-/// message-only window are both unusable here.
 pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, String>>) {
+    host_window_at(class_name, ready, OFFSCREEN_LEFT, OFFSCREEN_TOP);
+}
+
+/// Creates the fixture window at a caller-chosen origin, then pumps until
+/// destroyed. Live hit-test legs need an origin inside the virtual screen
+/// rect; the default off-screen parking at (2000,2000) is refused by that
+/// guard (A18-6).
+pub(crate) fn host_window_at(
+    class_name: &str,
+    ready: Sender<Result<PumpHandle, String>>,
+    left: i32,
+    top: i32,
+) {
     activate_common_controls_v6();
     if let Err(error) = register_class(class_name) {
         let _ = ready.send(Err(error));
@@ -202,8 +208,8 @@ pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, Str
             name.as_ptr(),
             title.as_ptr(),
             WS_OVERLAPPEDWINDOW,
-            OFFSCREEN_LEFT,
-            OFFSCREEN_TOP,
+            left,
+            top,
             WINDOW_WIDTH,
             WINDOW_HEIGHT,
             std::ptr::null_mut(),
@@ -225,13 +231,104 @@ pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, Str
     pump_until_destroyed(window as isize, ready);
 }
 
+/// Serializes the live legs that stage on-screen windows and then read the
+/// desktop's z-order.
+///
+/// Slot rotation alone is not enough: the slot counter wraps once placements
+/// exceed the display's slot grid, and a short or remote display can offer
+/// only one row, so two parallel legs can hold the same rect. Even on distinct
+/// rects the legs are not independent — one of them deliberately raises a
+/// topmost window over a point a neighbour is about to probe.
+///
+/// The legs read Win32's opinion of their point on both sides of the probe, so
+/// a neighbour moving the z-order underneath one cannot make it assert against
+/// a desktop it never saw; what it can still do is own the point on both
+/// readings, which turns the leg's assertion into an honest skip and takes the
+/// coverage with it. Holding this while a leg stages and probes is what keeps
+/// those assertions running rather than merely truthful.
+///
+/// A poisoned lock is adopted rather than propagated: the mutex guards screen
+/// real estate, not data, so one failing leg must not cascade into every other
+/// leg reporting a lock error instead of its own verdict.
+pub(crate) fn on_screen_stage() -> std::sync::MutexGuard<'static, ()> {
+    static STAGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    STAGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// An origin inset inside the virtual screen so live hit-test fixtures clear
+/// the virtual-screen membership guard. Each call advances a slot so parallel
+/// live tests do not park on the same screen rect (A18-4 foreign-window
+/// contamination shape). Slot pitch and wrap keep the full window rect inside
+/// the virtual screen — a tall-slot layout on a short display would park below
+/// the fold and the hit-test guard would honestly answer `Unknown`.
+pub(crate) fn on_screen_origin() -> (i32, i32) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
+    };
+    const INSET: i32 = 48;
+    const SLOT_DX: i32 = WINDOW_WIDTH + 24;
+    const SLOT_DY: i32 = WINDOW_HEIGHT + 24;
+    static SLOT: AtomicU32 = AtomicU32::new(0);
+    let (vx, vy, vw, vh) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    };
+    let cols = ((vw - INSET * 2 - WINDOW_WIDTH).max(0) / SLOT_DX + 1).max(1);
+    let rows = ((vh - INSET * 2 - WINDOW_HEIGHT).max(0) / SLOT_DY + 1).max(1);
+    let slot = SLOT.fetch_add(1, Ordering::SeqCst) as i32;
+    let col = slot % cols;
+    let row = (slot / cols) % rows;
+    (vx + INSET + col * SLOT_DX, vy + INSET + row * SLOT_DY)
+}
+
+/// Locates the fixture's primary `BUTTON` by its window text.
+pub(crate) fn find_button(parent: isize) -> *mut c_void {
+    use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowExW;
+    let class = wide("BUTTON");
+    let text = wide("fixture-button");
+    unsafe {
+        FindWindowExW(
+            parent as *mut c_void,
+            std::ptr::null_mut(),
+            class.as_ptr(),
+            text.as_ptr(),
+        )
+    }
+}
+
 fn create_controls(window: HWND) -> FixtureControls {
-    let button = control(window, "BUTTON", "fixture-button", CONTROL_BORDER, 8);
-    control(window, "STATIC", "fixture-static", 0, 40);
-    let edit = control(window, "EDIT", CONTENT_MARKER, CONTROL_BORDER, 72);
-    let password = control(window, "EDIT", "", CONTROL_BORDER | ES_PASSWORD, 104);
+    let button = control(
+        window,
+        "BUTTON",
+        "fixture-button",
+        WS_VISIBLE | CONTROL_BORDER,
+        8,
+    );
+    control(window, "STATIC", "fixture-static", WS_VISIBLE, 40);
+    let edit = control(
+        window,
+        "EDIT",
+        CONTENT_MARKER,
+        WS_VISIBLE | CONTROL_BORDER,
+        72,
+    );
+    let password = control(
+        window,
+        "EDIT",
+        "",
+        WS_VISIBLE | CONTROL_BORDER | ES_PASSWORD,
+        104,
+    );
     let secret = wide(SECURE_MARKER);
     unsafe { SetWindowTextW(password, secret.as_ptr()) };
+    let _overlay = fixture_overlay::create_hidden_overlay(window);
     FixtureControls {
         button,
         edit,
@@ -277,59 +374,6 @@ pub(crate) fn minimize_window(handle: isize) {
 
 pub(crate) fn destroy_window(handle: isize) {
     unsafe { DestroyWindow(handle as *mut c_void) };
-}
-
-/// How often a stalled host looks for its stop signal.
-///
-/// Sleeping is not pumping - the queue is still never serviced, so the window
-/// stays stalled for a `SendMessage` - but it lets teardown end the thread in
-/// milliseconds instead of leaving one parked per test for two minutes.
-const STALL_POLL: std::time::Duration = std::time::Duration::from_millis(25);
-
-/// Creates a window and then deliberately never pumps its queue.
-///
-/// Whether a non-pumping target produces a clean timeout or a hang was
-/// treated as unverifiable, on the assumption that the fixture cannot
-/// produce the condition. It can: `CreateWindowExW` dispatches `WM_CREATE`
-/// inline, so a thread can own a live window and then stop dispatching.
-/// That makes the resolver's pump probe testable instead of assumed.
-pub(crate) fn stalled_window(
-    class_name: &str,
-    ready: Sender<Result<isize, String>>,
-    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) {
-    if let Err(error) = register_class(class_name) {
-        let _ = ready.send(Err(error));
-        return;
-    }
-    let name = wide(class_name);
-    let title = wide("agent-desktop stalled fixture");
-    let window = unsafe {
-        CreateWindowExW(
-            0,
-            name.as_ptr(),
-            title.as_ptr(),
-            WS_OVERLAPPEDWINDOW,
-            OFFSCREEN_LEFT,
-            OFFSCREEN_TOP,
-            WINDOW_WIDTH,
-            WINDOW_HEIGHT,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            GetModuleHandleW(std::ptr::null()),
-            std::ptr::null(),
-        )
-    };
-    if window.is_null() {
-        let _ = ready.send(Err("CreateWindowExW produced no window".into()));
-        return;
-    }
-    unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
-    let _ = ready.send(Ok(window as isize));
-    while !stop.load(std::sync::atomic::Ordering::SeqCst) {
-        std::thread::sleep(STALL_POLL);
-    }
-    unsafe { DestroyWindow(window) };
 }
 
 pub(crate) fn geometry(handle: isize) -> WindowGeometry {

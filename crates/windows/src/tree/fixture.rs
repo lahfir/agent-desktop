@@ -17,6 +17,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
 const WALKABLE_TIMEOUT: Duration = Duration::from_secs(20);
 const WALKABLE_POLL: Duration = Duration::from_millis(100);
+const STALL_POLL: Duration = Duration::from_millis(25);
 
 /// Joins this thread to the multithreaded apartment for a test.
 ///
@@ -159,11 +160,20 @@ pub(crate) struct LocalFixture {
 
 impl LocalFixture {
     pub(crate) fn create() -> Result<Self, String> {
+        Self::create_at(
+            fixture_window::OFFSCREEN_LEFT,
+            fixture_window::OFFSCREEN_TOP,
+        )
+    }
+
+    /// Parks the fixture at a caller-chosen origin so live hit-test legs can
+    /// place the window inside the virtual screen rect.
+    pub(crate) fn create_at(left: i32, top: i32) -> Result<Self, String> {
         let class_name = fixture_window::unique_class_name();
         let (sender, receiver) = channel();
         let pump = spawn({
             let class_name = class_name.clone();
-            move || host_on_this_thread(&class_name, sender)
+            move || host_on_this_thread_at(&class_name, sender, left, top)
         });
         let running = match receiver.recv_timeout(READY_TIMEOUT) {
             Ok(Ok(running)) => running,
@@ -232,7 +242,7 @@ impl StalledFixture {
         let host = spawn({
             let class_name = class_name.clone();
             let stop = stop.clone();
-            move || fixture_window::stalled_window(&class_name, sender, stop)
+            move || stalled_window(&class_name, sender, stop)
         });
         match receiver.recv_timeout(READY_TIMEOUT) {
             Ok(Ok(handle)) => Ok(Self {
@@ -264,11 +274,53 @@ impl Drop for StalledFixture {
     }
 }
 
-fn host_on_this_thread(
+fn stalled_window(class_name: &str, ready: Sender<Result<isize, String>>, stop: Arc<AtomicBool>) {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DestroyWindow, SW_SHOWNOACTIVATE, ShowWindow, WS_OVERLAPPEDWINDOW,
+    };
+
+    if let Err(error) = fixture_window::register_class(class_name) {
+        let _ = ready.send(Err(error));
+        return;
+    }
+    let name = fixture_window::wide(class_name);
+    let title = fixture_window::wide("agent-desktop stalled fixture");
+    let window = unsafe {
+        CreateWindowExW(
+            0,
+            name.as_ptr(),
+            title.as_ptr(),
+            WS_OVERLAPPEDWINDOW,
+            fixture_window::OFFSCREEN_LEFT,
+            fixture_window::OFFSCREEN_TOP,
+            420,
+            320,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            GetModuleHandleW(std::ptr::null()),
+            std::ptr::null(),
+        )
+    };
+    if window.is_null() {
+        let _ = ready.send(Err("CreateWindowExW produced no window".into()));
+        return;
+    }
+    unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
+    let _ = ready.send(Ok(window as isize));
+    while !stop.load(Ordering::SeqCst) {
+        std::thread::sleep(STALL_POLL);
+    }
+    unsafe { DestroyWindow(window) };
+}
+
+fn host_on_this_thread_at(
     class_name: &str,
     ready: Sender<Result<fixture_window::PumpHandle, String>>,
+    left: i32,
+    top: i32,
 ) {
-    fixture_window::host_window(class_name, ready);
+    fixture_window::host_window_at(class_name, ready, left, top);
 }
 
 /// Blocks until the window actually resolves to a UI Automation root.

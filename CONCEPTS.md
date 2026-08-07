@@ -67,6 +67,8 @@ The durable identity of a window, used when observation resolves a snapshot root
 
 Window handles can be recycled: after a window is destroyed, the OS may hand its handle to a different window. A handle alone therefore names the wrong window after churn. Identity is the handle corroborated by a process-generation token — a value derived from the owning process's creation time — so a recycled handle whose process generation no longer matches fails closed rather than resolving to the new occupant. The corroboration is strict for a window freshly listed in the same invocation, and tolerant of title drift for a stored ref (titles legitimately change under a live window), per platform: Windows pairs the HWND with a creation-time token, macOS the window number with a process start-time token.
 
+A handle's identity can be invalidated at any point between an observation and a later action on it, and checking it once at the start of that gap only proves it was valid then. Where the check and the act cannot be a single atomic operation, the corroboration has to be repeated immediately before each write the action performs, and the action's own success check must itself be identity-qualified — confirming the responding resource is still the expected occupant, not merely that some resource at the expected handle responded — or a recycle occurring late in the gap reports success over the wrong resource.
+
 ### Ref
 A short element identifier assigned by agent-desktop to an actionable or drillable node in a snapshot.
 
@@ -155,6 +157,21 @@ The refusal is enforced where the close happens, so CLI, FFI, and any future con
 
 ### Actionability
 The pre-dispatch judgement that a resolved element is safe to act on, based on native evidence such as visibility, stability, enabled state, supported action, policy, and editability.
+
+### Auto-Wait
+The default-on bounded poll that holds a ref action until its target becomes actionable, then fails with `TIMEOUT` if the budget expires.
+
+The bound is 5000ms; `--timeout-ms 0` restores single-shot act-immediately behavior. Transient checks (visibility, stability, enabled, occlusion) are polled; terminal checks (supported action, policy, editability) fail fast without waiting out the budget.
+
+### Actionability Battery
+The shared pre-dispatch set of live checks core runs against a resolved element — visible, stable, enabled, supported action, policy, editable, and receiving events — before any adapter dispatch.
+
+Two hit-test shapes must not be conflated. The battery's `receives_events` check sweeps **five** candidate points from the element's bounds (center plus four quadrant points) and passes if *any* reaches the target, asking whether the element is reachable at all so a partially occluded control still passes. The pointer pipeline asks a different question at the **single** coordinate it has already resolved and will move the cursor to; a target that satisfies the battery can still fail that single-point check.
+
+### Occlusion Gate / Hit Test
+The three-way probe that asks whether another element visibly intercepts the action point: `ReachesTarget`, `InterceptedBy { role, name, bounds }`, or `Unknown`.
+
+The gate fails open on `Unknown`: unavailable evidence never false-fails an action the dispatch outcome will judge. `InterceptedBy` requires positive evidence — within an agreed window attribution the platform's hit-test verdict alone, or two-opinion agreement when the hit belongs to another window — so an inconclusive probe cannot invent an occluder.
 
 ### Delivery Semantics
 What a failed or uncertain action says about whether input actually reached the application, and therefore whether repeating it is safe.

@@ -25,6 +25,10 @@
     launcher pid is tracked and killed the same way as everything else, and
     nothing else with that image name is ever touched.
 
+    Actionability/occlusion dogfood (sub-phase 2.6 U6) lives beside this
+    runner as run-actionability-dogfood.ps1 and drives the release binary's
+    JSON envelopes rather than uia_tree_dump.
+
 .PARAMETER OutDir
     Directory the per-target capture JSON and the run summary are written to.
     Defaults to docs\plans\2026-07-31-001-captures under the repo root.

@@ -331,7 +331,14 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
 
+      # The zero-area visibility evidence can only come from a WPF control, and
+      # staging its on-screen host is opt-in so a developer's desktop does not
+      # gain a window mid-suite. This lane is the one that runs unattended, so
+      # it opts in; without the variable the test body skips and the evidence is
+      # never gathered anywhere.
       - name: Core and Windows unit tests
+        env:
+          AGENT_DESKTOP_LIVE_WPF: "1"
         run: cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
 
       # The census example carries the redaction rule that keeps a real

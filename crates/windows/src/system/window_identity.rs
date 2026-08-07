@@ -68,10 +68,7 @@ impl<'a> WindowIdentityEvidence<'a> {
     /// application's tree and every check downstream - which re-verifies the
     /// same stored pid and token - would agree it was the right one.
     pub(crate) fn verify_stored(&self) -> Result<(), AdapterError> {
-        if live_window_owner(self.handle) != Some(self.pid) {
-            return Err(window_identity_mismatch(self.handle));
-        }
-        if !process_identity::matches_instance(self.pid, self.process_instance)? {
+        if !self.owns_handle_now()? {
             return Err(window_identity_mismatch(self.handle));
         }
         let live = live_window_title(self.handle);
@@ -83,6 +80,27 @@ impl<'a> WindowIdentityEvidence<'a> {
         }
         Ok(())
     }
+
+    /// Whether the handle is owned, at this instant, by the stored process
+    /// *instance*: the pid that owns the handle right now, and that pid still
+    /// running the generation the evidence was taken from.
+    ///
+    /// Both terms are load-bearing and neither substitutes for the other. The
+    /// owner read alone cannot see a process that exited and had its pid
+    /// handed to something else, because Windows recycles pids freely; the
+    /// generation token alone cannot see a handle that passed to a different
+    /// window of a still-running process. A caller that re-checks only the pid
+    /// at the point of use is therefore weaker than the check that admitted
+    /// the window, and a replacement that inherited both the recycled pid and
+    /// the recycled handle would satisfy it. This predicate exists so the
+    /// admission check and every point-of-use guard are the same test by
+    /// construction rather than by convention.
+    pub(crate) fn owns_handle_now(&self) -> Result<bool, AdapterError> {
+        if live_window_owner(self.handle) != Some(self.pid) {
+            return Ok(false);
+        }
+        process_identity::matches_instance(self.pid, self.process_instance)
+    }
 }
 
 /// Reads the process that owns a window handle right now - the fact that
@@ -92,7 +110,12 @@ impl<'a> WindowIdentityEvidence<'a> {
 /// window manager no longer knows, and the non-Windows lane where no window
 /// server is reachable. Callers treat it as a failed match, never as an
 /// absent constraint, so an unreadable owner fails closed.
-fn live_window_owner(handle: super::window_enum::WindowHandle) -> Option<ProcessId> {
+///
+/// The out-parameter is what decides the answer rather than the returned thread
+/// id: both are zero exactly when the call fails, since an invalid handle leaves
+/// the pre-zeroed variable untouched and a live window belongs to a process
+/// whose id is never zero.
+pub(crate) fn live_window_owner(handle: super::window_enum::WindowHandle) -> Option<ProcessId> {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
@@ -112,7 +135,7 @@ fn live_window_owner(handle: super::window_enum::WindowHandle) -> Option<Process
 
 /// Reads the live title of a window handle, the one piece of the strict check
 /// only the OS can answer for.
-fn live_window_title(handle: super::window_enum::WindowHandle) -> Option<String> {
+pub(crate) fn live_window_title(handle: super::window_enum::WindowHandle) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;

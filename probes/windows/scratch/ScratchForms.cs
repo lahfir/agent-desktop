@@ -138,7 +138,8 @@ namespace AgentDesktop.Scratch
         private static readonly string[] ControlIdOrder = new string[]
         {
             "chkToggle", "lblValueCaption", "txtValue", "cboChoice", "btnAction",
-            "btnMutateList", "btnZeroSize", "tbSlider", "trvNodes", "lstItems",
+            "btnMutateList", "btnZeroSize", "btnDisabled", "btnCovered", "btnOverlay",
+            "pnlOverlay", "tbSlider", "trvNodes", "lstItems",
             "pnlScroll", "btnRow00", "btnRow01", "btnRow02", "btnRow03", "btnRow04",
             "btnRow05", "btnRow06", "btnRow07", "lblStatus", "txtStatusMirror",
             "lblScrollPos", "lblSliderValue", "lblInstance",
@@ -290,8 +291,20 @@ namespace AgentDesktop.Scratch
 
             Place(this, new Button(), "btnZeroSize", 140, 140, 0, 0).Text = "zero";
 
+            Button disabled = Place(this, new Button(), "btnDisabled", 232, 140, 104, 26);
+            disabled.Text = "Disabled";
+            disabled.Enabled = false;
+
             Place(this, new Button(), "btnDupPair", 16, 300, 90, 26).Text = "dup-a";
             Place(this, new Button(), "btnDupPair", 112, 300, 90, 26).Text = "dup-b";
+
+            Panel overlayHost = Place(this, new Panel(), "pnlOverlay", 232, 300, 160, 56);
+            overlayHost.BorderStyle = BorderStyle.FixedSingle;
+            Button covered = Place(overlayHost, new Button(), "btnCovered", 4, 8, 100, 36);
+            covered.Text = "Covered";
+            Button overlay = Place(overlayHost, new Button(), "btnOverlay", 36, 16, 100, 36);
+            overlay.Text = "Overlay";
+            overlay.BringToFront();
 
             Place(this, slider, "tbSlider", 16, 176, 320, 45);
             slider.Minimum = 0;

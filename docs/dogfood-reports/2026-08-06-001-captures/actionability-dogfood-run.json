@@ -1,0 +1,468 @@
+{
+    "environment":  {
+                        "os_caption":  "Microsoft Windows Server 2019 Datacenter",
+                        "os_build":  "17763",
+                        "binary":  "agent-desktop.exe",
+                        "binary_bytes":  2063872,
+                        "generated":  "2026-08-07T02:51:45.0077892-06:00"
+                    },
+    "judgements":  [
+                       {
+                           "id":  "J1",
+                           "claim":  "foreign-process occluder names occluder on headed click",
+                           "target":  "ScratchForms btnAction under Notepad",
+                           "result":  "pass",
+                           "verdict":  "occluder named with honest recovery",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "click",
+                                                  "code":  "ACTION_FAILED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "recovery_strategy":  null,
+                                                  "checks":  [
+                                                                 {
+                                                                     "name":  "visible",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "stable",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "enabled",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "supported_action",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "policy",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "receives_events",
+                                                                     "status":  "fail",
+                                                                     "reason_shape":  "occluded by \u003crole\u003e",
+                                                                     "occluder_role":  "document",
+                                                                     "occluder_name_present":  true
+                                                                 }
+                                                             ],
+                                                  "details_kind":  null,
+                                                  "occluder_role_present":  true,
+                                                  "occluder_name_present":  true,
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_scroll_into_view":  false
+                                              },
+                           "notes":  "code=ACTION_FAILED recovery="
+                       },
+                       {
+                           "id":  "J2",
+                           "claim":  "unoccluded headed click reaches honest pre-2.7 dispatch",
+                           "target":  "ScratchForms btnAction after Notepad dismissed",
+                           "result":  "pass",
+                           "verdict":  "PLATFORM_NOT_SUPPORTED naming execute_action, so the gate passed and dispatch was reached",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "click",
+                                                  "code":  "PLATFORM_NOT_SUPPORTED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "recovery_strategy":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null,
+                                                  "occluder_role_present":  null,
+                                                  "occluder_name_present":  null,
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  true,
+                                                  "message_names_scroll_into_view":  false
+                                              },
+                           "notes":  "code=PLATFORM_NOT_SUPPORTED names_execute_action=True names_scroll_into_view=False"
+                       },
+                       {
+                           "id":  "J3",
+                           "claim":  "same-root in-window overlay names occluder",
+                           "target":  "ScratchForms btnCovered under btnOverlay",
+                           "result":  "pass",
+                           "verdict":  "in-window occluder named",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "click",
+                                                  "code":  "ACTION_FAILED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "recovery_strategy":  null,
+                                                  "checks":  [
+                                                                 {
+                                                                     "name":  "visible",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "stable",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "enabled",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "supported_action",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "policy",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null,
+                                                                     "occluder_role":  null,
+                                                                     "occluder_name_present":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "receives_events",
+                                                                     "status":  "fail",
+                                                                     "reason_shape":  "occluded by \u003crole\u003e",
+                                                                     "occluder_role":  "button",
+                                                                     "occluder_name_present":  true
+                                                                 }
+                                                             ],
+                                                  "details_kind":  null,
+                                                  "occluder_role_present":  true,
+                                                  "occluder_name_present":  true,
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_scroll_into_view":  false
+                                              },
+                           "notes":  "code=ACTION_FAILED occluder_role=button"
+                       },
+                       {
+                           "id":  "J6",
+                           "claim":  "minimized-window guard does not invent InterceptedBy",
+                           "target":  "minimized ScratchForms btnAction",
+                           "result":  "pass",
+                           "verdict":  "no occluder-named envelope (pre_click_iconic=True code=PLATFORM_NOT_SUPPORTED)",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "click",
+                                                  "code":  "PLATFORM_NOT_SUPPORTED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "recovery_strategy":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null,
+                                                  "occluder_role_present":  null,
+                                                  "occluder_name_present":  null,
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  true,
+                                                  "message_names_scroll_into_view":  false
+                                              },
+                           "notes":  "is_iconic_before_click=True named_occluder=False code=PLATFORM_NOT_SUPPORTED names_execute_action=True"
+                       },
+                       {
+                           "id":  "J4",
+                           "claim":  "below-fold Explorer auto-scroll or honest unsupported",
+                           "target":  "Explorer listitem/treeitem",
+                           "result":  "pass",
+                           "verdict":  "honest observation-judged delivered_unverified (KTD5)",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "click",
+                                                  "code":  "ACTION_FAILED",
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "recovery_strategy":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null,
+                                                  "occluder_role_present":  null,
+                                                  "occluder_name_present":  null,
+                                                  "suggestion_present":  false,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_scroll_into_view":  false
+                                              },
+                           "notes":  "candidates=19 code=ACTION_FAILED delivery=delivered_unverified kind= names_execute_action=False names_scroll_into_view=False"
+                       },
+                       {
+                           "id":  "J5",
+                           "claim":  "Chromium hit-test behaves as A18-3 branch",
+                           "target":  "Obsidian Chromium/Electron",
+                           "result":  "ran",
+                           "verdict":  "target_absent_or_shell_bound",
+                           "envelope_shape":  null,
+                           "notes":  "refs=15 complete=True positive_area_sampled=0 branch=target_absent_or_shell_bound"
+                       },
+                       {
+                           "id":  "J3b",
+                           "claim":  "WPF same-root overlay corroboration",
+                           "target":  "ScratchWpf btnCovered",
+                           "result":  "ran",
+                           "verdict":  "envelope recorded",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "click",
+                                                  "code":  "PLATFORM_NOT_SUPPORTED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "recovery_strategy":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null,
+                                                  "occluder_role_present":  null,
+                                                  "occluder_name_present":  null,
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  true,
+                                                  "message_names_scroll_into_view":  false
+                                              },
+                           "notes":  "code=PLATFORM_NOT_SUPPORTED"
+                       }
+                   ],
+    "envelopes":  [
+                      {
+                          "id":  "J1-foreign-occluder",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "click",
+                                        "code":  "ACTION_FAILED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "recovery_strategy":  null,
+                                        "checks":  [
+                                                       {
+                                                           "name":  "visible",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "stable",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "enabled",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "supported_action",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "policy",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "receives_events",
+                                                           "status":  "fail",
+                                                           "reason_shape":  "occluded by \u003crole\u003e",
+                                                           "occluder_role":  "document",
+                                                           "occluder_name_present":  true
+                                                       }
+                                                   ],
+                                        "details_kind":  null,
+                                        "occluder_role_present":  true,
+                                        "occluder_name_present":  true,
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_scroll_into_view":  false
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J2-gate-pass-dispatch",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "click",
+                                        "code":  "PLATFORM_NOT_SUPPORTED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "recovery_strategy":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null,
+                                        "occluder_role_present":  null,
+                                        "occluder_name_present":  null,
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  true,
+                                        "message_names_scroll_into_view":  false
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J3-same-root-overlay",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "click",
+                                        "code":  "ACTION_FAILED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "recovery_strategy":  null,
+                                        "checks":  [
+                                                       {
+                                                           "name":  "visible",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "stable",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "enabled",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "supported_action",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "policy",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null,
+                                                           "occluder_role":  null,
+                                                           "occluder_name_present":  null
+                                                       },
+                                                       {
+                                                           "name":  "receives_events",
+                                                           "status":  "fail",
+                                                           "reason_shape":  "occluded by \u003crole\u003e",
+                                                           "occluder_role":  "button",
+                                                           "occluder_name_present":  true
+                                                       }
+                                                   ],
+                                        "details_kind":  null,
+                                        "occluder_role_present":  true,
+                                        "occluder_name_present":  true,
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_scroll_into_view":  false
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J6-minimized-guard",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "click",
+                                        "code":  "PLATFORM_NOT_SUPPORTED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "recovery_strategy":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null,
+                                        "occluder_role_present":  null,
+                                        "occluder_name_present":  null,
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  true,
+                                        "message_names_scroll_into_view":  false
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-explorer-scroll",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "click",
+                                        "code":  "ACTION_FAILED",
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "recovery_strategy":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null,
+                                        "occluder_role_present":  null,
+                                        "occluder_name_present":  null,
+                                        "suggestion_present":  false,
+                                        "message_names_execute_action":  false,
+                                        "message_names_scroll_into_view":  false
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J3b-wpf-same-root",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "click",
+                                        "code":  "PLATFORM_NOT_SUPPORTED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "recovery_strategy":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null,
+                                        "occluder_role_present":  null,
+                                        "occluder_name_present":  null,
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  true,
+                                        "message_names_scroll_into_view":  false
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      }
+                  ]
+}

@@ -64,9 +64,9 @@ Windows carries no fixture harness, so the gate takes the form of a scripted
 dogfood run against off-the-shelf software, and every sub-phase does one before
 it merges. The committed reports in `docs/dogfood-reports/` are the record: the
 macOS enhanced-reliability run that set the pattern, then vocabulary
-(sub-phase 2.3), the observation read path (2.4), and resolution and the live
-locator (2.5). This is not a rule that recurred; it is how each layer of the
-adapter enters the product.
+(sub-phase 2.3), the observation read path (2.4), resolution and the live
+locator (2.5), and actionability and occlusion (2.6). This is not a rule that
+recurred; it is how each layer of the adapter enters the product.
 
 The vocabulary run shows what the shape buys. `probes/windows/scratch/run-dogfood.ps1` drove the
 `ControlType`→`Role`, action, and state vocabulary against four real UI stacks nobody in this
@@ -82,6 +82,27 @@ census JSON it was produced from is deliberately gitignored (see `docs/plans/202
 in `.gitignore`), because a census can carry a real application's on-screen text where a
 report describing shapes and counts does not — the durable record is the report, not the
 capture.
+
+The 2.6 actionability-and-occlusion run sharpens the same discipline one level
+up: a dogfood judgement can accept the exact defect it was built to catch when
+two code paths share an error code. Sub-phase 2.6's J4 judgement treated any
+`PLATFORM_NOT_SUPPORTED` envelope as proof a below-fold Explorer scroll
+worked — but that code is also exactly what the defect produces, because
+`execute_action` is legitimately unimplemented at this sub-phase: a click
+whose `scroll_into_view` override is missing and falls through to the trait
+default answers with the identical code as a click that scrolled, passed the
+gate, and reached dispatch. Deleting the product fix left the gate reporting
+pass; three sibling judgements had the same hole. The fix is a positive
+discriminator, not a broader error-code check — the judgements now require
+the envelope's `message` to name `execute_action` by name, proving dispatch
+was actually reached, per the header comment in
+`probes/windows/scratch/run-actionability-dogfood.ps1:15-22` and the
+`Test-DispatchReached` / `Test-UnsupportedSeamBeforeDispatch` predicates at
+`:175-189` (commit `fd7fe3b`). It is this doc's own "verify effects
+independently of `ok: true`" guidance one level down: a structured error
+*code* is not enough discrimination either, when the healthy path and the
+defect share one. Report:
+`docs/dogfood-reports/2026-08-06-001-feat-windows-2-6-actionability-occlusion-dogfood.md`.
 
 A run substitutes for the fixture app only while it keeps the fixture app's discipline — real
 software, effects verified independently, skips recorded honestly, and raw captures kept out of
