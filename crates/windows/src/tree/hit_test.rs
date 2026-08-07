@@ -350,3 +350,11 @@ mod tests;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "hit_test_live_tests.rs"]
 mod live_tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "envelope_tests.rs"]
+mod envelope_tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "envelope_live_tests.rs"]
+mod envelope_live_tests;
