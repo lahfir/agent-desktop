@@ -31,9 +31,8 @@ mod imp {
         DeliverySemantics, ErrorCode, InteractionPolicy, RANGE_LABEL, UIAElement, VALUE_LABEL,
         VALUE_WRITE_CHAIN, execute_chain,
     };
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::post_state::after_delivery;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
     use crate::tree::element_properties::ElementProperties;
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
@@ -48,6 +47,7 @@ mod imp {
     ) -> Result<Vec<ActionStep>, AdapterError> {
         let value_ok = value_writable(element);
         let range_ok = range_available(element);
+        let parsed = parse_finite_f64(value);
         set_value_judged_for(
             deadline,
             policy,
@@ -55,7 +55,10 @@ mod imp {
             value_ok,
             range_ok,
             || invoke_value_set(element, value),
-            || invoke_range_set(element, value),
+            || match parsed {
+                Some(target) => invoke_range_set(element, target),
+                None => Ok(DeliveryOutcome::NotDelivered),
+            },
         )
     }
 
@@ -173,11 +176,8 @@ mod imp {
 
     fn invoke_range_set(
         element: &UIAElement,
-        value: &str,
+        target: f64,
     ) -> Result<DeliveryOutcome, AdapterError> {
-        let Some(target) = parse_finite_f64(value) else {
-            return Ok(DeliveryOutcome::NotDelivered);
-        };
         let pattern = match element.0.get_pattern::<UIRangeValuePattern>() {
             Ok(pattern) => pattern,
             Err(error) => {
@@ -274,18 +274,6 @@ mod imp {
     fn withholds_value_read(is_password: &PropertyOutcome) -> bool {
         ElementProperties::from_reads(vec![(TreeProperty::IsPassword, is_password.clone())])
             .is_secure()
-    }
-
-    fn classify_write(
-        operation: &str,
-        api: &str,
-        error: &uiautomation::Error,
-    ) -> Result<bool, AdapterError> {
-        match failure_of(error) {
-            UiaFailure::Sentinel(ERR_NONE) => Ok(false),
-            other if other.is_exhaustion() => Ok(false),
-            failure => classify_mutation(operation, api, &failure),
-        }
     }
 
     fn read_failed(api: &str, error: &uiautomation::Error) -> AdapterError {

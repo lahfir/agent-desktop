@@ -1,4 +1,4 @@
-use super::imp::attaches_post_state;
+use super::attaches_post_state;
 use super::{after_delivery, delivery_occurred, post_state_for_steps};
 use crate::tree::automation::automation_client;
 use crate::tree::element::UIAElement;

@@ -22,10 +22,24 @@ pub(crate) fn delivery_occurred(steps: &[ActionStep]) -> bool {
         .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
 }
 
+pub(crate) fn attaches_post_state(action: &Action) -> bool {
+    matches!(
+        action,
+        Action::Toggle
+            | Action::Check
+            | Action::Uncheck
+            | Action::SetValue(_)
+            | Action::Clear
+            | Action::Expand
+            | Action::Collapse
+    )
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
-        Action, AdapterError, Deadline, ElementState, UIAElement, after_delivery, delivery_occurred,
+        Action, AdapterError, Deadline, ElementState, UIAElement, after_delivery,
+        attaches_post_state, delivery_occurred,
     };
     use crate::tree::live_read::{live_state, read_live_element};
     use agent_desktop_core::ActionStep;
@@ -54,19 +68,6 @@ mod imp {
         }
         read_post_state(element, action, deadline).map_err(after_delivery)
     }
-
-    pub(crate) fn attaches_post_state(action: &Action) -> bool {
-        matches!(
-            action,
-            Action::Toggle
-                | Action::Check
-                | Action::Uncheck
-                | Action::SetValue(_)
-                | Action::Clear
-                | Action::Expand
-                | Action::Collapse
-        )
-    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -90,25 +91,9 @@ mod imp {
     ) -> Result<Option<ElementState>, AdapterError> {
         Ok(None)
     }
-
-    pub(crate) fn attaches_post_state(action: &Action) -> bool {
-        matches!(
-            action,
-            Action::Toggle
-                | Action::Check
-                | Action::Uncheck
-                | Action::SetValue(_)
-                | Action::Clear
-                | Action::Expand
-                | Action::Collapse
-        )
-    }
 }
 
 pub(crate) use imp::post_state_for_steps;
-
-#[allow(unused_imports)]
-pub(crate) use imp::{attaches_post_state, read_post_state};
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "post_state_tests.rs"]

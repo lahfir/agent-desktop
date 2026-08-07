@@ -3,12 +3,13 @@
 use agent_desktop_core::{ActionStep, AdapterError, Deadline, ErrorCode, InteractionPolicy};
 use std::time::{Duration, Instant};
 
-use crate::actions::chain::{ChainDef, ChainRung, DeliveryOutcome, build_step, execute_chain};
+use crate::actions::chain::{
+    ALREADY_LABEL, ChainDef, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step,
+    capped_verification_end, execute_chain,
+};
 use crate::tree::element::UIAElement;
 
 pub(crate) const TOGGLE_LABEL: &str = "TogglePattern.Toggle";
-pub(crate) const INVOKE_LABEL: &str = "InvokePattern.Invoke";
-pub(crate) const ALREADY_LABEL: &str = "AlreadyInState";
 
 const TOGGLE_TIMEOUT: Duration = Duration::from_millis(600);
 const TOGGLE_STABLE: Duration = Duration::from_millis(200);
@@ -51,11 +52,11 @@ mod imp {
         ALREADY_LABEL, ActionStep, AdapterError, CHECK_SUGGESTION, ChainRung, Deadline,
         DeliveryOutcome, ErrorCode, INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE,
         TOGGLE_CHAIN, TOGGLE_LABEL, TOGGLE_STABLE, TOGGLE_TIMEOUT, ToggleKind, UIAElement,
-        build_step, execute_chain,
+        build_step, capped_verification_end, execute_chain,
     };
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::mutation::{classify_success, classify_write};
+    use crate::actions::post_state::delivery_occurred;
     use crate::system::permissions::ensure_budget;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
     use uiautomation::patterns::{UIInvokePattern, UITogglePattern};
@@ -65,16 +66,20 @@ mod imp {
         policy: InteractionPolicy,
         deadline: Deadline,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        let before = read_toggle_kind(element);
         let toggle_ok = toggle_available(element);
+        let before = if toggle_ok {
+            read_toggle_state(element)
+        } else {
+            None
+        };
         let invoke_ok = invoke_available(element);
         toggle_judged_for(
             deadline,
             policy,
             toggle_ok,
             invoke_ok,
-            || delivered_toggle(element, before, deadline),
-            || delivered_invoke(element, before, deadline),
+            || delivered_with_observe(before, deadline, element, pattern_toggle),
+            || delivered_with_observe(before, deadline, element, pattern_invoke),
         )
     }
 
@@ -97,10 +102,9 @@ mod imp {
     fn check_uncheck_steps(
         element: &UIAElement,
         want_checked: bool,
-        policy: InteractionPolicy,
+        _policy: InteractionPolicy,
         deadline: Deadline,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        let _ = policy;
         check_uncheck_judged_for(
             deadline,
             want_checked,
@@ -199,37 +203,19 @@ mod imp {
             }
             steps.push(build_step(INVOKE_LABEL, DeliveryOutcome::NotDelivered));
         }
-        if steps.iter().any(|step| {
-            matches!(
-                step.outcome,
-                agent_desktop_core::ActionStepOutcome::Succeeded
-            )
-        }) {
+        if delivery_occurred(&steps) {
             return Ok(steps);
         }
         Err(exhausted())
     }
 
-    fn delivered_toggle(
-        element: &UIAElement,
+    fn delivered_with_observe(
         before: Option<ToggleKind>,
         deadline: Deadline,
-    ) -> Result<DeliveryOutcome, AdapterError> {
-        if !pattern_toggle(element)? {
-            return Ok(DeliveryOutcome::NotDelivered);
-        }
-        Ok(DeliveryOutcome::from_delivery(
-            true,
-            observe_change(before, deadline, element)?,
-        ))
-    }
-
-    fn delivered_invoke(
         element: &UIAElement,
-        before: Option<ToggleKind>,
-        deadline: Deadline,
+        deliver: impl FnOnce(&UIAElement) -> Result<bool, AdapterError>,
     ) -> Result<DeliveryOutcome, AdapterError> {
-        if !pattern_invoke(element)? {
+        if !deliver(element)? {
             return Ok(DeliveryOutcome::NotDelivered);
         }
         Ok(DeliveryOutcome::from_delivery(
@@ -246,13 +232,17 @@ mod imp {
         read_one(element, TreeProperty::InvokeAvailable).flag() == Some(true)
     }
 
+    fn read_toggle_state(element: &UIAElement) -> Option<ToggleKind> {
+        read_one(element, TreeProperty::ToggleState)
+            .number()
+            .and_then(ToggleKind::from_i32)
+    }
+
     fn read_toggle_kind(element: &UIAElement) -> Option<ToggleKind> {
         if !toggle_available(element) {
             return None;
         }
-        read_one(element, TreeProperty::ToggleState)
-            .number()
-            .and_then(ToggleKind::from_i32)
+        read_toggle_state(element)
     }
 
     fn pattern_toggle(element: &UIAElement) -> Result<bool, AdapterError> {
@@ -283,7 +273,7 @@ mod imp {
         let Some(before) = before else {
             return Ok(false);
         };
-        let end = verification_deadline(deadline)?;
+        let end = capped_verification_end(deadline, TOGGLE_TIMEOUT)?;
         let mut candidate: Option<(ToggleKind, Instant)> = None;
         loop {
             if let Some(current) = read_toggle_kind(element) {
@@ -313,7 +303,7 @@ mod imp {
         read_state: &mut impl FnMut() -> Option<ToggleKind>,
         early_exit_on_known_miss: bool,
     ) -> Result<bool, AdapterError> {
-        let end = verification_deadline(deadline)?;
+        let end = capped_verification_end(deadline, TOGGLE_TIMEOUT)?;
         loop {
             match read_state() {
                 Some(state) if state.matches_checked(want_checked) => return Ok(true),
@@ -332,32 +322,9 @@ mod imp {
         }
     }
 
-    fn verification_deadline(deadline: Deadline) -> Result<Instant, AdapterError> {
-        let remaining = deadline.remaining();
-        if remaining.is_zero() {
-            return Err(deadline.timeout_error());
-        }
-        let local = Instant::now() + TOGGLE_TIMEOUT;
-        Ok(Instant::now()
-            .checked_add(remaining)
-            .map_or(local, |cap| cap.min(local)))
-    }
-
     fn sleep_poll(deadline: Deadline) -> Result<(), AdapterError> {
         std::thread::sleep(deadline.remaining_slice(POLL_SLICE)?);
         Ok(())
-    }
-
-    fn classify_write(
-        operation: &str,
-        api: &str,
-        error: &uiautomation::Error,
-    ) -> Result<bool, AdapterError> {
-        match failure_of(error) {
-            UiaFailure::Sentinel(ERR_NONE) => Ok(false),
-            other if other.is_exhaustion() => Ok(false),
-            failure => classify_mutation(operation, api, &failure),
-        }
     }
 
     fn exhausted() -> AdapterError {

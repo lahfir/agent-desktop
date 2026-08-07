@@ -53,15 +53,15 @@ mod imp {
         RefCell, SELECT_LABEL, SelectOps, SelectPlan, UIAElement, VERIFY_TIMEOUT, build_step,
         resolve_select_verification,
     };
-    use crate::actions::disclosure::ExpandKind;
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::chain::capped_verification_end;
+    use crate::actions::disclosure::{EXPAND_LABEL, ExpandKind};
+    use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::post_state::after_delivery;
     use crate::actions::select_search::{
         find_named_selection_item, name_matches, scroll_to_realize, selection_item_available,
     };
     use crate::actions::value_write::gated_pattern_value_equals;
     use crate::system::permissions::ensure_budget;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
     use agent_desktop_core::DeliverySemantics;
@@ -190,7 +190,7 @@ mod imp {
         deadline: Deadline,
     ) -> Result<Option<bool>, AdapterError> {
         ensure_budget(deadline)?;
-        let end = verification_deadline(deadline)?;
+        let end = capped_verification_end(deadline, VERIFY_TIMEOUT)?;
         loop {
             let verified = verify_once(container, target, value)?;
             if verified == Some(true) {
@@ -222,12 +222,12 @@ mod imp {
             Ok(pattern) => match pattern.expand() {
                 Ok(()) => Ok(()),
                 Err(error) => {
-                    let _ = classify_write("Expand", "ExpandCollapsePattern.Expand", &error)?;
+                    let _ = classify_write("Expand", EXPAND_LABEL, &error)?;
                     Ok(())
                 }
             },
             Err(error) => {
-                let _ = classify_write("get_pattern", "ExpandCollapsePattern.Expand", &error)?;
+                let _ = classify_write("get_pattern", EXPAND_LABEL, &error)?;
                 Ok(())
             }
         }
@@ -259,17 +259,6 @@ mod imp {
         read_one(element, TreeProperty::ValueAvailable).flag() == Some(true)
     }
 
-    fn verification_deadline(deadline: Deadline) -> Result<Instant, AdapterError> {
-        let remaining = deadline.remaining();
-        if remaining.is_zero() {
-            return Err(deadline.timeout_error());
-        }
-        let local = Instant::now() + VERIFY_TIMEOUT;
-        Ok(Instant::now()
-            .checked_add(remaining)
-            .map_or(local, |cap| cap.min(local)))
-    }
-
     fn not_found_chars(chars: usize) -> AdapterError {
         AdapterError::new(
             ErrorCode::ElementNotFound,
@@ -277,18 +266,6 @@ mod imp {
         )
         .with_disposition(DeliverySemantics::not_delivered())
         .with_suggestion("Use find or snapshot to inspect the available selection items.")
-    }
-
-    fn classify_write(
-        operation: &str,
-        api: &str,
-        error: &uiautomation::Error,
-    ) -> Result<bool, AdapterError> {
-        match failure_of(error) {
-            UiaFailure::Sentinel(ERR_NONE) => Ok(false),
-            other if other.is_exhaustion() => Ok(false),
-            failure => classify_mutation(operation, api, &failure),
-        }
     }
 }
 

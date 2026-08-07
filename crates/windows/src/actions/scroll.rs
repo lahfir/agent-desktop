@@ -15,6 +15,23 @@ pub(crate) const SCROLL_LABEL: &str = "ScrollPattern.Scroll";
 
 const MAX_SCROLL_AMOUNT: u32 = 1_000;
 
+#[cfg(target_os = "windows")]
+pub(crate) fn scroll_amounts(
+    direction: &Direction,
+) -> (
+    uiautomation::types::ScrollAmount,
+    uiautomation::types::ScrollAmount,
+) {
+    use uiautomation::types::ScrollAmount;
+
+    match direction {
+        Direction::Down => (ScrollAmount::NoAmount, ScrollAmount::SmallIncrement),
+        Direction::Up => (ScrollAmount::NoAmount, ScrollAmount::SmallDecrement),
+        Direction::Right => (ScrollAmount::SmallIncrement, ScrollAmount::NoAmount),
+        Direction::Left => (ScrollAmount::SmallDecrement, ScrollAmount::NoAmount),
+    }
+}
+
 /// Injected scroll plan shared by the live path and unit-test seam.
 pub(crate) struct ScrollPlan {
     pub(crate) scroll_available: bool,
@@ -51,16 +68,14 @@ mod imp {
     use super::{
         ActionStep, AdapterError, Deadline, DeliveryOutcome, Direction, ErrorCode,
         InteractionPolicy, MAX_SCROLL_AMOUNT, SCROLL_LABEL, ScrollPlan, UIAElement, axis_name,
-        build_step, scroll_effect_verified,
+        build_step, scroll_amounts, scroll_effect_verified,
     };
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::mutation::{classify_success, classify_write};
     use crate::system::permissions::ensure_budget;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
     use agent_desktop_core::{DeliverySemantics, LocatorField, Rect};
     use uiautomation::patterns::UIScrollPattern;
-    use uiautomation::types::ScrollAmount;
 
     pub(crate) fn scroll_steps(
         element: &UIAElement,
@@ -158,15 +173,6 @@ mod imp {
         )])
     }
 
-    fn scroll_amounts(direction: &Direction) -> (ScrollAmount, ScrollAmount) {
-        match direction {
-            Direction::Down => (ScrollAmount::NoAmount, ScrollAmount::SmallIncrement),
-            Direction::Up => (ScrollAmount::NoAmount, ScrollAmount::SmallDecrement),
-            Direction::Right => (ScrollAmount::SmallIncrement, ScrollAmount::NoAmount),
-            Direction::Left => (ScrollAmount::SmallDecrement, ScrollAmount::NoAmount),
-        }
-    }
-
     fn axis_is_scrollable(pattern: &UIScrollPattern, direction: &Direction) -> bool {
         match direction {
             Direction::Up | Direction::Down => pattern.is_vertically_scrollable().unwrap_or(false),
@@ -238,18 +244,6 @@ mod imp {
         }))
         .with_disposition(DeliverySemantics::delivered_unverified())
         .with_suggestion("Inspect the current scroll position before deciding whether to retry.")
-    }
-
-    fn classify_write(
-        operation: &str,
-        api: &str,
-        error: &uiautomation::Error,
-    ) -> Result<bool, AdapterError> {
-        match failure_of(error) {
-            UiaFailure::Sentinel(ERR_NONE) => Ok(false),
-            other if other.is_exhaustion() => Ok(false),
-            failure => classify_mutation(operation, api, &failure),
-        }
     }
 }
 

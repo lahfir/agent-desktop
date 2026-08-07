@@ -14,11 +14,13 @@ mod imp {
         AdapterError, Deadline, ErrorCode, MAX_REALIZE_SCROLLS, MAX_SELECT_DEPTH, MAX_SELECT_NODES,
         UIAElement,
     };
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::mutation::{classify_success, classify_write};
+    use crate::actions::scroll::SCROLL_LABEL;
     use crate::system::permissions::ensure_budget;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of, uia_failure_error};
+    use crate::tree::automation::uia_failure_error;
+    use crate::tree::element_properties::ElementProperties;
     use crate::tree::name_evidence::{name_fields, read_label};
-    use crate::tree::properties::{read_live, read_one};
+    use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
     use crate::tree::walker::TreeSource;
     use crate::tree::walker_source::UiaTreeSource;
@@ -74,7 +76,7 @@ mod imp {
                     let _ = classify_success()?;
                 }
                 Err(error) => {
-                    let _ = classify_write("Scroll", "ScrollPattern.Scroll", &error)?;
+                    let _ = classify_write("Scroll", SCROLL_LABEL, &error)?;
                     break;
                 }
             }
@@ -91,7 +93,21 @@ mod imp {
     }
 
     pub(crate) fn name_matches(element: &UIAElement, value: &str) -> bool {
-        let (properties, _) = read_live(element);
+        let properties = ElementProperties::from_reads(vec![
+            (TreeProperty::Name, read_one(element, TreeProperty::Name)),
+            (
+                TreeProperty::FullDescription,
+                read_one(element, TreeProperty::FullDescription),
+            ),
+            (
+                TreeProperty::HelpText,
+                read_one(element, TreeProperty::HelpText),
+            ),
+            (
+                TreeProperty::IsPassword,
+                read_one(element, TreeProperty::IsPassword),
+            ),
+        ]);
         let label = read_label(element, false);
         let (name, _) = name_fields(&properties, &label);
         matches!(
@@ -141,18 +157,6 @@ mod imp {
             "limit": MAX_SELECT_NODES,
             "complete": false,
         }))
-    }
-
-    fn classify_write(
-        operation: &str,
-        api: &str,
-        error: &uiautomation::Error,
-    ) -> Result<bool, AdapterError> {
-        match failure_of(error) {
-            UiaFailure::Sentinel(ERR_NONE) => Ok(false),
-            other if other.is_exhaustion() => Ok(false),
-            failure => classify_mutation(operation, api, &failure),
-        }
     }
 }
 

@@ -7,13 +7,14 @@
 use agent_desktop_core::{ActionStep, AdapterError, Deadline, InteractionPolicy};
 use std::time::{Duration, Instant};
 
-use crate::actions::chain::{ChainDef, ChainRung, DeliveryOutcome, build_step, execute_chain};
+use crate::actions::chain::{
+    ALREADY_LABEL, ChainDef, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step,
+    capped_verification_end, execute_chain,
+};
 use crate::tree::element::UIAElement;
 
 pub(crate) const EXPAND_LABEL: &str = "ExpandCollapsePattern.Expand";
 pub(crate) const COLLAPSE_LABEL: &str = "ExpandCollapsePattern.Collapse";
-pub(crate) const INVOKE_LABEL: &str = "InvokePattern.Invoke";
-pub(crate) const ALREADY_LABEL: &str = "AlreadyInState";
 
 const DISCLOSURE_TIMEOUT: Duration = Duration::from_millis(200);
 const POLL_SLICE: Duration = Duration::from_millis(20);
@@ -91,11 +92,10 @@ mod imp {
         ALREADY_LABEL, ActionStep, AdapterError, COLLAPSE_LABEL, ChainRung, DISCLOSURE_CHAIN,
         DISCLOSURE_TIMEOUT, Deadline, DeliveryOutcome, DisclosureInput, EXPAND_LABEL, ExpandKind,
         INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE, UIAElement, build_step,
-        disclosure_plan, execute_chain, invoke_allowed,
+        capped_verification_end, disclosure_plan, execute_chain, invoke_allowed,
     };
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::mutation::{classify_success, classify_write};
     use crate::system::permissions::ensure_budget;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
     use uiautomation::patterns::{UIExpandCollapsePattern, UIInvokePattern};
@@ -122,17 +122,27 @@ mod imp {
         policy: InteractionPolicy,
         deadline: Deadline,
     ) -> Result<Vec<ActionStep>, AdapterError> {
+        let pattern_ok = expand_collapse_available(element);
+        let current = if pattern_ok {
+            read_expand_state(element)
+        } else {
+            None
+        };
         disclosure_judged_for(
             deadline,
             policy,
             DisclosureInput {
                 want_expanded,
-                current: read_expand_kind(element),
-                pattern_ok: expand_collapse_available(element),
+                current,
+                pattern_ok,
                 invoke_ok: invoke_available(element),
             },
-            || delivered_pattern(element, want_expanded, deadline),
-            || delivered_invoke(element, want_expanded, deadline),
+            || {
+                delivered_with_observe(element, want_expanded, deadline, |element| {
+                    pattern_expand_collapse(element, want_expanded)
+                })
+            },
+            || delivered_with_observe(element, want_expanded, deadline, pattern_invoke),
         )
     }
 
@@ -188,26 +198,13 @@ mod imp {
         )
     }
 
-    fn delivered_pattern(
+    fn delivered_with_observe(
         element: &UIAElement,
         want_expanded: bool,
         deadline: Deadline,
+        deliver: impl FnOnce(&UIAElement) -> Result<bool, AdapterError>,
     ) -> Result<DeliveryOutcome, AdapterError> {
-        if !pattern_expand_collapse(element, want_expanded)? {
-            return Ok(DeliveryOutcome::NotDelivered);
-        }
-        Ok(DeliveryOutcome::from_delivery(
-            true,
-            poll_target(want_expanded, deadline, element)?,
-        ))
-    }
-
-    fn delivered_invoke(
-        element: &UIAElement,
-        want_expanded: bool,
-        deadline: Deadline,
-    ) -> Result<DeliveryOutcome, AdapterError> {
-        if !pattern_invoke(element)? {
+        if !deliver(element)? {
             return Ok(DeliveryOutcome::NotDelivered);
         }
         Ok(DeliveryOutcome::from_delivery(
@@ -224,13 +221,17 @@ mod imp {
         read_one(element, TreeProperty::InvokeAvailable).flag() == Some(true)
     }
 
+    fn read_expand_state(element: &UIAElement) -> Option<ExpandKind> {
+        read_one(element, TreeProperty::ExpandCollapseState)
+            .number()
+            .and_then(ExpandKind::from_i32)
+    }
+
     fn read_expand_kind(element: &UIAElement) -> Option<ExpandKind> {
         if !expand_collapse_available(element) {
             return None;
         }
-        read_one(element, TreeProperty::ExpandCollapseState)
-            .number()
-            .and_then(ExpandKind::from_i32)
+        read_expand_state(element)
     }
 
     fn pattern_expand_collapse(
@@ -278,7 +279,7 @@ mod imp {
         element: &UIAElement,
     ) -> Result<bool, AdapterError> {
         ensure_budget(deadline)?;
-        let end = verification_deadline(deadline)?;
+        let end = capped_verification_end(deadline, DISCLOSURE_TIMEOUT)?;
         loop {
             if read_expand_kind(element).is_some_and(|state| state.is_target(want_expanded)) {
                 return Ok(true);
@@ -287,29 +288,6 @@ mod imp {
                 return Ok(false);
             }
             std::thread::sleep(deadline.remaining_slice(POLL_SLICE)?);
-        }
-    }
-
-    fn verification_deadline(deadline: Deadline) -> Result<Instant, AdapterError> {
-        let remaining = deadline.remaining();
-        if remaining.is_zero() {
-            return Err(deadline.timeout_error());
-        }
-        let local = Instant::now() + DISCLOSURE_TIMEOUT;
-        Ok(Instant::now()
-            .checked_add(remaining)
-            .map_or(local, |cap| cap.min(local)))
-    }
-
-    fn classify_write(
-        operation: &str,
-        api: &str,
-        error: &uiautomation::Error,
-    ) -> Result<bool, AdapterError> {
-        match failure_of(error) {
-            UiaFailure::Sentinel(ERR_NONE) => Ok(false),
-            other if other.is_exhaustion() => Ok(false),
-            failure => classify_mutation(operation, api, &failure),
         }
     }
 }

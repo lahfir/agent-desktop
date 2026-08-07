@@ -21,11 +21,11 @@ mod imp {
         ErrorCode, InteractionLease, InteractionPolicy, NativeHandle,
     };
     use crate::actions::chain::{
-        CLICK_CHAIN, ChainRung, DeliveryOutcome, build_step, execute_chain,
+        CLICK_CHAIN, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step, execute_chain,
     };
     use crate::actions::disclosure::{collapse_steps, expand_steps};
     use crate::actions::focus::focus_element;
-    use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::post_state::post_state_for_steps;
     use crate::actions::scroll::scroll_steps;
     use crate::actions::scroll_into_view::scroll_into_view_outcome;
@@ -33,7 +33,6 @@ mod imp {
     use crate::actions::toggle_state::{check_steps, toggle_steps, uncheck_steps};
     use crate::actions::value_write::{clear_steps, set_value_steps};
     use crate::system::permissions::ensure_budget;
-    use crate::tree::automation::{ERR_NONE, UiaFailure, failure_of};
     use crate::tree::element::{UIAElement, uia_element};
     use crate::tree::live_read::corroborate_verified_process;
     use crate::tree::properties::read_one;
@@ -41,7 +40,6 @@ mod imp {
     use agent_desktop_core::LocatorField;
     use uiautomation::patterns::{UIInvokePattern, UILegacyIAccessiblePattern};
 
-    const INVOKE_LABEL: &str = "InvokePattern.Invoke";
     const LEGACY_LABEL: &str = "LegacyIAccessible.DoDefaultAction";
 
     pub(crate) fn execute_action_impl(
@@ -305,18 +303,6 @@ mod imp {
             Err(error) => classify_write("get_pattern", LEGACY_LABEL, &error)?,
         };
         Ok(DeliveryOutcome::from_delivery(delivered, false))
-    }
-
-    fn classify_write(
-        operation: &str,
-        api: &str,
-        error: &uiautomation::Error,
-    ) -> Result<bool, AdapterError> {
-        match failure_of(error) {
-            UiaFailure::Sentinel(ERR_NONE) => Ok(false),
-            other if other.is_exhaustion() => Ok(false),
-            failure => classify_mutation(operation, api, &failure),
-        }
     }
 }
 

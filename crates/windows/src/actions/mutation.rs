@@ -41,6 +41,25 @@ pub(crate) fn classify_mutation(
     }
 }
 
+/// Classifies a UIA write `Error` for chain fallthrough.
+///
+/// Sentinel `ERR_NONE` and exhaustion map to absent (`Ok(false)`); every other
+/// failure routes through [`classify_mutation`].
+#[cfg(target_os = "windows")]
+pub(crate) fn classify_write(
+    operation: &str,
+    api: &str,
+    error: &uiautomation::Error,
+) -> Result<bool, AdapterError> {
+    use crate::tree::automation::failure_of;
+
+    match failure_of(error) {
+        UiaFailure::Sentinel(ERR_NONE) => Ok(false),
+        other if other.is_exhaustion() => Ok(false),
+        failure => classify_mutation(operation, api, &failure),
+    }
+}
+
 fn classify_hresult(operation: &str, api: &str, hresult: i32) -> Result<bool, AdapterError> {
     if hresult == UIA_E_NOTSUPPORTED {
         return Ok(false);

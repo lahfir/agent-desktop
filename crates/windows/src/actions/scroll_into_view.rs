@@ -20,7 +20,11 @@ mod imp {
         Rect,
     };
     use crate::actions::mutation::classify_mutation;
-    use crate::actions::scroll_ladder::{LADDER_SCROLL_LABEL, ancestor_ladder, apply_ladder_seam};
+    use crate::actions::post_state::after_delivery;
+    use crate::actions::scroll_ladder::{
+        LADDER_SCROLL_LABEL, VisibilitySample, ancestor_ladder, apply_ladder_seam,
+        visibility_verified,
+    };
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
     use crate::tree::element::{UIAElement, uia_element};
@@ -45,13 +49,6 @@ mod imp {
         Succeeded,
         Failed(UiaFailure),
         EmptyPattern,
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    pub(crate) struct VisibilitySample {
-        pub(crate) bounds: Option<Rect>,
-        pub(crate) offscreen: Option<bool>,
-        pub(crate) viewport: Option<Rect>,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,26 +195,6 @@ mod imp {
         ))
     }
 
-    pub(crate) fn visibility_verified(sample: &VisibilitySample) -> bool {
-        let Some(bounds) = sample.bounds else {
-            return false;
-        };
-        if !rect_has_area(&bounds) || sample.offscreen != Some(false) {
-            return false;
-        }
-        match sample.viewport {
-            Some(viewport) => intersects(bounds, viewport),
-            None => false,
-        }
-    }
-
-    pub(crate) fn intersects(left: Rect, right: Rect) -> bool {
-        left.x < right.x + right.width
-            && left.x + left.width > right.x
-            && left.y < right.y + right.height
-            && left.y + left.height > right.y
-    }
-
     pub(crate) fn scroll_effect_observed(before: Rect, after: Rect) -> bool {
         before.bounds_hash() != after.bounds_hash()
     }
@@ -255,10 +232,6 @@ mod imp {
                 .with_disposition(DeliverySemantics::delivered_unverified()),
             invoke_failure,
         )
-    }
-
-    fn after_delivery(error: AdapterError) -> AdapterError {
-        error.with_disposition(DeliverySemantics::delivered_unverified())
     }
 
     /// Observation disposition stands over transport-uncertain invoke HRESULTs (A18).
@@ -384,9 +357,11 @@ mod imp {
 pub(crate) use imp::{scroll_into_view_impl, scroll_into_view_outcome};
 
 #[cfg(all(test, target_os = "windows"))]
+pub(crate) use crate::actions::scroll_ladder::{VisibilitySample, visibility_verified};
+
+#[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::{
-    VisibilitySample, finish_observation, scroll_effect_observed, scroll_into_view_judged_for,
-    unsupported_error, visibility_verified,
+    finish_observation, scroll_effect_observed, scroll_into_view_judged_for, unsupported_error,
 };
 
 #[cfg(all(test, target_os = "windows"))]

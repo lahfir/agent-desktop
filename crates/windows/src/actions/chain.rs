@@ -7,11 +7,31 @@
 //! is always `semantic_api` for every rung this adapter ships.
 
 use agent_desktop_core::{
-    ActionStep, ActionStepOutcome, AdapterError, Deadline, DeliverySemantics, ErrorCode,
-    InteractionPolicy, StepMechanism,
+    ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
+    StepMechanism,
 };
+use std::time::{Duration, Instant};
 
+use crate::actions::post_state::delivery_occurred;
 use crate::system::permissions::ensure_budget;
+
+pub(crate) const INVOKE_LABEL: &str = "InvokePattern.Invoke";
+pub(crate) const ALREADY_LABEL: &str = "AlreadyInState";
+
+/// Caps a verification poll window by the remaining action budget.
+pub(crate) fn capped_verification_end(
+    deadline: Deadline,
+    cap: Duration,
+) -> Result<Instant, AdapterError> {
+    let remaining = deadline.remaining();
+    if remaining.is_zero() {
+        return Err(deadline.timeout_error());
+    }
+    let local = Instant::now() + cap;
+    Ok(Instant::now()
+        .checked_add(remaining)
+        .map_or(local, |end| end.min(local)))
+}
 
 /// Per-rung delivery judgment recorded into an [`ActionStep`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,10 +138,7 @@ pub(crate) fn rung_allowed(rung: &ChainRung<'_>, policy: InteractionPolicy) -> b
 }
 
 pub(crate) fn exhaustion_disposition(steps: &[ActionStep]) -> DeliverySemantics {
-    let delivered = steps
-        .iter()
-        .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded));
-    if delivered {
+    if delivery_occurred(steps) {
         DeliverySemantics::delivered_unverified()
     } else {
         DeliverySemantics::not_delivered()

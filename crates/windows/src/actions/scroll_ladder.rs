@@ -10,11 +10,45 @@
 use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, Direction, ErrorCode, Rect};
 
 use crate::actions::chain::DeliveryOutcome;
+use crate::actions::scroll::SCROLL_LABEL;
 use crate::system::permissions::ensure_budget;
 use crate::tree::element::UIAElement;
 
 pub(crate) const MAX_ANCESTOR_SCROLLS: usize = 10;
-pub(crate) const LADDER_SCROLL_LABEL: &str = "ScrollPattern.Scroll";
+pub(crate) const LADDER_SCROLL_LABEL: &str = SCROLL_LABEL;
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct VisibilitySample {
+    pub(crate) bounds: Option<Rect>,
+    pub(crate) offscreen: Option<bool>,
+    pub(crate) viewport: Option<Rect>,
+}
+
+/// On-screen, positive area, viewport intersection (A18-2).
+#[cfg(target_os = "windows")]
+pub(crate) fn visibility_verified(sample: &VisibilitySample) -> bool {
+    use crate::tree::properties::rect_has_area;
+
+    let Some(bounds) = sample.bounds else {
+        return false;
+    };
+    if !rect_has_area(&bounds) || sample.offscreen != Some(false) {
+        return false;
+    }
+    match sample.viewport {
+        Some(viewport) => intersects(bounds, viewport),
+        None => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn intersects(left: Rect, right: Rect) -> bool {
+    left.x < right.x + right.width
+        && left.x + left.width > right.x
+        && left.y < right.y + right.height
+        && left.y + left.height > right.y
+}
 
 /// Pure geometry → scroll direction (vertical before horizontal, before-edge
 /// before after-edge).
@@ -76,48 +110,19 @@ fn budget_disposition(scrolled: bool, error: AdapterError) -> AdapterError {
 mod imp {
     use super::{
         AdapterError, Deadline, DeliveryOutcome, Direction, LADDER_SCROLL_LABEL, UIAElement,
-        direction_for_visibility, ladder_judged_for,
+        VisibilitySample, direction_for_visibility, ladder_judged_for, visibility_verified,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
+    use crate::actions::scroll::scroll_amounts;
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
     use crate::tree::live_read::corroborate_verified_process;
-    use crate::tree::properties::{read_one, rect_has_area};
+    use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
     use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
     use crate::tree::walker_source::{nearest_scroll_viewport, viewport_bounds};
     use agent_desktop_core::{ErrorCode, LocatorField, Rect};
-    use uiautomation::core::UITreeWalker;
     use uiautomation::patterns::UIScrollPattern;
-    use uiautomation::types::ScrollAmount;
-
-    struct VisibilitySample {
-        bounds: Option<Rect>,
-        offscreen: Option<bool>,
-        viewport: Option<Rect>,
-    }
-
-    /// On-screen, positive area, viewport intersection (A18-2).
-    fn visibility_ok(sample: &VisibilitySample) -> bool {
-        let Some(bounds) = sample.bounds else {
-            return false;
-        };
-        if !rect_has_area(&bounds) {
-            return false;
-        }
-        if sample.offscreen != Some(false) {
-            return false;
-        }
-        match sample.viewport {
-            Some(viewport) => {
-                bounds.x < viewport.x + viewport.width
-                    && bounds.x + bounds.width > viewport.x
-                    && bounds.y < viewport.y + viewport.height
-                    && bounds.y + bounds.height > viewport.y
-            }
-            None => false,
-        }
-    }
 
     /// Runs the ancestor ladder when a scrollable ancestor exists.
     ///
@@ -135,29 +140,32 @@ mod imp {
         match nearest_scroll_viewport(element, &walker, deadline) {
             Ok(None) => Ok(None),
             Err(crate::tree::walker_source::BudgetExpired) => Err(deadline.timeout_error()),
-            Ok(Some(_)) => scroll_ancestor_until_visible(element, &walker, deadline).map(Some),
+            Ok(Some(ancestor)) => {
+                scroll_ancestor_until_visible(element, &ancestor, deadline).map(Some)
+            }
         }
     }
 
     fn scroll_ancestor_until_visible(
         element: &UIAElement,
-        walker: &UITreeWalker,
+        ancestor: &UIAElement,
         deadline: Deadline,
     ) -> Result<DeliveryOutcome, AdapterError> {
-        let mut next_direction = || direction_when_not_visible(element, walker, deadline);
+        let viewport = viewport_bounds(ancestor);
+        let mut next_direction = || direction_when_not_visible(element, viewport, deadline);
         let mut scroll_once =
-            |direction: &Direction| scroll_nearest_ancestor(element, walker, direction, deadline);
+            |direction: &Direction| scroll_cached_ancestor(ancestor, direction, deadline);
         ladder_judged_for(deadline, &mut next_direction, &mut scroll_once)
     }
 
     /// `None` only when the ScrollIntoView visibility predicate passes (A18-2).
     fn direction_when_not_visible(
         element: &UIAElement,
-        walker: &UITreeWalker,
+        viewport: Option<Rect>,
         deadline: Deadline,
     ) -> Result<Option<Direction>, AdapterError> {
-        let sample = observe_visibility(element, walker, deadline)?;
-        if visibility_ok(&sample) {
+        let sample = observe_visibility(element, viewport, deadline)?;
+        if visibility_verified(&sample) {
             return Ok(None);
         }
         let (Some(bounds), Some(viewport)) = (sample.bounds, sample.viewport) else {
@@ -170,7 +178,7 @@ mod imp {
 
     fn observe_visibility(
         element: &UIAElement,
-        walker: &UITreeWalker,
+        viewport: Option<Rect>,
         deadline: Deadline,
     ) -> Result<VisibilitySample, AdapterError> {
         ensure_budget(deadline)?;
@@ -196,12 +204,6 @@ mod imp {
             }
             PropertyOutcome::Known(_) => None,
         };
-        let viewport = match nearest_scroll_viewport(element, walker, deadline) {
-            Ok(viewport) => viewport.as_ref().and_then(viewport_bounds),
-            Err(crate::tree::walker_source::BudgetExpired) => {
-                return Err(deadline.timeout_error());
-            }
-        };
         Ok(VisibilitySample {
             bounds,
             offscreen,
@@ -209,26 +211,13 @@ mod imp {
         })
     }
 
-    fn scroll_nearest_ancestor(
-        element: &UIAElement,
-        walker: &UITreeWalker,
+    fn scroll_cached_ancestor(
+        ancestor: &UIAElement,
         direction: &Direction,
         deadline: Deadline,
     ) -> Result<(), AdapterError> {
         ensure_budget(deadline)?;
-        let ancestor = match nearest_scroll_viewport(element, walker, deadline) {
-            Ok(Some(ancestor)) => ancestor,
-            Ok(None) => {
-                return Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    "Scrollable ancestor disappeared during ancestor scroll",
-                ));
-            }
-            Err(crate::tree::walker_source::BudgetExpired) => {
-                return Err(deadline.timeout_error());
-            }
-        };
-        corroborate_verified_process(&ancestor)?;
+        corroborate_verified_process(ancestor)?;
         let pattern = match ancestor.0.get_pattern::<UIScrollPattern>() {
             Ok(pattern) => pattern,
             Err(error) => match failure_of(&error) {
@@ -254,15 +243,6 @@ mod imp {
                     Ok(())
                 }
             },
-        }
-    }
-
-    fn scroll_amounts(direction: &Direction) -> (ScrollAmount, ScrollAmount) {
-        match direction {
-            Direction::Down => (ScrollAmount::NoAmount, ScrollAmount::SmallIncrement),
-            Direction::Up => (ScrollAmount::NoAmount, ScrollAmount::SmallDecrement),
-            Direction::Right => (ScrollAmount::SmallIncrement, ScrollAmount::NoAmount),
-            Direction::Left => (ScrollAmount::SmallDecrement, ScrollAmount::NoAmount),
         }
     }
 }
