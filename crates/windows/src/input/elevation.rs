@@ -1,5 +1,5 @@
 //! UIPI elevation detection: a token-integrity comparison, never the
-//! `SendInput` verdict (KTD6). `GetTokenInformation(TokenIntegrityLevel)`
+//! `SendInput` verdict. `GetTokenInformation(TokenIntegrityLevel)`
 //! reads the caller's own token and, where a target process is named, that
 //! process's token; a target strictly higher than the caller maps to
 //! `PERM_DENIED` with the `COM HRESULT 0x80070005 (E_ACCESSDENIED: ...)`

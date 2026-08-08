@@ -55,7 +55,7 @@ fn caller_higher_or_equal_is_allowed() {
     );
 }
 
-/// KTD6: an unreadable target integrity is never asserted same-integrity -
+/// An unreadable target integrity is never asserted same-integrity -
 /// injection proceeds best-effort rather than a fabricated verdict.
 #[test]
 fn an_unreadable_target_integrity_proceeds_best_effort() {

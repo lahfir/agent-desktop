@@ -193,8 +193,8 @@ impl InputOps for WindowsAdapter {
     }
 
     /// A standalone key edge has no daemon to own the hold across a request
-    /// boundary, so it rejects the same way macOS's `key_event` does
-    /// (KTD7) - the atomic `press`/`type` composers live in the
+    /// boundary, so it rejects the same way macOS's `key_event` does -
+    /// the atomic `press`/`type` composers live in the
     /// `execute_action` physical legs, not here.
     fn key_event(
         &self,

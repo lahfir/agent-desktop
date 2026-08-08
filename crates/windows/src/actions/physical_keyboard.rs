@@ -27,7 +27,18 @@ pub(crate) fn type_text_steps(
     ensure_keyboard_policy(policy)?;
     preflight_text(text, deadline)?;
     let focus_ready = ensure_keyboard_delivery_ready(element, deadline)?;
-    type_text_from_gate(text, focus_ready, deadline).map(|step| vec![step])
+    if !focus_ready {
+        return Err(focus_lost_before_delivery());
+    }
+    synthesize_text(
+        text,
+        deadline,
+        |deadline| match ensure_keyboard_delivery_ready(element, deadline)? {
+            true => Ok(()),
+            false => Err(focus_lost_before_delivery()),
+        },
+    )?;
+    Ok(vec![physical_step(TYPE_TEXT_LABEL)])
 }
 
 pub(crate) fn press_key_element_steps(
@@ -55,6 +66,7 @@ pub(crate) fn press_key_global(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn type_text_from_gate(
     text: &str,
     focus_ready: bool,
@@ -63,7 +75,7 @@ pub(crate) fn type_text_from_gate(
     if !focus_ready {
         return Err(focus_lost_before_delivery());
     }
-    synthesize_text(text, deadline)?;
+    synthesize_text(text, deadline, |_| Ok(()))?;
     Ok(physical_step(TYPE_TEXT_LABEL))
 }
 

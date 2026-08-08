@@ -1,8 +1,8 @@
 //! Key-name to Windows virtual-key resolution.
 //!
 //! Key *names* are a shared contract with macOS: every name
-//! `crates/macos/src/input/keyboard_map.rs` accepts must resolve here too
-//! (KTD10), even though what a combo built from those names *does* is not
+//! `crates/macos/src/input/keyboard_map.rs` accepts must resolve here too,
+//! even though what a combo built from those names *does* is not
 //! portable. `delete`/`backspace` and `forwarddelete` keep the same split
 //! macOS draws between its single Backspace-shaped key and the separate
 //! forward-delete key, mapped onto Windows' own two distinct keys

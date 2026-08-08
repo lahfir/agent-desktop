@@ -29,7 +29,8 @@ fn oversized_text_is_rejected_by_synthesize_text_with_zero_injection() {
     sink::reset();
     let text = "x".repeat(MAX_TEXT_UTF16 + 1);
 
-    let error = synthesize_text(&text, ample_deadline()).expect_err("oversized text rejects");
+    let error =
+        synthesize_text(&text, ample_deadline(), |_| Ok(())).expect_err("oversized text rejects");
 
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert!(sink::recorded().is_empty());
@@ -78,7 +79,7 @@ fn a_short_payload_posts_exactly_one_down_up_pair_per_utf16_unit() {
     sink::reset();
     let text = "hi";
 
-    synthesize_text(text, ample_deadline()).expect("ample deadline succeeds");
+    synthesize_text(text, ample_deadline(), |_| Ok(())).expect("ample deadline succeeds");
 
     let recorded = sink::recorded();
     assert_eq!(recorded.len(), text.encode_utf16().count() * 2);
@@ -94,7 +95,7 @@ fn a_payload_spanning_multiple_chunks_delivers_every_unit_in_order() {
     sink::reset();
     let text = "a".repeat(TEXT_CHUNK_UTF16 * 2 + 3);
 
-    synthesize_text(&text, ample_deadline()).expect("ample deadline succeeds");
+    synthesize_text(&text, ample_deadline(), |_| Ok(())).expect("ample deadline succeeds");
 
     let recorded = sink::recorded();
     assert_eq!(recorded.len(), text.encode_utf16().count() * 2);
@@ -110,6 +111,51 @@ fn a_payload_spanning_multiple_chunks_delivers_every_unit_in_order() {
     assert_eq!(ups, text.encode_utf16().count());
 }
 
+#[test]
+fn verify_failure_after_partial_delivery_enriches_chunk_counts() {
+    sink::reset();
+    let text = "a".repeat(TEXT_CHUNK_UTF16 * 2 + 3);
+    let mut calls = 0_usize;
+
+    let error = synthesize_text(&text, ample_deadline(), |_| {
+        calls += 1;
+        if calls >= 2 {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Focus lost between chunks",
+            ));
+        }
+        Ok(())
+    })
+    .expect_err("verify must fail on second chunk");
+
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
+    let details = error.details.expect("chunk accounting");
+    assert_eq!(details["delivered_chunks"], 1);
+    assert_eq!(details["total_chunks"], 3);
+    assert!(!sink::recorded().is_empty());
+}
+
+#[test]
+fn verify_failure_before_first_chunk_posts_zero_injection() {
+    sink::reset();
+
+    let error = synthesize_text("hello", ample_deadline(), |_| {
+        Err(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "Focus lost before first chunk",
+        ))
+    })
+    .expect_err("verify must fail closed");
+
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    let details = error.details.expect("chunk accounting");
+    assert_eq!(details["delivered_chunks"], 0);
+    assert_eq!(details["total_chunks"], 1);
+    assert!(sink::recorded().is_empty());
+}
+
 /// No typed-text leak, inverted: a marker payload driven through every
 /// `type_text` error arm must appear in none of the error's textual fields.
 #[test]
@@ -117,8 +163,8 @@ fn no_type_text_error_arm_echoes_the_typed_payload() {
     const MARKER: &str = "sekrit-marker-value-does-not-appear-anywhere";
 
     let oversized = format!("{}{}", MARKER, "x".repeat(MAX_TEXT_UTF16 + 1));
-    let oversized_error =
-        synthesize_text(&oversized, ample_deadline()).expect_err("oversized payload rejects");
+    let oversized_error = synthesize_text(&oversized, ample_deadline(), |_| Ok(()))
+        .expect_err("oversized payload rejects");
     assert_error_never_mentions(&oversized_error, MARKER);
 
     let tight_deadline_text = format!("{MARKER}payload");

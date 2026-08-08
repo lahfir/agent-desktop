@@ -2,7 +2,7 @@
 //! with: modifier chords (`keyboard_event`) and chunked UTF-16 text
 //! (`keyboard_text`). A standalone key edge has no daemon to own the hold
 //! across a request boundary, so it rejects the same way macOS's
-//! `reject_standalone_key_state` does (KTD7) - the atomic `press`/`type`
+//! `reject_standalone_key_state` does - the atomic `press`/`type`
 //! composers that call `synthesize_key`/`synthesize_text` under a focus
 //! verify belong to the `execute_action` physical legs wired in
 //! `actions/physical_keyboard`.
@@ -21,8 +21,12 @@ pub(crate) fn synthesize_key(combo: &KeyCombo, deadline: Deadline) -> Result<(),
 /// The chunked UTF-16 `type_text` primitive. Reserved the same way
 /// `synthesize_key` is: the physical `type` leg composes it with a focus
 /// verify elsewhere.
-pub(crate) fn synthesize_text(text: &str, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::input::keyboard_text::synthesize_text(text, deadline)
+pub(crate) fn synthesize_text(
+    text: &str,
+    deadline: Deadline,
+    verify_target: impl FnMut(Deadline) -> Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
+    crate::input::keyboard_text::synthesize_text(text, deadline, verify_target)
 }
 
 /// Deadline preflight for `synthesize_text`, callable independently so a

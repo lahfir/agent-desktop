@@ -1,4 +1,4 @@
-//! UTF-16 `type_text` chunking and Unicode `SendInput` synthesis (KTD4).
+//! UTF-16 `type_text` chunking and Unicode `SendInput` synthesis.
 //!
 //! The chunk boundary (<=32 UTF-16 units, never splitting a surrogate) is
 //! ported from `crates/macos/src/input/keyboard_event.rs` verbatim - nothing
@@ -29,12 +29,29 @@ const _: () = {
     assert!(KEYEVENTF_KEYUP == win32::KEYEVENTF_KEYUP);
 };
 
-pub(crate) fn synthesize_text(text: &str, deadline: Deadline) -> Result<(), AdapterError> {
+pub(crate) fn synthesize_text(
+    text: &str,
+    deadline: Deadline,
+    mut verify_target: impl FnMut(Deadline) -> Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
     preflight_text(text, deadline)?;
     let chunks = text_chunks(text)?;
     let total = chunks.len();
     for (delivered_chunks, chunk) in chunks.into_iter().enumerate() {
         ensure_chunk_budget(deadline, total, delivered_chunks)?;
+        verify_target(deadline).map_err(|error| {
+            let disposition = if delivered_chunks == 0 {
+                DeliverySemantics::not_delivered()
+            } else {
+                DeliverySemantics::delivered_unverified()
+            };
+            error
+                .with_details(serde_json::json!({
+                    "delivered_chunks": delivered_chunks,
+                    "total_chunks": total,
+                }))
+                .with_disposition(disposition)
+        })?;
         post_keyboard_inputs(&chunk_events(&chunk));
     }
     Ok(())

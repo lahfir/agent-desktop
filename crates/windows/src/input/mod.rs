@@ -8,6 +8,7 @@ mod keyboard_map;
 mod keyboard_send;
 mod keyboard_text;
 pub(crate) mod mouse;
+mod mouse_click_guard;
 mod mouse_coord;
 mod mouse_modifier;
 mod mouse_send;

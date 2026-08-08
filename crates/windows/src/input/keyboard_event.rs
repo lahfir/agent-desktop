@@ -1,7 +1,7 @@
 //! Modifier chords: press modifiers down, press/release the key, release
 //! modifiers - with a release guard that sweeps any key its own bookkeeping
 //! still believes is held once the sequence ends, whether it ended cleanly
-//! or was interrupted (KTD3/KTD4's modifier-release sweep, A4-2).
+//! or was interrupted (the modifier-release sweep, A4-2).
 //!
 //! Unlike `mouse_modifier::ModifierGuard`, which always posts the keys it
 //! holds on drop, `KeyReleaseGuard` additionally reads live key state

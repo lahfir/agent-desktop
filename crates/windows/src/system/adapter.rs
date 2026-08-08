@@ -101,7 +101,7 @@ impl SystemOps for WindowsAdapter {
     }
 
     /// The core default blocks nothing; Windows ships its own dangerous-combo
-    /// list (KTD10) so the skill-documented guard actually enforces on this
+    /// list so the skill-documented guard actually enforces on this
     /// platform. `--force` is honored entirely in core.
     fn is_blocked_combo(&self, combo: &agent_desktop_core::KeyCombo) -> bool {
         crate::input::blocked_combo::is_blocked(combo)
@@ -193,7 +193,7 @@ mod tests {
     /// Pins that `is_blocked_combo` is actually overridden here, reached
     /// through the trait object exactly as core calls it: the default blocks
     /// nothing, so an un-wired override would be indistinguishable from
-    /// "nothing is dangerous" (KTD10).
+    /// "nothing is dangerous".
     #[test]
     fn is_blocked_combo_is_wired_to_the_windows_dangerous_list_through_the_trait() {
         use agent_desktop_core::{KeyCombo, Modifier, SystemOps as _};

@@ -2,7 +2,8 @@ use super::*;
 use crate::input::mouse_modifier::modifier_fake_sink as key_sink;
 use crate::input::mouse_send::mouse_send_fake_sink as mouse_sink;
 use agent_desktop_core::{
-    Deadline, MAX_MOUSE_CLICK_COUNT, Modifier, MouseButton, MouseEvent, MouseEventKind, Point,
+    Deadline, DeliveryDisposition, ErrorCode, MAX_MOUSE_CLICK_COUNT, Modifier,
+    MouseButton, MouseEvent, MouseEventKind, Point,
 };
 
 fn reset_sinks() {
@@ -275,6 +276,42 @@ fn an_expired_deadline_rejects_before_any_injection() {
     assert_eq!(error.code, ErrorCode::Timeout);
     assert!(mouse_sink::recorded().is_empty());
     assert!(key_sink::recorded().is_empty());
+}
+
+#[test]
+fn an_expired_deadline_mid_click_posts_corrective_up_with_enrichment() {
+    reset_sinks();
+    let tight = Deadline::after(8).expect("tight deadline");
+
+    let error = synthesize_mouse(
+        click_event(origin(), 1, Vec::new(), MouseButton::Left),
+        tight,
+    )
+    .expect_err("deadline must abort mid-click");
+
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::DeliveredUnverified
+    );
+    let details = error.details.expect("abort-after-down enrichment");
+    assert_eq!(details["delivered_events"], 1);
+    assert_eq!(details["emergency_release_posted"], true);
+    assert_eq!(details["emergency_release_acknowledged"], false);
+
+    let recorded = mouse_sink::recorded();
+    assert!(
+        recorded
+            .iter()
+            .any(|event| event.flags == MOUSEEVENTF_LEFTDOWN),
+        "down must have posted before abort"
+    );
+    assert!(
+        recorded
+            .iter()
+            .any(|event| event.flags == MOUSEEVENTF_LEFTUP),
+        "corrective up must post on abort"
+    );
 }
 
 #[test]

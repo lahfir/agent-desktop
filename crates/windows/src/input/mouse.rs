@@ -20,6 +20,7 @@ use agent_desktop_core::{
     validate_mouse_click_count,
 };
 
+use crate::input::mouse_click_guard::ClickReleaseGuard;
 use crate::input::mouse_coord::{self, NormalizedPoint};
 use crate::input::mouse_modifier::press_modifiers;
 use crate::input::mouse_send::{MouseInputEvent, post_mouse_inputs};
@@ -115,13 +116,31 @@ fn post_click_sequence(
     let (down_flag, up_flag) = button_flags(button);
     for click_index in 0..count {
         ensure_budget(deadline)?;
-        post_mouse_inputs(&[button_input(down_flag)]);
-        sleep_bounded(deadline, CLICK_HOLD_DELAY)?;
-        post_mouse_inputs(&[button_input(up_flag)]);
+        let mut guard = ClickReleaseGuard::new(up_flag);
+        let outcome = click_once(down_flag, up_flag, &mut guard, deadline);
+        if let Err(error) = outcome {
+            return Err(guard.enrich_error(error));
+        }
         if click_index + 1 < count {
             sleep_bounded(deadline, CLICK_GAP_DELAY)?;
         }
     }
+    Ok(())
+}
+
+fn click_once(
+    down_flag: u32,
+    up_flag: u32,
+    guard: &mut ClickReleaseGuard,
+    deadline: Deadline,
+) -> Result<(), AdapterError> {
+    guard.arm();
+    post_mouse_inputs(&[button_input(down_flag)]);
+    guard.mark_delivered();
+    sleep_bounded(deadline, CLICK_HOLD_DELAY)?;
+    post_mouse_inputs(&[button_input(up_flag)]);
+    guard.mark_delivered();
+    guard.disarm();
     Ok(())
 }
 

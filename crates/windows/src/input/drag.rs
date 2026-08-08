@@ -1,7 +1,7 @@
 //! `InputOps::drag`: `SendInput` drag synthesis with a release guard.
 //!
-//! Bare-coordinate path like `mouse_event` - no window-identity gate
-//! (KTD2), because there is no target window to verify; `--headed` is the
+//! Bare-coordinate path like `mouse_event` - no window-identity gate,
+//! because there is no target window to verify; `--headed` is the
 //! guard, enforced upstream. The release guard arms immediately before the
 //! mouse-down and disarms only after the final release posts at the
 //! destination; on any abort in between, the guard's `Drop` posts

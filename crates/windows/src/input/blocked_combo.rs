@@ -1,4 +1,4 @@
-//! Windows-dangerous key combos (KTD10).
+//! Windows-dangerous key combos.
 //!
 //! `is_blocked_combo`'s core default blocks nothing
 //! (`crates/core/src/adapter/system.rs`); until this module is wired in,

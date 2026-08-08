@@ -2,7 +2,7 @@ use super::*;
 
 /// Every key name `crates/macos/src/input/keyboard_map.rs::key_name_to_code`
 /// accepts, transcribed as data. A silently-narrower Windows vocabulary must
-/// fail this test rather than ship (KTD10): the name *resolves* on both
+/// fail this test rather than ship: the name *resolves* on both
 /// platforms even though the combo it forms does not mean the same thing.
 const MACOS_KEY_VOCABULARY: &[&str] = &[
     "a",
