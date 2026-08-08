@@ -1,6 +1,13 @@
-use super::modifier_fake_sink as sink;
 use super::press_modifiers;
+use crate::input::keyboard_send::keyboard_send_fake_sink as sink;
 use agent_desktop_core::Modifier;
+
+fn recorded_pairs() -> Vec<(u16, bool)> {
+    sink::recorded()
+        .into_iter()
+        .map(|event| (event.vk, event.flags != 0))
+        .collect()
+}
 
 const VK_SHIFT: u16 = 0x10;
 const VK_CONTROL: u16 = 0x11;
@@ -11,7 +18,7 @@ fn pressing_a_modifier_posts_a_key_down_immediately() {
 
     let guard = press_modifiers(&[Modifier::Ctrl]);
 
-    assert_eq!(sink::recorded(), vec![(VK_CONTROL, false)]);
+    assert_eq!(recorded_pairs(), vec![(VK_CONTROL, false)]);
     drop(guard);
 }
 
@@ -23,7 +30,7 @@ fn releasing_the_guard_posts_a_key_up_for_every_pressed_modifier() {
     guard.release();
 
     assert_eq!(
-        sink::recorded(),
+        recorded_pairs(),
         vec![
             (VK_CONTROL, false),
             (VK_SHIFT, false),
@@ -42,7 +49,7 @@ fn dropping_an_unreleased_guard_still_releases_every_modifier() {
         let _guard = press_modifiers(&[Modifier::Alt]);
     }
 
-    let recorded = sink::recorded();
+    let recorded = recorded_pairs();
     assert_eq!(
         recorded.len(),
         2,
@@ -63,7 +70,7 @@ fn releasing_twice_never_double_posts() {
     guard.release();
     drop(guard);
 
-    let up_count = sink::recorded().iter().filter(|(_, up)| *up).count();
+    let up_count = recorded_pairs().iter().filter(|(_, up)| *up).count();
     assert_eq!(
         up_count, 1,
         "an explicit release plus a later drop must post exactly one up"
@@ -76,5 +83,5 @@ fn no_modifiers_presses_and_releases_nothing() {
 
     drop(press_modifiers(&[]));
 
-    assert!(sink::recorded().is_empty());
+    assert!(recorded_pairs().is_empty());
 }

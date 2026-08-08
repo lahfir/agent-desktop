@@ -20,7 +20,7 @@ use agent_desktop_core::{
     validate_mouse_click_count,
 };
 
-use crate::input::mouse_click_guard::ClickReleaseGuard;
+use crate::input::mouse_click_guard::{CLICK_SUGGESTION, ClickReleaseGuard};
 use crate::input::mouse_coord::{self, NormalizedPoint};
 use crate::input::mouse_modifier::press_modifiers;
 use crate::input::mouse_send::{
@@ -28,9 +28,12 @@ use crate::input::mouse_send::{
     MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
     MouseInputEvent, button_input, move_input, post_mouse_inputs,
 };
+use crate::input::release_state::ReleaseState;
 use crate::system::permissions::ensure_budget;
 
 const WHEEL_DELTA: i32 = 120;
+const WHEEL_SUGGESTION: &str =
+    "Re-read the target's scroll position before retrying; part of the requested scroll landed";
 
 const MAX_LINES_PER_EVENT: i32 = 10;
 const MAX_TOTAL_LINES: i32 = 1_000;
@@ -83,6 +86,11 @@ fn dispatch_click(event: &MouseEvent, count: u32, deadline: Deadline) -> Result<
     result
 }
 
+/// Delivery accounting spans the whole sequence while cleanup stays per
+/// click: a `--count 3` that aborts on the third click has still posted
+/// five events, and reporting only the third click's two would tell the
+/// caller less input landed than did. The per-click guard owns the
+/// corrective up-post because only it knows which button is down now.
 fn post_click_sequence(
     button: &MouseButton,
     normalized: NormalizedPoint,
@@ -91,15 +99,20 @@ fn post_click_sequence(
 ) -> Result<(), AdapterError> {
     post_mouse_inputs(&[move_input(normalized)]);
     let (down_flag, up_flag) = button_flags(button);
+    let mut sequence = ReleaseState::default();
     for click_index in 0..count {
-        ensure_budget(deadline)?;
-        let mut guard = ClickReleaseGuard::new(up_flag);
-        let outcome = click_once(down_flag, up_flag, &mut guard, deadline);
-        if let Err(error) = outcome {
-            return Err(guard.enrich_error(error));
+        if let Err(error) = ensure_budget(deadline) {
+            return Err(sequence.enrich_error(error, CLICK_SUGGESTION));
         }
-        if click_index + 1 < count {
-            sleep_bounded(deadline, CLICK_GAP_DELAY)?;
+        let mut guard = ClickReleaseGuard::new(up_flag);
+        let outcome = click_once(down_flag, up_flag, &mut guard, &mut sequence, deadline);
+        if let Err(error) = outcome {
+            return Err(sequence.enrich_error(error, CLICK_SUGGESTION));
+        }
+        if click_index + 1 < count
+            && let Err(error) = sleep_bounded(deadline, CLICK_GAP_DELAY)
+        {
+            return Err(sequence.enrich_error(error, CLICK_SUGGESTION));
         }
     }
     Ok(())
@@ -109,15 +122,18 @@ fn click_once(
     down_flag: u32,
     up_flag: u32,
     guard: &mut ClickReleaseGuard,
+    sequence: &mut ReleaseState,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     guard.arm();
+    sequence.arm();
     post_mouse_inputs(&[button_input(down_flag)]);
-    guard.mark_delivered();
+    sequence.mark_delivered();
     sleep_bounded(deadline, CLICK_HOLD_DELAY)?;
     post_mouse_inputs(&[button_input(up_flag)]);
-    guard.mark_delivered();
+    sequence.mark_delivered();
     guard.disarm();
+    sequence.disarm();
     Ok(())
 }
 
@@ -143,18 +159,28 @@ fn dispatch_wheel(
     result
 }
 
+/// A large delta is split across several events, so a deadline crossed
+/// part-way through has already scrolled the target some of the way. The
+/// error carries how many chunks landed rather than reporting a scroll that
+/// never happened; no button or key is held here, so there is nothing to
+/// release - only the count is at stake.
 fn post_wheel_chunks(
     y_chunks: Vec<i32>,
     x_chunks: Vec<i32>,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
-    for lines in y_chunks {
-        ensure_budget(deadline)?;
-        post_mouse_inputs(&[wheel_input(MOUSEEVENTF_WHEEL, lines)]);
-    }
-    for lines in x_chunks {
-        ensure_budget(deadline)?;
-        post_mouse_inputs(&[wheel_input(MOUSEEVENTF_HWHEEL, lines)]);
+    let mut delivered = ReleaseState::default();
+    for (flag, chunks) in [
+        (MOUSEEVENTF_WHEEL, y_chunks),
+        (MOUSEEVENTF_HWHEEL, x_chunks),
+    ] {
+        for lines in chunks {
+            if let Err(error) = ensure_budget(deadline) {
+                return Err(delivered.enrich_error(error, WHEEL_SUGGESTION));
+            }
+            post_mouse_inputs(&[wheel_input(flag, lines)]);
+            delivered.mark_delivered();
+        }
     }
     Ok(())
 }

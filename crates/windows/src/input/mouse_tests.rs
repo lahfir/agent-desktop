@@ -1,5 +1,5 @@
 use super::*;
-use crate::input::mouse_modifier::modifier_fake_sink as key_sink;
+use crate::input::keyboard_send::keyboard_send_fake_sink as key_sink;
 use crate::input::mouse_send::mouse_send_fake_sink as mouse_sink;
 use crate::input::mouse_send::{MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEEVENTF_VIRTUALDESK};
 use agent_desktop_core::{
@@ -10,6 +10,16 @@ use agent_desktop_core::{
 fn reset_sinks() {
     mouse_sink::reset();
     key_sink::reset();
+}
+
+/// The one keyboard seam records full `KeyboardInputEvent`s; `key_input`
+/// sets `flags` to `KEYEVENTF_KEYUP` for a release and 0 for a press, so a
+/// non-zero flag is the key-up.
+fn modifier_events() -> Vec<(u16, bool)> {
+    key_sink::recorded()
+        .into_iter()
+        .map(|event| (event.vk, event.flags != 0))
+        .collect()
 }
 
 fn origin() -> Point {
@@ -132,7 +142,7 @@ fn a_click_with_modifiers_holds_them_down_for_the_click_then_releases_them() {
     )
     .expect("modified click succeeds");
 
-    let keys = key_sink::recorded();
+    let keys = modifier_events();
     assert_eq!(
         keys.first().map(|(_, up)| *up),
         Some(false),
@@ -301,4 +311,29 @@ fn an_invalid_point_is_rejected_with_zero_injection() {
 
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert!(mouse_sink::recorded().is_empty());
+}
+
+#[test]
+fn a_multi_click_that_times_out_after_the_first_cycle_reports_cumulative_delivery() {
+    reset_sinks();
+    let short = Deadline::after(30).expect("bounded test deadline");
+
+    let error = synthesize_mouse(
+        click_event(origin(), 3, Vec::new(), MouseButton::Left),
+        short,
+    )
+    .expect_err("three clicks cannot fit in the budget");
+
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::DeliveredUnverified,
+        "input landed, so the caller must not be told it is safe to repeat"
+    );
+    let delivered = error.details.expect("delivery evidence")["delivered_events"]
+        .as_u64()
+        .expect("delivered_events count");
+    assert!(
+        delivered >= 2,
+        "the count must span the whole sequence, not reset per click; got {delivered}"
+    );
 }

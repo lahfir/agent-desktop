@@ -92,9 +92,6 @@ fn dwell_over_destination(
     deadline: Deadline,
     guard: &mut DragReleaseGuard,
 ) -> Result<(), AdapterError> {
-    if delay_ms == 0 {
-        return Ok(());
-    }
     let mut remaining_ms = delay_ms;
     while remaining_ms > 0 {
         ensure_budget(deadline)?;

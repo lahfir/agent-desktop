@@ -6,12 +6,10 @@
 //! other post here: `SendInput`'s return value is never treated as delivery
 //! evidence (A9-3).
 
-use agent_desktop_core::AdapterError;
-
 use crate::input::mouse_send::{button_input, post_mouse_inputs};
 use crate::input::release_state::ReleaseState;
 
-const SUGGESTION: &str = "Inspect whether a mouse button may still be held before retrying; the emergency release was posted without an OS acknowledgement";
+pub(crate) const CLICK_SUGGESTION: &str = "Inspect whether a mouse button may still be held before retrying; the emergency release was posted without an OS acknowledgement";
 
 pub(crate) struct ClickReleaseGuard {
     up_flag: u32,
@@ -34,16 +32,8 @@ impl ClickReleaseGuard {
         self.state.disarm();
     }
 
-    pub(crate) fn mark_delivered(&mut self) {
-        self.state.mark_delivered();
-    }
-
     pub(crate) fn should_release(&self) -> bool {
         self.state.should_release()
-    }
-
-    pub(crate) fn enrich_error(&self, error: AdapterError) -> AdapterError {
-        self.state.enrich_error(error, SUGGESTION)
     }
 }
 

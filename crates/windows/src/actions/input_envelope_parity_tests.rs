@@ -88,7 +88,7 @@ fn assert_result_disposition(json: &Value, expected: DeliverySemantics) {
 #[test]
 fn physical_type_text_step_wire_uses_physical_synthetic_and_unverified() {
     key_sink::reset();
-    let step = type_text_from_gate("hi", true, deadline()).expect("type");
+    let step = type_text_from_gate("hi", true, deadline(), |_| Ok(())).expect("type");
 
     let json = serialize_action_result(&Action::TypeText("hi".into()), vec![step]);
     assert_eq!(json["steps"][0]["outcome"], "succeeded");

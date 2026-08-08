@@ -1,5 +1,5 @@
 use super::*;
-use crate::input::mouse_modifier::modifier_fake_sink as key_sink;
+use crate::input::keyboard_send::keyboard_send_fake_sink as key_sink;
 use crate::input::mouse_send::mouse_send_fake_sink as mouse_sink;
 use agent_desktop_core::{
     Deadline, ErrorCode, Modifier, MouseButton, MouseEvent, MouseEventKind, Point,
@@ -8,6 +8,16 @@ use agent_desktop_core::{
 fn reset_sinks() {
     mouse_sink::reset();
     key_sink::reset();
+}
+
+/// The one keyboard seam records full `KeyboardInputEvent`s; `key_input`
+/// sets `flags` to `KEYEVENTF_KEYUP` for a release and 0 for a press, so a
+/// non-zero flag is the key-up.
+fn modifier_events() -> Vec<(u16, bool)> {
+    key_sink::recorded()
+        .into_iter()
+        .map(|event| (event.vk, event.flags != 0))
+        .collect()
 }
 
 fn origin() -> Point {
@@ -127,7 +137,7 @@ fn a_wheel_with_modifiers_holds_them_down_for_the_scroll_then_releases_them() {
     };
     synthesize_mouse(event, deadline()).expect("modified wheel succeeds");
 
-    let keys = key_sink::recorded();
+    let keys = modifier_events();
     assert_eq!(
         keys.first().map(|(_, up)| *up),
         Some(false),

@@ -10,17 +10,17 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, KeyCombo};
 
 /// The chord primitive: press modifiers, press/release the key, release
-/// modifiers, under a release guard. Not yet called from `execute_action` -
-/// the physical `press`/`type` legs that compose it with a focus verify are
-/// a separate seam - so it is reserved crate-internal surface, not dead
-/// code.
+/// modifiers, under a release guard. It carries no policy and no focus
+/// check by design - `actions/physical_keyboard` composes it with the
+/// policy gate and the focus verify - so the primitive stays usable by any
+/// caller that has already established those.
 pub(crate) fn synthesize_key(combo: &KeyCombo, deadline: Deadline) -> Result<(), AdapterError> {
     crate::input::keyboard_event::synthesize_key(combo, deadline)
 }
 
-/// The chunked UTF-16 `type_text` primitive. Reserved the same way
-/// `synthesize_key` is: the physical `type` leg composes it with a focus
-/// verify elsewhere.
+/// The chunked UTF-16 `type_text` primitive, kept policy-free the same way
+/// `synthesize_key` is. The physical `type` leg supplies the per-chunk
+/// verifier that re-checks focus between chunks.
 pub(crate) fn synthesize_text(
     text: &str,
     deadline: Deadline,

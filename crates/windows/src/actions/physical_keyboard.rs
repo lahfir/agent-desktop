@@ -27,18 +27,13 @@ pub(crate) fn type_text_steps(
     ensure_keyboard_policy(policy)?;
     preflight_text(text, deadline)?;
     let focus_ready = ensure_keyboard_delivery_ready(element, deadline)?;
-    if !focus_ready {
-        return Err(focus_lost_before_delivery());
-    }
-    synthesize_text(
-        text,
-        deadline,
-        |deadline| match ensure_keyboard_delivery_ready(element, deadline)? {
+    type_text_from_gate(text, focus_ready, deadline, |deadline| {
+        match ensure_keyboard_delivery_ready(element, deadline)? {
             true => Ok(()),
             false => Err(focus_lost_before_delivery()),
-        },
-    )?;
-    Ok(vec![physical_step(TYPE_TEXT_LABEL)])
+        }
+    })
+    .map(|step| vec![step])
 }
 
 pub(crate) fn press_key_element_steps(
@@ -66,16 +61,21 @@ pub(crate) fn press_key_global(
     )
 }
 
-#[cfg(test)]
+/// The shipped `type` leg past the focus gate, with the per-chunk verifier
+/// injected so a test drives the same code the adapter runs. The verifier
+/// is a parameter rather than a fixed closure because it is the only part
+/// a caller can legitimately vary; the focus gate below it is not optional,
+/// and a test-only copy of this function would leave it unguarded.
 pub(crate) fn type_text_from_gate(
     text: &str,
     focus_ready: bool,
     deadline: Deadline,
+    verify_target: impl FnMut(Deadline) -> Result<(), AdapterError>,
 ) -> Result<ActionStep, AdapterError> {
     if !focus_ready {
         return Err(focus_lost_before_delivery());
     }
-    synthesize_text(text, deadline, |_| Ok(()))?;
+    synthesize_text(text, deadline, verify_target)?;
     Ok(physical_step(TYPE_TEXT_LABEL))
 }
 

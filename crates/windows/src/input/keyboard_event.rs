@@ -71,7 +71,7 @@ fn press_chord(
     Ok(())
 }
 
-fn modifier_vk(modifier: &Modifier) -> u16 {
+pub(crate) fn modifier_vk(modifier: &Modifier) -> u16 {
     match modifier {
         Modifier::Meta => VK_LWIN,
         Modifier::Ctrl => VK_CONTROL,
@@ -80,7 +80,7 @@ fn modifier_vk(modifier: &Modifier) -> u16 {
     }
 }
 
-fn key_input(vk: u16, key_up: bool) -> KeyboardInputEvent {
+pub(crate) fn key_input(vk: u16, key_up: bool) -> KeyboardInputEvent {
     KeyboardInputEvent {
         vk,
         scan: 0,

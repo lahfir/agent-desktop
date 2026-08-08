@@ -12,11 +12,15 @@
 //! readable and same-or-lower, effect is judged by the ref-addressed leg's
 //! post-injection re-read, not by this gate.
 //!
-//! The live Medium-to-High cross-boundary input *effect* stays unmeasurable
-//! on both probe environments (A20-2: `Start-MediumIntegrityProcess`
-//! manufacture unavailable); this module proves detection against a real
-//! local token read (A20-1) plus synthetic-SID comparison logic and never
-//! asserts that effect.
+//! The live Medium-to-High cross-boundary input *effect* is still
+//! unconfirmed, for a narrower reason than the earlier semantic-action pass
+//! hit: there, token manufacture itself failed. Here both the probe and the
+//! scratch process came up at the same integrity, so there was no
+//! strictly-higher target to inject at and the effect was never staged
+//! (A20-2, branch `cross_boundary_input_effect_not_staged`). A rig holding
+//! two integrity levels at once owns that confirmation. This module proves
+//! detection against a real local token read (A20-1) plus synthetic-SID
+//! comparison logic, and never asserts the effect.
 
 use agent_desktop_core::{AdapterError, ErrorCode, ProcessId};
 

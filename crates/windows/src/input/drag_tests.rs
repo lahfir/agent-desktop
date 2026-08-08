@@ -3,6 +3,19 @@ use crate::input::mouse_send::mouse_send_fake_sink as sink;
 use crate::input::mouse_send::{MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE};
 use agent_desktop_core::{Deadline, Point};
 
+fn drag_params(duration_ms: Option<u64>, drop_delay_ms: Option<u64>) -> DragParams {
+    DragParams {
+        from: Point { x: 0.0, y: 0.0 },
+        to: Point { x: 10.0, y: 10.0 },
+        duration_ms,
+        drop_delay_ms,
+    }
+}
+
+fn long_deadline() -> Deadline {
+    Deadline::after(5_000).expect("bounded test deadline")
+}
+
 fn base_params() -> DragParams {
     DragParams {
         from: Point { x: 0.0, y: 0.0 },
@@ -49,19 +62,51 @@ fn impossible_drag_deadline_fails_before_mouse_down() {
     );
 }
 
-#[test]
-fn zero_drop_delay_has_no_forced_dwell_ticks() {
-    assert_eq!(0_u64.div_ceil(DWELL_TICK_MS), 0);
+/// Counts the moves posted while the button is down: everything between
+/// the mouse-down and the release. Travel and dwell both post moves, so a
+/// zero dwell is visible as the absence of the extra ones.
+fn moves_while_button_held(events: &[crate::input::mouse_send::MouseInputEvent]) -> usize {
+    let down = events
+        .iter()
+        .position(|event| event.flags == MOUSEEVENTF_LEFTDOWN);
+    let up = events
+        .iter()
+        .position(|event| event.flags == MOUSEEVENTF_LEFTUP);
+    match (down, up) {
+        (Some(down), Some(up)) if up > down => events[down + 1..up]
+            .iter()
+            .filter(|event| event.flags & MOUSEEVENTF_MOVE != 0)
+            .count(),
+        _ => 0,
+    }
 }
 
 #[test]
-fn sub_tick_drag_uses_one_nonzero_duration_step() {
-    let duration_ms = 1_u64;
-    let steps = duration_ms.div_ceil(DWELL_TICK_MS).clamp(1, MAX_STEPS);
-    let step_delay = Duration::from_secs_f64(duration_ms as f64 / steps as f64 / 1_000.0);
+fn a_zero_drop_delay_posts_no_dwell_moves_while_a_nonzero_one_does() {
+    sink::reset();
+    synthesize_drag(drag_params(Some(0), Some(0)), long_deadline()).expect("drag succeeds");
+    let without_dwell = moves_while_button_held(&sink::recorded());
 
-    assert_eq!(steps, 1);
-    assert_eq!(step_delay, Duration::from_millis(1));
+    sink::reset();
+    synthesize_drag(drag_params(Some(0), Some(64)), long_deadline()).expect("drag succeeds");
+    let with_dwell = moves_while_button_held(&sink::recorded());
+
+    assert!(
+        with_dwell > without_dwell,
+        "a dwell must post repeated moves over the destination; got {without_dwell} without and {with_dwell} with"
+    );
+}
+
+#[test]
+fn a_sub_tick_duration_still_posts_one_interpolated_move() {
+    sink::reset();
+    synthesize_drag(drag_params(Some(1), Some(0)), long_deadline()).expect("drag succeeds");
+
+    assert_eq!(
+        moves_while_button_held(&sink::recorded()),
+        2,
+        "one interpolated travel step plus the final move onto the destination"
+    );
 }
 
 #[test]
