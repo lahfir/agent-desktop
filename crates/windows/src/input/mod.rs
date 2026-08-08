@@ -1,6 +1,7 @@
 pub(crate) mod blocked_combo;
 pub(crate) mod drag;
 mod drag_state;
+pub(crate) mod elevation;
 pub(crate) mod keyboard;
 mod keyboard_event;
 mod keyboard_map;
