@@ -1,0 +1,304 @@
+{
+    "combobox":  {
+                     "branch":  "children_present_while_collapsed",
+                     "children_collapsed":  [
+                                                {
+                                                    "automation_id_digest":  "e9afee15f2c2f43a",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  false
+                                                                 }
+                                                },
+                                                {
+                                                    "automation_id_digest":  "e9afef15f2c2f5ed",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  true
+                                                                 }
+                                                },
+                                                {
+                                                    "automation_id_digest":  "e9afec15f2c2f0d4",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  false
+                                                                 }
+                                                },
+                                                {
+                                                    "automation_id_digest":  "e9afed15f2c2f287",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  false
+                                                                 }
+                                                },
+                                                {
+                                                    "automation_id_digest":  "e9afea15f2c2ed6e",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  false
+                                                                 }
+                                                },
+                                                {
+                                                    "automation_id_digest":  "e9afeb15f2c2ef21",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  false
+                                                                 }
+                                                },
+                                                {
+                                                    "automation_id_digest":  "e9afe815f2c2ea08",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  false
+                                                                 }
+                                                },
+                                                {
+                                                    "automation_id_digest":  "e9afe915f2c2ebbb",
+                                                    "selected":  {
+                                                                     "ok":  true,
+                                                                     "selected":  false
+                                                                 }
+                                                }
+                                            ],
+                     "children_collapsed_count":  8,
+                     "children_expanded":  [
+                                               {
+                                                   "automation_id_digest":  "e9afee15f2c2f43a",
+                                                   "bounds":  "61,199,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afef15f2c2f5ed",
+                                                   "bounds":  "61,219,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afec15f2c2f0d4",
+                                                   "bounds":  "61,239,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afed15f2c2f287",
+                                                   "bounds":  "61,259,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afea15f2c2ed6e",
+                                                   "bounds":  "61,279,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afeb15f2c2ef21",
+                                                   "bounds":  "61,299,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afe815f2c2ea08",
+                                                   "bounds":  "61,319,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afe915f2c2ebbb",
+                                                   "bounds":  "61,339,421,20",
+                                                   "selected":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afee15f2c2f43a",
+                                                   "bounds":  "61,199,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  false
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afef15f2c2f5ed",
+                                                   "bounds":  "61,219,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  true
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afec15f2c2f0d4",
+                                                   "bounds":  "61,239,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  false
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afed15f2c2f287",
+                                                   "bounds":  "61,259,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  false
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afea15f2c2ed6e",
+                                                   "bounds":  "61,279,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  false
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afeb15f2c2ef21",
+                                                   "bounds":  "61,299,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  false
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afe815f2c2ea08",
+                                                   "bounds":  "61,319,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  false
+                                                                }
+                                               },
+                                               {
+                                                   "automation_id_digest":  "e9afe915f2c2ebbb",
+                                                   "bounds":  "61,339,421,20",
+                                                   "selected":  {
+                                                                    "ok":  true,
+                                                                    "selected":  false
+                                                                }
+                                               }
+                                           ],
+                     "children_expanded_count":  16,
+                     "expand_call":  {
+                                         "ktd2_arm":  "clean_ok",
+                                         "ok":  true
+                                     },
+                     "expand_state_before":  {
+                                                 "ok":  true,
+                                                 "state":  "Expanded"
+                                             },
+                     "last_item_present_after_expand":  true,
+                     "select":  {
+                                    "ok":  false,
+                                    "pattern":  {
+                                                    "code":  0,
+                                                    "result_hex":  null
+                                                }
+                                },
+                     "verify_selected":  {
+                                             "ok":  false,
+                                             "pattern":  {
+                                                             "code":  0,
+                                                             "result_hex":  null
+                                                         }
+                                         }
+                 },
+    "nested_scroll":  {
+                          "branch":  "ladder_geometry_measured_both_ancestors",
+                          "inner_bounds_initial":  "60,786,406,70",
+                          "inner_scroll_available":  true,
+                          "outer_bounds_initial":  "60,696,423,110",
+                          "outer_scroll_available":  true,
+                          "rungs":  [
+                                        {
+                                            "ancestor":  "inner",
+                                            "call":  {
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true
+                                                     },
+                                            "direction":  "after_vertical",
+                                            "inner_bounds":  "60,786,406,70",
+                                            "outer_bounds":  "60,696,423,110",
+                                            "step":  0,
+                                            "target_bounds":  "60,876,140,28",
+                                            "visible_in_inner":  false,
+                                            "visible_in_outer":  false
+                                        },
+                                        {
+                                            "ancestor":  "inner",
+                                            "call":  {
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true
+                                                     },
+                                            "direction":  "after_vertical",
+                                            "inner_bounds":  "60,714,406,70",
+                                            "outer_bounds":  "60,674,423,110",
+                                            "step":  1,
+                                            "target_bounds":  "60,788,140,28",
+                                            "visible_in_inner":  false,
+                                            "visible_in_outer":  false
+                                        },
+                                        {
+                                            "ancestor":  "inner",
+                                            "call":  {
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true
+                                                     },
+                                            "direction":  "after_vertical",
+                                            "inner_bounds":  "60,714,406,70",
+                                            "outer_bounds":  "60,674,423,110",
+                                            "step":  2,
+                                            "target_bounds":  "60,772,140,28",
+                                            "visible_in_inner":  false,
+                                            "visible_in_outer":  false
+                                        },
+                                        {
+                                            "direction":  "none",
+                                            "inner_bounds":  "60,714,406,70",
+                                            "outer_bounds":  "60,674,423,110",
+                                            "step":  3,
+                                            "target_bounds":  "60,756,140,28",
+                                            "visible":  true
+                                        }
+                                    ],
+                          "target_bounds_initial":  "60,876,140,28",
+                          "target_offscreen_initial":  false,
+                          "target_visible_after_ladder":  true
+                      }
+}

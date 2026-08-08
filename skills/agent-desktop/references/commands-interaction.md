@@ -7,7 +7,7 @@ Commands for modifying UI state — clicking, typing, selecting, scrolling, and 
 Ref-based actions run in two modes, Playwright-style:
 
 - **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the semantic path cannot perform the action it fails closed.
-- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` stay semantic.
+- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. On Windows, the semantic set stays semantic under `--headed` until input synthesis adds physical rungs; `focus` is headed-required (A3-4, A19-5); `double-click` / `triple-click` / `type` wait on that synthesis. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, and `scroll-to` stay semantic on both platforms.
 
 `press` is explicit physical keyboard input. `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical cursor input and require `--headed`. Raw coordinates carry no window identity, so they never focus an app. The held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the hold lifetime.
 
@@ -43,21 +43,21 @@ agent-desktop click @s8f3k2p9:e5 --wait-for-gone "progressindicator" --wait-time
 
 #### Which gestures have a headless path
 
-The command surface is platform-agnostic: every ref action builds an `Action` and calls the platform adapter, which owns the headless-vs-physical implementation. The table below is the **macOS (Phase 1) adapter's** behavior — a gesture is headless-capable there only when macOS exposes an accessibility action for it. If a future Windows (UIA) or Linux (AT-SPI) adapter exposes a headless path for `double-click`/`triple-click`, that command lights up headlessly on that platform with **no change to the command or core** — only the adapter changes (`hover`/`drag` are modeled as raw cursor gestures, so they stay physical everywhere by design).
+The command surface is platform-agnostic: every ref action builds an `Action` and calls the platform adapter, which owns the headless-vs-physical implementation. A gesture is headless-capable only when that platform exposes a semantic affordance for it. macOS and Windows both serve the semantic set (`click`, `set-value`, `toggle`, `expand`, …) headlessly; physical multi-click and key synthesis remain headed / input-synthesis work. `hover`/`drag` are modeled as raw cursor gestures, so they stay physical everywhere by design.
 
-| Command | Headless path (macOS) | Notes |
+| Command | Headless path | Notes |
 |---------|---------------|-------|
-| `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes | semantic AX actions in strict headless mode |
-| `type` | yes | uses `AXSelectedText` headlessly; `--headed` synthesizes keyboard input |
-| `double-click` | no | a real two-click gesture; requires `--headed` |
-| `triple-click` | no | macOS exposes no triple-click action; it is purely 3 physical clicks → `--headed` only |
-| `hover` | no | hovering *is* moving the cursor over an element; no AX equivalent |
-| `drag` / drop | no | dragging *is* a cursor press-move-release; no general AX drag. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD) |
-| menu bar (`--surface menubar`) | enumerate/open | the app menu bar is readable and openable; SwiftUI `CommandMenu` items accept AXPress but do not route to their action closure (a SwiftUI limitation, like its Slider) — native AppKit menu items fire. `.contextMenu` item selection works. |
+| `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes (where advertised) | semantic accessibility actions in strict headless mode (macOS AX; Windows UIA patterns) |
+| `type` | macOS yes; Windows no until input synthesis | macOS uses `AXSelectedText` headlessly; Windows fails closed at preflight — use `set-value` for semantic writes; `--headed` synthesizes keys where supported |
+| `double-click` | no | a real two-click gesture; requires `--headed` (Windows: `PLATFORM_NOT_SUPPORTED` until input synthesis) |
+| `triple-click` | no | no native triple-click affordance; purely 3 physical clicks → `--headed` only |
+| `hover` | no | hovering *is* moving the cursor over an element; no accessibility equivalent |
+| `drag` / drop | no | dragging *is* a cursor press-move-release; no general accessibility drag. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD) |
+| menu bar (`--surface menubar`) | enumerate/open | the app menu bar is readable and openable; on macOS, SwiftUI `CommandMenu` items accept AXPress but do not route to their action closure (a SwiftUI limitation, like its Slider) — native AppKit menu items fire. `.contextMenu` item selection works. |
 
 All ref-based interaction commands accept `--snapshot <snapshot_id>`. Snapshot and find output already return qualified refs (`@<snapshot_id>:eN`), which embed the exact snapshot and need no separate flag. Legacy bare `@eN` input requires `--snapshot`; when a session owns that snapshot, the command also needs the same `--session` or `AGENT_DESKTOP_SESSION` scope. Lookup never searches another session namespace.
 
-Success responses for ref actions include a `steps` array when the activation chain recorded attempts: each entry is `{ "label": "AXPress", "outcome": "attempted" | "skipped" | "succeeded" }` in execution order, showing which activation path produced the result.
+Success responses for ref actions include a `steps` array when the activation chain recorded attempts. Each entry is `{ "label", "outcome", "mechanism", "verified" }` in execution order: `outcome` is `"attempted" | "skipped" | "succeeded"`; `mechanism` is `"semantic_api"` or `"physical_synthetic"` when set; `verified` is `true` / `false` when the effect was re-read, and omitted when verification could not observe without leaking or no state exists to re-read. The same envelope carries `disposition: { "delivery", "retry" }` — delivery is `not_delivered` / `delivery_uncertain` / `delivered_unverified` / `delivered_verified` (or `unknown`), and `retry` is projected from that delivery (`safe` only for `not_delivered`).
 
 When the actionability preflight blocks an action, the error envelope carries the full report in `error.details`: `{ "actionable": false, "checks": [ { "check": "...", "status": "...", "reason": "..." } ] }`. The `check` identifiers are `visible`, `stable`, `enabled`, `supported_action`, `policy`, `editable`, and `receives_events`; statuses are `pass`, `fail`, and `unknown`. Failures split by whether waiting can help: the **transient** checks (`visible`, `stable`, `enabled`, `receives_events`) can change over time — scroll into view, settle, become enabled, occlusion clears — so they surface as `ACTION_FAILED` and are retried within `--timeout-ms`; the **terminal** checks (`supported_action`, `policy`, `editable`) cannot be healed by waiting (the element's role/action set or the interaction policy would have to change), so they fail fast with a precise code — `ACTION_NOT_SUPPORTED` (`supported_action`/`editable`) or `POLICY_DENIED` (`policy`) — instead of polling to `TIMEOUT`. The dispatch actions that activate an element (`click`, `double-click`, `right-click`, `triple-click`, `type`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `clear`, `focus`, `scroll`, `scroll-to`) run the applicable `visible`/`stable`/`enabled`/`supported_action`/`policy`/`editable` battery; the four click variants additionally run `receives_events`. `hover` and each ref endpoint of `drag` use the pointer resolver instead: live visibility and bounds, one scroll-into-view attempt when needed, a second equal-bounds sample, then `receives_events`. They do not require enabled/editable or an element action capability because the gesture itself is raw pointer input. Use the failing check's `reason` to pick recovery: `wait --element <ref> --predicate actionable`, a fresh snapshot, or `--headed` when a `policy` check failed and a physical gesture is intended.
 
@@ -69,18 +69,18 @@ Every ref-resolving action accepts `--timeout-ms` (default `5000`), but it budge
 
 **Implicit scroll-into-view.** Standard ref actions whose `Action` declares a scroll precondition attempt a platform scroll-into-view before dispatch. The pointer resolver for `hover` and `drag` independently makes one scroll attempt when a ref endpoint is not visibly bounded, then re-resolves and fails closed if it is still not visible. Use the standalone `scroll-to` command when you need an explicit, verifiable scroll result.
 
-Coverage of that attempt differs by platform. macOS falls back to scrolling the target's ancestors when the element itself advertises no scroll-into-view affordance, so most off-screen elements are brought into view. Windows currently attempts only the element's own native affordance, which in practice is carried by list and tree items; an element without it fails immediately with `ACTION_FAILED` and `error.details.kind: "scroll_into_view_unsupported"` rather than scrolling its container. Scroll the containing viewport with `scroll` first when a Windows target is out of view.
+Both macOS and Windows fall back to scrolling the target's ancestors when the element itself advertises no scroll-into-view affordance (macOS AX ancestor scroll; Windows `ScrollPattern` ladder — A19-7). An exhausted ladder reports `ACTION_FAILED` with `disposition.delivery: "delivered_unverified"` when a step may have scrolled, or `error.details.kind: "scroll_into_view_unsupported"` when no scrollable ancestor exists. Shell virtualization that never realizes below-fold rows can still leave a target unreachable — scroll the containing viewport with `scroll` or densify the surface rather than assuming the ladder is absent.
 
 ## Click Actions
 
-Click commands use semantic AX activation in strict headless mode. Pass `--headed` to prefer a physical click, or use `agent-desktop --headed mouse-click` for a raw coordinate click.
+Click commands use semantic accessibility activation in strict headless mode. Pass `--headed` to prefer a physical click, or use `agent-desktop --headed mouse-click` for a raw coordinate click.
 
 ### click
 ```bash
 agent-desktop click @s8f3k2p9:e5
 agent-desktop click @e5 --snapshot <snapshot_id>
 ```
-Primary activation. Headless uses `AXPress`; `--headed` performs a physical click first and reports `physical_synthetic` in `data.steps`.
+Primary activation. Headless uses the platform's semantic activate (macOS `AXPress`; Windows `InvokePattern.Invoke` or `LegacyIAccessible.DoDefaultAction` when Invoke is absent — A19-6). `--headed` performs a physical click first where that rung exists and reports `physical_synthetic` in `data.steps`.
 
 ### double-click
 ```bash
@@ -107,26 +107,26 @@ Headless uses semantic context-menu actions. `--headed` performs a physical righ
 agent-desktop type @s8f3k2p9:e2 "hello@example.com"
 agent-desktop type @s8f3k2p9:e2 "multi line\ntext"
 ```
-Headless `type` uses `AXSelectedText` without focusing the app or synthesizing keys. Pass `--headed` to focus the target and synthesize keyboard input. Use `set-value` when direct semantic value assignment is the intended interaction.
+Headless `type` uses semantic text insertion where the platform exposes it (macOS `AXSelectedText`) without focusing the app or synthesizing keys. On Windows, headless `type` fails closed at preflight until input synthesis lands — use `set-value` for semantic writes. Pass `--headed` to focus the target and synthesize keyboard input where supported.
 
 ### set-value
 ```bash
 agent-desktop set-value @s8f3k2p9:e2 "new value"
 ```
-Sets the value directly via the AX value attribute. Faster than `type` but may not trigger all UI callbacks. Use for text fields, text areas, and sliders.
+Sets the value directly via the platform's semantic value write (macOS AX value attribute; Windows `ValuePattern.SetValue` / `RangeValuePattern.SetValue`). Faster than `type` but may not trigger all UI callbacks. Use for text fields, text areas, and sliders. Secure fields withhold content from steps and post-state (A19-3).
 
 ### clear
 ```bash
 agent-desktop clear @s8f3k2p9:e2
 ```
-Headless clears through `AXValue`. With `--headed`, it performs focus + Select All + Delete first.
+Headless clears through the platform's semantic value write (macOS `AXValue`; Windows `ValuePattern.SetValue("")`). With `--headed`, macOS performs focus + Select All + Delete first; Windows headed keyboard clear lands with input synthesis.
 
 ### focus
 ```bash
 agent-desktop focus @s8f3k2p9:e2
 ```
 Sets keyboard focus on the element without clicking it.
-This is an explicit focus-changing command. It uses accessibility focus and does not move the cursor.
+This is an explicit focus-changing command. It uses accessibility focus and does not move the cursor. On Windows, `SetFocus` moves the desktop foreground (A3-4, A19-5), so the command requires `--headed` and fails headless with `POLICY_DENIED`.
 
 ## Selection & Toggle
 
@@ -134,7 +134,7 @@ This is an explicit focus-changing command. It uses accessibility focus and does
 ```bash
 agent-desktop select @s8f3k2p9:e4 "Option B"
 ```
-Selects an option in a list, dropdown, or combobox by display text. For menu-backed controls it opens the AX menu, presses the matching menu item, and verifies `AXValue` when the control exposes it. It returns a structured error when the matching item is missing or the exposed value does not change.
+Selects an option in a list, dropdown, or combobox by display text. For menu-backed controls it opens the native menu, activates the matching item, and verifies the control's value when exposed (macOS AX menu / `AXValue`; Windows `SelectionItemPattern` with optional container value). It returns a structured error when the matching item is missing or the exposed value does not change.
 
 ### toggle
 ```bash
@@ -184,7 +184,7 @@ agent-desktop scroll @s8f3k2p9:e1 --direction right --amount 2
 | `--amount` | 3 | Number of scroll units |
 | `--timeout-ms` | 5000 | Actionability wait budget in ms before failing with `TIMEOUT` |
 
-Headless mode uses AX scroll actions, scroll bars, and state-setting paths. Headed mode focuses the exact ref window, resolves the target point, and sends a physical wheel gesture first. If the selected mode has no safe mechanism, the command returns a structured error.
+Headless mode uses native scroll patterns, scroll bars, and state-setting paths. Headed mode focuses the exact ref window, resolves the target point, and sends a physical wheel gesture first where that rung exists. If the selected mode has no safe mechanism, the command returns a structured error.
 
 ### scroll-to
 ```bash
@@ -192,7 +192,7 @@ agent-desktop scroll-to @s8f3k2p9:e8
 ```
 Scrolls the element into the visible area of its scroll container.
 
-A scroll is reported only on observed evidence: success means the element was re-read as visible afterwards, never that the platform call returned without error. When the element carries no native scroll-into-view affordance the command fails immediately with `ACTION_FAILED` and `error.details.kind: "scroll_into_view_unsupported"`, `error.details.retryable: false` — waiting will not help, so scroll the containing viewport with `scroll` instead of retrying. When the platform scrolled but visibility could not be confirmed, the error carries `disposition.delivery: "delivered_unverified"`; re-read the element before assuming the scroll had no effect.
+A scroll is reported only on observed evidence: success means the element was re-read as visible afterwards, never that the platform call returned without error. When the element has no native scroll-into-view affordance, both platforms walk scrollable ancestors; if none exist the command fails with `ACTION_FAILED` and `error.details.kind: "scroll_into_view_unsupported"`, `error.details.retryable: false` — waiting will not help, so scroll the containing viewport with `scroll` instead of retrying. When the platform scrolled but visibility could not be confirmed (including an exhausted ancestor ladder), the error carries `disposition.delivery: "delivered_unverified"`; re-read the element before assuming the scroll had no effect.
 
 ## Keyboard
 
@@ -287,7 +287,7 @@ agent-desktop --headed mouse-wheel --x 500 --y 300 --dy -3
 agent-desktop --headed mouse-wheel --x 500 --y 300 --dx -2 --dy 0
 agent-desktop --headed mouse-wheel --x 500 --y 300 --modifiers shift
 ```
-Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`. This is distinct from `scroll <ref>`: `scroll` targets an element through AX scroll semantics, while `mouse-wheel` posts a raw wheel event at a screen point (for custom scroll surfaces or canvases with no AX scroll action). Held modifiers are applied to the event, so `--modifiers shift` produces the horizontal-scroll chord some apps expect.
+Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`. This is distinct from `scroll <ref>`: `scroll` targets an element through native scroll semantics, while `mouse-wheel` posts a raw wheel event at a screen point (for custom scroll surfaces or canvases with no accessibility scroll action). Held modifiers are applied to the event, so `--modifiers shift` produces the horizontal-scroll chord some apps expect.
 
 | Flag | Default | Description |
 |------|---------|-------------|

@@ -79,6 +79,7 @@ namespace AgentDesktop.Scratch
         public bool HostProviders;
         public int X;
         public int Y;
+        public string SecretMarker;
 
         public ScratchOptions()
         {
@@ -87,6 +88,7 @@ namespace AgentDesktop.Scratch
             HostProviders = false;
             X = 100;
             Y = 100;
+            SecretMarker = "zza19secretzz";
         }
 
         public static ScratchOptions Parse(string[] args)
@@ -107,6 +109,11 @@ namespace AgentDesktop.Scratch
                 else if (arg == "--host-providers")
                 {
                     options.HostProviders = true;
+                }
+                else if (arg == "--secret-marker" && i + 1 < args.Length)
+                {
+                    options.SecretMarker = args[i + 1];
+                    i++;
                 }
                 else if (arg == "--pos" && i + 1 < args.Length)
                 {
@@ -137,11 +144,13 @@ namespace AgentDesktop.Scratch
 
         private static readonly string[] ControlIdOrder = new string[]
         {
-            "chkToggle", "lblValueCaption", "txtValue", "cboChoice", "btnAction",
-            "btnMutateList", "btnZeroSize", "btnDisabled", "btnCovered", "btnOverlay",
-            "pnlOverlay", "tbSlider", "trvNodes", "lstItems",
-            "pnlScroll", "btnRow00", "btnRow01", "btnRow02", "btnRow03", "btnRow04",
-            "btnRow05", "btnRow06", "btnRow07", "lblStatus", "txtStatusMirror",
+            "chkToggle", "chkTriState", "lblValueCaption", "txtValue", "txtReadOnly",
+            "txtDisabled", "pwdSecret", "txtWritableBesidePwd", "cboChoice", "btnAction",
+            "btnMutateList", "btnZeroSize", "btnDisabled", "btnLegacyOnly", "btnCovered",
+            "btnOverlay", "pnlOverlay", "tbSlider", "tbSliderDisabled", "trvNodes",
+            "lstItems", "pnlScroll", "btnRow00", "btnRow01", "btnRow02", "btnRow03",
+            "btnRow04", "btnRow05", "btnRow06", "btnRow07", "pnlScrollOuter",
+            "pnlScrollInner", "btnNestedDeep", "lblStatus", "txtStatusMirror",
             "lblScrollPos", "lblSliderValue", "lblInstance",
             "tabMain", "tpAlpha", "tpBravo", "tpCharlie", "nudCount", "dgvRows"
         };
@@ -163,22 +172,29 @@ namespace AgentDesktop.Scratch
         private readonly Label instanceLabel = new Label();
         private readonly ListBox itemList = new ListBox();
         private readonly Panel scrollPanel = new Panel();
+        private readonly Panel scrollOuter = new Panel();
+        private readonly Panel scrollInner = new Panel();
         private readonly TrackBar slider = new TrackBar();
+        private readonly TrackBar sliderDisabled = new TrackBar();
         private readonly Timer scrollWatch = new Timer();
         private readonly List<AutomationIdWindow> automationIdWindows = new List<AutomationIdWindow>();
+        private readonly List<string> forceLegacyIds = new List<string>();
 
         private readonly bool hostProviders;
+        private readonly string secretMarker;
 
         private bool listMutated;
         private int actionCount;
         private int lastScrollY;
+        private int legacyActionCount;
 
         public ScratchForm(ScratchOptions options)
         {
             hostProviders = options.HostProviders;
+            secretMarker = options.SecretMarker;
             Name = "frmScratchMain";
             Text = "AgentDesktop Scratch WinForms [" + options.Tag + "]";
-            ClientSize = new Size(760, 680);
+            ClientSize = new Size(780, 780);
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.Manual;
             Location = new Point(options.X, options.Y);
@@ -188,8 +204,10 @@ namespace AgentDesktop.Scratch
             BuildLeftColumn();
             BuildRightColumn();
             BuildScrollPanel();
+            BuildNestedScroll();
             BuildStatusStrip(options.Tag);
             BuildDataControls();
+            PlantSecret();
 
             listMutated = options.MutateList;
             ApplyListContents(listMutated);
@@ -220,7 +238,8 @@ namespace AgentDesktop.Scratch
             foreach (Control control in parent.Controls)
             {
                 AssignControlId(control);
-                if (!hostProviders)
+                bool forceLegacy = forceLegacyIds.Contains(control.Name);
+                if (!hostProviders || forceLegacy)
                 {
                     InstallAutomationIdProvider(control);
                 }
@@ -268,37 +287,62 @@ namespace AgentDesktop.Scratch
 
         private void BuildLeftColumn()
         {
-            CheckBox toggle = Place(this, new CheckBox(), "chkToggle", 16, 16, 200, 24);
+            CheckBox toggle = Place(this, new CheckBox(), "chkToggle", 16, 16, 160, 24);
             toggle.Text = "Enable feature";
             toggle.CheckedChanged += OnToggleChanged;
 
-            Place(this, new Label(), "lblValueCaption", 16, 48, 200, 20).Text = "Value field";
-            Place(this, new TextBox(), "txtValue", 16, 70, 320, 24).Text = "seed-value";
+            CheckBox tri = Place(this, new CheckBox(), "chkTriState", 184, 16, 160, 24);
+            tri.Text = "Tri-state";
+            tri.ThreeState = true;
+            tri.CheckState = CheckState.Indeterminate;
 
-            ComboBox choice = Place(this, new ComboBox(), "cboChoice", 16, 104, 200, 24);
+            Place(this, new Label(), "lblValueCaption", 16, 48, 200, 20).Text = "Value field";
+            Place(this, new TextBox(), "txtValue", 16, 70, 200, 24).Text = "seed-value";
+
+            TextBox readOnly = Place(this, new TextBox(), "txtReadOnly", 224, 70, 140, 24);
+            readOnly.Text = "readonly-seed";
+            readOnly.ReadOnly = true;
+
+            TextBox disabledValue = Place(this, new TextBox(), "txtDisabled", 372, 70, 120, 24);
+            disabledValue.Text = "disabled-seed";
+            disabledValue.Enabled = false;
+
+            TextBox password = Place(this, new TextBox(), "pwdSecret", 16, 100, 160, 24);
+            password.PasswordChar = '*';
+            Place(this, new TextBox(), "txtWritableBesidePwd", 184, 100, 160, 24).Text = "writable-beside";
+
+            ComboBox choice = Place(this, new ComboBox(), "cboChoice", 16, 132, 200, 24);
             choice.DropDownStyle = ComboBoxStyle.DropDownList;
-            choice.Items.AddRange(new object[] { "Choice-One", "Choice-Two", "Choice-Three", "Choice-Four" });
+            choice.Items.AddRange(new object[] {
+                "Choice-One", "Choice-Two", "Choice-Three", "Choice-Four",
+                "Choice-Five", "Choice-Six", "Choice-Seven", "Choice-Eight"
+            });
             choice.SelectedIndex = 0;
             choice.SelectedIndexChanged += OnChoiceChanged;
 
-            Button action = Place(this, new Button(), "btnAction", 232, 104, 104, 26);
+            Button action = Place(this, new Button(), "btnAction", 232, 132, 104, 26);
             action.Text = "Do Action";
             action.Click += OnActionClick;
 
-            Button mutate = Place(this, new Button(), "btnMutateList", 16, 140, 104, 26);
+            Button mutate = Place(this, new Button(), "btnMutateList", 16, 168, 104, 26);
             mutate.Text = "Mutate List";
             mutate.Click += OnMutateClick;
 
-            Place(this, new Button(), "btnZeroSize", 140, 140, 0, 0).Text = "zero";
+            Place(this, new Button(), "btnZeroSize", 140, 168, 0, 0).Text = "zero";
 
-            Button disabled = Place(this, new Button(), "btnDisabled", 232, 140, 104, 26);
+            Button disabled = Place(this, new Button(), "btnDisabled", 232, 168, 104, 26);
             disabled.Text = "Disabled";
             disabled.Enabled = false;
 
-            Place(this, new Button(), "btnDupPair", 16, 300, 90, 26).Text = "dup-a";
-            Place(this, new Button(), "btnDupPair", 112, 300, 90, 26).Text = "dup-b";
+            Button legacy = Place(this, new Button(), "btnLegacyOnly", 344, 168, 120, 26);
+            legacy.Text = "Legacy Only";
+            legacy.Click += OnLegacyClick;
+            forceLegacyIds.Add("btnLegacyOnly");
 
-            Panel overlayHost = Place(this, new Panel(), "pnlOverlay", 232, 300, 160, 56);
+            Place(this, new Button(), "btnDupPair", 16, 340, 90, 26).Text = "dup-a";
+            Place(this, new Button(), "btnDupPair", 112, 340, 90, 26).Text = "dup-b";
+
+            Panel overlayHost = Place(this, new Panel(), "pnlOverlay", 232, 340, 160, 56);
             overlayHost.BorderStyle = BorderStyle.FixedSingle;
             Button covered = Place(overlayHost, new Button(), "btnCovered", 4, 8, 100, 36);
             covered.Text = "Covered";
@@ -306,11 +350,18 @@ namespace AgentDesktop.Scratch
             overlay.Text = "Overlay";
             overlay.BringToFront();
 
-            Place(this, slider, "tbSlider", 16, 176, 320, 45);
+            Place(this, slider, "tbSlider", 16, 208, 220, 45);
             slider.Minimum = 0;
             slider.Maximum = 100;
             slider.TickFrequency = 10;
+            slider.Value = 25;
             slider.ValueChanged += OnSliderChanged;
+
+            Place(this, sliderDisabled, "tbSliderDisabled", 248, 208, 160, 45);
+            sliderDisabled.Minimum = 0;
+            sliderDisabled.Maximum = 100;
+            sliderDisabled.Value = 40;
+            sliderDisabled.Enabled = false;
         }
 
         private void BuildRightColumn()
@@ -333,7 +384,7 @@ namespace AgentDesktop.Scratch
 
         private void BuildScrollPanel()
         {
-            Place(this, scrollPanel, "pnlScroll", 16, 232, 340, 180);
+            Place(this, scrollPanel, "pnlScroll", 16, 264, 340, 120);
             scrollPanel.AutoScroll = true;
             scrollPanel.BorderStyle = BorderStyle.FixedSingle;
             for (int i = 0; i < 8; i++)
@@ -345,24 +396,49 @@ namespace AgentDesktop.Scratch
             }
         }
 
+        private void BuildNestedScroll()
+        {
+            Place(this, scrollOuter, "pnlScrollOuter", 392, 420, 340, 110);
+            scrollOuter.AutoScroll = true;
+            scrollOuter.BorderStyle = BorderStyle.FixedSingle;
+            Label outerPad = new Label();
+            outerPad.Name = "lblOuterPad";
+            outerPad.SetBounds(8, 8, 280, 90);
+            outerPad.Text = "outer-pad";
+            scrollOuter.Controls.Add(outerPad);
+
+            Place(scrollOuter, scrollInner, "pnlScrollInner", 8, 110, 300, 70);
+            scrollInner.AutoScroll = true;
+            scrollInner.BorderStyle = BorderStyle.FixedSingle;
+            Label innerPad = new Label();
+            innerPad.Name = "lblInnerPad";
+            innerPad.SetBounds(8, 8, 240, 90);
+            innerPad.Text = "inner-pad";
+            scrollInner.Controls.Add(innerPad);
+
+            Button deep = Place(scrollInner, new Button(), "btnNestedDeep", 8, 110, 140, 28);
+            deep.Text = "Nested Deep";
+            deep.Click += OnRowClick;
+        }
+
         private void BuildStatusStrip(string tag)
         {
-            Place(this, statusLabel, "lblStatus", 16, 424, 340, 24);
+            Place(this, statusLabel, "lblStatus", 16, 540, 340, 24);
             statusLabel.AutoSize = false;
             statusLabel.BorderStyle = BorderStyle.FixedSingle;
 
-            Place(this, statusMirror, "txtStatusMirror", 392, 424, 340, 24);
+            Place(this, statusMirror, "txtStatusMirror", 392, 540, 340, 24);
             statusMirror.ReadOnly = true;
 
-            Place(this, scrollLabel, "lblScrollPos", 16, 456, 160, 20).Text = "scroll:0";
-            Place(this, sliderLabel, "lblSliderValue", 196, 456, 160, 20).Text = "slider:0";
-            Place(this, instanceLabel, "lblInstance", 392, 456, 340, 20).Text = "instance:" + tag
+            Place(this, scrollLabel, "lblScrollPos", 16, 572, 160, 20).Text = "scroll:0";
+            Place(this, sliderLabel, "lblSliderValue", 196, 572, 160, 20).Text = "slider:25";
+            Place(this, instanceLabel, "lblInstance", 392, 572, 340, 20).Text = "instance:" + tag
                 + " pid:" + System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
         }
 
         private void BuildDataControls()
         {
-            TabControl tabs = Place(this, new TabControl(), "tabMain", 16, 486, 340, 130);
+            TabControl tabs = Place(this, new TabControl(), "tabMain", 16, 600, 340, 110);
             TabPage tabAlpha = new TabPage("Tab-Alpha");
             tabAlpha.Name = "tpAlpha";
             TabPage tabBravo = new TabPage("Tab-Bravo");
@@ -373,12 +449,12 @@ namespace AgentDesktop.Scratch
             tabs.TabPages.Add(tabBravo);
             tabs.TabPages.Add(tabCharlie);
 
-            NumericUpDown spinner = Place(this, new NumericUpDown(), "nudCount", 16, 626, 120, 24);
+            NumericUpDown spinner = Place(this, new NumericUpDown(), "nudCount", 16, 720, 120, 24);
             spinner.Minimum = 0;
             spinner.Maximum = 100;
             spinner.Value = 0;
 
-            DataGridView grid = Place(this, new DataGridView(), "dgvRows", 392, 290, 340, 124);
+            DataGridView grid = Place(this, new DataGridView(), "dgvRows", 392, 290, 340, 120);
             grid.ColumnCount = 2;
             grid.Columns[0].Name = "Column-Label";
             grid.Columns[1].Name = "Column-Value";
@@ -387,6 +463,23 @@ namespace AgentDesktop.Scratch
             grid.Rows.Add("Row-Alpha", "Value-Alpha");
             grid.Rows.Add("Row-Bravo", "Value-Bravo");
             grid.Rows.Add("Row-Charlie", "Value-Charlie");
+        }
+
+        private void PlantSecret()
+        {
+            Control[] found = this.Controls.Find("pwdSecret", true);
+            if (found.Length == 0)
+            {
+                throw new InvalidOperationException("pwdSecret control missing");
+            }
+            TextBox password = (TextBox)found[0];
+            password.Text = secretMarker;
+            if (password.Text != secretMarker)
+            {
+                throw new InvalidOperationException("password plant failed before measurement");
+            }
+            Console.WriteLine("SCRATCHFORMS_SECRET_PLANTED=1");
+            Console.WriteLine("SCRATCHFORMS_SECRET_LEN=" + secretMarker.Length.ToString());
         }
 
         private void ApplyListContents(bool mutated)
@@ -412,6 +505,12 @@ namespace AgentDesktop.Scratch
         {
             actionCount++;
             SetStatus("action:" + actionCount.ToString());
+        }
+
+        private void OnLegacyClick(object sender, EventArgs e)
+        {
+            legacyActionCount++;
+            SetStatus("legacy:" + legacyActionCount.ToString());
         }
 
         private void OnMutateClick(object sender, EventArgs e)
