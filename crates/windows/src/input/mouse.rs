@@ -25,17 +25,17 @@ use crate::input::mouse_modifier::press_modifiers;
 use crate::input::mouse_send::{MouseInputEvent, post_mouse_inputs};
 use crate::system::permissions::ensure_budget;
 
-const MOUSEEVENTF_MOVE: u32 = 0x0001;
-const MOUSEEVENTF_LEFTDOWN: u32 = 0x0002;
-const MOUSEEVENTF_LEFTUP: u32 = 0x0004;
+pub(crate) const MOUSEEVENTF_MOVE: u32 = 0x0001;
+pub(crate) const MOUSEEVENTF_LEFTDOWN: u32 = 0x0002;
+pub(crate) const MOUSEEVENTF_LEFTUP: u32 = 0x0004;
 const MOUSEEVENTF_RIGHTDOWN: u32 = 0x0008;
 const MOUSEEVENTF_RIGHTUP: u32 = 0x0010;
 const MOUSEEVENTF_MIDDLEDOWN: u32 = 0x0020;
 const MOUSEEVENTF_MIDDLEUP: u32 = 0x0040;
 const MOUSEEVENTF_WHEEL: u32 = 0x0800;
 const MOUSEEVENTF_HWHEEL: u32 = 0x1000;
-const MOUSEEVENTF_VIRTUALDESK: u32 = 0x4000;
-const MOUSEEVENTF_ABSOLUTE: u32 = 0x8000;
+pub(crate) const MOUSEEVENTF_VIRTUALDESK: u32 = 0x4000;
+pub(crate) const MOUSEEVENTF_ABSOLUTE: u32 = 0x8000;
 const WHEEL_DELTA: i32 = 120;
 
 #[cfg(target_os = "windows")]
@@ -224,7 +224,7 @@ fn signed_chunks(value: i32) -> Result<Vec<i32>, AdapterError> {
     Ok(chunks)
 }
 
-fn sleep_bounded(deadline: Deadline, duration: Duration) -> Result<(), AdapterError> {
+pub(crate) fn sleep_bounded(deadline: Deadline, duration: Duration) -> Result<(), AdapterError> {
     let capped = deadline.remaining_slice(duration)?;
     std::thread::sleep(capped);
     ensure_budget(deadline)

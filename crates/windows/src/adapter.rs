@@ -1,7 +1,8 @@
 use agent_desktop_core::{
-    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, ElementState, InputOps,
-    InteractionLease, LiveElement, MouseEvent, NativeHandle, ObservationOps, ObservationRequest,
-    ObservationRoot, ProcessIdentity, Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
+    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, DragParams, ElementState,
+    InputOps, InteractionLease, LiveElement, MouseEvent, NativeHandle, ObservationOps,
+    ObservationRequest, ObservationRoot, ProcessIdentity, Rect, RefEntry, TreeOptions,
+    WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -189,6 +190,10 @@ impl ActionOps for WindowsAdapter {
 impl InputOps for WindowsAdapter {
     fn mouse_event(&self, event: MouseEvent, lease: &InteractionLease) -> Result<(), AdapterError> {
         crate::input::mouse::synthesize_mouse(event, lease.deadline())
+    }
+
+    fn drag(&self, params: DragParams, lease: &InteractionLease) -> Result<(), AdapterError> {
+        crate::input::drag::synthesize_drag(params, lease.deadline())
     }
 }
 
