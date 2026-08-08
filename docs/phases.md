@@ -1305,9 +1305,11 @@ Every Phase 2 sub-phase below is held to the same definition of done, stated onc
 
 **Scope:** P2-O18 shell coverage, notification management, and system tray — all three folded in below rather than duplicated. This sub-phase ships **inside Phase 2, before the 2.15 integration merge**, under the no-convenience-deferral rule in the [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches).
 
+- **Launching an installed app by display name or AUMID, which §2.9's `launch_app` cannot do.** §2.9 launches via `CreateProcessW`, whose module search order consults only the calling-process directory, the current directory, `System32`, the Windows directory and `PATH` — it never reads the `App Paths` registry key or Start Menu entries, so a bare name resolves for system-directory executables and effectively nothing else, where macOS resolves any installed app through `NSWorkspace`'s registry by bundle id or display name. Reaching parity needs `ShellExecuteExW` (a `Win32_UI_Shell` manifest feature) or `IApplicationActivationManager` for packaged/UWP apps (an interface the pinned `windows`/`windows-sys` crates do not generate, the same class of gap as `IVirtualDesktopManager` at line 1146). §2.9 deliberately did not take that dependency — the manifest surface is a supply-chain-reviewed decision rather than a probe outcome, and `CreateProcessW` is load-bearing for its launch verification design — so it measured the binding path in probe area 21 and handed the capability here, to the sub-phase that already owns Windows shell-integration commands and would already carry a shell dependency. What lands here: the by-name/AUMID launch path behind the existing `launch_app` contract, or an explicit recorded decision not to take it. §2.15 separately settles whether the cross-platform `launch` contract normalizes or ratifies the divergence
+
 **Key APIs:** see the three subsections immediately below.
 
-**Depends on:** 2.4 (observation), 2.7 (semantic actions)
+**Depends on:** 2.4 (observation), 2.7 (semantic actions), 2.9 (`launch_app`, whose by-name/AUMID gap this sub-phase inherits)
 
 **Exit criteria:** `open-system-surface --surface <kind>` + `snapshot --surface <kind>` round-trips for Start menu, taskbar, Quick Settings, and Action Center where the current shell exposes them, with explicit `PLATFORM_NOT_SUPPORTED` assertions (clear `platform_detail`) where it does not; notification list/dismiss/action work through at least one of the two documented paths; tray list/click work through SNI-equivalent UIA traversal.
 
