@@ -7,7 +7,7 @@ use crate::tree::fixture_window;
 use agent_desktop_core::{
     Action, ActionRequest, ActionStepOutcome, AdapterError, Deadline, DeliveryDisposition,
     Direction, DragParams, ErrorCode, InteractionLease, InteractionPolicy, KeyCombo, NativeHandle,
-    Point,
+    Point, StepMechanism,
 };
 use uiautomation::types::Handle;
 
@@ -83,19 +83,24 @@ fn code_lines(source: &str) -> impl Iterator<Item = (usize, &str)> {
 }
 
 #[test]
-fn null_handle_press_key_names_key_synthesis() {
-    let error = execute_action_impl(
+fn null_handle_press_key_synthesizes_globally() {
+    use crate::input::keyboard_send_fake_sink as key_sink;
+    key_sink::reset();
+
+    let result = execute_action_impl(
         &NativeHandle::null(),
         ActionRequest::headless(Action::PressKey(dummy_key())),
         &lease(),
     )
-    .expect_err("null PressKey");
-    assert_eq!(error.code, ErrorCode::PlatformNotSupported);
-    assert!(error.message.contains("key synthesis"));
+    .expect("null PressKey synthesizes");
+
+    assert_eq!(result.steps.len(), 1);
+    assert_eq!(result.steps[0].label(), "SendInput.press_key");
     assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::NotDelivered
+        result.steps[0].mechanism(),
+        Some(StepMechanism::PhysicalSynthetic)
     );
+    assert!(!key_sink::recorded().is_empty());
 }
 
 #[test]
@@ -114,29 +119,56 @@ fn null_handle_click_is_invalid_native_handle() {
 }
 
 #[test]
-fn honest_arms_name_missing_capabilities() {
+fn physical_arms_deny_headless_policy_before_injection() {
+    use crate::input::keyboard_send_fake_sink as key_sink;
+    use crate::input::mouse_send_fake_sink as mouse_sink;
     ensure_test_apartment();
     let fixture = LocalFixture::create().expect("fixture");
     let handle = control_handle(fixture_window::find_button(fixture.handle())).expect("handle");
-    let cases = [
-        (Action::TypeText("x".into()), "key synthesis"),
-        (Action::PressKey(dummy_key()), "key synthesis"),
-        (Action::DoubleClick, "multi-click"),
-        (Action::TripleClick, "multi-click"),
-        (Action::RightClick, "physical context-menu click"),
-    ];
-    for (action, needle) in cases {
+    key_sink::reset();
+    mouse_sink::reset();
+    let keyboard_cases = [Action::TypeText("x".into()), Action::PressKey(dummy_key())];
+    for action in keyboard_cases {
         let error = execute_action_impl(&handle, ActionRequest::headless(action), &lease())
-            .expect_err("honest arm");
-        assert_eq!(error.code, ErrorCode::PlatformNotSupported);
-        assert!(
-            error.message.contains(needle),
-            "expected {needle:?} in {}",
-            error.message
-        );
+            .expect_err("headless keyboard");
+        assert_eq!(error.code, ErrorCode::PolicyDenied);
         assert_eq!(
             error.disposition.delivery(),
             DeliveryDisposition::NotDelivered
+        );
+    }
+    for action in [Action::DoubleClick, Action::TripleClick, Action::RightClick] {
+        let error = execute_action_impl(&handle, ActionRequest::headless(action), &lease())
+            .expect_err("headless click");
+        assert_eq!(error.code, ErrorCode::PolicyDenied);
+        assert_eq!(
+            error.disposition.delivery(),
+            DeliveryDisposition::NotDelivered
+        );
+    }
+    assert!(key_sink::recorded().is_empty());
+    assert!(mouse_sink::recorded().is_empty());
+}
+
+#[test]
+fn physical_arms_no_longer_return_platform_not_supported() {
+    ensure_test_apartment();
+    let fixture = LocalFixture::create().expect("fixture");
+    let handle = control_handle(fixture_window::find_button(fixture.handle())).expect("handle");
+    for action in [
+        Action::TypeText("x".into()),
+        Action::PressKey(dummy_key()),
+        Action::DoubleClick,
+        Action::TripleClick,
+        Action::RightClick,
+    ] {
+        let error = execute_action_impl(&handle, ActionRequest::headless(action.clone()), &lease())
+            .expect_err("headless physical arm");
+        assert_ne!(
+            error.code,
+            ErrorCode::PlatformNotSupported,
+            "{} must not be a platform stub",
+            action.name()
         );
     }
 }

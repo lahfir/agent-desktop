@@ -100,6 +100,13 @@ impl SystemOps for WindowsAdapter {
         crate::system::display::list_displays_live(deadline)
     }
 
+    /// The core default blocks nothing; Windows ships its own dangerous-combo
+    /// list so the skill-documented guard actually enforces on this
+    /// platform. `--force` is honored entirely in core.
+    fn is_blocked_combo(&self, combo: &agent_desktop_core::KeyCombo) -> bool {
+        crate::input::blocked_combo::is_blocked(combo)
+    }
+
     fn open_session(
         &self,
         _affinity: &SessionAffinity,
@@ -181,5 +188,27 @@ mod tests {
 
         let surfaces = WindowsAdapter::new().supported_surfaces();
         assert!(surfaces.contains(&SnapshotSurface::Sheet));
+    }
+
+    /// Pins that `is_blocked_combo` is actually overridden here, reached
+    /// through the trait object exactly as core calls it: the default blocks
+    /// nothing, so an un-wired override would be indistinguishable from
+    /// "nothing is dangerous".
+    #[test]
+    fn is_blocked_combo_is_wired_to_the_windows_dangerous_list_through_the_trait() {
+        use agent_desktop_core::{KeyCombo, Modifier, SystemOps as _};
+
+        let adapter = WindowsAdapter::new();
+        let dangerous = KeyCombo {
+            key: "f4".into(),
+            modifiers: vec![Modifier::Alt],
+        };
+        let harmless = KeyCombo {
+            key: "c".into(),
+            modifiers: vec![Modifier::Ctrl],
+        };
+
+        assert!(adapter.is_blocked_combo(&dangerous));
+        assert!(!adapter.is_blocked_combo(&harmless));
     }
 }

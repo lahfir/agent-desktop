@@ -15,6 +15,7 @@ on:
       - 'probes/windows/17-resolution/**'
       - 'probes/windows/18-actionability/**'
       - 'probes/windows/19-semantic-actions/**'
+      - 'probes/windows/20-input-synthesis/**'
       - '.github/workflows/windows-capability-probe.yml'
   workflow_dispatch:
 
@@ -69,6 +70,11 @@ jobs:
         run: |
           .\probes\windows\19-semantic-actions\probe.ps1 -Label ci
 
+      - name: Run the input-synthesis probe
+        shell: powershell
+        run: |
+          .\probes\windows\20-input-synthesis\probe.ps1 -Label ci
+
       # Uploads on failure as well as success. A probe that fails its mandatory
       # measurement gate has already written the placeholder captures naming
       # what did not measure, and on a red run those are the entire evidence
@@ -88,6 +94,7 @@ jobs:
             probes/windows/17-resolution/captures/*-ci.json
             probes/windows/18-actionability/captures/*-ci.json
             probes/windows/19-semantic-actions/captures/*-ci.json
+            probes/windows/20-input-synthesis/captures/*-ci.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were
           # found" failure on top of the real one and read as the cause. What

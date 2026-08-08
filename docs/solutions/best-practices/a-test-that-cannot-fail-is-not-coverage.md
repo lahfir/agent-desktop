@@ -59,6 +59,22 @@ unrelated to what they claimed to prove:
    rather than calling them. The tests drove their own mirror, so inverting
    the production guard left every one of them green.
 
+7. **A `#[cfg(test)]` re-implementation of the production function.** The
+   Windows physical `type` leg guarded two things: a focus check before the
+   first chunk, and a per-chunk verifier that re-checks focus between chunks
+   so a long type cannot continue into a window that stole focus. Every test
+   naming that leg called `type_text_from_gate`, which was declared
+   `#[cfg(test)]` and omitted the policy gate, omitted the payload preflight,
+   and passed `|_| Ok(())` where production passed the real verifier.
+   Deleting either guard from the shipped path left the whole suite green.
+   This is worse than shape 6: a mirror re-types an *expression*, but a
+   test-only entry point re-types the *function*, so it drifts on every
+   dimension at once and reads like real coverage in the test's own name.
+   The fix is not a better test but a better seam — make the production
+   function take the varying part as a parameter (here, the verifier) and
+   have the test supply its own, so there is only one gate and the test
+   drives it.
+
 ## Root cause
 
 Every one of these was written from the implementation as it already stood,
@@ -147,6 +163,14 @@ absorbed by a sibling now produces the wrong variant instead of the same
   because *that* arm's own assertion failed, not because a sibling arm caught
   the case in its place. Give each arm a distinguishable result, or the
   inversion is absorbed by a sibling.
+- Invert **one** production site per run. Two mutations at once confound the
+  attribution the previous bullet depends on: breaking a dwell guard and a
+  step clamp together made one test go red by panicking inside `Duration`
+  on the *other* mutation's arithmetic, and left the test that should have
+  failed passing. Each inversion is a separate build-run-restore cycle, and
+  a mutation that turns nothing red is itself a finding — it means the line
+  is dead. Removing a zero-dwell early return the loop guard already
+  covered came out of exactly that.
 - Before trusting a "these two agree" test, check whether one side is defined
   in terms of the other.
 - Before trusting a states/role test, check the role mapper can actually

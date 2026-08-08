@@ -240,3 +240,47 @@ fn find_automation_id(
         }
     }
 }
+
+/// A WPF control reports `NativeWindowHandle` 0 - the normal shape for any
+/// element that is not itself a window. Reading that leaf handle alone
+/// resolves to no window at all, which is why the physical-click gate climbs
+/// to the first ancestor that owns one. Without the climb this returns
+/// `None` and every physical click on WPF, WinUI, UWP and Chromium content
+/// is refused before injection.
+#[test]
+fn live_wpf_control_resolves_a_host_window_despite_a_zero_leaf_handle() {
+    ensure_test_apartment();
+    if std::env::var_os(LIVE_WPF_VARIABLE).is_none() {
+        eprintln!(
+            "skip live WPF host-window climb: {LIVE_WPF_VARIABLE} is unset here, so no ScratchWpf host was staged; the Test (Windows) CI lane sets it and owns executing this"
+        );
+        return;
+    }
+    let _stage = fixture_window::on_screen_stage();
+    let Some((mut child, handle)) = stage_wpf_zero_button() else {
+        panic!(
+            "{LIVE_WPF_VARIABLE} is set, so this lane owns staging ScratchWpf, but its btnZeroSize did not reach the tree within {WPF_STAGE_BUDGET:?}"
+        );
+    };
+
+    let element = crate::tree::element::uia_element(&handle).expect("wpf element");
+    let leaf_handle = element
+        .0
+        .get_native_window_handle()
+        .map(|raw| {
+            let hwnd: windows::Win32::Foundation::HWND = raw.into();
+            hwnd.0 as isize
+        })
+        .unwrap_or(0);
+    let host = crate::actions::physical_target::host_window_handle_for_test(element, deadline());
+
+    let _ = child.kill();
+    assert_eq!(
+        leaf_handle, 0,
+        "a WPF control is expected to report no window of its own; if this stack started reporting one, this test no longer covers the climb"
+    );
+    assert!(
+        host.is_some(),
+        "the click gate must resolve a host window by climbing to the first ancestor that owns one"
+    );
+}

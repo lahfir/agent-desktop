@@ -5,9 +5,8 @@
 //! and Expand / Collapse attach post-state after delivery. Select and Scroll
 //! route through their dedicated modules. SetFocus routes through `focus`.
 //! ScrollTo runs the ScrollIntoView spine plus the ancestor ladder when
-//! ScrollItem is absent or leaves geometry unchanged. Capabilities that need
-//! key synthesis or physical multi-click fail `PLATFORM_NOT_SUPPORTED`
-//! naming the missing machinery.
+//! ScrollItem is absent or leaves geometry unchanged. Physical keyboard and
+//! click legs route through `physical_keyboard` and `physical_click`.
 
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, Direction, ErrorCode,
@@ -26,6 +25,12 @@ mod imp {
     use crate::actions::disclosure::{collapse_steps, expand_steps};
     use crate::actions::focus::focus_element;
     use crate::actions::mutation::{classify_success, classify_write};
+    use crate::actions::physical_click::{
+        double_click_steps, right_click_steps, triple_click_steps,
+    };
+    use crate::actions::physical_keyboard::{
+        press_key_element_steps, press_key_global, type_text_steps,
+    };
     use crate::actions::post_state::post_state_for_steps;
     use crate::actions::scroll::scroll_steps;
     use crate::actions::scroll_into_view::scroll_into_view_outcome;
@@ -47,23 +52,52 @@ mod imp {
         request: ActionRequest,
         lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
+        let deadline = lease.deadline();
         if handle.is_null() {
-            return null_handle_action(&request.action);
+            return null_handle_action(&request.action, deadline);
         }
         let element = uia_element(handle)?;
-        let deadline = lease.deadline();
         ensure_budget(deadline)?;
         corroborate_verified_process(element)?;
         match &request.action {
             Action::Click => execute_click(element, request.policy, deadline),
             Action::SetFocus => focus_element(element, &request, deadline),
             Action::ScrollTo => execute_scroll_to(handle, lease),
-            Action::TypeText(_) => Err(AdapterError::not_supported("key synthesis")),
-            Action::PressKey(_) => Err(AdapterError::not_supported("key synthesis")),
-            Action::DoubleClick | Action::TripleClick => {
-                Err(AdapterError::not_supported("multi-click"))
+            Action::TypeText(text) => {
+                let steps = type_text_steps(element, text, request.policy, deadline)?;
+                ActionResult::from_execution(&request.action, steps, None)
             }
-            Action::RightClick => Err(AdapterError::not_supported("physical context-menu click")),
+            Action::PressKey(combo) => {
+                let steps = press_key_element_steps(element, combo, request.policy, deadline)?;
+                ActionResult::from_execution(&request.action, steps, None)
+            }
+            Action::DoubleClick => {
+                let steps = double_click_steps(
+                    element,
+                    request.policy,
+                    deadline,
+                    request.verified_point().cloned(),
+                )?;
+                ActionResult::from_execution(&request.action, steps, None)
+            }
+            Action::TripleClick => {
+                let steps = triple_click_steps(
+                    element,
+                    request.policy,
+                    deadline,
+                    request.verified_point().cloned(),
+                )?;
+                ActionResult::from_execution(&request.action, steps, None)
+            }
+            Action::RightClick => {
+                let steps = right_click_steps(
+                    element,
+                    request.policy,
+                    deadline,
+                    request.verified_point().cloned(),
+                )?;
+                ActionResult::from_execution(&request.action, steps, None)
+            }
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
                 adapter_level_rejection(request.action.name())
             }
@@ -173,9 +207,12 @@ mod imp {
         ActionResult::from_execution(&Action::Collapse, steps, post_state)
     }
 
-    fn null_handle_action(action: &Action) -> Result<ActionResult, AdapterError> {
+    fn null_handle_action(
+        action: &Action,
+        deadline: Deadline,
+    ) -> Result<ActionResult, AdapterError> {
         match action {
-            Action::PressKey(_) => Err(AdapterError::not_supported("key synthesis")),
+            Action::PressKey(combo) => press_key_global(combo, deadline),
             _ => Err(invalid_native_handle(true)),
         }
     }

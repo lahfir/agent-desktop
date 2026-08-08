@@ -13,9 +13,13 @@
 #   fine:    "The predicate is deliberately unfilled: filling it needs the
 #             Chromium detection this module does not do"
 #
-# Scope is shipped source only - crates/ and src/. It deliberately does NOT
-# cover docs/ or probes/: docs/phases.md IS the delivery plan, and the probe
-# corpus is evidence organised by the areas that produced it.
+# Scope is shipped source only - crates/, src/, and the skill markdown under
+# skills/. The skill docs are `include_str!`d into the binary
+# (crates/core/src/commands/skills.rs), so a plan id written there is served
+# to an agent by `agent-desktop skills` exactly as if it had been typed into
+# a .rs file. It deliberately does NOT cover docs/ or probes/: docs/phases.md
+# IS the delivery plan, and the probe corpus is evidence organised by the
+# areas that produced it.
 #
 # Ledger row ids such as A15-7 are NOT banned. They are evidence citations - a
 # pointer to the measurement that forced a decision, the way a comment may cite
@@ -53,7 +57,7 @@ token_rule() {
         fi
         return 0
     fi
-    if matches="$(grep -rnE --include='*.rs' "$pattern" crates src 2>/dev/null)"; then
+    if matches="$( { grep -rnE --include='*.rs' "$pattern" crates src 2>/dev/null; grep -rnE --include='*.md' "$pattern" skills 2>/dev/null; } )"; then
         printf '%s\n' "$matches" >&2
         printf '  ^ %s - describe what is true, not when it was built\n\n' "$description" >&2
         TOKEN_SCAN_FAILED=1

@@ -325,6 +325,35 @@ function Test-CaptureNameEcho {
     return $true
 }
 
+function Add-ProbeInlineCSharp {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Source,
+        [Parameter(Mandatory = $true)][string]$AssemblyLeaf
+    )
+    try {
+        Add-Type -TypeDefinition $Source -Language CSharp -ErrorAction Stop | Out-Null
+        return
+    } catch {
+        $compileError = $_.Exception.Message
+    }
+    $work = Join-Path $env:TEMP ('agent-desktop-probe-csc-' + [guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $csPath = Join-Path $work ($AssemblyLeaf + '.cs')
+    $dllPath = Join-Path $work ($AssemblyLeaf + '.dll')
+    $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    if (-not (Test-Path -LiteralPath $csc)) {
+        throw ('Add-Type failed (' + $compileError + ') and csc.exe is unavailable at ' + $csc)
+    }
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [IO.File]::WriteAllText($csPath, $Source, $utf8NoBom)
+    $cscArgs = @('/nologo', '/target:library', '/langversion:5', '/platform:anycpu', ('/out:' + $dllPath), $csPath)
+    $buildOut = & $csc $cscArgs 2>&1 | ForEach-Object { "$_" }
+    if ($LASTEXITCODE -ne 0) {
+        throw ('Add-Type failed (' + $compileError + ') and csc build failed: ' + ($buildOut -join '; '))
+    }
+    Add-Type -Path $dllPath
+}
+
 function Initialize-ProbeNative {
     if ('AgentDesktopProbe.Native' -as [type]) { return }
     $src = @'
@@ -506,7 +535,7 @@ namespace AgentDesktopProbe {
     }
 }
 '@
-    Add-Type -TypeDefinition $src -Language CSharp | Out-Null
+    Add-ProbeInlineCSharp -Source $src -AssemblyLeaf 'AgentDesktopProbeNative'
 }
 
 function Register-ScratchProcessId {
