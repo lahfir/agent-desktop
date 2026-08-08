@@ -303,9 +303,12 @@ crates/{macos,windows,linux}/src/
 │   └── post_state.rs   # post-action state for ActionResult
 ├── input/              # Low-level OS input synthesis
 │   ├── mod.rs          # re-exports
-│   ├── keyboard.rs     # Key synthesis, text typing
-│   ├── mouse.rs        # Mouse events
-│   └── clipboard.rs    # Clipboard get/set
+│   ├── keyboard.rs     # Key synthesis, text typing (+ keyboard_event/map/send/text on Windows)
+│   ├── mouse.rs        # Mouse events (+ mouse_coord/send/modifier on Windows)
+│   ├── drag.rs         # Drag with release guard (+ drag_state on Windows)
+│   ├── elevation.rs    # UIPI integrity detection (Windows)
+│   ├── blocked_combo.rs # Platform-dangerous combo list (Windows)
+│   └── clipboard.rs    # Clipboard get/set (macOS; Windows §2.10)
 └── system/             # App lifecycle, windows, permissions
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # launch, close, focus

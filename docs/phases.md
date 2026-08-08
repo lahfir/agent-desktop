@@ -1151,18 +1151,22 @@ Every Phase 2 sub-phase below is held to the same definition of done, stated onc
 **Goal:** Land raw OS input (keyboard, mouse, drag) matching the macOS delivery-tracking and headed/headless policy contract.
 
 **Scope:**
-- `SendInput` keyboard map + `type_text` (UTF-16 chunking for surrogate pairs)
-- Mouse events + modifier chords + wheel (mirrors macOS U19)
-- Physical multi-click legs (`DoubleClick` / `TripleClick` / `RightClick` headed paths) and key synthesis for `TypeText` / `PressKey` — §2.7 ships honest `PLATFORM_NOT_SUPPORTED` / preflight `POLICY_DENIED` until these land (2.7 dogfood J7/J8)
-- Drag with delivery tracking + release guard
+- Three `InputOps` methods: `mouse_event` and `drag` functional via `SendInput`; `key_event` an honest rejection stub (held input is daemon-owned, KTD7); clipboard methods stay defaulted (`§2.10`)
+- `SendInput` keyboard map + `type_text` with UTF-16 chunking for surrogate pairs (A4-1)
+- Mouse events, modifier chords, and wheel (A4-2, A4-3); coordinate transform handles primary-monitor and virtual-desktop normalization (A20-5 single-monitor branch)
+- Physical `execute_action` legs for `TypeText`, `PressKey`, `DoubleClick`, `TripleClick`, and `RightClick` — ref-addressed paths verify focus persisted before injection (A20-4)
+- Drag with delivery tracking and release guard (A20-3)
+- Windows blocked-combo list wired into `is_blocked_combo` (`alt+f4`, `win+l`, `win+d`, `alt+tab` and aliases)
 - Headed/headless policy parity — raw cursor commands (`hover`, `drag`, `mouse-*`) require `--headed`, same as macOS
-- UIPI elevation detection (`GetTokenInformation(TokenIntegrityLevel)`) → `PERM_DENIED` with `platform_detail` in the `COM HRESULT 0x80070005 (E_ACCESSDENIED: ...)` format. Medium→High pattern-write effect under UIPI was unmeasurable on the 2.7 probe host (A19-4 elevation manufacture unavailable); this sub-phase owns the elevation-detection surface that closes that residual
+- UIPI elevation detection via `GetTokenInformation(TokenIntegrityLevel)` → `PERM_DENIED` with `platform_detail` in the `COM HRESULT 0x80070005 (E_ACCESSDENIED: ...)` format (A9-2, A20-1). A19-4's residual is **closed on the detection surface**; the cross-boundary input-write *effect* was unmeasurable on every probe host (`Start-MediumIntegrityProcess` privilege gate, A19-4/A20-2) and is owned by §2.12's split-integrity item
+- **`type` divergence (KTD8):** Windows UIA has no insert-at-selection semantic path — `ValuePattern.SetValue` replaces the whole value (`set-value` is the headless text write) and `TextPattern` is read-only for insertion — so `type` is physical synthesis under the focus-fallback/headed policy and strict-headless `type` fails at policy where macOS would succeed via `AXSelectedText`. Settlement at §2.15
+- Ref-addressed `--from <sliderRef>` drag resolves the element bounds center; WinForms `TrackBar` thumb pickup may need a thumb-row Y offset because UIA center Y misses the horizontal track on some hosts (2026-08-07-002 dogfood J6) — core owns `point_resolve`; slider-aware pickup is a future refinement
 
 **Key APIs:** `SendInput` (`INPUT_KEYBOARD` / `INPUT_MOUSE`), `GetTokenInformation`
 
 **Depends on:** 2.7
 
-**Exit criteria:** headed e2e gesture cases pass (once 2.12's fixture exists; interim coverage via Notepad/Explorer).
+**Exit criteria:** `InputOps::mouse_event`, `drag`, and `key_event` stub live; no physical `execute_action` arm returns `PLATFORM_NOT_SUPPORTED` for a capability this sub-phase owns; UIPI detection proven by local token read plus synthetic-SID unit tests (A20-1), with PERM_DENIED mapping riding A9-2; headed input dogfood passes against repo-controlled targets (2026-08-07-002 dogfood report — Notepad A4-1 matrix, ScratchForms mouse/drag/multi-click); hot-path cost baseline committed (A20-6). Full headed e2e gesture matrix waits on §2.12's fixture; interim coverage is the dogfood run above.
 
 **Est. PR size:** ~2k LOC
 

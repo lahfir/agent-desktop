@@ -7,7 +7,7 @@ Commands for modifying UI state — clicking, typing, selecting, scrolling, and 
 Ref-based actions run in two modes, Playwright-style:
 
 - **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the semantic path cannot perform the action it fails closed.
-- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. On Windows, the semantic set stays semantic under `--headed` until input synthesis adds physical rungs; `focus` is headed-required (A3-4, A19-5); `double-click` / `triple-click` / `type` wait on that synthesis. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, and `scroll-to` stay semantic on both platforms.
+- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. On Windows, the semantic set (`click`, `set-value`, `toggle`, `expand`, …) stays semantic under `--headed`; `focus` is headed-required (A3-4, A19-5); `double-click`, `triple-click`, `right-click`, `type`, `hover`, and `drag` synthesize physically via `SendInput` (§2.8, A4-1/A4-3/A20-4).
 
 `press` is explicit physical keyboard input. `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical cursor input and require `--headed`. Raw coordinates carry no window identity, so they never focus an app. The held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the hold lifetime.
 
@@ -43,16 +43,17 @@ agent-desktop click @s8f3k2p9:e5 --wait-for-gone "progressindicator" --wait-time
 
 #### Which gestures have a headless path
 
-The command surface is platform-agnostic: every ref action builds an `Action` and calls the platform adapter, which owns the headless-vs-physical implementation. A gesture is headless-capable only when that platform exposes a semantic affordance for it. macOS and Windows both serve the semantic set (`click`, `set-value`, `toggle`, `expand`, …) headlessly; physical multi-click and key synthesis remain headed / input-synthesis work. `hover`/`drag` are modeled as raw cursor gestures, so they stay physical everywhere by design.
+The command surface is platform-agnostic: every ref action builds an `Action` and calls the platform adapter, which owns the headless-vs-physical implementation. A gesture is headless-capable only when that platform exposes a semantic affordance for it. macOS and Windows both serve the semantic set (`click`, `set-value`, `toggle`, `expand`, …) headlessly; physical multi-click and key synthesis require `--headed` on both platforms once input synthesis is live. `hover`/`drag` are modeled as raw cursor gestures, so they stay physical everywhere by design.
 
 | Command | Headless path | Notes |
 |---------|---------------|-------|
 | `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes (where advertised) | semantic accessibility actions in strict headless mode (macOS AX; Windows UIA patterns) |
-| `type` | macOS yes; Windows no until input synthesis | macOS uses `AXSelectedText` headlessly; Windows fails closed at preflight — use `set-value` for semantic writes; `--headed` synthesizes keys where supported |
-| `double-click` | no | a real two-click gesture; requires `--headed` (Windows: `PLATFORM_NOT_SUPPORTED` until input synthesis) |
+| `type` | macOS yes; Windows no | macOS uses `AXSelectedText` headlessly; Windows has no insert-at-selection UIA path — strict-headless `type` fails at policy; use `set-value` for semantic writes; `--headed` synthesizes keys via `SendInput` (A4-1, KTD8) |
+| `double-click` | no | a real multi-click gesture; requires `--headed` (`SendInput` on Windows — A20-4) |
 | `triple-click` | no | no native triple-click affordance; purely 3 physical clicks → `--headed` only |
-| `hover` | no | hovering *is* moving the cursor over an element; no accessibility equivalent |
-| `drag` / drop | no | dragging *is* a cursor press-move-release; no general accessibility drag. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD) |
+| `right-click` | macOS semantic menu path; Windows physical-only | Windows UIA has no context-menu pattern — `--headed` performs a physical right-button click (§2.8 dogfood J5) |
+| `hover` | no | hovering *is* moving the cursor over an element; requires `--headed` on both platforms |
+| `drag` / drop | no | dragging *is* a cursor press-move-release; requires `--headed`. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD). WinForms `TrackBar` ref pickup may need `--from-xy` thumb-row coordinates when bounds center Y misses the track (2026-08-07-002 dogfood J6) |
 | menu bar (`--surface menubar`) | enumerate/open | the app menu bar is readable and openable; on macOS, SwiftUI `CommandMenu` items accept AXPress but do not route to their action closure (a SwiftUI limitation, like its Slider) — native AppKit menu items fire. `.contextMenu` item selection works. |
 
 All ref-based interaction commands accept `--snapshot <snapshot_id>`. Snapshot and find output already return qualified refs (`@<snapshot_id>:eN`), which embed the exact snapshot and need no separate flag. Legacy bare `@eN` input requires `--snapshot`; when a session owns that snapshot, the command also needs the same `--session` or `AGENT_DESKTOP_SESSION` scope. Lookup never searches another session namespace.
@@ -107,7 +108,7 @@ Headless uses semantic context-menu actions. `--headed` performs a physical righ
 agent-desktop type @s8f3k2p9:e2 "hello@example.com"
 agent-desktop type @s8f3k2p9:e2 "multi line\ntext"
 ```
-Headless `type` uses semantic text insertion where the platform exposes it (macOS `AXSelectedText`) without focusing the app or synthesizing keys. On Windows, headless `type` fails closed at preflight until input synthesis lands — use `set-value` for semantic writes. Pass `--headed` to focus the target and synthesize keyboard input where supported.
+Headless `type` uses semantic text insertion where the platform exposes it (macOS `AXSelectedText`) without focusing the app or synthesizing keys. On Windows, headless `type` fails closed at policy — UIA has no insert-at-selection path; use `set-value` for semantic writes (KTD8). Pass `--headed` to focus the target and synthesize keyboard input via `SendInput` (A4-1).
 
 ### set-value
 ```bash
@@ -119,7 +120,7 @@ Sets the value directly via the platform's semantic value write (macOS AX value 
 ```bash
 agent-desktop clear @s8f3k2p9:e2
 ```
-Headless clears through the platform's semantic value write (macOS `AXValue`; Windows `ValuePattern.SetValue("")`). With `--headed`, macOS performs focus + Select All + Delete first; Windows headed keyboard clear lands with input synthesis.
+Headless clears through the platform's semantic value write (macOS `AXValue`; Windows `ValuePattern.SetValue("")`). With `--headed`, macOS performs focus + Select All + Delete first; Windows headed keyboard clear synthesizes via `SendInput` (§2.8).
 
 ### focus
 ```bash
@@ -200,21 +201,24 @@ A scroll is reported only on observed evidence: success means the element was re
 ```bash
 agent-desktop press return
 agent-desktop press escape
-agent-desktop press cmd+c
-agent-desktop press cmd+shift+z
+agent-desktop press cmd+c          # macOS: copy
+agent-desktop press ctrl+c         # Windows: copy
+agent-desktop press cmd+shift+z    # macOS: redo
+agent-desktop press ctrl+shift+z   # Windows: redo
 agent-desktop press shift+tab
 agent-desktop press f5
-agent-desktop press cmd+a --app "TextEdit"
+agent-desktop press cmd+a --app "TextEdit"   # macOS
+agent-desktop press ctrl+a --app "Notepad" # Windows
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--app` | Target application; key delivery is PID-targeted, and `--headed` additionally focuses its exact window first |
+| `--app` | Target application; on macOS key delivery is PID-targeted and `--headed` focuses its exact window first. On Windows, `press --app` stays not-supported until §2.9; unscoped `press` synthesizes into the foreground queue |
 
-**Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12`
-**Modifiers:** `cmd`, `ctrl`, `alt`, `shift` — combine with `+`
+**Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12` — the same vocabulary resolves on both platforms (KTD10)
+**Modifiers:** `cmd`/`meta`, `ctrl`, `alt`, `shift` — combine with `+`. On Windows, `meta`/`cmd` maps to the Windows key (`VK_LWIN`), so `meta+c` is a shell shortcut, not copy — write `ctrl+c` on Windows and `cmd+c` on macOS
 
-Dangerous shortcuts (e.g. `cmd+q`, `ctrl+cmd+q`, `cmd+alt+esc`, `cmd+shift+delete`) are refused with `POLICY_DENIED`. Normalization covers modifier order and key-name aliases (`escape`/`esc`, `backspace`/`delete`). The block is the **platform adapter's** decision, not core's — the calling agent stays in control: pass `--force` to send a flagged `press` combo anyway (`agent-desktop press cmd+q --force`). The reserved held-key names reject even when `--force` is present.
+Dangerous shortcuts are refused with `POLICY_DENIED` by the **platform adapter**, not core — the calling agent stays in control: pass `--force` to send a flagged combo anyway. macOS blocks `cmd+q`, `ctrl+cmd+q`, `cmd+alt+esc`, `cmd+shift+delete`; Windows blocks `alt+f4`, `win+l`, `win+d`, `alt+tab` and their canonical aliases (§2.8, KTD10). Normalization covers modifier order and key-name aliases (`escape`/`esc`, `backspace`/`delete`). The reserved held-key names reject even when `--force` is present. `ctrl+alt+delete` is not listed — the Secure Attention Sequence cannot be synthesized via `SendInput`.
 
 ### key-down / key-up
 
@@ -227,10 +231,10 @@ These names are reserved but fail closed with `ACTION_NOT_SUPPORTED` in the stat
 agent-desktop --headed hover @s8f3k2p9:e5
 agent-desktop --headed hover --xy 500,300
 ```
-Moves cursor to element center or absolute coordinates. A positive `--duration` is rejected because a stateless process cannot guarantee cursor ownership during a dwell; run hover without it, then use `wait <ms>` for an explicit pause.
+Moves cursor to element center or absolute coordinates. Requires `--headed` on both platforms. A positive `--duration` is rejected because a stateless process cannot guarantee cursor ownership during a dwell; run hover without it, then use `wait <ms>` for an explicit pause.
 This is an explicit cursor-moving command.
 
-With `--headed`, a ref-addressed hover must focus the target's exact window before moving the cursor and fails before delivery if focus cannot be confirmed. The response then includes `"focused": true`. Raw `--xy` hover never attempts focus because no target window identity exists.
+With `--headed`, a ref-addressed hover must focus the target's exact window before moving the cursor and fails before delivery if focus cannot be confirmed. The response then includes `"focused": true`. Raw `--xy` hover never attempts focus because no target window identity exists. On Windows, `SendInput` injects into the foreground queue only (A4-2).
 
 ### drag
 ```bash
@@ -252,7 +256,7 @@ agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5 --drop-delay 8
 
 Can mix ref and coordinate sources (e.g., `--from @s8f3k2p9:e1 --to-xy 400,500`).
 
-With `--headed`, a ref-addressed `--from` must focus the source's exact window before mouse-down and fails before delivery if focus cannot be confirmed. The destination app is never pre-focused because raising it could cover the source point. Coordinate-only drags never attempt focus. For cross-app two-ref drags, keep the destination window visible; both endpoints still undergo live visibility, stability, and hit-test checks.
+With `--headed`, a ref-addressed `--from` must focus the source's exact window before mouse-down and fails before delivery if focus cannot be confirmed. The destination app is never pre-focused because raising it could cover the source point. Coordinate-only drags never attempt focus. For cross-app two-ref drags, keep the destination window visible; both endpoints still undergo live visibility, stability, and hit-test checks. On Windows, ref-addressed drag pickup resolves element bounds center; WinForms `TrackBar` controls may need `--from-xy` with a thumb-row Y offset when center Y misses the horizontal track (2026-08-07-002 dogfood J6, A4-3).
 
 macOS drop targets often need the dragged item to dwell over them before they register as the drop destination — too short and the gesture lands as a drag with no drop. The default 500ms dwell suits most targets; raise `--drop-delay` (e.g. 800–1200) for sluggish destinations like list reorders or cross-window drops. The dwell posts continuous drag events over the destination so it stays highlighted, rather than a dead pause.
 
@@ -308,5 +312,5 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 | Open context menu | `right-click @ref` | `agent-desktop --headed mouse-click --xy X,Y --button right` when physical interaction is intended |
 | Select dropdown option | `select @ref "Option"` | `snapshot --surface menu` after an explicitly opened menu |
 | Navigate a form | `press tab` between fields | `focus @ref` to jump directly |
-| Copy text | `press cmd+c --app "App"` | `clipboard-set` to set directly |
+| Copy text | `press cmd+c --app "App"` (macOS) / `press ctrl+c` (Windows) | `clipboard-set` to set directly |
 | Scroll to find elements | `scroll @ref --direction down` | `scroll-to @ref` if you have the ref |

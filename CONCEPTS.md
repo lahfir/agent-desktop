@@ -176,7 +176,7 @@ The gate fails open on `Unknown`: unavailable evidence never false-fails an acti
 ### Delivery Semantics
 What a failed or uncertain action says about whether input actually reached the application, and therefore whether repeating it is safe.
 
-The distinction that matters is not success versus failure but delivered versus not: an action that never reached the target can be retried freely, while one that may have landed cannot be repeated without risking a duplicate. Verification is a third axis — an action can be known-delivered yet unverified, meaning the input was posted but its effect was not confirmed. Errors carry this alongside the recovery hint so a caller never has to infer retry safety from an error code.
+The distinction that matters is not success versus failure but delivered versus not: an action that never reached the target can be retried freely, while one that may have landed cannot be repeated without risking a duplicate. Verification is a third axis — an action can be known-delivered yet unverified, meaning the input was posted but its effect was not confirmed. Errors carry this alongside the recovery hint so a caller never has to infer retry safety from an error code. On Windows, `SendInput`'s injected-event count is never treated as delivery evidence — the API reports success in both delivered and UIPI-blocked arms (A9-3) — so physical steps report `delivered_unverified` and effect is judged by independent re-read where one exists.
 
 ### Mutation Classifier
 The write-path table that turns a failed native mutation into a delivery verdict before any chain step or error envelope is built.
@@ -201,7 +201,7 @@ Each adapter maps native primitives into this shared vocabulary before core eval
 ### Interaction Policy
 The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input. The CLI exposes two: **headless** (the default — accessibility-only, no cursor, fails closed when the semantic path is unavailable) and **headed** (opt-in via the global `--headed` flag — authorizes the action's declared focus and cursor preconditions). A third, **focus fallback**, sits between them: it permits focus but not cursor movement. It is not reachable from the CLI flag — it is the base policy of an explicit key press, and language bindings may select it directly.
 
-Core owns the precondition each action declares — a focused window for keyboard or focus-sensitive work, a focused window plus a verified cursor target for pointer delivery — and satisfies it before dispatch. For ref actions core focuses the exact source window, not merely the owning application; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. Which actions a headed policy makes physical rather than semantic is per-action and per-platform, and is settled by that action's own chain rather than by the policy.
+Core owns the precondition each action declares — a focused window for keyboard or focus-sensitive work, a focused window plus a verified cursor target for pointer delivery — and satisfies it before dispatch. For ref actions core focuses the exact source window, not merely the owning application; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. Which actions a headed policy makes physical rather than semantic is per-action and per-platform, and is settled by that action's own chain rather than by the policy. On Windows, `type` has no semantic headless path — UIA offers no insert-at-selection write — so strict-headless `type` fails at policy and `set-value` is the headless text path; headed `type` synthesizes keys physically (KTD8, A4-1).
 
 ### Headless Ref Action
 A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
@@ -222,7 +222,27 @@ The remaining time budget carried through strict ref resolution so every native 
 ### Coordinate Fallback
 An explicit opt-in path that uses screen coordinates or physical input when semantic accessibility operations cannot perform the requested action.
 
-Ref-targeted physical input lands on the topmost window at the resolved point, so core first ensures the target element's exact window is frontmost — the app being frontmost is not sufficient when the element lives in a background window of that app. Raw `--xy` input carries no window identity and therefore moves/clicks at the requested coordinates without focusing any application.
+Ref-targeted physical input lands on the topmost window at the resolved point, so core first ensures the target element's exact window is frontmost — the app being frontmost is not sufficient when the element lives in a background window of that app. Raw `--xy` input carries no window identity and therefore moves/clicks at the requested coordinates without focusing any application. Ref-addressed drag pickup resolves the element bounds center; some controls (WinForms `TrackBar` on measured hosts) expose a horizontal thumb track whose UIA center Y misses the draggable row — headed `--from-xy` with a thumb-row offset is the workaround until slider-aware pickup exists (2026-08-07-002 dogfood J6, A4-3).
+
+### Release Guard
+An arm-before-commit guard on multi-event physical sequences — drag, modifier chord, chunked text — that posts corrective input at the **origin** on abort: drag-back plus mouse-up for a drag, key-up sweep for held keys and modifiers.
+
+Cleanup is best-effort: if the OS does not acknowledge the corrective events, the error preserves that uncertainty (`emergency_release_posted`, `delivered_unverified`, `delivered_events` count) rather than claiming no input landed. The contract is ported from macOS; Windows uses `SendInput` under the same discipline (A20-3).
+
+### Foreground Gate
+The precondition that ref-addressed physical injection runs only while the target window the headed pipeline established is still foreground.
+
+Windows `SendInput` injects into the foreground input queue with no per-pid targeting (A4-2), so ref-addressed keyboard paths additionally verify the element still holds keyboard focus (`HasKeyboardFocus`) before injecting. Bare `--xy` commands carry no window identity — the caller owns the coordinate and `--headed` is their guard — and inject at the point without a window-identity gate (A20-6).
+
+### Integrity Boundary
+The User Interface Privilege Isolation boundary where observation reads cross to a higher-integrity target but input writes do not land (A9-2).
+
+Detection is a token-integrity comparison via `GetTokenInformation(TokenIntegrityLevel)`, never the `SendInput` return value — the API reports success in both blocked and unblocked arms (A9-3). A target strictly higher than the caller maps to `PERM_DENIED`. The cross-boundary write *effect* is unmeasurable on probe hosts where elevation manufacture is unavailable (A19-4, A20-2); detection is proven locally, live effect proof waits on §2.12's split-integrity rig.
+
+### Physical Synthesis
+The low-level OS input primitive behind headed commands: `SendInput` on Windows, `CGEvent` on macOS.
+
+Delivery is best-effort and judged by independent re-read where available; interrupted sequences end in a known safe state via a release guard. Held edges (`key-down`/`key-up`, `mouse-down`/`mouse-up`) reject until a daemon owns the hold lifetime (KTD7). Standalone `key_event` rejects honestly on both platforms.
 
 ### FFI Ref-Action Parity
 The requirement that language bindings using refs follow the same strict resolution, actionability, and interaction-policy semantics as CLI ref commands.
