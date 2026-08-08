@@ -23,37 +23,14 @@ use agent_desktop_core::{
 use crate::input::mouse_click_guard::ClickReleaseGuard;
 use crate::input::mouse_coord::{self, NormalizedPoint};
 use crate::input::mouse_modifier::press_modifiers;
-use crate::input::mouse_send::{MouseInputEvent, post_mouse_inputs};
+use crate::input::mouse_send::{
+    MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
+    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
+    MouseInputEvent, button_input, move_input, post_mouse_inputs,
+};
 use crate::system::permissions::ensure_budget;
 
-pub(crate) const MOUSEEVENTF_MOVE: u32 = 0x0001;
-pub(crate) const MOUSEEVENTF_LEFTDOWN: u32 = 0x0002;
-pub(crate) const MOUSEEVENTF_LEFTUP: u32 = 0x0004;
-const MOUSEEVENTF_RIGHTDOWN: u32 = 0x0008;
-const MOUSEEVENTF_RIGHTUP: u32 = 0x0010;
-const MOUSEEVENTF_MIDDLEDOWN: u32 = 0x0020;
-const MOUSEEVENTF_MIDDLEUP: u32 = 0x0040;
-const MOUSEEVENTF_WHEEL: u32 = 0x0800;
-const MOUSEEVENTF_HWHEEL: u32 = 0x1000;
-pub(crate) const MOUSEEVENTF_VIRTUALDESK: u32 = 0x4000;
-pub(crate) const MOUSEEVENTF_ABSOLUTE: u32 = 0x8000;
 const WHEEL_DELTA: i32 = 120;
-
-#[cfg(target_os = "windows")]
-const _: () = {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse as win32;
-    assert!(MOUSEEVENTF_MOVE == win32::MOUSEEVENTF_MOVE);
-    assert!(MOUSEEVENTF_LEFTDOWN == win32::MOUSEEVENTF_LEFTDOWN);
-    assert!(MOUSEEVENTF_LEFTUP == win32::MOUSEEVENTF_LEFTUP);
-    assert!(MOUSEEVENTF_RIGHTDOWN == win32::MOUSEEVENTF_RIGHTDOWN);
-    assert!(MOUSEEVENTF_RIGHTUP == win32::MOUSEEVENTF_RIGHTUP);
-    assert!(MOUSEEVENTF_MIDDLEDOWN == win32::MOUSEEVENTF_MIDDLEDOWN);
-    assert!(MOUSEEVENTF_MIDDLEUP == win32::MOUSEEVENTF_MIDDLEUP);
-    assert!(MOUSEEVENTF_WHEEL == win32::MOUSEEVENTF_WHEEL);
-    assert!(MOUSEEVENTF_HWHEEL == win32::MOUSEEVENTF_HWHEEL);
-    assert!(MOUSEEVENTF_VIRTUALDESK == win32::MOUSEEVENTF_VIRTUALDESK);
-    assert!(MOUSEEVENTF_ABSOLUTE == win32::MOUSEEVENTF_ABSOLUTE);
-};
 
 const MAX_LINES_PER_EVENT: i32 = 10;
 const MAX_TOTAL_LINES: i32 = 1_000;
@@ -169,28 +146,6 @@ fn dispatch_wheel(
         post_mouse_inputs(&[wheel_input(MOUSEEVENTF_HWHEEL, lines)]);
     }
     Ok(())
-}
-
-fn move_input(normalized: NormalizedPoint) -> MouseInputEvent {
-    let mut flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
-    if normalized.virtual_desktop {
-        flags |= MOUSEEVENTF_VIRTUALDESK;
-    }
-    MouseInputEvent {
-        dx: normalized.x,
-        dy: normalized.y,
-        mouse_data: 0,
-        flags,
-    }
-}
-
-fn button_input(flag: u32) -> MouseInputEvent {
-    MouseInputEvent {
-        dx: 0,
-        dy: 0,
-        mouse_data: 0,
-        flags: flag,
-    }
 }
 
 fn wheel_input(flag: u32, lines: i32) -> MouseInputEvent {

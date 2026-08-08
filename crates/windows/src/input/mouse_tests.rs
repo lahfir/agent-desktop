@@ -1,9 +1,10 @@
 use super::*;
 use crate::input::mouse_modifier::modifier_fake_sink as key_sink;
 use crate::input::mouse_send::mouse_send_fake_sink as mouse_sink;
+use crate::input::mouse_send::{MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEEVENTF_VIRTUALDESK};
 use agent_desktop_core::{
-    Deadline, DeliveryDisposition, ErrorCode, MAX_MOUSE_CLICK_COUNT, Modifier,
-    MouseButton, MouseEvent, MouseEventKind, Point,
+    Deadline, DeliveryDisposition, ErrorCode, MAX_MOUSE_CLICK_COUNT, Modifier, MouseButton,
+    MouseEvent, MouseEventKind, Point,
 };
 
 fn reset_sinks() {

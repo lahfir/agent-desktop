@@ -14,12 +14,11 @@ use std::time::Duration;
 use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, DragParams, ErrorCode, Point};
 
 use crate::input::drag_state::DragReleaseGuard;
-use crate::input::mouse::{
-    MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
-    MOUSEEVENTF_VIRTUALDESK, sleep_bounded,
-};
+use crate::input::mouse::sleep_bounded;
 use crate::input::mouse_coord::{self, NormalizedPoint};
-use crate::input::mouse_send::{MouseInputEvent, post_mouse_inputs};
+use crate::input::mouse_send::{
+    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, button_input, move_input, post_mouse_inputs,
+};
 use crate::system::permissions::ensure_budget;
 
 const DEFAULT_DURATION_MS: u64 = 300;
@@ -151,28 +150,6 @@ fn validate_drag(params: &DragParams) -> Result<(), AdapterError> {
         ));
     }
     Ok(())
-}
-
-fn move_input(point: NormalizedPoint) -> MouseInputEvent {
-    let mut flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
-    if point.virtual_desktop {
-        flags |= MOUSEEVENTF_VIRTUALDESK;
-    }
-    MouseInputEvent {
-        dx: point.x,
-        dy: point.y,
-        mouse_data: 0,
-        flags,
-    }
-}
-
-fn button_input(flag: u32) -> MouseInputEvent {
-    MouseInputEvent {
-        dx: 0,
-        dy: 0,
-        mouse_data: 0,
-        flags: flag,
-    }
 }
 
 #[cfg(all(test, target_os = "windows"))]

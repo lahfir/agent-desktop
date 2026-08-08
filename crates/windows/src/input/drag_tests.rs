@@ -1,6 +1,6 @@
 use super::*;
-use crate::input::mouse::{MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE};
 use crate::input::mouse_send::mouse_send_fake_sink as sink;
+use crate::input::mouse_send::{MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE};
 use agent_desktop_core::{Deadline, Point};
 
 fn base_params() -> DragParams {

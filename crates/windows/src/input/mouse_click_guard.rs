@@ -6,64 +6,44 @@
 //! other post here: `SendInput`'s return value is never treated as delivery
 //! evidence (A9-3).
 
-use agent_desktop_core::{AdapterError, DeliverySemantics};
+use agent_desktop_core::AdapterError;
 
-use crate::input::mouse_send::{MouseInputEvent, post_mouse_inputs};
+use crate::input::mouse_send::{button_input, post_mouse_inputs};
+use crate::input::release_state::ReleaseState;
+
+const SUGGESTION: &str = "Inspect whether a mouse button may still be held before retrying; the emergency release was posted without an OS acknowledgement";
 
 pub(crate) struct ClickReleaseGuard {
     up_flag: u32,
-    armed: bool,
-    delivered: usize,
+    state: ReleaseState,
 }
 
 impl ClickReleaseGuard {
     pub(crate) fn new(up_flag: u32) -> Self {
         Self {
             up_flag,
-            armed: false,
-            delivered: 0,
+            state: ReleaseState::default(),
         }
     }
 
     pub(crate) fn arm(&mut self) {
-        self.armed = true;
+        self.state.arm();
     }
 
     pub(crate) fn disarm(&mut self) {
-        self.armed = false;
+        self.state.disarm();
     }
 
     pub(crate) fn mark_delivered(&mut self) {
-        self.delivered = self.delivered.saturating_add(1);
-    }
-
-    pub(crate) fn delivered_units(&self) -> usize {
-        self.delivered
+        self.state.mark_delivered();
     }
 
     pub(crate) fn should_release(&self) -> bool {
-        self.armed
+        self.state.should_release()
     }
 
     pub(crate) fn enrich_error(&self, error: AdapterError) -> AdapterError {
-        if self.delivered_units() == 0 {
-            return error.with_disposition(DeliverySemantics::not_delivered());
-        }
-        let error = error.with_disposition(DeliverySemantics::delivered_unverified());
-        let mut details = error
-            .details
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({}));
-        if let Some(map) = details.as_object_mut() {
-            map.insert("delivered_events".into(), self.delivered_units().into());
-            if self.should_release() {
-                map.insert("emergency_release_posted".into(), true.into());
-                map.insert("emergency_release_acknowledged".into(), false.into());
-            }
-        }
-        error.with_details(details).with_suggestion(
-            "Inspect whether a mouse button may still be held before retrying; the emergency release was posted without an OS acknowledgement",
-        )
+        self.state.enrich_error(error, SUGGESTION)
     }
 }
 
@@ -73,15 +53,6 @@ impl Drop for ClickReleaseGuard {
             return;
         }
         post_mouse_inputs(&[button_input(self.up_flag)]);
-    }
-}
-
-fn button_input(flag: u32) -> MouseInputEvent {
-    MouseInputEvent {
-        dx: 0,
-        dy: 0,
-        mouse_data: 0,
-        flags: flag,
     }
 }
 

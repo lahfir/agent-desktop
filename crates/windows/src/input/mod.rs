@@ -11,7 +11,8 @@ pub(crate) mod mouse;
 mod mouse_click_guard;
 mod mouse_coord;
 mod mouse_modifier;
-mod mouse_send;
+pub(crate) mod mouse_send;
+mod release_state;
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use drag_state::DragReleaseGuard;

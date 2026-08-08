@@ -1,6 +1,6 @@
 use super::click_from_gate;
 use crate::actions::physical_target::{delivery_point, ensure_headed_click_policy};
-use crate::input::mouse::{
+use crate::input::mouse_send::{
     MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
 };
 use crate::input::mouse_send_fake_sink as mouse_sink;
