@@ -1,0 +1,22 @@
+{
+    "probe":  "20-input-synthesis",
+    "question":  "can GetTokenInformation(TokenIntegrityLevel) read probe and scratch tokens for UIPI detection",
+    "foundation_cites":  [
+                             "A9-2"
+                         ],
+    "probe_process_sid":  "S-1-16-8192",
+    "scratch_process_sid":  "S-1-16-8192",
+    "same_integrity_comparison":  0,
+    "same_integrity":  true,
+    "cross_boundary_medium_to_high":  {
+                                          "effect_measurable":  false,
+                                          "branch":  "cross_boundary_input_effect_not_staged",
+                                          "reason":  "A20 measures detection reads only; Medium-to-High input effect inherits A9-2 mapping (A19-4/A18-4)",
+                                          "effect_mapping_cites":  [
+                                                                       "A9-2"
+                                                                   ],
+                                          "manufacture_available":  true,
+                                          "medium_integrity_sid":  "S-1-16-8192"
+                                      },
+    "detection_note":  "effect mapping for Medium-to-High input rides A9-2; cross-boundary effect unmeasurable when manufacture unavailable"
+}

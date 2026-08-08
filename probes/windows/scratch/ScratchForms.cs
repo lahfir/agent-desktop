@@ -152,7 +152,8 @@ namespace AgentDesktop.Scratch
             "btnRow04", "btnRow05", "btnRow06", "btnRow07", "pnlScrollOuter",
             "pnlScrollInner", "btnNestedDeep", "lblStatus", "txtStatusMirror",
             "lblScrollPos", "lblSliderValue", "lblInstance",
-            "tabMain", "tpAlpha", "tpBravo", "tpCharlie", "nudCount", "dgvRows"
+            "tabMain", "tpAlpha", "tpBravo", "tpCharlie", "nudCount", "dgvRows",
+            "btnDoubleClick", "lblDoubleClick"
         };
 
         private static readonly string[] BaselineItems = new string[]
@@ -185,8 +186,10 @@ namespace AgentDesktop.Scratch
 
         private bool listMutated;
         private int actionCount;
+        private int doubleClickCount;
         private int lastScrollY;
         private int legacyActionCount;
+        private readonly Label doubleClickLabel = new Label();
 
         public ScratchForm(ScratchOptions options)
         {
@@ -362,6 +365,13 @@ namespace AgentDesktop.Scratch
             sliderDisabled.Maximum = 100;
             sliderDisabled.Value = 40;
             sliderDisabled.Enabled = false;
+
+            ListBox doubleClick = Place(this, new ListBox(), "btnDoubleClick", 16, 390, 200, 40);
+            doubleClick.Items.Add("Double Click");
+            doubleClick.DoubleClick += OnDoubleClick;
+
+            Place(this, doubleClickLabel, "lblDoubleClick", 224, 400, 120, 20);
+            doubleClickLabel.Text = "dbl:0";
         }
 
         private void BuildRightColumn()
@@ -505,6 +515,13 @@ namespace AgentDesktop.Scratch
         {
             actionCount++;
             SetStatus("action:" + actionCount.ToString());
+        }
+
+        private void OnDoubleClick(object sender, EventArgs e)
+        {
+            doubleClickCount++;
+            doubleClickLabel.Text = "dbl:" + doubleClickCount.ToString();
+            SetStatus("dbl:" + doubleClickCount.ToString());
         }
 
         private void OnLegacyClick(object sender, EventArgs e)

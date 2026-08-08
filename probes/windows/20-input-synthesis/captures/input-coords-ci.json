@@ -1,0 +1,15 @@
+{
+    "probe":  "20-input-synthesis",
+    "question":  "MOUSEEVENTF_ABSOLUTE primary-only vs MOUSEEVENTF_VIRTUALDESK normalization",
+    "foundation_cites":  [
+                             "A4-3",
+                             "A10-6"
+                         ],
+    "monitor_count":  1,
+    "primary_rect_px":  "1639x732",
+    "virtual_screen_rect_px":  "0,0,1639x732",
+    "branch":  "single_monitor_host",
+    "limitation":  "secondary display not stageable; virtual-desktop-flag transform is pre-committed for unit-test proof against virtual-screen rect",
+    "pre_committed_branch":  "use MOUSEEVENTF_VIRTUALDESK when point outside primary rect (KTD5)",
+    "absolute_vs_virtualdesk_live_compare":  "skipped_single_monitor"
+}
