@@ -1,0 +1,151 @@
+//! The one seam that calls `SendInput`/`GetAsyncKeyState` for keyboard events.
+//!
+//! Mirrors `mouse_send.rs`: `SendInput`'s return value is never treated as
+//! delivery evidence (A9-3), so posting is fire-and-forget here too. The real
+//! native calls live behind `#[cfg(not(test))]`, a compile-time guarantee no
+//! test in this crate can bypass; test builds record into thread-local fakes
+//! instead - one for posted events, one for the live key-state read the
+//! release guard's abort sweep depends on.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct KeyboardInputEvent {
+    pub(crate) vk: u16,
+    pub(crate) scan: u16,
+    pub(crate) flags: u32,
+}
+
+pub(crate) fn post_keyboard_inputs(events: &[KeyboardInputEvent]) {
+    imp::post_keyboard_inputs(events);
+}
+
+pub(crate) fn key_is_down(vk: u16) -> bool {
+    imp::key_is_down(vk)
+}
+
+#[cfg(target_os = "windows")]
+mod imp {
+    use super::KeyboardInputEvent;
+
+    pub(super) fn post_keyboard_inputs(events: &[KeyboardInputEvent]) {
+        #[cfg(test)]
+        {
+            super::keyboard_send_fake_sink::record(events);
+        }
+        #[cfg(not(test))]
+        {
+            native::send(events);
+        }
+    }
+
+    pub(super) fn key_is_down(vk: u16) -> bool {
+        #[cfg(test)]
+        {
+            super::key_state_fake_sink::is_down(vk)
+        }
+        #[cfg(not(test))]
+        {
+            native::key_is_down(vk)
+        }
+    }
+
+    #[cfg(not(test))]
+    mod native {
+        use super::KeyboardInputEvent;
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, SendInput,
+        };
+
+        pub(super) fn send(events: &[KeyboardInputEvent]) {
+            if events.is_empty() {
+                return;
+            }
+            let raw: Vec<INPUT> = events.iter().copied().map(to_raw).collect();
+            unsafe {
+                SendInput(
+                    raw.len() as u32,
+                    raw.as_ptr(),
+                    core::mem::size_of::<INPUT>() as i32,
+                );
+            }
+        }
+
+        pub(super) fn key_is_down(vk: u16) -> bool {
+            let state = unsafe { GetAsyncKeyState(i32::from(vk)) };
+            (state as u16 & 0x8000) != 0
+        }
+
+        fn to_raw(event: KeyboardInputEvent) -> INPUT {
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: event.vk,
+                        wScan: event.scan,
+                        dwFlags: event.flags,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+mod imp {
+    use super::KeyboardInputEvent;
+
+    pub(super) fn post_keyboard_inputs(_events: &[KeyboardInputEvent]) {}
+
+    pub(super) fn key_is_down(_vk: u16) -> bool {
+        false
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod keyboard_send_fake_sink {
+    use super::KeyboardInputEvent;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static RECORDED: RefCell<Vec<KeyboardInputEvent>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub(crate) fn reset() {
+        RECORDED.with(|cell| cell.borrow_mut().clear());
+    }
+
+    pub(crate) fn recorded() -> Vec<KeyboardInputEvent> {
+        RECORDED.with(|cell| cell.borrow().clone())
+    }
+
+    pub(super) fn record(events: &[KeyboardInputEvent]) {
+        RECORDED.with(|cell| cell.borrow_mut().extend_from_slice(events));
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod key_state_fake_sink {
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+
+    thread_local! {
+        static DOWN: RefCell<HashSet<u16>> = RefCell::new(HashSet::new());
+    }
+
+    pub(crate) fn reset() {
+        DOWN.with(|cell| cell.borrow_mut().clear());
+    }
+
+    pub(crate) fn set_down(vk: u16) {
+        DOWN.with(|cell| cell.borrow_mut().insert(vk));
+    }
+
+    pub(super) fn is_down(vk: u16) -> bool {
+        DOWN.with(|cell| cell.borrow().contains(&vk))
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "keyboard_send_tests.rs"]
+mod tests;

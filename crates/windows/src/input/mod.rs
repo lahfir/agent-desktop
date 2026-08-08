@@ -1,5 +1,11 @@
+pub(crate) mod blocked_combo;
 pub(crate) mod drag;
 mod drag_state;
+pub(crate) mod keyboard;
+mod keyboard_event;
+mod keyboard_map;
+mod keyboard_send;
+mod keyboard_text;
 pub(crate) mod mouse;
 mod mouse_coord;
 mod mouse_modifier;
