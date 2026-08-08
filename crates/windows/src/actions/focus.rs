@@ -20,6 +20,8 @@ mod imp {
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{automation_client, failure_of};
     use crate::tree::element::UIAElement;
+    use crate::tree::properties::read_one;
+    use crate::tree::property_ids::TreeProperty;
     use crate::tree::walker_source::same_element;
 
     const SET_FOCUS_API: &str = "UIElement.SetFocus";
@@ -55,6 +57,13 @@ mod imp {
             Ok(focused) => Ok(same_element(&client, element, &UIAElement::from(focused))),
             Err(_) => Ok(false),
         }
+    }
+
+    pub(crate) fn keyboard_focus_ready(element: &UIAElement) -> Result<bool, AdapterError> {
+        if read_one(element, TreeProperty::HasKeyboardFocus).flag() == Some(true) {
+            return Ok(true);
+        }
+        focus_matches_target(element)
     }
 
     /// Builds the SetFocus result from a delivery/verification pair.
@@ -115,6 +124,9 @@ mod imp {
 }
 
 pub(crate) use imp::focus_element;
+
+#[cfg(target_os = "windows")]
+pub(crate) use imp::keyboard_focus_ready;
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::{focus_from_delivery, headless_denied};

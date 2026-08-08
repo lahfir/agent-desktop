@@ -30,11 +30,6 @@ use crate::system::hresult::{E_ACCESSDENIED, com_hresult_detail};
 ///
 /// Bare-coordinate injection has no target process to interrogate, so it
 /// never calls this and relies on the re-read/dogfood judgement instead.
-///
-/// Not yet called from `execute_action` - the ref-addressed legs that
-/// compose this gate with the focus verify are a separate seam - so it is
-/// reserved crate-internal surface, not dead code.
-#[allow(dead_code)]
 pub(crate) fn ensure_target_integrity_allows_input(
     target_pid: ProcessId,
 ) -> Result<(), AdapterError> {

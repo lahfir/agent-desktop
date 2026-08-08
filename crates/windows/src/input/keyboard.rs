@@ -4,7 +4,8 @@
 //! across a request boundary, so it rejects the same way macOS's
 //! `reject_standalone_key_state` does (KTD7) - the atomic `press`/`type`
 //! composers that call `synthesize_key`/`synthesize_text` under a focus
-//! verify belong to the `execute_action` physical legs, not here.
+//! verify belong to the `execute_action` physical legs wired in
+//! `actions/physical_keyboard`.
 
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, KeyCombo};
 
@@ -13,7 +14,6 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, KeyCombo};
 /// the physical `press`/`type` legs that compose it with a focus verify are
 /// a separate seam - so it is reserved crate-internal surface, not dead
 /// code.
-#[allow(dead_code)]
 pub(crate) fn synthesize_key(combo: &KeyCombo, deadline: Deadline) -> Result<(), AdapterError> {
     crate::input::keyboard_event::synthesize_key(combo, deadline)
 }
@@ -21,14 +21,12 @@ pub(crate) fn synthesize_key(combo: &KeyCombo, deadline: Deadline) -> Result<(),
 /// The chunked UTF-16 `type_text` primitive. Reserved the same way
 /// `synthesize_key` is: the physical `type` leg composes it with a focus
 /// verify elsewhere.
-#[allow(dead_code)]
 pub(crate) fn synthesize_text(text: &str, deadline: Deadline) -> Result<(), AdapterError> {
     crate::input::keyboard_text::synthesize_text(text, deadline)
 }
 
 /// Deadline preflight for `synthesize_text`, callable independently so a
 /// composing leg can reject before establishing focus.
-#[allow(dead_code)]
 pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<(), AdapterError> {
     crate::input::keyboard_text::preflight_text(text, deadline)
 }
