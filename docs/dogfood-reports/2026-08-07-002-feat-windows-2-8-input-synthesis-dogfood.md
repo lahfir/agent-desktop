@@ -90,9 +90,13 @@ Headed `double-click` on `btnDoubleClick` after foreground restore.
 **Observation:** native `lblDoubleClick` counter advanced (shape `dbl:N` →
 `dbl:N`, digits redacted in capture).
 
-**Verdict:** pass — multi-click physical path landed; required root-window
-foreground check (child HWND ≠ foreground) fixed during this run in
-`physical_target.rs`.
+**Verdict:** pass on a HWND-bearing stack — multi-click physical path
+landed; required root-window foreground check (child HWND ≠ foreground)
+fixed during this run in `physical_target.rs`. Scope of this judgement:
+WinForms controls own a HWND, as does Notepad in J5, so this run exercised
+the multi-click path only where the target element itself resolves a window
+handle. A WPF, WinUI or Chromium element reports `NativeWindowHandle` 0 and
+was never multi-clicked here — see the residual below.
 
 ## J5. right-click context menu
 
@@ -154,6 +158,7 @@ passed.
 | `--from <sliderRef>` drag still resolves center Y (core); TrackBar needs thumb-row pickup | core point_resolve / future slider-aware pickup | recorded |
 | J8: no High-integrity Notepad on Server 2019 dev box for live PERM_DENIED envelope | U9 — detection unit-tested; cross-boundary effect inherits A19-4 skip | recorded |
 | Child-control foreground gate (`is_root_foreground_window`) | fixed in this run (`physical_target.rs`, `window_ops.rs`) | closed |
+| Multi-click and right-click judged only on HWND-bearing targets (WinForms, Notepad); a non-HWND element (WPF/WinUI/Chromium) reports `NativeWindowHandle` 0 and was never exercised. Post-run review found the foreground gate read the leaf handle and so refused delivery for exactly that shape | fixed post-run in `physical_target.rs` (climb to the first ancestor owning a handle) with a live WPF pin; a dogfood judgement on a non-HWND multi-click target is still owed | recorded |
 | Drag mouse-down batched with move | split into separate `SendInput` posts (`drag.rs`) | closed |
 
 ## Verification Contract result (U8 dogfood gate set)

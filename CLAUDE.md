@@ -304,8 +304,9 @@ crates/{macos,windows,linux}/src/
 ├── input/              # Low-level OS input synthesis
 │   ├── mod.rs          # re-exports
 │   ├── keyboard.rs     # Key synthesis, text typing (+ keyboard_event/map/send/text on Windows)
-│   ├── mouse.rs        # Mouse events (+ mouse_coord/send/modifier on Windows)
+│   ├── mouse.rs        # Mouse events (+ mouse_coord/send/modifier/click_guard on Windows)
 │   ├── drag.rs         # Drag with release guard (+ drag_state on Windows)
+│   ├── release_state.rs # Armed-and-counted guard state + delivery report (Windows)
 │   ├── elevation.rs    # UIPI integrity detection (Windows)
 │   ├── blocked_combo.rs # Platform-dangerous combo list (Windows)
 │   └── clipboard.rs    # Clipboard get/set (macOS; Windows §2.10)
