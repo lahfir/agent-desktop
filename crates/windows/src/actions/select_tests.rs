@@ -111,7 +111,7 @@ fn container_search_selects_when_find_hits() {
         },
     )
     .expect("found");
-    assert_eq!(find_calls.get(), 1);
+    assert_eq!(find_calls.get(), 2);
     assert_eq!(select.get(), 1);
     assert_eq!(steps[0].label(), SELECT_LABEL);
 }
@@ -178,7 +178,14 @@ fn collapsed_combobox_expands_first_and_collapses_on_failure() {
         });
         Ok(true)
     };
-    let mut realize = || Ok(());
+    let mut realize = || {
+        order.set({
+            let mut v = order.take();
+            v.push("realize");
+            v
+        });
+        Ok(())
+    };
     let mut select_item = || {
         order.set({
             let mut v = order.take();
@@ -203,7 +210,10 @@ fn collapsed_combobox_expands_first_and_collapses_on_failure() {
     )
     .expect_err("select failed");
     assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_eq!(order.take(), vec!["expand", "find", "select", "collapse"]);
+    assert_eq!(
+        order.take(),
+        vec!["expand", "find", "realize", "find", "select", "collapse"]
+    );
 }
 
 #[test]
@@ -241,6 +251,73 @@ fn is_password_skips_value_read_and_falls_back_to_is_selected() {
     .expect("unknown");
     assert_eq!(unknown, None);
     assert_eq!(unknown_reads.get(), 0);
+}
+
+#[test]
+fn first_match_still_realizes_before_select() {
+    let finds = Cell::new(0u8);
+    let realizes = Cell::new(0u8);
+    let mut expand = || Ok(());
+    let mut collapse = || {};
+    let mut find = || {
+        finds.set(finds.get() + 1);
+        Ok(true)
+    };
+    let mut realize = || {
+        realizes.set(realizes.get() + 1);
+        Ok(())
+    };
+    let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
+    select_judged_for(
+        deadline(),
+        plan(false, false, 3),
+        SelectOps {
+            expand: &mut expand,
+            collapse: &mut collapse,
+            find: &mut find,
+            realize: &mut realize,
+            select_item: &mut select_item,
+        },
+    )
+    .expect("select");
+    assert_eq!(finds.get(), 2);
+    assert_eq!(realizes.get(), 1);
+}
+
+#[test]
+fn post_realize_duplicate_is_ambiguous() {
+    let finds = Cell::new(0u8);
+    let mut expand = || Ok(());
+    let mut collapse = || {};
+    let mut find = || {
+        finds.set(finds.get() + 1);
+        if finds.get() == 1 {
+            Ok(true)
+        } else {
+            Err(AdapterError::ambiguous_target(
+                "Multiple SelectionItem elements share the requested accessible name",
+            )
+            .with_details(serde_json::json!({
+                "kind": "ambiguous_select_value",
+            })))
+        }
+    };
+    let mut realize = || Ok(());
+    let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
+    let error = select_judged_for(
+        deadline(),
+        plan(false, false, 3),
+        SelectOps {
+            expand: &mut expand,
+            collapse: &mut collapse,
+            find: &mut find,
+            realize: &mut realize,
+            select_item: &mut select_item,
+        },
+    )
+    .expect_err("ambiguous after realize");
+    assert_eq!(error.code, ErrorCode::AmbiguousTarget);
+    assert_eq!(finds.get(), 2);
 }
 
 #[test]

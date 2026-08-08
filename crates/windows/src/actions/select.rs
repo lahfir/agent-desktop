@@ -2,9 +2,10 @@
 //!
 //! Self-match uses SelectionItem on the target; otherwise a walker DFS
 //! finds a named SelectionItem. Collapsed ExpandCollapse containers expand
-//! first and best-effort collapse after failure. A search miss after expand
-//! may scroll-to-realize (A18-1) before ElementNotFound. Container Value
-//! verification routes through the IsPassword-gated value helpers.
+//! first and best-effort collapse after failure. Descendant search always
+//! scroll-to-realizes (A18-1) and re-searches so a below-fold duplicate
+//! cannot escape AMBIGUOUS_TARGET. Container Value verification routes
+//! through the IsPassword-gated value helpers.
 
 use agent_desktop_core::{ActionStep, AdapterError, Deadline, ErrorCode};
 use std::cell::{Cell, RefCell};
@@ -87,16 +88,14 @@ mod imp {
             }
         };
         let found_holder = RefCell::new(self_match.then(|| element.clone()));
-        let mut find = || {
-            if found_holder.borrow().is_some() {
-                return Ok(true);
+        let mut find = || match find_named_selection_item(element, value, deadline)? {
+            Some(found) => {
+                *found_holder.borrow_mut() = Some(found);
+                Ok(true)
             }
-            match find_named_selection_item(element, value, deadline)? {
-                Some(found) => {
-                    *found_holder.borrow_mut() = Some(found);
-                    Ok(true)
-                }
-                None => Ok(false),
+            None => {
+                *found_holder.borrow_mut() = None;
+                Ok(false)
             }
         };
         let mut realize = || {
@@ -145,11 +144,9 @@ mod imp {
         if plan.needs_expand {
             (ops.expand)()?;
         }
-        let mut found = (ops.find)().inspect_err(|_| (ops.collapse)())?;
-        if !found {
-            (ops.realize)().inspect_err(|_| (ops.collapse)())?;
-            found = (ops.find)().inspect_err(|_| (ops.collapse)())?;
-        }
+        let _ = (ops.find)().inspect_err(|_| (ops.collapse)())?;
+        (ops.realize)().inspect_err(|_| (ops.collapse)())?;
+        let found = (ops.find)().inspect_err(|_| (ops.collapse)())?;
         if !found {
             (ops.collapse)();
             return Err(not_found_chars(plan.value_chars));
