@@ -150,6 +150,40 @@ elevated Notepad to stage against.
 **Verdict:** pass — `interference_count=0`; every Assert-Foreground bracket
 passed.
 
+## J10. double-click on a non-HWND (WPF) target — post-run addendum
+
+The multi-click judgements above ran only against HWND-bearing targets, so
+this leg was added after the review found the foreground gate reading the
+element's own `NativeWindowHandle`. WPF controls report that handle as 0,
+which is the shape the gate mishandled. Run twice against the same
+`ScratchWpf` `btnAction`, once with the binary as it shipped into review and
+once with the fix, with the fixture raised `SWP_NOACTIVATE` so nothing
+covered it.
+
+**Pre-fix binary:**
+
+- `ok: false`, `error.code: "ACTION_FAILED"`
+- message names losing focus before physical input delivery
+- `disposition.delivery: "not_delivered"`
+- sink unchanged at `status:ready` — nothing was injected
+
+**Fixed binary, same button:**
+
+- `ok: true`, `disposition.delivery: "delivered_unverified"`, retry `unsafe`
+- `steps: [{ label: "SendInput.click", mechanism: "physical_synthetic", outcome: "succeeded", verified: false }]`
+
+**Observation:** the fixture's own click counter advanced `status:ready` →
+`action:2` — the WPF `Click` handler fired twice, read back independently of
+the command's envelope.
+
+**Verdict:** pass — physical multi-click lands on an element that owns no
+window handle. Two incidental confirmations from the same run: the occlusion
+gate refused an earlier attempt naming the terminal window that genuinely
+covered the fixture (`receives_events` → `occluded by window`), and the
+private-file guard refused a store directory owned by `BUILTIN\Administradores`
+rather than the user, the ownership an elevated run leaves behind — both
+correct refusals, both observed rather than inferred.
+
 ## Residuals (owners for U9 / later)
 
 | residual | owner | status |
@@ -158,7 +192,9 @@ passed.
 | `--from <sliderRef>` drag still resolves center Y (core); TrackBar needs thumb-row pickup | core point_resolve / future slider-aware pickup | recorded |
 | J8: no High-integrity Notepad on Server 2019 dev box for live PERM_DENIED envelope | U9 — detection unit-tested; cross-boundary effect inherits A19-4 skip | recorded |
 | Child-control foreground gate (`is_root_foreground_window`) | fixed in this run (`physical_target.rs`, `window_ops.rs`) | closed |
-| Multi-click and right-click judged only on HWND-bearing targets (WinForms, Notepad); a non-HWND element (WPF/WinUI/Chromium) reports `NativeWindowHandle` 0 and was never exercised. Post-run review found the foreground gate read the leaf handle and so refused delivery for exactly that shape | fixed post-run in `physical_target.rs` (climb to the first ancestor owning a handle) with a live WPF pin; a dogfood judgement on a non-HWND multi-click target is still owed | recorded |
+| Multi-click and right-click judged only on HWND-bearing targets (WinForms, Notepad); a non-HWND element reports `NativeWindowHandle` 0 and was never exercised in the original run | fixed in `physical_target.rs` (climb to the first ancestor owning a handle), pinned live, and judged in J10 against WPF with before/after binaries | closed |
+| Chromium/Electron multi-click still unjudged — J10 covers WPF, which is the same zero-handle shape, but a Chromium target adds the render-host pane the occlusion gate resolves to `Unknown` (A18-3) | §2.12 settled-Chromium environment | recorded |
+| A store directory created by an elevated run is owned by `BUILTIN\Administradores`, and the private-file guard then refuses it for the same human user (observed during J10; worked around with a scratch `HOME`) | recorded for the private-file owner; not caused by this sub-phase | recorded |
 | Drag mouse-down batched with move | split into separate `SendInput` posts (`drag.rs`) | closed |
 
 ## Verification Contract result (U8 dogfood gate set)
