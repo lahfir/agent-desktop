@@ -169,6 +169,15 @@ impl ObservationOps for WindowsAdapter {
     }
 }
 impl ActionOps for WindowsAdapter {
+    fn execute_action(
+        &self,
+        handle: &NativeHandle,
+        request: agent_desktop_core::action_request::ActionRequest,
+        lease: &InteractionLease,
+    ) -> Result<agent_desktop_core::ActionResult, AdapterError> {
+        crate::actions::dispatch::execute_action_impl(handle, request, lease)
+    }
+
     fn scroll_into_view(
         &self,
         handle: &NativeHandle,

@@ -1,0 +1,1057 @@
+{
+    "environment":  {
+                        "os_caption":  "Microsoft Windows Server 2019 Datacenter",
+                        "os_build":  "17763",
+                        "binary":  "agent-desktop.exe",
+                        "binary_bytes":  2108928,
+                        "generated":  "2026-08-07T09:37:53.3084155-06:00"
+                    },
+    "judgements":  [
+                       {
+                           "id":  "J6",
+                           "claim":  "focus headless POLICY_DENIED with A3-4/A19-5",
+                           "target":  "Notepad textfield",
+                           "result":  "pass",
+                           "verdict":  "POLICY_DENIED not_delivered; evidence A3-4/A19-5; foreground_effect true",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "focus",
+                                                  "code":  "POLICY_DENIED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_multi_click":  false,
+                                                  "message_names_key_synthesis":  false,
+                                                  "evidence":  [
+                                                                   "A3-4",
+                                                                   "A19-5"
+                                                               ],
+                                                  "foreground_effect":  true,
+                                                  "steps":  [
+
+                                                            ],
+                                                  "post_state_value":  null,
+                                                  "post_state_role":  null,
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "code=POLICY_DENIED evidence=A3-4,A19-5"
+                       },
+                       {
+                           "id":  "J7",
+                           "claim":  "type headless honest preflight denial",
+                           "target":  "Notepad textfield",
+                           "result":  "pass",
+                           "verdict":  "POLICY_DENIED at supported_action (TypeText unavailable headless)",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "type",
+                                                  "code":  "POLICY_DENIED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_multi_click":  false,
+                                                  "message_names_key_synthesis":  false,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+
+                                                            ],
+                                                  "post_state_value":  null,
+                                                  "post_state_role":  null,
+                                                  "get_value":  null,
+                                                  "checks":  [
+                                                                 {
+                                                                     "name":  "visible",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "enabled",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "editable",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null
+                                                                 },
+                                                                 {
+                                                                     "name":  "supported_action",
+                                                                     "status":  "fail",
+                                                                     "reason_shape":  "semantic action unavailable / focus fallback denied"
+                                                                 },
+                                                                 {
+                                                                     "name":  "policy",
+                                                                     "status":  "pass",
+                                                                     "reason_shape":  null
+                                                                 }
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "code=POLICY_DENIED"
+                       },
+                       {
+                           "id":  "J8",
+                           "claim":  "headed double-click names multi-click (2.8 boundary)",
+                           "target":  "Notepad textfield",
+                           "result":  "pass",
+                           "verdict":  "PLATFORM_NOT_SUPPORTED naming multi-click, not execute_action",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "double-click",
+                                                  "code":  "PLATFORM_NOT_SUPPORTED",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_multi_click":  true,
+                                                  "message_names_key_synthesis":  false,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+
+                                                            ],
+                                                  "post_state_value":  null,
+                                                  "post_state_role":  null,
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "code=PLATFORM_NOT_SUPPORTED multi_click=True execute_action=False"
+                       },
+                       {
+                           "id":  "J1",
+                           "claim":  "Notepad Document set-value/clear payload round-trip",
+                           "target":  "Notepad textfield (classic Document)",
+                           "result":  "pass",
+                           "verdict":  "ASCII required payloads round-tripped via ValuePattern; clear delivered_verified",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "set-value",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_verified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "suggestion_present":  null,
+                                                  "message_names_execute_action":  null,
+                                                  "message_names_multi_click":  null,
+                                                  "message_names_key_synthesis":  null,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "ValuePattern.SetValue",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "semantic_api",
+                                                                    "verified":  true
+                                                                }
+                                                            ],
+                                                  "post_state_value":  "ascii-dogfood-u9",
+                                                  "post_state_role":  "textfield",
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "ascii=pass chars=16; cjk=fail delivery=delivered_verified get_chars=6; astral=fail delivery=delivered_verified get_chars=4"
+                       },
+                       {
+                           "id":  "J2",
+                           "claim":  "Explorer list item select by visible name",
+                           "target":  "Explorer option file-05",
+                           "result":  "pass",
+                           "verdict":  "SelectionItemPattern.Select delivered_verified by visible name",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "select",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_verified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "suggestion_present":  null,
+                                                  "message_names_execute_action":  null,
+                                                  "message_names_multi_click":  null,
+                                                  "message_names_key_synthesis":  null,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "SelectionItemPattern.Select",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "semantic_api",
+                                                                    "verified":  true
+                                                                }
+                                                            ],
+                                                  "post_state_value":  null,
+                                                  "post_state_role":  null,
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "delivery=delivered_verified"
+                       },
+                       {
+                           "id":  "J3",
+                           "claim":  "Explorer below-fold re-judge via scroll ladder",
+                           "target":  "Explorer option",
+                           "result":  "pass",
+                           "verdict":  "item visible after click with semantic dispatch (not execute_action)",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "click",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "suggestion_present":  null,
+                                                  "message_names_execute_action":  null,
+                                                  "message_names_multi_click":  null,
+                                                  "message_names_key_synthesis":  null,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "InvokePattern.Invoke",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "semantic_api",
+                                                                    "verified":  false
+                                                                }
+                                                            ],
+                                                  "post_state_value":  null,
+                                                  "post_state_role":  null,
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "was_visible=True now_visible=True ok=True code= delivery=delivered_unverified execute_action="
+                       },
+                       {
+                           "id":  "J4",
+                           "claim":  "fixture click/toggle/expand full step/disposition envelope",
+                           "target":  "ScratchForms btnAction/chkToggle/Node-Sibling",
+                           "result":  "pass",
+                           "verdict":  "Invoke/Toggle/Expand steps with semantic_api dispositions; execute_action gone",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "click",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "suggestion_present":  null,
+                                                  "message_names_execute_action":  null,
+                                                  "message_names_multi_click":  null,
+                                                  "message_names_key_synthesis":  null,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "InvokePattern.Invoke",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "semantic_api",
+                                                                    "verified":  false
+                                                                }
+                                                            ],
+                                                  "post_state_value":  null,
+                                                  "post_state_role":  null,
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "click_delivery=delivered_unverified toggle_delivery=delivered_verified expand_delivery=delivered_verified"
+                       },
+                       {
+                           "id":  "J5",
+                           "claim":  "fixture slider set-value through RangeValue with re-read",
+                           "target":  "ScratchWpf tbSlider",
+                           "result":  "pass",
+                           "verdict":  "RangeValuePattern.SetValue succeeded verified=true for commanded 42",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "set-value",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_verified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "suggestion_present":  null,
+                                                  "message_names_execute_action":  null,
+                                                  "message_names_multi_click":  null,
+                                                  "message_names_key_synthesis":  null,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "ValuePattern.SetValue",
+                                                                    "outcome":  "skipped",
+                                                                    "mechanism":  "semantic_api",
+                                                                    "verified":  null
+                                                                },
+                                                                {
+                                                                    "label":  "RangeValuePattern.SetValue",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "semantic_api",
+                                                                    "verified":  true
+                                                                }
+                                                            ],
+                                                  "post_state_value":  "",
+                                                  "post_state_role":  "slider",
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  null
+                                              },
+                           "notes":  "commanded=42 delivery=delivered_verified"
+                       },
+                       {
+                           "id":  "J9",
+                           "claim":  "Obsidian one semantic action attempt",
+                           "target":  "Obsidian Chromium/Electron",
+                           "result":  "ran",
+                           "verdict":  "honest failure code=TIMEOUT delivery=not_delivered",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "click",
+                                                  "code":  "TIMEOUT",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "suggestion_present":  true,
+                                                  "message_names_execute_action":  false,
+                                                  "message_names_multi_click":  false,
+                                                  "message_names_key_synthesis":  false,
+                                                  "evidence":  [
+
+                                                               ],
+                                                  "foreground_effect":  null,
+                                                  "steps":  [
+
+                                                            ],
+                                                  "post_state_value":  null,
+                                                  "post_state_role":  null,
+                                                  "get_value":  null,
+                                                  "checks":  [
+
+                                                             ],
+                                                  "details_kind":  "actionability_timeout"
+                                              },
+                           "notes":  "ok=False"
+                       }
+                   ],
+    "envelopes":  [
+                      {
+                          "id":  "J1-set-ascii",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "set-value",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "ascii-dogfood-u9",
+                                        "post_state_role":  "textfield",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "chars=16"
+                      },
+                      {
+                          "id":  "J1-get-ascii",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "get",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  "ascii-dogfood-u9",
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "chars=16"
+                      },
+                      {
+                          "id":  "J1-clear-ascii",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "clear",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "",
+                                        "post_state_role":  "textfield",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J1-set-cjk",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "set-value",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "õ©ûþòî",
+                                        "post_state_role":  "textfield",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "chars=2"
+                      },
+                      {
+                          "id":  "J1-get-cjk",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "get",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  "õ©ûþòî",
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "chars=2"
+                      },
+                      {
+                          "id":  "J1-clear-cjk",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "clear",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "",
+                                        "post_state_role":  "textfield",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J1-set-astral",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "set-value",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "­ƒÿÇ",
+                                        "post_state_role":  "textfield",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "chars=2"
+                      },
+                      {
+                          "id":  "J1-get-astral",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "get",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  "­ƒÿÇ",
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "chars=2"
+                      },
+                      {
+                          "id":  "J1-clear-astral",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "clear",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "",
+                                        "post_state_role":  "textfield",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J6-focus-headless",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "focus",
+                                        "code":  "POLICY_DENIED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_multi_click":  false,
+                                        "message_names_key_synthesis":  false,
+                                        "evidence":  [
+                                                         "A3-4",
+                                                         "A19-5"
+                                                     ],
+                                        "foreground_effect":  true,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J7-type-headless",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "type",
+                                        "code":  "POLICY_DENIED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_multi_click":  false,
+                                        "message_names_key_synthesis":  false,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  null,
+                                        "checks":  [
+                                                       {
+                                                           "name":  "visible",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null
+                                                       },
+                                                       {
+                                                           "name":  "enabled",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null
+                                                       },
+                                                       {
+                                                           "name":  "editable",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null
+                                                       },
+                                                       {
+                                                           "name":  "supported_action",
+                                                           "status":  "fail",
+                                                           "reason_shape":  "semantic action unavailable / focus fallback denied"
+                                                       },
+                                                       {
+                                                           "name":  "policy",
+                                                           "status":  "pass",
+                                                           "reason_shape":  null
+                                                       }
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J8-double-click-headed",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "double-click",
+                                        "code":  "PLATFORM_NOT_SUPPORTED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_multi_click":  true,
+                                        "message_names_key_synthesis":  false,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J2-explorer-select",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "select",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SelectionItemPattern.Select",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "name_chars=7"
+                      },
+                      {
+                          "id":  "J3-explorer-below-fold",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "click",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "InvokePattern.Invoke",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "name_chars=7 was_visible=True"
+                      },
+                      {
+                          "id":  "J3-visibility-after",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "is",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  "True",
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-click",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "click",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "InvokePattern.Invoke",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-toggle",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "toggle",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "TogglePattern.Toggle",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "",
+                                        "post_state_role":  "checkbox",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-expand",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "expand",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ExpandCollapsePattern.Expand",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "",
+                                        "post_state_role":  "treeitem",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J5-slider-rangevalue",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "set-value",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "suggestion_present":  null,
+                                        "message_names_execute_action":  null,
+                                        "message_names_multi_click":  null,
+                                        "message_names_key_synthesis":  null,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "skipped",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  null
+                                                      },
+                                                      {
+                                                          "label":  "RangeValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ],
+                                        "post_state_value":  "",
+                                        "post_state_role":  "slider",
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "commanded=42"
+                      },
+                      {
+                          "id":  "J9-obsidian-click",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "click",
+                                        "code":  "TIMEOUT",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "suggestion_present":  true,
+                                        "message_names_execute_action":  false,
+                                        "message_names_multi_click":  false,
+                                        "message_names_key_synthesis":  false,
+                                        "evidence":  [
+
+                                                     ],
+                                        "foreground_effect":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "post_state_value":  null,
+                                        "post_state_role":  null,
+                                        "get_value":  null,
+                                        "checks":  [
+
+                                                   ],
+                                        "details_kind":  "actionability_timeout"
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      }
+                  ]
+}

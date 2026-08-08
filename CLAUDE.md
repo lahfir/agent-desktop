@@ -273,7 +273,7 @@ SNAPSHOT_NOT_FOUND, POLICY_DENIED, APP_UNRESPONSIVE, INTERNAL
 
 ### Platform Crate Folder Structure
 
-All platform crates (`macos`, `windows`, `linux`) follow an identical subfolder layout. New files must be placed in the correct subfolder.
+All platform crates (`macos`, `windows`, `linux`) share the same top-level subfolder layout (`tree/`, `actions/`, `input/`, `system/`). New files must be placed in the correct subfolder. The file set inside `actions/` differs by platform: macOS ships a chain-family (`chain.rs`, `chain_*.rs`, `ax_mutation.rs`, `type_text.rs`, …), not a single `activate.rs`; Windows ships the semantic-dispatch set below.
 
 ```
 crates/{macos,windows,linux}/src/
@@ -289,11 +289,18 @@ crates/{macos,windows,linux}/src/
 │   └── surfaces.rs     # Surface detection
 ├── actions/            # Interacting with elements
 │   ├── mod.rs          # re-exports
-│   ├── dispatch.rs     # perform_action match arms
-│   ├── activate.rs     # Smart AX-first activation chain
-│   ├── extras.rs       # select_value helpers
-│   ├── scroll.rs       # scroll semantics and gated physical fallback
-│   └── type_text.rs    # headless text insertion and physical typing
+│   ├── dispatch.rs     # execute_action match arms
+│   ├── chain.rs        # policy-gated activation chain engine
+│   ├── mutation.rs     # write-path delivery classifier (macOS: ax_mutation.rs)
+│   ├── value_write.rs  # SetValue / Clear + secure-field gate
+│   ├── toggle_state.rs # Toggle / Check / Uncheck
+│   ├── disclosure.rs   # Expand / Collapse
+│   ├── select.rs       # Select by display value
+│   ├── scroll.rs       # scroll semantics
+│   ├── scroll_ladder.rs # ancestor ScrollPattern ladder
+│   ├── scroll_into_view.rs
+│   ├── focus.rs        # headed SetFocus + verification
+│   └── post_state.rs   # post-action state for ActionResult
 ├── input/              # Low-level OS input synthesis
 │   ├── mod.rs          # re-exports
 │   ├── keyboard.rs     # Key synthesis, text typing
