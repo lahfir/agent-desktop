@@ -40,17 +40,17 @@ fn modifier_reordering_does_not_evade_the_block() {
     let reordered = combo("f4", vec![Modifier::Alt]);
     assert!(is_blocked(&reordered));
     assert_eq!(
-        canonical(&combo_to_string(&reordered)),
-        canonical("f4+alt"),
+        canonical_parts(&combo_to_string(&reordered)),
+        canonical_parts("f4+alt"),
         "modifier position must not change the canonical form"
     );
 }
 
 #[test]
 fn key_name_aliases_do_not_evade_the_block() {
-    assert_eq!(canonical("alt+f4"), canonical("ALT+F4"));
-    assert_eq!(canonical("win+l"), canonical("meta+l"));
-    assert_eq!(canonical("win+d"), canonical("cmd+d"));
+    assert_eq!(canonical_parts("alt+f4"), canonical_parts("ALT+F4"));
+    assert_eq!(canonical_parts("win+l"), canonical_parts("meta+l"));
+    assert_eq!(canonical_parts("win+d"), canonical_parts("cmd+d"));
 }
 
 #[test]
@@ -69,10 +69,35 @@ fn combo_to_string_places_modifiers_before_the_key() {
     assert_eq!(text, "alt+f4");
 }
 
+/// Adding a modifier to a dangerous shortcut generally yields another
+/// dangerous shortcut: `alt+shift+tab` is the reverse task switcher and
+/// takes the foreground exactly as `alt+tab` does.
 #[test]
-fn extra_unrelated_modifiers_are_not_folded_into_a_blocked_shortcut() {
-    assert!(!is_blocked(&combo(
-        "f4",
-        vec![Modifier::Alt, Modifier::Shift]
-    )));
+fn a_modifier_superset_of_a_blocked_combo_does_not_evade_the_block() {
+    assert!(
+        is_blocked(&combo("tab", vec![Modifier::Alt, Modifier::Shift])),
+        "alt+shift+tab is the reverse task switcher"
+    );
+    assert!(
+        is_blocked(&combo("tab", vec![Modifier::Alt, Modifier::Ctrl])),
+        "ctrl+alt+tab is the persistent task switcher"
+    );
+    assert!(
+        is_blocked(&combo("f4", vec![Modifier::Shift, Modifier::Alt])),
+        "a superset of alt+f4 still closes the window"
+    );
+}
+
+/// The superset rule keys on the key as well as the modifiers, so an
+/// unrelated shortcut that merely shares a modifier stays allowed.
+#[test]
+fn a_superset_of_the_modifiers_alone_is_not_blocked() {
+    assert!(
+        !is_blocked(&combo("f5", vec![Modifier::Alt, Modifier::Shift])),
+        "alt+shift+f5 shares alt+tab's modifiers but not its key"
+    );
+    assert!(
+        !is_blocked(&combo("tab", vec![Modifier::Ctrl])),
+        "ctrl+tab cycles within an application and is not a blocked shortcut"
+    );
 }
