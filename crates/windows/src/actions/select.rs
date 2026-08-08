@@ -3,9 +3,9 @@
 //! Self-match uses SelectionItem on the target; otherwise a walker DFS
 //! finds a named SelectionItem. Collapsed ExpandCollapse containers expand
 //! first and best-effort collapse after failure. Descendant search always
-//! scroll-to-realizes (A18-1) and re-searches so a below-fold duplicate
-//! cannot escape AMBIGUOUS_TARGET. Container Value verification routes
-//! through the IsPassword-gated value helpers.
+//! scroll-to-realizes (A18-1) and re-searches, retaining the first match so a
+//! duplicate revealed only after scrolling still surfaces as AMBIGUOUS_TARGET.
+//! Container Value verification routes through the IsPassword-gated value helpers.
 
 use agent_desktop_core::{ActionStep, AdapterError, Deadline, ErrorCode};
 use std::cell::{Cell, RefCell};
@@ -88,14 +88,14 @@ mod imp {
             }
         };
         let found_holder = RefCell::new(self_match.then(|| element.clone()));
-        let mut find = || match find_named_selection_item(element, value, deadline)? {
-            Some(found) => {
-                *found_holder.borrow_mut() = Some(found);
-                Ok(true)
-            }
-            None => {
-                *found_holder.borrow_mut() = None;
-                Ok(false)
+        let mut find = || {
+            let prior = found_holder.borrow().clone();
+            match find_named_selection_item(element, value, deadline, prior.as_ref())? {
+                Some(found) => {
+                    *found_holder.borrow_mut() = Some(found);
+                    Ok(true)
+                }
+                None => Ok(false),
             }
         };
         let mut realize = || {

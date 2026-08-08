@@ -31,13 +31,14 @@ mod imp {
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::scroll::SCROLL_LABEL;
     use crate::system::permissions::ensure_budget;
+    use crate::tree::automation::automation_client;
     use crate::tree::automation::uia_failure_error;
     use crate::tree::element_properties::ElementProperties;
     use crate::tree::name_evidence::{name_fields, read_label};
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
     use crate::tree::walker::TreeSource;
-    use crate::tree::walker_source::UiaTreeSource;
+    use crate::tree::walker_source::{UiaTreeSource, same_element};
     use agent_desktop_core::LocatorField;
     use uiautomation::patterns::UIScrollPattern;
     use uiautomation::types::ScrollAmount;
@@ -46,13 +47,15 @@ mod imp {
         root: &UIAElement,
         value: &str,
         deadline: Deadline,
+        prior: Option<&UIAElement>,
     ) -> Result<Option<UIAElement>, AdapterError> {
+        let client = automation_client()?;
         let source = UiaTreeSource::for_root(root)?;
         let prepared = source.prepare_root(root)?;
         let mut stack = Vec::new();
         push_children(&source, &prepared, 1, &mut stack)?;
         let mut visited = 0_usize;
-        let mut found: Option<UIAElement> = None;
+        let mut found = prior.cloned();
         while let Some((candidate, depth)) = stack.pop() {
             ensure_budget(deadline)?;
             visited = visited.saturating_add(1);
@@ -60,8 +63,13 @@ mod imp {
                 return Err(node_budget_error());
             }
             if selection_item_available(&candidate) && name_matches(&candidate, value) {
-                accept_selection_match(found.is_some())?;
-                found = Some(candidate.clone());
+                match &found {
+                    None => found = Some(candidate.clone()),
+                    Some(prev) if same_element(&client, prev, &candidate) => {}
+                    Some(_) => {
+                        accept_selection_match(true)?;
+                    }
+                }
             }
             if depth < MAX_SELECT_DEPTH {
                 push_children(&source, &candidate, depth.saturating_add(1), &mut stack)?;
@@ -183,6 +191,7 @@ mod imp {
         _root: &UIAElement,
         _value: &str,
         _deadline: Deadline,
+        _prior: Option<&UIAElement>,
     ) -> Result<Option<UIAElement>, AdapterError> {
         Ok(None)
     }

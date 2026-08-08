@@ -199,6 +199,31 @@ fn classified_write_error_aborts_without_further_scrolls() {
 }
 
 #[test]
+fn later_scroll_failure_after_mutation_is_delivered_unverified() {
+    let calls = Cell::new(0u8);
+    let mut next = || Ok(Some(Direction::Down));
+    let mut scroll = |_: &Direction| {
+        let n = calls.get();
+        calls.set(n + 1);
+        if n == 0 {
+            Ok(())
+        } else {
+            Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "ScrollPattern is not available on the scroll ancestor",
+            )
+            .with_disposition(DeliverySemantics::not_delivered()))
+        }
+    };
+    let error = ladder_judged_for(deadline(), &mut next, &mut scroll).expect_err("after scroll");
+    assert_eq!(calls.get(), 2);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::DeliveredUnverified
+    );
+}
+
+#[test]
 fn deadline_at_rung_zero_stays_not_delivered() {
     let expired = Deadline::after(1).expect("deadline");
     std::thread::sleep(std::time::Duration::from_millis(5));

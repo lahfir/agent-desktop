@@ -109,7 +109,7 @@ pub(crate) fn ladder_judged_for(
                 DeliveryOutcome::DeliveredVerified
             });
         };
-        scroll_once(&direction)?;
+        scroll_once(&direction).map_err(|error| budget_disposition(scrolled, error))?;
         scrolled = true;
     }
     Err(AdapterError::new(
