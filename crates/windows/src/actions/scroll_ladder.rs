@@ -66,6 +66,27 @@ pub(crate) fn direction_for_visibility(target: Rect, viewport: Rect) -> Option<D
     }
 }
 
+/// After a visibility miss, geometry must name a direction — never invent Down.
+#[cfg(target_os = "windows")]
+pub(crate) fn direction_after_visibility_miss(
+    sample: &VisibilitySample,
+) -> Result<Direction, AdapterError> {
+    let (Some(bounds), Some(viewport)) = (sample.bounds, sample.viewport) else {
+        return Err(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "Could not determine ancestor scroll direction without target and viewport bounds",
+        )
+        .with_disposition(DeliverySemantics::not_delivered()));
+    };
+    direction_for_visibility(bounds, viewport).ok_or_else(|| {
+        AdapterError::new(
+            ErrorCode::ActionFailed,
+            "Target is not visible but geometry does not indicate a scroll direction",
+        )
+        .with_disposition(DeliverySemantics::not_delivered())
+    })
+}
+
 /// Injected ladder — unit-test seam and live path.
 ///
 /// `next_direction` returns `None` when the target is in view (live path folds
@@ -110,8 +131,7 @@ fn budget_disposition(scrolled: bool, error: AdapterError) -> AdapterError {
 mod imp {
     use super::{
         AdapterError, Deadline, DeliveryOutcome, DeliverySemantics, Direction, LADDER_SCROLL_LABEL,
-        UIAElement, VisibilitySample, direction_for_visibility, ladder_judged_for,
-        visibility_verified,
+        UIAElement, VisibilitySample, ladder_judged_for, visibility_verified,
     };
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::scroll::scroll_amounts;
@@ -169,12 +189,7 @@ mod imp {
         if visibility_verified(&sample) {
             return Ok(None);
         }
-        let (Some(bounds), Some(viewport)) = (sample.bounds, sample.viewport) else {
-            return Ok(Some(Direction::Down));
-        };
-        Ok(Some(
-            direction_for_visibility(bounds, viewport).unwrap_or(Direction::Down),
-        ))
+        Ok(Some(super::direction_after_visibility_miss(&sample)?))
     }
 
     fn observe_visibility(

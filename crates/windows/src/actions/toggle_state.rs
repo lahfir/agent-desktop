@@ -168,7 +168,8 @@ mod imp {
         mut invoke: impl FnMut() -> Result<bool, AdapterError>,
     ) -> Result<Vec<ActionStep>, AdapterError> {
         ensure_budget(deadline)?;
-        if read_state().is_some_and(|state| state.matches_checked(want_checked)) {
+        let before = read_state();
+        if before.is_some_and(|state| state.matches_checked(want_checked)) {
             return Ok(vec![build_step(
                 ALREADY_LABEL,
                 DeliveryOutcome::SatisfiedNoDelivery,
@@ -182,8 +183,13 @@ mod imp {
                     break;
                 }
                 let last = attempt == 1;
-                let verified = poll_checked(want_checked, deadline, &mut read_state, !last)
-                    .map_err(after_delivery)?;
+                let verified = poll_checked(
+                    want_checked,
+                    deadline,
+                    &mut read_state,
+                    if last { None } else { before },
+                )
+                .map_err(after_delivery)?;
                 steps.push(build_step(
                     TOGGLE_LABEL,
                     DeliveryOutcome::from_delivery(true, verified),
@@ -193,10 +199,10 @@ mod imp {
                 }
             }
         }
-        if invoke_ok && !steps.iter().any(|step| step.verified() == Some(true)) {
+        if invoke_ok && !delivery_occurred(&steps) {
             ensure_budget(deadline)?;
             if invoke()? {
-                let verified = poll_checked(want_checked, deadline, &mut read_state, false)
+                let verified = poll_checked(want_checked, deadline, &mut read_state, None)
                     .map_err(after_delivery)?;
                 steps.push(build_step(
                     INVOKE_LABEL,
@@ -304,13 +310,15 @@ mod imp {
         want_checked: bool,
         deadline: Deadline,
         read_state: &mut impl FnMut() -> Option<ToggleKind>,
-        early_exit_on_known_miss: bool,
+        early_exit_after_change_from: Option<ToggleKind>,
     ) -> Result<bool, AdapterError> {
         let end = capped_verification_end(deadline, TOGGLE_TIMEOUT)?;
         loop {
             match read_state() {
                 Some(state) if state.matches_checked(want_checked) => return Ok(true),
-                Some(_) if early_exit_on_known_miss => {
+                Some(state)
+                    if early_exit_after_change_from.is_some_and(|before| state != before) =>
+                {
                     sleep_poll(deadline)?;
                     return Ok(
                         read_state().is_some_and(|state| state.matches_checked(want_checked))

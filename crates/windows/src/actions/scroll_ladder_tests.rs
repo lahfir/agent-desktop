@@ -1,4 +1,7 @@
-use super::{MAX_ANCESTOR_SCROLLS, apply_ladder_seam, direction_for_visibility, ladder_judged_for};
+use super::{
+    MAX_ANCESTOR_SCROLLS, apply_ladder_seam, direction_after_visibility_miss,
+    direction_for_visibility, ladder_judged_for,
+};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::scroll_into_view::{VisibilitySample, visibility_verified};
 use agent_desktop_core::{
@@ -250,4 +253,37 @@ fn seam_with_ancestor_ladders_instead_of_unsupported() {
     let outcome =
         apply_ladder_seam(fallback, Ok(Some(DeliveryOutcome::DeliveredVerified))).expect("ladder");
     assert_eq!(outcome, DeliveryOutcome::DeliveredVerified);
+}
+
+#[test]
+fn missing_geometry_does_not_invent_down() {
+    let sample = VisibilitySample {
+        bounds: None,
+        offscreen: Some(true),
+        viewport: Some(rect(0.0, 0.0, 100.0, 100.0)),
+    };
+    let error = direction_after_visibility_miss(&sample).expect_err("no bounds");
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
+}
+
+#[test]
+fn contained_but_not_visible_does_not_invent_down() {
+    let viewport = rect(0.0, 0.0, 100.0, 100.0);
+    let sample = VisibilitySample {
+        bounds: Some(rect(10.0, 10.0, 20.0, 20.0)),
+        offscreen: Some(true),
+        viewport: Some(viewport),
+    };
+    assert!(!visibility_verified(&sample));
+    assert!(direction_for_visibility(rect(10.0, 10.0, 20.0, 20.0), viewport).is_none());
+    let error = direction_after_visibility_miss(&sample).expect_err("no direction");
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
 }

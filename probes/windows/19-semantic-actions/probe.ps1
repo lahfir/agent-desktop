@@ -323,11 +323,7 @@ try {
     $uipi = $null
     try {
         if (-not (Test-Path -LiteralPath $scratchExe)) {
-            $uipi = [ordered]@{
-                measurable = $false
-                branch = 'unmeasurable_scratch_missing'
-                reason = 'ScratchForms.exe missing for UIPI leg'
-            }
+            $uipi = New-NotMeasuredResult -Reason 'unmeasurable_scratch_missing: ScratchForms.exe missing for UIPI leg'
         } else {
             $high = Start-Process -FilePath $scratchExe `
                 -ArgumentList @('--tag', 'a19high', '--pos', '100,100', '--host-providers', '--secret-marker', $script:SecretMarker) `
@@ -336,11 +332,7 @@ try {
             $highHwnd = Wait-ProbeWindow -Process $high
             Start-Sleep -Seconds 1
             if ($highHwnd -eq [IntPtr]::Zero) {
-                $uipi = [ordered]@{
-                    measurable = $false
-                    branch = 'unmeasurable_high_window_absent'
-                    reason = 'High-owned scratch window never appeared'
-                }
+                $uipi = New-NotMeasuredResult -Reason 'unmeasurable_high_window_absent: High-owned scratch window never appeared'
             } else {
                 $mediumOut = Join-Path ([IO.Path]::GetTempPath()) ('a19-uipi-' + [guid]::NewGuid() + '.json')
                 $medium = Start-MediumIntegrityProcess -FilePath $exe -ArgumentList @(
@@ -369,22 +361,12 @@ try {
                     $uipi = Get-Content -LiteralPath $mediumOut -Raw | ConvertFrom-Json
                     try { Remove-Item -LiteralPath $mediumOut -Force } catch { }
                 } else {
-                    $uipi = [ordered]@{
-                        measurable = $false
-                        integrity_sid = $medium.IntegritySid
-                        high_hwnd_nonzero = $true
-                        branch = 'unmeasurable_medium_out_missing'
-                        reason = 'Start-MediumIntegrityProcess launched the probe at Medium integrity but the --out file was never written'
-                    }
+                    $uipi = New-NotMeasuredResult -Reason 'unmeasurable_medium_out_missing: Start-MediumIntegrityProcess launched the probe at Medium integrity but the --out file was never written'
                 }
             }
         }
     } catch {
-        $uipi = [ordered]@{
-            measurable = $false
-            branch = 'unmeasurable_elevation_manufacture_unavailable'
-            reason = $_.Exception.Message
-        }
+        $uipi = New-NotMeasuredResult -Reason ("unmeasurable_elevation_manufacture_unavailable: " + $_.Exception.Message)
     }
     $script:paths.uipi = Write-SemanticCapture -Name "semantic-uipi-$Label.json" -Content (ConvertTo-Json -InputObject $uipi -Depth 16)
     Register-MandatoryPass -Capture $script:paths.uipi -Result $uipi

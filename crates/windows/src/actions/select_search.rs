@@ -8,11 +8,25 @@ pub(crate) const MAX_SELECT_NODES: usize = 2_048;
 pub(crate) const MAX_SELECT_DEPTH: u8 = 8;
 const MAX_REALIZE_SCROLLS: u32 = 16;
 
+/// Second same-name SelectionItem is `AMBIGUOUS_TARGET`, never a silent pick.
+pub(crate) fn accept_selection_match(already_found: bool) -> Result<(), AdapterError> {
+    if already_found {
+        Err(AdapterError::ambiguous_target(
+            "Multiple SelectionItem elements share the requested accessible name",
+        )
+        .with_details(serde_json::json!({
+            "kind": "ambiguous_select_value",
+        })))
+    } else {
+        Ok(())
+    }
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
         AdapterError, Deadline, ErrorCode, MAX_REALIZE_SCROLLS, MAX_SELECT_DEPTH, MAX_SELECT_NODES,
-        UIAElement,
+        UIAElement, accept_selection_match,
     };
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::scroll::SCROLL_LABEL;
@@ -38,6 +52,7 @@ mod imp {
         let mut stack = Vec::new();
         push_children(&source, &prepared, 1, &mut stack)?;
         let mut visited = 0_usize;
+        let mut found: Option<UIAElement> = None;
         while let Some((candidate, depth)) = stack.pop() {
             ensure_budget(deadline)?;
             visited = visited.saturating_add(1);
@@ -45,14 +60,14 @@ mod imp {
                 return Err(node_budget_error());
             }
             if selection_item_available(&candidate) && name_matches(&candidate, value) {
-                return Ok(Some(candidate));
+                accept_selection_match(found.is_some())?;
+                found = Some(candidate.clone());
             }
-            if depth >= MAX_SELECT_DEPTH {
-                continue;
+            if depth < MAX_SELECT_DEPTH {
+                push_children(&source, &candidate, depth.saturating_add(1), &mut stack)?;
             }
-            push_children(&source, &candidate, depth.saturating_add(1), &mut stack)?;
         }
-        Ok(None)
+        Ok(found)
     }
 
     pub(crate) fn scroll_to_realize(
@@ -194,10 +209,30 @@ pub(crate) use imp::{
 
 #[cfg(test)]
 mod tests {
-    use super::MAX_SELECT_DEPTH;
+    use super::{MAX_SELECT_DEPTH, accept_selection_match};
+    use agent_desktop_core::ErrorCode;
 
     #[test]
     fn select_search_depth_budget_is_eight() {
         assert_eq!(MAX_SELECT_DEPTH, 8);
+    }
+
+    #[test]
+    fn first_selection_match_is_accepted() {
+        accept_selection_match(false).expect("first");
+    }
+
+    #[test]
+    fn second_selection_match_is_ambiguous() {
+        let error = accept_selection_match(true).expect_err("duplicate");
+        assert_eq!(error.code, ErrorCode::AmbiguousTarget);
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("kind"))
+                .and_then(serde_json::Value::as_str),
+            Some("ambiguous_select_value")
+        );
     }
 }

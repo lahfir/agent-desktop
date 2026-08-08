@@ -197,3 +197,28 @@ fn zero_budget_check_times_out_without_sleeping_past_deadline() {
     assert_eq!(error.code, ErrorCode::Timeout);
     assert_eq!(toggles.get(), 0);
 }
+
+#[test]
+fn check_does_not_invoke_after_unverified_toggle_delivery() {
+    let toggles = Cell::new(0u8);
+    let invokes = Cell::new(0u8);
+    let steps = check_uncheck_judged_for(
+        deadline(),
+        true,
+        true,
+        true,
+        || Some(ToggleKind::Off),
+        || {
+            toggles.set(toggles.get() + 1);
+            Ok(true)
+        },
+        || {
+            invokes.set(invokes.get() + 1);
+            Ok(true)
+        },
+    )
+    .expect("delivered unverified");
+    assert_eq!(toggles.get(), 2);
+    assert_eq!(invokes.get(), 0);
+    assert!(steps.iter().all(|step| step.verified() == Some(false)));
+}
