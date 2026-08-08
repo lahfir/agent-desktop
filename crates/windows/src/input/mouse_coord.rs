@@ -18,7 +18,6 @@ pub(crate) struct NormalizedPoint {
     pub(crate) virtual_desktop: bool,
 }
 
-const NORMALIZED_RANGE: f64 = 65536.0;
 const NORMALIZED_MAX: f64 = 65535.0;
 
 pub(crate) fn normalize_point(point: &Point) -> NormalizedPoint {
@@ -26,11 +25,11 @@ pub(crate) fn normalize_point(point: &Point) -> NormalizedPoint {
 }
 
 fn normalize_axis(coordinate: f64, origin: i32, extent: i32) -> i32 {
-    if extent <= 0 {
+    if extent <= 1 {
         return 0;
     }
     let relative = coordinate - f64::from(origin);
-    let scaled = (relative * NORMALIZED_RANGE) / f64::from(extent);
+    let scaled = (relative * NORMALIZED_MAX) / f64::from(extent - 1);
     scaled.round().clamp(0.0, NORMALIZED_MAX) as i32
 }
 

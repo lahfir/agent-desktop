@@ -45,9 +45,13 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
     let destination = mouse_coord::normalize_point(&params.to);
 
     ensure_budget(deadline)?;
+    post_mouse_inputs(&[move_input(origin)]);
+    ensure_budget(deadline)?;
+    sleep_bounded(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
+
     let mut guard = DragReleaseGuard::new(origin);
     guard.arm();
-    post_mouse_inputs(&[move_input(origin), button_input(MOUSEEVENTF_LEFTDOWN)]);
+    post_mouse_inputs(&[button_input(MOUSEEVENTF_LEFTDOWN)]);
     guard.mark_delivered();
 
     let outcome = (|| -> Result<(), AdapterError> {
@@ -66,6 +70,8 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
         dwell_over_destination(destination, drop_delay_ms, deadline, &mut guard)?;
 
         ensure_budget(deadline)?;
+        post_mouse_inputs(&[move_input(destination)]);
+        guard.mark_delivered();
         post_mouse_inputs(&[button_input(MOUSEEVENTF_LEFTUP)]);
         guard.mark_delivered();
         guard.disarm();

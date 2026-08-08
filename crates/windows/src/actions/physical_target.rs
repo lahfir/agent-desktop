@@ -7,7 +7,7 @@ use agent_desktop_core::{
 
 use crate::input::elevation::ensure_target_integrity_allows_input;
 use crate::system::permissions::ensure_budget;
-use crate::system::window_ops::is_foreground_window;
+use crate::system::window_ops::is_root_foreground_window;
 use crate::tree::element::UIAElement;
 use crate::tree::live_read::corroborate_verified_process;
 use crate::tree::properties::read_one;
@@ -137,7 +137,7 @@ fn target_window_is_foreground(element: &UIAElement) -> bool {
         .map(|handle| {
             use windows::Win32::Foundation::HWND;
             let hwnd: HWND = handle.into();
-            is_foreground_window(hwnd.0)
+            is_root_foreground_window(hwnd.0)
         })
         .unwrap_or(false)
 }

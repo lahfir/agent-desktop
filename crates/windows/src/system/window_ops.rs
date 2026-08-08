@@ -128,6 +128,36 @@ pub(crate) fn is_foreground_window(handle: super::window_enum::WindowHandle) -> 
     }
 }
 
+/// Whether the handle or its root ancestor owns the desktop foreground.
+/// Child control HWNDs from WinForms/WPF are rarely foreground themselves
+/// even when their top-level window is.
+pub(crate) fn is_root_foreground_window(handle: super::window_enum::WindowHandle) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow};
+        const GA_ROOT: u32 = 2;
+        if handle.is_null() {
+            return false;
+        }
+        unsafe {
+            let foreground = GetForegroundWindow();
+            if foreground.is_null() {
+                return false;
+            }
+            if foreground == handle {
+                return true;
+            }
+            let root = GetAncestor(handle, GA_ROOT);
+            !root.is_null() && root == foreground
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = handle;
+        false
+    }
+}
+
 fn live_window_title(handle: super::window_enum::WindowHandle) -> String {
     #[cfg(target_os = "windows")]
     {
