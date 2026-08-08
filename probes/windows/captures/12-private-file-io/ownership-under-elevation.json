@@ -1,0 +1,49 @@
+{
+    "Experiment":  "owner of a newly created file, High-integrity parent vs Medium-integrity child",
+    "Question":  "does a new object land as TokenUser or as TokenOwner (BUILTIN\\Administrators)",
+    "MediumLaunch":  "Start-MediumIntegrityProcess (DuplicateTokenEx + SetTokenInformation(TokenIntegrityLevel) + CreateProcessAsUser), label asserted S-1-16-8192",
+    "HighIntegrity":  {
+                          "Stage":  "high-integrity-parent",
+                          "ProcessId":  3668,
+                          "IntegritySid":  "S-1-16-12288",
+                          "TokenUserSid":  "S-1-5-21-<redacted>-500",
+                          "TokenOwnerSid":  "S-1-5-32-544",
+                          "TokenAccount":  "<machine>\\<user>",
+                          "FileOwnerSid":  "S-1-5-32-544",
+                          "FileOwnerAccount":  "BUILTIN\\Administradores",
+                          "OwnerMatchesTokenUser":  false,
+                          "OwnerMatchesTokenOwner":  true,
+                          "Icacls":  [
+                                         "<localappdata>\\Temp\\agent-desktop-probe-12-3668\\ownership-high\\created-by-high.txt NT AUTHORITY\\SYSTEM:(F)",
+                                         "                                                                                                         BUILTIN\\Administradores:(F)",
+                                         "                                                                                                         <machine>\\<user>:(F)",
+                                         "",
+                                         "Successfully processed 1 files; Failed processing 0 files"
+                                     ],
+                          "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;LA)"
+                      },
+    "MediumIntegrity":  {
+                            "Stage":  "medium-integrity-child",
+                            "ProcessId":  616,
+                            "TokenUserSid":  "S-1-5-21-<redacted>-500",
+                            "TokenOwnerSid":  "S-1-5-32-544",
+                            "TokenAccount":  "<machine>\\<user>",
+                            "FileOwnerSid":  "S-1-5-32-544",
+                            "FileOwnerAccount":  "BUILTIN\\Administradores",
+                            "OwnerMatchesTokenUser":  false,
+                            "OwnerMatchesTokenOwner":  true,
+                            "Icacls":  [
+                                           "<localappdata>\\Temp\\agent-desktop-probe-12-medium-3668\\created-by-medium.txt NT AUTHORITY\\SYSTEM:(F)",
+                                           "                                                                                                   BUILTIN\\Administradores:(F)",
+                                           "                                                                                                   <machine>\\<user>:(F)",
+                                           "",
+                                           "Successfully processed 1 files; Failed processing 0 files"
+                                       ],
+                            "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;LA)",
+                            "ChildError":  "",
+                            "IntegritySid":  "S-1-16-8192"
+                        },
+    "OwnerSourceHigh":  "TokenOwner",
+    "OwnerSourceMedium":  "TokenOwner",
+    "EnvironmentLimit":  "single built-in Administrator account on this VM; a non-admin CI account could not be exercised here"
+}

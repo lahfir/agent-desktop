@@ -148,6 +148,7 @@ fn node_evidence(node: &FixtureNode, requirements: EvidenceRequirements) -> Loca
             } else {
                 LocatorField::Unknown
             },
+            descriptors: Default::default(),
         },
     }
 }

@@ -53,6 +53,11 @@ fn run_permission_prompt_helper() -> Option<ExitCode> {
 }
 
 fn run() -> ExitCode {
+    #[cfg(target_os = "windows")]
+    let _ = agent_desktop_core::install_private_file_ops(Box::new(
+        agent_desktop_windows::WindowsPrivateFile,
+    ));
+
     let mut cli = match Cli::try_parse() {
         Ok(c) => c,
         Err(e) => {
@@ -187,6 +192,11 @@ fn validate_wait_for_command(cmd: &Commands, wait: &WaitSelector) -> Result<(), 
 }
 
 fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) -> ExitCode {
+    #[cfg(target_os = "windows")]
+    if let Err(bootstrap_error) = agent_desktop_windows::ensure_owned_process_mta_and_dpi() {
+        return finish(cmd_name, Err(pre_dispatch_error(bootstrap_error.into())));
+    }
+
     let adapter = build_adapter();
     let adapter: &dyn agent_desktop_core::PlatformAdapter = &adapter;
     let report = if command_policy::requires_permission_report(&cmd) {

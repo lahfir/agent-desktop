@@ -39,5 +39,9 @@ path = "tests/conformance.rs"
 name = "cli_process"
 path = "tests/cli_process.rs"
 
+[[test]]
+name = "windows_private_file_install"
+path = "tests/windows_private_file_install.rs"
+
 [lints]
 workspace = true

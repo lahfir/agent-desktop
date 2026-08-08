@@ -1,6 +1,6 @@
 use super::state;
 
-/// Real drift guard for U1/KTD2: scans the core files that actually compare
+/// Real drift guard: scans the core files that actually compare
 /// against state tokens for a bare string literal bypassing the `state::`
 /// module (`has_state(_, "literal")` or a `state == "literal"` closure
 /// comparison), then asserts every literal found is a member of

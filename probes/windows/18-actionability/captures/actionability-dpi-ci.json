@@ -1,0 +1,12 @@
+{
+    "branch":  "precommitted_unmeasurable",
+    "by_construction":  "ElementFromPoint and BoundingRectangle share physical screen pixels under PER_MONITOR_AWARE_V2 (KTD7)",
+    "deferral_citations":  [
+                               "A10-3",
+                               "A16-4"
+                           ],
+    "measurable":  false,
+    "no_fake_measurement":  true,
+    "reason":  "this display offers zero scale steps; hosted runner reproduces single-96-DPI",
+    "stack":  "uia3-com-product-CUIAutomation8"
+}

@@ -1,0 +1,11 @@
+{
+    "vault_marker_notes":  5,
+    "phase_markers":  {
+                          "after_relaunch":  0,
+                          "after_mutation":  0
+                      },
+    "marker_rows":  [
+
+                    ],
+    "report_note":  "marker paths compared by name; a path change under mutation or relaunch is the churn the geometry tier must survive"
+}
