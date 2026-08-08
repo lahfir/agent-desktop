@@ -3,9 +3,10 @@
 //! Self-match uses SelectionItem on the target; otherwise a walker DFS
 //! finds a named SelectionItem. Collapsed ExpandCollapse containers expand
 //! first and best-effort collapse after failure. Descendant search always
-//! scroll-to-realizes (A18-1) and re-searches, retaining the first match so a
-//! duplicate revealed only after scrolling still surfaces as AMBIGUOUS_TARGET.
-//! Container Value verification routes through the IsPassword-gated value helpers.
+//! scroll-to-realizes (A18-1), re-searching after every scroll step and
+//! retaining the first match so an intermediate or below-fold duplicate still
+//! surfaces as AMBIGUOUS_TARGET. Container Value verification routes through
+//! the IsPassword-gated value helpers.
 
 use agent_desktop_core::{ActionStep, AdapterError, Deadline, ErrorCode};
 use std::cell::{Cell, RefCell};
@@ -100,7 +101,15 @@ mod imp {
         };
         let mut realize = || {
             ensure_budget(deadline)?;
-            scroll_to_realize(element, deadline)
+            scroll_to_realize(element, deadline, || {
+                let prior = found_holder.borrow().clone();
+                if let Some(found) =
+                    find_named_selection_item(element, value, deadline, prior.as_ref())?
+                {
+                    *found_holder.borrow_mut() = Some(found);
+                }
+                Ok(())
+            })
         };
         let mut select_item = || {
             let borrowed = found_holder.borrow();
@@ -295,3 +304,7 @@ pub(crate) use imp::select_judged_for;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "select_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "select_flow_tests.rs"]
+mod flow_tests;
