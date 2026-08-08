@@ -45,7 +45,8 @@ pub(crate) fn reject_standalone_key_state(
     }))
     .with_suggestion(
         "Use the atomic 'press' command; spanning key holds require a daemon-owned session that can release keys after disconnect",
-    ))
+    )
+    .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered()))
 }
 
 #[cfg(test)]

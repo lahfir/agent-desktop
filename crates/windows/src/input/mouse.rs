@@ -87,6 +87,7 @@ pub(crate) fn standalone_state_error() -> AdapterError {
     .with_suggestion(
         "Use atomic 'mouse-click' or 'drag'; spanning holds require a daemon-owned session that can release buttons after disconnect",
     )
+    .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
 }
 
 fn dispatch_move(event: &MouseEvent) -> Result<(), AdapterError> {

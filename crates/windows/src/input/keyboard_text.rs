@@ -62,7 +62,7 @@ pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<(), Adapt
     Ok(())
 }
 
-fn ensure_chunk_budget(
+pub(crate) fn ensure_chunk_budget(
     deadline: Deadline,
     total: usize,
     delivered_chunks: usize,

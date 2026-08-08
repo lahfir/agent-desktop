@@ -39,7 +39,7 @@ pub(crate) fn ensure_target_integrity_allows_input(
     )
 }
 
-fn evaluate_integrity_gate(
+pub(crate) fn evaluate_integrity_gate(
     caller_rid: Option<u32>,
     target_rid: Option<u32>,
 ) -> Result<(), AdapterError> {
@@ -71,6 +71,7 @@ fn elevation_denied_error() -> AdapterError {
     .with_suggestion(
         "Run agent-desktop at the target's integrity level, or act on an element that does not cross the UIPI boundary",
     )
+    .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
 }
 
 #[cfg(target_os = "windows")]
