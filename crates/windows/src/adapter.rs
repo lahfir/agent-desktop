@@ -1,7 +1,8 @@
 use agent_desktop_core::{
-    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, ElementState, InputOps,
-    InteractionLease, LiveElement, NativeHandle, ObservationOps, ObservationRequest,
-    ObservationRoot, ProcessIdentity, Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
+    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, DragParams, ElementState,
+    InputOps, InteractionLease, KeyCombo, LiveElement, MouseEvent, NativeHandle, ObservationOps,
+    ObservationRequest, ObservationRoot, ProcessIdentity, Rect, RefEntry, TreeOptions,
+    WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -186,12 +187,58 @@ impl ActionOps for WindowsAdapter {
         crate::actions::scroll_into_view::scroll_into_view_impl(handle, lease)
     }
 }
-impl InputOps for WindowsAdapter {}
+impl InputOps for WindowsAdapter {
+    fn mouse_event(&self, event: MouseEvent, lease: &InteractionLease) -> Result<(), AdapterError> {
+        crate::input::mouse::synthesize_mouse(event, lease.deadline())
+    }
+
+    /// A standalone key edge has no daemon to own the hold across a request
+    /// boundary, so it rejects the same way macOS's `key_event` does -
+    /// the atomic `press`/`type` composers live in the
+    /// `execute_action` physical legs, not here.
+    fn key_event(
+        &self,
+        combo: &KeyCombo,
+        down: bool,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::input::keyboard::reject_standalone_key_state(combo, down)
+    }
+
+    fn drag(&self, params: DragParams, lease: &InteractionLease) -> Result<(), AdapterError> {
+        crate::input::drag::synthesize_drag(params, lease.deadline())
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::{SnapshotSurface, SystemOps};
+    use agent_desktop_core::{InteractionLease, SnapshotSurface, SystemOps};
+
+    /// `key_event` through the trait, exactly as FFI reaches it: a standalone
+    /// edge has no daemon to own the hold, so it must reject with zero
+    /// synthesis regardless of `down`'s value.
+    #[test]
+    fn key_event_rejects_a_standalone_edge_through_the_trait() {
+        let adapter = WindowsAdapter::new();
+        let deadline = Deadline::after(5_000).expect("bounded deadline");
+        let lease = InteractionLease::guarded(deadline, ()).expect("lease");
+        let combo = KeyCombo {
+            key: "a".into(),
+            modifiers: Vec::new(),
+        };
+
+        let error = InputOps::key_event(&adapter, &combo, true, &lease)
+            .expect_err("a standalone key edge must reject");
+
+        assert_eq!(
+            error.code,
+            agent_desktop_core::ErrorCode::ActionNotSupported
+        );
+        let details = error.details.expect("standalone error carries details");
+        assert_eq!(details["raw_input_emitted"], false);
+        assert_eq!(details["requires_daemon_owned_transaction"], true);
+    }
 
     /// The surfaces gate: the adapter advertises exactly the surfaces it can
     /// observe - a named window, the focused window, and a Chromium modal
