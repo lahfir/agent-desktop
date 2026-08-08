@@ -301,7 +301,7 @@ pub(crate) use imp::hit_test_impl;
 #[cfg(not(target_os = "windows"))]
 pub(crate) use imp::hit_test_impl;
 
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(target_os = "windows")]
 pub(crate) use imp::virtual_screen_metrics;
 
 #[cfg(all(test, target_os = "windows"))]

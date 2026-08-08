@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, ElementState, InputOps,
-    InteractionLease, LiveElement, NativeHandle, ObservationOps, ObservationRequest,
+    InteractionLease, LiveElement, MouseEvent, NativeHandle, ObservationOps, ObservationRequest,
     ObservationRoot, ProcessIdentity, Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
@@ -186,7 +186,11 @@ impl ActionOps for WindowsAdapter {
         crate::actions::scroll_into_view::scroll_into_view_impl(handle, lease)
     }
 }
-impl InputOps for WindowsAdapter {}
+impl InputOps for WindowsAdapter {
+    fn mouse_event(&self, event: MouseEvent, lease: &InteractionLease) -> Result<(), AdapterError> {
+        crate::input::mouse::synthesize_mouse(event, lease.deadline())
+    }
+}
 
 #[cfg(test)]
 mod tests {
