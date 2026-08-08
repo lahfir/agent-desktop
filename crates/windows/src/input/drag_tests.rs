@@ -107,3 +107,24 @@ fn a_successful_drag_posts_down_move_and_up_with_no_corrective_release() {
         "a completed drag disarms the guard, so Drop posts no second release"
     );
 }
+
+#[test]
+fn a_deadline_that_covers_only_one_pickup_delay_is_refused_before_the_button_lands() {
+    sink::reset();
+    let params = DragParams {
+        from: Point { x: 0.0, y: 0.0 },
+        to: Point { x: 10.0, y: 10.0 },
+        duration_ms: Some(0),
+        drop_delay_ms: Some(0),
+    };
+    let deadline = Deadline::after(PICKUP_DELAY_MS + 20).expect("bounded deadline");
+
+    let error = synthesize_drag(params, deadline).expect_err("one pickup delay is not enough");
+
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert_eq!(
+        error.details.expect("preflight detail")["physical_delivery_started"],
+        false
+    );
+    assert!(sink::recorded().is_empty(), "nothing may be injected");
+}

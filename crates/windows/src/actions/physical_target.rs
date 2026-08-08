@@ -62,7 +62,7 @@ pub(crate) fn ensure_click_delivery_ready(
     ensure_budget(deadline)?;
     corroborate_verified_process(element)?;
     ensure_elevation_allows(element)?;
-    Ok(target_window_is_foreground(element))
+    Ok(target_window_is_foreground(element, deadline))
 }
 
 pub(crate) fn ensure_keyboard_delivery_ready(
@@ -129,15 +129,45 @@ pub(crate) fn focus_lost_before_delivery() -> AdapterError {
     .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
 }
 
-fn target_window_is_foreground(element: &UIAElement) -> bool {
-    element
-        .0
-        .get_native_window_handle()
-        .ok()
-        .map(|handle| {
-            use windows::Win32::Foundation::HWND;
-            let hwnd: HWND = handle.into();
-            is_root_foreground_window(hwnd.0)
-        })
-        .unwrap_or(false)
+/// Whether the window hosting `element` owns the desktop foreground.
+///
+/// UIA reports `NativeWindowHandle` 0 - success, not failure - for every
+/// element that is not itself a window, which is the normal shape for WPF,
+/// WinUI, UWP and Chromium content. Reading the leaf's handle alone would
+/// therefore answer "no window, not foreground" for most modern UI and
+/// refuse delivery before injecting, so the handle is resolved the way the
+/// rest of the crate resolves it: climb to the first ancestor that reports a
+/// non-zero handle.
+fn target_window_is_foreground(element: &UIAElement, deadline: Deadline) -> bool {
+    host_window_handle(element, deadline).is_some_and(is_root_foreground_window)
+}
+
+#[cfg(target_os = "windows")]
+fn host_window_handle(
+    element: &UIAElement,
+    deadline: Deadline,
+) -> Option<crate::system::window_enum::WindowHandle> {
+    let client = crate::tree::automation::automation_client().ok()?;
+    let walker = client.get_raw_view_walker().ok()?;
+    let hwnd = crate::tree::hit_test::corroborate::first_native_hwnd(element, &walker, deadline)?;
+    Some(hwnd as crate::system::window_enum::WindowHandle)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn host_window_handle(
+    element: &UIAElement,
+    deadline: Deadline,
+) -> Option<crate::system::window_enum::WindowHandle> {
+    let _ = (element, deadline);
+    None
+}
+
+/// Exposes the host-window climb to the live lane, which is the only place a
+/// real element with a zero leaf handle exists.
+#[cfg(test)]
+pub(crate) fn host_window_handle_for_test(
+    element: &UIAElement,
+    deadline: Deadline,
+) -> Option<crate::system::window_enum::WindowHandle> {
+    host_window_handle(element, deadline)
 }

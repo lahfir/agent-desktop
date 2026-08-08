@@ -7,7 +7,7 @@ Commands for modifying UI state — clicking, typing, selecting, scrolling, and 
 Ref-based actions run in two modes, Playwright-style:
 
 - **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the semantic path cannot perform the action it fails closed.
-- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. On Windows, the semantic set (`click`, `set-value`, `toggle`, `expand`, …) stays semantic under `--headed`; `focus` is headed-required (A3-4, A19-5); `double-click`, `triple-click`, `right-click`, `type`, `hover`, and `drag` synthesize physically via `SendInput` (§2.8, A4-1/A4-3/A20-4).
+- **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. On Windows, the semantic set (`click`, `set-value`, `toggle`, `expand`, …) stays semantic under `--headed`; `focus` is headed-required (A3-4, A19-5); `double-click`, `triple-click`, `right-click`, `type`, `hover`, and `drag` synthesize physically via `SendInput` (A4-1/A4-3/A20-4).
 
 `press` is explicit physical keyboard input. `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical cursor input and require `--headed`. Raw coordinates carry no window identity, so they never focus an app. The held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the hold lifetime.
 
@@ -48,10 +48,10 @@ The command surface is platform-agnostic: every ref action builds an `Action` an
 | Command | Headless path | Notes |
 |---------|---------------|-------|
 | `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes (where advertised) | semantic accessibility actions in strict headless mode (macOS AX; Windows UIA patterns) |
-| `type` | macOS yes; Windows no | macOS uses `AXSelectedText` headlessly; Windows has no insert-at-selection UIA path — strict-headless `type` fails at policy; use `set-value` for semantic writes; `--headed` synthesizes keys via `SendInput` (A4-1, KTD8) |
+| `type` | macOS yes; Windows no | macOS uses `AXSelectedText` headlessly; Windows has no insert-at-selection UIA path — strict-headless `type` fails at policy; use `set-value` for semantic writes; `--headed` synthesizes keys via `SendInput` (A4-1) |
 | `double-click` | no | a real multi-click gesture; requires `--headed` (`SendInput` on Windows — A20-4) |
 | `triple-click` | no | no native triple-click affordance; purely 3 physical clicks → `--headed` only |
-| `right-click` | macOS semantic menu path; Windows physical-only | Windows UIA has no context-menu pattern — `--headed` performs a physical right-button click (§2.8 dogfood J5) |
+| `right-click` | macOS semantic menu path; Windows physical-only | Windows UIA has no context-menu pattern — `--headed` performs a physical right-button click, measured against a real context menu in the Windows input dogfood run |
 | `hover` | no | hovering *is* moving the cursor over an element; requires `--headed` on both platforms |
 | `drag` / drop | no | dragging *is* a cursor press-move-release; requires `--headed`. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD). WinForms `TrackBar` ref pickup may need `--from-xy` thumb-row coordinates when bounds center Y misses the track (2026-08-07-002 dogfood J6) |
 | menu bar (`--surface menubar`) | enumerate/open | the app menu bar is readable and openable; on macOS, SwiftUI `CommandMenu` items accept AXPress but do not route to their action closure (a SwiftUI limitation, like its Slider) — native AppKit menu items fire. `.contextMenu` item selection works. |
@@ -108,7 +108,7 @@ Headless uses semantic context-menu actions. `--headed` performs a physical righ
 agent-desktop type @s8f3k2p9:e2 "hello@example.com"
 agent-desktop type @s8f3k2p9:e2 "multi line\ntext"
 ```
-Headless `type` uses semantic text insertion where the platform exposes it (macOS `AXSelectedText`) without focusing the app or synthesizing keys. On Windows, headless `type` fails closed at policy — UIA has no insert-at-selection path; use `set-value` for semantic writes (KTD8). Pass `--headed` to focus the target and synthesize keyboard input via `SendInput` (A4-1).
+Headless `type` uses semantic text insertion where the platform exposes it (macOS `AXSelectedText`) without focusing the app or synthesizing keys. On Windows, headless `type` fails closed at policy — UIA has no insert-at-selection path; use `set-value` for semantic writes. Pass `--headed` to focus the target and synthesize keyboard input via `SendInput` (A4-1).
 
 ### set-value
 ```bash
@@ -120,7 +120,7 @@ Sets the value directly via the platform's semantic value write (macOS AX value 
 ```bash
 agent-desktop clear @s8f3k2p9:e2
 ```
-Headless clears through the platform's semantic value write (macOS `AXValue`; Windows `ValuePattern.SetValue("")`). With `--headed`, macOS performs focus + Select All + Delete first; Windows headed keyboard clear synthesizes via `SendInput` (§2.8).
+Headless clears through the platform's semantic value write (macOS `AXValue`; Windows `ValuePattern.SetValue("")`). With `--headed`, macOS performs focus + Select All + Delete first; Windows headed keyboard clear synthesizes via `SendInput`.
 
 ### focus
 ```bash
@@ -213,12 +213,12 @@ agent-desktop press ctrl+a --app "Notepad" # Windows
 
 | Flag | Description |
 |------|-------------|
-| `--app` | Target application; on macOS key delivery is PID-targeted and `--headed` focuses its exact window first. On Windows, `press --app` stays not-supported until §2.9; unscoped `press` synthesizes into the foreground queue |
+| `--app` | Target application; on macOS key delivery is PID-targeted and `--headed` focuses its exact window first. On Windows, `press --app` is not supported yet; unscoped `press` synthesizes into the foreground queue |
 
-**Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12` — the same vocabulary resolves on both platforms (KTD10)
+**Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12` — the same vocabulary resolves on both platforms
 **Modifiers:** `cmd`/`meta`, `ctrl`, `alt`, `shift` — combine with `+`. On Windows, `meta`/`cmd` maps to the Windows key (`VK_LWIN`), so `meta+c` is a shell shortcut, not copy — write `ctrl+c` on Windows and `cmd+c` on macOS
 
-Dangerous shortcuts are refused with `POLICY_DENIED` by the **platform adapter**, not core — the calling agent stays in control: pass `--force` to send a flagged combo anyway. macOS blocks `cmd+q`, `ctrl+cmd+q`, `cmd+alt+esc`, `cmd+shift+delete`; Windows blocks `alt+f4`, `win+l`, `win+d`, `alt+tab` and their canonical aliases (§2.8, KTD10). Normalization covers modifier order and key-name aliases (`escape`/`esc`, `backspace`/`delete`). The reserved held-key names reject even when `--force` is present. `ctrl+alt+delete` is not listed — the Secure Attention Sequence cannot be synthesized via `SendInput`.
+Dangerous shortcuts are refused with `POLICY_DENIED` by the **platform adapter**, not core — the calling agent stays in control: pass `--force` to send a flagged combo anyway. macOS blocks `cmd+q`, `ctrl+cmd+q`, `cmd+alt+esc`, `cmd+shift+delete`; Windows blocks `alt+f4`, `win+l`, `win+d`, `alt+tab` and their canonical aliases. Normalization covers modifier order and key-name aliases (`escape`/`esc`, `backspace`/`delete`). The reserved held-key names reject even when `--force` is present. `ctrl+alt+delete` is not listed — the Secure Attention Sequence cannot be synthesized via `SendInput`.
 
 ### key-down / key-up
 

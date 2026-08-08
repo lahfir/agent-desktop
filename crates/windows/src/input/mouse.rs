@@ -137,6 +137,17 @@ fn dispatch_wheel(
     }
     let normalized = mouse_coord::normalize_point(&event.point);
     post_mouse_inputs(&[move_input(normalized)]);
+    let mut modifiers = press_modifiers(&event.modifiers);
+    let result = post_wheel_chunks(y_chunks, x_chunks, deadline);
+    modifiers.release();
+    result
+}
+
+fn post_wheel_chunks(
+    y_chunks: Vec<i32>,
+    x_chunks: Vec<i32>,
+    deadline: Deadline,
+) -> Result<(), AdapterError> {
     for lines in y_chunks {
         ensure_budget(deadline)?;
         post_mouse_inputs(&[wheel_input(MOUSEEVENTF_WHEEL, lines)]);
@@ -208,3 +219,7 @@ pub(crate) fn sleep_bounded(deadline: Deadline, duration: Duration) -> Result<()
 #[cfg(all(test, target_os = "windows"))]
 #[path = "mouse_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "mouse_wheel_tests.rs"]
+mod wheel_tests;

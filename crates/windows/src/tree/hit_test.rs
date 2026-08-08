@@ -32,7 +32,7 @@ mod classify;
 
 #[cfg(target_os = "windows")]
 #[path = "hit_test_corroborate.rs"]
-mod corroborate;
+pub(crate) mod corroborate;
 
 #[cfg(target_os = "windows")]
 mod imp {

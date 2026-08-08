@@ -16,8 +16,8 @@ description: >
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
   "take screenshot", "desktop automation", "agent-desktop", or any desktop GUI interaction task.
-  Supports the macOS Phase 1 adapter, with Windows and Linux planned against
-  the same core contracts.
+  Ships a macOS adapter and a Windows adapter built against the same core
+  contracts; Linux is not yet supported.
 ---
 
 # agent-desktop

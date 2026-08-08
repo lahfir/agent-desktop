@@ -23,6 +23,12 @@ use crate::system::permissions::ensure_budget;
 
 const DEFAULT_DURATION_MS: u64 = 300;
 const PICKUP_DELAY_MS: u64 = 200;
+/// The sequence settles for a pickup delay twice - once after moving to the
+/// origin so the target sees the cursor arrive before the button, and once
+/// after the button lands so it registers the press before travel begins.
+/// The preflight reserves both, because a gate that reserves one admits a
+/// drag it cannot finish and the shortfall is spent with the button down.
+const PICKUP_TOTAL_MS: u64 = PICKUP_DELAY_MS * 2;
 const DEFAULT_DROP_DELAY_MS: u64 = 500;
 const DWELL_TICK_MS: u64 = 16;
 const MAX_STEPS: u64 = 4_096;
@@ -111,7 +117,7 @@ fn interpolate(from: &Point, to: &Point, progress: f64) -> Point {
 fn preflight_drag(params: &DragParams, deadline: Deadline) -> Result<(), AdapterError> {
     let duration_ms = params.duration_ms.unwrap_or(DEFAULT_DURATION_MS);
     let drop_delay_ms = params.drop_delay_ms.unwrap_or(DEFAULT_DROP_DELAY_MS);
-    let required_ms = PICKUP_DELAY_MS
+    let required_ms = PICKUP_TOTAL_MS
         .checked_add(duration_ms)
         .and_then(|total| total.checked_add(drop_delay_ms))
         .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "Drag timing is too large"))?;
