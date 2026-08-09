@@ -4,6 +4,7 @@ use agent_desktop_core::{
 
 use super::permissions::ensure_budget;
 use super::window_identity::WindowIdentityEvidence;
+use super::window_op_verb::{ShowVerb, verb_is_satisfied};
 use super::window_ops::parse_handle;
 
 const MAX_DIMENSION: f64 = 1_000_000.0;
@@ -166,13 +167,6 @@ fn move_to(
     Err(AdapterError::not_supported("window_op"))
 }
 
-#[derive(Clone, Copy)]
-enum ShowVerb {
-    Minimize,
-    Maximize,
-    Restore,
-}
-
 #[cfg(target_os = "windows")]
 fn show_verb(
     handle: super::window_enum::WindowHandle,
@@ -181,21 +175,20 @@ fn show_verb(
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SW_SHOWNORMAL,
-        ShowWindow,
+        SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, ShowWindow,
     };
 
-    let (command, expected) = match verb {
-        ShowVerb::Minimize => (SW_MINIMIZE, SW_SHOWMINIMIZED as u32),
-        ShowVerb::Maximize => (SW_MAXIMIZE, SW_SHOWMAXIMIZED as u32),
-        ShowVerb::Restore => (SW_RESTORE, SW_SHOWNORMAL as u32),
+    let command = match verb {
+        ShowVerb::Minimize => SW_MINIMIZE,
+        ShowVerb::Maximize => SW_MAXIMIZE,
+        ShowVerb::Restore => SW_RESTORE,
     };
     ensure_owned_before(evidence)?;
     unsafe { ShowWindow(handle, command) };
     wait_then_reread(deadline)?;
     ensure_owned_after(evidence)?;
     let show_cmd = placement_show_cmd(handle)?;
-    if show_cmd == expected {
+    if verb_is_satisfied(verb, show_cmd) {
         return Ok(());
     }
     Err(placement_unverified(match verb {

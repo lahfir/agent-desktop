@@ -259,3 +259,24 @@ fn a_window_that_never_pumps_is_refused_instead_of_blocking_the_write() {
         "the write never issued, so the caller may safely retry"
     );
 }
+
+/// A window minimized while maximized restores to maximized, so the restore
+/// verb must accept that placement. Demanding an exact normal placement would
+/// report this ordinary sequence as a failure the caller cannot safely retry.
+#[cfg(target_os = "windows")]
+#[test]
+fn restore_from_a_maximized_minimize_is_confirmed_not_reported_failed() {
+    let _stage = crate::tree::fixture_window::on_screen_stage();
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWMAXIMIZED;
+
+    let (fixture, info) = staged_fixture();
+    window_op_impl(&info, WindowOp::Maximize, lease().deadline()).expect("maximize");
+    window_op_impl(&info, WindowOp::Minimize, lease().deadline()).expect("minimize from maximized");
+    window_op_impl(&info, WindowOp::Restore, lease().deadline())
+        .expect("restore of a maximized-then-minimized window is a success");
+    assert_eq!(
+        current_show_cmd(fixture.handle()),
+        SW_SHOWMAXIMIZED as u32,
+        "the window returns to maximized, which is what restore means here"
+    );
+}
