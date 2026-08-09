@@ -297,3 +297,31 @@ fn focus_window_requires_a_process_instance_token() {
     let err = focus_window(&win, &lease()).unwrap_err();
     assert_eq!(err.code, ErrorCode::StaleRef);
 }
+
+/// Every headed command reaches `focus_window`, and identity verification
+/// reads the live title before any raise, so a window whose thread never
+/// dispatches would block the whole command inside `GetWindowTextW`. The
+/// liveness ping must refuse it first.
+#[cfg(target_os = "windows")]
+#[test]
+fn a_window_that_never_pumps_is_refused_before_activation_blocks() {
+    let stalled = crate::tree::fixture::StalledFixture::create().expect("stalled");
+    let info = window_info_for(stalled.handle());
+
+    let error = focus_window(&info, &lease())
+        .expect_err("a non-pumping target must be refused, not activated");
+
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("physical_delivery_started")),
+        Some(&serde_json::Value::Bool(false)),
+        "nothing was delivered, so headed input never started"
+    );
+}

@@ -237,3 +237,25 @@ fn window_op_refuses_an_expired_deadline_before_any_write() {
     let after = current_rect(fixture.handle());
     assert_eq!(after, before);
 }
+
+/// A window whose thread never dispatches blocks `ShowWindow`/`SetWindowPos`
+/// inside the OS call, so the write must be refused before it is issued
+/// rather than hanging the command behind a deadline that cannot interrupt it.
+#[cfg(target_os = "windows")]
+#[test]
+fn a_window_that_never_pumps_is_refused_instead_of_blocking_the_write() {
+    let stalled = crate::tree::fixture::StalledFixture::create().expect("stalled");
+    let info = window_info_for(stalled.handle());
+    let lease =
+        InteractionLease::guarded(Deadline::after(10_000).expect("deadline"), ()).expect("lease");
+
+    let error = window_op_impl(&info, WindowOp::Minimize, lease.deadline())
+        .expect_err("a non-pumping target must be refused, not written to");
+
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered,
+        "the write never issued, so the caller may safely retry"
+    );
+}

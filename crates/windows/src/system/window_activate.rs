@@ -17,6 +17,9 @@ use super::window_ops::{is_foreground_window, parse_handle};
 /// observe the attach. Never unbounded.
 const FOCUS_STEAL_BUDGET: u32 = 2;
 const INTER_ATTEMPT_DELAY: Duration = Duration::from_millis(25);
+/// How long the target gets to answer the liveness ping before activation is
+/// refused as unresponsive.
+const PUMP_PROBE_MS: u64 = 500;
 
 /// Raises and focuses the exact window after stored-identity verification.
 ///
@@ -52,6 +55,7 @@ pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result
         )));
     };
     evidence.verify_stored().map_err(before_activation)?;
+    ensure_window_is_pumping(handle).map_err(before_activation)?;
     restore_if_iconic(handle, &evidence).map_err(before_activation)?;
     if is_owned_foreground(handle, &evidence) {
         return Ok(());
@@ -62,6 +66,34 @@ pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result
 
 fn before_activation(error: AdapterError) -> AdapterError {
     error.with_disposition(DeliverySemantics::not_delivered())
+}
+
+/// Refuses activation of a target that is not dispatching messages.
+///
+/// Every step that follows reaches the owning thread's message queue, so a
+/// window whose thread never dispatches blocks the caller inside an OS call -
+/// the same shape A14-11 recorded for `ElementFromHandle`. The raise is not
+/// the first such step: identity verification reads the live title, and
+/// `GetWindowTextW` sends `WM_GETTEXT`, so it blocks before any activation
+/// call is reached. The retry budget cannot bound that either, because it is
+/// consulted between attempts while the block happens inside one. Every headed
+/// command reaches this path, so the ping runs once, ahead of verification.
+#[cfg(target_os = "windows")]
+fn ensure_window_is_pumping(handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
+    if crate::tree::automation::window_is_pumping(handle as isize, PUMP_PROBE_MS) {
+        return Ok(());
+    }
+    Err(AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Target window is not processing messages, so activation would block",
+    )
+    .with_details(serde_json::json!({ "physical_delivery_started": false }))
+    .with_suggestion("Wait for the application to recover before retrying headed input"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ensure_window_is_pumping(_handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
+    Ok(())
 }
 
 fn activation_target_is_strictly_higher(pid: agent_desktop_core::ProcessId) -> bool {

@@ -13,6 +13,37 @@ const PLACEMENT_TOLERANCE_PX: i32 = 8;
 /// Wait-then-re-read delay pinned by A21-5 so an in-flight DWM animation is
 /// not misread as a placement mismatch.
 const PLACEMENT_REREAD_MS: u64 = 80;
+/// How long the target gets to answer the liveness ping before a window write
+/// is refused as unresponsive.
+const PUMP_PROBE_MS: u64 = 500;
+
+/// Refuses a window write to a target that is not dispatching messages.
+///
+/// Every step that follows reaches the owning thread's message queue, so a
+/// window whose thread never dispatches blocks the caller inside an OS call -
+/// measured as a call that never returns, the same shape A14-11 recorded for
+/// `ElementFromHandle`. The write is not the first such step: identity
+/// verification reads the live title, and `GetWindowTextW` sends `WM_GETTEXT`,
+/// so it blocks before any placement call is reached. The ping therefore runs
+/// ahead of verification rather than just ahead of the write. A `Deadline`
+/// cannot rescue either one: it is checked before the call and the block
+/// happens inside it.
+#[cfg(target_os = "windows")]
+fn ensure_window_is_pumping(handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
+    if crate::tree::automation::window_is_pumping(handle as isize, PUMP_PROBE_MS) {
+        return Ok(());
+    }
+    Err(AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Target window is not processing messages, so the window operation would block",
+    )
+    .with_suggestion("Wait for the application to recover, or close it with --force"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ensure_window_is_pumping(_handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
+    Ok(())
+}
 
 pub(crate) fn window_op_impl(
     win: &WindowInfo,
@@ -34,6 +65,7 @@ pub(crate) fn window_op_impl(
         )));
     };
     evidence.verify_stored().map_err(before_write)?;
+    ensure_window_is_pumping(handle).map_err(before_write)?;
     match op {
         WindowOp::Resize { width, height } => resize(handle, &evidence, width, height, deadline),
         WindowOp::Move { x, y } => move_to(handle, &evidence, x, y, deadline),
