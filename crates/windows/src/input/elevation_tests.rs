@@ -100,8 +100,8 @@ mod windows_only {
     use super::*;
     use agent_desktop_core::ProcessId;
     use windows_sys::Win32::Security::{
-        CreateWellKnownSid, WinHighLabelSid, WinLowLabelSid, WinMediumLabelSid,
-        SECURITY_MAX_SID_SIZE,
+        CreateWellKnownSid, SECURITY_MAX_SID_SIZE, WinHighLabelSid, WinLowLabelSid,
+        WinMediumLabelSid,
     };
 
     /// A real `GetTokenInformation` call against this process's own token -
@@ -155,8 +155,10 @@ mod windows_only {
         assert_eq!(high, INTEGRITY_RID_HIGH);
 
         assert!(evaluate_integrity_gate(Some(high), Some(medium)).is_ok());
-        assert!(evaluate_integrity_gate(Some(medium), Some(high))
-            .is_err_and(|error| error.code == ErrorCode::PermDenied));
+        assert!(
+            evaluate_integrity_gate(Some(medium), Some(high))
+                .is_err_and(|error| error.code == ErrorCode::PermDenied)
+        );
     }
 
     fn synthetic_integrity_rid(well_known: i32) -> u32 {

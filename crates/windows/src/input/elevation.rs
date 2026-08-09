@@ -24,7 +24,7 @@
 
 use agent_desktop_core::{AdapterError, ErrorCode, ProcessId};
 
-use crate::system::hresult::{com_hresult_detail, E_ACCESSDENIED};
+use crate::system::hresult::{E_ACCESSDENIED, com_hresult_detail};
 
 /// The ref-addressed focus-and-integrity gate a physical dispatch leg calls
 /// before injecting into a known target process: `Ok` when the target is
@@ -113,8 +113,8 @@ mod imp {
     use agent_desktop_core::ProcessId;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Security::{
-        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TokenIntegrityLevel,
-        PSID, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, PSID,
+        TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TokenIntegrityLevel,
     };
     use windows_sys::Win32::System::Threading::{
         GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
