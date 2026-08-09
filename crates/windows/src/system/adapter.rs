@@ -143,7 +143,7 @@ impl SystemOps for WindowsAdapter {
     }
 
     fn focus_window(&self, win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
-        crate::system::window_resolve::focus_window(win, lease)
+        crate::system::window_activate::focus_window(win, lease)
     }
 
     fn list_displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {

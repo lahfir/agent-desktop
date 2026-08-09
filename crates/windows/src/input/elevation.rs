@@ -24,7 +24,7 @@
 
 use agent_desktop_core::{AdapterError, ErrorCode, ProcessId};
 
-use crate::system::hresult::{E_ACCESSDENIED, com_hresult_detail};
+use crate::system::hresult::{com_hresult_detail, E_ACCESSDENIED};
 
 /// The ref-addressed focus-and-integrity gate a physical dispatch leg calls
 /// before injecting into a known target process: `Ok` when the target is
@@ -38,9 +38,21 @@ pub(crate) fn ensure_target_integrity_allows_input(
     target_pid: ProcessId,
 ) -> Result<(), AdapterError> {
     evaluate_integrity_gate(
-        imp::current_process_integrity_rid(),
-        imp::process_integrity_rid(target_pid),
+        current_process_integrity_rid(),
+        process_integrity_rid(target_pid),
     )
+}
+
+/// Caller's mandatory-label RID for integrity comparison outside the input
+/// crate (window activation reads the same token facts).
+pub(crate) fn current_process_integrity_rid() -> Option<u32> {
+    imp::current_process_integrity_rid()
+}
+
+/// Target process mandatory-label RID for integrity comparison outside the
+/// input crate (window activation reads the same token facts).
+pub(crate) fn process_integrity_rid(pid: ProcessId) -> Option<u32> {
+    imp::process_integrity_rid(pid)
 }
 
 pub(crate) fn evaluate_integrity_gate(
@@ -78,13 +90,31 @@ fn elevation_denied_error() -> AdapterError {
     .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
 }
 
+/// Activation-worded `PERM_DENIED` when a strictly-higher-integrity target
+/// cannot be foregrounded across the UIPI boundary (A21-7 / A9-2). Distinct
+/// from [`elevation_denied_error`], which is input-worded.
+pub(crate) fn activation_elevation_denied() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::PermDenied,
+        "The target process runs at a higher integrity level than this process; UIPI blocks window activation across that boundary",
+    )
+    .with_platform_detail(com_hresult_detail(E_ACCESSDENIED))
+    .with_details(serde_json::json!({
+        "physical_delivery_started": false,
+    }))
+    .with_suggestion(
+        "Run agent-desktop at the target's integrity level, or activate a window that does not cross the UIPI boundary",
+    )
+    .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
     use agent_desktop_core::ProcessId;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Security::{
-        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, PSID,
-        TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TokenIntegrityLevel,
+        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TokenIntegrityLevel,
+        PSID, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
     };
     use windows_sys::Win32::System::Threading::{
         GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,

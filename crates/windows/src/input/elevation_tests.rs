@@ -46,6 +46,26 @@ fn target_higher_than_caller_is_denied_with_the_exact_platform_detail_format() {
     assert!(error.suggestion.is_some());
 }
 
+#[test]
+fn activation_elevation_denied_is_activation_worded_not_input_worded() {
+    let error = activation_elevation_denied();
+    assert_eq!(error.code, ErrorCode::PermDenied);
+    assert!(
+        error.message.contains("window activation"),
+        "got {}",
+        error.message
+    );
+    assert!(!error.message.contains("blocks input"));
+    assert_eq!(
+        error.platform_detail.as_deref(),
+        Some("COM HRESULT 0x80070005 (E_ACCESSDENIED: Access is denied)")
+    );
+    assert_eq!(
+        error.details.expect("denial carries details")["physical_delivery_started"],
+        false
+    );
+}
+
 /// Inverted against the denial above: caller-higher and equal both allow.
 #[test]
 fn caller_higher_or_equal_is_allowed() {
@@ -80,8 +100,8 @@ mod windows_only {
     use super::*;
     use agent_desktop_core::ProcessId;
     use windows_sys::Win32::Security::{
-        CreateWellKnownSid, SECURITY_MAX_SID_SIZE, WinHighLabelSid, WinLowLabelSid,
-        WinMediumLabelSid,
+        CreateWellKnownSid, WinHighLabelSid, WinLowLabelSid, WinMediumLabelSid,
+        SECURITY_MAX_SID_SIZE,
     };
 
     /// A real `GetTokenInformation` call against this process's own token -
@@ -135,10 +155,8 @@ mod windows_only {
         assert_eq!(high, INTEGRITY_RID_HIGH);
 
         assert!(evaluate_integrity_gate(Some(high), Some(medium)).is_ok());
-        assert!(
-            evaluate_integrity_gate(Some(medium), Some(high))
-                .is_err_and(|error| error.code == ErrorCode::PermDenied)
-        );
+        assert!(evaluate_integrity_gate(Some(medium), Some(high))
+            .is_err_and(|error| error.code == ErrorCode::PermDenied));
     }
 
     fn synthetic_integrity_rid(well_known: i32) -> u32 {
