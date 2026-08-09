@@ -282,7 +282,7 @@ fn focus_lost_between_verify_and_inject_fails_closed_without_synthesis() {
     }
     let stealer_handle = stealer.handle();
     synthesis_probe::reset();
-    let error = between_verify_and_inject::with(
+    let error = force_focus_lost::with_armed_after_hook(
         move || raise_handle(stealer_handle),
         || {
             press_for_app_impl(identity, &combo_a(), InteractionPolicy::headed(), deadline())

@@ -174,6 +174,10 @@ fn focus_lost_before_delivery(pid: ProcessId) -> AdapterError {
 
 #[cfg(target_os = "windows")]
 fn process_owns_foreground(pid: ProcessId, instance: &str) -> Result<bool, AdapterError> {
+    #[cfg(test)]
+    if force_focus_lost::is_active() {
+        return Ok(false);
+    }
     let Some(foreground_pid) = foreground_process_id() else {
         return Ok(false);
     };
@@ -261,6 +265,42 @@ mod force_higher_integrity {
 }
 
 #[cfg(all(test, target_os = "windows"))]
+mod force_focus_lost {
+    use std::cell::Cell;
+
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(super) fn is_active() -> bool {
+        ACTIVE.with(Cell::get)
+    }
+
+    pub(super) fn arm() {
+        ACTIVE.with(|flag| flag.set(true));
+    }
+
+    pub(super) fn with_armed_after_hook<R>(
+        mut hook: impl FnMut() + 'static,
+        run: impl FnOnce() -> R,
+    ) -> R {
+        struct ResetOnDrop;
+        impl Drop for ResetOnDrop {
+            fn drop(&mut self) {
+                ACTIVE.with(|flag| flag.set(false));
+                super::between_verify_and_inject::clear();
+            }
+        }
+        super::between_verify_and_inject::install(Box::new(move || {
+            hook();
+            arm();
+        }));
+        let _reset = ResetOnDrop;
+        run()
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
 mod between_verify_and_inject {
     use std::cell::RefCell;
 
@@ -276,16 +316,12 @@ mod between_verify_and_inject {
         });
     }
 
-    pub(super) fn with<R>(hook: impl FnMut() + 'static, run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                HOOK.with(|cell| *cell.borrow_mut() = None);
-            }
-        }
-        HOOK.with(|cell| *cell.borrow_mut() = Some(Box::new(hook)));
-        let _reset = ResetOnDrop;
-        run()
+    pub(super) fn install(hook: Box<dyn FnMut()>) {
+        HOOK.with(|cell| *cell.borrow_mut() = Some(hook));
+    }
+
+    pub(super) fn clear() {
+        HOOK.with(|cell| *cell.borrow_mut() = None);
     }
 }
 
