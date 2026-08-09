@@ -1,7 +1,7 @@
 use agent_desktop_core::{
     AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
     PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
-    WindowInfo,
+    WindowInfo, process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -82,6 +82,22 @@ impl SystemOps for WindowsAdapter {
         };
         let windows = self.list_windows(&filter, deadline)?;
         Ok(windows.into_iter().next())
+    }
+
+    /// Process liveness for the shared `ProcessState` contract. Returns the
+    /// raw classification only — core's two-signal gate owns any upgrade to
+    /// `APP_UNRESPONSIVE` (A21-3, A21-4).
+    fn process_state(
+        &self,
+        process: ProcessIdentity,
+        deadline: Deadline,
+    ) -> Result<ProcessState, AdapterError> {
+        crate::system::process_state::process_state_impl(process, deadline)
+    }
+
+    /// Session- and shell-critical image names; exact match, case-insensitive.
+    fn is_protected_process(&self, identifier: &str) -> bool {
+        crate::system::app_ops::is_protected_process(identifier)
     }
 
     fn resolve_window_strict(
