@@ -18,6 +18,10 @@ mod imp {
             ChainStep::Action("AXPress"),
             ChainStep::Action("AXOpen"),
             ChainStep::CustomWithDeadline {
+                label: "activate_descendant",
+                func: crate::actions::activate_descendant::activate_descendant,
+            },
+            ChainStep::CustomWithDeadline {
                 label: "select_within_container",
                 func: crate::actions::container_select::select_within_container,
             },
@@ -102,6 +106,10 @@ mod imp {
         steps: &[
             ChainStep::Action("AXPress"),
             ChainStep::Action("AXOpen"),
+            ChainStep::CustomWithDeadline {
+                label: "activate_descendant",
+                func: crate::actions::activate_descendant::activate_descendant,
+            },
             ChainStep::CustomWithDeadline {
                 label: "select_within_container",
                 func: crate::actions::container_select::select_within_container,
