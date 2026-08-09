@@ -1,7 +1,8 @@
 use agent_desktop_core::{
-    AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, InteractionLease, ObservationOps,
-    PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
-    WindowInfo, launch_options::LaunchOptions, process_state::ProcessState,
+    launch_options::LaunchOptions, process_state::ProcessState, AdapterError, AdapterSession,
+    AppInfo, Deadline, DisplayInfo, InteractionLease, ObservationOps, PermissionReport,
+    ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter, WindowInfo,
+    WindowOp,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -120,6 +121,17 @@ impl SystemOps for WindowsAdapter {
         lease: &InteractionLease,
     ) -> Result<(), AdapterError> {
         crate::system::close::close_app_impl(app, force, lease.deadline())
+    }
+
+    /// `SetWindowPos`/`ShowWindow` with Win32 placement re-read verification
+    /// (A21-5); never UIA `IsOffscreen`/`-32000`.
+    fn window_op(
+        &self,
+        win: &WindowInfo,
+        op: WindowOp,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::system::window_op::window_op_impl(win, op, lease.deadline())
     }
 
     fn resolve_window_strict(
