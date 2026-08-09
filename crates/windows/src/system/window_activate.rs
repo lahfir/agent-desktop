@@ -17,9 +17,6 @@ use super::window_ops::{is_foreground_window, parse_handle};
 /// observe the attach. Never unbounded.
 const FOCUS_STEAL_BUDGET: u32 = 2;
 const INTER_ATTEMPT_DELAY: Duration = Duration::from_millis(25);
-/// How long the target gets to answer the liveness ping before activation is
-/// refused as unresponsive.
-const PUMP_PROBE_MS: u64 = 500;
 
 /// Raises and focuses the exact window after stored-identity verification.
 ///
@@ -80,7 +77,7 @@ fn before_activation(error: AdapterError) -> AdapterError {
 /// command reaches this path, so the ping runs once, ahead of verification.
 #[cfg(target_os = "windows")]
 fn ensure_window_is_pumping(handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
-    if crate::tree::automation::window_is_pumping(handle as isize, PUMP_PROBE_MS) {
+    if super::window_enum::window_is_responsive(handle) {
         return Ok(());
     }
     Err(AdapterError::new(
