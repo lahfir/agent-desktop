@@ -2,7 +2,7 @@
 title: Guard OS-reordered resources with an identity fingerprint
 date: 2026-07-11
 category: best-practices
-module: notification commands and FFI, crates/windows/src/system/window_resolve.rs
+module: notification commands and FFI, crates/windows/src/system/window_activate.rs
 problem_type: best_practice
 component: tooling
 severity: high
@@ -44,7 +44,7 @@ window is destroyed, the OS is free to hand the same numeric value to an
 unrelated process's next window. Verifying identity once, at entry, is not
 enough when the write that follows is not atomic with that check — a handle
 can be destroyed and recycled in the gap between the check and the native
-write. `focus_window` (`crates/windows/src/system/window_resolve.rs`)
+write. `focus_window` (`crates/windows/src/system/window_activate.rs`)
 re-reads the owning pid immediately before every native write that follows
 entry verification: `restore_if_iconic` re-checks ownership before its
 `ShowWindow` call, and `bring_to_foreground` re-checks before `ShowWindow` /
@@ -59,7 +59,7 @@ reports success over the wrong window. `is_owned_foreground` requires both
 `is_foreground_window(handle)` **and** `live_window_owner(handle) ==
 Some(expected)` — handle equality alone would accept a recycled HWND that
 happens to be foreground for an unrelated reason. See `focus_window`'s own
-doc comment in `window_resolve.rs` for the stated rationale.
+doc comment in `window_activate.rs` for the stated rationale.
 
 ## Prevention
 
@@ -84,4 +84,4 @@ doc comment in `window_resolve.rs` for the stated rationale.
 
 - `crates/core/src/notification_identity.rs`
 - `crates/macos/src/notifications/actions.rs`
-- `crates/windows/src/system/window_resolve.rs`
+- `crates/windows/src/system/window_activate.rs`
