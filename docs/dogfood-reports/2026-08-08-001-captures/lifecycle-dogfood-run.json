@@ -1,0 +1,741 @@
+{
+    "environment":  {
+                        "os_caption":  "Microsoft Windows Server 2019 Datacenter",
+                        "os_build":  "17763",
+                        "binary":  "agent-desktop.exe",
+                        "binary_bytes":  2180608,
+                        "generated":  "2026-08-08T18:35:32.1321276-06:00",
+                        "placement_tolerance_px":  8
+                    },
+    "judgements":  [
+                       {
+                           "id":  "J1",
+                           "claim":  "Notepad launch -\u003e interact -\u003e close round-trip",
+                           "target":  "Notepad",
+                           "result":  "pass",
+                           "verdict":  "launch window shape, WM_GETTEXT hash match after set-value, verified process gone after graceful close",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "launch",
+                                                  "code":  null,
+                                                  "disposition_delivery":  null,
+                                                  "disposition_retry":  null,
+                                                  "data_keys":  [
+                                                                    "app_name",
+                                                                    "bounds",
+                                                                    "id",
+                                                                    "is_focused",
+                                                                    "minimized",
+                                                                    "pid",
+                                                                    "process_instance",
+                                                                    "title",
+                                                                    "visible"
+                                                                ],
+                                                  "bool_flags":  {
+                                                                     "minimized":  false,
+                                                                     "has_window_id":  true,
+                                                                     "has_bounds":  true,
+                                                                     "has_process_instance":  true
+                                                                 },
+                                                  "numeric_flags":  {
+
+                                                                    },
+                                                  "steps":  [
+
+                                                            ]
+                                              },
+                           "notes":  "focus_ok=True;fg_owned=True; set_value_ok=True;wm_gettext_hash_match=True;utf16=12; close_ok=True;process_gone=True;method=graceful"
+                       },
+                       {
+                           "id":  "J2",
+                           "claim":  "Explorer interact coverage + protected-process close refusal",
+                           "target":  "Explorer",
+                           "result":  "pass",
+                           "verdict":  "snapshot refs observed on harness-opened folder; close-app explorer.exe refused not_delivered INVALID_ARGS (protected list)",
+                           "envelope_shape":  {
+                                                  "ok":  false,
+                                                  "command":  "close-app",
+                                                  "code":  "INVALID_ARGS",
+                                                  "disposition_delivery":  "not_delivered",
+                                                  "disposition_retry":  "safe",
+                                                  "data_keys":  [
+
+                                                                ],
+                                                  "bool_flags":  {
+                                                                     "has_suggestion":  true
+                                                                 },
+                                                  "numeric_flags":  {
+
+                                                                    },
+                                                  "steps":  [
+
+                                                            ]
+                                              },
+                           "notes":  "product_launch_ok=False;code=AMBIGUOUS_TARGET;delivery=not_delivered; no_attach_ok=False;code=ACTION_FAILED; harness_explorer_windows=2; snapshot_ok=True;ref_count=88; protected_refusal_code=INVALID_ARGS;not_delivered=True; plan_named_PERM_DENIED_observed_INVALID_ARGS=true"
+                       },
+                       {
+                           "id":  "J3",
+                           "claim":  "StalledFixture classifies ProcessState::Unresponsive (APP_UNRESPONSIVE path)",
+                           "target":  "StalledFixture",
+                           "result":  "pass",
+                           "verdict":  "lib test stalled_fixture_classifies_unresponsive ok; no CLI process-state command (adapter-only)",
+                           "envelope_shape":  null,
+                           "notes":  "running_tests=1;cli_process_state=false"
+                       },
+                       {
+                           "id":  "J4",
+                           "claim":  "window_op resize/move/minimize/maximize/restore verified via Win32 placement",
+                           "target":  "Notepad scratch",
+                           "result":  "pass",
+                           "verdict":  "each op envelope ok and GetWindowPlacement/GetWindowRect matched within 8px / showCmd",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "resize-window",
+                                                  "code":  null,
+                                                  "disposition_delivery":  null,
+                                                  "disposition_retry":  null,
+                                                  "data_keys":  [
+                                                                    "height",
+                                                                    "resized",
+                                                                    "width"
+                                                                ],
+                                                  "bool_flags":  {
+                                                                     "resized":  true
+                                                                 },
+                                                  "numeric_flags":  {
+                                                                        "width":  640,
+                                                                        "height":  480
+                                                                    },
+                                                  "steps":  [
+
+                                                            ]
+                                              },
+                           "notes":  "resize_ok=True;ind_w_delta=0;ind_h_delta=0; move_ok=True;ind_x_delta=0;ind_y_delta=0; minimize_ok=True;show_cmd=2; restore_min_ok=True;show_cmd=1; maximize_ok=True;show_cmd=3; restore_max_ok=True;show_cmd=1"
+                       },
+                       {
+                           "id":  "J5",
+                           "claim":  "headed press --app delivers to real Notepad target",
+                           "target":  "Notepad",
+                           "result":  "pass",
+                           "verdict":  "envelope delivered_*; WM_GETTEXT length grew after press --app a",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "press",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "data_keys":  [
+                                                                    "action",
+                                                                    "disposition"
+                                                                ],
+                                                  "bool_flags":  {
+                                                                     "action_is_press_key":  true
+                                                                 },
+                                                  "numeric_flags":  {
+
+                                                                    },
+                                                  "steps":  [
+
+                                                            ]
+                                              },
+                           "notes":  "focus_ok=True;fg_owned=True; press_ok=True;delivery=delivered_unverified;wm_gettext_grew=True;bracket_ok=True;utf16_before=0;utf16_after=1"
+                       },
+                       {
+                           "id":  "J6",
+                           "claim":  "UWP lifecycle target reachable",
+                           "target":  "UWP",
+                           "result":  "skipped",
+                           "verdict":  "no AppxPackage or ApplicationFrameHost window on this host; recorded gap per A1-3",
+                           "envelope_shape":  null,
+                           "notes":  "appx=0;frame_host_windows=0"
+                       }
+                   ],
+    "envelopes":  [
+                      {
+                          "id":  "J1-launch",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "launch",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "app_name",
+                                                          "bounds",
+                                                          "id",
+                                                          "is_focused",
+                                                          "minimized",
+                                                          "pid",
+                                                          "process_instance",
+                                                          "title",
+                                                          "visible"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "minimized":  false,
+                                                           "has_window_id":  true,
+                                                           "has_bounds":  true,
+                                                           "has_process_instance":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "absolute System32 notepad"
+                      },
+                      {
+                          "id":  "J1-focus",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "focus-window",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "focused"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "focused":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J1-find",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "find",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "match",
+                                                          "snapshot_id"
+                                                      ],
+                                        "bool_flags":  {
+
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J1-set-value",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "set-value",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_verified",
+                                        "disposition_retry":  "unsafe",
+                                        "data_keys":  [
+                                                          "action",
+                                                          "details",
+                                                          "disposition",
+                                                          "post_state",
+                                                          "steps"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "action_is_press_key":  false
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+                                                      {
+                                                          "label":  "ValuePattern.SetValue",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "semantic_api",
+                                                          "verified":  true
+                                                      }
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J1-close",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "close-app",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "app",
+                                                          "closed",
+                                                          "method",
+                                                          "requested"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "closed":  true,
+                                                           "requested":  true,
+                                                           "method_is_graceful":  true,
+                                                           "method_is_force":  false
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J2-product-launch",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "launch",
+                                        "code":  "AMBIGUOUS_TARGET",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "data_keys":  [
+
+                                                      ],
+                                        "bool_flags":  {
+                                                           "has_suggestion":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "attach-default shell explorer"
+                      },
+                      {
+                          "id":  "J2-product-launch-no-attach",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "launch",
+                                        "code":  "ACTION_FAILED",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "data_keys":  [
+
+                                                      ],
+                                        "bool_flags":  {
+                                                           "has_suggestion":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J2-list-windows",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "list-windows",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "Count",
+                                                          "IsFixedSize",
+                                                          "IsReadOnly",
+                                                          "IsSynchronized",
+                                                          "Length",
+                                                          "LongLength",
+                                                          "Rank",
+                                                          "SyncRoot"
+                                                      ],
+                                        "bool_flags":  {
+
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J2-snapshot",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "snapshot",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "app",
+                                                          "complete",
+                                                          "ref_count",
+                                                          "snapshot_id",
+                                                          "tree",
+                                                          "window"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "complete":  true
+                                                       },
+                                        "numeric_flags":  {
+                                                              "ref_count":  88
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J2-close-protected",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "close-app",
+                                        "code":  "INVALID_ARGS",
+                                        "disposition_delivery":  "not_delivered",
+                                        "disposition_retry":  "safe",
+                                        "data_keys":  [
+
+                                                      ],
+                                        "bool_flags":  {
+                                                           "has_suggestion":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J3-lib-stalled",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "cargo-test",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "bool_flags":  {
+                                                           "lib_test_passed":  true,
+                                                           "cli_process_state_exists":  false
+                                                       },
+                                        "numeric_flags":  {
+                                                              "exit_code":  0,
+                                                              "running_tests":  1
+                                                          }
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "system::process_state::tests::stalled_fixture_classifies_unresponsive"
+                      },
+                      {
+                          "id":  "J4-launch",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "launch",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "app_name",
+                                                          "bounds",
+                                                          "id",
+                                                          "is_focused",
+                                                          "minimized",
+                                                          "pid",
+                                                          "process_instance",
+                                                          "title",
+                                                          "visible"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "minimized":  false,
+                                                           "has_window_id":  true,
+                                                           "has_bounds":  true,
+                                                           "has_process_instance":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-resize",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "resize-window",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "height",
+                                                          "resized",
+                                                          "width"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "resized":  true
+                                                       },
+                                        "numeric_flags":  {
+                                                              "width":  640,
+                                                              "height":  480
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-move",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "move-window",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "moved",
+                                                          "x",
+                                                          "y"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "moved":  true
+                                                       },
+                                        "numeric_flags":  {
+                                                              "x":  120,
+                                                              "y":  140
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-minimize",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "minimize",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "minimized"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "minimized":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-restore-from-min",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "restore",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "restored"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "restored":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-maximize",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "maximize",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "maximized"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "maximized":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-restore-from-max",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "restore",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "restored"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "restored":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J5-launch",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "launch",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "app_name",
+                                                          "bounds",
+                                                          "id",
+                                                          "is_focused",
+                                                          "minimized",
+                                                          "pid",
+                                                          "process_instance",
+                                                          "title",
+                                                          "visible"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "minimized":  false,
+                                                           "has_window_id":  true,
+                                                           "has_bounds":  true,
+                                                           "has_process_instance":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J5-focus",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "focus-window",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "data_keys":  [
+                                                          "focused"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "focused":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J5-press-app",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "press",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "data_keys":  [
+                                                          "action",
+                                                          "disposition"
+                                                      ],
+                                        "bool_flags":  {
+                                                           "action_is_press_key":  true
+                                                       },
+                                        "numeric_flags":  {
+
+                                                          },
+                                        "steps":  [
+
+                                                  ]
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J6-uwp-census",
+                          "shape":  {
+                                        "ok":  false,
+                                        "command":  "uwp-census",
+                                        "bool_flags":  {
+                                                           "reachable":  false
+                                                       },
+                                        "numeric_flags":  {
+                                                              "appx_candidate_count":  0,
+                                                              "application_frame_host_windows":  0
+                                                          }
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "A1-3 ApplicationFrameHost gap"
+                      }
+                  ],
+    "interference":  [
+
+                     ]
+}
