@@ -107,6 +107,23 @@ fn bridge_error(operation: &str, status: u8, delivery_started: bool) -> AdapterE
     .with_disposition(disposition)
 }
 
+/// An application that finished starting up has already created whatever
+/// windows its launch produces. `None` means the answer is unavailable, which
+/// is not the same as "no window is coming".
+#[cfg(target_os = "macos")]
+pub(crate) fn finished_launching(pid: i32) -> Option<bool> {
+    match unsafe { agent_desktop_app_finished_launching(pid) } {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn finished_launching(_pid: i32) -> Option<bool> {
+    None
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn agent_desktop_terminate_application(
@@ -114,6 +131,7 @@ unsafe extern "C" {
         expected_launch_time: f64,
         force: u8,
     ) -> TerminateResult;
+    fn agent_desktop_app_finished_launching(pid: i32) -> i32;
     fn agent_desktop_ensure_cocoa_multithreaded() -> u8;
     fn agent_desktop_copy_workspace_snapshot_json() -> BytesResult;
     fn agent_desktop_free_bridge_bytes(bytes: *mut u8);

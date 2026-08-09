@@ -126,12 +126,9 @@ pub(crate) fn parse_modifier(s: &str) -> Result<Modifier, AppError> {
 }
 
 pub(crate) fn build_launch_options(
-    args: &[String],
-    env: &[String],
-    cwd: Option<std::path::PathBuf>,
-    timeout_ms: u64,
-    no_attach: bool,
+    launch: &crate::cli_args::system::LaunchArgs,
 ) -> Result<LaunchOptions, AppError> {
+    let (args, env) = (launch.args.as_slice(), launch.env.as_slice());
     if let Some(index) = args.iter().position(|argument| argument.contains('\0')) {
         return Err(AppError::invalid_input(format!(
             "Invalid --arg entry #{index}: argument contains a NUL byte"
@@ -149,9 +146,10 @@ pub(crate) fn build_launch_options(
     Ok(LaunchOptions {
         args: args.to_vec(),
         env: env_map,
-        cwd,
-        timeout_ms,
-        attach_if_running: !no_attach,
+        cwd: launch.cwd.clone(),
+        timeout_ms: launch.timeout,
+        attach_if_running: !launch.no_attach,
+        activate: launch.activate,
     })
 }
 

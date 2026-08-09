@@ -44,6 +44,7 @@ mod interaction_lease;
 pub mod interaction_policy;
 mod key_combo;
 pub mod launch_options;
+pub mod launch_result;
 pub mod live_element;
 mod live_identity;
 mod live_locator;

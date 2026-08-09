@@ -44,6 +44,12 @@ pub(crate) struct LaunchArgs {
     )]
     #[serde(default)]
     pub no_attach: bool,
+    #[arg(
+        long,
+        help = "Bring the app forward so it presents a window, and wait for one"
+    )]
+    #[serde(default)]
+    pub activate: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]

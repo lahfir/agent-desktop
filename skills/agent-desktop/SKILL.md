@@ -186,7 +186,8 @@ agent-desktop --headed mouse-move --xy 100,200  # Move cursor
 
 ### App & Window
 ```
-agent-desktop launch "System Settings"          # Launch and wait
+agent-desktop launch "System Settings"          # Launch; returns once running
+agent-desktop launch "TextEdit" --activate       # Also bring it forward and wait for a window
 agent-desktop close-app "TextEdit"              # Quit gracefully
 agent-desktop close-app "TextEdit" --force      # Force quit; SIGKILL if SIGTERM does not exit
 agent-desktop list-windows --app "Finder"       # List windows

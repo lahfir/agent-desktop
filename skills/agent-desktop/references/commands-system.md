@@ -11,18 +11,36 @@ agent-desktop launch "com.apple.Safari" --timeout 10000
 agent-desktop launch "TextEdit" --arg /tmp/notes.txt
 agent-desktop launch "MyTool" --arg --flag --arg value --env KEY=VALUE --cwd /tmp
 agent-desktop launch "MyTool" --no-attach
+agent-desktop launch "TextEdit" --activate
 ```
-Launches an application by name or bundle ID and waits until its window is visible.
+Launches an application by name or bundle ID and returns once the process is running.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--timeout` | 30000 | Max wait time in ms for window to appear |
+| `--timeout` | 30000 | Upper bound in ms for the whole launch |
 | `--arg` | | Command-line argument passed to the launched app; repeatable, order preserved |
 | `--env` | | `KEY=VALUE` environment variable for the launched process; repeatable |
 | `--cwd` | | Working directory for the launched process |
 | `--no-attach` | false | Require a fresh launch instead of the default attach-if-running behavior |
+| `--activate` | false | Bring the app forward so it presents a window, and wait for that window |
 
-By default, `launch` attaches to an already-running instance and returns its visible window. `--no-attach` rejects an already-running app with `ACTION_FAILED`; otherwise it starts a fresh instance and still waits for a real visible window. Windowless, menu-bar-only, or background apps return `WINDOW_NOT_FOUND` rather than a fabricated empty window response; use `list-apps` to observe those processes.
+The process starting and the app presenting a window are separate outcomes, so the response reports them separately:
+
+```json
+{ "app": "TextEdit", "pid": 611, "process_instance": "macos-proc-v1:...",
+  "window": { "id": "w-110407", "title": "Open", "visible": true } }
+```
+
+`window` is present when the app already has one and **omitted when it does not**. Its absence is a fact, not a failure — `launch` still returns `ok: true`.
+
+A launch waits only for the windows the launch itself causes. It polls until the app reports that it finished starting up, plus a short grace for the first window to reach the window server. Most apps therefore return their window in one step. An app that opens its first window only when brought forward — any document-based app — returns without one instead of waiting out `--timeout`.
+
+When you need the window:
+
+- `--activate` asks the app to present one and waits for it. This brings the app forward, so it is not headless.
+- `wait --event window-opened` waits on your terms after you trigger the window some other way.
+
+Windowless, menu-bar-only, and background apps simply report no `window`; use `list-apps` to observe those processes and read their `presentation`. `--no-attach` rejects an already-running app with `ACTION_FAILED` and starts a fresh instance.
 
 ### close-app
 ```bash

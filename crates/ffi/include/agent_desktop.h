@@ -1269,8 +1269,9 @@ AdResult ad_close_app(const struct AdAdapter *adapter, const char *id, bool forc
 /**
  * Launches the application identified by `id` (bundle id on macOS,
  * executable path on other platforms) and, on success, writes the
- * first window that becomes available into `*out`. Waits up to
- * `timeout_ms` for the window to appear; zero means "no wait".
+ * first window that becomes available into `*out`. Waits for the windows
+ * the launch itself produces, bounded by `timeout_ms`; zero means "no wait".
+ * An application that presents no window fails with `WINDOW_NOT_FOUND`.
  *
  * The returned `AdWindowInfo` owns heap-allocated interior strings that
  * must be released with `ad_release_window_fields` once done. On error

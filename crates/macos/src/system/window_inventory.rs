@@ -49,6 +49,39 @@ pub(crate) fn list_windows_until(
     )
 }
 
+/// The window server already knows which windows exist; accessibility is only
+/// asked which one holds focus and which are minimized. An application too busy
+/// to answer that — a freshly launched one, or one sitting in a modal panel —
+/// must not hide its windows from the inventory, or a caller waits out its whole
+/// deadline for windows the window server listed immediately. Selecting *the
+/// focused* window is the one case that genuinely needs the answer.
+fn focus_state(
+    ax_state: &mut impl FnMut(
+        i32,
+    )
+        -> Result<crate::system::window_ax_state::WindowAxState, AdapterError>,
+    pid: i32,
+    focused_only: bool,
+) -> Result<crate::system::window_ax_state::WindowAxState, AdapterError> {
+    match ax_state(pid) {
+        Ok(state) => Ok(state),
+        Err(error) if focused_only => Err(error),
+        Err(_) => Ok(crate::system::window_ax_state::WindowAxState {
+            focused: None,
+            minimized_by_id: rustc_hash::FxHashMap::default(),
+        }),
+    }
+}
+
+/// An application carries offscreen bookkeeping windows alongside the one the
+/// user sees — TextEdit answers with four menu-bar-sized panels plus a save
+/// accessory view before its first document appears. Counting those makes the
+/// only real window look ambiguous, and reports an application that has not
+/// drawn anything yet as having several windows to choose between.
+fn narrow_to_visible(windows: &mut Vec<WindowInfo>) {
+    windows.retain(|window| window.state.visible == Some(true));
+}
+
 pub(crate) fn exact_window_for_pid_until(
     pid: i32,
     deadline: Instant,
@@ -63,6 +96,7 @@ pub(crate) fn exact_window_for_pid_until(
             crate::system::process_identity::matches_instance(owner_pid, instance)
         },
     )?;
+    narrow_to_visible(&mut windows);
     if windows.len() == 1 {
         return Ok(windows.remove(0));
     }
@@ -129,7 +163,9 @@ fn windows_from_records_with_focus(
             .unwrap_or(0);
         let state = match state_cache.entry(record.pid) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(ax_state(record.pid)?),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(focus_state(&mut ax_state, record.pid, focused_only)?)
+            }
         };
         if !verify_instance(record.pid, process_instance)? {
             return Err(identity_race_error(

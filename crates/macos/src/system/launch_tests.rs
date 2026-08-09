@@ -45,9 +45,12 @@ fn rejects_paths_and_unsafe_bundle_identifiers() {
 }
 
 #[test]
-fn zero_wait_still_launches_but_never_polls_after_first_observation() {
-    assert!(!should_poll_after_first_observation(0));
-    assert!(should_poll_after_first_observation(1));
+fn waiting_ends_only_after_a_completed_startup_plus_its_grace() {
+    let now = std::time::Instant::now();
+
+    assert!(!grace_over(None, now));
+    assert!(!grace_over(now.checked_add(STARTUP_GRACE), now));
+    assert!(grace_over(Some(now), now));
 }
 
 #[test]
@@ -86,17 +89,4 @@ fn launch_options_enforce_a_bounded_text_budget() {
     let error = validate_launch_options(&options).expect_err("payload too large");
 
     assert_eq!(error.code, ErrorCode::InvalidArgs);
-}
-
-#[test]
-fn launch_no_window_error_keeps_identifier_in_details_only() {
-    let marker = "MARKER_APP_ID_9f31c4";
-    let error = launch_no_window_error(marker, 5000, &(77, "generation".into()));
-
-    assert!(!error.message.contains(marker));
-    assert!(error.message.contains("5000"));
-    let details = error.details.expect("details");
-    assert_eq!(details["app_name"], marker);
-    assert_eq!(details["pid"], 77);
-    assert_eq!(details["retry_safe"], false);
 }

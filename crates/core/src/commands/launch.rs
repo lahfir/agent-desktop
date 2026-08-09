@@ -14,8 +14,8 @@ pub fn execute(args: LaunchArgs, adapter: &dyn PlatformAdapter) -> Result<Value,
         crate::Deadline::after(args.options.timeout_ms)?
     };
     let lease = adapter.acquire_interaction_lease(deadline)?;
-    let window = adapter.launch_app(&args.app, &args.options, &lease)?;
-    Ok(serde_json::to_value(window)?)
+    let launched = adapter.launch_app(&args.app, &args.options, &lease)?;
+    Ok(serde_json::to_value(launched)?)
 }
 
 #[cfg(test)]
