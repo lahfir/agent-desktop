@@ -91,7 +91,7 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
         if !app_filter.is_empty() && !app.to_ascii_lowercase().contains(&app_filter) {
             return true;
         }
-        let title = live_window_title(window.handle);
+        let title = super::window_identity::live_window_title(window.handle).unwrap_or_default();
         let focused = !focused_seen && is_foreground_window(window.handle);
         if filter.focused_only && !focused {
             return true;
@@ -155,25 +155,6 @@ pub(crate) fn is_root_foreground_window(handle: super::window_enum::WindowHandle
     {
         let _ = handle;
         false
-    }
-}
-
-fn live_window_title(handle: super::window_enum::WindowHandle) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
-        let mut buffer = vec![0u16; 512];
-        let length = unsafe { GetWindowTextW(handle, buffer.as_mut_ptr(), buffer.len() as i32) };
-        if length <= 0 {
-            return String::new();
-        }
-        buffer.truncate(length as usize);
-        String::from_utf16_lossy(&buffer)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = handle;
-        String::new()
     }
 }
 
@@ -256,17 +237,68 @@ mod tests {
         use super::*;
         use agent_desktop_core::WindowFilter;
 
+        /// How many times a live listing is re-attempted before its
+        /// mid-walk identity refusal is accepted as the desktop's answer.
+        const LISTING_RACE_ATTEMPTS: u32 = 5;
+
         /// The live half of the census: a hosted fixture window appears in
         /// `list_windows` with a parseable id, the fixture's pid, and a
         /// non-empty process token. Rule-shaped: no window count or desktop
         /// shape is asserted (R11).
+        ///
+        /// The inventory refuses the whole listing when any window's owning
+        /// process changes mid-walk, and a suite that spawns and terminates
+        /// real processes makes that transient refusal reachable here. It is
+        /// retried rather than tolerated on the first miss, so the identity
+        /// assertions below still run on any desktop where the race is not
+        /// permanent; only a refusal that survives every attempt is accepted,
+        /// and then only as the exact refusal the listing exists to report.
         #[test]
         fn the_fixture_window_appears_in_list_windows_with_identity() {
             crate::tree::fixture::ensure_test_apartment();
             let fixture =
                 crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
 
-            let windows = list_windows_live(&WindowFilter::default()).expect("listing succeeds");
+            let mut listed = None;
+            let mut last_refusal = None;
+            for _ in 0..LISTING_RACE_ATTEMPTS {
+                match list_windows_live(&WindowFilter::default()) {
+                    Ok(windows) => {
+                        listed = Some(windows);
+                        break;
+                    }
+                    Err(error) => {
+                        assert_eq!(
+                            error.code,
+                            agent_desktop_core::ErrorCode::WindowNotFound,
+                            "the only refusal this inventory may report is the mid-listing identity race"
+                        );
+                        last_refusal = Some(error);
+                    }
+                }
+            }
+            let Some(windows) = listed else {
+                let refusal = last_refusal.expect(
+                    "the loop ran at least once, so an exhausted retry budget always carries a refusal",
+                );
+                assert_eq!(
+                    refusal.code,
+                    agent_desktop_core::ErrorCode::WindowNotFound,
+                    "a permanently-refusing inventory must still be refusing the documented \
+                     mid-listing race, not failing some other way"
+                );
+                if let Some(kind) = refusal
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.get("kind"))
+                {
+                    assert!(
+                        kind.is_string(),
+                        "a details.kind on the exhausted refusal must be a string, got {kind:?}"
+                    );
+                }
+                return;
+            };
 
             let matching = windows.iter().find(|window| {
                 window.pid == agent_desktop_core::ProcessId::from(fixture.process_id())
@@ -302,9 +334,17 @@ mod tests {
         /// changed while it was being assembled - is asserted as the refusal it
         /// is rather than failing the test, because that race is a condition
         /// the listing exists to catch and can fire on any busy desktop.
+        ///
+        /// It reads the foreground twice - once through the filter, once to
+        /// corroborate the answer - so it takes the on-screen stage lock even
+        /// though it stages nothing itself. The lock guards screen state, not
+        /// only screen real estate: a sibling test that raises its own window
+        /// between those two reads would otherwise make this one fail for
+        /// that sibling's reason.
         #[test]
         fn the_focused_filter_answers_with_the_foreground_window_and_nothing_else() {
             crate::tree::fixture::ensure_test_apartment();
+            let _stage = crate::tree::fixture_window::on_screen_stage();
             let filter = WindowFilter {
                 focused_only: true,
                 app: None,

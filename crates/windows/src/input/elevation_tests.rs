@@ -46,6 +46,26 @@ fn target_higher_than_caller_is_denied_with_the_exact_platform_detail_format() {
     assert!(error.suggestion.is_some());
 }
 
+#[test]
+fn activation_elevation_denied_is_activation_worded_not_input_worded() {
+    let error = activation_elevation_denied();
+    assert_eq!(error.code, ErrorCode::PermDenied);
+    assert!(
+        error.message.contains("window activation"),
+        "got {}",
+        error.message
+    );
+    assert!(!error.message.contains("blocks input"));
+    assert_eq!(
+        error.platform_detail.as_deref(),
+        Some("COM HRESULT 0x80070005 (E_ACCESSDENIED: Access is denied)")
+    );
+    assert_eq!(
+        error.details.expect("denial carries details")["physical_delivery_started"],
+        false
+    );
+}
+
 /// Inverted against the denial above: caller-higher and equal both allow.
 #[test]
 fn caller_higher_or_equal_is_allowed() {

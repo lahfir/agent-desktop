@@ -1,7 +1,8 @@
 use agent_desktop_core::{
-    AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
-    PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
-    WindowInfo,
+    ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, InteractionLease,
+    InteractionPolicy, KeyCombo, ObservationOps, PermissionReport, ProcessIdentity,
+    SessionAffinity, SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp,
+    launch_options::LaunchOptions, process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -84,6 +85,55 @@ impl SystemOps for WindowsAdapter {
         Ok(windows.into_iter().next())
     }
 
+    /// Process liveness for the shared `ProcessState` contract. Returns the
+    /// raw classification only — core's two-signal gate owns any upgrade to
+    /// `APP_UNRESPONSIVE` (A21-3, A21-4).
+    fn process_state(
+        &self,
+        process: ProcessIdentity,
+        deadline: Deadline,
+    ) -> Result<ProcessState, AdapterError> {
+        crate::system::process_state::process_state_impl(process, deadline)
+    }
+
+    /// Session- and shell-critical image names; exact match, case-insensitive.
+    fn is_protected_process(&self, identifier: &str) -> bool {
+        crate::system::app_ops::is_protected_process(identifier)
+    }
+
+    /// `CreateProcessW` launch with system-directory-only bare-name resolution
+    /// and ToolHelp attach detection (A21-1, A21-8).
+    fn launch_app(
+        &self,
+        id: &str,
+        options: &LaunchOptions,
+        lease: &InteractionLease,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::system::launch::launch_app_impl(id, options, lease.deadline())
+    }
+
+    /// Verified termination: `Ok(())` only after the process is observed gone
+    /// (A21-3). Graceful posts `WM_CLOSE`; force calls `TerminateProcess`.
+    fn close_app(
+        &self,
+        app: &AppInfo,
+        force: bool,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::system::close::close_app_impl(app, force, lease.deadline())
+    }
+
+    /// `SetWindowPos`/`ShowWindow` with Win32 placement re-read verification
+    /// (A21-5); never UIA `IsOffscreen`/`-32000`.
+    fn window_op(
+        &self,
+        win: &WindowInfo,
+        op: WindowOp,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::system::window_op::window_op_impl(win, op, lease.deadline())
+    }
+
     fn resolve_window_strict(
         &self,
         win: &WindowInfo,
@@ -93,17 +143,30 @@ impl SystemOps for WindowsAdapter {
     }
 
     fn focus_window(&self, win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
-        crate::system::window_resolve::focus_window(win, lease)
+        crate::system::window_activate::focus_window(win, lease)
     }
 
     fn list_displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         crate::system::display::list_displays_live(deadline)
     }
 
+    /// Verify-only composition over the keyboard primitive. Core's headed
+    /// path already activated; this never raises (A9-3: SendInput has no
+    /// per-pid targeting).
+    fn press_key_for_app(
+        &self,
+        process: ProcessIdentity,
+        combo: &KeyCombo,
+        policy: InteractionPolicy,
+        lease: &InteractionLease,
+    ) -> Result<ActionResult, AdapterError> {
+        crate::system::key_dispatch::press_for_app_impl(process, combo, policy, lease.deadline())
+    }
+
     /// The core default blocks nothing; Windows ships its own dangerous-combo
     /// list so the skill-documented guard actually enforces on this
     /// platform. `--force` is honored entirely in core.
-    fn is_blocked_combo(&self, combo: &agent_desktop_core::KeyCombo) -> bool {
+    fn is_blocked_combo(&self, combo: &KeyCombo) -> bool {
         crate::input::blocked_combo::is_blocked(combo)
     }
 

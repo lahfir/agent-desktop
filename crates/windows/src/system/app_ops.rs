@@ -4,6 +4,28 @@ use super::process_identity;
 use super::window_enum::{EnumeratedWindow, enumerate_top_level};
 use super::window_ops::passes_filter;
 
+const PROTECTED_PROCESSES: &[&str] = &[
+    "csrss.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "services.exe",
+    "lsass.exe",
+    "smss.exe",
+    "lsaiso.exe",
+    "dwm.exe",
+    "explorer.exe",
+];
+
+/// Exact case-insensitive `.exe` image-name match against the session- and
+/// shell-critical set. Near-misses (`iexplore.exe`, `explorer++.exe`, a name
+/// merely containing `lsass`) are deliberately not protected.
+pub(crate) fn is_protected_process(identifier: &str) -> bool {
+    let image = identifier.rsplit(['\\', '/']).next().unwrap_or(identifier);
+    PROTECTED_PROCESSES
+        .iter()
+        .any(|protected| image.eq_ignore_ascii_case(protected))
+}
+
 /// A process snapshot row: the image name and the identity token for one pid.
 ///
 /// `list_apps` joins the window inventory's owning processes with this
@@ -19,7 +41,7 @@ pub(crate) struct ProcessRow {
 
 /// Snapshots every running process's image name from the ToolHelp table.
 #[cfg(target_os = "windows")]
-fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
+pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
@@ -56,7 +78,7 @@ fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
+pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
     Ok(Vec::new())
 }
 
@@ -173,5 +195,28 @@ mod tests {
                 .is_some_and(|row| !row.name.is_empty()),
             "the current process has a non-empty image name"
         );
+    }
+
+    #[test]
+    fn protected_list_members_match_exactly_case_insensitively() {
+        for name in PROTECTED_PROCESSES {
+            assert!(is_protected_process(name), "{name} must be protected");
+            assert!(
+                is_protected_process(&name.to_ascii_uppercase()),
+                "{name} must match case-insensitively"
+            );
+        }
+        assert!(is_protected_process("explorer.exe"));
+        assert!(is_protected_process(r"C:\Windows\explorer.exe"));
+    }
+
+    #[test]
+    fn near_miss_image_names_are_not_protected() {
+        assert!(!is_protected_process("iexplore.exe"));
+        assert!(!is_protected_process("explorer++.exe"));
+        assert!(!is_protected_process("notepad.exe"));
+        assert!(!is_protected_process("my-lsass-helper.exe"));
+        assert!(!is_protected_process("lsass"));
+        assert!(!is_protected_process("lsass.exe.bak"));
     }
 }

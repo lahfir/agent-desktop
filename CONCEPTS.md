@@ -151,7 +151,7 @@ Opt-in capture mode (`session start --screenshots`, manifest `artifacts: full`) 
 ### Protected Process
 A session-critical operating-system process that agent-desktop refuses to close on every surface, because terminating it would break the user's desktop session.
 
-The refusal is enforced where the close happens, so CLI, FFI, and any future consumer behave identically. Matching is exact — a process name or a bundle-identifier component, never a substring — so lookalike applications that merely contain a protected name stay closable.
+The refusal is enforced where the close happens, so CLI, FFI, and any future consumer behave identically. Matching is exact — a process name or a bundle-identifier component, never a substring — so lookalike applications that merely contain a protected name stay closable. The refusal code is `INVALID_ARGS` with `disposition.delivery: "not_delivered"` (`crates/core/src/commands/close_app.rs` via `invalid_input_with_suggestion`; Windows dogfood J2 for `explorer.exe`), not `PERM_DENIED` — the process is simply not a closable target.
 
 ## Action Reliability
 

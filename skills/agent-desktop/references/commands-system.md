@@ -11,28 +11,33 @@ agent-desktop launch "com.apple.Safari" --timeout 10000
 agent-desktop launch "TextEdit" --arg /tmp/notes.txt
 agent-desktop launch "MyTool" --arg --flag --arg value --env KEY=VALUE --cwd /tmp
 agent-desktop launch "MyTool" --no-attach
+agent-desktop launch "notepad.exe"                 # Windows: system-directory bare name
+agent-desktop launch "C:\\Windows\\System32\\notepad.exe"
 ```
-Launches an application by name or bundle ID and waits until its window is visible.
+Launches an application and waits until its window is visible. On macOS the identifier is a display name or bundle ID. On Windows the identifier is an absolute path (drive + backslash, UNC, or `\\?\`) or a bare executable name that resolves only under `System32` / the Windows directory (A21-1) — display-name and AUMID launch are not on this path.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--timeout` | 30000 | Max wait time in ms for window to appear |
 | `--arg` | | Command-line argument passed to the launched app; repeatable, order preserved |
 | `--env` | | `KEY=VALUE` environment variable for the launched process; repeatable |
-| `--cwd` | | Working directory for the launched process |
+| `--cwd` | | Working directory for the launched process (honored on Windows; rejected by macOS Launch Services) |
 | `--no-attach` | false | Require a fresh launch instead of the default attach-if-running behavior |
 
-By default, `launch` attaches to an already-running instance and returns its visible window. `--no-attach` rejects an already-running app with `ACTION_FAILED`; otherwise it starts a fresh instance and still waits for a real visible window. Windowless, menu-bar-only, or background apps return `WINDOW_NOT_FOUND` rather than a fabricated empty window response; use `list-apps` to observe those processes.
+By default, `launch` attaches to an already-running instance and returns its visible window. `--no-attach` rejects an already-running app with `ACTION_FAILED`; otherwise it starts a fresh instance and still waits for a real visible window. Windowless, menu-bar-only, or background apps return `WINDOW_NOT_FOUND` rather than a fabricated empty window response; use `list-apps` to observe those processes. On Windows, attach matches by image name across the process snapshot — multiple matches are `AMBIGUOUS_TARGET` (dogfood J2 against multi-instance `explorer.exe`); a launcher whose visible window belongs to a child pid times out to `WINDOW_NOT_FOUND` (A21-1).
 
 ### close-app
 ```bash
 agent-desktop close-app "TextEdit"
 agent-desktop close-app "TextEdit" --force
+agent-desktop close-app "notepad.exe" --force   # Windows
 ```
-Requests an application quit. A graceful quit is asynchronous — the app may show an unsaved-changes dialog or refuse — so the response reports only what was guaranteed, never a termination it cannot confirm without blocking:
+Requests an application quit and returns success only after the process is observed gone. Session-critical processes are refused with `INVALID_ARGS` + `not_delivered` before any native close (`close_app.rs`; dogfood J2 for Windows `explorer.exe`) — not `PERM_DENIED`.
 
-- Graceful: `{ "app": "TextEdit", "method": "graceful", "requested": true }`. The quit was sent. To confirm it actually closed, observe with `list-apps` or `wait --window`; if a save dialog appears, `snapshot` it and click the choice (`find --role button --name Delete`).
-- `--force`: `{ "app": "TextEdit", "method": "force", "requested": true, "closed": true }`. Sends SIGTERM to matching app processes, escalates survivors to SIGKILL, and returns success only after termination is verified.
+- Graceful: posts a platform quit request (`WM_CLOSE` to every top-level window of the pid on Windows; Apple Events / SIGTERM path on macOS) and reports `{ "app", "method": "graceful", "requested": true, "closed": true }` only after verified exit. If a save dialog appears, `snapshot` it and click the choice.
+- `--force`: `{ "app", "method": "force", "requested": true, "closed": true }` after verified termination (`TerminateProcess` on Windows; SIGTERM then SIGKILL on macOS).
+
+On Windows, a steady-state windowless process is `APP_NOT_FOUND` via `list-apps` (window-owning inventory only), unlike macOS, which can close windowless apps.
 
 ### list-apps
 ```bash
@@ -88,7 +93,16 @@ Zooms the window to fill the screen.
 agent-desktop restore --app "TextEdit"
 agent-desktop restore --window-id w-4521
 ```
-Restores a minimized or maximized window to its previous size.
+Undoes a minimize: the window returns to whatever placement it held before,
+which for a window that was maximized when it was minimized is maximized
+again. Restore does not promise to un-maximize.
+
+On Windows, `minimize` / `maximize` / `restore` / `resize-window` /
+`move-window` and any headed command that must focus a window first refuse a
+target whose thread has stopped processing messages, reporting
+`APP_UNRESPONSIVE` with `not_delivered` rather than blocking: those operations
+are delivered to the target's message queue, so a hung application would
+otherwise hang the command with no timeout able to interrupt it.
 
 ## Notifications
 
