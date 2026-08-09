@@ -1,7 +1,7 @@
 use agent_desktop_core::{
     AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
     PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
-    WindowInfo, process_state::ProcessState,
+    WindowInfo, launch_options::LaunchOptions, process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -98,6 +98,17 @@ impl SystemOps for WindowsAdapter {
     /// Session- and shell-critical image names; exact match, case-insensitive.
     fn is_protected_process(&self, identifier: &str) -> bool {
         crate::system::app_ops::is_protected_process(identifier)
+    }
+
+    /// `CreateProcessW` launch with system-directory-only bare-name resolution
+    /// and ToolHelp attach detection (A21-1, A21-8).
+    fn launch_app(
+        &self,
+        id: &str,
+        options: &LaunchOptions,
+        lease: &InteractionLease,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::system::launch::launch_app_impl(id, options, lease.deadline())
     }
 
     fn resolve_window_strict(

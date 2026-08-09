@@ -44,7 +44,7 @@ pub(crate) struct ProcessRow {
 
 /// Snapshots every running process's image name from the ToolHelp table.
 #[cfg(target_os = "windows")]
-fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
+pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
@@ -81,7 +81,7 @@ fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
+pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
     Ok(Vec::new())
 }
 
