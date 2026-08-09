@@ -289,7 +289,7 @@ fn graceful_wm_close_skips_hwnd_whose_owner_pid_changed() {
     let token = process_identity::token_for_pid(pid)
         .expect("token")
         .expect("live");
-    super::post_wm_close_if_still_owned(foreign.handle() as isize, pid, &token)
+    super::post_wm_close_if_still_owned(foreign.handle(), pid, &token)
         .expect("foreign hwnd is skipped, not an error");
     assert!(
         process_still_alive(pid, &token),

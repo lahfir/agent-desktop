@@ -302,9 +302,17 @@ mod tests {
         /// changed while it was being assembled - is asserted as the refusal it
         /// is rather than failing the test, because that race is a condition
         /// the listing exists to catch and can fire on any busy desktop.
+        ///
+        /// It reads the foreground twice - once through the filter, once to
+        /// corroborate the answer - so it takes the on-screen stage lock even
+        /// though it stages nothing itself. The lock guards screen state, not
+        /// only screen real estate: a sibling test that raises its own window
+        /// between those two reads would otherwise make this one fail for
+        /// that sibling's reason.
         #[test]
         fn the_focused_filter_answers_with_the_foreground_window_and_nothing_else() {
             crate::tree::fixture::ensure_test_apartment();
+            let _stage = crate::tree::fixture_window::on_screen_stage();
             let filter = WindowFilter {
                 focused_only: true,
                 app: None,
