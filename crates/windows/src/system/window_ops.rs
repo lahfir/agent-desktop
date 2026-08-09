@@ -91,7 +91,7 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
         if !app_filter.is_empty() && !app.to_ascii_lowercase().contains(&app_filter) {
             return true;
         }
-        let title = live_window_title(window.handle);
+        let title = super::window_identity::live_window_title(window.handle).unwrap_or_default();
         let focused = !focused_seen && is_foreground_window(window.handle);
         if filter.focused_only && !focused {
             return true;
@@ -155,25 +155,6 @@ pub(crate) fn is_root_foreground_window(handle: super::window_enum::WindowHandle
     {
         let _ = handle;
         false
-    }
-}
-
-fn live_window_title(handle: super::window_enum::WindowHandle) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
-        let mut buffer = vec![0u16; 512];
-        let length = unsafe { GetWindowTextW(handle, buffer.as_mut_ptr(), buffer.len() as i32) };
-        if length <= 0 {
-            return String::new();
-        }
-        buffer.truncate(length as usize);
-        String::from_utf16_lossy(&buffer)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = handle;
-        String::new()
     }
 }
 

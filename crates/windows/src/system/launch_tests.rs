@@ -193,3 +193,24 @@ fn clear_notepads() {
     }
     std::thread::sleep(std::time::Duration::from_millis(200));
 }
+
+/// A value ending in a backslash would otherwise escape the closing quote,
+/// leaving the quoted region open so every later argument is swallowed into
+/// it. The run is doubled; backslashes elsewhere stay literal.
+#[test]
+fn a_trailing_backslash_cannot_escape_the_closing_quote() {
+    assert_eq!(
+        super::quote_arg("C:\\Program Files\\"),
+        "\"C:\\Program Files\\\\\""
+    );
+    assert_eq!(
+        super::quote_arg("C:\\dir\\\\"),
+        "C:\\dir\\\\",
+        "an unquoted value has no closing quote for a backslash to escape"
+    );
+    assert_eq!(
+        super::quote_arg("no trailing\\slash"),
+        "\"no trailing\\slash\""
+    );
+    assert_eq!(super::quote_arg("plain"), "plain");
+}
