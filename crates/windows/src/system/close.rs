@@ -78,11 +78,44 @@ fn graceful_close(pid: ProcessId, instance: &str, deadline: Deadline) -> Result<
     if windows.is_empty() {
         return windowless_graceful_fallback(pid, instance, deadline);
     }
+    broadcast_close(&windows, deadline, |hwnd| {
+        post_wm_close_if_still_owned(hwnd, pid, instance)
+    })
+}
+
+/// Posts the close request to every owned window before reporting a failure.
+///
+/// A multi-window app only closes when the request reaches the window that
+/// owns its shutdown, so one window's refusal must not cancel delivery to its
+/// siblings - and a window destroyed between enumeration and post is the
+/// expected shape once an app starts tearing itself down in response to an
+/// earlier post in this very loop. The fan-out therefore keeps going and only
+/// surfaces a failure when **no** window accepted the request; when at least
+/// one did, `wait_for_exit`'s independent process-gone re-read is the source
+/// of truth, not the count of successful posts.
+fn broadcast_close(
+    windows: &[isize],
+    deadline: Deadline,
+    mut post: impl FnMut(isize) -> Result<bool, AdapterError>,
+) -> Result<(), AdapterError> {
+    let mut delivered = false;
+    let mut first_failure = None;
     for hwnd in windows {
         ensure_budget(deadline).map_err(before_termination)?;
-        post_wm_close_if_still_owned(hwnd, pid, instance).map_err(before_termination)?;
+        match post(*hwnd) {
+            Ok(true) => delivered = true,
+            Ok(false) => {}
+            Err(error) => {
+                if first_failure.is_none() {
+                    first_failure = Some(error);
+                }
+            }
+        }
     }
-    Ok(())
+    match first_failure {
+        Some(error) if !delivered => Err(before_termination(error)),
+        _ => Ok(()),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -231,11 +264,13 @@ fn top_level_windows_for_pid(pid: ProcessId) -> Result<Vec<isize>, AdapterError>
 }
 
 #[cfg(target_os = "windows")]
+/// Posts `WM_CLOSE` to one window, reporting whether the request was actually
+/// delivered so the fan-out can tell a deliberate skip from a send.
 fn post_wm_close_if_still_owned(
     hwnd: isize,
     pid: ProcessId,
     instance: &str,
-) -> Result<(), AdapterError> {
+) -> Result<bool, AdapterError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetWindowThreadProcessId, PostMessageW, WM_CLOSE,
     };
@@ -243,16 +278,16 @@ fn post_wm_close_if_still_owned(
     let mut owner: u32 = 0;
     unsafe { GetWindowThreadProcessId(hwnd as *mut core::ffi::c_void, &mut owner) };
     if owner != u32::from(pid) {
-        return Ok(());
+        return Ok(false);
     }
     if !process_identity::matches_instance(pid, instance)? {
-        return Ok(());
+        return Ok(false);
     }
     let posted = unsafe { PostMessageW(hwnd as *mut core::ffi::c_void, WM_CLOSE, 0, 0) };
     if posted == 0 {
         return Err(win32_last_error("PostMessageW(WM_CLOSE) failed"));
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Verifies the open process handle's creation times still match `instance`

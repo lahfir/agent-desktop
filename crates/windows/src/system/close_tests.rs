@@ -289,11 +289,75 @@ fn graceful_wm_close_skips_hwnd_whose_owner_pid_changed() {
     let token = process_identity::token_for_pid(pid)
         .expect("token")
         .expect("live");
-    super::post_wm_close_if_still_owned(foreign.handle(), pid, &token)
+    let delivered = super::post_wm_close_if_still_owned(foreign.handle(), pid, &token)
         .expect("foreign hwnd is skipped, not an error");
+    assert!(
+        !delivered,
+        "a foreign hwnd is reported as not delivered, not as a send"
+    );
     assert!(
         process_still_alive(pid, &token),
         "skipping a foreign hwnd must not close the target process"
     );
     let _ = fixture;
+}
+
+fn unusable_window() -> AdapterError {
+    AdapterError::new(ErrorCode::ActionFailed, "PostMessageW(WM_CLOSE) failed")
+}
+
+/// R2's fan-out rule: one window's refusal must not cancel delivery to the
+/// siblings, because the window that owns an app's shutdown may be enumerated
+/// after a window that has already torn itself down.
+#[test]
+fn a_failing_window_does_not_cancel_close_delivery_to_the_others() {
+    let mut attempted = Vec::new();
+    let result = super::broadcast_close(&[1, 2, 3], Deadline::after(1_000).expect("deadline"), {
+        let attempted = &mut attempted;
+        move |hwnd| {
+            attempted.push(hwnd);
+            if hwnd == 1 {
+                Err(unusable_window())
+            } else {
+                Ok(true)
+            }
+        }
+    });
+
+    assert!(
+        result.is_ok(),
+        "a delivered sibling makes the fan-out a success"
+    );
+    assert_eq!(
+        attempted,
+        vec![1, 2, 3],
+        "every owned window is attempted even after one fails"
+    );
+}
+
+/// The honest converse: when nothing accepted the request, the failure is
+/// reported rather than swallowed into a silent success.
+#[test]
+fn a_fan_out_that_delivers_nothing_reports_the_failure() {
+    let error = super::broadcast_close(&[1, 2], Deadline::after(1_000).expect("deadline"), |_| {
+        Err(unusable_window())
+    })
+    .expect_err("no window accepted the close");
+
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered,
+        "nothing was delivered, so the caller may safely retry"
+    );
+}
+
+/// A window skipped on ownership grounds is not a failure, so a fan-out of
+/// nothing-but-skips succeeds and leaves the verdict to the exit observation.
+#[test]
+fn skipped_windows_alone_are_not_a_close_failure() {
+    super::broadcast_close(&[1, 2], Deadline::after(1_000).expect("deadline"), |_| {
+        Ok(false)
+    })
+    .expect("skips are not failures");
 }

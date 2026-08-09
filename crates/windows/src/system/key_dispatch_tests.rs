@@ -109,6 +109,30 @@ fn assert_not_delivered(error: &AdapterError) {
     );
 }
 
+/// The assertion for a desktop that would not give the target the foreground.
+///
+/// Staging depends on real OS scheduling and is documented as able not to
+/// land, but "could not stage" must never become "asserted nothing": Windows
+/// `SendInput` has no per-pid targeting, so a target that is not foreground
+/// must fail closed with no synthesis. Every gated test asserts that instead
+/// of returning, so the degraded desktop still exercises a real contract.
+#[cfg(target_os = "windows")]
+fn assert_press_fails_closed_without_synthesis(
+    identity: agent_desktop_core::ProcessIdentity,
+    policy: InteractionPolicy,
+) {
+    synthesis_probe::reset();
+    let error = press_for_app_impl(identity, &combo_a(), policy, deadline())
+        .expect_err("a target that is not foreground cannot be delivered to");
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_not_delivered(&error);
+    assert_eq!(
+        synthesis_probe::count(),
+        0,
+        "no key may be synthesized when the target never held the foreground"
+    );
+}
+
 #[test]
 fn key_dispatch_never_calls_activation_apis() {
     let src = include_str!("key_dispatch.rs");
@@ -170,6 +194,7 @@ fn headed_foreground_target_synthesizes_delivered_unverified() {
     let _stage = crate::tree::fixture_window::on_screen_stage();
     let (fixture, identity) = staged_hosted_target();
     if !stage_as_foreground(&fixture) {
+        assert_press_fails_closed_without_synthesis(identity, InteractionPolicy::headed());
         return;
     }
     synthesis_probe::reset();
@@ -194,6 +219,7 @@ fn headless_foreground_target_verifies_without_stealing() {
     let _stage = crate::tree::fixture_window::on_screen_stage();
     let (fixture, identity) = staged_hosted_target();
     if !stage_as_foreground(&fixture) {
+        assert_press_fails_closed_without_synthesis(identity, InteractionPolicy::headless());
         return;
     }
     synthesis_probe::reset();
@@ -295,6 +321,7 @@ fn focus_lost_between_verify_and_inject_fails_closed_without_synthesis() {
     let (target, identity) = staged_hosted_target();
     let stealer = crate::tree::fixture::LocalFixture::create().expect("stealer");
     if !stage_as_foreground(&target) {
+        assert_press_fails_closed_without_synthesis(identity, InteractionPolicy::headed());
         return;
     }
     let stealer_handle = stealer.handle();
@@ -328,21 +355,36 @@ fn adapter_press_key_for_app_is_wired_through_system_ops() {
 
     let _stage = crate::tree::fixture_window::on_screen_stage();
     let (fixture, identity) = staged_hosted_target();
-    if !stage_as_foreground(&fixture) {
-        return;
-    }
+    let staged = stage_as_foreground(&fixture);
     let adapter = crate::adapter::WindowsAdapter::new();
     let lease = InteractionLease::guarded(deadline(), ()).expect("lease");
-    let result = SystemOps::press_key_for_app(
+    let outcome = SystemOps::press_key_for_app(
         &adapter,
         identity,
         &combo_a(),
         InteractionPolicy::headed(),
         &lease,
-    )
-    .expect("trait wiring");
-    assert_eq!(
-        result.disposition().delivery(),
-        DeliveryDisposition::DeliveredUnverified
     );
+
+    match outcome {
+        Ok(result) => {
+            assert!(
+                staged,
+                "delivery may only succeed for a target that reached the foreground"
+            );
+            assert_eq!(
+                result.disposition().delivery(),
+                DeliveryDisposition::DeliveredUnverified
+            );
+        }
+        Err(error) => {
+            assert!(
+                !staged,
+                "a staged foreground target must not be refused, got {}",
+                error.message
+            );
+            assert_eq!(error.code, ErrorCode::ActionFailed);
+            assert_not_delivered(&error);
+        }
+    }
 }
