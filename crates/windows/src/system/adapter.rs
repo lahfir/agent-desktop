@@ -1,8 +1,8 @@
 use agent_desktop_core::{
-    launch_options::LaunchOptions, process_state::ProcessState, AdapterError, AdapterSession,
-    AppInfo, Deadline, DisplayInfo, InteractionLease, ObservationOps, PermissionReport,
-    ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter, WindowInfo,
-    WindowOp,
+    launch_options::LaunchOptions, process_state::ProcessState, ActionResult, AdapterError,
+    AdapterSession, AppInfo, Deadline, DisplayInfo, InteractionLease, InteractionPolicy, KeyCombo,
+    ObservationOps, PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps,
+    WindowFilter, WindowInfo, WindowOp,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -150,10 +150,23 @@ impl SystemOps for WindowsAdapter {
         crate::system::display::list_displays_live(deadline)
     }
 
+    /// Verify-only composition over the keyboard primitive. Core's headed
+    /// path already activated; this never raises (A9-3: SendInput has no
+    /// per-pid targeting).
+    fn press_key_for_app(
+        &self,
+        process: ProcessIdentity,
+        combo: &KeyCombo,
+        policy: InteractionPolicy,
+        lease: &InteractionLease,
+    ) -> Result<ActionResult, AdapterError> {
+        crate::system::key_dispatch::press_for_app_impl(process, combo, policy, lease.deadline())
+    }
+
     /// The core default blocks nothing; Windows ships its own dangerous-combo
     /// list so the skill-documented guard actually enforces on this
     /// platform. `--force` is honored entirely in core.
-    fn is_blocked_combo(&self, combo: &agent_desktop_core::KeyCombo) -> bool {
+    fn is_blocked_combo(&self, combo: &KeyCombo) -> bool {
         crate::input::blocked_combo::is_blocked(combo)
     }
 
