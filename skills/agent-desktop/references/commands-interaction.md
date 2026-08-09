@@ -213,7 +213,7 @@ agent-desktop press ctrl+a --app "Notepad" # Windows
 
 | Flag | Description |
 |------|-------------|
-| `--app` | Target application; on macOS key delivery is PID-targeted and `--headed` focuses its exact window first. On Windows, `press --app` is not supported yet; unscoped `press` synthesizes into the foreground queue |
+| `--app` | Target application. On macOS, delivery is PID-targeted; `--headed` focuses its exact window first, and a headless arm can still deliver without stealing focus. On Windows, `--headed press --app` focuses then synthesizes into the foreground queue after focus verification (`delivered_unverified`); headless `press --app` verifies the target is already foreground/owned and fails closed when it is not — Windows has no per-pid injection and no menu-bar accelerator path (A4-2). Unscoped `press` always synthesizes into the foreground queue |
 
 **Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12` — the same vocabulary resolves on both platforms
 **Modifiers:** `cmd`/`meta`, `ctrl`, `alt`, `shift` — combine with `+`. On Windows, `meta`/`cmd` maps to the Windows key (`VK_LWIN`), so `meta+c` is a shell shortcut, not copy — write `ctrl+c` on Windows and `cmd+c` on macOS
@@ -312,5 +312,5 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 | Open context menu | `right-click @ref` | `agent-desktop --headed mouse-click --xy X,Y --button right` when physical interaction is intended |
 | Select dropdown option | `select @ref "Option"` | `snapshot --surface menu` after an explicitly opened menu |
 | Navigate a form | `press tab` between fields | `focus @ref` to jump directly |
-| Copy text | `press cmd+c --app "App"` (macOS) / `press ctrl+c` (Windows) | `clipboard-set` to set directly |
+| Copy text | `press cmd+c --app "App"` (macOS) / `press ctrl+c --app "Notepad"` (Windows, headed) | `clipboard-set` to set directly |
 | Scroll to find elements | `scroll @ref --direction down` | `scroll-to @ref` if you have the ref |

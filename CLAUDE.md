@@ -469,8 +469,11 @@ contact with Windows and was deleted. See
 58 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
-All 58 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
-same surface. Adding a command: see the Extensibility Pattern above.
+All 58 are implemented on macOS (Phase 1). Windows ships observation, semantic
+actions, input synthesis, and process/window lifecycle (`launch`, `close-app`,
+window ops, `press --app`) against the same surface; screenshot, clipboard,
+wait-event, and shell surfaces remain ahead. Linux (Phase 3) targets the same
+surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
 
