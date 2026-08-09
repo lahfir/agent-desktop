@@ -49,11 +49,10 @@ pub(crate) fn resolve_executable(id: &str) -> Result<PathBuf, AdapterError> {
         if path.is_file() {
             return Ok(path);
         }
-        return Err(AdapterError::new(
-            ErrorCode::AppNotFound,
-            "Launch path does not exist",
-        )
-        .with_details(serde_json::json!({ "app_name": id })));
+        return Err(
+            AdapterError::new(ErrorCode::AppNotFound, "Launch path does not exist")
+                .with_details(serde_json::json!({ "app_name": id })),
+        );
     }
     if !is_bare_name(id) {
         return Err(invalid_identifier(id));
@@ -93,10 +92,7 @@ fn is_absolute_launch_path(id: &str) -> bool {
         return true;
     }
     let bytes = id.as_bytes();
-    bytes.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && bytes[2] == b'\\'
+    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'\\'
 }
 
 fn is_bare_name(id: &str) -> bool {

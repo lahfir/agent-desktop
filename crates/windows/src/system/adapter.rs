@@ -1,8 +1,8 @@
 use agent_desktop_core::{
-    launch_options::LaunchOptions, process_state::ProcessState, ActionResult, AdapterError,
-    AdapterSession, AppInfo, Deadline, DisplayInfo, InteractionLease, InteractionPolicy, KeyCombo,
-    ObservationOps, PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps,
-    WindowFilter, WindowInfo, WindowOp,
+    ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, InteractionLease,
+    InteractionPolicy, KeyCombo, ObservationOps, PermissionReport, ProcessIdentity,
+    SessionAffinity, SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp,
+    launch_options::LaunchOptions, process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;

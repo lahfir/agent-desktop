@@ -66,7 +66,12 @@ fn wait_for_window(
             return Ok(window);
         }
         if !should_poll_after_first_observation(timeout_ms) || deadline.remaining().is_zero() {
-            return Err(launch_no_window_error(id, timeout_ms, pid, process_instance));
+            return Err(launch_no_window_error(
+                id,
+                timeout_ms,
+                pid,
+                process_instance,
+            ));
         }
         let remaining = deadline.remaining();
         std::thread::sleep(poll_interval.min(remaining));

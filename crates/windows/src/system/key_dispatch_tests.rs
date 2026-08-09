@@ -28,9 +28,7 @@ fn identity_for_pid(pid: ProcessId) -> ProcessIdentity {
 #[cfg(target_os = "windows")]
 fn raise_handle(handle: isize) {
     use windows_sys::Win32::Foundation::FALSE;
-    use windows_sys::Win32::System::Threading::{
-        AttachThreadInput, GetCurrentThreadId,
-    };
+    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
     };
@@ -88,8 +86,8 @@ fn window_info_for_hosted(fixture: &crate::tree::fixture::HostedFixture) -> Wind
 /// production `press_for_app_impl` never does.
 #[cfg(target_os = "windows")]
 fn stage_as_foreground(fixture: &crate::tree::fixture::HostedFixture) -> bool {
-    use agent_desktop_core::InteractionLease;
     use crate::system::window_activate::focus_window;
+    use agent_desktop_core::InteractionLease;
 
     let info = window_info_for_hosted(fixture);
     let lease = InteractionLease::guarded(deadline(), ()).expect("lease");
@@ -175,8 +173,13 @@ fn headed_foreground_target_synthesizes_delivered_unverified() {
         return;
     }
     synthesis_probe::reset();
-    let result = press_for_app_impl(identity, &combo_a(), InteractionPolicy::headed(), deadline())
-        .expect("foreground headed press");
+    let result = press_for_app_impl(
+        identity,
+        &combo_a(),
+        InteractionPolicy::headed(),
+        deadline(),
+    )
+    .expect("foreground headed press");
     assert_eq!(
         result.disposition().delivery(),
         DeliveryDisposition::DeliveredUnverified
@@ -194,9 +197,13 @@ fn headless_foreground_target_verifies_without_stealing() {
         return;
     }
     synthesis_probe::reset();
-    let result =
-        press_for_app_impl(identity, &combo_a(), InteractionPolicy::headless(), deadline())
-            .expect("already-foreground headless press");
+    let result = press_for_app_impl(
+        identity,
+        &combo_a(),
+        InteractionPolicy::headless(),
+        deadline(),
+    )
+    .expect("already-foreground headless press");
     assert_eq!(
         result.disposition().delivery(),
         DeliveryDisposition::DeliveredUnverified
@@ -214,8 +221,13 @@ fn headless_background_target_fails_closed_without_synthesis() {
     let stealer = crate::tree::fixture::LocalFixture::create().expect("stealer");
     raise_handle(stealer.handle());
     synthesis_probe::reset();
-    let error = press_for_app_impl(identity, &combo_a(), InteractionPolicy::headless(), deadline())
-        .expect_err("background headless must fail closed");
+    let error = press_for_app_impl(
+        identity,
+        &combo_a(),
+        InteractionPolicy::headless(),
+        deadline(),
+    )
+    .expect_err("background headless must fail closed");
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_not_delivered(&error);
     assert!(
@@ -255,8 +267,13 @@ fn higher_integrity_is_perm_denied_not_delivered_before_synthesis() {
     let (_fixture, identity) = staged_hosted_target();
     synthesis_probe::reset();
     let error = force_higher_integrity::with(|| {
-        press_for_app_impl(identity, &combo_a(), InteractionPolicy::headed(), deadline())
-            .expect_err("higher integrity")
+        press_for_app_impl(
+            identity,
+            &combo_a(),
+            InteractionPolicy::headed(),
+            deadline(),
+        )
+        .expect_err("higher integrity")
     });
     assert_eq!(error.code, ErrorCode::PermDenied);
     assert_eq!(
@@ -285,8 +302,13 @@ fn focus_lost_between_verify_and_inject_fails_closed_without_synthesis() {
     let error = force_focus_lost::with_armed_after_hook(
         move || raise_handle(stealer_handle),
         || {
-            press_for_app_impl(identity, &combo_a(), InteractionPolicy::headed(), deadline())
-                .expect_err("focus lost")
+            press_for_app_impl(
+                identity,
+                &combo_a(),
+                InteractionPolicy::headed(),
+                deadline(),
+            )
+            .expect_err("focus lost")
         },
     );
     assert_eq!(error.code, ErrorCode::ActionFailed);

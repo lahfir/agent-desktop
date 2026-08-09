@@ -149,10 +149,7 @@ fn running_process_is_never_exited_despite_still_active_code() {
         "wait-gate must keep a live process as non-Exited; got {state:?}"
     );
     assert!(
-        matches!(
-            state,
-            ProcessState::Running | ProcessState::Unresponsive
-        ),
+        matches!(state, ProcessState::Running | ProcessState::Unresponsive),
         "live self process is Running or Unresponsive, never Exited; got {state:?}"
     );
 }

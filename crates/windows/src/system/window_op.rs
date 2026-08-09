@@ -152,8 +152,8 @@ fn show_verb(
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        ShowWindow, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED,
-        SW_SHOWNORMAL,
+        SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SW_SHOWNORMAL,
+        ShowWindow,
     };
 
     let (command, expected) = match verb {
@@ -193,7 +193,7 @@ fn set_window_pos(
     size: Option<(i32, i32)>,
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
     };
 
     let (x, y, move_flag) = match origin {

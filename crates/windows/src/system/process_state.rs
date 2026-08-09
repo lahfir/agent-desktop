@@ -154,9 +154,7 @@ fn probe_timeout_ms(deadline: Deadline) -> u64 {
 }
 
 #[cfg(target_os = "windows")]
-fn top_level_windows_for(
-    pid: agent_desktop_core::ProcessId,
-) -> Result<Vec<isize>, AdapterError> {
+fn top_level_windows_for(pid: agent_desktop_core::ProcessId) -> Result<Vec<isize>, AdapterError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
     let target = u32::from(pid);

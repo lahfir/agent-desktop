@@ -45,7 +45,10 @@ fn invalid_identifier_is_not_delivered() {
     )
     .expect_err("relative id");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
-    assert_eq!(error.disposition.delivery(), DeliveryDisposition::NotDelivered);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
 }
 
 #[test]

@@ -73,7 +73,10 @@ fn attach_false_fails_naming_running_pid() {
     )
     .expect_err("no-attach must fail");
     assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_eq!(error.disposition.delivery(), DeliveryDisposition::NotDelivered);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
     let details = error.details.expect("details");
     assert_eq!(details["pid"], u32::from(running_pid));
 }
@@ -123,7 +126,10 @@ fn two_matches_are_ambiguous_before_launch() {
     )
     .expect_err("ambiguous");
     assert_eq!(error.code, ErrorCode::AmbiguousTarget);
-    assert_eq!(error.disposition.delivery(), DeliveryDisposition::NotDelivered);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
     assert_eq!(matching_pids("notepad.exe").len(), before.len());
 }
 

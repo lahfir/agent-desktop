@@ -153,7 +153,7 @@ fn restore_if_iconic(
     handle: super::window_enum::WindowHandle,
     evidence: &WindowIdentityEvidence<'_>,
 ) -> Result<(), AdapterError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, ShowWindow, SW_RESTORE};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, SW_RESTORE, ShowWindow};
     unsafe {
         if IsIconic(handle) == 0 {
             return Ok(());
@@ -183,8 +183,8 @@ fn bring_to_foreground(
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow,
-        ShowWindow, SW_SHOW,
+        GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible, SW_SHOW,
+        SetForegroundWindow, ShowWindow,
     };
 
     unsafe {
@@ -271,128 +271,14 @@ fn recycled_before_foreground() -> AdapterError {
 }
 
 #[cfg(all(test, target_os = "windows"))]
-mod attempt_probe {
-    use std::cell::Cell;
-
-    thread_local! {
-        static CURRENT: Cell<u32> = const { Cell::new(0) };
-        static COUNT: Cell<u32> = const { Cell::new(0) };
-    }
-
-    pub(super) fn begin_attempt(attempt: u32) {
-        CURRENT.with(|cell| cell.set(attempt));
-        COUNT.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn current() -> u32 {
-        CURRENT.with(Cell::get)
-    }
-
-    pub(super) fn count() -> u32 {
-        COUNT.with(Cell::get)
-    }
-
-    pub(super) fn reset() {
-        CURRENT.with(|cell| cell.set(0));
-        COUNT.with(|cell| cell.set(0));
-    }
-}
+#[path = "window_activate_hooks.rs"]
+mod hooks;
 
 #[cfg(all(test, target_os = "windows"))]
-mod never_foreground {
-    use std::cell::Cell;
-
-    thread_local! {
-        static ACTIVE: Cell<bool> = const { Cell::new(false) };
-    }
-
-    pub(super) fn is_active() -> bool {
-        ACTIVE.with(Cell::get)
-    }
-
-    pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-            }
-        }
-        ACTIVE.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
-    }
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod force_unowned_from_attempt {
-    use std::cell::Cell;
-
-    thread_local! {
-        static FROM: Cell<Option<u32>> = const { Cell::new(None) };
-    }
-
-    pub(super) fn blocks(attempt: u32) -> bool {
-        FROM.with(|cell| cell.get().is_some_and(|from| attempt >= from))
-    }
-
-    pub(super) fn with<R>(from_attempt: u32, run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                FROM.with(|cell| cell.set(None));
-            }
-        }
-        FROM.with(|cell| cell.set(Some(from_attempt)));
-        let _reset = ResetOnDrop;
-        run()
-    }
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod force_strictly_higher {
-    use std::cell::Cell;
-
-    thread_local! {
-        static ACTIVE: Cell<bool> = const { Cell::new(false) };
-    }
-
-    pub(super) fn is_active() -> bool {
-        ACTIVE.with(Cell::get)
-    }
-
-    pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-            }
-        }
-        ACTIVE.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
-    }
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod restore_probe {
-    use std::cell::Cell;
-
-    thread_local! {
-        static COUNT: Cell<u32> = const { Cell::new(0) };
-    }
-
-    pub(super) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn count() -> u32 {
-        COUNT.with(Cell::get)
-    }
-
-    pub(super) fn reset() {
-        COUNT.with(|cell| cell.set(0));
-    }
-}
+use hooks::{
+    attempt_probe, force_strictly_higher, force_unowned_from_attempt, never_foreground,
+    restore_probe,
+};
 
 #[cfg(test)]
 #[path = "window_activate_policy_tests.rs"]

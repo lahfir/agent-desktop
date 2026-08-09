@@ -98,8 +98,7 @@ fn require_keyboard_focus(
     let local_deadline = bounded_instant(deadline, KEYBOARD_FOCUS_WAIT)?;
     loop {
         ensure_budget(deadline)?;
-        if process_holds_keyboard_focus(pid)?
-            && process_identity::matches_instance(pid, instance)?
+        if process_holds_keyboard_focus(pid)? && process_identity::matches_instance(pid, instance)?
         {
             return Ok(());
         }
@@ -194,7 +193,7 @@ fn process_owns_foreground(_pid: ProcessId, _instance: &str) -> Result<bool, Ada
 
 #[cfg(target_os = "windows")]
 fn process_holds_keyboard_focus(pid: ProcessId) -> Result<bool, AdapterError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetGUIThreadInfo, GUITHREADINFO};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GUITHREADINFO, GetGUIThreadInfo};
 
     let mut info = GUITHREADINFO {
         cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,

@@ -72,11 +72,7 @@ fn ensure_not_protected(id: &str) -> Result<(), AdapterError> {
 }
 
 #[cfg(target_os = "windows")]
-fn graceful_close(
-    pid: ProcessId,
-    instance: &str,
-    deadline: Deadline,
-) -> Result<(), AdapterError> {
+fn graceful_close(pid: ProcessId, instance: &str, deadline: Deadline) -> Result<(), AdapterError> {
     ensure_budget(deadline).map_err(before_termination)?;
     let windows = top_level_windows_for_pid(pid).map_err(before_termination)?;
     if windows.is_empty() {
@@ -111,11 +107,7 @@ fn windowless_graceful_fallback(
 }
 
 #[cfg(target_os = "windows")]
-fn force_terminate(
-    pid: ProcessId,
-    instance: &str,
-    deadline: Deadline,
-) -> Result<(), AdapterError> {
+fn force_terminate(pid: ProcessId, instance: &str, deadline: Deadline) -> Result<(), AdapterError> {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{
         OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,

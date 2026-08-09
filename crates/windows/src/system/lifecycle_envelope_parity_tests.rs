@@ -63,7 +63,10 @@ fn assert_class_b_envelope(error: &AdapterError, code: ErrorCode, expected: Deli
     assert_disposition_wire(error, expected);
 }
 
-fn macos_shared_pair(code: ErrorCode, disposition: DeliverySemantics) -> (ErrorCode, DeliverySemantics) {
+fn macos_shared_pair(
+    code: ErrorCode,
+    disposition: DeliverySemantics,
+) -> (ErrorCode, DeliverySemantics) {
     (code, disposition)
 }
 
@@ -124,10 +127,8 @@ fn shared_stale_ref_before_window_write_matches_macos_pair() {
 
 #[test]
 fn shared_action_failed_before_delivery_matches_macos_pair() {
-    let (code, disposition) = macos_shared_pair(
-        ErrorCode::ActionFailed,
-        DeliverySemantics::not_delivered(),
-    );
+    let (code, disposition) =
+        macos_shared_pair(ErrorCode::ActionFailed, DeliverySemantics::not_delivered());
     let error = budget_exhausted(false);
     assert_eq!(error.code, code);
     assert_disposition_wire(&error, disposition);
@@ -321,8 +322,8 @@ fn stale_focus_token_is_shared_stale_ref_not_delivered() {
         bounds: None,
         state: WindowState::default(),
     };
-    let lease = InteractionLease::guarded(Deadline::after(1_000).expect("deadline"), ())
-        .expect("lease");
+    let lease =
+        InteractionLease::guarded(Deadline::after(1_000).expect("deadline"), ()).expect("lease");
     let error = focus_window(&win, &lease).expect_err("stale");
     assert_code_wire(&error, ErrorCode::StaleRef);
     assert_disposition_wire(&error, DeliverySemantics::not_delivered());

@@ -1,7 +1,7 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, WindowInfo, WindowState};
 
 use super::window_enum::enumerate_top_level;
-use super::window_identity::{live_window_title, WindowIdentityEvidence};
+use super::window_identity::{WindowIdentityEvidence, live_window_title};
 use super::window_ops::{is_foreground_window, parse_handle, passes_filter};
 
 /// Resolves a live window by `WindowInfo.id`, corroborating pid and process

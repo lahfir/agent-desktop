@@ -20,10 +20,7 @@ const PROTECTED_PROCESSES: &[&str] = &[
 /// shell-critical set. Near-misses (`iexplore.exe`, `explorer++.exe`, a name
 /// merely containing `lsass`) are deliberately not protected.
 pub(crate) fn is_protected_process(identifier: &str) -> bool {
-    let image = identifier
-        .rsplit(['\\', '/'])
-        .next()
-        .unwrap_or(identifier);
+    let image = identifier.rsplit(['\\', '/']).next().unwrap_or(identifier);
     PROTECTED_PROCESSES
         .iter()
         .any(|protected| image.eq_ignore_ascii_case(protected))
@@ -203,10 +200,7 @@ mod tests {
     #[test]
     fn protected_list_members_match_exactly_case_insensitively() {
         for name in PROTECTED_PROCESSES {
-            assert!(
-                is_protected_process(name),
-                "{name} must be protected"
-            );
+            assert!(is_protected_process(name), "{name} must be protected");
             assert!(
                 is_protected_process(&name.to_ascii_uppercase()),
                 "{name} must match case-insensitively"
