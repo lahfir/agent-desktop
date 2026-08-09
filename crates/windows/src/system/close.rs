@@ -8,7 +8,6 @@ use super::permissions::ensure_budget;
 use super::process_identity;
 use super::process_state::hresult_from_win32;
 
-const STILL_ACTIVE: u32 = 259;
 const EXIT_POLL: Duration = Duration::from_millis(25);
 
 pub(crate) fn close_app_impl(
@@ -92,7 +91,10 @@ fn graceful_close(pid: ProcessId, instance: &str, deadline: Deadline) -> Result<
 /// earlier post in this very loop. The fan-out therefore keeps going and only
 /// surfaces a failure when **no** window accepted the request; when at least
 /// one did, `wait_for_exit`'s independent process-gone re-read is the source
-/// of truth, not the count of successful posts.
+/// of truth, not the count of successful posts. That is also why a deadline
+/// that expires mid-fan-out stops the loop instead of failing it: a request
+/// already posted may already be closing the app, so reporting `not_delivered`
+/// there would tell the caller a retry is free when it is not.
 fn broadcast_close(
     windows: &[isize],
     deadline: Deadline,
@@ -101,7 +103,12 @@ fn broadcast_close(
     let mut delivered = false;
     let mut first_failure = None;
     for hwnd in windows {
-        ensure_budget(deadline).map_err(before_termination)?;
+        if ensure_budget(deadline).is_err() {
+            if delivered {
+                break;
+            }
+            return Err(before_termination(deadline.timeout_error()));
+        }
         match post(*hwnd) {
             Ok(true) => delivered = true,
             Ok(false) => {}
@@ -218,8 +225,15 @@ fn wait_for_exit(
     }
 }
 
-/// Wait-gated exit observation (A21-3): signaled handle + non-`STILL_ACTIVE`
-/// exit code, or a creation-time token that no longer matches a live pid.
+/// Wait-gated exit observation (A21-3): a signaled handle whose exit code
+/// reads, or a creation-time token that no longer matches a live pid.
+///
+/// The wait decides, never the code. A process may legitimately exit with
+/// `259`, which is the same value `GetExitCodeProcess` reports for a live
+/// process, so vetoing on that value would leave a cleanly exited process
+/// looking alive for as long as any handle keeps it from being reaped - which
+/// the caller's own child handle routinely does. `process_state` gates the
+/// same way for the same reason.
 #[cfg(target_os = "windows")]
 fn process_observed_gone(pid: ProcessId, instance: &str) -> Result<bool, AdapterError> {
     use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
@@ -240,7 +254,7 @@ fn process_observed_gone(pid: ProcessId, instance: &str) -> Result<bool, Adapter
     let mut code: u32 = 0;
     let read_ok = unsafe { GetExitCodeProcess(handle, &mut code) };
     unsafe { CloseHandle(handle) };
-    if wait == WAIT_OBJECT_0 && read_ok != 0 && code != STILL_ACTIVE {
+    if wait == WAIT_OBJECT_0 && read_ok != 0 {
         return Ok(true);
     }
     Ok(!process_identity::matches_instance(pid, instance)?)

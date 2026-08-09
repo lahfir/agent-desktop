@@ -361,3 +361,27 @@ fn skipped_windows_alone_are_not_a_close_failure() {
     })
     .expect("skips are not failures");
 }
+
+/// `259` is `STILL_ACTIVE`, the same value `GetExitCodeProcess` reports for a
+/// live process, so a process that legitimately exits with it must still be
+/// observed gone. The wait signal is what proves the exit; vetoing on the code
+/// would leave a cleanly exited process looking alive for as long as a handle
+/// keeps it from being reaped - which the child handle held here does.
+#[cfg(target_os = "windows")]
+#[test]
+fn an_exit_code_of_still_active_is_still_observed_as_gone() {
+    let mut child = std::process::Command::new("cmd")
+        .args(["/C", "exit", "/B", "259"])
+        .spawn()
+        .expect("spawn");
+    let pid = ProcessId::from(child.id());
+    let token = process_identity::token_for_pid(pid)
+        .expect("token read")
+        .expect("live token");
+    child.wait().expect("child exits");
+
+    assert!(
+        super::process_observed_gone(pid, &token).expect("liveness"),
+        "a process that exited with 259 must not read as still running"
+    );
+}
