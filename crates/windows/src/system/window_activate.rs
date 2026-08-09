@@ -37,27 +37,31 @@ const INTER_ATTEMPT_DELAY: Duration = Duration::from_millis(25);
 /// integrity target is activation-worded `PERM_DENIED`, otherwise
 /// `ACTION_FAILED` with `physical_delivery_started: false`.
 pub(crate) fn focus_window(win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
-    ensure_budget(lease.deadline())?;
+    ensure_budget(lease.deadline()).map_err(before_activation)?;
     let handle = parse_handle(&win.id);
     if handle.is_null() {
-        return Err(AdapterError::new(
+        return Err(before_activation(AdapterError::new(
             ErrorCode::InvalidArgs,
             "window id is not a Windows HWND-shaped id",
-        ));
+        )));
     }
     let Some(evidence) = WindowIdentityEvidence::from_info(handle, win) else {
-        return Err(AdapterError::new(
+        return Err(before_activation(AdapterError::new(
             ErrorCode::StaleRef,
             "headed focus requires a process-instance token on the stored window",
-        ));
+        )));
     };
-    evidence.verify_stored()?;
-    restore_if_iconic(handle, &evidence)?;
+    evidence.verify_stored().map_err(before_activation)?;
+    restore_if_iconic(handle, &evidence).map_err(before_activation)?;
     if is_owned_foreground(handle, &evidence) {
         return Ok(());
     }
     let strictly_higher = activation_target_is_strictly_higher(win.pid);
     raise_with_budget(handle, &evidence, lease, strictly_higher)
+}
+
+fn before_activation(error: AdapterError) -> AdapterError {
+    error.with_disposition(DeliverySemantics::not_delivered())
 }
 
 fn activation_target_is_strictly_higher(pid: agent_desktop_core::ProcessId) -> bool {
@@ -100,7 +104,7 @@ fn raise_with_budget(
     Err(budget_exhausted(strictly_higher))
 }
 
-fn budget_exhausted(strictly_higher: bool) -> AdapterError {
+pub(crate) fn budget_exhausted(strictly_higher: bool) -> AdapterError {
     if strictly_higher {
         activation_elevation_denied()
     } else {

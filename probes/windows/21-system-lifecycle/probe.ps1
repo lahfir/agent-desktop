@@ -40,7 +40,8 @@ Register-MandatoryCapture -Name @(
     "lifecycle-window-op-$Label.json",
     "lifecycle-activation-$Label.json",
     "lifecycle-cross-integrity-$Label.json",
-    "lifecycle-manifest-$Label.json"
+    "lifecycle-manifest-$Label.json",
+    "lifecycle-cost-$Label.json"
 )
 
 function Write-LifecycleCapture {
@@ -776,6 +777,18 @@ try {
     Register-MandatoryPass -Capture $script:paths.manifest -Result $manifestCapture
     Write-Host "wrote $($script:paths.manifest)"
 
+    # --- Cost baseline (A15-13 / A20-6): delegated to measure-cost.ps1 ----------
+    $measureCost = Join-Path $script:ProbeDir 'measure-cost.ps1'
+    & $measureCost -Label $Label
+    $costPath = Join-Path $script:CaptureDir "lifecycle-cost-$Label.json"
+    if (-not (Test-Path -LiteralPath $costPath)) {
+        throw "lifecycle-cost-$Label.json was not written by measure-cost.ps1"
+    }
+    $costObj = Get-Content -LiteralPath $costPath -Raw | ConvertFrom-Json
+    $script:paths.cost = $costPath
+    Register-MandatoryPass -Capture $script:paths.cost -Result $costObj
+    Write-Host "wrote $($script:paths.cost)"
+
 } finally {
     Stop-AllSpawned
 }
@@ -790,5 +803,6 @@ Write-ProbeResult -Probe '21-system-lifecycle' -Status 'ok' -Message 'system-lif
     activation = if ($script:paths.activation) { Split-Path -Leaf $script:paths.activation } else { '<none>' }
     cross      = if ($script:paths.cross) { Split-Path -Leaf $script:paths.cross } else { '<none>' }
     manifest   = if ($script:paths.manifest) { Split-Path -Leaf $script:paths.manifest } else { '<none>' }
+    cost       = if ($script:paths.cost) { Split-Path -Leaf $script:paths.cost } else { '<none>' }
 }
 exit 0

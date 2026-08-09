@@ -8,6 +8,7 @@ pub(crate) mod hresult;
 pub(crate) mod key_dispatch;
 pub(crate) mod launch;
 mod launch_path;
+pub(crate) mod lifecycle_envelope_parity;
 pub(crate) mod permissions;
 #[cfg(target_os = "windows")]
 pub(crate) mod private_file;
