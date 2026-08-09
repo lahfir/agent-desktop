@@ -1,5 +1,6 @@
 mod adapter;
 pub(crate) mod app_ops;
+pub(crate) mod close;
 pub(crate) mod com_runtime;
 pub(crate) mod display;
 pub(crate) mod dpi;

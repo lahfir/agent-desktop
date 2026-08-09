@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    AdapterError, AdapterSession, Deadline, DisplayInfo, InteractionLease, ObservationOps,
+    AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, InteractionLease, ObservationOps,
     PermissionReport, ProcessIdentity, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
     WindowInfo, launch_options::LaunchOptions, process_state::ProcessState,
 };
@@ -109,6 +109,17 @@ impl SystemOps for WindowsAdapter {
         lease: &InteractionLease,
     ) -> Result<WindowInfo, AdapterError> {
         crate::system::launch::launch_app_impl(id, options, lease.deadline())
+    }
+
+    /// Verified termination: `Ok(())` only after the process is observed gone
+    /// (A21-3). Graceful posts `WM_CLOSE`; force calls `TerminateProcess`.
+    fn close_app(
+        &self,
+        app: &AppInfo,
+        force: bool,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::system::close::close_app_impl(app, force, lease.deadline())
     }
 
     fn resolve_window_strict(

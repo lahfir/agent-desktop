@@ -11,6 +11,7 @@ use super::fixture_window;
 pub(crate) use super::fixture_window::{CONTENT_MARKER, SECURE_MARKER};
 
 const HOST_ENVIRONMENT_FLAG: &str = "AGENT_DESKTOP_FIXTURE_HOST";
+pub(crate) const SWALLOW_WM_CLOSE_FLAG: &str = "AGENT_DESKTOP_FIXTURE_SWALLOW_WM_CLOSE";
 const HOST_TEST_NAME: &str = "tree::fixture::tests::fixture_host_process_entry";
 const HANDLE_PREFIX: &str = "AGENT_DESKTOP_FIXTURE_HWND=";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -80,14 +81,27 @@ pub(crate) struct HostedFixture {
 
 impl HostedFixture {
     pub(crate) fn spawn() -> Result<Self, String> {
+        Self::spawn_with_close_mode(false)
+    }
+
+    /// Host whose wndproc returns 0 on `WM_CLOSE` without destroying the
+    /// window — a non-cooperating child for force-close verification.
+    pub(crate) fn spawn_swallowing_wm_close() -> Result<Self, String> {
+        Self::spawn_with_close_mode(true)
+    }
+
+    fn spawn_with_close_mode(swallow_wm_close: bool) -> Result<Self, String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(["--exact", HOST_TEST_NAME, "--ignored", "--nocapture"])
             .env(HOST_ENVIRONMENT_FLAG, "1")
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| error.to_string())?;
+            .stderr(Stdio::null());
+        if swallow_wm_close {
+            command.env(SWALLOW_WM_CLOSE_FLAG, "1");
+        }
+        let mut child = command.spawn().map_err(|error| error.to_string())?;
         let stdout = child
             .stdout
             .take()
