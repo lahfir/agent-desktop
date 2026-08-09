@@ -158,17 +158,13 @@ fn focused_element_matches(
     pid: i32,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
-    use core_foundation::base::{CFEqual, CFTypeRef};
-
     let app = crate::tree::element_for_pid(pid);
     prepare(&app, deadline)?;
     let result =
         crate::tree::attributes::copy_element_attr_result(&app, "AXFocusedUIElement", deadline);
     ensure_budget(deadline)?;
     let focused = result.map_err(|error| read_error("AXFocusedUIElement", error))?;
-    Ok(focused.is_some_and(|focused| unsafe {
-        CFEqual(focused.0 as CFTypeRef, expected.0 as CFTypeRef) != 0
-    }))
+    Ok(focused.is_some_and(|focused| crate::tree::same_element(&focused, expected)))
 }
 
 fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {

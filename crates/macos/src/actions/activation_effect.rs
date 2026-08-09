@@ -8,10 +8,25 @@ mod imp {
     const SETTLE_BUDGET_MS: u64 = 400;
 
     /// The readback for `perform`, which has no written attribute to re-read.
-    #[derive(Default, PartialEq, Eq)]
+    #[derive(Default)]
     pub(crate) struct FocusState {
         window_title: Option<String>,
-        focused_element: Option<usize>,
+        focused_element: Option<AXElement>,
+    }
+
+    /// Accessibility hands back a fresh reference for the same element on every
+    /// read, and reuses a released one for a different element later, so a raw
+    /// pointer answers neither question this comparison asks. `CFEqual` is the
+    /// identity the framework defines.
+    impl PartialEq for FocusState {
+        fn eq(&self, other: &Self) -> bool {
+            self.window_title == other.window_title
+                && match (&self.focused_element, &other.focused_element) {
+                    (None, None) => true,
+                    (Some(mine), Some(theirs)) => crate::tree::same_element(mine, theirs),
+                    _ => false,
+                }
+        }
     }
 
     pub(crate) fn focus_state(element: &AXElement, deadline: Deadline) -> FocusState {
@@ -26,8 +41,7 @@ mod imp {
                     .ok()
                     .flatten()
             }),
-            focused_element: read_element(&app, "AXFocusedUIElement", deadline)
-                .map(|focused| focused.0 as usize),
+            focused_element: read_element(&app, "AXFocusedUIElement", deadline),
         }
     }
 
@@ -71,7 +85,7 @@ mod imp {
 
     use crate::tree::AXElement;
 
-    #[derive(Default, PartialEq, Eq)]
+    #[derive(Default, PartialEq)]
     pub(crate) struct FocusState;
 
     pub(crate) fn focus_state(_element: &AXElement, _deadline: Deadline) -> FocusState {
