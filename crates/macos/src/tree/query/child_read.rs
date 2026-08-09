@@ -30,6 +30,17 @@ impl ChildRead {
         }
     }
 
+    fn failed(status: ChildReadStatus) -> Self {
+        Self {
+            elements: Vec::new(),
+            total_count: 0,
+            complete: false,
+            source_availability: ChildSourceAvailability::Unknown,
+            prefix_certain: false,
+            status,
+        }
+    }
+
     fn unavailable(status: ChildReadStatus) -> Self {
         Self {
             elements: Vec::new(),
@@ -88,17 +99,10 @@ mod imp {
         deadline: std::time::Instant,
     ) -> ChildRead {
         let count_deadline =
-            super::super::child_read_budget::boundary_count_deadline(max_elements, deadline);
+            super::super::child_read_budget::count_deadline(max_elements, deadline);
         let mut status = ChildReadStatus::default();
         if prepare(element, deadline, &mut status).is_err() {
-            return ChildRead {
-                elements: Vec::new(),
-                total_count: 0,
-                complete: false,
-                source_availability: ChildSourceAvailability::Unknown,
-                prefix_certain: false,
-                status,
-            };
+            return ChildRead::failed(status);
         }
         status.attempts += 1;
         let count = match child_count(element, attribute, count_deadline) {
@@ -108,14 +112,7 @@ mod imp {
             }
             Err(error) => {
                 telemetry::record(&mut status, attribute, "initial_count", error, None);
-                return ChildRead {
-                    elements: Vec::new(),
-                    total_count: 0,
-                    complete: false,
-                    source_availability: ChildSourceAvailability::Unknown,
-                    prefix_certain: false,
-                    status,
-                };
+                return read_without_count(element, attribute, max_elements, deadline, status);
             }
         };
         let requested = count.min(max_elements);
@@ -160,14 +157,7 @@ mod imp {
     ) -> ChildRead {
         let mut status = ChildReadStatus::default();
         if prepare(element, deadline, &mut status).is_err() {
-            return ChildRead {
-                elements: Vec::new(),
-                total_count: 0,
-                complete: false,
-                source_availability: ChildSourceAvailability::Unknown,
-                prefix_certain: false,
-                status,
-            };
+            return ChildRead::failed(status);
         }
         status.attempts += 1;
         let initial_count = match child_count(element, attribute, deadline) {
@@ -175,14 +165,7 @@ mod imp {
             Err(error) if is_absent_error(error) => return ChildRead::unavailable(status),
             Err(error) => {
                 telemetry::record(&mut status, attribute, "initial_count", error, None);
-                return ChildRead {
-                    elements: Vec::new(),
-                    total_count: 0,
-                    complete: false,
-                    source_availability: ChildSourceAvailability::Unknown,
-                    prefix_certain: false,
-                    status,
-                };
+                return ChildRead::failed(status);
             }
         };
         let mut elements = if index < initial_count {
@@ -236,6 +219,32 @@ mod imp {
             complete,
             source_availability: ChildSourceAvailability::Available,
             prefix_certain: complete,
+            status,
+        }
+    }
+
+    /// A responder can serve the values of an attribute while failing to answer
+    /// its count inside the count budget — Xcode does this for `AXWindows`. The
+    /// count is only an optimisation, so a short read still proves the elements
+    /// it returned; only a full page leaves the tail unknown.
+    fn read_without_count(
+        element: &AXElement,
+        attribute: &str,
+        max_elements: usize,
+        deadline: std::time::Instant,
+        mut status: ChildReadStatus,
+    ) -> ChildRead {
+        let Ok(elements) = read_prefix(element, attribute, max_elements, deadline, &mut status)
+        else {
+            return ChildRead::failed(status);
+        };
+        let saturated = elements.len() == max_elements;
+        ChildRead {
+            total_count: elements.len() + usize::from(saturated),
+            elements,
+            complete: !saturated,
+            source_availability: ChildSourceAvailability::Available,
+            prefix_certain: !saturated,
             status,
         }
     }

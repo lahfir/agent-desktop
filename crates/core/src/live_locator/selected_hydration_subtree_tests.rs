@@ -210,7 +210,7 @@ fn selected_tree(root: ObservationRoot<'_>, mode: Mode) -> ObservedTree {
         nodes[last].completeness.subtree_complete = false;
     }
     let mut tree = super::test_support::tree(nodes, vec![0], !incomplete);
-    tree.source = ObservationSource::from_root(&root);
+    tree.source = ObservationSource::from_root(&root, crate::SnapshotSurface::Window);
     tree
 }
 
@@ -296,6 +296,7 @@ fn request() -> LocatorResolveRequest {
         selection: LocatorSelection::First,
         deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 10,
+        surface: None,
         materialization: LocatorMaterialization::SelectedMatches,
     }
 }

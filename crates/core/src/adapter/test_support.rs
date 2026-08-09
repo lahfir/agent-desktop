@@ -161,7 +161,7 @@ pub(crate) fn observed_tree(
 
     ObservedTree::from_roots(
         vec![subtree(node)],
-        ObservationSource::from_root(root),
+        ObservationSource::from_root(root, root.surface()),
         LocatorStats::default(),
         true,
     )

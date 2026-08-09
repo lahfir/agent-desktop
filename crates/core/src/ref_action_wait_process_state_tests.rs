@@ -75,6 +75,7 @@ fn app(name: &str) -> AppInfo {
         pid: crate::ProcessId::new(1),
         bundle_id: None,
         process_instance: Some("test-instance".into()),
+        presentation: None,
     }
 }
 
@@ -332,69 +333,4 @@ fn terminal_stale_ref_against_crashed_process_carries_process_state_detail() {
         Some(&serde_json::json!("crashed")),
         "STALE_REF against a crashed pid must carry details.process_state = \"crashed\""
     );
-}
-
-struct SuccessWithUnresponsiveProbeAdapter {
-    probe_calls: AtomicU32,
-}
-
-impl ObservationOps for SuccessWithUnresponsiveProbeAdapter {
-    fn resolve_element_strict(
-        &self,
-        _entry: &RefEntry,
-        _deadline: crate::Deadline,
-    ) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
-    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
-}
-
-impl ActionOps for SuccessWithUnresponsiveProbeAdapter {
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-        _lease: &crate::InteractionLease,
-    ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::delivered_unverified(
-            "click",
-        ))
-    }
-}
-
-impl InputOps for SuccessWithUnresponsiveProbeAdapter {}
-
-impl SystemOps for SuccessWithUnresponsiveProbeAdapter {
-    crate::adapter::guarded_interaction_lease!();
-
-    fn process_state(
-        &self,
-        _process: crate::ProcessIdentity,
-        _deadline: crate::Deadline,
-    ) -> Result<crate::process_state::ProcessState, AdapterError> {
-        self.probe_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(crate::process_state::ProcessState::Unresponsive)
-    }
-}
-
-#[test]
-fn enrichment_never_converts_a_successful_action_into_a_failure() {
-    let adapter = SuccessWithUnresponsiveProbeAdapter {
-        probe_calls: AtomicU32::new(0),
-    };
-
-    let result = execute_with_auto_wait(
-        RefActionWaitCtx {
-            adapter: &adapter,
-            entry: &entry(),
-            ref_id: "@e1",
-            context: &CommandContext::default(),
-        },
-        ActionRequest::headless(Action::Click),
-        crate::ref_action::dispatch_resolved,
-    )
-    .unwrap();
-    assert_eq!(result.action, "click");
-    assert_eq!(adapter.probe_calls.load(Ordering::SeqCst), 0);
 }

@@ -197,6 +197,7 @@ pub(crate) unsafe fn decode_query(
             selection,
             deadline,
             max_raw_depth: 50,
+            surface: None,
             materialization: LocatorMaterialization::None,
         },
     ))

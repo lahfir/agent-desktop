@@ -14,6 +14,7 @@ fn request(selection: LocatorSelection) -> LocatorResolveRequest {
         selection,
         deadline: crate::Deadline::from_duration(std::time::Duration::from_secs(5)).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::None,
     }
 }

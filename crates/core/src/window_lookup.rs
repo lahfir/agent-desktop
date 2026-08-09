@@ -47,6 +47,30 @@ pub(crate) fn find_window_for_process(
     )
 }
 
+/// A menu bar, menu, or alert belongs to the application, not to one of its
+/// windows, so several open windows are not an ambiguity for those surfaces —
+/// any window of the app names the same process. Prefers a focused or visible
+/// window so the caller still gets the most relevant identity.
+pub(crate) fn select_surface_owner(
+    candidates: Vec<WindowInfo>,
+    empty_error: crate::AdapterError,
+) -> Result<WindowInfo, AppError> {
+    if candidates.is_empty() {
+        return Err(empty_error.into());
+    }
+    let best = candidates
+        .iter()
+        .position(|window| window.state.is_focused)
+        .or_else(|| {
+            candidates
+                .iter()
+                .position(|window| window.state.visible == Some(true))
+        })
+        .unwrap_or(0);
+    let mut candidates = candidates;
+    Ok(candidates.swap_remove(best))
+}
+
 pub(crate) fn select_window(
     mut candidates: Vec<WindowInfo>,
     empty_error: crate::AdapterError,

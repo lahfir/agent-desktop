@@ -35,6 +35,7 @@ impl ObservationOps for ScreenshotAdapter {
             pid: crate::ProcessId::new(700),
             bundle_id: Some("com.example.app".into()),
             process_instance: Some("instance-700".into()),
+            presentation: None,
         }])
     }
 

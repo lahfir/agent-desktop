@@ -187,6 +187,8 @@ fn observe_selector(
             selection: LocatorSelection::First,
             deadline,
             max_raw_depth: 50,
+            surface: (input.opts.surface != crate::SnapshotSurface::Window)
+                .then_some(input.opts.surface),
             materialization: LocatorMaterialization::None,
         },
     )?;

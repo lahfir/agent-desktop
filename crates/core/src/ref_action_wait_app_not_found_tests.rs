@@ -180,6 +180,7 @@ impl ObservationOps for AppNotFoundUnresponsiveProcessAdapter {
             pid: crate::ProcessId::new(1),
             bundle_id: None,
             process_instance: Some("test-instance".into()),
+            presentation: None,
         }])
     }
 

@@ -194,7 +194,7 @@ fn hydrated_tree(root: ObservationRoot<'_>, mode: Mode) -> ObservedTree {
         vec![0],
         true,
     );
-    tree.source = ObservationSource::from_root(&root);
+    tree.source = ObservationSource::from_root(&root, crate::SnapshotSurface::Window);
     tree
 }
 
@@ -235,6 +235,7 @@ fn selected_request() -> LocatorResolveRequest {
         selection: LocatorSelection::First,
         deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::SelectedMatches,
     }
 }

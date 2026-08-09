@@ -5,6 +5,10 @@ use agent_desktop_core::capability;
 #[cfg(target_os = "macos")]
 use accessibility_sys::{kAXFocusedAttribute, kAXValueAttribute};
 
+/// AppKit controls publish `AXPress`; document-shell rows publish `AXOpen` or
+/// `AXConfirm` instead and never publish `AXPress`.
+pub(crate) const PRIMARY_ACTIVATION_ACTIONS: [&str; 3] = ["AXPress", "AXOpen", "AXConfirm"];
+
 pub(crate) struct AvailableActionsRead {
     pub(crate) actions: Vec<String>,
     pub(crate) complete: bool,
@@ -50,11 +54,22 @@ pub(crate) fn read_platform_available_actions(
     let ax_actions = native_actions.value.unwrap_or_default();
     let has = |name: &str| ax_actions.iter().any(|a| a == name);
 
-    if has("AXPress") {
+    let publishes_activation = PRIMARY_ACTIVATION_ACTIONS.iter().any(|name| has(name));
+    if publishes_activation {
         push_unique(&mut read.actions, capability::CLICK);
         if crate::tree::roles::is_toggleable_role(role) {
             push_unique(&mut read.actions, capability::TOGGLE);
         }
+    } else if crate::actions::container_select::role_activates_by_selection(role)
+        && read_settable(
+            el,
+            crate::actions::container_select::SELECTED,
+            deadline,
+            &mut read,
+        )
+        .unwrap_or(false)
+    {
+        push_unique(&mut read.actions, capability::CLICK);
     }
     if has("AXShowMenu") && role_allows_context_menu_action(role) {
         push_unique(&mut read.actions, capability::RIGHT_CLICK);
@@ -125,21 +140,9 @@ fn record_error(read: &mut AvailableActionsRead, error: i32) {
     read.api_disabled |= error == accessibility_sys::kAXErrorAPIDisabled;
 }
 
-/// AppKit's NSAccessibility bridge answers these codes when an element simply
-/// does not implement the probed attribute or action list — including
-/// `kAXErrorFailure`, which it returns for synthetic `NSAccessibilityElement`s
-/// with no action support. They are complete "none present" answers, not
-/// transport failures, so they must not mark the read incomplete.
 #[cfg(target_os = "macos")]
 fn is_definitive_absence(error: i32) -> bool {
-    matches!(
-        error,
-        accessibility_sys::kAXErrorAttributeUnsupported
-            | accessibility_sys::kAXErrorNoValue
-            | accessibility_sys::kAXErrorNotImplemented
-            | accessibility_sys::kAXErrorActionUnsupported
-            | accessibility_sys::kAXErrorFailure
-    )
+    crate::tree::ax_absence::is_absent_action_error(error)
 }
 
 fn role_may_bear_value(role: &str) -> bool {
@@ -224,6 +227,14 @@ mod tests {
         has_scroll_mechanism, role_allows_context_menu_action, role_may_accept_focus,
         role_may_bear_value, role_may_insert_text, role_supports_collection_select,
     };
+
+    #[test]
+    fn document_shell_activation_actions_are_recognised_alongside_press() {
+        assert_eq!(
+            super::PRIMARY_ACTIVATION_ACTIONS,
+            ["AXPress", "AXOpen", "AXConfirm"]
+        );
+    }
 
     #[test]
     fn canonical_handle_role_is_probed_for_settable_value() {

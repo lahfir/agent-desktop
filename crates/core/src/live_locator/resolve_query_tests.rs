@@ -41,6 +41,7 @@ fn request_with_timeout(timeout: std::time::Duration) -> LocatorResolveRequest {
         selection: LocatorSelection::Strict,
         deadline: crate::Deadline::from_duration(timeout).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::None,
     }
 }

@@ -33,6 +33,7 @@ mod tests {
             pid: agent_desktop_core::ProcessId::new(42),
             bundle_id: Some("com.apple.finder".into()),
             process_instance: Some("42:100".into()),
+            presentation: None,
         };
         let c = app_info_to_c(&a);
         assert_eq!(unsafe { c_to_string(c.name) }.as_deref(), Some("Finder"));

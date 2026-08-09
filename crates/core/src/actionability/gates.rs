@@ -19,7 +19,13 @@ pub(super) fn visibility(evidence: &ActionabilityEvidence) -> ActionabilityCheck
     }
     match evidence.state.offscreen {
         Some(true) => return fail("visible", "live offscreen state is true"),
-        None => return unknown("visible", "live offscreen state unavailable"),
+        None if !evidence.states_complete => {
+            return unknown("visible", "live offscreen state unavailable");
+        }
+        None if crate::state::has_state(&evidence.state.states, crate::state::OFFSCREEN) => {
+            return fail("visible", "canonical offscreen state is present");
+        }
+        None => {}
         Some(false) => {}
     }
     let Some(bounds) = evidence.bounds else {

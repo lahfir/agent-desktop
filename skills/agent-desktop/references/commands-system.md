@@ -39,7 +39,17 @@ Requests an application quit. A graceful quit is asynchronous — the app may sh
 agent-desktop list-apps
 agent-desktop list-apps --app "Text"
 ```
-Lists running GUI applications, optionally filtered by a case-insensitive name substring. Returns array of `{ name, pid, bundle_id }`.
+Lists running GUI applications, optionally filtered by a case-insensitive name substring. Returns array of `{ name, pid, bundle_id, presentation }`.
+
+`presentation` tells a foreground app from one that only appears on a hotkey or lives in the menu bar:
+
+| Value | Meaning |
+|-------|---------|
+| `foreground` | Owns ordinary windows and appears in the Dock |
+| `background` | No Dock entry — menu-bar and tray items, and overlays summoned by a hotkey. Their windows may exist only while shown |
+| omitted | Not registered as an application (helper processes and daemons found through the process table) |
+
+Applications with no user interface at all are excluded.
 
 ## Window Management
 
@@ -49,6 +59,12 @@ agent-desktop list-windows
 agent-desktop list-windows --app "Finder"
 ```
 Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds, is_focused }`. Focus is detected through the platform's frontmost/focused-window APIs, not window stacking order.
+
+The inventory comes from the window server, which knows more windows than the
+accessibility layer exposes. Targeting one an application never published
+returns `ACTION_NOT_SUPPORTED` with `kind: "window_without_accessibility_element"`
+— the window exists and still accepts screenshots and coordinate input, but no
+semantic command can reach it. Choose another window from this list.
 
 ### focus-window
 ```bash

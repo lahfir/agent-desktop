@@ -160,7 +160,7 @@ pub use adapter::system::SystemOps;
 pub use adapter_error::AdapterError;
 pub use adapter_session::AdapterSession;
 pub use app_error::AppError;
-pub use app_info::AppInfo;
+pub use app_info::{AppInfo, AppPresentation};
 pub use clipboard_content::ClipboardContent;
 pub use clipboard_format::ClipboardFormat;
 pub use containment_predicate::ContainmentPredicate;

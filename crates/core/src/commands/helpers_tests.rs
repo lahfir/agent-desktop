@@ -110,6 +110,7 @@ impl ObservationOps for RestoreWithoutWindowAdapter {
             pid: crate::ProcessId::new(42),
             bundle_id: None,
             process_instance: Some("test-instance".into()),
+            presentation: None,
         }])
     }
 

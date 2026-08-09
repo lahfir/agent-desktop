@@ -66,6 +66,7 @@ impl ObservationOps for CapturingAdapter {
             pid: crate::ProcessId::new(42),
             bundle_id: Some("com.example.Editor".into()),
             process_instance: Some("generation-1".into()),
+            presentation: None,
         }])
     }
 

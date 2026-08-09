@@ -39,6 +39,9 @@ pub struct FindSelectionArgs {
 pub struct FindArgs {
     pub app: Option<String>,
     pub window_id: Option<String>,
+    pub root: Option<String>,
+    pub snapshot: Option<String>,
+    pub surface: crate::SnapshotSurface,
     pub filter: FindFilterArgs,
     pub states: Vec<StatePredicate>,
     pub selection: FindSelectionArgs,
@@ -50,6 +53,8 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     validate_find_mode(&args)?;
+    super::surface_scope::reject_root_with_surface("find", args.root.as_deref(), args.surface)?;
+    super::surface_scope::require_supported(args.surface, adapter)?;
     let query = locator_query_from_args(&args)?;
     query.validate_states().map_err(AppError::Adapter)?;
 
@@ -229,6 +234,10 @@ mod live;
 #[cfg(test)]
 #[path = "find_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "find_live_test_support.rs"]
+mod test_support;
 
 #[cfg(test)]
 #[path = "find_live_tests.rs"]

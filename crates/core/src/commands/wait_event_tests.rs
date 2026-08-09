@@ -103,6 +103,7 @@ fn app(name: &str, instance: &str) -> AppInfo {
         pid: crate::ProcessId::new(42),
         bundle_id: Some("com.example.editor".into()),
         process_instance: Some(instance.into()),
+        presentation: None,
     }
 }
 
@@ -329,6 +330,7 @@ fn failed_inventory_poll_never_reports_app_termination() {
         pid: crate::ProcessId::new(42),
         bundle_id: Some("com.apple.TextEdit".into()),
         process_instance: Some("test-instance".into()),
+        presentation: None,
     }]);
 
     let err = wait_for_event(request, &adapter, Some(Ok(baseline))).unwrap_err();

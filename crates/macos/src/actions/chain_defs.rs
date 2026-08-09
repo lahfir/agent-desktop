@@ -16,11 +16,21 @@ mod imp {
                 count: 1,
             },
             ChainStep::Action("AXPress"),
+            ChainStep::Action("AXOpen"),
+            ChainStep::CustomWithDeadline {
+                label: "select_within_container",
+                func: crate::actions::container_select::select_within_container,
+            },
+            ChainStep::Action("AXConfirm"),
         ],
         suggestion: "Target an element that advertises Click or use an explicit point click.",
         continue_after_unverified_delivery: false,
     };
 
+    /// Continues past an unverified delivery because an `AXShowMenu` that
+    /// reports success without opening a menu must not consume the fallbacks
+    /// behind it. Each step re-checks for an open menu first, so continuing
+    /// cannot raise a second one.
     pub(crate) static RIGHT_CLICK_CHAIN: ChainDef = ChainDef {
         steps: &[
             ChainStep::CGClick {
@@ -49,7 +59,7 @@ mod imp {
             },
         ],
         suggestion: "Try 'mouse-click --button right --xy X,Y'.",
-        continue_after_unverified_delivery: false,
+        continue_after_unverified_delivery: true,
     };
 
     pub(crate) static EXPAND_CHAIN: ChainDef = ChainDef {
@@ -89,7 +99,15 @@ mod imp {
     };
 
     pub(crate) static SEMANTIC_CLICK_CHAIN: ChainDef = ChainDef {
-        steps: &[ChainStep::Action("AXPress")],
+        steps: &[
+            ChainStep::Action("AXPress"),
+            ChainStep::Action("AXOpen"),
+            ChainStep::CustomWithDeadline {
+                label: "select_within_container",
+                func: crate::actions::container_select::select_within_container,
+            },
+            ChainStep::Action("AXConfirm"),
+        ],
         suggestion: "Target an element that advertises Click.",
         continue_after_unverified_delivery: false,
     };

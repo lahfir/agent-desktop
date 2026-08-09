@@ -52,12 +52,24 @@ pub(crate) fn read_frontmost_until(
     })
 }
 
+/// Frontmost-ness only selects whether a focused window is reported, and a busy
+/// application answering "unknown" is not a reason to fail the command that
+/// asked. Permission and API failures still propagate, because those describe
+/// the caller's access rather than the application's state.
+fn is_frontmost(app: &crate::tree::AXElement, deadline: Instant) -> Result<bool, AdapterError> {
+    match crate::tree::surface_read::boolean(app, "AXFrontmost", deadline) {
+        Ok(frontmost) => Ok(frontmost == Some(true)),
+        Err(error) if error.code == ErrorCode::PermDenied => Err(error),
+        Err(_) => Ok(false),
+    }
+}
+
 fn focused_identity(
     app: &crate::tree::AXElement,
     pid: i32,
     deadline: Instant,
 ) -> Result<Option<AxWindowIdentity>, AdapterError> {
-    if crate::tree::surface_read::boolean(app, "AXFrontmost", deadline)? != Some(true) {
+    if !is_frontmost(app, deadline)? {
         return Ok(None);
     }
     let Some(focused) = crate::tree::surface_read::element(app, "AXFocusedWindow", deadline)?

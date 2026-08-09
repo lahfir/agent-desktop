@@ -20,6 +20,7 @@ fn apps_from_window_records(
                 .expect("fixture pid must be positive"),
             bundle_id: None,
             process_instance: record.process_instance.clone(),
+            presentation: None,
         });
     }
 

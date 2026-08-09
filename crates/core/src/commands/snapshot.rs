@@ -60,15 +60,11 @@ pub fn execute(
                 "Run snapshot without --root, or omit the wait selector flags.",
             ));
         }
-        if !matches!(args.surface, SnapshotSurface::Window) {
-            return Err(AppError::invalid_input(
-                "--root cannot be combined with --surface",
-            ));
-        }
+        super::surface_scope::reject_root_with_surface("snapshot", Some(root), args.surface)?;
         validate_ref_id(root)?;
     }
 
-    validate_surface_support(args.surface, adapter)?;
+    super::surface_scope::require_supported(args.surface, adapter)?;
 
     let opts = tree_options(&args);
 
@@ -106,33 +102,6 @@ pub fn execute(
     )?;
 
     format_result(result)
-}
-
-fn validate_surface_support(
-    requested: SnapshotSurface,
-    adapter: &dyn PlatformAdapter,
-) -> Result<(), AppError> {
-    let supported = adapter.supported_surfaces();
-    if supported.contains(&requested) {
-        return Ok(());
-    }
-    let supported = supported
-        .into_iter()
-        .map(SnapshotSurface::as_str)
-        .collect::<Vec<_>>();
-    Err(crate::AdapterError::new(
-        crate::ErrorCode::PlatformNotSupported,
-        format!(
-            "Snapshot surface '{}' is not supported on this platform",
-            requested.as_str()
-        ),
-    )
-    .with_details(json!({
-        "requested_surface": requested.as_str(),
-        "supported_surfaces": supported
-    }))
-    .with_suggestion("Choose one of the supported snapshot surfaces")
-    .into())
 }
 
 fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {

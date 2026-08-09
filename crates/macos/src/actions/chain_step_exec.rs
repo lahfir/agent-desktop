@@ -22,10 +22,7 @@ mod imp {
         match step {
             ChainStep::Action(name) => {
                 prepare(el, ctx.deadline)?;
-                Ok(DeliveryOutcome::from_delivery(
-                    ax_helpers::try_ax_action_or_err(el, name, ctx.deadline)?,
-                    false,
-                ))
+                ax_helpers::perform_observed_action(el, name, ctx.deadline)
             }
 
             ChainStep::SetBool { attr, value } => {

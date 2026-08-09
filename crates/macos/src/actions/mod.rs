@@ -1,3 +1,4 @@
+pub(crate) mod activation_effect;
 mod adapter;
 pub(crate) mod ax_helpers;
 #[cfg(target_os = "macos")]
@@ -13,6 +14,7 @@ mod chain_step;
 pub(crate) mod chain_step_exec;
 pub(crate) mod chain_value_write;
 pub(crate) mod chain_verify;
+pub(crate) mod container_select;
 pub(crate) mod delivery_tracker;
 pub(crate) mod dispatch;
 pub(crate) mod extras;

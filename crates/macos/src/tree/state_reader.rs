@@ -60,7 +60,7 @@ pub(crate) fn states_from_element(
     if attrs.states.control.readonly == Some(true) {
         states.push(state::READONLY.into());
     }
-    if is_offscreen(attrs.bounds, ctx.window_bounds) {
+    if offscreen(attrs.bounds, ctx.window_bounds).unwrap_or(false) {
         states.push(state::OFFSCREEN.into());
     }
     states
@@ -83,15 +83,17 @@ fn value_is_indeterminate(value: Option<&str>) -> bool {
     matches!(value, Some("2" | "mixed"))
 }
 
-fn is_offscreen(bounds: Option<Rect>, window_bounds: Option<Rect>) -> bool {
-    let (Some(el), Some(win)) = (bounds, window_bounds) else {
-        return false;
-    };
-    let el_right = el.x + el.width;
-    let el_bottom = el.y + el.height;
-    let win_right = win.x + win.width;
-    let win_bottom = win.y + win.height;
-    el_right <= win.x || el.x >= win_right || el_bottom <= win.y || el.y >= win_bottom
+/// `None` when either rectangle is unknown. No macOS element publishes
+/// `AXOffscreen`, so this geometry test is the only source of the state and
+/// both the canonical state list and the live element read must share it.
+pub(crate) fn offscreen(bounds: Option<Rect>, window_bounds: Option<Rect>) -> Option<bool> {
+    let (el, win) = bounds.zip(window_bounds)?;
+    Some(
+        el.x + el.width <= win.x
+            || el.x >= win.x + win.width
+            || el.y + el.height <= win.y
+            || el.y >= win.y + win.height,
+    )
 }
 
 #[cfg(test)]

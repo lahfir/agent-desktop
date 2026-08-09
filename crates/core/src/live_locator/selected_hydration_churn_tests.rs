@@ -205,6 +205,7 @@ fn selected_request() -> LocatorResolveRequest {
         selection: LocatorSelection::First,
         deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::SelectedMatches,
     }
 }
@@ -247,7 +248,7 @@ fn single_hydration_tree(
         vec![0],
         true,
     );
-    tree.source = ObservationSource::from_root(&root);
+    tree.source = ObservationSource::from_root(&root, crate::SnapshotSurface::Window);
     tree.structurally_complete = topology_complete;
     tree
 }

@@ -1,9 +1,7 @@
 #[cfg(target_os = "macos")]
 mod imp {
     use crate::tree::{AXElement, bounded_string::BoundedString};
-    use accessibility_sys::{
-        kAXErrorAttributeUnsupported, kAXErrorNoValue, kAXErrorSuccess, kAXValueAttribute,
-    };
+    use accessibility_sys::{kAXErrorSuccess, kAXValueAttribute};
     use core_foundation::{
         base::{CFType, CFTypeRef, TCFType},
         boolean::CFBoolean,
@@ -123,7 +121,7 @@ mod imp {
     }
 
     fn is_absent_error(error: i32) -> bool {
-        error == kAXErrorAttributeUnsupported || error == kAXErrorNoValue
+        crate::tree::ax_absence::is_absent_attribute_error(error)
     }
 
     fn release_if_present(value: CFTypeRef) {
