@@ -250,3 +250,50 @@ fn mismatched_creation_token_is_benign_ok_without_killing_live_pid() {
         "exit verification must use pid+token; a mismatched token must not TerminateProcess"
     );
 }
+
+#[cfg(target_os = "windows")]
+#[test]
+fn force_terminate_handle_token_must_match_before_kill() {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    };
+
+    crate::tree::fixture::bootstrap();
+    let fixture = crate::tree::fixture::HostedFixture::spawn().expect("fixture");
+    let pid = ProcessId::from(fixture.process_id());
+    let live = process_identity::token_for_pid(pid)
+        .expect("token")
+        .expect("live");
+    let access = PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE;
+    let handle = unsafe { OpenProcess(access, 0, u32::from(pid)) };
+    assert!(!handle.is_null());
+    assert!(
+        super::handle_matches_instance(handle, pid, &live).expect("read"),
+        "live handle must match its creation-time token"
+    );
+    assert!(
+        !super::handle_matches_instance(handle, pid, "windows-proc-v1:1:1").expect("read"),
+        "mismatched token on the open handle must refuse terminate"
+    );
+    unsafe { CloseHandle(handle) };
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn graceful_wm_close_skips_hwnd_whose_owner_pid_changed() {
+    crate::tree::fixture::bootstrap();
+    let fixture = crate::tree::fixture::HostedFixture::spawn().expect("fixture");
+    let foreign = crate::tree::fixture::LocalFixture::create().expect("foreign");
+    let pid = ProcessId::from(fixture.process_id());
+    let token = process_identity::token_for_pid(pid)
+        .expect("token")
+        .expect("live");
+    super::post_wm_close_if_still_owned(foreign.handle() as isize, pid, &token)
+        .expect("foreign hwnd is skipped, not an error");
+    assert!(
+        process_still_alive(pid, &token),
+        "skipping a foreign hwnd must not close the target process"
+    );
+    let _ = fixture;
+}

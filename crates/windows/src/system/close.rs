@@ -80,7 +80,7 @@ fn graceful_close(pid: ProcessId, instance: &str, deadline: Deadline) -> Result<
     }
     for hwnd in windows {
         ensure_budget(deadline).map_err(before_termination)?;
-        post_wm_close(hwnd).map_err(before_termination)?;
+        post_wm_close_if_still_owned(hwnd, pid, instance).map_err(before_termination)?;
     }
     Ok(())
 }
@@ -127,6 +127,14 @@ fn force_terminate(pid: ProcessId, instance: &str, deadline: Deadline) -> Result
         return Err(before_termination(win32_last_error(
             "OpenProcess failed before TerminateProcess",
         )));
+    }
+    let token_matches = handle_matches_instance(handle, pid, instance).map_err(|error| {
+        unsafe { CloseHandle(handle) };
+        before_termination(error)
+    })?;
+    if !token_matches {
+        unsafe { CloseHandle(handle) };
+        return Ok(());
     }
     let ok = unsafe { TerminateProcess(handle, 1) };
     let error = if ok == 0 {
@@ -223,14 +231,61 @@ fn top_level_windows_for_pid(pid: ProcessId) -> Result<Vec<isize>, AdapterError>
 }
 
 #[cfg(target_os = "windows")]
-fn post_wm_close(hwnd: isize) -> Result<(), AdapterError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+fn post_wm_close_if_still_owned(
+    hwnd: isize,
+    pid: ProcessId,
+    instance: &str,
+) -> Result<(), AdapterError> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowThreadProcessId, PostMessageW, WM_CLOSE,
+    };
 
+    let mut owner: u32 = 0;
+    unsafe { GetWindowThreadProcessId(hwnd as *mut core::ffi::c_void, &mut owner) };
+    if owner != u32::from(pid) {
+        return Ok(());
+    }
+    if !process_identity::matches_instance(pid, instance)? {
+        return Ok(());
+    }
     let posted = unsafe { PostMessageW(hwnd as *mut core::ffi::c_void, WM_CLOSE, 0, 0) };
     if posted == 0 {
         return Err(win32_last_error("PostMessageW(WM_CLOSE) failed"));
     }
     Ok(())
+}
+
+/// Verifies the open process handle's creation times still match `instance`
+/// before a terminate write, so a recycled pid cannot be killed.
+#[cfg(target_os = "windows")]
+fn handle_matches_instance(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    _pid: ProcessId,
+    instance: &str,
+) -> Result<bool, AdapterError> {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetProcessTimes;
+
+    let mut created = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    let read_ok =
+        unsafe { GetProcessTimes(handle, &mut created, &mut exit, &mut kernel, &mut user) };
+    if read_ok == 0 {
+        return Ok(false);
+    }
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    if ticks == 0 {
+        return Ok(false);
+    }
+    const TICKS_PER_SECOND: u64 = 10_000_000;
+    let from_handle = format!(
+        "windows-proc-v1:{}:{}",
+        ticks / TICKS_PER_SECOND,
+        ticks % TICKS_PER_SECOND
+    );
+    Ok(from_handle == instance)
 }
 
 #[cfg(target_os = "windows")]
