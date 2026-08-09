@@ -89,13 +89,25 @@ pub(crate) fn process_state_impl(
     Err(AdapterError::not_supported("process_state"))
 }
 
+/// `WaitForSingleObject` on a process handle settles into exactly one of
+/// three outcomes, and only one of them means the process is alive:
+/// `WAIT_OBJECT_0` (the handle is signaled - the process has exited, so its
+/// exit code can be read and classified), `WAIT_TIMEOUT` (the handle is
+/// still unsignaled - the process is genuinely running, so classification
+/// proceeds to the window-hang probe), or `WAIT_FAILED` (the wait itself
+/// could not judge liveness at all, most often because the handle was
+/// opened without `SYNCHRONIZE` rights, e.g. across an integrity boundary).
+/// A failed wait is not a timeout wearing a different name: folding it into
+/// the `WAIT_TIMEOUT` path would report a process this call cannot see as
+/// confidently alive, so it surfaces as the classified Win32 error instead
+/// of an invented state.
 #[cfg(target_os = "windows")]
 fn classify_opened(
     handle: windows_sys::Win32::Foundation::HANDLE,
     pid: agent_desktop_core::ProcessId,
     deadline: Deadline,
 ) -> Result<ProcessState, AdapterError> {
-    use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+    use windows_sys::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
     use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
 
     ensure_budget(deadline)?;
@@ -108,6 +120,11 @@ fn classify_opened(
             ));
         }
         return Ok(state_from_exit_code(code));
+    }
+    if wait != WAIT_TIMEOUT {
+        return Err(win32_last_error(
+            "WaitForSingleObject failed and could not judge process liveness",
+        ));
     }
     let windows = top_level_windows_for(pid)?;
     if windows.is_empty() {

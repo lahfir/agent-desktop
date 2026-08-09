@@ -34,29 +34,6 @@ fn close_requires_a_creation_time_token() {
     );
 }
 
-#[test]
-fn windowless_alive_error_names_pid_and_stays_not_delivered() {
-    let error = AdapterError::new(
-        ErrorCode::ActionFailed,
-        "Process 42 has no top-level windows to receive WM_CLOSE",
-    )
-    .with_details(serde_json::json!({ "pid": 42 }))
-    .with_suggestion("Retry with --force to terminate pid 42 without WM_CLOSE")
-    .with_disposition(DeliverySemantics::not_delivered());
-    assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert!(error.message.contains("42"));
-    assert!(
-        error
-            .suggestion
-            .as_deref()
-            .is_some_and(|text| text.contains("force") && text.contains("42"))
-    );
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::NotDelivered
-    );
-}
-
 #[cfg(target_os = "windows")]
 fn deadline() -> Deadline {
     Deadline::after(10_000).expect("deadline")
@@ -80,8 +57,22 @@ fn process_still_alive(pid: ProcessId, instance: &str) -> bool {
     !super::process_observed_gone(pid, instance).expect("liveness")
 }
 
+/// Kills and reaps the wrapped child when it drops, including on panic
+/// unwind, so a test that spawns a long-lived diagnostic child cannot orphan
+/// it and its grandchild process by stopping short of its own cleanup.
 #[cfg(target_os = "windows")]
-fn spawn_windowless_child() -> (std::process::Child, ProcessId, String) {
+struct KillOnDrop(std::process::Child);
+
+#[cfg(target_os = "windows")]
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_windowless_child() -> (KillOnDrop, ProcessId, String) {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -101,7 +92,7 @@ fn spawn_windowless_child() -> (std::process::Child, ProcessId, String) {
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     };
-    (child, pid, token)
+    (KillOnDrop(child), pid, token)
 }
 
 #[cfg(target_os = "windows")]
@@ -141,12 +132,24 @@ fn force_terminates_wm_close_ignoring_process_and_verifies_exit() {
 
 /// Invert: if `wait_for_exit` returned `Ok(())` before observing process exit,
 /// this timeout assertion would fail (go red).
+///
+/// The target must be a process whose window set this test alone owns.
+/// Targeting the test binary's own pid would broadcast `WM_CLOSE` to every
+/// top-level window the whole test process owns, including other tests'
+/// `LocalFixture` windows running in parallel on that same pid - and those
+/// windows fall through to `DefWindowProcW`, which destroys them. A
+/// `HostedFixture` child process that swallows `WM_CLOSE` keeps the close
+/// request contained to a window nothing else depends on, while still
+/// forcing the deadline to genuinely expire.
 #[cfg(target_os = "windows")]
 #[test]
 fn graceful_deadline_timeout_is_delivered_unverified() {
-    let _stalled = crate::tree::fixture::StalledFixture::create().expect("stalled");
-    let pid = ProcessId::from(std::process::id());
-    let app = app_for_pid("test-runner", pid);
+    crate::tree::fixture::bootstrap();
+    let fixture = crate::tree::fixture::HostedFixture::spawn_swallowing_wm_close()
+        .expect("swallowing fixture");
+    let pid = ProcessId::from(fixture.process_id());
+    let app = app_for_pid("fixture-host", pid);
+    let instance = app.process_instance.clone().expect("token");
     let short = Deadline::after(200).expect("short deadline");
 
     let error = close_app_impl(&app, false, short).expect_err("timeout");
@@ -157,8 +160,8 @@ fn graceful_deadline_timeout_is_delivered_unverified() {
         DeliveryDisposition::DeliveredUnverified
     );
     assert!(
-        process_still_alive(pid, app.process_instance.as_deref().expect("token")),
-        "timeout must not terminate the caller; invert would pass if Ok returned early"
+        process_still_alive(pid, &instance),
+        "timeout must not terminate the target; invert would pass if Ok returned early"
     );
 }
 
@@ -192,7 +195,7 @@ fn race_windows_gone_because_process_died_is_benign_ok() {
 #[cfg(target_os = "windows")]
 #[test]
 fn windowless_alive_graceful_is_action_failed_not_delivered_without_terminate() {
-    let (mut child, pid, token) = spawn_windowless_child();
+    let (_child, pid, token) = spawn_windowless_child();
     let app = AppInfo {
         name: "cmd.exe".into(),
         pid,
@@ -223,8 +226,6 @@ fn windowless_alive_graceful_is_action_failed_not_delivered_without_terminate() 
         process_still_alive(pid, &token),
         "graceful windowless must never silent-TerminateProcess"
     );
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 #[cfg(target_os = "windows")]
@@ -306,9 +307,10 @@ fn unusable_window() -> AdapterError {
     AdapterError::new(ErrorCode::ActionFailed, "PostMessageW(WM_CLOSE) failed")
 }
 
-/// R2's fan-out rule: one window's refusal must not cancel delivery to the
-/// siblings, because the window that owns an app's shutdown may be enumerated
-/// after a window that has already torn itself down.
+/// One window's refusal must not cancel delivery to the others: the window
+/// that owns an app's shutdown can be anywhere in the list, including after
+/// a sibling that already refused or one that tore itself down in response
+/// to an earlier post in the same fan-out.
 #[test]
 fn a_failing_window_does_not_cancel_close_delivery_to_the_others() {
     let mut attempted = Vec::new();
@@ -325,8 +327,8 @@ fn a_failing_window_does_not_cancel_close_delivery_to_the_others() {
     });
 
     assert!(
-        result.is_ok(),
-        "a delivered sibling makes the fan-out a success"
+        result.expect("a delivered sibling makes the fan-out a success"),
+        "at least one successful post must report delivered"
     );
     assert_eq!(
         attempted,
@@ -352,14 +354,23 @@ fn a_fan_out_that_delivers_nothing_reports_the_failure() {
     );
 }
 
-/// A window skipped on ownership grounds is not a failure, so a fan-out of
-/// nothing-but-skips succeeds and leaves the verdict to the exit observation.
+/// A window skipped on ownership grounds is not itself a fan-out failure, but
+/// it is not a delivered close either: `broadcast_close` reports an all-skip
+/// fan-out as nothing delivered so the caller applies the same liveness check
+/// it uses for a process with no windows at all, instead of assuming the skip
+/// means the OS accepted the request.
 #[test]
-fn skipped_windows_alone_are_not_a_close_failure() {
-    super::broadcast_close(&[1, 2], Deadline::after(1_000).expect("deadline"), |_| {
-        Ok(false)
-    })
-    .expect("skips are not failures");
+fn skipped_windows_alone_report_nothing_delivered() {
+    let delivered =
+        super::broadcast_close(&[1, 2], Deadline::after(1_000).expect("deadline"), |_| {
+            Ok(false)
+        })
+        .expect("skips alone are not a fan-out failure");
+
+    assert!(
+        !delivered,
+        "an all-skip fan-out must report nothing delivered, not a false success"
+    );
 }
 
 /// `259` is `STILL_ACTIVE`, the same value `GetExitCodeProcess` reports for a

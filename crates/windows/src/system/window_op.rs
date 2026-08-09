@@ -17,15 +17,20 @@ const PLACEMENT_REREAD_MS: u64 = 80;
 
 /// Refuses a window write to a target that is not dispatching messages.
 ///
-/// Every step that follows reaches the owning thread's message queue, so a
-/// window whose thread never dispatches blocks the caller inside an OS call -
-/// measured as a call that never returns, the same shape A14-11 recorded for
-/// `ElementFromHandle`. The write is not the first such step: identity
-/// verification reads the live title, and `GetWindowTextW` sends `WM_GETTEXT`,
-/// so it blocks before any placement call is reached. The ping therefore runs
-/// ahead of verification rather than just ahead of the write. A `Deadline`
-/// cannot rescue either one: it is checked before the call and the block
-/// happens inside it.
+/// Every native write that follows - `SetWindowPos` for resize and move, or
+/// `ShowWindow` for minimize, maximize, and restore - reaches the owning
+/// thread's message queue, so a window whose thread never dispatches blocks
+/// the caller inside one of them, the same shape A14-11 recorded for
+/// `ElementFromHandle`. A `Deadline` cannot rescue that: it is checked before
+/// the call and the block happens inside it.
+///
+/// This ping runs once, after identity verification and before the first
+/// native write: verification's own live title read already bounds itself
+/// with a pumping probe ahead of `GetWindowTextW`, so placing the ping after
+/// verification never risks the hang this check exists to prevent, while
+/// placing it before verification would mislabel a destroyed or re-owned
+/// handle `APP_UNRESPONSIVE` instead of surfacing its stale-identity
+/// envelope.
 #[cfg(target_os = "windows")]
 fn ensure_window_is_pumping(handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
     if super::window_enum::window_is_responsive(handle) {
@@ -345,6 +350,21 @@ fn placement_unverified(operation: &str) -> AdapterError {
     ))
 }
 
+/// The handle's owner changed between `ensure_owned_before`'s read and the
+/// native call it guards; the write is refused before anything is sent.
+///
+/// What this before/after pair cannot promise, stated as a known limit
+/// rather than a missed case: no Win32 call lets a caller act on a window
+/// only while a given process is certain to still own it, so
+/// `ensure_owned_before`'s read and the write it guards remain two distinct
+/// steps no matter how close together they run. A recycle landing between
+/// them mutates whatever window inherited the handle, and that mutation
+/// cannot be reversed. `ensure_owned_after` narrows the exposure rather than
+/// closing it - catching a mismatch there only proves the write may have
+/// reached a window this operation no longer owns, which is why that
+/// failure is reported delivered-unverified rather than not-delivered.
+/// Nothing short of an atomic check-and-act primitive, which Win32 does not
+/// provide, removes the gap.
 fn recycled_before_write() -> AdapterError {
     before_write(AdapterError::new(
         ErrorCode::WindowNotFound,

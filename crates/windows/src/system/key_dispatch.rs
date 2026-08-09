@@ -48,9 +48,35 @@ pub(crate) fn press_for_app_impl(
 fn ensure_injection_integrity(pid: ProcessId) -> Result<(), AdapterError> {
     #[cfg(all(test, target_os = "windows"))]
     if force_higher_integrity::is_active() {
-        return crate::input::elevation::evaluate_integrity_gate(Some(0x2000), Some(0x3000));
+        return crate::input::elevation::evaluate_integrity_gate(Some(0x2000), Some(0x3000))
+            .map_err(as_predelivery_refusal);
     }
-    ensure_target_integrity_allows_input(pid)
+    ensure_target_integrity_allows_input(pid).map_err(as_predelivery_refusal)
+}
+
+/// Reframes the shared elevation gate's `raw_input_emitted` claim into this
+/// file's own `physical_delivery_started` vocabulary.
+///
+/// `ensure_injection_integrity` runs at the top of `press_for_app_impl`,
+/// before foreground verification or focus polling ever run, so the honest
+/// claim at this call site is that the whole key-press delivery never
+/// started - not narrowly that a raw injection call was skipped. The shared
+/// gate's own wording stays correct for its other callers, which sit
+/// immediately ahead of a raw injection call; leaving it unchanged here
+/// would leave this file's own refusals describing the same fact two
+/// different ways.
+fn as_predelivery_refusal(mut error: AdapterError) -> AdapterError {
+    let Some(object) = error
+        .details
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return error;
+    };
+    if let Some(value) = object.remove("raw_input_emitted") {
+        object.insert("physical_delivery_started".to_string(), value);
+    }
+    error
 }
 
 fn ensure_foreground_for_delivery(
@@ -193,6 +219,10 @@ fn process_owns_foreground(_pid: ProcessId, _instance: &str) -> Result<bool, Ada
 
 #[cfg(target_os = "windows")]
 fn process_holds_keyboard_focus(pid: ProcessId) -> Result<bool, AdapterError> {
+    #[cfg(test)]
+    if force_keyboard_focus_denied::is_active() {
+        return Ok(false);
+    }
     use windows_sys::Win32::UI::WindowsAndMessaging::{GUITHREADINFO, GetGUIThreadInfo};
 
     let mut info = GUITHREADINFO {
@@ -239,112 +269,22 @@ fn window_process_id(handle: windows_sys::Win32::Foundation::HWND) -> Option<Pro
 }
 
 #[cfg(all(test, target_os = "windows"))]
-mod force_higher_integrity {
-    use std::cell::Cell;
-
-    thread_local! {
-        static ACTIVE: Cell<bool> = const { Cell::new(false) };
-    }
-
-    pub(super) fn is_active() -> bool {
-        ACTIVE.with(Cell::get)
-    }
-
-    pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-            }
-        }
-        ACTIVE.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
-    }
-}
+#[path = "key_dispatch_hooks.rs"]
+mod hooks;
 
 #[cfg(all(test, target_os = "windows"))]
-mod force_focus_lost {
-    use std::cell::Cell;
-
-    thread_local! {
-        static ACTIVE: Cell<bool> = const { Cell::new(false) };
-    }
-
-    pub(super) fn is_active() -> bool {
-        ACTIVE.with(Cell::get)
-    }
-
-    pub(super) fn arm() {
-        ACTIVE.with(|flag| flag.set(true));
-    }
-
-    pub(super) fn with_armed_after_hook<R>(
-        mut hook: impl FnMut() + 'static,
-        run: impl FnOnce() -> R,
-    ) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-                super::between_verify_and_inject::clear();
-            }
-        }
-        super::between_verify_and_inject::install(Box::new(move || {
-            hook();
-            arm();
-        }));
-        let _reset = ResetOnDrop;
-        run()
-    }
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod between_verify_and_inject {
-    use std::cell::RefCell;
-
-    thread_local! {
-        static HOOK: RefCell<Option<Box<dyn FnMut()>>> = RefCell::new(None);
-    }
-
-    pub(super) fn run() {
-        HOOK.with(|cell| {
-            if let Some(hook) = cell.borrow_mut().as_mut() {
-                hook();
-            }
-        });
-    }
-
-    pub(super) fn install(hook: Box<dyn FnMut()>) {
-        HOOK.with(|cell| *cell.borrow_mut() = Some(hook));
-    }
-
-    pub(super) fn clear() {
-        HOOK.with(|cell| *cell.borrow_mut() = None);
-    }
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod synthesis_probe {
-    use std::cell::Cell;
-
-    thread_local! {
-        static COUNT: Cell<u32> = const { Cell::new(0) };
-    }
-
-    pub(super) fn note() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn count() -> u32 {
-        COUNT.with(Cell::get)
-    }
-
-    pub(super) fn reset() {
-        COUNT.with(|cell| cell.set(0));
-    }
-}
+use hooks::{
+    between_verify_and_inject, force_focus_lost, force_higher_integrity,
+    force_keyboard_focus_denied, synthesis_probe,
+};
 
 #[cfg(test)]
 #[path = "key_dispatch_tests.rs"]
 mod tests;
+
+/// Split from `key_dispatch_tests.rs`, which sits at the per-file line cap:
+/// this module owns the keyboard-focus verification timeout, a scenario
+/// distinct from that file's foreground and integrity preflight gates.
+#[cfg(test)]
+#[path = "key_dispatch_focus_tests.rs"]
+mod focus_tests;

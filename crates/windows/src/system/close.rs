@@ -77,29 +77,44 @@ fn graceful_close(pid: ProcessId, instance: &str, deadline: Deadline) -> Result<
     if windows.is_empty() {
         return windowless_graceful_fallback(pid, instance, deadline);
     }
-    broadcast_close(&windows, deadline, |hwnd| {
+    let delivered = broadcast_close(&windows, deadline, |hwnd| {
         post_wm_close_if_still_owned(hwnd, pid, instance)
-    })
+    })?;
+    if delivered {
+        Ok(())
+    } else {
+        windowless_graceful_fallback(pid, instance, deadline)
+    }
 }
 
-/// Posts the close request to every owned window before reporting a failure.
+/// Posts the close request to every owned window, reporting whether any of
+/// them actually received it.
 ///
 /// A multi-window app only closes when the request reaches the window that
 /// owns its shutdown, so one window's refusal must not cancel delivery to its
 /// siblings - and a window destroyed between enumeration and post is the
 /// expected shape once an app starts tearing itself down in response to an
 /// earlier post in this very loop. The fan-out therefore keeps going and only
-/// surfaces a failure when **no** window accepted the request; when at least
-/// one did, `wait_for_exit`'s independent process-gone re-read is the source
-/// of truth, not the count of successful posts. That is also why a deadline
-/// that expires mid-fan-out stops the loop instead of failing it: a request
+/// surfaces a failure when **no** window accepted the request and at least
+/// one post actually failed; when at least one post succeeded,
+/// `wait_for_exit`'s independent process-gone re-read is the source of truth,
+/// not the count of successful posts. That is also why a deadline that
+/// expires mid-fan-out stops the loop instead of failing it: a request
 /// already posted may already be closing the app, so reporting `not_delivered`
 /// there would tell the caller a retry is free when it is not.
+///
+/// Ownership can also change mid-loop without any post failing, when every
+/// window this pid owned at enumeration time has since been reassigned or
+/// torn down; that posts nothing and fails nothing, so it is reported as
+/// `Ok(false)` rather than folded into an unconditional success. The caller
+/// must then apply the same liveness check it uses for a process that had no
+/// windows at all, rather than assume the OS accepted a request that was
+/// never sent.
 fn broadcast_close(
     windows: &[isize],
     deadline: Deadline,
     mut post: impl FnMut(isize) -> Result<bool, AdapterError>,
-) -> Result<(), AdapterError> {
+) -> Result<bool, AdapterError> {
     let mut delivered = false;
     let mut first_failure = None;
     for hwnd in windows {
@@ -121,10 +136,17 @@ fn broadcast_close(
     }
     match first_failure {
         Some(error) if !delivered => Err(before_termination(error)),
-        _ => Ok(()),
+        _ => Ok(delivered),
     }
 }
 
+/// The honest verdict when no close request could be delivered.
+///
+/// Reached two ways: the process owned no top-level window at enumeration
+/// time, and every window it did own was skipped because ownership changed
+/// before the post. Both mean the same thing to a caller - nothing was sent -
+/// so both get the same answer, and a process that has since exited is still
+/// the benign success it would have been anyway.
 #[cfg(target_os = "windows")]
 fn windowless_graceful_fallback(
     pid: ProcessId,
@@ -137,7 +159,7 @@ fn windowless_graceful_fallback(
     }
     Err(AdapterError::new(
         ErrorCode::ActionFailed,
-        format!("Process {pid} has no top-level windows to receive WM_CLOSE"),
+        format!("No window owned by process {pid} could receive WM_CLOSE"),
     )
     .with_details(serde_json::json!({ "pid": u32::from(pid) }))
     .with_suggestion(format!(

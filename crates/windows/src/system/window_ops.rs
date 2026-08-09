@@ -260,6 +260,7 @@ mod tests {
                 crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
 
             let mut listed = None;
+            let mut last_refusal = None;
             for _ in 0..LISTING_RACE_ATTEMPTS {
                 match list_windows_live(&WindowFilter::default()) {
                     Ok(windows) => {
@@ -272,10 +273,30 @@ mod tests {
                             agent_desktop_core::ErrorCode::WindowNotFound,
                             "the only refusal this inventory may report is the mid-listing identity race"
                         );
+                        last_refusal = Some(error);
                     }
                 }
             }
             let Some(windows) = listed else {
+                let refusal = last_refusal.expect(
+                    "the loop ran at least once, so an exhausted retry budget always carries a refusal",
+                );
+                assert_eq!(
+                    refusal.code,
+                    agent_desktop_core::ErrorCode::WindowNotFound,
+                    "a permanently-refusing inventory must still be refusing the documented \
+                     mid-listing race, not failing some other way"
+                );
+                if let Some(kind) = refusal
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.get("kind"))
+                {
+                    assert!(
+                        kind.is_string(),
+                        "a details.kind on the exhausted refusal must be a string, got {kind:?}"
+                    );
+                }
                 return;
             };
 

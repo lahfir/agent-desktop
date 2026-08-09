@@ -12,9 +12,17 @@ use super::permissions::ensure_budget;
 use super::window_identity::WindowIdentityEvidence;
 use super::window_ops::{is_foreground_window, parse_handle};
 
-/// A21-6: uncontended first attempt always lands; keep a finite retry of one
-/// additional attach-and-set-foreground after a short delay so the retry can
-/// observe the attach. Never unbounded.
+/// A21-6: the committed capture recorded 0/5 first-attempt successes, and
+/// the scratch-window foreground transition did not land on the second
+/// attempt either; the repo-controlled scratch host cannot stage the
+/// contention this retry exists to survive, so that case was never
+/// exercised here. A budget still has to be finite regardless of what this
+/// host could measure: an unbounded retry against a target that truly
+/// never becomes foreground would hang the caller instead of failing
+/// closed. Two keeps the one extra attach-and-set-foreground attempt after
+/// a short delay, enough for a retry to observe an attach the first
+/// attempt raced, then exhausts and fails closed rather than asserting a
+/// success rate this capture never showed.
 const FOCUS_STEAL_BUDGET: u32 = 2;
 const INTER_ATTEMPT_DELAY: Duration = Duration::from_millis(25);
 
@@ -67,14 +75,19 @@ fn before_activation(error: AdapterError) -> AdapterError {
 
 /// Refuses activation of a target that is not dispatching messages.
 ///
-/// Every step that follows reaches the owning thread's message queue, so a
-/// window whose thread never dispatches blocks the caller inside an OS call -
-/// the same shape A14-11 recorded for `ElementFromHandle`. The raise is not
-/// the first such step: identity verification reads the live title, and
-/// `GetWindowTextW` sends `WM_GETTEXT`, so it blocks before any activation
-/// call is reached. The retry budget cannot bound that either, because it is
-/// consulted between attempts while the block happens inside one. Every headed
-/// command reaches this path, so the ping runs once, ahead of verification.
+/// Every native write that follows - `restore_if_iconic`, then
+/// `bring_to_foreground` - reaches the owning thread's message queue, so a
+/// window whose thread never dispatches would block the caller inside one of
+/// them, the same shape A14-11 recorded for `ElementFromHandle`. The retry
+/// budget cannot bound that either, because it is consulted between attempts
+/// while the block would happen inside one. Every headed command needs this
+/// ping run once, and it runs after identity verification and before the
+/// first native write: verification's own live title read already bounds
+/// itself with a pumping probe ahead of `GetWindowTextW`, so placing the
+/// ping after it never risks the hang this check exists to prevent, while
+/// placing it before verification would mislabel a destroyed or recycled
+/// handle `APP_UNRESPONSIVE` instead of surfacing its stale-identity
+/// envelope.
 #[cfg(target_os = "windows")]
 fn ensure_window_is_pumping(handle: super::window_enum::WindowHandle) -> Result<(), AdapterError> {
     if super::window_enum::window_is_responsive(handle) {
@@ -118,10 +131,12 @@ fn raise_with_budget(
     strictly_higher: bool,
 ) -> Result<(), AdapterError> {
     for attempt in 0..FOCUS_STEAL_BUDGET {
-        ensure_budget(lease.deadline())?;
-        if attempt > 0 {
+        if attempt == 0 {
+            ensure_budget(lease.deadline()).map_err(before_activation)?;
+        } else {
+            ensure_budget(lease.deadline()).map_err(after_foreground_write_attempted)?;
             std::thread::sleep(INTER_ATTEMPT_DELAY);
-            ensure_budget(lease.deadline())?;
+            ensure_budget(lease.deadline()).map_err(after_foreground_write_attempted)?;
         }
         #[cfg(test)]
         attempt_probe::begin_attempt(attempt);
@@ -131,6 +146,21 @@ fn raise_with_budget(
         }
     }
     Err(budget_exhausted(strictly_higher))
+}
+
+/// A lease can expire between budget-loop attempts as well as before the
+/// first one, and the two are different delivery claims, not the same
+/// timeout twice. Before this loop's first `bring_to_foreground` call the
+/// window has not been touched, so that timeout is routed through
+/// `before_activation` like every pre-write failure above it. From the
+/// second attempt onward, a prior `bring_to_foreground` call has already
+/// issued `ShowWindow`/`SetForegroundWindow` against the live handle, so the
+/// envelope cannot claim nothing was written even though the error itself is
+/// a plain `Timeout`. That mirrors the split the keyboard and mouse release
+/// guards already use: not-delivered while nothing has gone out,
+/// delivered-unverified once a physical write has.
+fn after_foreground_write_attempted(error: AdapterError) -> AdapterError {
+    error.with_disposition(DeliverySemantics::delivered_unverified())
 }
 
 pub(crate) fn budget_exhausted(strictly_higher: bool) -> AdapterError {

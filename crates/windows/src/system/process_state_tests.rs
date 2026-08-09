@@ -1,5 +1,7 @@
 use super::*;
-use agent_desktop_core::{Deadline, ProcessId, ProcessIdentity, process_state::ProcessState};
+use agent_desktop_core::{
+    Deadline, ErrorCode, ProcessId, ProcessIdentity, process_state::ProcessState,
+};
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
@@ -92,6 +94,29 @@ fn identity_for_pid(pid: ProcessId) -> ProcessIdentity {
 #[cfg(target_os = "windows")]
 fn deadline() -> Deadline {
     Deadline::after(5_000).expect("deadline")
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn wait_failure_is_reported_never_treated_as_alive() {
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    let pid = ProcessId::from(std::process::id());
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, u32::from(pid)) };
+    assert!(
+        !handle.is_null(),
+        "OpenProcess with only PROCESS_QUERY_LIMITED_INFORMATION must still succeed"
+    );
+    let outcome = classify_opened(handle, pid, deadline());
+    close_handle(handle);
+    let error = outcome.expect_err(
+        "a handle without SYNCHRONIZE rights cannot wait, so liveness must not be reported",
+    );
+    assert_eq!(
+        error.code,
+        ErrorCode::PermDenied,
+        "WAIT_FAILED must surface the classified Win32 error, not an invented Running state"
+    );
 }
 
 #[cfg(target_os = "windows")]

@@ -5,12 +5,12 @@ use agent_desktop_core::{
 };
 
 #[cfg(target_os = "windows")]
-fn deadline() -> Deadline {
+pub(super) fn deadline() -> Deadline {
     Deadline::after(10_000).expect("bounded deadline")
 }
 
 #[cfg(target_os = "windows")]
-fn combo_a() -> KeyCombo {
+pub(super) fn combo_a() -> KeyCombo {
     KeyCombo {
         key: "a".into(),
         modifiers: vec![],
@@ -56,7 +56,7 @@ fn raise_handle(handle: isize) {
 }
 
 #[cfg(target_os = "windows")]
-fn staged_hosted_target() -> (crate::tree::fixture::HostedFixture, ProcessIdentity) {
+pub(super) fn staged_hosted_target() -> (crate::tree::fixture::HostedFixture, ProcessIdentity) {
     crate::tree::fixture::ensure_test_apartment();
     let fixture = crate::tree::fixture::HostedFixture::spawn().expect("hosted fixture");
     let pid = ProcessId::from(fixture.process_id());
@@ -85,7 +85,7 @@ fn window_info_for_hosted(fixture: &crate::tree::fixture::HostedFixture) -> Wind
 /// Stages the fixture as foreground via the activation path. Tests may raise;
 /// production `press_for_app_impl` never does.
 #[cfg(target_os = "windows")]
-fn stage_as_foreground(fixture: &crate::tree::fixture::HostedFixture) -> bool {
+pub(super) fn stage_as_foreground(fixture: &crate::tree::fixture::HostedFixture) -> bool {
     use crate::system::window_activate::focus_window;
     use agent_desktop_core::InteractionLease;
 
@@ -95,7 +95,7 @@ fn stage_as_foreground(fixture: &crate::tree::fixture::HostedFixture) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn assert_not_delivered(error: &AdapterError) {
+pub(super) fn assert_not_delivered(error: &AdapterError) {
     assert_eq!(
         error.disposition.delivery(),
         DeliveryDisposition::NotDelivered
@@ -117,7 +117,7 @@ fn assert_not_delivered(error: &AdapterError) {
 /// must fail closed with no synthesis. Every gated test asserts that instead
 /// of returning, so the degraded desktop still exercises a real contract.
 #[cfg(target_os = "windows")]
-fn assert_press_fails_closed_without_synthesis(
+pub(super) fn assert_press_fails_closed_without_synthesis(
     identity: agent_desktop_core::ProcessIdentity,
     policy: InteractionPolicy,
 ) {
@@ -302,10 +302,7 @@ fn higher_integrity_is_perm_denied_not_delivered_before_synthesis() {
         .expect_err("higher integrity")
     });
     assert_eq!(error.code, ErrorCode::PermDenied);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::NotDelivered
-    );
+    assert_not_delivered(&error);
     assert!(
         error.message.contains("integrity"),
         "must use the input-worded elevation denial, got {}",

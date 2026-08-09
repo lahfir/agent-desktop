@@ -1,4 +1,5 @@
 use super::*;
+use crate::system::window_identity::live_window_owner;
 use agent_desktop_core::{Deadline, DeliveryDisposition, InteractionLease, ProcessId, WindowState};
 
 #[cfg(target_os = "windows")]
@@ -68,13 +69,21 @@ fn is_iconic(handle: isize) -> bool {
     unsafe { IsIconic(handle as _) != 0 }
 }
 
+/// Confirms success by the same two OS facts `is_owned_foreground` claims to
+/// have established, read directly rather than by calling that predicate
+/// again on the evidence it already consulted - re-asking the production
+/// check the same question would only prove it agrees with itself.
 #[cfg(target_os = "windows")]
 fn assert_owned_success(info: &WindowInfo) {
-    let evidence =
-        WindowIdentityEvidence::from_info(parse_handle(&info.id), info).expect("stored evidence");
+    let handle = parse_handle(&info.id);
     assert!(
-        is_owned_foreground(parse_handle(&info.id), &evidence),
-        "success must be ownership-qualified foreground"
+        is_foreground_window(handle),
+        "success must leave the handle as the OS-reported foreground window"
+    );
+    assert_eq!(
+        live_window_owner(handle),
+        Some(info.pid),
+        "success must leave the foreground window owned by the expected pid"
     );
 }
 
@@ -300,7 +309,7 @@ fn focus_window_requires_a_process_instance_token() {
 
 /// Every headed command reaches `focus_window`, and identity verification
 /// reads the live title before any raise, so a window whose thread never
-/// dispatches would block the whole command inside `GetWindowTextW`. The
+/// dispatches would block the command inside the first native call that reaches its message queue. The
 /// liveness ping must refuse it first.
 #[cfg(target_os = "windows")]
 #[test]

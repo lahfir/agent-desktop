@@ -66,6 +66,28 @@ fn elevation_required_maps_through_hresult_from_win32() {
     );
 }
 
+#[test]
+fn environment_merge_folds_case_so_override_replaces_inherited_variable() {
+    let key = format!("AGENT_DESKTOP_LAUNCH_TEST_{}", std::process::id());
+    unsafe { std::env::set_var(&key, "inherited") };
+    let mut overrides = BTreeMap::new();
+    overrides.insert(key.to_ascii_lowercase(), "overridden".to_string());
+    let block = environment_block(&overrides).expect("environment block");
+    unsafe { std::env::remove_var(&key) };
+    let text = String::from_utf16_lossy(&block);
+    let folded_prefix = format!("{}=", key.to_ascii_uppercase());
+    let matching_entries: Vec<String> = text
+        .split('\0')
+        .filter(|entry| entry.to_ascii_uppercase().starts_with(&folded_prefix))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        matching_entries,
+        vec![format!("{}=overridden", key.to_ascii_lowercase())],
+        "the caller's override must be the only surviving entry for this name, in its own spelling"
+    );
+}
+
 #[cfg(target_os = "windows")]
 fn deadline() -> Deadline {
     Deadline::after(10_000).expect("deadline")
@@ -114,6 +136,59 @@ fn scratch_dir(label: &str) -> PathBuf {
     dir
 }
 
+/// Copies this test binary under a unique name to serve as a launch probe.
+///
+/// A copied system application is not a dependable probe: `notepad.exe`
+/// re-execs and exits the moment it is started from outside its install
+/// location, so the copy is gone before the process table is read, and which
+/// system applications survive copying differs per Windows image. The test
+/// binary always exists, always survives being copied, and already knows how
+/// to host a real window - so the probe is repo-controlled rather than a bet
+/// on what is installed.
+#[cfg(target_os = "windows")]
+fn copy_probe_binary(dest_dir: &Path, alias: &str) -> PathBuf {
+    let source = std::env::current_exe().expect("test binary path");
+    let dest = dest_dir.join(alias);
+    std::fs::copy(&source, &dest).expect("copy test binary");
+    dest
+}
+
+/// The arguments and environment that turn a copy of the test binary into the
+/// windowed fixture host, matching what `HostedFixture` spawns.
+#[cfg(target_os = "windows")]
+fn fixture_host_args() -> Vec<String> {
+    [
+        "--exact",
+        "tree::fixture::tests::fixture_host_process_entry",
+        "--ignored",
+        "--nocapture",
+    ]
+    .iter()
+    .map(|value| (*value).to_string())
+    .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn fixture_host_env() -> std::collections::BTreeMap<String, String> {
+    std::collections::BTreeMap::from([(
+        String::from("AGENT_DESKTOP_FIXTURE_HOST"),
+        String::from("1"),
+    )])
+}
+
+/// `LaunchOptions` that start the windowed fixture host, with the launch
+/// policy the calling test is actually exercising.
+#[cfg(target_os = "windows")]
+fn probe_launch_options(attach_if_running: bool, timeout_ms: u64) -> LaunchOptions {
+    LaunchOptions {
+        args: fixture_host_args(),
+        env: fixture_host_env(),
+        attach_if_running,
+        timeout_ms,
+        ..Default::default()
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn copy_system_exe(name: &str, dest_dir: &Path, alias: &str) -> PathBuf {
     let source = resolve_executable(name).expect("system executable");
@@ -123,11 +198,14 @@ fn copy_system_exe(name: &str, dest_dir: &Path, alias: &str) -> PathBuf {
 }
 
 #[cfg(target_os = "windows")]
-fn start_notepad() -> KillOnDrop {
-    let path = resolve_executable("notepad.exe").expect("system notepad");
-    let child = std::process::Command::new(&path)
+fn start_windowed_probe(exe: &Path) -> KillOnDrop {
+    let child = std::process::Command::new(exe)
+        .args(fixture_host_args())
+        .env("AGENT_DESKTOP_FIXTURE_HOST", "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
-        .expect("start notepad");
+        .expect("start windowed probe");
     let pid = ProcessId::from(child.id());
     std::mem::forget(child);
     let started = std::time::Instant::now();
@@ -186,17 +264,13 @@ fn full_image_path(pid: ProcessId) -> Option<PathBuf> {
     )))
 }
 
-#[cfg(target_os = "windows")]
-fn clear_notepads() {
-    for pid in matching_pids("notepad.exe") {
-        terminate_pid(pid);
-    }
-    std::thread::sleep(std::time::Duration::from_millis(200));
-}
-
 /// A value ending in a backslash would otherwise escape the closing quote,
 /// leaving the quoted region open so every later argument is swallowed into
-/// it. The run is doubled; backslashes elsewhere stay literal.
+/// it. The run is doubled; backslashes elsewhere stay literal. An embedded
+/// quote is doubled rather than backslash-escaped, since doubling is what
+/// satisfies the consecutive-quote rule and the form `cmd` itself accepts.
+/// An empty argument is still wrapped in its own pair of quotes so it
+/// survives as a token instead of vanishing between two spaces.
 #[test]
 fn a_trailing_backslash_cannot_escape_the_closing_quote() {
     assert_eq!(
@@ -213,4 +287,14 @@ fn a_trailing_backslash_cannot_escape_the_closing_quote() {
         "\"no trailing\\slash\""
     );
     assert_eq!(super::quote_arg("plain"), "plain");
+    assert_eq!(
+        super::quote_arg("a\"b"),
+        "\"a\"\"b\"",
+        "an embedded quote is doubled, not backslash-escaped"
+    );
+    assert_eq!(
+        super::quote_arg(""),
+        "\"\"",
+        "an empty argument must still occupy its own quoted token"
+    );
 }

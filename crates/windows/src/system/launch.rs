@@ -171,20 +171,21 @@ fn create_process(
         )));
     }
     let pid = ProcessId::from(information.dwProcessId);
-    let token = process_identity::token_for_pid(pid).map_err(after_launch)?;
     unsafe {
         CloseHandle(information.hThread);
         CloseHandle(information.hProcess);
     }
-    let token = token.ok_or_else(|| {
-        after_launch(
-            AdapterError::new(
-                ErrorCode::AppUnresponsive,
-                "Created process has no exact process instance token",
+    let token = process_identity::token_for_pid(pid)
+        .map_err(after_launch)?
+        .ok_or_else(|| {
+            after_launch(
+                AdapterError::new(
+                    ErrorCode::AppUnresponsive,
+                    "Created process has no exact process instance token",
+                )
+                .with_details(serde_json::json!({ "pid": pid, "complete": false })),
             )
-            .with_details(serde_json::json!({ "pid": pid, "complete": false })),
-        )
-    })?;
+        })?;
     Ok((pid, token))
 }
 
@@ -234,13 +235,21 @@ fn quote_arg(value: &str) -> String {
     out
 }
 
+/// Windows environment variable names are case-insensitive: a caller
+/// overriding `Path` while the parent process carries `PATH` must replace
+/// that entry outright, or the child inherits both and resolves whichever
+/// one happens to sort first. Keys are folded to ASCII uppercase only to
+/// detect that collision; the spelling that lands in the block is always
+/// the caller's own for an override, or the inherited spelling otherwise.
 fn environment_block(overrides: &BTreeMap<String, String>) -> Result<Vec<u16>, AdapterError> {
-    let mut merged: BTreeMap<String, String> = std::env::vars().collect();
+    let mut merged: BTreeMap<String, (String, String)> = std::env::vars()
+        .map(|(key, value)| (key.to_ascii_uppercase(), (key, value)))
+        .collect();
     for (key, value) in overrides {
-        merged.insert(key.clone(), value.clone());
+        merged.insert(key.to_ascii_uppercase(), (key.clone(), value.clone()));
     }
     let mut block = Vec::new();
-    for (key, value) in merged {
+    for (key, value) in merged.into_values() {
         if key.contains('=') || key.contains('\0') || value.contains('\0') {
             return Err(AdapterError::new(
                 ErrorCode::InvalidArgs,

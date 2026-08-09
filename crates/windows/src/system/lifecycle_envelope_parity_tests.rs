@@ -2,14 +2,21 @@ use crate::input::elevation::activation_elevation_denied;
 use crate::system::close::close_app_impl;
 use crate::system::launch::launch_app_impl;
 use crate::system::window_activate::{budget_exhausted, focus_window};
-use crate::system::window_op::window_op_impl;
 use agent_desktop_core::launch_options::LaunchOptions;
 use agent_desktop_core::process_state::ProcessState;
 use agent_desktop_core::{
     AdapterError, AppError, AppInfo, Deadline, DeliverySemantics, ErrorCode, ErrorPayload,
-    InteractionLease, ProcessId, WindowInfo, WindowOp, WindowState,
+    InteractionLease, ProcessId, WindowInfo, WindowState,
 };
 use serde_json::Value;
+
+/// Split from this file, which sits at the per-file line cap: `shared` owns
+/// the class-(a) pins - conditions both platforms can reach for the same
+/// event - while this file keeps the class-(b) (platform-only) pins, the
+/// fail-closed budget-exhaustion split, `ProcessState`'s wire shape, and the
+/// hot-path cost baseline.
+#[path = "lifecycle_envelope_parity_shared_tests.rs"]
+mod shared;
 
 fn error_wire(error: &AdapterError) -> Value {
     serde_json::to_value(ErrorPayload::from_app_error(&AppError::from(error.clone())))
@@ -63,115 +70,6 @@ fn assert_class_b_envelope(error: &AdapterError, code: ErrorCode, expected: Deli
     assert_disposition_wire(error, expected);
 }
 
-fn macos_shared_pair(
-    code: ErrorCode,
-    disposition: DeliverySemantics,
-) -> (ErrorCode, DeliverySemantics) {
-    (code, disposition)
-}
-
-#[test]
-fn shared_timeout_after_close_delivery_matches_macos_pair() {
-    let (code, disposition) = macos_shared_pair(
-        ErrorCode::Timeout,
-        DeliverySemantics::delivered_unverified(),
-    );
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (code, disposition);
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let _stalled = crate::tree::fixture::StalledFixture::create().expect("stalled");
-        let pid = ProcessId::from(std::process::id());
-        let token = crate::system::process_identity::token_for_pid(pid)
-            .expect("token")
-            .expect("live");
-        let app = AppInfo {
-            name: "test-runner".into(),
-            pid,
-            bundle_id: None,
-            process_instance: Some(token),
-        };
-        let error = close_app_impl(&app, false, Deadline::after(200).expect("deadline"))
-            .expect_err("timeout");
-        assert_eq!(error.code, code);
-        assert_disposition_wire(&error, disposition);
-        assert_eq!(error_wire(&error)["disposition"]["retry"], "unsafe");
-    }
-}
-
-#[test]
-fn shared_stale_ref_before_window_write_matches_macos_pair() {
-    let (code, disposition) =
-        macos_shared_pair(ErrorCode::StaleRef, DeliverySemantics::not_delivered());
-    let win = WindowInfo {
-        id: "w-1".into(),
-        title: String::new(),
-        app: "fixture".into(),
-        pid: ProcessId::from(1u32),
-        process_instance: None,
-        bounds: None,
-        state: WindowState::default(),
-    };
-    let error = window_op_impl(
-        &win,
-        WindowOp::Minimize,
-        Deadline::after(1_000).expect("deadline"),
-    )
-    .expect_err("stale");
-    assert_eq!(error.code, code);
-    assert_disposition_wire(&error, disposition);
-    assert_eq!(error_wire(&error)["disposition"]["retry"], "safe");
-}
-
-#[test]
-fn shared_action_failed_before_delivery_matches_macos_pair() {
-    let (code, disposition) =
-        macos_shared_pair(ErrorCode::ActionFailed, DeliverySemantics::not_delivered());
-    let error = budget_exhausted(false);
-    assert_eq!(error.code, code);
-    assert_disposition_wire(&error, disposition);
-    assert_eq!(error_wire(&error)["disposition"]["retry"], "safe");
-}
-
-#[test]
-fn shared_ambiguous_target_matches_macos_pair() {
-    let (code, disposition) = macos_shared_pair(
-        ErrorCode::AmbiguousTarget,
-        DeliverySemantics::not_delivered(),
-    );
-    let error = AdapterError::ambiguous_target(
-        "More than one application instance matches the launch target",
-    )
-    .with_details(serde_json::json!({ "candidate_pids": [10, 11] }));
-    assert_eq!(error.code, code);
-    assert_disposition_wire(&error, disposition);
-    assert_eq!(
-        launch_ambiguous_shape(),
-        (error.code, error.disposition),
-        "launch ambiguous constructor must keep the shared pair"
-    );
-}
-
-fn launch_ambiguous_shape() -> (ErrorCode, DeliverySemantics) {
-    let error = AdapterError::ambiguous_target(
-        "More than one application instance matches the launch target",
-    );
-    (error.code, error.disposition)
-}
-
-#[test]
-fn shared_perm_denied_before_delivery_matches_macos_pair() {
-    let (code, disposition) =
-        macos_shared_pair(ErrorCode::PermDenied, DeliverySemantics::not_delivered());
-    let error = AdapterError::new(ErrorCode::PermDenied, "Accessibility permission denied")
-        .with_disposition(DeliverySemantics::not_delivered());
-    assert_eq!(error.code, code);
-    assert_disposition_wire(&error, disposition);
-    assert_eq!(error_wire(&error)["disposition"]["retry"], "safe");
-}
-
 #[test]
 fn class_b_windowless_close_escalation_is_action_failed_not_delivered() {
     let error = AdapterError::new(
@@ -197,15 +95,30 @@ fn class_b_windowless_close_escalation_is_action_failed_not_delivered() {
     }
 }
 
+/// Kills and reaps the wrapped child on drop, including on panic unwind, so
+/// a failed assertion below cannot orphan this diagnostic child for the
+/// ~60 seconds its ping duration allows.
+#[cfg(target_os = "windows")]
+struct KillOnDrop(std::process::Child);
+
+#[cfg(target_os = "windows")]
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn windowless_close_live_error() -> AdapterError {
     use std::os::windows::process::CommandExt;
-    let mut child = std::process::Command::new("cmd")
+    let child = std::process::Command::new("cmd")
         .args(["/C", "ping", "-n", "60", "127.0.0.1", ">", "NUL"])
         .creation_flags(0x0800_0000)
         .spawn()
         .expect("windowless child");
     let pid = ProcessId::from(child.id());
+    let _child = KillOnDrop(child);
     let started = std::time::Instant::now();
     let token = loop {
         if let Ok(Some(token)) = crate::system::process_identity::token_for_pid(pid) {
@@ -222,11 +135,8 @@ fn windowless_close_live_error() -> AdapterError {
         bundle_id: None,
         process_instance: Some(token),
     };
-    let error = close_app_impl(&app, false, Deadline::after(5_000).expect("deadline"))
-        .expect_err("windowless alive");
-    let _ = child.kill();
-    let _ = child.wait();
-    error
+    close_app_impl(&app, false, Deadline::after(5_000).expect("deadline"))
+        .expect_err("windowless alive")
 }
 
 #[test]

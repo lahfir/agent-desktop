@@ -93,7 +93,16 @@ Zooms the window to fill the screen.
 agent-desktop restore --app "TextEdit"
 agent-desktop restore --window-id w-4521
 ```
-Restores a minimized or maximized window to its previous size.
+Undoes a minimize: the window returns to whatever placement it held before,
+which for a window that was maximized when it was minimized is maximized
+again. Restore does not promise to un-maximize.
+
+On Windows, `minimize` / `maximize` / `restore` / `resize-window` /
+`move-window` and any headed command that must focus a window first refuse a
+target whose thread has stopped processing messages, reporting
+`APP_UNRESPONSIVE` with `not_delivered` rather than blocking: those operations
+are delivered to the target's message queue, so a hung application would
+otherwise hang the command with no timeout able to interrupt it.
 
 ## Notifications
 
