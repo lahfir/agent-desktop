@@ -92,6 +92,18 @@ impl ProcessIdentity {
         (self.launch_time_seconds() - launch_time).abs() <= MAX_LAUNCH_TIME_DELTA_SECONDS
     }
 
+    /// Absent evidence is not conflicting evidence. NSWorkspace reports no
+    /// launch date for a process it did not start — a system application
+    /// already running at login answers zero — so there is nothing to
+    /// reconcile against libproc and the caller must rely on its other
+    /// identity checks instead of failing.
+    pub(crate) fn conflicts_with_launch_time(self, launch_time: f64) -> bool {
+        if !launch_time.is_finite() || launch_time <= 0.0 {
+            return false;
+        }
+        !self.matches_launch_time(launch_time)
+    }
+
     pub(crate) fn still_matches(self) -> Result<bool, AdapterError> {
         Ok(Self::capture(self.pid)?.is_some_and(|current| current == self))
     }
@@ -279,6 +291,10 @@ mod tests {
         assert!(identity.matches_launch_time(1_700_000_000.25));
         assert!(!identity.matches_launch_time(1_700_000_006.0));
         assert!(!identity.matches_launch_time(0.0));
+        assert!(identity.conflicts_with_launch_time(1_700_000_006.0));
+        assert!(!identity.conflicts_with_launch_time(1_700_000_000.25));
+        assert!(!identity.conflicts_with_launch_time(0.0));
+        assert!(!identity.conflicts_with_launch_time(f64::NAN));
     }
 
     #[test]

@@ -147,7 +147,7 @@ fn validate_result(
                 )
             })
         })?;
-    if !identity.matches_launch_time(result.launch_time) {
+    if identity.conflicts_with_launch_time(result.launch_time) {
         return Err(callback_error(
             result,
             AdapterError::new(
