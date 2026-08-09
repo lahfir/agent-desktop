@@ -4,18 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Common Commands
 
+Every platform adapter compiles on its own OS only, so an unscoped `cargo build`,
+`cargo test --workspace` or `cargo clippy --all-targets` fails on every host: the
+workspace names all three. `.githooks/pre-commit` picks the host's package set;
+`HOST_PKGS` below is the macOS one.
+
 ```bash
-cargo build                                    # Debug build
-cargo build --release                          # Release build (<15MB target)
-cargo test --workspace                         # Run every test (lib, binary, and integration targets)
-cargo test --lib --workspace                   # Library unit tests only; SKIPS the agent-desktop binary crate
+HOST_PKGS="-p agent-desktop-core -p agent-desktop-macos -p agent-desktop-linux -p agent-desktop -p agent-desktop-ffi"
+
+cargo build $HOST_PKGS                         # Debug build
+cargo build --release -p agent-desktop         # Release build (<15MB target)
+cargo test $HOST_PKGS                          # Run every test (lib, binary, and integration targets)
+cargo test $HOST_PKGS --lib                    # Library unit tests only; SKIPS the agent-desktop binary crate
 cargo test -p agent-desktop                    # Binary crate tests (CLI contract, dispatch, batch, policy)
 cargo test --lib -p agent-desktop-core         # Test core crate only
 cargo test --lib -p agent-desktop-macos        # Test macOS crate only
-cargo test test_name                           # Run a single test by name
+cargo test $HOST_PKGS test_name                # Run a single test by name
 cargo check -p agent-desktop-core --all-targets --target x86_64-pc-windows-msvc  # Core must cross-compile
 cargo check -p agent-desktop-core --all-targets --target x86_64-unknown-linux-gnu
-cargo clippy --all-targets -- -D warnings      # Lint (must pass, zero warnings)
+cargo clippy $HOST_PKGS --all-targets -- -D warnings   # Lint (must pass, zero warnings)
 cargo fmt --all -- --check                     # Format check
 cargo fmt --all                                # Auto-format
 cargo tree -p agent-desktop-core               # Verify no platform crate leaks (CI enforces)
@@ -82,7 +89,7 @@ When something is deferred — at planning time or at implementation time — th
 
 ### Branching during a platform phase (Phase 2 = Windows, in progress)
 
-- **`feat/windows-adapter` is the base branch for all Windows work**, not `main`. Every sub-phase (2.0 → 2.15) is cut from it and merges back into it.
+- **`feat/windows-adapter` is the base branch for all Windows work**, not `main`. Every sub-phase (2.0 → 2.16) is cut from it and merges back into it.
 - Sub-phase branches: `feat/windows-<n.n>-<slug>` (e.g. `feat/windows-2.0-probes`), PR'd into `feat/windows-adapter`.
 - **Never branch Windows work off `main`, never PR a sub-phase into `main`, never rebase a sub-phase onto `main`.**
 - `main` is the macOS-GA line for the whole phase. It gains Windows exactly once, at the end, when the adapter is production-solid as a whole — one release-noted `feat!` promotion after full-branch review, live e2e, and a perf baseline. Phase 3 repeats this with `feat/linux-adapter`.
@@ -309,7 +316,7 @@ crates/{macos,windows,linux}/src/
 │   ├── release_state.rs # Armed-and-counted guard state + delivery report (Windows)
 │   ├── elevation.rs    # UIPI integrity detection (Windows)
 │   ├── blocked_combo.rs # Platform-dangerous combo list (Windows)
-│   └── clipboard.rs    # Clipboard get/set (macOS; Windows §2.10)
+│   └── clipboard.rs    # Clipboard get/set (macOS and Windows)
 └── system/             # App lifecycle, windows, permissions
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # launch, close, focus
@@ -468,10 +475,13 @@ contact with Windows and was deleted. See
 
 ## Commands
 
-59 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
+60 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
-All 59 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
+All 60 are implemented on macOS (Phase 1). Windows ships observation, semantic
+actions, input synthesis, process/window lifecycle (`launch`, `close-app`,
+window ops, `press --app`), screenshot, and typed clipboard against the same
+surface; wait-event and shell surfaces remain ahead. Linux (Phase 3) targets the
 same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
@@ -490,4 +500,16 @@ same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Definition of Done: Performance Baseline
 
-Every substantive change ends with a performance baseline check before merge: run `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) and review the generated `report.html` against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
+Every substantive change ends with a performance baseline check before merge, reviewed against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
+
+**The vehicle is platform-specific.** On macOS: `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) → `report.html`. On Windows that script does not run — it is structurally macOS-bound, opening the `.app` fixture bundle — so the vehicle is the probe corpus cost methodology: min-of-seven with the warm-up discarded, reported as min with median and max beside it (`probes/windows/FINDINGS.md` A15-13, applied in A18-7). Naming the macOS script in a Windows plan names a gate that platform cannot run.
+
+## Definition of Done: Dogfood Is a Gate
+
+Phase 2/3 sub-phases carry an additional, non-negotiable gate, stated in full under **Cross-cutting sub-phase DoD** in `docs/phases.md` and summarized here so it is not missed: every sub-phase drives its own surface against real software and commits a judged report; **a report with no findings is a failed dogfood, not a passed one**; and every finding takes exactly one of three dispositions — *fixed here* with a named test that is invert-verified (break the fix, watch that test fail, restore), *owned elsewhere* and written into the receiving sub-phase's scope in `docs/phases.md` in the same PR, or *accepted* with a stated reason. **"Recorded" is not a disposition.**
+
+**Run it as a stranger, or it is not a dogfood.** The operator gets the shipped skill and the built binary and nothing else — not the source, not the plan. A subagent doing it is told so and denied the repo. Every example the shipped docs contain is executed **verbatim in the platform's default shell**, because that is what a new agent will actually type; an example that cannot run as written is a defect of the same weight as a broken command. **Reaching for any flag, variable or ordering the skill does not document ends the run as a finding** — author reflexes are precisely what the run exists to strip out. The evidence for this rule is its own: an author-run dogfood passed, and the same surface driven from the skill alone yielded five defects in twenty minutes.
+
+**Do not report a failure you have not confirmed twice.** No step's output is discarded, every step's `ok` is read, and waiting uses the tool's own wait primitives — a fixed sleep then a check is a race, and a failure seen that way is not a finding until a real wait reproduces it. **Measure a behavioural claim in both directions before writing it down**, the failing case and the passing one; a claim measured once names whichever cause happened to be present, and shipping it puts wrong advice in a doc someone will follow.
+
+A sub-phase's exit criteria must also enumerate every capability its scope names, and every requirement in its plan must map to at least one test that fails if that requirement is violated. `docs/phases.md` is authoritative if these ever diverge.

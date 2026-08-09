@@ -98,6 +98,9 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if message == WM_CLOSE && swallow_wm_close() {
+        return 0;
+    }
     if message == WM_DESTROY {
         unsafe { PostQuitMessage(0) };
         return 0;
@@ -107,6 +110,10 @@ unsafe extern "system" fn window_proc(
         return 0;
     }
     unsafe { DefWindowProcW(window, message, wparam, lparam) }
+}
+
+fn swallow_wm_close() -> bool {
+    std::env::var_os("AGENT_DESKTOP_FIXTURE_SWALLOW_WM_CLOSE").is_some()
 }
 
 fn activate_common_controls_v6() {

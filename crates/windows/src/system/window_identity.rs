@@ -133,12 +133,27 @@ pub(crate) fn live_window_owner(handle: super::window_enum::WindowHandle) -> Opt
     }
 }
 
+/// How long a window gets to answer the liveness ping before its title is
+/// treated as unreadable.
+///
+/// `GetWindowTextW` sends `WM_GETTEXT` when the window belongs to the calling
+/// process, so a same-process window whose thread never dispatches blocks the
+/// read outright. The documented cross-process behaviour returns the caption
+/// without sending, which is why this only bites in-process, but the title is
+/// best-effort evidence either way - a window that will not answer simply has
+/// no readable title, and identity still rests on the owner and generation
+/// checks that never touch the message queue.
+const TITLE_PROBE_MS: u64 = 250;
+
 /// Reads the live title of a window handle, the one piece of the strict check
 /// only the OS can answer for.
 pub(crate) fn live_window_title(handle: super::window_enum::WindowHandle) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+        if !crate::tree::automation::window_is_pumping(handle as isize, TITLE_PROBE_MS) {
+            return None;
+        }
         let mut buffer = vec![0u16; 512];
         let length = unsafe { GetWindowTextW(handle, buffer.as_mut_ptr(), buffer.len() as i32) };
         if length <= 0 {

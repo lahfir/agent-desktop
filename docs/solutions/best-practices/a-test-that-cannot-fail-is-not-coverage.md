@@ -12,6 +12,7 @@ symptoms:
   - "A census tool's redaction guard still passes when a call site is reverted to render text verbatim, because the guard tests the helper, not the call site."
   - "A second hand-maintained list (VALUE_BEARING) can miss an entry the first list (WALK_SET) gained, and nothing fails."
   - "A #[cfg(test)] helper re-types the same boolean expression a production function inlines, so inverting production leaves the mirrored test green."
+  - "A live test opens with `if !stage_precondition() { return; }`, so a run that cannot stage the precondition passes while asserting nothing."
 root_cause: process_gap
 resolution_type: label_relocate_extract_seam_or_exhaustive_match
 severity: high
@@ -74,6 +75,20 @@ unrelated to what they claimed to prove:
    function take the varying part as a parameter (here, the verifier) and
    have the test supply its own, so there is only one gate and the test
    drives it.
+
+8. **A setup guard that returns instead of asserting.** Four live
+   `press_key_for_app` tests opened with `if !stage_as_foreground(&fixture) {
+   return; }`, where staging performs a real OS activation that this same
+   sub-phase documents as able not to land. On any run where it did not, each
+   test returned before its first assertion and libtest reported a pass — and
+   one of the four was the only test proving the method was wired through the
+   trait at all. This is the hardest shape to see in review, because the early
+   return reads as defensive hygiene rather than as a hole: the test is honest
+   about not being able to stage its precondition, and then silently claims
+   success anyway. The fix is not to delete the guard but to assert on both
+   sides of it — a target that never reached the foreground must fail closed
+   with nothing synthesized, which is a real contract worth pinning, so the
+   degraded environment exercises a property instead of skipping one.
 
 ## Root cause
 
@@ -171,6 +186,10 @@ absorbed by a sibling now produces the wrong variant instead of the same
   a mutation that turns nothing red is itself a finding — it means the line
   is dead. Removing a zero-dwell early return the loop guard already
   covered came out of exactly that.
+- A test that can `return` before its first assertion needs an assertion on
+  that path too. Grep a suite for early returns in test bodies: each one is a
+  claim that nothing is worth checking when the setup does not hold, and that
+  claim is usually false.
 - Before trusting a "these two agree" test, check whether one side is defined
   in terms of the other.
 - Before trusting a states/role test, check the role mapper can actually

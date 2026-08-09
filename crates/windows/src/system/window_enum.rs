@@ -210,3 +210,26 @@ mod tests {
         assert!(visible > 0, "the shell is visible");
     }
 }
+
+/// How long a window gets to answer the liveness ping before a caller treats
+/// it as unable to service window messages.
+const PUMP_PROBE_MS: u64 = 500;
+
+/// Whether the window's owning thread is dispatching messages right now.
+///
+/// Callers that are about to reach that thread's message queue ask this first,
+/// because those calls block inside the OS when the thread never dispatches
+/// and no `Deadline` can interrupt one already in flight. The wording of the
+/// refusal is the caller's - activation and window operations report the same
+/// condition with different envelopes - so only the probe is shared.
+pub(crate) fn window_is_responsive(handle: WindowHandle) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        crate::tree::automation::window_is_pumping(handle as isize, PUMP_PROBE_MS)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = handle;
+        true
+    }
+}
