@@ -1,8 +1,8 @@
 use agent_desktop_core::{
-    AccessibilityNode, ActionOps, AdapterError, AppInfo, Deadline, DragParams, ElementState,
-    InputOps, InteractionLease, KeyCombo, LiveElement, MouseEvent, NativeHandle, ObservationOps,
-    ObservationRequest, ObservationRoot, ProcessIdentity, Rect, RefEntry, TreeOptions,
-    WindowFilter, WindowInfo,
+    AccessibilityNode, ActionOps, AdapterError, AppInfo, ClipboardContent, ClipboardFormat,
+    Deadline, DragParams, ElementState, InputOps, InteractionLease, KeyCombo, LiveElement,
+    MouseEvent, NativeHandle, ObservationOps, ObservationRequest, ObservationRoot, ProcessIdentity,
+    Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -207,6 +207,26 @@ impl InputOps for WindowsAdapter {
 
     fn drag(&self, params: DragParams, lease: &InteractionLease) -> Result<(), AdapterError> {
         crate::input::drag::synthesize_drag(params, lease.deadline())
+    }
+
+    fn clear_clipboard(&self, lease: &InteractionLease) -> Result<(), AdapterError> {
+        crate::input::clipboard::clear(lease.deadline())
+    }
+
+    fn get_clipboard_content(
+        &self,
+        format: ClipboardFormat,
+        deadline: Deadline,
+    ) -> Result<Option<ClipboardContent>, AdapterError> {
+        crate::input::clipboard::get_clipboard_content(format, deadline)
+    }
+
+    fn set_clipboard_content(
+        &self,
+        content: &ClipboardContent,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::input::clipboard::set_content(content, lease.deadline())
     }
 }
 
