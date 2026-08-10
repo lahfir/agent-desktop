@@ -64,7 +64,7 @@ mod imp {
         name: &str,
         deadline: agent_desktop_core::Deadline,
     ) -> bool {
-        let mut usage = crate::tree::observation_usage::ObservationUsage::unbudgeted();
+        let mut usage = crate::tree::observation_usage::ObservationUsage::with_defaults();
         let read = crate::tree::capabilities::copy_action_names_with_status(
             el,
             std::time::Instant::now() + deadline.remaining(),

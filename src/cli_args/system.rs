@@ -19,7 +19,7 @@ pub(crate) struct LaunchArgs {
     #[arg(
         long,
         default_value = "30000",
-        help = "Max time in ms to wait for the window to appear"
+        help = "Upper bound in ms for the whole launch"
     )]
     #[serde(default = "default_launch_timeout")]
     pub timeout: u64,

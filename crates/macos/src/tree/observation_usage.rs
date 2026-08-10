@@ -8,7 +8,7 @@ pub(crate) struct ObservationUsage {
 }
 
 impl ObservationUsage {
-    pub(crate) fn unbudgeted() -> Self {
+    pub(crate) fn with_defaults() -> Self {
         Self::new(ObservationBudget::default())
     }
 

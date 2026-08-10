@@ -138,7 +138,7 @@ fn essential_live_evidence_complete(evidence: &agent_desktop_core::LocatorEviden
 }
 
 fn new_usage() -> crate::tree::observation_usage::ObservationUsage {
-    crate::tree::observation_usage::ObservationUsage::unbudgeted()
+    crate::tree::observation_usage::ObservationUsage::with_defaults()
 }
 
 fn owning_window_bounds(

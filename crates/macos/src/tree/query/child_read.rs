@@ -238,7 +238,7 @@ mod imp {
         else {
             return ChildRead::failed(status);
         };
-        let saturated = elements.len() == max_elements;
+        let saturated = max_elements > 0 && elements.len() == max_elements;
         ChildRead {
             total_count: elements.len() + usize::from(saturated),
             elements,
