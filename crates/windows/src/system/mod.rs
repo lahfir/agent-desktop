@@ -11,6 +11,8 @@ mod launch_path;
 pub(crate) mod lifecycle_envelope_parity;
 pub(crate) mod permissions;
 #[cfg(target_os = "windows")]
+pub(crate) mod png_codec;
+#[cfg(target_os = "windows")]
 pub(crate) mod private_file;
 pub(crate) mod process_identity;
 pub(crate) mod process_state;

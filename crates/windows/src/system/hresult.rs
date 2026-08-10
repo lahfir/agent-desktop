@@ -33,6 +33,9 @@ pub(crate) const UIA_E_PROXYASSEMBLYNOTLOADED: i32 = 0x8004_0203_u32 as i32;
 pub(crate) const UIA_E_NOTSUPPORTED: i32 = 0x8004_0204_u32 as i32;
 pub(crate) const UIA_E_TIMEOUT: i32 = 0x8013_1505_u32 as i32;
 pub(crate) const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
+pub(crate) const WINCODEC_ERR_COMPONENTNOTFOUND: i32 = 0x8898_2F50_u32 as i32;
+pub(crate) const WINCODEC_ERR_BADIMAGE: i32 = 0x8898_2F60_u32 as i32;
+pub(crate) const WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT: i32 = 0x8898_2F80_u32 as i32;
 
 const COM_UNINITIALIZED_SUGGESTION: &str =
     "Join the calling thread to the COM multithreaded apartment before observing the desktop";
@@ -171,6 +174,16 @@ pub(crate) fn hresult_record(hresult: i32) -> HresultRecord {
                 suggestion: None,
             }
         }
+        WINCODEC_ERR_BADIMAGE | WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::InvalidArgs,
+            suggestion: None,
+        },
+        WINCODEC_ERR_COMPONENTNOTFOUND => HresultRecord {
+            disposition: ReadDisposition::Terminal,
+            code: ErrorCode::Internal,
+            suggestion: None,
+        },
         _ => HresultRecord {
             disposition: ReadDisposition::Terminal,
             code: ErrorCode::Internal,
@@ -231,6 +244,15 @@ pub(crate) fn com_hresult_symbol(hresult: i32) -> Option<(&'static str, &'static
         ),
         UIA_E_TIMEOUT => ("UIA_E_TIMEOUT", "The operation timed out"),
         UIA_E_INVALIDOPERATION => ("UIA_E_INVALIDOPERATION", "The operation is not valid"),
+        WINCODEC_ERR_COMPONENTNOTFOUND => (
+            "WINCODEC_ERR_COMPONENTNOTFOUND",
+            "The imaging component was not found",
+        ),
+        WINCODEC_ERR_BADIMAGE => ("WINCODEC_ERR_BADIMAGE", "The image is unrecognized"),
+        WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT => (
+            "WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT",
+            "The bitmap pixel format is unsupported",
+        ),
         _ => return None,
     };
     Some(symbol)
