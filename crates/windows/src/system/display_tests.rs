@@ -1,7 +1,7 @@
 use super::{
     capture_selection, capture_selection_in, display_at, display_identity_matches,
-    intersection_area, list_displays_live, primaries_first, scale_for_bounds,
-    scale_for_bounds_in, verify_display_identity,
+    intersection_area, list_displays_live, primaries_first, scale_for_bounds, scale_for_bounds_in,
+    verify_display_identity,
 };
 use agent_desktop_core::{Deadline, DisplayInfo, ErrorCode, Rect};
 
@@ -224,11 +224,13 @@ fn capture_selection_fails_when_id_is_absent() {
 #[test]
 fn verify_display_identity_requires_id_with_geometry() {
     let expected = display("monitor-1", true, 1.0, rect(0.0, 0.0, 100.0, 100.0));
-    let same_id_different_bounds =
-        display("monitor-1", true, 1.0, rect(0.0, 0.0, 200.0, 200.0));
+    let same_id_different_bounds = display("monitor-1", true, 1.0, rect(0.0, 0.0, 200.0, 200.0));
 
     assert!(display_identity_matches(&expected, &expected));
-    assert!(!display_identity_matches(&expected, &same_id_different_bounds));
+    assert!(!display_identity_matches(
+        &expected,
+        &same_id_different_bounds
+    ));
 
     let error = verify_display_identity(0, &expected, &same_id_different_bounds)
         .expect_err("recycled handle with different geometry");

@@ -254,7 +254,7 @@ impl DibCapture {
                 biHeight: -height,
                 biPlanes: 1,
                 biBitCount: 32,
-                biCompression: BI_RGB as u32,
+                biCompression: BI_RGB,
                 ..Default::default()
             },
             ..Default::default()

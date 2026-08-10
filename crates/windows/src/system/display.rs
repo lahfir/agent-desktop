@@ -1,3 +1,7 @@
+//! Display enumeration and selection helpers for screenshot targeting.
+
+#![allow(dead_code)]
+
 use agent_desktop_core::{AdapterError, Deadline, DisplayInfo, ErrorCode, Rect};
 
 use super::permissions::ensure_budget;
@@ -157,10 +161,10 @@ pub(super) fn display_identity_matches(expected: &DisplayInfo, current: &Display
         && expected.scale == current.scale
 }
 
-fn select_display<'a>(
-    displays: &'a [DisplayInfo],
+fn select_display(
+    displays: &[DisplayInfo],
     bounds: Option<Rect>,
-) -> Result<&'a DisplayInfo, AdapterError> {
+) -> Result<&DisplayInfo, AdapterError> {
     let selected = bounds.and_then(|bounds| {
         displays
             .iter()
