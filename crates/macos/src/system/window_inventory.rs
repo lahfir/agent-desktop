@@ -78,8 +78,15 @@ fn focus_state(
 /// accessory view before its first document appears. Counting those makes the
 /// only real window look ambiguous, and reports an application that has not
 /// drawn anything yet as having several windows to choose between.
-fn narrow_to_visible(windows: &mut Vec<WindowInfo>) {
-    windows.retain(|window| window.state.visible == Some(true));
+///
+/// A minimized window is the user's window and is kept: it is offscreen for a
+/// reason the caller cares about, unlike a panel that was never meant to be
+/// seen. Dropping it would report an application as having no window while its
+/// window sits in the Dock.
+fn narrow_to_real_windows(windows: &mut Vec<WindowInfo>) {
+    windows.retain(|window| {
+        window.state.visible == Some(true) || window.state.minimized == Some(true)
+    });
 }
 
 pub(crate) fn exact_window_for_pid_until(
@@ -96,7 +103,7 @@ pub(crate) fn exact_window_for_pid_until(
             crate::system::process_identity::matches_instance(owner_pid, instance)
         },
     )?;
-    narrow_to_visible(&mut windows);
+    narrow_to_real_windows(&mut windows);
     if windows.len() == 1 {
         return Ok(windows.remove(0));
     }

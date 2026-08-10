@@ -107,21 +107,31 @@ fn bridge_error(operation: &str, status: u8, delivery_started: bool) -> AdapterE
     .with_disposition(disposition)
 }
 
+/// Where a process is in its startup. `NoRecord` covers both a process that
+/// exited and one that has not registered with the window server yet, so it
+/// answers neither question on its own and the caller has to ask libproc which
+/// of the two it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StartupState {
+    Starting,
+    Finished,
+    NoRecord,
+}
+
 /// An application that finished starting up has already created whatever
-/// windows its launch produces. `None` means the answer is unavailable, which
-/// is not the same as "no window is coming".
+/// windows its launch produces.
 #[cfg(target_os = "macos")]
-pub(crate) fn finished_launching(pid: i32) -> Option<bool> {
+pub(crate) fn startup_state(pid: i32) -> StartupState {
     match unsafe { agent_desktop_app_finished_launching(pid) } {
-        0 => Some(false),
-        1 => Some(true),
-        _ => None,
+        0 => StartupState::Starting,
+        1 => StartupState::Finished,
+        _ => StartupState::NoRecord,
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn finished_launching(_pid: i32) -> Option<bool> {
-    None
+pub(crate) fn startup_state(_pid: i32) -> StartupState {
+    StartupState::NoRecord
 }
 
 #[cfg(target_os = "macos")]

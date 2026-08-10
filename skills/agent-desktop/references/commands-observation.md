@@ -37,7 +37,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 **Output structure:**
 ```json
 {
-  "version": "2.2",
+  "version": "2.3",
   "ok": true,
   "command": "snapshot",
   "data": {

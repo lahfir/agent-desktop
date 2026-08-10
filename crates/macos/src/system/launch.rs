@@ -65,10 +65,12 @@ fn settled_window(
         if let Some(window) = exact_window(pid, process_instance, deadline)? {
             return Ok(Some(window));
         }
-        if options.timeout_ms == 0 || grace_over(grace_ends_at, Instant::now()) {
+        if options.timeout_ms == 0
+            || (!options.activate && grace_over(grace_ends_at, Instant::now()))
+        {
             return Ok(None);
         }
-        if grace_ends_at.is_none() && startup_finished(pid) {
+        if grace_ends_at.is_none() && startup_finished(pid, process_instance)? {
             grace_ends_at = Instant::now().checked_add(STARTUP_GRACE);
         }
         let remaining = deadline.remaining();
@@ -80,11 +82,35 @@ fn settled_window(
     }
 }
 
-/// An unreadable startup state ends the wait rather than extending it, because
-/// a process that cannot answer is not one whose windows are worth waiting for.
+/// Ends the wait when the application has created whatever windows its launch
+/// produces. The window server keeps no record of a process that exited, and
+/// none of one that has not registered yet, so libproc decides which happened:
+/// a process that is gone ends the launch with an error rather than an answer
+/// about windows it will never open.
 #[cfg(target_os = "macos")]
-fn startup_finished(pid: i32) -> bool {
-    crate::system::appkit_bridge::finished_launching(pid).unwrap_or(true)
+fn startup_finished(pid: i32, process_instance: &str) -> Result<bool, AdapterError> {
+    use crate::system::appkit_bridge::StartupState;
+    match crate::system::appkit_bridge::startup_state(pid) {
+        StartupState::Starting => Ok(false),
+        StartupState::Finished => Ok(true),
+        StartupState::NoRecord => {
+            if crate::system::process_identity::matches_instance(pid, process_instance)? {
+                Ok(true)
+            } else {
+                Err(launch_target_gone(pid))
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn launch_target_gone(pid: i32) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Launched application exited before it presented a window",
+    )
+    .with_details(serde_json::json!({ "pid": pid, "complete": false }))
+    .with_suggestion("Check the application's own launch requirements, then retry.")
 }
 
 /// The grace covers the gap between an application reporting that it started
@@ -93,6 +119,16 @@ fn startup_finished(pid: i32) -> bool {
 #[cfg(target_os = "macos")]
 fn grace_over(grace_ends_at: Option<Instant>, now: Instant) -> bool {
     grace_ends_at.is_some_and(|end| now >= end)
+}
+
+/// The attaching path reports the display name, so the launching path has to
+/// report the same thing for the same field. A window already carries it; the
+/// requested identifier is the fallback when there is no window to ask.
+#[cfg(target_os = "macos")]
+fn launched_display_name(window: Option<&WindowInfo>, id: &str) -> String {
+    window
+        .map(|window| window.app.clone())
+        .unwrap_or_else(|| id.to_owned())
 }
 
 #[cfg(target_os = "macos")]
@@ -112,7 +148,7 @@ fn result_from_launched(
     id: &str,
 ) -> Result<LaunchResult, AdapterError> {
     Ok(LaunchResult {
-        app: id.to_owned(),
+        app: launched_display_name(window.as_ref(), id),
         pid: agent_desktop_core::ProcessId::try_from(launched.0)
             .map_err(|_| AdapterError::internal("Launched process identifier is out of range"))?,
         process_instance: Some(launched.1.clone()),

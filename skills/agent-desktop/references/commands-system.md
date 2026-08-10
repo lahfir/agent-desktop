@@ -35,9 +35,11 @@ The process starting and the app presenting a window are separate outcomes, so t
 
 A launch waits only for the windows the launch itself causes. It polls until the app reports that it finished starting up, plus a short grace for the first window to reach the window server. Most apps therefore return their window in one step. An app that opens its first window only when brought forward — any document-based app — returns without one instead of waiting out `--timeout`.
 
+A launch that finds its process gone before any window appears fails with `APP_UNRESPONSIVE` rather than reporting a windowless success.
+
 When you need the window:
 
-- `--activate` asks the app to present one and waits for it. This brings the app forward, so it is not headless.
+- `--activate` asks the app to present one and waits for it up to `--timeout`, because activation is what causes the window. This brings the app forward, so it is not headless. Pair it with a small `--timeout` for an app that may have no window at all.
 - `wait --event window-opened` waits on your terms after you trigger the window some other way.
 
 Windowless, menu-bar-only, and background apps simply report no `window`; use `list-apps` to observe those processes and read their `presentation`. `--no-attach` rejects an already-running app with `ACTION_FAILED` and starts a fresh instance.
@@ -360,7 +362,7 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 **Per-entry failure shape:**
 ```json
 {
-  "version": "2.2",
+  "version": "2.3",
   "ok": false,
   "command": "click",
   "error": {

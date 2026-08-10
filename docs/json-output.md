@@ -4,7 +4,7 @@ Every command returns structured JSON:
 
 ```json
 {
-  "version": "2.2",
+  "version": "2.3",
   "ok": true,
   "command": "click",
   "data": { "action": "click" }
@@ -15,7 +15,7 @@ Errors include machine-readable codes and recovery hints:
 
 ```json
 {
-  "version": "2.2",
+  "version": "2.3",
   "ok": false,
   "command": "click",
   "error": {
