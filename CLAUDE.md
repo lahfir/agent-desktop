@@ -309,7 +309,7 @@ crates/{macos,windows,linux}/src/
 │   ├── release_state.rs # Armed-and-counted guard state + delivery report (Windows)
 │   ├── elevation.rs    # UIPI integrity detection (Windows)
 │   ├── blocked_combo.rs # Platform-dangerous combo list (Windows)
-│   └── clipboard.rs    # Clipboard get/set (macOS; Windows §2.10)
+│   └── clipboard.rs    # Clipboard get/set (macOS and Windows)
 └── system/             # App lifecycle, windows, permissions
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # launch, close, focus
@@ -470,10 +470,10 @@ contact with Windows and was deleted. See
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
 All 58 are implemented on macOS (Phase 1). Windows ships observation, semantic
-actions, input synthesis, and process/window lifecycle (`launch`, `close-app`,
-window ops, `press --app`) against the same surface; screenshot, clipboard,
-wait-event, and shell surfaces remain ahead. Linux (Phase 3) targets the same
-surface. Adding a command: see the Extensibility Pattern above.
+actions, input synthesis, process/window lifecycle (`launch`, `close-app`,
+window ops, `press --app`), screenshot, and typed clipboard against the same
+surface; wait-event and shell surfaces remain ahead. Linux (Phase 3) targets the
+same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
 

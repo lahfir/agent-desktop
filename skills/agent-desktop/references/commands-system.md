@@ -189,7 +189,7 @@ Reads a typed clipboard representation.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format` | text | Representation to read: `text`, `auto` (richest available: file references, then image, then text), `image`, `file-urls` |
-| `--out` | private temp file | Where to write image bytes when `--format image`/`auto` resolves to an image; defaults to a private file under the active session's directory, or `~/.agent-desktop/tmp` with no active session |
+| `--out` | private temp file | Where to write image bytes when `--format image`/`auto` resolves to an image; defaults to a private file under the active session's directory, or `~/.agent-desktop/tmp` with no active session. A user-named `--out` path bypasses the private-file seam via `write_user_atomic` so network shares and foreign-owned directories remain writable |
 
 **Output by format:**
 ```json
@@ -198,6 +198,8 @@ Reads a typed clipboard representation.
 { "data": { "type": "image", "path": "/Users/me/.agent-desktop/sessions/<id>/clipboard/clipboard-...png", "width": 800, "height": 600 } }
 ```
 When the pasteboard has nothing in the requested representation, the response is `{ "data": { "type": "<requested format>", "found": false } }` with no other payload fields.
+
+**Windows:** formats map through Win32 — `CF_UNICODETEXT` (text), `CF_DIB`/`CF_DIBV5`/registered PNG (image), `CF_HDROP` (file lists). `auto` resolves **FileUrls → Image → Text**, matching macOS. There is one clipboard per window station; hermetic tests use save/restore plus a serialization lock because creating a private window station failed without privilege 1314 (A22-5). Delay-rendered `GetClipboardData` can hang against a non-pumping owner, so the read path abandons a worker rather than blocking past the deadline (A22-3).
 
 ### clipboard-set
 ```bash
@@ -213,6 +215,8 @@ Writes typed content to the clipboard. `--file-url` (repeatable) and `--image` e
 | (positional) | Text to write (ignored if `--image` or `--file-url` is given) |
 | `--image` | Path to a PNG file to write to the clipboard |
 | `--file-url` | File path to write as a file reference; repeatable. Every path must exist on disk or the command returns `INVALID_ARGS` |
+
+**Windows:** publishes the same typed representations consumers actually read (`CF_UNICODETEXT`, DIB/PNG image formats, `CF_HDROP`). A write that loses clipboard ownership mid-transaction reports `delivered_unverified` rather than a false success.
 
 ### clipboard-clear
 ```bash
@@ -473,7 +477,7 @@ When `session_id` resolves to a session with a readable manifest, the response a
 agent-desktop permissions
 agent-desktop permissions --request
 ```
-Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation is probed against System Events without prompting; `{ "state": "unknown" }` means macOS would need to prompt or the target could not be probed. `--request` asks for all three permissions through a bounded isolated helper so a stalled native prompt cannot strand the command process.
+Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation is probed against System Events without prompting; `{ "state": "unknown" }` means macOS would need to prompt or the target could not be probed. On Windows, capture has no screen-recording consent gate — `screen_recording` reports `not_required` when capture works and `unknown` only where the session cannot support it. `--request` asks for all three permissions through a bounded isolated helper so a stalled native prompt cannot strand the command process.
 
 `status`, `permissions`, command preflight, and `batch` share one nonprompting permission probe per process. `permissions --request` is the only path that intentionally asks the platform to prompt again, and it does so in the isolated helper.
 
