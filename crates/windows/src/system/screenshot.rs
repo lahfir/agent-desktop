@@ -15,6 +15,13 @@ pub(crate) fn screenshot(
     target: ScreenshotTarget,
     deadline: Deadline,
 ) -> Result<ImageBuffer, AdapterError> {
+    dispatch_target(target, deadline).map_err(not_delivered)
+}
+
+fn dispatch_target(
+    target: ScreenshotTarget,
+    deadline: Deadline,
+) -> Result<ImageBuffer, AdapterError> {
     ensure_budget(deadline)?;
     match target {
         ScreenshotTarget::Screen(index) => capture_screen(index, deadline),
@@ -23,6 +30,14 @@ pub(crate) fn screenshot(
         }
         ScreenshotTarget::ExactWindow(window) => capture_window(&window, deadline),
         ScreenshotTarget::FullScreen => capture_screen(0, deadline),
+    }
+}
+
+fn not_delivered(error: AdapterError) -> AdapterError {
+    if error.disposition == DeliverySemantics::Unknown {
+        error.with_disposition(DeliverySemantics::not_delivered())
+    } else {
+        error
     }
 }
 
@@ -138,28 +153,17 @@ pub(crate) mod test_hooks {
     }
 
     pub(crate) fn with_skip_post_identity<R>(run: impl FnOnce() -> R) -> R {
-        with_flag(&SKIP_POST_IDENTITY, true, run)
+        crate::system::test_support::with_flag(&SKIP_POST_IDENTITY, true, run)
     }
 
     pub(crate) fn with_force_post_identity_failure<R>(run: impl FnOnce() -> R) -> R {
-        with_flag(&FORCE_POST_IDENTITY_FAILURE, true, run)
+        crate::system::test_support::with_flag(&FORCE_POST_IDENTITY_FAILURE, true, run)
     }
+}
 
-    fn with_flag<R>(
-        flag: &'static std::thread::LocalKey<Cell<bool>>,
-        value: bool,
-        run: impl FnOnce() -> R,
-    ) -> R {
-        struct Reset(&'static std::thread::LocalKey<Cell<bool>>);
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                self.0.with(|cell| cell.set(false));
-            }
-        }
-        flag.with(|cell| cell.set(value));
-        let _reset = Reset(flag);
-        run()
-    }
+#[cfg(test)]
+pub(crate) fn coerce_screenshot_disposition_for_test(error: AdapterError) -> AdapterError {
+    not_delivered(error)
 }
 
 #[cfg(all(test, target_os = "windows"))]

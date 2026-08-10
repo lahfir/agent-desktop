@@ -1,10 +1,11 @@
 //! Pure clipboard image marshalling: registered PNG passthrough and CF_DIB/CF_DIBV5 ↔ PNG.
 
 use agent_desktop_core::{
-    AdapterError, Deadline, ErrorCode, ImageBuffer, ImageFormat, MAX_PNG_INPUT_BYTES,
-    parse_png_dimensions,
+    AdapterError, Deadline, ImageBuffer, ImageFormat, MAX_PNG_INPUT_BYTES, parse_png_dimensions,
 };
 use std::borrow::Cow;
+
+use super::clipboard_bytes::{argument_error, payload_error, read_i32, read_u16, read_u32};
 
 const BITMAPINFOHEADER_SIZE: u32 = 40;
 const BITMAPV5HEADER_SIZE: u32 = 124;
@@ -74,7 +75,7 @@ fn dib_to_bgra(dib: &[u8]) -> Result<(Vec<u8>, u32, u32), AdapterError> {
             "DIB payload is shorter than BITMAPINFOHEADER",
         ));
     }
-    let header_size = read_u32(dib, 0)?;
+    let header_size = read_u32(dib, 0, "DIB header size")?;
     if header_size != BITMAPINFOHEADER_SIZE && header_size != BITMAPV5HEADER_SIZE {
         return Err(payload_error(
             "DIB header size is not BITMAPINFOHEADER or BITMAPV5HEADER",
@@ -85,12 +86,12 @@ fn dib_to_bgra(dib: &[u8]) -> Result<(Vec<u8>, u32, u32), AdapterError> {
             "DIB payload is shorter than its declared header",
         ));
     }
-    let width_i = read_i32(dib, 4)?;
-    let height_i = read_i32(dib, 8)?;
-    let planes = read_u16(dib, 12)?;
-    let bit_count = read_u16(dib, 14)?;
-    let compression = read_u32(dib, 16)?;
-    let clr_used = read_u32(dib, 32)?;
+    let width_i = read_i32(dib, 4, "DIB biWidth")?;
+    let height_i = read_i32(dib, 8, "DIB biHeight")?;
+    let planes = read_u16(dib, 12, "DIB biPlanes")?;
+    let bit_count = read_u16(dib, 14, "DIB biBitCount")?;
+    let compression = read_u32(dib, 16, "DIB biCompression")?;
+    let clr_used = read_u32(dib, 32, "DIB biClrUsed")?;
     if planes != 1 {
         return Err(payload_error("DIB biPlanes must be 1"));
     }
@@ -302,44 +303,6 @@ fn validate_dimensions(width: u32, height: u32, argument: bool) -> Result<(), Ad
     } else {
         payload_error("Clipboard image exceeds the decoded-image budget")
     })
-}
-
-fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, AdapterError> {
-    let end = offset
-        .checked_add(2)
-        .ok_or_else(|| payload_error("DIB field offset overflowed"))?;
-    let slice = bytes
-        .get(offset..end)
-        .ok_or_else(|| payload_error("DIB header field is truncated"))?;
-    let array: [u8; 2] = slice
-        .try_into()
-        .map_err(|_| payload_error("DIB header field is truncated"))?;
-    Ok(u16::from_le_bytes(array))
-}
-
-fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, AdapterError> {
-    let end = offset
-        .checked_add(4)
-        .ok_or_else(|| payload_error("DIB field offset overflowed"))?;
-    let slice = bytes
-        .get(offset..end)
-        .ok_or_else(|| payload_error("DIB header field is truncated"))?;
-    let array: [u8; 4] = slice
-        .try_into()
-        .map_err(|_| payload_error("DIB header field is truncated"))?;
-    Ok(u32::from_le_bytes(array))
-}
-
-fn read_i32(bytes: &[u8], offset: usize) -> Result<i32, AdapterError> {
-    Ok(read_u32(bytes, offset)? as i32)
-}
-
-fn payload_error(message: &str) -> AdapterError {
-    AdapterError::new(ErrorCode::ActionFailed, message)
-}
-
-fn argument_error(message: &str) -> AdapterError {
-    AdapterError::new(ErrorCode::InvalidArgs, message)
 }
 
 #[cfg(test)]

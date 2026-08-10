@@ -163,34 +163,18 @@ pub(crate) mod test_hooks {
     }
 
     pub(crate) fn with_force_unsupported<R>(run: impl FnOnce() -> R) -> R {
-        with_flag(&FORCE_UNSUPPORTED, true, run)
+        crate::system::test_support::with_flag(&FORCE_UNSUPPORTED, true, run)
     }
 
     pub(crate) fn with_force_fail_after_available<R>(run: impl FnOnce() -> R) -> R {
-        with_flag(&FORCE_FAIL_AFTER_AVAILABLE, true, run)
+        crate::system::test_support::with_flag(&FORCE_FAIL_AFTER_AVAILABLE, true, run)
     }
 
     pub(crate) fn with_consume_modern_slice<R>(run: impl FnOnce() -> R) -> R {
-        with_flag(&CONSUME_MODERN_SLICE, true, run)
+        crate::system::test_support::with_flag(&CONSUME_MODERN_SLICE, true, run)
     }
 
     pub(crate) fn with_disable_deadline_slice<R>(run: impl FnOnce() -> R) -> R {
-        with_flag(&DISABLE_DEADLINE_SLICE, true, run)
-    }
-
-    fn with_flag<R>(
-        flag: &'static std::thread::LocalKey<Cell<bool>>,
-        value: bool,
-        run: impl FnOnce() -> R,
-    ) -> R {
-        struct Reset(&'static std::thread::LocalKey<Cell<bool>>);
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                self.0.with(|cell| cell.set(false));
-            }
-        }
-        flag.with(|cell| cell.set(value));
-        let _reset = Reset(flag);
-        run()
+        crate::system::test_support::with_flag(&DISABLE_DEADLINE_SLICE, true, run)
     }
 }

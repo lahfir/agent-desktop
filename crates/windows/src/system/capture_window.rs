@@ -3,15 +3,19 @@
 //! Call order owned by the caller: corroborate window identity first, then
 //! invoke [`capture_window`]. This module refuses a destroyed handle before
 //! the pump probe so a gone window is not mislabelled `APP_UNRESPONSIVE`,
-//! then probes responsiveness, then issues `PrintWindow`.
+//! then probes responsiveness, then issues `PrintWindow`. The native
+//! `PrintWindow` symbol is imported from user32.dll locally because the
+//! windows-sys binding sits behind Win32_Storage_Xps, which this crate does
+//! not enable.
 
 #![allow(dead_code)]
 
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, ImageBuffer, ImageFormat};
 
+pub(crate) use super::gdi_surface::gdi_balance;
+use super::gdi_surface::{self, GdiDcPair, win32_last_error};
 use super::permissions::ensure_budget;
 use super::png_codec::encode_bgra_to_png;
-use super::process_state::hresult_from_win32;
 use super::window_enum::{WindowHandle, window_is_responsive};
 
 /// Undocumented `PrintWindow` flag (Windows 8.1+) that asks the target for a
@@ -21,10 +25,6 @@ use super::window_enum::{WindowHandle, window_is_responsive};
 /// fixture stacks.
 const PW_RENDERFULLCONTENT: u32 = 0x0000_0002;
 
-// Linked directly from user32.dll. The windows-sys binding for this symbol
-// lives behind Win32_Storage_Xps, which this crate does not take; declaring
-// the import locally keeps the legacy capture path free of that feature the
-// same way PW_RENDERFULLCONTENT is declared locally.
 #[link(name = "user32")]
 unsafe extern "system" {
     fn PrintWindow(
@@ -120,6 +120,9 @@ fn window_capture_size(handle: WindowHandle) -> Result<(u32, u32), AdapterError>
     Ok((width as u32, height as u32))
 }
 
+/// Prefer [`PW_RENDERFULLCONTENT`] for a composited frame; when that yields an
+/// empty buffer (common for WS_POPUP windows outside DWM redirection), retry
+/// with bare flags so WM_PRINTCLIENT can paint the DC.
 fn print_window_bgra(
     handle: WindowHandle,
     width: u32,
@@ -127,23 +130,27 @@ fn print_window_bgra(
 ) -> Result<Vec<u8>, AdapterError> {
     #[cfg(test)]
     if fail_after_alloc::is_active() {
-        // Allocate then fail so the RAII balance test covers Drop on the
-        // error path without depending on PrintWindow succeeding.
         let _surface = CaptureSurface::create(width as i32, height as i32)?;
         return Err(AdapterError::new(
             ErrorCode::ActionFailed,
             "forced capture failure after GDI allocation",
         ));
     }
-    // Prefer the undocumented full-content flag (A22-2); when that path
-    // yields an empty frame — common for WS_POPUP windows that do not
-    // participate in DWM redirection — fall back to classic WM_PRINT so the
-    // window's WM_PRINTCLIENT handler can paint into the DC.
     let full = capture_with_flags(handle, width, height, PW_RENDERFULLCONTENT)?;
-    if !frame_appears_empty(&full) {
+    if !frame_appears_empty(&full) && !fail_after_fullcontent_is_active() {
         return Ok(full);
     }
     capture_with_flags(handle, width, height, 0)
+}
+
+#[cfg(not(test))]
+fn fail_after_fullcontent_is_active() -> bool {
+    false
+}
+
+#[cfg(test)]
+fn fail_after_fullcontent_is_active() -> bool {
+    fail_after_fullcontent::is_active()
 }
 
 fn capture_with_flags(
@@ -152,8 +159,12 @@ fn capture_with_flags(
     height: u32,
     flags: u32,
 ) -> Result<Vec<u8>, AdapterError> {
+    #[cfg(test)]
+    if flags == 0 {
+        bare_retry_observed::mark();
+    }
     let surface = CaptureSurface::create(width as i32, height as i32)?;
-    if unsafe { PrintWindow(handle, surface.memory_dc, flags) } == 0 {
+    if unsafe { PrintWindow(handle, surface.dc_pair.memory_dc, flags) } == 0 {
         return Err(win32_last_error("PrintWindow failed"));
     }
     surface.read_bgra()
@@ -165,25 +176,12 @@ fn frame_appears_empty(pixels: &[u8]) -> bool {
         .any(|px| px[0] != 0 || px[1] != 0 || px[2] != 0)
 }
 
-fn win32_last_error(message: &str) -> AdapterError {
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    let hresult = hresult_from_win32(error);
-    let record = super::hresult::hresult_record(hresult);
-    let mut err = AdapterError::new(record.code, message)
-        .with_platform_detail(super::hresult::com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
-}
-
 /// Device-compatible bitmap surface matching the A22-2 probe path:
 /// `CreateCompatibleBitmap` + `PrintWindow` + `GetDIBits`. A DIB-section
 /// target can stay black under `PW_RENDERFULLCONTENT` even when the same
 /// call into a compatible bitmap yields the painted frame.
 struct CaptureSurface {
-    screen_dc: windows_sys::Win32::Graphics::Gdi::HDC,
-    memory_dc: windows_sys::Win32::Graphics::Gdi::HDC,
+    dc_pair: GdiDcPair,
     bitmap: *mut core::ffi::c_void,
     previous: *mut core::ffi::c_void,
     width: i32,
@@ -192,41 +190,19 @@ struct CaptureSurface {
 
 impl CaptureSurface {
     fn create(width: i32, height: i32) -> Result<Self, AdapterError> {
-        use windows_sys::Win32::Graphics::Gdi::{
-            CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, GetDC, ReleaseDC, SelectObject,
-        };
+        use windows_sys::Win32::Graphics::Gdi::{CreateCompatibleBitmap, SelectObject};
 
-        let screen_dc = unsafe { GetDC(std::ptr::null_mut()) };
-        if screen_dc.is_null() {
-            return Err(win32_last_error("GetDC failed for window capture"));
-        }
-        gdi_balance::acquire();
-        let memory_dc = unsafe { CreateCompatibleDC(screen_dc) };
-        if memory_dc.is_null() {
-            unsafe { ReleaseDC(std::ptr::null_mut(), screen_dc) };
-            gdi_balance::release();
-            return Err(win32_last_error(
-                "CreateCompatibleDC failed for window capture",
-            ));
-        }
-        gdi_balance::acquire();
-        let bitmap = unsafe { CreateCompatibleBitmap(screen_dc, width, height) };
+        let dc_pair = GdiDcPair::create("window capture")?;
+        let bitmap = unsafe { CreateCompatibleBitmap(dc_pair.screen_dc, width, height) };
         if bitmap.is_null() {
-            unsafe {
-                DeleteDC(memory_dc);
-                ReleaseDC(std::ptr::null_mut(), screen_dc);
-            }
-            gdi_balance::release();
-            gdi_balance::release();
             return Err(win32_last_error(
                 "CreateCompatibleBitmap failed for window capture",
             ));
         }
         gdi_balance::acquire();
-        let previous = unsafe { SelectObject(memory_dc, bitmap) };
+        let previous = unsafe { SelectObject(dc_pair.memory_dc, bitmap) };
         Ok(Self {
-            screen_dc,
-            memory_dc,
+            dc_pair,
             bitmap,
             previous,
             width,
@@ -235,26 +211,13 @@ impl CaptureSurface {
     }
 
     fn read_bgra(self) -> Result<Vec<u8>, AdapterError> {
-        use windows_sys::Win32::Graphics::Gdi::{
-            BI_RGB, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, GetDIBits,
-        };
+        use windows_sys::Win32::Graphics::Gdi::{DIB_RGB_COLORS, GetDIBits};
 
-        let mut info = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: self.width,
-                biHeight: -self.height,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let mut info = gdi_surface::top_down_bgra_bitmap_info(self.width, self.height);
         let mut pixels = vec![0u8; (self.width * self.height * 4) as usize];
         let copied = unsafe {
             GetDIBits(
-                self.memory_dc,
+                self.dc_pair.memory_dc,
                 self.bitmap,
                 0,
                 self.height as u32,
@@ -272,42 +235,7 @@ impl CaptureSurface {
 
 impl Drop for CaptureSurface {
     fn drop(&mut self) {
-        use windows_sys::Win32::Graphics::Gdi::{DeleteDC, DeleteObject, ReleaseDC, SelectObject};
-        unsafe {
-            SelectObject(self.memory_dc, self.previous);
-            DeleteObject(self.bitmap);
-            gdi_balance::release();
-            DeleteDC(self.memory_dc);
-            gdi_balance::release();
-            ReleaseDC(std::ptr::null_mut(), self.screen_dc);
-            gdi_balance::release();
-        }
-    }
-}
-
-mod gdi_balance {
-    use std::cell::Cell;
-
-    thread_local! {
-        static LIVE: Cell<i32> = const { Cell::new(0) };
-    }
-
-    pub(super) fn acquire() {
-        LIVE.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn release() {
-        LIVE.with(|cell| cell.set(cell.get() - 1));
-    }
-
-    #[cfg(test)]
-    pub(super) fn live() -> i32 {
-        LIVE.with(Cell::get)
-    }
-
-    #[cfg(test)]
-    pub(super) fn reset() {
-        LIVE.with(|cell| cell.set(0));
+        gdi_surface::restore_selected_bitmap(self.dc_pair.memory_dc, self.previous, self.bitmap);
     }
 }
 
@@ -324,15 +252,49 @@ pub(super) mod fail_after_alloc {
     }
 
     pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct Reset;
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                ACTIVE.with(|cell| cell.set(false));
-            }
-        }
-        ACTIVE.with(|cell| cell.set(true));
-        let _reset = Reset;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
+    }
+}
+
+#[cfg(test)]
+pub(super) mod fail_after_fullcontent {
+    use std::cell::Cell;
+
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(super) fn is_active() -> bool {
+        ACTIVE.with(Cell::get)
+    }
+
+    pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
+    }
+}
+
+#[cfg(test)]
+pub(super) mod bare_retry_observed {
+    use std::cell::Cell;
+
+    thread_local! {
+        static SEEN: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(super) fn mark() {
+        SEEN.with(|cell| cell.set(true));
+    }
+
+    pub(super) fn take() -> bool {
+        SEEN.with(|cell| {
+            let seen = cell.get();
+            cell.set(false);
+            seen
+        })
+    }
+
+    pub(super) fn reset() {
+        SEEN.with(|cell| cell.set(false));
     }
 }
 

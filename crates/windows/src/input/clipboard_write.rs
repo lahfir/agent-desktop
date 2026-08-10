@@ -13,19 +13,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows_sys::Win32::Foundation::{GetLastError, HWND};
 use windows_sys::Win32::System::DataExchange::{
-    EmptyClipboard, GetClipboardOwner, GetClipboardSequenceNumber, RegisterClipboardFormatW,
+    EmptyClipboard, GetClipboardOwner, GetClipboardSequenceNumber,
 };
 
 use super::clipboard_files::encode_hdrop;
+use super::clipboard_formats::{CF_DIB, CF_HDROP, CF_UNICODETEXT, registered_png_format};
 use super::clipboard_guard::MoveableMemory;
 use super::clipboard_image::{encode_dib_from_png, png_bytes_for_clipboard};
 use super::clipboard_session::ClipboardSession;
 use super::clipboard_text::encode_utf16_text;
 use crate::system::permissions::ensure_budget;
-
-const CF_UNICODETEXT: u32 = 13;
-const CF_DIB: u32 = 8;
-const CF_HDROP: u32 = 15;
 
 #[cfg(test)]
 static FORCE_OWNERSHIP_LOSS: AtomicBool = AtomicBool::new(false);
@@ -95,12 +92,6 @@ fn prepare_image_formats(
     }
     formats.push((CF_DIB, dib));
     Ok(formats)
-}
-
-fn registered_png_format() -> Option<u32> {
-    let name: Vec<u16> = "PNG".encode_utf16().chain(std::iter::once(0)).collect();
-    let format = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
-    (format != 0).then_some(format)
 }
 
 fn confirm_write_ownership(owner: HWND, sequence_after_empty: u32) -> Result<(), AdapterError> {

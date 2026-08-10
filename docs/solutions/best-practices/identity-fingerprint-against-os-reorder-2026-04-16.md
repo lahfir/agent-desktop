@@ -2,7 +2,7 @@
 title: Guard OS-reordered resources with an identity fingerprint
 date: 2026-07-11
 category: best-practices
-module: notification commands and FFI, crates/windows/src/system/window_activate.rs
+module: notification commands and FFI, crates/windows/src/system/window_activate.rs, crates/windows/src/system/display.rs, crates/windows/src/system/screenshot.rs
 problem_type: best_practice
 component: tooling
 severity: high
@@ -11,7 +11,8 @@ applies_when:
   - "Designing an action API for notifications or another reorderable surface"
   - "Adding a notification mutation through CLI or FFI"
   - "Restoring, foregrounding, or otherwise mutating a resource addressed by a recyclable OS handle (HWND, PID, or similar) when the check and the write cannot be issued as one atomic operation"
-tags: [notifications, identity, reordering, fail-closed, ffi, windows, check-then-act]
+  - "Capturing a display addressed by a recyclable monitor handle when list-displays and screenshot cannot be issued as one atomic operation"
+tags: [notifications, identity, reordering, fail-closed, ffi, windows, check-then-act, screenshot, display]
 ---
 
 # Guard OS-reordered resources with an identity fingerprint
@@ -61,6 +62,20 @@ Some(expected)` — handle equality alone would accept a recycled HWND that
 happens to be foreground for an unrelated reason. See `focus_window`'s own
 doc comment in `window_activate.rs` for the stated rationale.
 
+**Display identity.** A Windows display id is a recyclable
+`monitor-{HMONITOR}` handle: the same numeric value can later name a
+different monitor after hot-plug, mode change, or OS reassignment. Trusting
+the id alone between `list-displays` and `screenshot` is the same
+check-then-act gap as a bare HWND. Callers pass the full `DisplayInfo` from
+the list result; the adapter re-lists and corroborates id together with
+bounds, primary, and scale before capture (`verify_display_identity` in
+`display.rs`), then verifies again after capture so a mid-capture change
+discards the bytes rather than attributing them to the wrong surface
+(identity sandwich in `screenshot.rs`). Exact-window screenshot requires a
+`process_instance` token for the same reason — HWND alone is not enough.
+Backend choice (Modern vs Legacy) is orthogonal: the fingerprint applies
+regardless of which capture path produces the PNG.
+
 ## Prevention
 
 - Never expose a mutating list-index or bare-handle API without an identity
@@ -79,9 +94,14 @@ doc comment in `window_activate.rs` for the stated rationale.
 - Test insertion, removal, and title/app mismatch between list and act; for
   a recyclable handle, test the destroy-and-recycle race directly against
   both the precondition and the success predicate.
+- For display capture, test each fingerprint field independently (id, bounds,
+  primary, scale) mutating between list and act, and assert a post-capture
+  mismatch discards the buffer.
 
 ## Related
 
 - `crates/core/src/notification_identity.rs`
 - `crates/macos/src/notifications/actions.rs`
 - `crates/windows/src/system/window_activate.rs`
+- `crates/windows/src/system/display.rs`
+- `crates/windows/src/system/screenshot.rs`

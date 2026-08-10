@@ -289,22 +289,7 @@ pub(super) mod fail_after_start {
     }
 
     pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        with_flag(&ACTIVE, run)
-    }
-
-    fn with_flag<R>(
-        flag: &'static std::thread::LocalKey<Cell<bool>>,
-        run: impl FnOnce() -> R,
-    ) -> R {
-        struct Reset(&'static std::thread::LocalKey<Cell<bool>>);
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                self.0.with(|cell| cell.set(false));
-            }
-        }
-        flag.with(|cell| cell.set(true));
-        let _reset = Reset(flag);
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 
@@ -321,15 +306,7 @@ pub(super) mod hold_frames {
     }
 
     pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct Reset;
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                ACTIVE.with(|cell| cell.set(false));
-            }
-        }
-        ACTIVE.with(|cell| cell.set(true));
-        let _reset = Reset;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 

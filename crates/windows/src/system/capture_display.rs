@@ -9,9 +9,10 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, ImageBuffer, ImageFormat, Rect};
 
 use super::display::display_at;
+pub(crate) use super::gdi_surface::gdi_balance;
+use super::gdi_surface::{self, GdiDcPair, win32_last_error};
 use super::permissions::ensure_budget;
 use super::png_codec::encode_bgra_to_png;
-use super::process_state::hresult_from_win32;
 
 /// Captures the display at the public enumeration index into a PNG buffer.
 ///
@@ -103,12 +104,12 @@ fn bitblt_screen_bgra(
     use windows_sys::Win32::Graphics::Gdi::{BitBlt, SRCCOPY};
     if unsafe {
         BitBlt(
-            surface.memory_dc,
+            surface.dc_pair.memory_dc,
             0,
             0,
             width as i32,
             height as i32,
-            surface.screen_dc,
+            surface.dc_pair.screen_dc,
             origin_x,
             origin_y,
             SRCCOPY,
@@ -120,21 +121,8 @@ fn bitblt_screen_bgra(
     Ok(surface.into_bgra())
 }
 
-fn win32_last_error(message: &str) -> AdapterError {
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    let hresult = hresult_from_win32(error);
-    let record = super::hresult::hresult_record(hresult);
-    let mut err = AdapterError::new(record.code, message)
-        .with_platform_detail(super::hresult::com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
-}
-
 struct DibSection {
-    screen_dc: windows_sys::Win32::Graphics::Gdi::HDC,
-    memory_dc: windows_sys::Win32::Graphics::Gdi::HDC,
+    dc_pair: GdiDcPair,
     bitmap: *mut core::ffi::c_void,
     previous: *mut core::ffi::c_void,
     bits: *mut u8,
@@ -144,41 +132,14 @@ struct DibSection {
 
 impl DibSection {
     fn create(width: i32, height: i32) -> Result<Self, AdapterError> {
-        use windows_sys::Win32::Graphics::Gdi::{
-            BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection,
-            DIB_RGB_COLORS, DeleteDC, GetDC, ReleaseDC, SelectObject,
-        };
+        use windows_sys::Win32::Graphics::Gdi::{CreateDIBSection, DIB_RGB_COLORS, SelectObject};
 
-        let screen_dc = unsafe { GetDC(std::ptr::null_mut()) };
-        if screen_dc.is_null() {
-            return Err(win32_last_error("GetDC failed for display capture"));
-        }
-        gdi_balance::acquire();
-        let memory_dc = unsafe { CreateCompatibleDC(screen_dc) };
-        if memory_dc.is_null() {
-            unsafe { ReleaseDC(std::ptr::null_mut(), screen_dc) };
-            gdi_balance::release();
-            return Err(win32_last_error(
-                "CreateCompatibleDC failed for display capture",
-            ));
-        }
-        gdi_balance::acquire();
-        let info = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: width,
-                biHeight: -height,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let dc_pair = GdiDcPair::create("display capture")?;
+        let info = gdi_surface::top_down_bgra_bitmap_info(width, height);
         let mut bits_ptr = std::ptr::null_mut();
         let bitmap = unsafe {
             CreateDIBSection(
-                memory_dc,
+                dc_pair.memory_dc,
                 &info,
                 DIB_RGB_COLORS,
                 &mut bits_ptr,
@@ -187,21 +148,14 @@ impl DibSection {
             )
         };
         if bitmap.is_null() || bits_ptr.is_null() {
-            unsafe {
-                DeleteDC(memory_dc);
-                ReleaseDC(std::ptr::null_mut(), screen_dc);
-            }
-            gdi_balance::release();
-            gdi_balance::release();
             return Err(win32_last_error(
                 "CreateDIBSection failed for display capture",
             ));
         }
         gdi_balance::acquire();
-        let previous = unsafe { SelectObject(memory_dc, bitmap) };
+        let previous = unsafe { SelectObject(dc_pair.memory_dc, bitmap) };
         Ok(Self {
-            screen_dc,
-            memory_dc,
+            dc_pair,
             bitmap,
             previous,
             bits: bits_ptr.cast(),
@@ -223,42 +177,7 @@ impl DibSection {
 
 impl Drop for DibSection {
     fn drop(&mut self) {
-        use windows_sys::Win32::Graphics::Gdi::{DeleteDC, DeleteObject, ReleaseDC, SelectObject};
-        unsafe {
-            SelectObject(self.memory_dc, self.previous);
-            DeleteObject(self.bitmap);
-            gdi_balance::release();
-            DeleteDC(self.memory_dc);
-            gdi_balance::release();
-            ReleaseDC(std::ptr::null_mut(), self.screen_dc);
-            gdi_balance::release();
-        }
-    }
-}
-
-mod gdi_balance {
-    use std::cell::Cell;
-
-    thread_local! {
-        static LIVE: Cell<i32> = const { Cell::new(0) };
-    }
-
-    pub(super) fn acquire() {
-        LIVE.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn release() {
-        LIVE.with(|cell| cell.set(cell.get() - 1));
-    }
-
-    #[cfg(test)]
-    pub(super) fn live() -> i32 {
-        LIVE.with(Cell::get)
-    }
-
-    #[cfg(test)]
-    pub(super) fn reset() {
-        LIVE.with(|cell| cell.set(0));
+        gdi_surface::restore_selected_bitmap(self.dc_pair.memory_dc, self.previous, self.bitmap);
     }
 }
 
@@ -275,15 +194,7 @@ pub(super) mod fail_after_alloc {
     }
 
     pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct Reset;
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                ACTIVE.with(|cell| cell.set(false));
-            }
-        }
-        ACTIVE.with(|cell| cell.set(true));
-        let _reset = Reset;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 

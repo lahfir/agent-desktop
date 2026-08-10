@@ -7,7 +7,10 @@
 
 use agent_desktop_core::{
     AdapterError, ClipboardContent, ClipboardFormat, Deadline, DeliverySemantics, ErrorCode,
+    MAX_PNG_INPUT_BYTES,
 };
+#[cfg(test)]
+use std::cell::Cell;
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, channel};
@@ -16,11 +19,11 @@ use std::thread;
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::System::DataExchange::{
     GetClipboardData, GetClipboardOwner, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
-    RegisterClipboardFormatW,
 };
 use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
 
 use super::clipboard_files::decode_hdrop;
+use super::clipboard_formats::{CF_DIB, CF_DIBV5, CF_HDROP, CF_UNICODETEXT, registered_png_format};
 use super::clipboard_image::{decode_dib_clipboard, decode_png_clipboard};
 use super::clipboard_session::ClipboardSession;
 use super::clipboard_text::decode_utf16_text;
@@ -28,16 +31,17 @@ use super::clipboard_write::{clear_clipboard as clear_clipboard_write, set_clipb
 use crate::system::permissions::ensure_budget;
 use crate::system::window_enum::window_is_responsive;
 
-const CF_UNICODETEXT: u32 = 13;
-const CF_DIB: u32 = 8;
-const CF_DIBV5: u32 = 17;
-const CF_HDROP: u32 = 15;
+pub(crate) const MAX_CLIPBOARD_PAYLOAD_BYTES: usize = MAX_PNG_INPUT_BYTES;
 const SEQUENCE_RETRY_ATTEMPTS: u32 = 2;
 
 #[cfg(test)]
 static SEQUENCE_RETRY_OBSERVED: AtomicU32 = AtomicU32::new(0);
 #[cfg(test)]
 static INJECT_SEQUENCE_MISMATCH_ONCE: AtomicBool = AtomicBool::new(false);
+#[cfg(test)]
+thread_local! {
+    static GLOBAL_SIZE_OVERRIDE_BYTES: Cell<usize> = const { Cell::new(0) };
+}
 
 pub(crate) fn get_clipboard_content(
     format: ClipboardFormat,
@@ -103,25 +107,36 @@ fn read_text(deadline: Deadline) -> Result<Option<ClipboardContent>, AdapterErro
     if !format_available(CF_UNICODETEXT) {
         return Ok(None);
     }
-    let bytes = read_format_bytes(CF_UNICODETEXT, deadline)?;
-    match bytes {
-        None => Ok(None),
-        Some(payload) => Ok(Some(ClipboardContent::Text(decode_utf16_text(&payload)?))),
-    }
+    let Some(payload) = read_format_bytes(CF_UNICODETEXT, deadline)? else {
+        return Ok(None);
+    };
+    Ok(Some(ClipboardContent::Text(decode_utf16_text(&payload)?)))
 }
 
 fn read_files(deadline: Deadline) -> Result<Option<ClipboardContent>, AdapterError> {
     if !format_available(CF_HDROP) {
         return Ok(None);
     }
-    let bytes = read_format_bytes(CF_HDROP, deadline)?;
-    match bytes {
-        None => Ok(None),
-        Some(payload) => {
-            let paths = decode_hdrop(&payload)?;
-            Ok((!paths.is_empty()).then_some(ClipboardContent::FileUrls(paths)))
-        }
+    let Some(payload) = read_format_bytes(CF_HDROP, deadline)? else {
+        return Ok(None);
+    };
+    let paths = decode_hdrop(&payload)?;
+    Ok((!paths.is_empty()).then_some(ClipboardContent::FileUrls(paths)))
+}
+
+fn read_dib_image(
+    format: u32,
+    deadline: Deadline,
+) -> Result<Option<ClipboardContent>, AdapterError> {
+    if !format_available(format) {
+        return Ok(None);
     }
+    let Some(payload) = read_format_bytes(format, deadline)? else {
+        return Ok(None);
+    };
+    Ok(Some(ClipboardContent::Image(decode_dib_clipboard(
+        &payload, deadline,
+    )?)))
 }
 
 fn read_image(deadline: Deadline) -> Result<Option<ClipboardContent>, AdapterError> {
@@ -134,34 +149,17 @@ fn read_image(deadline: Deadline) -> Result<Option<ClipboardContent>, AdapterErr
             }
         }
     }
-    if format_available(CF_DIBV5) {
-        if let Some(payload) = read_format_bytes(CF_DIBV5, deadline)? {
-            return Ok(Some(ClipboardContent::Image(decode_dib_clipboard(
-                &payload, deadline,
-            )?)));
-        }
+    if let Some(image) = read_dib_image(CF_DIBV5, deadline)? {
+        return Ok(Some(image));
     }
-    if format_available(CF_DIB) {
-        if let Some(payload) = read_format_bytes(CF_DIB, deadline)? {
-            return Ok(Some(ClipboardContent::Image(decode_dib_clipboard(
-                &payload, deadline,
-            )?)));
-        }
-    }
-    Ok(None)
+    read_dib_image(CF_DIB, deadline)
 }
 
 fn format_available(format: u32) -> bool {
     unsafe { IsClipboardFormatAvailable(format) != 0 }
 }
 
-fn registered_png_format() -> Option<u32> {
-    let name: Vec<u16> = "PNG".encode_utf16().chain(std::iter::once(0)).collect();
-    let format = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
-    (format != 0).then_some(format)
-}
-
-fn ensure_owner_responsive() -> Result<(), AdapterError> {
+pub(crate) fn ensure_owner_responsive() -> Result<(), AdapterError> {
     let owner = unsafe { GetClipboardOwner() };
     if owner.is_null() {
         return Ok(());
@@ -183,7 +181,10 @@ fn ensure_owner_responsive() -> Result<(), AdapterError> {
     .with_disposition(DeliverySemantics::not_delivered()))
 }
 
-fn read_format_bytes(format: u32, deadline: Deadline) -> Result<Option<Vec<u8>>, AdapterError> {
+pub(crate) fn read_format_bytes(
+    format: u32,
+    deadline: Deadline,
+) -> Result<Option<Vec<u8>>, AdapterError> {
     ensure_budget(deadline).map_err(not_delivered)?;
     let owner = unsafe { GetClipboardOwner() };
     if owner.is_null() {
@@ -204,8 +205,12 @@ fn read_format_bytes_on_worker(
     format: u32,
     deadline: Deadline,
 ) -> Result<Option<Vec<u8>>, AdapterError> {
+    #[cfg(test)]
+    let size_override = GLOBAL_SIZE_OVERRIDE_BYTES.with(Cell::get);
     let (sender, receiver) = channel();
     thread::spawn(move || {
+        #[cfg(test)]
+        seed_worker_global_size_override(size_override);
         let result = (|| {
             let _session = ClipboardSession::open_for_read(deadline)?;
             copy_clipboard_format(format)
@@ -236,12 +241,23 @@ fn copy_clipboard_format(format: u32) -> Result<Option<Vec<u8>>, AdapterError> {
 }
 
 fn copy_global_handle(handle: HANDLE) -> Result<Vec<u8>, AdapterError> {
-    let size = unsafe { GlobalSize(handle as _) };
+    let size = reported_global_size(handle);
     if size == 0 {
         return Err(AdapterError::new(
             ErrorCode::ActionFailed,
             "Clipboard payload handle reported zero size",
         )
+        .with_disposition(DeliverySemantics::not_delivered()));
+    }
+    if size > MAX_CLIPBOARD_PAYLOAD_BYTES {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "Clipboard payload exceeds the supported size budget",
+        )
+        .with_suggestion("Reduce the source content or read a smaller clipboard format")
+        .with_platform_detail(format!(
+            "reported_size={size} max_bytes={MAX_CLIPBOARD_PAYLOAD_BYTES}"
+        ))
         .with_disposition(DeliverySemantics::not_delivered()));
     }
     let locked = unsafe { GlobalLock(handle as _) };
@@ -257,6 +273,17 @@ fn copy_global_handle(handle: HANDLE) -> Result<Vec<u8>, AdapterError> {
         let _ = GlobalUnlock(handle as _);
     }
     Ok(bytes)
+}
+
+fn reported_global_size(handle: HANDLE) -> usize {
+    #[cfg(test)]
+    {
+        let override_bytes = GLOBAL_SIZE_OVERRIDE_BYTES.with(Cell::get);
+        if override_bytes != 0 {
+            return override_bytes;
+        }
+    }
+    unsafe { GlobalSize(handle as _) }
 }
 
 fn not_delivered(error: AdapterError) -> AdapterError {
@@ -287,6 +314,18 @@ pub(crate) fn reset_sequence_retries_observed() {
 #[cfg(test)]
 pub(crate) fn inject_sequence_mismatch_once() {
     INJECT_SEQUENCE_MISMATCH_ONCE.store(true, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+fn seed_worker_global_size_override(bytes: usize) {
+    if bytes != 0 {
+        GLOBAL_SIZE_OVERRIDE_BYTES.with(|cell| cell.set(bytes));
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn with_global_size_override_for_test<R>(bytes: usize, run: impl FnOnce() -> R) -> R {
+    crate::system::test_support::with_usize_flag(&GLOBAL_SIZE_OVERRIDE_BYTES, bytes, run)
 }
 
 #[cfg(test)]

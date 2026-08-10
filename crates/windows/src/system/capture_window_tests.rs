@@ -1,4 +1,6 @@
-use super::{capture_window, fail_after_alloc, gdi_balance};
+use super::{
+    bare_retry_observed, capture_window, fail_after_alloc, fail_after_fullcontent, gdi_balance,
+};
 use crate::system::png_codec::decode_png_to_bgra;
 use crate::tree::fixture::{LocalPatternFixture, StalledFixture, bootstrap};
 use agent_desktop_core::{Deadline, ErrorCode};
@@ -145,5 +147,32 @@ fn gdi_objects_balance_across_success_deadline_and_forced_failure() {
         gdi_balance::live(),
         0,
         "forced failure must still Drop every GDI object"
+    );
+}
+
+#[test]
+fn printwindow_retries_with_bare_flags_when_fullcontent_path_is_skipped() {
+    bootstrap();
+    let fixture = LocalPatternFixture::create().expect("pattern fixture starts");
+    bare_retry_observed::reset();
+    let image =
+        fail_after_fullcontent::with(|| capture_window(fixture.handle() as _, 1.0, deadline()))
+            .expect("bare PrintWindow retry must succeed on the pattern fixture");
+    assert!(
+        bare_retry_observed::take(),
+        "removing the bare-flags fallback leaves this path untested and breaks invert verification"
+    );
+
+    let (bgra, width, height) =
+        decode_png_to_bgra(&image.data, deadline()).expect("decode captured PNG");
+    assert_eq!((width, height), (image.width, image.height));
+    let expectation = fixture.expectation();
+    let mut samples = [[0u8; 3]; 4];
+    for (index, point) in expectation.sample_points().into_iter().enumerate() {
+        samples[index] = sample_rgb(&bgra, width, point.x, point.y);
+    }
+    assert!(
+        expectation.matches_samples(&samples),
+        "fallback capture must still match fixture colours, got {samples:?}"
     );
 }

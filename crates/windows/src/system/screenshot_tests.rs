@@ -2,7 +2,7 @@ use super::{capture_window, screenshot, test_hooks as screenshot_hooks};
 use crate::system::capture_backend::test_hooks as backend_hooks;
 use crate::system::display::{display_at, list_displays_live};
 use crate::system::png_codec::decode_png_to_bgra;
-use crate::tree::fixture::{LocalPatternFixture, bootstrap};
+use crate::tree::fixture::{LocalPatternFixture, StalledFixture, bootstrap};
 use agent_desktop_core::{
     Deadline, DeliveryDisposition, ErrorCode, ImageFormat, ProcessId, ScreenshotTarget, WindowInfo,
     WindowState, parse_png_dimensions,
@@ -184,6 +184,11 @@ fn modern_slice_reserves_floor_so_legacy_still_succeeds() {
     })
     .expect_err("without the slice cap modern consumes the whole budget");
     assert_eq!(timed_out.code, ErrorCode::Timeout);
+    assert_eq!(
+        timed_out.disposition.delivery(),
+        DeliveryDisposition::NotDelivered,
+        "a timed-out capture delivered nothing, so it must not be reported unknown"
+    );
 }
 
 #[test]
@@ -209,6 +214,125 @@ fn window_scale_factor_comes_from_owning_display() {
     )
     .expect("display capture");
     assert_eq!(display_image.scale_factor, primary.scale);
+}
+
+#[test]
+fn window_identity_mismatch_is_not_delivered_through_the_entry_point() {
+    bootstrap();
+    let fixture = LocalPatternFixture::create().expect("pattern fixture");
+    let mut info = window_info_for(fixture.handle(), Some(live_token()));
+    info.process_instance = Some("windows-proc-v1:0:0".into());
+
+    let error = screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+        .expect_err("a stale generation token must fail before native capture");
+    assert_eq!(error.code, ErrorCode::WindowNotFound);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
+}
+
+#[test]
+fn display_identity_mismatch_is_not_delivered_through_the_entry_point() {
+    bootstrap();
+    let primary = display_at(0, deadline()).expect("primary");
+    let mut stale = primary.clone();
+    stale.bounds.width += 1.0;
+
+    let error = screenshot(
+        ScreenshotTarget::Display {
+            index: 0,
+            expected: stale,
+        },
+        deadline(),
+    )
+    .expect_err("a stale display fingerprint must fail before native capture");
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
+}
+
+#[test]
+fn screenshot_entry_upgrades_only_unknown_disposition_to_not_delivered() {
+    use agent_desktop_core::{AdapterError, DeliverySemantics};
+
+    let unknown = AdapterError::new(ErrorCode::InvalidArgs, "probe");
+    let upgraded = super::coerce_screenshot_disposition_for_test(unknown);
+    assert_eq!(upgraded.disposition, DeliverySemantics::not_delivered());
+
+    let already = AdapterError::new(ErrorCode::InvalidArgs, "probe")
+        .with_disposition(DeliverySemantics::not_delivered());
+    assert_eq!(
+        super::coerce_screenshot_disposition_for_test(already).disposition,
+        DeliverySemantics::not_delivered()
+    );
+
+    for semantics in [
+        DeliverySemantics::uncertain(),
+        DeliverySemantics::delivered_unverified(),
+        DeliverySemantics::delivered_verified(),
+    ] {
+        let error = AdapterError::new(ErrorCode::ActionFailed, "probe").with_disposition(semantics);
+        assert_eq!(
+            super::coerce_screenshot_disposition_for_test(error).disposition,
+            semantics
+        );
+    }
+}
+#[test]
+fn invalid_display_index_is_not_delivered_through_the_entry_point() {
+    bootstrap();
+    let error = screenshot(ScreenshotTarget::Screen(9_999), deadline())
+        .expect_err("an out-of-range display index must fail");
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
+}
+
+#[test]
+fn minimized_window_capture_is_not_delivered_through_the_entry_point() {
+    bootstrap();
+    let fixture = LocalPatternFixture::create().expect("pattern fixture");
+    let handle = fixture.handle() as windows_sys::Win32::Foundation::HWND;
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::ShowWindow(
+            handle,
+            windows_sys::Win32::UI::WindowsAndMessaging::SW_MINIMIZE,
+        );
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let info = window_info_for(fixture.handle(), Some(live_token()));
+
+    let error = backend_hooks::with_force_unsupported(|| {
+        screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+    })
+    .expect_err("a minimized window must be refused before native capture");
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
+}
+
+#[test]
+fn stalled_window_capture_is_not_delivered_through_the_entry_point() {
+    bootstrap();
+    let stalled = StalledFixture::create().expect("stalled fixture");
+    let info = window_info_for(stalled.handle(), Some(live_token()));
+
+    let error = backend_hooks::with_force_unsupported(|| {
+        screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+    })
+    .expect_err("a non-pumping window must be refused before native capture");
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(
+        error.disposition.delivery(),
+        DeliveryDisposition::NotDelivered
+    );
 }
 
 #[test]

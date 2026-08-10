@@ -1,7 +1,9 @@
 //! Pure `CF_HDROP` marshalling: `DROPFILES` + double-NUL wide paths ↔ `Vec<String>`.
 
-use agent_desktop_core::{AdapterError, ErrorCode};
+use agent_desktop_core::AdapterError;
 use std::mem::size_of;
+
+use super::clipboard_bytes::{argument_error, payload_error, read_i32, read_u32};
 
 const MAX_HDROP_PATHS: usize = 1_024;
 const MAX_HDROP_PATH_UTF16: usize = 16_384;
@@ -165,29 +167,12 @@ fn read_dropfiles(bytes: &[u8]) -> Result<DropFiles, AdapterError> {
         .get(..DROPFILES_SIZE)
         .ok_or_else(|| payload_error("CF_HDROP payload is shorter than DROPFILES"))?;
     Ok(DropFiles {
-        p_files: read_u32(header, 0)?,
-        pt_x: read_i32(header, 4)?,
-        pt_y: read_i32(header, 8)?,
-        f_nc: read_i32(header, 12)?,
-        f_wide: read_i32(header, 16)?,
+        p_files: read_u32(header, 0, "CF_HDROP header field")?,
+        pt_x: read_i32(header, 4, "CF_HDROP header field")?,
+        pt_y: read_i32(header, 8, "CF_HDROP header field")?,
+        f_nc: read_i32(header, 12, "CF_HDROP header field")?,
+        f_wide: read_i32(header, 16, "CF_HDROP header field")?,
     })
-}
-
-fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, AdapterError> {
-    let end = offset
-        .checked_add(4)
-        .ok_or_else(|| payload_error("CF_HDROP header field offset overflowed"))?;
-    let slice = bytes
-        .get(offset..end)
-        .ok_or_else(|| payload_error("CF_HDROP header field is truncated"))?;
-    let array: [u8; 4] = slice
-        .try_into()
-        .map_err(|_| payload_error("CF_HDROP header field is truncated"))?;
-    Ok(u32::from_le_bytes(array))
-}
-
-fn read_i32(bytes: &[u8], offset: usize) -> Result<i32, AdapterError> {
-    Ok(read_u32(bytes, offset)? as i32)
 }
 
 fn write_dropfiles(dst: &mut [u8], header: DropFiles) {
@@ -196,14 +181,6 @@ fn write_dropfiles(dst: &mut [u8], header: DropFiles) {
     dst[8..12].copy_from_slice(&header.pt_y.to_le_bytes());
     dst[12..16].copy_from_slice(&header.f_nc.to_le_bytes());
     dst[16..20].copy_from_slice(&header.f_wide.to_le_bytes());
-}
-
-fn payload_error(message: &str) -> AdapterError {
-    AdapterError::new(ErrorCode::ActionFailed, message)
-}
-
-fn argument_error(message: &str) -> AdapterError {
-    AdapterError::new(ErrorCode::InvalidArgs, message)
 }
 
 #[cfg(test)]

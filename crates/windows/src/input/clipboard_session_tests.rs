@@ -51,9 +51,6 @@ fn write_open_uses_hidden_owner_while_null_owner_leaves_ownership_unset() {
         unsafe {
             let _ = GlobalFree(alloc);
         }
-    } else {
-        // Some hosts accept SetClipboardData with a NULL owner; ownership
-        // re-check still requires the hidden owner window on the write path.
     }
     close_clipboard_raw();
 

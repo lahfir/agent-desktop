@@ -249,11 +249,11 @@ agent-desktop screenshot --screen 0 display.png
 | `--screen` | Capture display by index instead of an app window (from `list-displays`; `0` = primary) |
 | (positional) | File path to save PNG (omit for base64 in JSON) |
 
-When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field. A positional PATH writes through the user-path atomic writer (not the private-file seam), so network shares and foreign-owned directories stay writable; omitting the path keeps bytes in the JSON envelope (or the private default destination when a session artifact path applies).
+When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field. A positional PATH writes through the user-path atomic writer (not the private-file seam), so network shares and foreign-owned directories stay writable; omitting the path keeps bytes in the JSON envelope.
 
 **macOS:** screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
 
-**Windows:** runtime precedence is Modern (`Windows.Graphics.Capture`) then Legacy (`PrintWindow` / `BitBlt`). Gate on the runtime `IsSupported` predicate and successful interop activation, not on OS build number (A22-1). When modern is unavailable or fails to activate — including hosts where `IsSupported` is true but interop cannot activate — the command degrades silently to Legacy and still returns `ok: true` with a real PNG (dogfood J0). Windows has no screen-recording consent gate; `permissions` reports `screen_recording` as `not_required` when capture works. Bare `screenshot PATH` (no `--app` / `--screen`) maps to the primary display, matching `--screen 0`.
+**Windows:** runtime precedence is Modern (`Windows.Graphics.Capture`) then Legacy (`PrintWindow` / `BitBlt`). Gate on the runtime `IsSupported` predicate and successful interop activation, not on OS build number (A22-1). When modern is unavailable or fails to activate — including hosts where `IsSupported` is true but interop cannot activate — the command attempts Legacy silently; a 200ms floor is reserved for the Legacy attempt out of the overall deadline, but budget exhaustion or a Legacy failure can still surface as an error rather than guaranteeing `ok: true` (`LEGACY_DEADLINE_FLOOR` in `capture_backend.rs`). Windows has no screen-recording consent gate; `permissions` reports `screen_recording` as `not_required` when capture works. Bare `screenshot PATH` (no `--app` / `--screen`) maps to the primary display, matching `--screen 0`.
 
 ## list-displays
 

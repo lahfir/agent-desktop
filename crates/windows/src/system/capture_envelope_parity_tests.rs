@@ -2,15 +2,16 @@ use crate::adapter::WindowsAdapter;
 use crate::input::clipboard::{clear, get_clipboard_content, set_content};
 use crate::system::png_codec::encode_bgra_to_png;
 use crate::system::private_file::WindowsPrivateFile;
-use crate::tree::fixture::bootstrap;
+use crate::tree::fixture::{LocalPatternFixture, bootstrap};
 use crate::tree::fixture_clipboard::clipboard_test_lock;
 use agent_desktop_core::commands::clipboard_clear;
 use agent_desktop_core::commands::clipboard_get::{self, ClipboardGetArgs};
 use agent_desktop_core::commands::clipboard_set::{self, ClipboardSetArgs};
 use agent_desktop_core::commands::screenshot::{self, ScreenshotArgs};
 use agent_desktop_core::{
-    ClipboardContent, ClipboardFormat, CommandContext, Deadline, ImageBuffer, ImageFormat,
-    PrivateFileOps, parse_png_dimensions,
+    AppError, ClipboardContent, ClipboardFormat, CommandContext, Deadline, DeliverySemantics,
+    ErrorCode, ErrorPayload, ImageBuffer, ImageFormat, PrivateFileOps, ProcessId, ScreenshotTarget,
+    SystemOps, WindowInfo, WindowState, parse_png_dimensions,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -100,6 +101,17 @@ fn keys_of(value: &Value) -> Vec<&str> {
         .collect()
 }
 
+fn error_wire(error: &agent_desktop_core::AdapterError) -> Value {
+    serde_json::to_value(ErrorPayload::from_app_error(&AppError::from(error.clone())))
+        .expect("ErrorPayload serializes")
+}
+
+fn assert_disposition_wire(error: &agent_desktop_core::AdapterError, expected: DeliverySemantics) {
+    let wire = error_wire(error);
+    let projected = serde_json::to_value(expected).expect("disposition serializes");
+    assert_eq!(wire["disposition"], projected, "disposition wire shape");
+}
+
 fn with_restored_clipboard(body: impl FnOnce()) {
     let _lock = clipboard_test_lock();
     bootstrap();
@@ -115,6 +127,26 @@ fn with_restored_clipboard(body: impl FnOnce()) {
     if let Err(panic) = body_result {
         std::panic::resume_unwind(panic);
     }
+}
+
+#[test]
+fn screenshot_failure_disposition_serializes_not_delivered() {
+    bootstrap();
+    let adapter = WindowsAdapter::new();
+    let fixture = LocalPatternFixture::create().expect("pattern fixture");
+    let info = WindowInfo {
+        id: format!("w-{}", fixture.handle() as usize),
+        title: String::new(),
+        app: String::new(),
+        pid: ProcessId::from(std::process::id()),
+        process_instance: None,
+        bounds: None,
+        state: WindowState::default(),
+    };
+    let error = SystemOps::screenshot(&adapter, ScreenshotTarget::ExactWindow(info), deadline())
+        .expect_err("ExactWindow without process_instance must fail before capture");
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+    assert_disposition_wire(&error, DeliverySemantics::not_delivered());
 }
 
 #[test]

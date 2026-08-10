@@ -1,6 +1,7 @@
 use super::{
-    clear, get_clipboard_content, reset_sequence_retries_observed, sequence_retries_observed,
-    set_content,
+    MAX_CLIPBOARD_PAYLOAD_BYTES, clear, ensure_owner_responsive, get_clipboard_content,
+    read_format_bytes, reset_sequence_retries_observed, sequence_retries_observed, set_content,
+    with_global_size_override_for_test,
 };
 use crate::input::clipboard_guard::MoveableMemory;
 use crate::input::clipboard_session::ClipboardSession;
@@ -15,60 +16,55 @@ use agent_desktop_core::{
     ImageBuffer, ImageFormat, parse_png_dimensions,
 };
 use std::time::{Duration, Instant};
+use windows_sys::Win32::System::DataExchange::{EmptyClipboard, EnumClipboardFormats};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RawClipboardFormat {
+    format: u32,
+    payload: Vec<u8>,
+}
 
 struct SavedClipboard {
-    text: Option<String>,
-    image: Option<Vec<u8>>,
-    files: Option<Vec<String>>,
+    formats: Vec<RawClipboardFormat>,
 }
 
 impl SavedClipboard {
-    fn capture(deadline: Deadline) -> Self {
-        Self {
-            text: match get_clipboard_content(ClipboardFormat::Text, deadline) {
-                Ok(Some(ClipboardContent::Text(value))) => Some(value),
-                _ => None,
-            },
-            image: match get_clipboard_content(ClipboardFormat::Image, deadline) {
-                Ok(Some(ClipboardContent::Image(image))) => Some(image.data),
-                _ => None,
-            },
-            files: match get_clipboard_content(ClipboardFormat::FileUrls, deadline) {
-                Ok(Some(ClipboardContent::FileUrls(paths))) => Some(paths),
-                _ => None,
-            },
-        }
-    }
-
-    fn restore(&self, deadline: Deadline) {
-        let _ = clear(deadline);
-        if let Some(files) = &self.files {
-            let _ = set_content(&ClipboardContent::FileUrls(files.clone()), deadline);
-            return;
-        }
-        if let Some(png) = &self.image {
-            if let Some((width, height)) = parse_png_dimensions(png) {
-                let _ = set_content(
-                    &ClipboardContent::Image(ImageBuffer {
-                        data: png.clone(),
-                        format: ImageFormat::Png,
-                        width,
-                        height,
-                        scale_factor: 1.0,
-                    }),
-                    deadline,
-                );
-                return;
+    fn capture(deadline: Deadline) -> Result<Self, AdapterError> {
+        ensure_owner_responsive()?;
+        let _session = ClipboardSession::open_for_read(deadline)?;
+        let mut formats = Vec::new();
+        let mut next = 0_u32;
+        loop {
+            let format = unsafe { EnumClipboardFormats(next) };
+            if format == 0 {
+                break;
             }
+            if let Some(payload) = read_format_bytes(format, deadline)? {
+                formats.push(RawClipboardFormat { format, payload });
+            }
+            next = format;
         }
-        if let Some(text) = &self.text {
-            let _ = set_content(&ClipboardContent::Text(text.clone()), deadline);
-        }
+        formats.sort_by_key(|entry| entry.format);
+        Ok(Self { formats })
     }
 
-    fn matches_current(&self, deadline: Deadline) -> bool {
-        let current = Self::capture(deadline);
-        current.text == self.text && current.image == self.image && current.files == self.files
+    fn restore(&self, deadline: Deadline) -> Result<(), AdapterError> {
+        let _session = ClipboardSession::open_for_write(deadline)?;
+        if unsafe { EmptyClipboard() } == 0 {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "EmptyClipboard failed while restoring saved clipboard formats",
+            )
+            .with_disposition(DeliverySemantics::not_delivered()));
+        }
+        for entry in &self.formats {
+            MoveableMemory::from_bytes(&entry.payload)?.set_clipboard_data(entry.format)?;
+        }
+        Ok(())
+    }
+
+    fn matches_current(&self, deadline: Deadline) -> Result<bool, AdapterError> {
+        Ok(Self::capture(deadline)?.formats == self.formats)
     }
 }
 
@@ -79,15 +75,19 @@ fn deadline() -> Deadline {
 fn with_restored_clipboard(body: impl FnOnce()) {
     let _lock = clipboard_test_lock();
     bootstrap();
-    let saved = SavedClipboard::capture(deadline());
+    let saved = SavedClipboard::capture(deadline()).expect("capture clipboard for restore");
     let body_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
-    saved.restore(deadline());
+    saved
+        .restore(deadline())
+        .expect("restore every saved clipboard format");
     if let Err(panic) = body_result {
         std::panic::resume_unwind(panic);
     }
     assert!(
-        saved.matches_current(deadline()),
-        "clipboard text/image/file-list content must be restored after the test"
+        saved
+            .matches_current(deadline())
+            .expect("re-read clipboard for round-trip check"),
+        "every raw clipboard format must round-trip through save/restore"
     );
 }
 
@@ -239,6 +239,24 @@ fn sequence_retry_is_observed_when_clipboard_moves_mid_read() {
             sequence_retries_observed() > 0,
             "a mid-read sequence move must trigger the stable-read retry"
         );
+    });
+}
+
+#[test]
+fn oversized_clipboard_payload_is_rejected_before_copy() {
+    with_restored_clipboard(|| {
+        set_content(&ClipboardContent::Text("small".into()), deadline()).expect("set");
+        with_global_size_override_for_test(MAX_CLIPBOARD_PAYLOAD_BYTES + 1, || {
+            let error = get_clipboard_content(ClipboardFormat::Text, deadline())
+                .expect_err("hostile GlobalSize must fail before allocating the payload");
+            assert_eq!(error.code, ErrorCode::InvalidArgs);
+            assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+            let detail = error.platform_detail.unwrap_or_default();
+            assert!(
+                detail.contains(&MAX_CLIPBOARD_PAYLOAD_BYTES.to_string()),
+                "platform detail must name the cap, got {detail}"
+            );
+        });
     });
 }
 

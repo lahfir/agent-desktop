@@ -1,7 +1,10 @@
 pub(crate) mod blocked_combo;
 #[cfg(target_os = "windows")]
 pub(crate) mod clipboard;
+pub(crate) mod clipboard_bytes;
 pub(crate) mod clipboard_files;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_formats;
 #[cfg(target_os = "windows")]
 pub(crate) mod clipboard_guard;
 #[cfg(target_os = "windows")]
