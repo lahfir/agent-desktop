@@ -1,5 +1,9 @@
 mod adapter;
 pub(crate) mod app_ops;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_display;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_window;
 pub(crate) mod close;
 pub(crate) mod com_runtime;
 pub(crate) mod display;
