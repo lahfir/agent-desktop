@@ -1,4 +1,8 @@
 pub(crate) mod blocked_combo;
+pub(crate) mod clipboard_files;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_image;
+pub(crate) mod clipboard_text;
 pub(crate) mod drag;
 mod drag_state;
 pub(crate) mod elevation;
