@@ -1,9 +1,9 @@
 {
     "Probe":  "13-ledger-check",
-    "CapturedAtUtc":  "2026-08-07T14:35:34Z",
+    "CapturedAtUtc":  "2026-08-10T06:00:09Z",
     "Question":  "does FINDINGS.md satisfy R5, R6 and R7 as a machine-checkable contract",
     "Ledger":  "probes/windows/FINDINGS.md",
-    "RowCount":  142,
+    "RowCount":  165,
     "SessionEvidenceRows":  25,
     "AreaCoverage":  [
                          {
@@ -52,10 +52,10 @@
                          }
                      ],
     "VerdictCounts":  {
-                          "CONFIRMS":  76,
+                          "CONFIRMS":  90,
                           "CONTRADICTS":  8,
-                          "NEW-EDGE":  49,
-                          "DEFERRED":  9
+                          "NEW-EDGE":  52,
+                          "DEFERRED":  15
                       },
     "DeferredRows":  [
                          {
@@ -102,17 +102,51 @@
                              "Id":  "A19-4",
                              "Area":  "19",
                              "Closure":  "2.8"
+                         },
+                         {
+                             "Id":  "A20-2",
+                             "Area":  "20",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A20-5",
+                             "Area":  "20",
+                             "Closure":  "2.4"
+                         },
+                         {
+                             "Id":  "A21-2",
+                             "Area":  "21",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A21-7",
+                             "Area":  "21",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A22-7",
+                             "Area":  "22",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A22-8",
+                             "Area":  "22",
+                             "Closure":  "2.12"
                          }
                      ],
-    "MeasuredHunkCount":  80,
+    "MeasuredHunkCount":  93,
     "HunkIndexRowCount":  62,
     "ContradictsRowCount":  8,
     "ContradictsRowsMapped":  8,
     "BijectionHolds":  false,
+    "CaptureContentRowsAudited":  20,
+    "CaptureContentFailures":  [
+
+                               ],
     "Failures":  [
                      "A18-3: DEFERRED row does not name a Phase 2 closure sub-phase (expected \u0027closure: 2.\u003cn\u003e\u0027 in the action cell)",
                      "A18-9: DEFERRED row does not name a Phase 2 closure sub-phase (expected \u0027closure: 2.\u003cn\u003e\u0027 in the action cell)",
-                     "hunk index lists 62 hunk(s) but git diff -U0 main -- docs/phases.md measures 80"
+                     "hunk index lists 62 hunk(s) but git diff -U0 main -- docs/phases.md measures 93"
                  ],
     "HunkCountSource":  "git -C \u003crepo\u003e diff -U0 main -- docs/phases.md, counting lines matching ^@@ -[0-9]; the measured count is authoritative over any count written in prose"
 }

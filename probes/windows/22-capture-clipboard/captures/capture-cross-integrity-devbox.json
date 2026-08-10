@@ -1,0 +1,23 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "Medium-integrity PrintWindow (and WGC if supported) of High-owned window",
+    "measurable":  true,
+    "branch":  "medium_manufactured_cross_direction_staged",
+    "medium_integrity_sid":  "S-1-16-8192",
+    "printwindow":  {
+                        "control_same_integrity_outcome":  "printwindow_full_ok",
+                        "control_ok":  true,
+                        "medium_manufactured":  true,
+                        "cross_direction":  {
+                                                "measurable":  false,
+                                                "branch":  "medium_printwindow_launch_failed",
+                                                "outcome":  null,
+                                                "error_kind":  "MethodInvocationException"
+                                            }
+                    },
+    "wgc":  {
+                "host_supported":  true,
+                "measurable":  false,
+                "branch":  "supported_cross_direction_not_instrumented"
+            }
+}
