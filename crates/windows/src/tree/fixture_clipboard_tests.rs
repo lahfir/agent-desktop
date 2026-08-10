@@ -59,9 +59,7 @@ fn delayed_owner_clears_delay_format_on_drop() {
         assert!(owner.format_available());
     }
     assert!(
-        !unsafe {
-            windows_sys::Win32::System::DataExchange::IsClipboardFormatAvailable(13) != 0
-        },
+        !unsafe { windows_sys::Win32::System::DataExchange::IsClipboardFormatAvailable(13) != 0 },
         "dropping the delayed owner must clear the advertised delay-rendered format"
     );
 }

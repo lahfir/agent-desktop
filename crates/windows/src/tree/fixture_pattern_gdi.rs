@@ -2,9 +2,9 @@ use std::sync::mpsc::Sender;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush, DeleteDC,
-    DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, PAINTSTRUCT, ReleaseDC, SelectObject,
-    UpdateWindow, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, SRCCOPY,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
+    CreateSolidBrush, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, FillRect, GetDC, HDC,
+    InvalidateRect, PAINTSTRUCT, ReleaseDC, SRCCOPY, SelectObject, UpdateWindow,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
@@ -15,7 +15,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_PRINTCLIENT, WNDCLASSEXW, WS_POPUP,
 };
 
-use super::{PatternColors, PatternExpectation, PATTERN_HEIGHT, PATTERN_WIDTH};
+use super::{PATTERN_HEIGHT, PATTERN_WIDTH, PatternColors, PatternExpectation};
 use crate::tree::fixture_window;
 
 pub(super) const WM_PATTERN_READY: u32 = 0x0400 + 3;

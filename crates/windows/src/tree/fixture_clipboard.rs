@@ -13,15 +13,15 @@ use windows_sys::Win32::System::DataExchange::{
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DestroyWindow, HWND_MESSAGE, SW_SHOWNOACTIVATE, ShowWindow, WS_OVERLAPPEDWINDOW,
+    CreateWindowExW, DestroyWindow, HWND_MESSAGE, SW_SHOWNOACTIVATE, ShowWindow,
+    WS_OVERLAPPEDWINDOW,
 };
 
 use super::fixture_window;
 
 const CF_UNICODETEXT: u32 = 13;
 const HOST_ENVIRONMENT_FLAG: &str = "AGENT_DESKTOP_CLIPBOARD_HOLDER_HOST";
-const HOST_TEST_NAME: &str =
-    "tree::fixture_clipboard::tests::clipboard_holder_host_process_entry";
+const HOST_TEST_NAME: &str = "tree::fixture_clipboard::tests::clipboard_holder_host_process_entry";
 const READY_PREFIX: &str = "AGENT_DESKTOP_CLIPBOARD_HOLDER_READY";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
@@ -30,8 +30,7 @@ const STALL_POLL: Duration = Duration::from_millis(25);
 /// Process-wide lock for every test that touches the real clipboard (A22-5).
 pub(crate) fn clipboard_test_lock() -> MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
-    LOCK.lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Delay-rendering clipboard owner that stops pumping after advertising.
@@ -66,7 +65,9 @@ impl DelayedClipboardOwner {
             Ok(Err(error)) => Err(error),
             Err(_) => {
                 stop.store(true, Ordering::SeqCst);
-                Err(String::from("the delayed clipboard owner never became ready"))
+                Err(String::from(
+                    "the delayed clipboard owner never became ready",
+                ))
             }
         }
     }
@@ -176,9 +177,7 @@ fn await_holder_exit(child: &mut Child) -> Result<(), String> {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
             Ok(Some(status)) => {
-                return Err(format!(
-                    "clipboard holder exited unsuccessfully: {status}"
-                ));
+                return Err(format!("clipboard holder exited unsuccessfully: {status}"));
             }
             Ok(None) if std::time::Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(25));
@@ -292,7 +291,9 @@ fn delayed_owner_thread(
         )
     };
     if window.is_null() {
-        let _ = ready.send(Err("CreateWindowExW produced no delayed-owner window".into()));
+        let _ = ready.send(Err(
+            "CreateWindowExW produced no delayed-owner window".into()
+        ));
         return;
     }
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };

@@ -288,13 +288,7 @@ pub(crate) fn class_still_registered(class_name: &str) -> bool {
         cbSize: size_of::<WNDCLASSEXW>() as u32,
         ..Default::default()
     };
-    unsafe {
-        GetClassInfoExW(
-            GetModuleHandleW(std::ptr::null()),
-            name.as_ptr(),
-            &mut info,
-        ) != 0
-    }
+    unsafe { GetClassInfoExW(GetModuleHandleW(std::ptr::null()), name.as_ptr(), &mut info) != 0 }
 }
 
 #[cfg(test)]
