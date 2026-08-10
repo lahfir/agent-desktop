@@ -1,6 +1,8 @@
 mod adapter;
 pub(crate) mod app_ops;
 #[cfg(target_os = "windows")]
+pub(crate) mod capture_backend;
+#[cfg(target_os = "windows")]
 pub(crate) mod capture_display;
 #[cfg(target_os = "windows")]
 pub(crate) mod capture_window;
@@ -20,6 +22,8 @@ pub(crate) mod png_codec;
 pub(crate) mod private_file;
 pub(crate) mod process_identity;
 pub(crate) mod process_state;
+#[cfg(target_os = "windows")]
+pub(crate) mod screenshot;
 pub(crate) mod session;
 pub(crate) mod window_activate;
 pub(crate) mod window_enum;
