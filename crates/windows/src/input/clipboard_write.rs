@@ -8,6 +8,7 @@
 use agent_desktop_core::{
     AdapterError, ClipboardContent, Deadline, DeliverySemantics, ErrorCode, ImageBuffer,
 };
+#[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows_sys::Win32::Foundation::{GetLastError, HWND};

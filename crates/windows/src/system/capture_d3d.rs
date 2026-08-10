@@ -1,7 +1,6 @@
 //! D3D11 device + staging-texture readback for the modern capture backend.
 
 use agent_desktop_core::{AdapterError, ErrorCode};
-use windows::core::Interface;
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
@@ -14,6 +13,7 @@ use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
 };
+use windows::core::Interface;
 
 use super::hresult::{com_hresult_detail, hresult_record};
 

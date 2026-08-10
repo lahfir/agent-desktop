@@ -9,8 +9,7 @@ use agent_desktop_core::{
     AdapterError, ClipboardContent, ClipboardFormat, Deadline, DeliverySemantics, ErrorCode,
 };
 #[cfg(test)]
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, channel};
 use std::thread;
 
@@ -272,7 +271,7 @@ pub(crate) fn sequence_retries_observed() -> u32 {
 fn sequence_mismatch_injected() -> bool {
     #[cfg(test)]
     {
-        return INJECT_SEQUENCE_MISMATCH_ONCE.swap(false, Ordering::SeqCst);
+        INJECT_SEQUENCE_MISMATCH_ONCE.swap(false, Ordering::SeqCst)
     }
     #[cfg(not(test))]
     {

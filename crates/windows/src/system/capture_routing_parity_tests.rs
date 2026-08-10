@@ -191,10 +191,8 @@ fn screenshot_user_path_bypasses_private_policy_that_refuses_reparse() {
     bootstrap();
     install_windows_private_file();
     let adapter = WindowsAdapter::new();
-    let root = std::env::temp_dir().join(format!(
-        "agent-desktop-user-bypass-{}",
-        std::process::id()
-    ));
+    let root =
+        std::env::temp_dir().join(format!("agent-desktop-user-bypass-{}", std::process::id()));
     let elsewhere = root.join("elsewhere");
     let junction = root.join("redirect");
     std::fs::create_dir_all(&elsewhere).expect("elsewhere");

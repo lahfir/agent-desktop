@@ -7,9 +7,9 @@
 
 use std::time::Duration;
 
-use agent_desktop_core::{AdapterError, Deadline, ImageBuffer};
 #[cfg(test)]
 use agent_desktop_core::ErrorCode;
+use agent_desktop_core::{AdapterError, Deadline, ImageBuffer};
 
 use super::capture_display::capture_display_at;
 use super::capture_modern;

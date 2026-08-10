@@ -72,10 +72,9 @@ fn live_legacy_pattern_fixture_matches_and_invert_fails_when_stageable() {
     let handle = fixture.handle();
     let class_name = fixture.class_name().to_owned();
 
-    let image = backend_hooks::with_force_unsupported(|| {
-        capture_window(handle as _, 1.0, deadline())
-    })
-    .expect("legacy PrintWindow of the pattern fixture");
+    let image =
+        backend_hooks::with_force_unsupported(|| capture_window(handle as _, 1.0, deadline()))
+            .expect("legacy PrintWindow of the pattern fixture");
     let (bgra, width, _height) =
         decode_png_to_bgra(&image.data, deadline()).expect("decode captured PNG");
     assert_pattern_samples(&bgra, width, &fixture);

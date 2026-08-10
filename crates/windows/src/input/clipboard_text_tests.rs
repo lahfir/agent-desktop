@@ -92,7 +92,7 @@ fn oversized_decode_is_rejected() {
 
 #[test]
 fn oversized_encode_is_rejected() {
-    let text: String = std::iter::repeat('a').take(1_000_001).collect();
+    let text = "a".repeat(1_000_001);
     let error = encode_utf16_text(&text).expect_err("oversized encode");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
 }

@@ -38,7 +38,7 @@ fn write_i32(buf: &mut [u8], offset: usize, value: i32) {
 
 fn dib_stride(width: u32, bit_count: u16) -> u32 {
     let bits = u64::from(width) * u64::from(bit_count);
-    (((bits + 31) / 32) * 4) as u32
+    bits.div_ceil(32).saturating_mul(4) as u32
 }
 
 fn build_dib(

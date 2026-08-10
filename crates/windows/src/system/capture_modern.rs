@@ -41,7 +41,10 @@ pub(crate) fn capture_window(
     capture_item(item, scale_factor, deadline)
 }
 
-pub(crate) fn capture_display(index: usize, deadline: Deadline) -> Result<ImageBuffer, AdapterError> {
+pub(crate) fn capture_display(
+    index: usize,
+    deadline: Deadline,
+) -> Result<ImageBuffer, AdapterError> {
     ensure_budget(deadline)?;
     ensure_supported()?;
     let display = display_at(index, deadline)?;
@@ -124,10 +127,7 @@ fn capture_item(
     })
 }
 
-fn wait_for_frame(
-    pool: &PoolGuard,
-    deadline: Deadline,
-) -> Result<FrameGuard, AdapterError> {
+fn wait_for_frame(pool: &PoolGuard, deadline: Deadline) -> Result<FrameGuard, AdapterError> {
     loop {
         ensure_budget(deadline)?;
         #[cfg(test)]
@@ -292,7 +292,10 @@ pub(super) mod fail_after_start {
         with_flag(&ACTIVE, run)
     }
 
-    fn with_flag<R>(flag: &'static std::thread::LocalKey<Cell<bool>>, run: impl FnOnce() -> R) -> R {
+    fn with_flag<R>(
+        flag: &'static std::thread::LocalKey<Cell<bool>>,
+        run: impl FnOnce() -> R,
+    ) -> R {
         struct Reset(&'static std::thread::LocalKey<Cell<bool>>);
         impl Drop for Reset {
             fn drop(&mut self) {

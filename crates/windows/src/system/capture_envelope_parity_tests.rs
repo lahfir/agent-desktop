@@ -263,7 +263,10 @@ fn clipboard_get_set_clear_data_shapes_match_core_serialization() {
 fn non_one_scale_factor_capture_skipped_on_96dpi_only_hosts() {
     bootstrap();
     let displays = crate::system::display::list_displays_live(deadline()).expect("displays");
-    let Some(scaled) = displays.iter().find(|display| (display.scale - 1.0).abs() > 0.001) else {
+    let Some(scaled) = displays
+        .iter()
+        .find(|display| (display.scale - 1.0).abs() > 0.001)
+    else {
         eprintln!(
             "skip: non-1.0 scale_factor capture needs a display above 96 DPI; every measured host so far is 96 DPI only (A10-3/A16-4), and a second display is not manufacturable here"
         );

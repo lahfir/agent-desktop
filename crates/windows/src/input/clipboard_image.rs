@@ -41,9 +41,9 @@ pub(crate) fn decode_dib_clipboard(
     })
 }
 
-pub(crate) fn prepare_clipboard_png(
-    bytes: &[u8],
-) -> Result<(Cow<'_, [u8]>, (u32, u32)), AdapterError> {
+type PreparedPng<'a> = (Cow<'a, [u8]>, (u32, u32));
+
+pub(crate) fn prepare_clipboard_png(bytes: &[u8]) -> Result<PreparedPng<'_>, AdapterError> {
     let dimensions = validate_png_payload(bytes, true)?;
     Ok((Cow::Borrowed(bytes), dimensions))
 }
