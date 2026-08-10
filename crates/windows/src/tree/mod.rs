@@ -37,6 +37,10 @@ mod hit_test_scan_tests;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture;
 #[cfg(all(test, target_os = "windows"))]
+pub(crate) mod fixture_clipboard;
+#[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture_overlay;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod fixture_pattern;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture_window;
