@@ -954,6 +954,7 @@ Every Phase 2 sub-phase below is held to the same definition of done, stated onc
 - No core rewrites. Core changes land only via explicitly planned additive trait methods — never a signature change to something Phase 1/1.6 already shipped.
 - Each sub-phase gets its own review before merging to `feat/windows-adapter`.
 - Hot-path sub-phases (tree traversal, resolution, action dispatch) run a performance baseline against the merge-base before merge. On macOS the vehicle is `bash scripts/perf-baseline-compare.sh` → `report.html`. On Windows that script is structurally macOS-bound (it `open`s the `.app` fixture bundle); the Windows vehicle is the probe corpus cost methodology — min-of-seven with discarded warm-up, reported as min with median and max beside it (A15-13; applied to 2.6's `ElementFromPoint` costs in A18-7).
+- **Every `FINDINGS.md` row whose action column names this sub-phase is disposed of before the sub-phase closes** — implemented, or re-assigned in this document with the reason. A row can assign work to a sub-phase and nothing today notices when that sub-phase ships without it: A1-3 assigned the UWP `CoreWindow` descent to 2.4 in sub-phase 2.0, 2.4 closed without it, and the gap surfaced only when an agent hit `ref_count: 0` against Settings six sub-phases later (§2.4.1). Listing the rows that name a sub-phase is mechanical and belongs in `13-ledger-check.ps1`; judging whether each was honored is not, and is the reviewer's obligation at close.
 - Commits follow the repository's Conventional Commits requirement.
 
 ### 2.0 — Platform Exploration & Raw Scripting (pre-Rust)
@@ -1052,6 +1053,28 @@ Every Phase 2 sub-phase below is held to the same definition of done, stated onc
 **Exit criteria:** every gate is rule-shaped rather than app-named, because nothing establishes which applications the runner image carries and a ref count or tree shape is an `app/provider` fact no CI assertion may rest on — A6-2 records the environment dependency that makes such numbers unportable, and 2.0's own scope rule already forbids generalizing them: `snapshot` against a resolvable window root returns a reffed tree with a non-empty descendant set; skeleton drill-down works; web-aware depth-skip demonstrably reduces the depth budget consumed on any wrapper-bearing target, and `--force-electron-a11y` returns no fewer refs than the same target without it; a modal dialog raised by a Chromium-based target is detected as a sheet surface. A gate whose target is absent from the runner image skips with the reason recorded, never a false green.
 
 **Est. PR size:** ~2k LOC
+
+### 2.4.1 — UWP Frame Descent
+
+**Goal:** Make `ApplicationFrameHost`-hosted apps observable and driveable, by resolving a UWP window to the `CoreWindow` its content actually lives in rather than to the frame that hosts it.
+
+**Scope:**
+- **The gap, and it is user-visible.** A1-3 measured the shape in 2.0: Settings presents an `ApplicationFrameWindow` owned by `ApplicationFrameHost` containing a `Windows.UI.Core.CoreWindow` owned by `SystemSettings` — the top-level window a UWP app presents does not belong to the app's pid. The product consequence was reproduced by hand on the dev box during 2.10's planning: `snapshot` against Settings returns `ref_count: 0` and a bare `{"name":"Settings","role":"window"}` node, because the walk roots at the frame and never descends. Every ref-based command is therefore unusable against a UWP target, and deep-link `ms-settings:` URIs are the only navigation available. **This observation is a hand-reproduced field report, not a ledger row** — no capture backs it yet, and this sub-phase's first unit owes the probe and the row rather than citing prose as evidence
+- **Why it was missed, which matters more than the miss.** A1-3's action column already assigned the fix: "2.4 UWP targeting must descend to the `CoreWindow` rather than match the top-level window's ProcessId." Sub-phase 2.4 carried it as two *measurement* legs, shipped without the descent, and closed. `crates/windows/src` contains no `CoreWindow` or `ApplicationFrame` handling of any kind. Nothing failed, because nothing checks that a row's action column was honored by the sub-phase it names — see the disposition rule added to the Cross-cutting sub-phase DoD
+- **What the descent has to change.** Window-root resolution must recognize an `ApplicationFrameWindow` and root the walk at the hosted `CoreWindow`; `list_windows` / `list_apps` must attribute such a window to the **hosted app's** pid rather than the frame host's, or `--app Settings` never resolves; and `process_instance` identity, on which every stored ref and every strict re-resolution depends, must follow the hosted pid. That is observation and resolution work — 2.4's and 2.5's domain — not capture or input
+- **The unmeasured part, settled first.** A1-3 proved the `CoreWindow` exists under the frame with the app's pid. Nobody has established that its *subtree* reads cleanly once descended into. If it is thin or empty the fix is a different shape entirely, so the probe leg runs before the design commits
+- **Cloaked frames ride along.** A16-1's census recorded cloaked windows (`DWMWA_CLOAKED`) in the top-level enumeration, and UWP frames are the population that produces them; the descent has to decide what a cloaked frame means for `list_windows` rather than inherit whatever falls out
+- **Relationship to §2.12.** §2.12 owns the `focused_window` frame-versus-`CoreWindow` *identity* question, which it can only answer on a rig with a modern-shell population. This sub-phase owns the *tree and resolution* behavior, which needs neither that rig nor §2.12's fixture — Settings is present and dumpable on the dev box today. If this sub-phase's descent settles the identity mapping as a side effect, §2.12's item narrows to confirming it on its own runner
+
+**Key APIs:** `IUIAutomationElement` descent from the frame element, `ClassName` match on `ApplicationFrameWindow` / `Windows.UI.Core.CoreWindow`, `GetWindowThreadProcessId`, `DwmGetWindowAttribute(DWMWA_CLOAKED)`
+
+**Depends on:** 2.4 (the walk and the inventories this corrects), 2.5 (stored-evidence resolution and `process_instance` identity)
+
+**Sequencing:** lands after 2.11 and **before 2.13**, which packages the adapter for npm and release. **This blocks the Phase 2 promotion**: an adapter that returns zero refs against the most native app on the platform does not meet the "production-solid as a whole" bar that gates Windows reaching `main`.
+
+**Exit criteria:** `snapshot --app Settings` returns a reffed tree with a non-empty interactive descendant set; a ref allocated inside a UWP window re-resolves strictly and survives a `--root` drill-down; `list-windows` and `list-apps` attribute a UWP window to the hosted app rather than to `ApplicationFrameHost`; the probe row backing the descent cites a committed capture; a gate whose target is absent from the runner image skips with the reason recorded, never a false green.
+
+**Est. PR size:** ~1.2k LOC — the frame-descent predicate and walk rooting, pid re-attribution across both inventories, identity threading, the probe area and its rows, and the regression tests
 
 ### 2.5 — Resolution & Live Locator
 
