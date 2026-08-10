@@ -48,6 +48,7 @@ pub(crate) fn capture_window(
     ensure_budget(deadline)?;
     ensure_handle_alive(handle)?;
     ensure_window_is_pumping(handle)?;
+    ensure_budget(deadline)?;
     let (width, height) = window_capture_size(handle)?;
     let pixels = print_window_bgra(handle, width, height)?;
     let stride = width
@@ -68,10 +69,10 @@ fn ensure_handle_alive(handle: WindowHandle) -> Result<(), AdapterError> {
         return Ok(());
     }
     Err(AdapterError::new(
-        ErrorCode::WindowNotFound,
+        ErrorCode::StaleRef,
         "The window handle no longer addresses a live window",
     )
-    .with_suggestion("Run 'list-windows' to refresh window identifiers, then retry.")
+    .with_suggestion("Run 'list-windows' and 'screenshot' to refresh identifiers, then retry.")
     .with_platform_detail(format!(
         "HWND 0x{:X} failed the pre-capture existence check",
         handle as usize

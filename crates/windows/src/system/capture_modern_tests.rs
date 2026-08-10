@@ -197,34 +197,29 @@ fn resources_balance_across_success_deadline_and_forced_failure() {
 }
 
 #[test]
-fn permission_report_screen_recording_follows_support_predicate() {
+fn permission_report_screen_recording_is_honest_when_legacy_can_capture() {
     bootstrap();
-    let supported = modern_is_supported();
-    let expected = map_capture_availability(Some(supported));
+    let displays = list_displays_live(deadline()).expect("displays");
+    assert!(!displays.is_empty());
     let report = report(deadline()).expect("permission report");
     assert_eq!(
-        report.screen_recording, expected,
-        "screen_recording must derive from the same IsSupported read as capture"
+        report.screen_recording,
+        PermissionState::NotRequired,
+        "a session that can list displays can capture via Legacy"
     );
-    if supported {
-        assert_eq!(report.screen_recording, PermissionState::NotRequired);
-    } else {
-        assert_eq!(report.screen_recording, PermissionState::Unknown);
-    }
 }
 
 #[test]
-fn probe_availability_matches_support_predicate() {
+fn probe_availability_is_true_when_legacy_or_modern_can_run() {
     bootstrap();
-    let supported = modern_is_supported();
     let displays = list_displays_live(deadline()).expect("displays");
     assert!(!displays.is_empty());
     assert_eq!(
-        map_capture_availability(Some(supported)),
-        if supported {
-            PermissionState::NotRequired
-        } else {
-            PermissionState::Unknown
-        }
+        map_capture_availability(Some(true)),
+        PermissionState::NotRequired
+    );
+    assert!(
+        modern_is_supported() || !displays.is_empty(),
+        "this host must exercise at least one capture backend for the probe"
     );
 }

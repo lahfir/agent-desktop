@@ -146,14 +146,15 @@ fn automation_is_not_required_on_windows() {
 
 #[cfg(target_os = "windows")]
 #[test]
-fn screen_recording_follows_the_capture_support_predicate() {
+fn screen_recording_is_not_required_when_any_capture_backend_can_run() {
     crate::tree::fixture::bootstrap();
-    let supported = crate::system::capture_modern::modern_is_supported();
     let report = report(Deadline::after(5_000).unwrap()).unwrap();
-
+    let probed = super::imp::probe_capture_availability();
+    assert_eq!(report.screen_recording, map_capture_availability(probed));
     assert_eq!(
         report.screen_recording,
-        map_capture_availability(Some(supported))
+        PermissionState::NotRequired,
+        "interactive sessions with a monitor can capture via Legacy even when WGC is unavailable"
     );
 }
 

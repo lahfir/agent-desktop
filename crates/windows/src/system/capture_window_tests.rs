@@ -72,7 +72,20 @@ fn destroyed_handle_is_not_reported_unresponsive() {
         ErrorCode::AppUnresponsive,
         "existence is checked before the pump probe"
     );
-    assert_eq!(error.code, ErrorCode::WindowNotFound);
+    assert_eq!(error.code, ErrorCode::StaleRef);
+}
+
+#[test]
+fn printwindow_access_denied_maps_to_perm_denied() {
+    unsafe { windows_sys::Win32::Foundation::SetLastError(5) };
+    let error = super::win32_last_error("PrintWindow failed");
+    assert_eq!(error.code, ErrorCode::PermDenied);
+    assert!(
+        error
+            .platform_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("0x80070005"))
+    );
 }
 
 #[test]

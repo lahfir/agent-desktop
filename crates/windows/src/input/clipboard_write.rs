@@ -56,8 +56,6 @@ pub(crate) fn set_clipboard_content(
     }
     confirm_write_ownership(owner, sequence_after_empty)?;
     drop(session);
-    ensure_budget(deadline)
-        .map_err(|error| error.with_disposition(DeliverySemantics::delivered_verified()))?;
     Ok(())
 }
 

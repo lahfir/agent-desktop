@@ -38,6 +38,7 @@ pub(super) fn capture_display_bounds(
 ) -> Result<ImageBuffer, AdapterError> {
     ensure_budget(deadline)?;
     let (width, height, origin_x, origin_y) = display_capture_geometry(bounds)?;
+    ensure_budget(deadline)?;
     let pixels = bitblt_screen_bgra(origin_x, origin_y, width, height)?;
     let stride = width
         .checked_mul(4)
