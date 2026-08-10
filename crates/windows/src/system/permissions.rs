@@ -51,7 +51,7 @@ mod imp {
     }
 
     pub(super) fn probe_capture_availability() -> Option<bool> {
-        None
+        Some(crate::system::capture_modern::modern_is_supported())
     }
 }
 

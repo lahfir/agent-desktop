@@ -36,6 +36,7 @@ pub(crate) const UIA_E_INVALIDOPERATION: i32 = 0x8013_1509_u32 as i32;
 pub(crate) const WINCODEC_ERR_COMPONENTNOTFOUND: i32 = 0x8898_2F50_u32 as i32;
 pub(crate) const WINCODEC_ERR_BADIMAGE: i32 = 0x8898_2F60_u32 as i32;
 pub(crate) const WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT: i32 = 0x8898_2F80_u32 as i32;
+pub(crate) const DXGI_ERROR_DEVICE_REMOVED: i32 = 0x887A_0005_u32 as i32;
 
 const COM_UNINITIALIZED_SUGGESTION: &str =
     "Join the calling thread to the COM multithreaded apartment before observing the desktop";
@@ -184,6 +185,11 @@ pub(crate) fn hresult_record(hresult: i32) -> HresultRecord {
             code: ErrorCode::Internal,
             suggestion: None,
         },
+        DXGI_ERROR_DEVICE_REMOVED => HresultRecord {
+            disposition: ReadDisposition::Retryable,
+            code: ErrorCode::ActionFailed,
+            suggestion: None,
+        },
         _ => HresultRecord {
             disposition: ReadDisposition::Terminal,
             code: ErrorCode::Internal,
@@ -252,6 +258,10 @@ pub(crate) fn com_hresult_symbol(hresult: i32) -> Option<(&'static str, &'static
         WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT => (
             "WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT",
             "The bitmap pixel format is unsupported",
+        ),
+        DXGI_ERROR_DEVICE_REMOVED => (
+            "DXGI_ERROR_DEVICE_REMOVED",
+            "The GPU device has been removed",
         ),
         _ => return None,
     };

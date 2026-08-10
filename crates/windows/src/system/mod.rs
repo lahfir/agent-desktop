@@ -3,7 +3,11 @@ pub(crate) mod app_ops;
 #[cfg(target_os = "windows")]
 pub(crate) mod capture_backend;
 #[cfg(target_os = "windows")]
+pub(crate) mod capture_d3d;
+#[cfg(target_os = "windows")]
 pub(crate) mod capture_display;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_modern;
 #[cfg(target_os = "windows")]
 pub(crate) mod capture_window;
 pub(crate) mod close;

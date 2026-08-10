@@ -146,10 +146,15 @@ fn automation_is_not_required_on_windows() {
 
 #[cfg(target_os = "windows")]
 #[test]
-fn screen_recording_is_unknown_until_a_capture_api_is_wired() {
+fn screen_recording_follows_the_capture_support_predicate() {
+    crate::tree::fixture::bootstrap();
+    let supported = crate::system::capture_modern::modern_is_supported();
     let report = report(Deadline::after(5_000).unwrap()).unwrap();
 
-    assert_eq!(report.screen_recording, PermissionState::Unknown);
+    assert_eq!(
+        report.screen_recording,
+        map_capture_availability(Some(supported))
+    );
 }
 
 #[cfg(target_os = "windows")]

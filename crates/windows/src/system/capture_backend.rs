@@ -1,15 +1,18 @@
 //! Capture backend seam: support predicate, modern entry, and precedence.
 //!
-//! Modern is stubbed unsupported here so orchestration and Legacy fallback can
-//! land before the WGC binding exists. Production fills
-//! [`modern_is_supported`] and [`capture_modern`]; tests force unavailable or
-//! fail-after-available through [`test_hooks`].
+//! Production prefers Modern (`Windows.Graphics.Capture`) when
+//! [`modern_is_supported`] is true, and falls back to Legacy on unsupported
+//! or modern failure. Tests force unavailable or fail-after-available through
+//! [`test_hooks`].
 
 use std::time::Duration;
 
-use agent_desktop_core::{AdapterError, Deadline, ErrorCode, ImageBuffer};
+use agent_desktop_core::{AdapterError, Deadline, ImageBuffer};
+#[cfg(test)]
+use agent_desktop_core::ErrorCode;
 
 use super::capture_display::capture_display_at;
+use super::capture_modern;
 use super::capture_window::capture_window;
 use super::permissions::ensure_budget;
 use super::window_enum::WindowHandle;
@@ -30,8 +33,6 @@ pub(crate) enum CaptureSubject {
 }
 
 /// Whether the modern capture backend can serve this session.
-///
-/// Stubbed to unsupported until the Graphics Capture binding fills this read.
 pub(crate) fn modern_is_supported() -> bool {
     #[cfg(test)]
     {
@@ -42,15 +43,14 @@ pub(crate) fn modern_is_supported() -> bool {
             return true;
         }
     }
-    false
+    capture_modern::modern_is_supported()
 }
 
-/// Modern capture entry. Stubbed to unsupported; production replaces the body.
+/// Modern capture entry. Delegates to the WGC backend.
 pub(crate) fn capture_modern(
     subject: CaptureSubject,
     deadline: Deadline,
 ) -> Result<ImageBuffer, AdapterError> {
-    let _ = subject;
     ensure_budget(deadline)?;
     #[cfg(test)]
     {
@@ -64,10 +64,13 @@ pub(crate) fn capture_modern(
             ));
         }
     }
-    Err(AdapterError::new(
-        ErrorCode::ActionNotSupported,
-        "modern capture is not available in this session",
-    ))
+    match subject {
+        CaptureSubject::Window {
+            handle,
+            scale_factor,
+        } => capture_modern::capture_window(handle, scale_factor, deadline),
+        CaptureSubject::Display { index } => capture_modern::capture_display(index, deadline),
+    }
 }
 
 pub(crate) fn capture_legacy(
