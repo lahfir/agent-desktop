@@ -16,7 +16,7 @@ serde_json         = "1.0"
 thiserror          = "2.0"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-base64             = "0.22"
+base64             = "0.23"
 rustc-hash         = "2.1"
 libc               = "0.2"
 smallvec           = { version = "1.13", features = ["serde", "union"] }
