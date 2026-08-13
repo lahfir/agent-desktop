@@ -1,5 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
+. "$PSScriptRoot\13-ledger-content.ps1"
 
 $Probe = '13-ledger-check'
 $RequiredAreaIds = @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11')
@@ -8,6 +9,15 @@ $ValidStacks = @('managed', 'uia3-com', 'n/a')
 $ValidScopes = @('api-contract', 'app/provider')
 $MinClosureMinor = 0
 $MaxClosureMinor = 15
+
+$contentSelfTest = Invoke-LedgerContentSelfTest -ProbeRoot $PSScriptRoot
+foreach ($f in $contentSelfTest.Failures) {
+    Write-ProbeLog -Message ('LEDGER-CONTENT-SELFTEST-FAIL ' + $f) -Level 'error'
+}
+if ($contentSelfTest.Failures.Count -gt 0) {
+    Write-ProbeResult -Probe $Probe -Status 'fail' -Message ('ledger content self-test failed: ' + $contentSelfTest.Failures[0])
+    exit 1
+}
 
 function Get-TableCells {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
@@ -188,6 +198,17 @@ try {
         [void]$deferredRows.Add([pscustomobject]@{ Id = $row.Id; Area = $row.Area; Closure = $named })
     }
 
+    $contentAudited = 0
+    $contentChangedCandidates = New-Object System.Collections.ArrayList
+    foreach ($row in $rows) {
+        $content = Test-RowCaptureContent -Row $row -ProbeRoot $probeRoot
+        if ($content.Audited) { $contentAudited++ }
+        foreach ($cf in $content.Failures) {
+            [void]$failures.Add($cf)
+            [void]$contentChangedCandidates.Add($row.Id)
+        }
+    }
+
     $capture = [ordered]@{
         Probe                = $Probe
         CapturedAtUtc        = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -203,6 +224,8 @@ try {
         ContradictsRowCount  = $contradictsRows.Count
         ContradictsRowsMapped = @($contradictsRows | Where-Object { $mappedRowIds.ContainsKey($_.Id) }).Count
         BijectionHolds       = ($hunkRows.Count -eq $measuredHunkCount -and $hunksWithoutBacking -eq 0 -and $unmappedContradicts.Count -eq 0)
+        CaptureContentRowsAudited = $contentAudited
+        CaptureContentFailures = @($contentChangedCandidates | Select-Object -Unique)
         Failures             = $failures.ToArray()
         HunkCountSource      = 'git -C <repo> diff -U0 main -- docs/phases.md, counting lines matching ^@@ -[0-9]; the measured count is authoritative over any count written in prose'
     }

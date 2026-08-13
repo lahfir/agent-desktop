@@ -1,4 +1,10 @@
-use agent_desktop_core::{AdapterError, Deadline, DisplayInfo, Rect};
+//! Display enumeration and selection helpers for screenshot targeting.
+
+#![allow(dead_code)]
+
+use agent_desktop_core::{AdapterError, Deadline, DisplayInfo, ErrorCode, Rect};
+
+use super::permissions::ensure_budget;
 
 /// Enumerates the active monitors and reports each with bounds, the primary
 /// flag, and `scale` derived from **effective** DPI - the applied value, not
@@ -9,7 +15,8 @@ use agent_desktop_core::{AdapterError, Deadline, DisplayInfo, Rect};
 /// (A10-3), so the per-monitor code lands with single-monitor evidence; the
 /// multi-monitor path is unverified until it runs on a rig with more than one
 /// monitor.
-pub(crate) fn list_displays_live(_deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
+pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
+    ensure_budget(deadline)?;
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::Foundation::{LPARAM, RECT};
@@ -82,9 +89,136 @@ pub(crate) fn list_displays_live(_deadline: Deadline) -> Result<Vec<DisplayInfo>
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = _deadline;
         Ok(Vec::new())
     }
+}
+
+pub(crate) fn display_at(index: usize, deadline: Deadline) -> Result<DisplayInfo, AdapterError> {
+    ensure_budget(deadline)?;
+    let displays = list_displays_live(deadline)?;
+    displays.into_iter().nth(index).ok_or_else(|| {
+        AdapterError::new(ErrorCode::InvalidArgs, "display index out of range")
+            .with_suggestion("Run 'list-displays' to refresh display indexes, then retry.")
+    })
+}
+
+pub(crate) fn capture_selection(
+    expected: &DisplayInfo,
+    deadline: Deadline,
+) -> Result<(usize, DisplayInfo), AdapterError> {
+    ensure_budget(deadline)?;
+    let displays = list_displays_live(deadline)?;
+    let (index, live) = displays
+        .into_iter()
+        .enumerate()
+        .find(|(_, display)| display.id == expected.id)
+        .ok_or_else(|| missing_display_error(&expected.id))?;
+    verify_display_identity(index, expected, &live)?;
+    Ok((index, live))
+}
+
+pub(crate) fn scale_for_bounds(
+    bounds: Option<Rect>,
+    deadline: Deadline,
+) -> Result<f64, AdapterError> {
+    Ok(display_for_bounds(bounds, deadline)?.scale)
+}
+
+pub(crate) fn display_for_bounds(
+    bounds: Option<Rect>,
+    deadline: Deadline,
+) -> Result<DisplayInfo, AdapterError> {
+    ensure_budget(deadline)?;
+    let displays = list_displays_live(deadline)?;
+    select_display(&displays, bounds).cloned()
+}
+
+/// Corroborates display identity before and after a capture. The id is a
+/// recyclable `monitor-{HMONITOR}` handle, so bounds, primary, and scale are
+/// checked together with it rather than trusting the id alone.
+pub(crate) fn verify_display_identity(
+    index: usize,
+    expected: &DisplayInfo,
+    current: &DisplayInfo,
+) -> Result<(), AdapterError> {
+    if display_identity_matches(expected, current) {
+        return Ok(());
+    }
+    Err(AdapterError::new(
+        ErrorCode::InvalidArgs,
+        format!(
+            "Display at index {index} changed from '{}' to '{}'",
+            expected.id, current.id
+        ),
+    )
+    .with_suggestion("Run 'list-displays' to refresh display indexes, then retry."))
+}
+
+pub(super) fn display_identity_matches(expected: &DisplayInfo, current: &DisplayInfo) -> bool {
+    expected.id == current.id
+        && expected.bounds == current.bounds
+        && expected.is_primary == current.is_primary
+        && expected.scale == current.scale
+}
+
+fn select_display(
+    displays: &[DisplayInfo],
+    bounds: Option<Rect>,
+) -> Result<&DisplayInfo, AdapterError> {
+    let selected = bounds.and_then(|bounds| {
+        displays
+            .iter()
+            .max_by(|left, right| {
+                intersection_area(bounds, left.bounds)
+                    .total_cmp(&intersection_area(bounds, right.bounds))
+            })
+            .filter(|display| intersection_area(bounds, display.bounds) > 0.0)
+    });
+    selected
+        .or_else(|| displays.iter().find(|display| display.is_primary))
+        .or_else(|| displays.first())
+        .ok_or_else(|| {
+            AdapterError::new(ErrorCode::InvalidArgs, "no displays enumerated").with_suggestion(
+                "Retry after a display is attached, or capture an ExactWindow target instead.",
+            )
+        })
+}
+
+pub(super) fn intersection_area(left: Rect, right: Rect) -> f64 {
+    let width = (left.x + left.width).min(right.x + right.width) - left.x.max(right.x);
+    let height = (left.y + left.height).min(right.y + right.height) - left.y.max(right.y);
+    width.max(0.0) * height.max(0.0)
+}
+
+#[cfg(test)]
+pub(super) fn scale_for_bounds_in(
+    displays: &[DisplayInfo],
+    bounds: Option<Rect>,
+) -> Result<f64, AdapterError> {
+    Ok(select_display(displays, bounds)?.scale)
+}
+
+#[cfg(test)]
+pub(super) fn capture_selection_in(
+    displays: &[DisplayInfo],
+    expected: &DisplayInfo,
+) -> Result<(usize, DisplayInfo), AdapterError> {
+    let (index, live) = displays
+        .iter()
+        .enumerate()
+        .find(|(_, display)| display.id == expected.id)
+        .map(|(index, display)| (index, display.clone()))
+        .ok_or_else(|| missing_display_error(&expected.id))?;
+    verify_display_identity(index, expected, &live)?;
+    Ok((index, live))
+}
+
+fn missing_display_error(id: &str) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::InvalidArgs,
+        format!("Display '{id}' is no longer active"),
+    )
+    .with_suggestion("Run 'list-displays' to refresh display indexes, then retry.")
 }
 
 /// Turns a raw `GetDpiForMonitor` result into a scale, or `None` when the
@@ -96,13 +230,13 @@ pub(crate) fn list_displays_live(_deadline: Deadline) -> Result<Vec<DisplayInfo>
 /// no evidence, the shape the Evidence Tri-State rule (`CONCEPTS.md`) forbids
 /// - the caller propagates `None` as a read failure instead of guessing.
 #[cfg(target_os = "windows")]
-fn effective_dpi_scale(effective: i32, dpi_x: u32) -> Option<f64> {
+pub(super) fn effective_dpi_scale(effective: i32, dpi_x: u32) -> Option<f64> {
     (effective == 0 && dpi_x > 0).then(|| f64::from(dpi_x) / 96.0)
 }
 
 /// Orders the display list with the primary first, mirroring macOS's
-/// primary-first ordering (`display.rs:86-162`).
-fn primaries_first(displays: &mut [DisplayInfo]) {
+/// primary-first ordering.
+pub(super) fn primaries_first(displays: &mut [DisplayInfo]) {
     displays.sort_by(|left, right| {
         right
             .is_primary
@@ -112,86 +246,5 @@ fn primaries_first(displays: &mut [DisplayInfo]) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn primary_display_orders_first() {
-        let mut displays = vec![
-            DisplayInfo {
-                id: "monitor-2".into(),
-                bounds: Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 100.0,
-                    height: 100.0,
-                },
-                is_primary: false,
-                scale: 1.0,
-            },
-            DisplayInfo {
-                id: "monitor-1".into(),
-                bounds: Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 100.0,
-                    height: 100.0,
-                },
-                is_primary: true,
-                scale: 1.0,
-            },
-        ];
-        primaries_first(&mut displays);
-
-        assert!(displays[0].is_primary);
-        assert_eq!(displays[0].id, "monitor-1");
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn a_successful_read_with_a_positive_dpi_yields_a_scale() {
-        assert_eq!(effective_dpi_scale(0, 144), Some(1.5));
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn a_failed_read_is_none_even_with_a_positive_leftover_dpi() {
-        assert_eq!(
-            effective_dpi_scale(0x8007_0057_u32 as i32, 96),
-            None,
-            "a failed call's dpi output is leftover data, not evidence of scale 1.0"
-        );
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn a_successful_read_with_a_zero_dpi_is_none() {
-        assert_eq!(effective_dpi_scale(0, 0), None);
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn live_listing_returns_exactly_one_primary_display() {
-        crate::tree::fixture::ensure_test_apartment();
-        let displays = list_displays_live(agent_desktop_core::Deadline::after(5_000).unwrap())
-            .expect("live display enumeration succeeds");
-
-        assert_eq!(
-            displays.iter().filter(|display| display.is_primary).count(),
-            1,
-            "Windows has one primary display; a listing that marks several has lost the flag"
-        );
-        assert!(
-            displays
-                .iter()
-                .all(|display| display.scale >= 1.0 && display.scale.is_finite()),
-            "scale is rule-shaped: finite and at least 1.0"
-        );
-        assert!(
-            displays
-                .iter()
-                .all(|display| display.bounds.width > 0.0 && display.bounds.height > 0.0),
-            "bounds are non-degenerate"
-        );
-    }
-}
+#[path = "display_tests.rs"]
+mod tests;

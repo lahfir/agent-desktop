@@ -51,7 +51,15 @@ mod imp {
     }
 
     pub(super) fn probe_capture_availability() -> Option<bool> {
-        None
+        if crate::system::capture_modern::modern_is_supported() {
+            return Some(true);
+        }
+        Some(legacy_display_capture_possible())
+    }
+
+    fn legacy_display_capture_possible() -> bool {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CMONITORS};
+        unsafe { GetSystemMetrics(SM_CMONITORS) > 0 }
     }
 }
 

@@ -69,6 +69,14 @@ Window handles can be recycled: after a window is destroyed, the OS may hand its
 
 A handle's identity can be invalidated at any point between an observation and a later action on it, and checking it once at the start of that gap only proves it was valid then. Where the check and the act cannot be a single atomic operation, the corroboration has to be repeated immediately before each write the action performs, and the action's own success check must itself be identity-qualified — confirming the responding resource is still the expected occupant, not merely that some resource at the expected handle responded — or a recycle occurring late in the gap reports success over the wrong resource.
 
+### Display Identity
+The durable identity of a display used when a screenshot targets a monitor selected from a prior list.
+
+A monitor handle alone is recyclable after hot-plug or mode change. Identity is the handle corroborated together with bounds, primary flag, and scale — every field must still match, or the capture fails closed rather than attributing pixels to the wrong surface.
+
+### Identity Sandwich
+A pre-capture and post-capture identity check around a long-running capture call so a mid-capture reorder discards the bytes instead of returning them under the original target's identity.
+
 ### Ref
 A short element identifier assigned by agent-desktop to an actionable or drillable node in a snapshot.
 

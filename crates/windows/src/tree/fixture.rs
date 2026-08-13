@@ -10,6 +10,15 @@ use super::fixture_window;
 
 pub(crate) use super::fixture_window::{CONTENT_MARKER, SECURE_MARKER};
 
+#[allow(unused_imports)]
+pub(crate) use super::fixture_clipboard::{
+    ContendingClipboardHolder, DelayedClipboardOwner, clipboard_test_lock,
+};
+#[allow(unused_imports)]
+pub(crate) use super::fixture_pattern::{
+    HostedPatternFixture, LocalPatternFixture, PatternExpectation,
+};
+
 const HOST_ENVIRONMENT_FLAG: &str = "AGENT_DESKTOP_FIXTURE_HOST";
 pub(crate) const SWALLOW_WM_CLOSE_FLAG: &str = "AGENT_DESKTOP_FIXTURE_SWALLOW_WM_CLOSE";
 const HOST_TEST_NAME: &str = "tree::fixture::tests::fixture_host_process_entry";

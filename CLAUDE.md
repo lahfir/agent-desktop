@@ -309,7 +309,7 @@ crates/{macos,windows,linux}/src/
 │   ├── release_state.rs # Armed-and-counted guard state + delivery report (Windows)
 │   ├── elevation.rs    # UIPI integrity detection (Windows)
 │   ├── blocked_combo.rs # Platform-dangerous combo list (Windows)
-│   └── clipboard.rs    # Clipboard get/set (macOS; Windows §2.10)
+│   └── clipboard.rs    # Clipboard get/set (macOS and Windows)
 └── system/             # App lifecycle, windows, permissions
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # launch, close, focus
@@ -470,10 +470,10 @@ contact with Windows and was deleted. See
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
 All 58 are implemented on macOS (Phase 1). Windows ships observation, semantic
-actions, input synthesis, and process/window lifecycle (`launch`, `close-app`,
-window ops, `press --app`) against the same surface; screenshot, clipboard,
-wait-event, and shell surfaces remain ahead. Linux (Phase 3) targets the same
-surface. Adding a command: see the Extensibility Pattern above.
+actions, input synthesis, process/window lifecycle (`launch`, `close-app`,
+window ops, `press --app`), screenshot, and typed clipboard against the same
+surface; wait-event and shell surfaces remain ahead. Linux (Phase 3) targets the
+same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
 
@@ -491,4 +491,10 @@ surface. Adding a command: see the Extensibility Pattern above.
 
 ## Definition of Done: Performance Baseline
 
-Every substantive change ends with a performance baseline check before merge: run `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) and review the generated `report.html` against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
+Every substantive change ends with a performance baseline check before merge, reviewed against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
+
+**The vehicle is platform-specific.** On macOS: `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) → `report.html`. On Windows that script does not run — it is structurally macOS-bound, opening the `.app` fixture bundle — so the vehicle is the probe corpus cost methodology: min-of-seven with the warm-up discarded, reported as min with median and max beside it (`probes/windows/FINDINGS.md` A15-13, applied in A18-7). Naming the macOS script in a Windows plan names a gate that platform cannot run.
+
+## Definition of Done: Dogfood Is a Gate
+
+Phase 2/3 sub-phases carry an additional, non-negotiable gate, stated in full under **Cross-cutting sub-phase DoD** in `docs/phases.md` and summarized here so it is not missed: every sub-phase drives its own surface against real software and commits a judged report; **a report with no findings is a failed dogfood, not a passed one**; and every finding takes exactly one of three dispositions — *fixed here* with a named test that is invert-verified (break the fix, watch that test fail, restore), *owned elsewhere* and written into the receiving sub-phase's scope in `docs/phases.md` in the same PR, or *accepted* with a stated reason. **"Recorded" is not a disposition.** A sub-phase's exit criteria must also enumerate every capability its scope names, and every requirement in its plan must map to at least one test that fails if that requirement is violated. `docs/phases.md` is authoritative if these ever diverge.

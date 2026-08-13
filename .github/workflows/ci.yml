@@ -328,6 +328,14 @@ jobs:
           }
           Write-Host 'OK: core source keeps windows conditionals to the 2 allowlisted shims'
 
+      # Supply-chain gate: Win32_UI_Shell stays out of the windows crate until a
+      # reviewed sub-phase takes it. Both SHCreateMemStream and DROPFILES sit
+      # behind that feature and would compile the moment it is added.
+      - name: Check Win32_UI_Shell exclusion
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-win32-ui-shell-exclusion.ps1
+
       - name: Clippy
         run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
 

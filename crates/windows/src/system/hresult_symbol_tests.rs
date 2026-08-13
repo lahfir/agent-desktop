@@ -1,9 +1,11 @@
 use super::{
-    CO_E_NOTINITIALIZED, E_ACCESSDENIED, E_FAIL, E_INVALIDARG, E_NOINTERFACE, E_POINTER,
-    RPC_E_DISCONNECTED, RPC_E_SERVERFAULT, RPC_S_CALL_FAILED, RPC_S_SERVER_UNAVAILABLE,
-    UIA_E_ELEMENTNOTAVAILABLE, UIA_E_ELEMENTNOTENABLED, UIA_E_INVALIDOPERATION,
-    UIA_E_NOCLICKABLEPOINT, UIA_E_NOTSUPPORTED, UIA_E_PROXYASSEMBLYNOTLOADED, UIA_E_TIMEOUT,
-    com_hresult_detail, com_hresult_symbol,
+    CO_E_NOTINITIALIZED, DXGI_ERROR_DEVICE_REMOVED, E_ACCESSDENIED, E_FAIL, E_INVALIDARG,
+    E_NOINTERFACE, E_POINTER, RPC_E_DISCONNECTED, RPC_E_SERVERFAULT, RPC_S_CALL_FAILED,
+    RPC_S_SERVER_UNAVAILABLE, UIA_E_ELEMENTNOTAVAILABLE, UIA_E_ELEMENTNOTENABLED,
+    UIA_E_INVALIDOPERATION, UIA_E_NOCLICKABLEPOINT, UIA_E_NOTSUPPORTED,
+    UIA_E_PROXYASSEMBLYNOTLOADED, UIA_E_TIMEOUT, WINCODEC_ERR_BADIMAGE,
+    WINCODEC_ERR_COMPONENTNOTFOUND, WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT, com_hresult_detail,
+    com_hresult_symbol,
 };
 
 const UNNAMED_HRESULT: i32 = 0x8000_FFFF_u32 as i32;
@@ -19,7 +21,7 @@ const UNNAMED_HRESULT: i32 = 0x8000_FFFF_u32 as i32;
 /// here rather than at a user.
 #[test]
 fn every_named_hresult_renders_its_symbol_and_meaning() {
-    let named: [(i32, &str, &str); 17] = [
+    let named: [(i32, &str, &str); 21] = [
         (E_ACCESSDENIED, "E_ACCESSDENIED", "Access is denied"),
         (
             E_NOINTERFACE,
@@ -88,6 +90,26 @@ fn every_named_hresult_renders_its_symbol_and_meaning() {
             UIA_E_INVALIDOPERATION,
             "UIA_E_INVALIDOPERATION",
             "The operation is not valid",
+        ),
+        (
+            WINCODEC_ERR_COMPONENTNOTFOUND,
+            "WINCODEC_ERR_COMPONENTNOTFOUND",
+            "The imaging component was not found",
+        ),
+        (
+            WINCODEC_ERR_BADIMAGE,
+            "WINCODEC_ERR_BADIMAGE",
+            "The image is unrecognized",
+        ),
+        (
+            WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT,
+            "WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT",
+            "The bitmap pixel format is unsupported",
+        ),
+        (
+            DXGI_ERROR_DEVICE_REMOVED,
+            "DXGI_ERROR_DEVICE_REMOVED",
+            "The GPU device has been removed",
         ),
     ];
 
