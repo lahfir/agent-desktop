@@ -1,4 +1,19 @@
 pub(crate) mod blocked_combo;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard;
+pub(crate) mod clipboard_bytes;
+pub(crate) mod clipboard_files;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_formats;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_guard;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_image;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_session;
+pub(crate) mod clipboard_text;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_write;
 pub(crate) mod drag;
 mod drag_state;
 pub(crate) mod elevation;

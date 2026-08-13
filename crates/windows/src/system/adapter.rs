@@ -1,8 +1,8 @@
 use agent_desktop_core::{
-    ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, InteractionLease,
-    InteractionPolicy, KeyCombo, ObservationOps, PermissionReport, ProcessIdentity,
-    SessionAffinity, SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp,
-    launch_options::LaunchOptions, process_state::ProcessState,
+    ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, ImageBuffer,
+    InteractionLease, InteractionPolicy, KeyCombo, ObservationOps, PermissionReport,
+    ProcessIdentity, ScreenshotTarget, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
+    WindowInfo, WindowOp, launch_options::LaunchOptions, process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -148,6 +148,15 @@ impl SystemOps for WindowsAdapter {
 
     fn list_displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         crate::system::display::list_displays_live(deadline)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn screenshot(
+        &self,
+        target: ScreenshotTarget,
+        deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        crate::system::screenshot::screenshot(target, deadline)
     }
 
     /// Verify-only composition over the keyboard primitive. Core's headed

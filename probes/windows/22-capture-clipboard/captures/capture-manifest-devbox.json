@@ -1,0 +1,46 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "KTD8 feature compile, WIC round-trip, HRESULT wrapping convention",
+    "scratch":  {
+                    "measurable":  true,
+                    "branch":  "scratch_compile_and_run_ok",
+                    "ok":  true,
+                    "wic_round_trip":  true,
+                    "png_bytes":  118,
+                    "wgc_is_supported":  true,
+                    "win32_ui_shell_in_manifest":  false,
+                    "features_confirmed":  [
+                                               "Win32_System_DataExchange",
+                                               "Win32_System_Memory",
+                                               "Win32_Graphics_Imaging",
+                                               "Win32_System_Com_StructuredStorage",
+                                               "Graphics_Capture"
+                                           ]
+                },
+    "wic_proxy":  {
+                      "ok":  true,
+                      "png_bytes":  148,
+                      "width":  4,
+                      "height":  3,
+                      "codec":  "gdiplus_png_proxy_for_wic_shape",
+                      "note":  "rust_scratch_owns_true_wic_leg"
+                  },
+    "hresult_convention":  {
+                               "path":  "win32_last_error -\u003e hresult_from_win32 -\u003e hresult_record",
+                               "source":  "crates/windows/src/system/process_state.rs",
+                               "samples":  [
+                                               {
+                                                   "win32":  5,
+                                                   "hresult":  "0x80070005",
+                                                   "name":  "ERROR_ACCESS_DENIED"
+                                               },
+                                               {
+                                                   "win32":  740,
+                                                   "hresult":  "0x800702E4",
+                                                   "name":  "ERROR_ELEVATION_REQUIRED"
+                                               }
+                                           ],
+                               "parallel_table_rejected":  true
+                           },
+    "win32_ui_shell_in_crates_windows":  false
+}

@@ -1,0 +1,44 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "PrintWindow +/- PW_RENDERFULLCONTENT and BitBlt primary monitor",
+    "gdi_window":  {
+                       "printwindow_basic":  {
+                                                 "ok":  true,
+                                                 "api_ok":  true,
+                                                 "appears_black":  false,
+                                                 "outcome":  "printwindow_basic_ok",
+                                                 "width":  220,
+                                                 "height":  140,
+                                                 "nonzero_pixels":  30348
+                                             },
+                       "printwindow_full":  {
+                                                "ok":  true,
+                                                "api_ok":  true,
+                                                "appears_black":  false,
+                                                "outcome":  "printwindow_full_ok",
+                                                "width":  220,
+                                                "height":  140,
+                                                "nonzero_pixels":  27398
+                                            },
+                       "minimized":  {
+                                         "outcome":  "minimized",
+                                         "appears_black":  false
+                                     }
+                   },
+    "bitblt_primary":  {
+                           "ok":  true,
+                           "api_ok":  true,
+                           "appears_black":  false,
+                           "outcome":  "bitblt_primary_ok",
+                           "width":  320,
+                           "height":  200
+                       },
+    "wpf_window":  {
+                       "measurable":  false,
+                       "branch":  "wpf_scratch_not_required_for_gdi_floor"
+                   },
+    "chromium_window":  {
+                            "measurable":  false,
+                            "branch":  "chromium_absent_or_skipped"
+                        }
+}

@@ -99,7 +99,9 @@ token_check() {
 # The strips are deliberately narrow. An earlier version stripped any
 # `-<digit>.<digit>`, which silently swallowed `phase-2.4` - the exact thing
 # the check exists to catch - while innocent prose decimals like "a 2.5 ms
-# timeout" still fired. Each strip now names the idiom it permits.
+# timeout" still fired. Each strip now names the idiom it permits -
+# including an operating-system version qualified by its OS name (`Windows 8.1`),
+# which is a fact about the platform floor, not a slice of this project's roadmap.
 # Single quotes are load-bearing: `$0` is awk's whole-line variable and must
 # reach awk unexpanded. Double quotes would have the shell substitute its own
 # `$0` - the script's name - into the program text.
@@ -110,6 +112,7 @@ BARE_REFERENCE_AWK='
     gsub(/v[0-9]+\.[0-9]+(\.[0-9]+)?/, " ", text)
     gsub(/[0-9]+\.[0-9]+\.[0-9]+/, " ", text)
     gsub(/(pre|post|sub|over|under)-[0-9]+\.[0-9]+/, " ", text)
+    gsub(/(Windows|macOS|iOS|Android|Ubuntu) [0-9]+\.[0-9]+(\.[0-9]+)?/, " ", text)
     gsub(/[0-9]+\.[0-9]+ ?(x|ms|s|us|%|MiB|MB|KB|GB)([^A-Za-z]|$)/, " ", text)
     gsub(/"[0-9]+\.[0-9]+"/, " ", text)
     gsub(/`[0-9]+\.[0-9]+`/, " ", text)
@@ -359,7 +362,9 @@ self_test() {
 /// the dogfood run is why `invalid` is unproduced
 /// regenerated on demand by `probes/windows/scratch/run-dogfood.ps1`
 /// the original zeroes it and makes a second release a no-op
-/// a rectangle whose origin is its top-left corner'
+/// a rectangle whose origin is its top-left corner
+/// the flag exists on Windows 8.1 and later
+/// requires macOS 14.2 or newer'
     failures=0
     # The fixture is authored with `@` where a real comment carries an
     # apostrophe, because a literal apostrophe cannot appear inside the

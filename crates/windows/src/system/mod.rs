@@ -1,9 +1,23 @@
 mod adapter;
 pub(crate) mod app_ops;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_backend;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_d3d;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_display;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_envelope_parity;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_modern;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_window;
 pub(crate) mod close;
 pub(crate) mod com_runtime;
 pub(crate) mod display;
 pub(crate) mod dpi;
+#[cfg(target_os = "windows")]
+pub(crate) mod gdi_surface;
 pub(crate) mod hresult;
 pub(crate) mod key_dispatch;
 pub(crate) mod launch;
@@ -11,10 +25,16 @@ mod launch_path;
 pub(crate) mod lifecycle_envelope_parity;
 pub(crate) mod permissions;
 #[cfg(target_os = "windows")]
+pub(crate) mod png_codec;
+#[cfg(target_os = "windows")]
 pub(crate) mod private_file;
 pub(crate) mod process_identity;
 pub(crate) mod process_state;
+#[cfg(target_os = "windows")]
+pub(crate) mod screenshot;
 pub(crate) mod session;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod test_support;
 pub(crate) mod window_activate;
 pub(crate) mod window_enum;
 pub(crate) mod window_identity;

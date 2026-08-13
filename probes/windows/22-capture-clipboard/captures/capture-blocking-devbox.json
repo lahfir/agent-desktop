@@ -1,0 +1,28 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "PrintWindow and delayed GetClipboardData blocking against non-pumping targets",
+    "printwindow":  {
+                        "returned_within_bound":  true,
+                        "elapsed_ms":  44,
+                        "bound_ms":  3000,
+                        "classification":  "bounded",
+                        "api_ok":  true
+                    },
+    "delayed_clipboard_get":  {
+                                  "owner_ready":  true,
+                                  "owner_format_available":  true,
+                                  "owner_nonzero":  true,
+                                  "bound_ms":  3000,
+                                  "returned_within_bound":  false,
+                                  "elapsed_ms":  3000,
+                                  "classification":  "unbounded",
+                                  "api_ok":  false
+                              },
+    "window_is_responsive":  {
+                                 "stalled_elapsed_ms":  500,
+                                 "stalled_api_ok":  false,
+                                 "pumping_elapsed_ms":  0,
+                                 "pumping_api_ok":  true,
+                                 "probe_timeout_ms":  500
+                             }
+}

@@ -146,10 +146,16 @@ fn automation_is_not_required_on_windows() {
 
 #[cfg(target_os = "windows")]
 #[test]
-fn screen_recording_is_unknown_until_a_capture_api_is_wired() {
+fn screen_recording_is_not_required_when_any_capture_backend_can_run() {
+    crate::tree::fixture::bootstrap();
     let report = report(Deadline::after(5_000).unwrap()).unwrap();
-
-    assert_eq!(report.screen_recording, PermissionState::Unknown);
+    let probed = super::imp::probe_capture_availability();
+    assert_eq!(report.screen_recording, map_capture_availability(probed));
+    assert_eq!(
+        report.screen_recording,
+        PermissionState::NotRequired,
+        "interactive sessions with a monitor can capture via Legacy even when WGC is unavailable"
+    );
 }
 
 #[cfg(target_os = "windows")]
