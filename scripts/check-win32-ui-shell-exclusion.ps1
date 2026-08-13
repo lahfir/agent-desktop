@@ -52,11 +52,22 @@ function Get-WindowsCrateFeatureTree {
     foreach ($target in @('', 'x86_64-pc-windows-msvc')) {
         $arguments = @('tree', '--locked', '-e', 'features', '-p', 'agent-desktop-windows', '--manifest-path', $manifestPath)
         if ($target) { $arguments += @('--target', $target) }
-        $output = & cargo @arguments 2>&1
+        # No `2>&1` here. PowerShell 5.1 wraps a native command's stderr in
+        # ErrorRecords, so cargo's own progress on a cold cache ("Downloading
+        # crates ...") was captured as output and read as a failure - green on a
+        # warm developer cache, red on every clean CI run. The feature tree is on
+        # stdout; progress belongs on stderr and is left there.
+        $output = & cargo @arguments
         if ($LASTEXITCODE -ne 0) {
-            throw ('cargo ' + ($arguments -join ' ') + ' failed: ' + ($output -join "`n"))
+            throw ('cargo ' + ($arguments -join ' ') + ' exited with ' + $LASTEXITCODE)
         }
-        $chunks.Add(($output -join "`n")) | Out-Null
+        $text = ($output -join "`n")
+        # An empty or crate-less tree would make the Win32_UI_Shell search pass
+        # vacuously, so the gate refuses a result it cannot prove it read.
+        if ($text -notmatch 'agent-desktop-windows') {
+            throw ('cargo ' + ($arguments -join ' ') + ' produced no agent-desktop-windows feature tree')
+        }
+        $chunks.Add($text) | Out-Null
     }
     return ($chunks -join "`n")
 }
