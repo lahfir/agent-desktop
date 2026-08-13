@@ -286,7 +286,7 @@ Every command produces a response envelope:
 
 ```json
 {
-  "version": "2.2",
+  "version": "2.3",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -302,7 +302,7 @@ Error responses:
 
 ```json
 {
-  "version": "2.2",
+  "version": "2.3",
   "ok": false,
   "command": "click",
   "error": {

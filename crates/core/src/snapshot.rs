@@ -37,7 +37,7 @@ pub fn build(
     window_id: Option<&str>,
     deadline: crate::Deadline,
 ) -> Result<SnapshotResult, AppError> {
-    let window = resolve_window(adapter, app_name, window_id, deadline)?;
+    let window = resolve_window_for_surface(adapter, app_name, window_id, opts.surface, deadline)?;
     let observation_options = opts.with_ref_identity_bounds();
     let (raw_tree, complete, nodes_observed) = crate::renderer_accessibility::observe_tree(
         adapter,
@@ -81,6 +81,57 @@ pub fn build(
     })
 }
 
+/// Resolves the window that identifies the process to observe. An app-level
+/// surface is not owned by a single window, so several open windows must not be
+/// reported as ambiguous when one is requested.
+pub(crate) fn resolve_window_for_surface(
+    adapter: &dyn PlatformAdapter,
+    app_name: Option<&str>,
+    window_id: Option<&str>,
+    surface: crate::SnapshotSurface,
+    deadline: crate::Deadline,
+) -> Result<WindowInfo, AppError> {
+    if window_id.is_some() || matches!(surface, crate::SnapshotSurface::Window) {
+        return resolve_window(adapter, app_name, window_id, deadline);
+    }
+    crate::window_lookup::select_surface_owner(
+        windows_for_app(adapter, app_name, deadline)?,
+        crate::AdapterError::new(
+            crate::ErrorCode::AppNotFound,
+            format!(
+                "No window found to identify the application owning surface '{}'",
+                surface.as_str()
+            ),
+        ),
+    )
+}
+
+fn windows_for_app(
+    adapter: &dyn PlatformAdapter,
+    app_name: Option<&str>,
+    deadline: crate::Deadline,
+) -> Result<Vec<WindowInfo>, AppError> {
+    let filter = WindowFilter {
+        focused_only: app_name.is_none(),
+        app: app_name.map(str::to_string),
+    };
+    Ok(windows_matching_app(
+        adapter.list_windows(&filter, deadline)?,
+        app_name,
+    ))
+}
+
+/// The adapter filter is advisory, so the app name is applied again here.
+fn windows_matching_app(windows: Vec<WindowInfo>, app_name: Option<&str>) -> Vec<WindowInfo> {
+    match app_name {
+        Some(app) => windows
+            .into_iter()
+            .filter(|window| window.app.eq_ignore_ascii_case(app))
+            .collect(),
+        None => windows,
+    }
+}
+
 pub(crate) fn resolve_window(
     adapter: &dyn PlatformAdapter,
     app_name: Option<&str>,
@@ -105,12 +156,8 @@ pub(crate) fn resolve_window(
             )
         })
     } else if let Some(app) = app_name {
-        let candidates = windows
-            .into_iter()
-            .filter(|window| window.app.eq_ignore_ascii_case(app))
-            .collect::<Vec<_>>();
         crate::window_lookup::select_window(
-            candidates,
+            windows_matching_app(windows, app_name),
             crate::AdapterError::new(
                 crate::ErrorCode::AppNotFound,
                 format!("No window found for app '{app}'"),

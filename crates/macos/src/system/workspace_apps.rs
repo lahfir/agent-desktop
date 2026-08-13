@@ -144,7 +144,7 @@ fn apps_from_json_with(
     for app in bridged
         .applications
         .into_iter()
-        .filter(|app| app.activation_policy == ActivationPolicy::Regular)
+        .filter(|app| app.activation_policy != ActivationPolicy::Prohibited)
         .filter(include)
     {
         ensure_before_deadline(deadline)?;
@@ -160,10 +160,20 @@ fn apps_from_json_with(
             pid: crate::system::process_identity::from_pid_t(app.pid)?,
             bundle_id: app.bundle_id,
             process_instance: Some(process_instance),
+            presentation: Some(presentation_of(app.activation_policy)),
         });
     }
     ensure_before_deadline(deadline)?;
     Ok(apps)
+}
+
+fn presentation_of(policy: ActivationPolicy) -> agent_desktop_core::AppPresentation {
+    match policy {
+        ActivationPolicy::Regular => agent_desktop_core::AppPresentation::Foreground,
+        ActivationPolicy::Accessory | ActivationPolicy::Prohibited => {
+            agent_desktop_core::AppPresentation::Background
+        }
+    }
 }
 
 fn window_owner_snapshot_from_json(

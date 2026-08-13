@@ -12,12 +12,14 @@ impl ObservationOps for AppsAdapter {
                 pid: crate::ProcessId::new(1),
                 bundle_id: Some("com.apple.finder".into()),
                 process_instance: Some("test-instance".into()),
+                presentation: None,
             },
             AppInfo {
                 name: "TextEdit".into(),
                 pid: crate::ProcessId::new(2),
                 bundle_id: Some("com.apple.TextEdit".into()),
                 process_instance: Some("test-instance".into()),
+                presentation: None,
             },
         ])
     }

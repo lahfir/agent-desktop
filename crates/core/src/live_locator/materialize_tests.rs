@@ -17,6 +17,7 @@ fn request() -> LocatorResolveRequest {
         selection: LocatorSelection::Strict,
         deadline: crate::Deadline::from_duration(std::time::Duration::from_secs(5)).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::FullRefMap,
     }
 }
@@ -50,6 +51,7 @@ fn selected_materialization_persists_only_returned_matches() {
             selection: LocatorSelection::First,
             deadline: crate::Deadline::from_duration(std::time::Duration::from_secs(5)).unwrap(),
             max_raw_depth: 50,
+            surface: None,
             materialization: LocatorMaterialization::SelectedMatches,
         },
     )
@@ -190,7 +192,7 @@ fn window_source_materialization_preserves_geometry_generation_evidence() {
         vec![0],
         true,
     );
-    let ObservationSource::Window(window) = &mut observed.source else {
+    let ObservationSource::Window { window, .. } = &mut observed.source else {
         panic!("fixture must use a window source");
     };
     window.bounds = Some(bounds);

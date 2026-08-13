@@ -6,6 +6,7 @@ fn app(name: &str, pid: u32) -> AppInfo {
         pid: agent_desktop_core::ProcessId::new(pid),
         bundle_id: None,
         process_instance: Some(format!("instance-{pid}")),
+        presentation: None,
     }
 }
 
@@ -15,6 +16,7 @@ fn app_with_bundle(name: &str, pid: u32, bundle_id: &str) -> AppInfo {
         pid: agent_desktop_core::ProcessId::new(pid),
         bundle_id: Some(bundle_id.to_string()),
         process_instance: Some(format!("instance-{pid}")),
+        presentation: None,
     }
 }
 

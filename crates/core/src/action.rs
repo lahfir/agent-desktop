@@ -96,6 +96,22 @@ impl Action {
         )
     }
 
+    /// Whether the action can leave the application showing a sheet, menu, or
+    /// alert. Listing surfaces costs a walk of the application's overlays, so
+    /// only the actions that can raise one pay for it.
+    pub fn may_raise_surface(&self) -> bool {
+        matches!(
+            self,
+            Self::Click
+                | Self::DoubleClick
+                | Self::RightClick
+                | Self::TripleClick
+                | Self::Expand
+                | Self::Select(_)
+                | Self::PressKey(_)
+        )
+    }
+
     pub fn requires_scroll_into_view(&self) -> bool {
         matches!(
             self,

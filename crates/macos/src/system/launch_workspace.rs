@@ -18,7 +18,7 @@ pub(crate) fn open(
         "bundle_id": super::launch::looks_like_bundle_id(id),
         "arguments": options.args,
         "environment": options.env,
-        "activates": false,
+        "activates": options.activate,
         "prompts": false,
         "substitution": false,
         "new_instance": creates_new_instance(options),

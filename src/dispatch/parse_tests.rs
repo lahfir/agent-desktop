@@ -88,14 +88,26 @@ fn modifier_aliases_map_to_portable_meta() {
 
 #[test]
 fn launch_options_reject_ambiguous_or_nonportable_environment() {
-    let duplicate = build_launch_options(&[], &["A=1".into(), "A=2".into()], None, 100, false)
+    let duplicate = build_launch_options(&launch_args(&[], &["A=1".into(), "A=2".into()]))
         .expect_err("duplicate keys must not silently overwrite");
     assert_eq!(duplicate.code(), "INVALID_ARGS");
 
     for entry in ["9KEY=value", "BAD-KEY=value", "KEY=bad\0value"] {
         assert_eq!(parse_env_pair(entry, 0).unwrap_err().code(), "INVALID_ARGS");
     }
-    let nul_arg = build_launch_options(&["bad\0arg".into()], &[], None, 100, false)
+    let nul_arg = build_launch_options(&launch_args(&["bad\0arg".into()], &[]))
         .expect_err("NUL arguments must fail before platform spawn");
     assert_eq!(nul_arg.code(), "INVALID_ARGS");
+}
+
+fn launch_args(args: &[String], env: &[String]) -> crate::cli_args::system::LaunchArgs {
+    crate::cli_args::system::LaunchArgs {
+        app: "Fixture".into(),
+        timeout: 100,
+        args: args.to_vec(),
+        env: env.to_vec(),
+        cwd: None,
+        no_attach: false,
+        activate: false,
+    }
 }

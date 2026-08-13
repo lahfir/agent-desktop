@@ -24,14 +24,39 @@ pub(super) fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let deadline = crate::Deadline::from_duration(LOCATOR_TIMEOUT)?;
-    let window = snapshot::resolve_window(
-        adapter,
-        args.app.as_deref(),
-        args.window_id.as_deref(),
-        deadline,
-    )?;
     let request = resolve_request(args, deadline);
-    let mut resolution = resolve_query(adapter, query, ObservationRoot::Window(&window), &request)?;
+    let mut resolution = match args.root.as_deref() {
+        Some(root_ref) => {
+            let (_, local_root_ref) =
+                crate::ref_token::resolve_ref_target(root_ref, args.snapshot.as_deref())?;
+            let entry = crate::commands::helpers::load_ref_entry(
+                root_ref,
+                args.snapshot.as_deref(),
+                context,
+            )?;
+            let handle = adapter.resolve_element_strict(&entry, deadline)?;
+            resolve_query(
+                adapter,
+                query,
+                ObservationRoot::Element {
+                    handle: &handle,
+                    entry: &entry,
+                    root_ref: Some(&local_root_ref),
+                },
+                &request,
+            )?
+        }
+        None => {
+            let window = snapshot::resolve_window_for_surface(
+                adapter,
+                args.app.as_deref(),
+                args.window_id.as_deref(),
+                args.surface,
+                deadline,
+            )?;
+            resolve_query(adapter, query, ObservationRoot::Window(&window), &request)?
+        }
+    };
     require_complete(&resolution)?;
     let ref_count = resolution.refmap.as_ref().map(RefMap::len);
     let snapshot_id = match resolution.refmap.take() {
@@ -72,6 +97,7 @@ fn resolve_request(args: &FindArgs, deadline: crate::Deadline) -> LocatorResolve
         selection,
         deadline,
         max_raw_depth: MAX_RAW_DEPTH,
+        surface: (args.surface != crate::SnapshotSurface::Window).then_some(args.surface),
         materialization: if args.selection.count {
             LocatorMaterialization::None
         } else {
@@ -194,6 +220,9 @@ mod tests {
         FindArgs {
             app: None,
             window_id: None,
+            root: None,
+            snapshot: None,
+            surface: crate::SnapshotSurface::Window,
             filter: crate::commands::find::FindFilterArgs {
                 role: None,
                 name: None,

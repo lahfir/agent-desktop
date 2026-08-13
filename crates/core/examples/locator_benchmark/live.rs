@@ -66,6 +66,7 @@ fn run_live(
         selection,
         deadline: Deadline::after(5_000)?,
         max_raw_depth: 50,
+        surface: None,
         materialization,
     };
     let adapter = FixtureAdapter { fixture };

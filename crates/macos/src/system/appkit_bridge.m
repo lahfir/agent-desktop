@@ -17,6 +17,24 @@ typedef struct {
     size_t length;
 } AgentDesktopBytesResult;
 
+// Reports whether a running application has finished starting up.
+// -1 no such process, 0 still starting, 1 finished.
+int32_t agent_desktop_app_finished_launching(int32_t pid) {
+    @try {
+        @autoreleasepool {
+            NSRunningApplication *app =
+                [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+            if (app == nil) {
+                return -1;
+            }
+            return app.isFinishedLaunching ? 1 : 0;
+        }
+    } @catch (NSException *exception) {
+        (void)exception;
+        return -1;
+    }
+}
+
 AgentDesktopTerminateResult agent_desktop_terminate_application(
     int32_t pid,
     double expectedLaunchTime,

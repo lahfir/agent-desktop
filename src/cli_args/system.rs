@@ -19,7 +19,7 @@ pub(crate) struct LaunchArgs {
     #[arg(
         long,
         default_value = "30000",
-        help = "Max time in ms to wait for the window to appear"
+        help = "Upper bound in ms for the whole launch"
     )]
     #[serde(default = "default_launch_timeout")]
     pub timeout: u64,
@@ -44,6 +44,12 @@ pub(crate) struct LaunchArgs {
     )]
     #[serde(default)]
     pub no_attach: bool,
+    #[arg(
+        long,
+        help = "Bring the app forward so it presents a window, and wait for one"
+    )]
+    #[serde(default)]
+    pub activate: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]

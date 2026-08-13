@@ -37,7 +37,10 @@ impl ObservationOps for CardinalityAdapter {
         }
         ObservedTree::from_roots(
             roots,
-            ObservationSource::Window(window.clone()),
+            ObservationSource::Window {
+                window: window.clone(),
+                surface: agent_desktop_core::SnapshotSurface::Window,
+            },
             Default::default(),
             self.complete,
         )

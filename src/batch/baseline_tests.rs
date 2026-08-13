@@ -21,6 +21,7 @@ impl agent_desktop_core::ObservationOps for AtomicEventAdapter {
             pid: agent_desktop_core::ProcessId::new(42),
             bundle_id: Some("com.example.fixture".into()),
             process_instance: Some("fixture-42".into()),
+            presentation: None,
         }])
     }
 }

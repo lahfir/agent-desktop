@@ -95,6 +95,7 @@ pub(super) fn selected_matches(
             query,
             &super::LocatorResolveRequest {
                 selection: super::LocatorSelection::First,
+                surface: None,
                 materialization: super::LocatorMaterialization::None,
                 ..*request
             },

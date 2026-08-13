@@ -15,7 +15,7 @@ use std::ptr;
 /// to disk, and writes the JSON envelope into `*out`.
 ///
 /// The JSON shape matches `agent-desktop snapshot`:
-/// `{"version":"2.2","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
+/// `{"version":"2.3","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
 ///
 /// **`*out` ownership and error behaviour:**
 /// - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.

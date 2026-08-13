@@ -13,6 +13,11 @@ pub struct LaunchOptions {
     pub cwd: Option<PathBuf>,
     pub timeout_ms: u64,
     pub attach_if_running: bool,
+    /// Brings the application forward so it presents a window. A document-based
+    /// application creates its first window in response to activation, so a
+    /// caller that needs a window has to ask for one; waiting without asking
+    /// waits for an event that never fires.
+    pub activate: bool,
 }
 
 impl Default for LaunchOptions {
@@ -23,6 +28,7 @@ impl Default for LaunchOptions {
             cwd: None,
             timeout_ms: 5_000,
             attach_if_running: true,
+            activate: false,
         }
     }
 }

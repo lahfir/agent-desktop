@@ -186,3 +186,18 @@ fn verify_skips_title_when_request_title_empty() {
     let live = record("TextEdit", pid, "Any Title", 100);
     assert!(verify_window_record(&requested, &live).is_ok());
 }
+
+/// `list-windows` reports the CoreGraphics inventory, which includes windows an
+/// application never publishes through accessibility. Calling those missing
+/// contradicts the inventory that just handed out the id.
+#[test]
+fn a_window_without_an_accessibility_element_is_not_reported_as_missing() {
+    let error = super::window_not_accessible("w-82");
+
+    assert_eq!(
+        error.code,
+        agent_desktop_core::ErrorCode::ActionNotSupported
+    );
+    assert!(error.message.contains("exists"));
+    assert_ne!(error.code, agent_desktop_core::ErrorCode::WindowNotFound);
+}

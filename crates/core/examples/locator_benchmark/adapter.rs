@@ -39,7 +39,7 @@ impl ObservationOps for FixtureAdapter<'_> {
                 live_target_tree(
                     self.fixture,
                     index,
-                    ObservationSource::from_root(&root),
+                    ObservationSource::from_root(&root, request.surface),
                     request,
                 )
             }

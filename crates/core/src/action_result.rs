@@ -11,6 +11,11 @@ pub struct ActionResult {
     pub post_state: Option<ElementState>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub steps: Vec<ActionStep>,
+    /// Overlays the application had open once the action settled. An action can
+    /// leave a sheet, menu, or alert on screen, and without this the caller has
+    /// to go hunting through windows to discover it.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub surfaces: Vec<crate::SurfaceInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
     #[serde(
@@ -49,6 +54,7 @@ impl ActionResult {
             action: action.into(),
             post_state: None,
             steps: Vec::new(),
+            surfaces: Vec::new(),
             details: None,
             disposition: DeliverySemantics::not_delivered(),
         }
@@ -59,6 +65,7 @@ impl ActionResult {
             action: action.into(),
             post_state: None,
             steps: Vec::new(),
+            surfaces: Vec::new(),
             details: None,
             disposition: default_action_disposition(),
         }

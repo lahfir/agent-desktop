@@ -34,6 +34,7 @@ fn app(instance: Option<&str>) -> AppInfo {
         pid: crate::ProcessId::new(42),
         bundle_id: Some("com.example.app".into()),
         process_instance: instance.map(str::to_string),
+        presentation: None,
     }
 }
 

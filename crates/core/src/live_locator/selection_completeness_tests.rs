@@ -122,6 +122,7 @@ fn first_request() -> LocatorResolveRequest {
         selection: LocatorSelection::First,
         deadline: crate::Deadline::after(500).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::None,
     }
 }

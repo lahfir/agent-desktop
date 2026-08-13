@@ -130,7 +130,7 @@ fn resolve_window_element_strict(
     crate::tree::locator_deadline::remaining(deadline)?;
     let pid = crate::system::process_identity::to_pid_t(win.pid)?;
     ax_window_element_for_number(pid, window_number, record.title.as_deref(), deadline)?
-        .ok_or_else(|| window_not_found(&win.id))
+        .ok_or_else(|| window_not_accessible(&win.id))
 }
 
 pub(crate) fn parse_window_number(id: &str) -> Option<i64> {
@@ -342,6 +342,26 @@ pub(crate) fn ax_window_id_with_deadline(
 fn invalid_window_id(id: &str) -> AdapterError {
     AdapterError::new(ErrorCode::InvalidArgs, format!("Invalid window id: '{id}'"))
         .with_suggestion("Window ids come from 'list-windows' (format w-<number>).")
+}
+
+/// The window exists in the CoreGraphics inventory but the owning application
+/// does not publish it through accessibility. Reporting it as missing
+/// contradicts `list-windows`, which correctly still lists it: screenshots and
+/// coordinate input address CoreGraphics windows, only the semantic path needs
+/// an accessibility element.
+fn window_not_accessible(id: &str) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::ActionNotSupported,
+        format!("Window '{id}' exists but is not exposed through accessibility"),
+    )
+    .with_details(serde_json::json!({
+        "kind": "window_without_accessibility_element",
+        "window_id": id,
+    }))
+    .with_suggestion(
+        "This window supports screenshots and coordinate input only. Bring it on screen, \
+         or target another window from 'list-windows'.",
+    )
 }
 
 fn window_not_found(id: &str) -> AdapterError {

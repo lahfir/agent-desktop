@@ -8,6 +8,10 @@ pub(crate) struct ObservationUsage {
 }
 
 impl ObservationUsage {
+    pub(crate) fn with_defaults() -> Self {
+        Self::new(ObservationBudget::default())
+    }
+
     pub(crate) fn new(limits: ObservationBudget) -> Self {
         Self {
             limits,

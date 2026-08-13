@@ -82,7 +82,7 @@ impl ObservationRequest {
         deadline: Deadline,
     ) -> Self {
         Self {
-            surface: root.surface(),
+            surface: request.surface.unwrap_or_else(|| root.surface()),
             ..Self::locator(query, request, deadline)
         }
     }

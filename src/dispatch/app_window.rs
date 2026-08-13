@@ -23,14 +23,8 @@ use crate::dispatch::parse::build_launch_options;
 pub(super) fn launch(args: LaunchArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     launch_command::execute(
         launch_command::LaunchArgs {
-            app: args.app,
-            options: build_launch_options(
-                &args.args,
-                &args.env,
-                args.cwd,
-                args.timeout,
-                args.no_attach,
-            )?,
+            app: args.app.clone(),
+            options: build_launch_options(&args)?,
         },
         adapter,
     )

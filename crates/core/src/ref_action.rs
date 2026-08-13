@@ -99,17 +99,21 @@ pub(crate) fn dispatch_resolved(
     }
     request = request
         .with_verified_point(preflight.verified_point)
-        .with_expected_process(expected_process);
+        .with_expected_process(expected_process.clone());
     let final_target = ResolvedRefAction::new(target, &handle);
     final_target.context.trace_lazy(
         "action.dispatch.start",
         || json!({ "ref": final_target.ref_id, "action": request.action.name() }),
     )?;
     let action_name = request.action.name();
+    let raises_surface = request.action.may_raise_surface();
     let dispatch_result = final_target
         .adapter
         .execute_action(final_target.handle, request, lease);
-    let result = dispatch_result?;
+    let mut result = dispatch_result?;
+    if raises_surface {
+        result.surfaces = settled_surfaces(&final_target, expected_process);
+    }
     final_target
         .context
         .trace_lazy(
@@ -118,6 +122,20 @@ pub(crate) fn dispatch_resolved(
         )
         .map_err(trace_error_after_delivery)?;
     Ok(result)
+}
+
+/// An action that opens a sheet, menu, or alert leaves the caller staring at a
+/// success envelope with no hint that the application is now waiting on a
+/// dialog. Reporting the overlays saves a round of window archaeology. Purely
+/// informational, so a failed read never disturbs delivered work.
+fn settled_surfaces(
+    target: &ResolvedRefAction<'_>,
+    process: crate::ProcessIdentity,
+) -> Vec<crate::SurfaceInfo> {
+    target
+        .adapter
+        .list_surfaces(process, target.deadline)
+        .unwrap_or_default()
 }
 
 pub(crate) fn mark_pre_dispatch_resolution_failure(error: AdapterError) -> AdapterError {
