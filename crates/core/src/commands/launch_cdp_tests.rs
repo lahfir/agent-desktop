@@ -1,7 +1,7 @@
 use super::cdp_test_support::{CdpAdapter, adapter_error, empty_cdp_adapter};
 use super::*;
 use crate::launch_options::LaunchOptions;
-use crate::{AppInfo, ErrorCode, ProcessId, RendererKind};
+use crate::{AppInfo, AppPresentation, ErrorCode, ProcessId, RendererKind};
 use std::sync::atomic::Ordering;
 
 #[test]
@@ -47,7 +47,7 @@ fn cdp_launch_rejects_an_already_running_instance() {
             pid: ProcessId::new(7),
             bundle_id: None,
             process_instance: Some("7:1".into()),
-            presentation: None,
+            presentation: Some(AppPresentation::Foreground),
         }],
         ..empty_cdp_adapter(false)
     };
@@ -76,6 +76,39 @@ fn cdp_launch_rejects_an_already_running_instance() {
         Some(&serde_json::json!("cdp_requires_fresh_launch"))
     );
     assert_eq!(adapter.list_apps_calls.load(Ordering::SeqCst), 1);
+}
+
+/// `list_apps` also returns ps-derived helper processes: no bundle ID, no
+/// presentation, because the adapter can never attach a launch to one. A
+/// helper sharing the requested app's name must not block the launch.
+#[test]
+fn cdp_launch_ignores_a_name_matching_helper_process_without_presentation() {
+    let adapter = CdpAdapter {
+        running: vec![AppInfo {
+            name: "Fixture".into(),
+            pid: ProcessId::new(7),
+            bundle_id: None,
+            process_instance: None,
+            presentation: None,
+        }],
+        ..empty_cdp_adapter(true)
+    };
+    let options = LaunchOptions {
+        cdp_port: Some(0),
+        timeout_ms: 3_000,
+        ..Default::default()
+    };
+
+    let value = execute(
+        LaunchArgs {
+            app: "Fixture".into(),
+            options,
+        },
+        &adapter,
+    )
+    .expect("a presentation-less helper process must not block the launch");
+
+    assert!(value.get("cdp").is_some());
 }
 
 /// Even when the endpoint never answers, the switch was already appended

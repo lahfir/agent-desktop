@@ -66,20 +66,20 @@ fn probe_reserve(total: Duration) -> Duration {
 fn launch_suggestion(cdp_requested: bool, launched: &LaunchResult) -> Option<String> {
     if let Some(cdp) = &launched.cdp {
         return Some(format!(
-            "Next: run `agent-browser connect {}` and drive the web contents with its \
-             snapshot/click/type workflow (`agent-browser skills get electron` has the guide). \
-             If agent-browser is not installed, ask the user to install it or use accessibility \
-             commands. Do not hand-roll raw CDP or call app-internal APIs — that path is \
-             unverified and app-specific. Native menus, dialogs, windows, and screenshots stay \
-             with agent-desktop.",
+            "Next: run `agent-browser connect {}` (preferred; `agent-browser skills get \
+             electron` has the guide) or connect any CDP client such as Playwright or \
+             Puppeteer. If neither is available, ask the user to install agent-browser or \
+             continue with accessibility commands. Do not hand-roll raw CDP or call \
+             app-internal APIs — that path is unverified and app-specific. Native menus, \
+             dialogs, windows, and screenshots stay with agent-desktop.",
             cdp.port
         ));
     }
     if !cdp_requested && launched.renderer == Some(RendererKind::Chromium) {
         return Some(
-            "Chromium app: for web-content work, run close-app and then launch --cdp, and \
-             drive the web contents with agent-browser. Accessibility commands still cover \
-             everything, including native menus and dialogs."
+            "Chromium app: for web-content work, run close-app and then launch --cdp, then \
+             drive the web contents with agent-browser or any CDP client. Accessibility \
+             commands still cover everything, including native menus and dialogs."
                 .to_owned(),
         );
     }
@@ -118,7 +118,10 @@ fn reject_conflicting_cdp_switch(options: &LaunchOptions) -> Result<(), AppError
 /// The DevTools port only exists on the process that was launched with it;
 /// attaching to an instance already running without it would report success
 /// while the endpoint stays absent, so this is checked before launch instead
-/// of discovered only once the endpoint fails to answer.
+/// of discovered only once the endpoint fails to answer. Only workspace-
+/// registered applications count: `list_apps` also returns ps-derived helper
+/// processes with no bundle ID and no presentation, and the launch path can
+/// never attach to one of those even when its name happens to match.
 fn reject_if_already_running(
     id: &str,
     adapter: &dyn PlatformAdapter,
@@ -127,7 +130,7 @@ fn reject_if_already_running(
     let running = adapter.list_apps(deadline)?;
     let pids: Vec<_> = running
         .iter()
-        .filter(|app| app.matches_identifier(id))
+        .filter(|app| app.presentation.is_some() && app.matches_identifier(id))
         .map(|app| app.pid)
         .collect();
     if pids.is_empty() {

@@ -26,7 +26,8 @@ pub(crate) struct LaunchArgs {
     #[arg(
         long = "arg",
         allow_hyphen_values = true,
-        help = "Command-line argument passed to the launched app"
+        help = "Command-line argument passed to the launched app; repeatable, order preserved. \
+                For values starting with '-', use --arg=<value>"
     )]
     #[serde(default)]
     pub args: Vec<String>,
