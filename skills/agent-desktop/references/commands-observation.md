@@ -121,6 +121,7 @@ agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
 - Use `--skeleton` first to get a high-level map, then `--root` to drill into specific regions
 - Combine `--skeleton` with `-i` and `--compact` for the most token-efficient initial overview
+- For a Chromium-based app's web contents (Slack, VS Code, Discord, and similar), `launch --cdp` plus a CDP client is a faster alternative to skeleton traversal on a fresh launch — see `references/commands-system.md`
 - Keep `snapshot_id` when commands must resolve against a specific snapshot instead of the latest snapshot pointer
 
 ## find

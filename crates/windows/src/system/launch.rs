@@ -95,6 +95,9 @@ fn launch_result(
         pid,
         process_instance: Some(process_instance),
         window,
+        cdp: None,
+        renderer: None,
+        suggestion: None,
     }
 }
 

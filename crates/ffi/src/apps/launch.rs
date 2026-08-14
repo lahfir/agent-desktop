@@ -221,6 +221,9 @@ mod tests {
                     bounds: None,
                     state: WindowState::default(),
                 }),
+                cdp: None,
+                renderer: None,
+                suggestion: None,
             })
         }
     }

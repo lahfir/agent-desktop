@@ -47,6 +47,7 @@
 - **Headless-by-default interactions**: Ref actions use accessibility APIs and block silent focus, cursor, keyboard, or pasteboard side effects
 - **Structured JSON output**: Machine-readable responses with error codes and recovery hints
 - **Works with any app**: Finder, Safari, System Settings, Xcode, Slack — anything with an accessibility tree
+- **Chromium-app interop via CDP**: `launch --cdp` opens a verified DevTools port so any framework that speaks CDP — Playwright, Puppeteer, `chrome-remote-interface`, agent-browser — can drive the web contents, while native menus, dialogs, and windows stay on the accessibility path
 
 ## Installation
 
@@ -173,6 +174,28 @@ agent-desktop session end "$AGENT_DESKTOP_SESSION"
 agent-desktop session gc
 ```
 
+## Driving Chromium apps (CDP)
+
+For a Chromium-based app (Slack, VS Code, Discord, Obsidian, Notion), `launch --cdp` opens a verified Chrome DevTools Protocol endpoint on the web contents. Any framework that speaks CDP can connect — Playwright, Puppeteer, `chrome-remote-interface`, agent-browser — with agent-browser preferred for its ref-based agent workflow and bundled `electron` skill. Native surfaces (menus, dialogs, windows, screenshots) stay on the accessibility path either way.
+
+```bash
+agent-desktop launch "Obsidian" --cdp
+```
+
+```json
+{ "app": "Obsidian", "pid": 4821, "cdp": {
+  "port": 9229,
+  "http_endpoint": "http://127.0.0.1:9229",
+  "websocket_url": "ws://127.0.0.1:9229/devtools/browser/<id>",
+  "product": "Chrome/142.0.7444.265"
+},
+  "suggestion": "Next: run `agent-browser connect 9229` (preferred) or connect any CDP client such as Playwright or Puppeteer. ..." }
+```
+
+`--cdp` needs a fresh launch — an already-running target returns `ACTION_FAILED`. Run `close-app` first, confirm the process exited, then `launch --cdp` again.
+
+The endpoint is pinned to `127.0.0.1`. Any local process running as your user can still reach it while it stays open; `close-app` ends the exposure along with the app.
+
 ## Commands
 
 ### Observation
@@ -240,6 +263,7 @@ agent-desktop --headed mouse-click --xy 500,300   # click at coordinates
 ```bash
 agent-desktop launch Safari              # launch app by name
 agent-desktop launch com.apple.Safari    # launch by bundle ID
+agent-desktop launch "Obsidian" --cdp    # fresh launch + verified CDP port for web contents
 agent-desktop close-app Safari           # quit app
 agent-desktop close-app Safari --force   # force quit (SIGTERM, then SIGKILL if needed)
 agent-desktop list-apps                  # list running GUI apps

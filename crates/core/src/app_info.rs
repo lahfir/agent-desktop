@@ -26,3 +26,56 @@ pub struct AppInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub presentation: Option<AppPresentation>,
 }
+
+impl AppInfo {
+    /// Whether `id` identifies this application, by exact case-insensitive
+    /// name or bundle identifier. The one predicate every launch-target
+    /// match uses, so a name match and a bundle match never drift apart.
+    pub fn matches_identifier(&self, id: &str) -> bool {
+        self.name.eq_ignore_ascii_case(id)
+            || self
+                .bundle_id
+                .as_deref()
+                .is_some_and(|bundle_id| bundle_id.eq_ignore_ascii_case(id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app(name: &str, bundle_id: Option<&str>) -> AppInfo {
+        AppInfo {
+            name: name.to_owned(),
+            pid: ProcessId::new(1),
+            bundle_id: bundle_id.map(str::to_owned),
+            process_instance: None,
+            presentation: None,
+        }
+    }
+
+    #[test]
+    fn matches_by_exact_name() {
+        assert!(app("Fixture", None).matches_identifier("Fixture"));
+    }
+
+    #[test]
+    fn matches_by_bundle_id() {
+        assert!(
+            app("Fixture", Some("com.example.fixture")).matches_identifier("com.example.fixture")
+        );
+    }
+
+    #[test]
+    fn matches_are_case_insensitive() {
+        assert!(app("Fixture", None).matches_identifier("fixture"));
+        assert!(
+            app("Fixture", Some("com.example.Fixture")).matches_identifier("COM.EXAMPLE.FIXTURE")
+        );
+    }
+
+    #[test]
+    fn does_not_match_an_unrelated_identifier() {
+        assert!(!app("Fixture", Some("com.example.fixture")).matches_identifier("Other"));
+    }
+}
