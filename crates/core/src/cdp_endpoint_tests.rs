@@ -26,7 +26,8 @@ fn probe_parses_websocket_url_and_product_from_a_live_http_response() {
     let server = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = [0_u8; 1024];
-        let _ = stream.read(&mut buf);
+        let received = stream.read(&mut buf).unwrap_or(0);
+        let request = String::from_utf8_lossy(&buf[..received]).into_owned();
         let body = r#"{"Browser":"Chrome/120.0.0.0","webSocketDebuggerUrl":"ws://127.0.0.1/devtools/browser/abc"}"#;
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
@@ -34,10 +35,16 @@ fn probe_parses_websocket_url_and_product_from_a_live_http_response() {
             body
         );
         stream.write_all(response.as_bytes()).unwrap();
+        request
     });
 
     let endpoint = probe(port, Deadline::after(2_000).unwrap()).unwrap();
-    server.join().unwrap();
+    let request = server.join().unwrap();
+
+    assert!(
+        request.contains(&format!("Host: 127.0.0.1:{port}")),
+        "Chromium echoes the Host header into webSocketDebuggerUrl, so the port must be in it; sent: {request}"
+    );
 
     assert_eq!(endpoint.port, port);
     assert_eq!(endpoint.http_endpoint, format!("http://127.0.0.1:{port}"));

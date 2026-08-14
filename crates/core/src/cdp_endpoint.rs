@@ -15,6 +15,9 @@ const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// requested of it. `port` and `http_endpoint` come from the launch itself;
 /// `websocket_url` and `product` come from a live `/json/version` read and
 /// are absent when the endpoint answers but its body cannot be parsed.
+/// The probe's Host header carries the port because Chromium builds the
+/// reported websocket URL from it verbatim; without it the URL cannot be
+/// dialed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CdpEndpoint {
     pub port: u16,
@@ -62,9 +65,10 @@ fn attempt(port: u16, timeout: Duration) -> Option<CdpEndpoint> {
     let mut stream = TcpStream::connect_timeout(&address, timeout).ok()?;
     stream.set_read_timeout(Some(READ_TIMEOUT)).ok()?;
     stream.set_write_timeout(Some(READ_TIMEOUT)).ok()?;
-    stream
-        .write_all(b"GET /json/version HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
-        .ok()?;
+    let request = format!(
+        "GET /json/version HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).ok()?;
     let raw = read_http_response(&mut stream)?;
     Some(parse_response(port, &raw))
 }
