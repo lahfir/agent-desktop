@@ -1,3 +1,4 @@
+use agent_desktop_core::RendererKind;
 use std::ffi::CStr;
 use std::path::{Path, PathBuf};
 
@@ -13,15 +14,23 @@ const CHROMIUM_FRAMEWORK_MARKERS: [&str; 2] = [
 /// or reading `Contents/Frameworks` reports "not detected" rather than
 /// failing the launch that asked for it. Costs at most one `readdir`.
 #[cfg(target_os = "macos")]
-pub(crate) fn detect_chromium(pid: i32) -> Option<String> {
+pub(crate) fn detect_chromium(pid: i32) -> Option<RendererKind> {
     let executable = executable_path(pid)?;
     let bundle_root = bundle_root_from_executable(&executable)?;
+    chromium_marker_in_bundle(&bundle_root).then_some(RendererKind::Chromium)
+}
+
+/// Scans `Contents/Frameworks` under `bundle_root` for a Chromium marker
+/// framework. Isolated from `detect_chromium` so the scan can be tested
+/// directly against a fixture bundle instead of a live process.
+fn chromium_marker_in_bundle(bundle_root: &Path) -> bool {
     let frameworks = bundle_root.join("Contents/Frameworks");
-    let has_marker = std::fs::read_dir(frameworks)
-        .ok()?
+    let Ok(entries) = std::fs::read_dir(frameworks) else {
+        return false;
+    };
+    entries
         .filter_map(Result::ok)
-        .any(|entry| is_chromium_framework_marker(&entry.file_name().to_string_lossy()));
-    has_marker.then(|| "chromium".to_owned())
+        .any(|entry| is_chromium_framework_marker(&entry.file_name().to_string_lossy()))
 }
 
 fn is_chromium_framework_marker(entry_name: &str) -> bool {
@@ -29,7 +38,7 @@ fn is_chromium_framework_marker(entry_name: &str) -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn detect_chromium(_pid: i32) -> Option<String> {
+pub(crate) fn detect_chromium(_pid: i32) -> Option<RendererKind> {
     None
 }
 

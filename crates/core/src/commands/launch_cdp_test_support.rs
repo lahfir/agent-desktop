@@ -1,6 +1,6 @@
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::launch_options::LaunchOptions;
-use crate::{AdapterError, AppError, AppInfo, InteractionLease, ProcessId};
+use crate::{AdapterError, AppError, AppInfo, InteractionLease, ProcessId, RendererKind};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::Mutex;
@@ -16,7 +16,7 @@ pub(super) struct CdpAdapter {
     pub(super) list_apps_calls: AtomicUsize,
     pub(super) launch_app_calls: AtomicUsize,
     pub(super) serve_cdp: bool,
-    pub(super) renderer: Option<String>,
+    pub(super) renderer: Option<RendererKind>,
     pub(super) captured_args: Mutex<Vec<String>>,
     pub(super) captured_cdp_port: Mutex<Option<u16>>,
 }
@@ -57,7 +57,7 @@ impl SystemOps for CdpAdapter {
             process_instance: Some("42:1".into()),
             window: None,
             cdp: None,
-            renderer: self.renderer.clone(),
+            renderer: self.renderer,
             suggestion: None,
         })
     }

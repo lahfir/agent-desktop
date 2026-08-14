@@ -1,7 +1,7 @@
 use super::cdp_test_support::{CdpAdapter, adapter_error, empty_cdp_adapter};
 use super::*;
 use crate::launch_options::LaunchOptions;
-use crate::{AppInfo, ErrorCode, ProcessId};
+use crate::{AppInfo, ErrorCode, ProcessId, RendererKind};
 use std::sync::atomic::Ordering;
 
 #[test]
@@ -156,7 +156,7 @@ fn cdp_launch_returns_a_verified_endpoint_when_the_process_answers() {
 #[test]
 fn chromium_renderer_without_cdp_gets_the_relaunch_suggestion() {
     let adapter = CdpAdapter {
-        renderer: Some("chromium".into()),
+        renderer: Some(RendererKind::Chromium),
         ..empty_cdp_adapter(false)
     };
 

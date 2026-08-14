@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{
     AdapterError, AppError, DeliverySemantics, ErrorCode, adapter::PlatformAdapter, cdp_endpoint,
-    launch_options::LaunchOptions, launch_result::LaunchResult,
+    launch_options::LaunchOptions, launch_result::LaunchResult, renderer_kind::RendererKind,
 };
 use serde_json::Value;
 
@@ -75,7 +75,7 @@ fn launch_suggestion(cdp_requested: bool, launched: &LaunchResult) -> Option<Str
             cdp.port
         ));
     }
-    if !cdp_requested && launched.renderer.as_deref() == Some("chromium") {
+    if !cdp_requested && launched.renderer == Some(RendererKind::Chromium) {
         return Some(
             "Chromium app: for web-content work, run close-app and then launch --cdp, and \
              drive the web contents with agent-browser. Accessibility commands still cover \
@@ -127,13 +127,7 @@ fn reject_if_already_running(
     let running = adapter.list_apps(deadline)?;
     let pids: Vec<_> = running
         .iter()
-        .filter(|app| {
-            app.name.eq_ignore_ascii_case(id)
-                || app
-                    .bundle_id
-                    .as_deref()
-                    .is_some_and(|bundle_id| bundle_id.eq_ignore_ascii_case(id))
-        })
+        .filter(|app| app.matches_identifier(id))
         .map(|app| app.pid)
         .collect();
     if pids.is_empty() {

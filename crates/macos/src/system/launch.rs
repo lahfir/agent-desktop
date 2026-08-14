@@ -246,13 +246,7 @@ fn matching_apps(id: &str, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterEr
     Ok(
         crate::system::workspace_apps::list_apps_until(deadline_instant(deadline)?)?
             .into_iter()
-            .filter(|app| {
-                app.name.eq_ignore_ascii_case(id)
-                    || app
-                        .bundle_id
-                        .as_deref()
-                        .is_some_and(|bundle_id| bundle_id.eq_ignore_ascii_case(id))
-            })
+            .filter(|app| app.matches_identifier(id))
             .collect(),
     )
 }

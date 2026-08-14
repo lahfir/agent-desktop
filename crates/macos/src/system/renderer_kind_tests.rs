@@ -1,4 +1,67 @@
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+/// A throwaway `<Name>.app` fixture under the system temp directory, removed
+/// on drop so a panicking test does not litter it behind.
+struct FixtureBundle {
+    root: PathBuf,
+}
+
+impl FixtureBundle {
+    fn new() -> Self {
+        let mut root = std::env::temp_dir();
+        root.push(format!(
+            "agent-desktop-renderer-kind-test-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        root.push("Fixture.app");
+        std::fs::create_dir_all(&root).unwrap();
+        Self { root }
+    }
+
+    fn add_framework(&self, name: &str) {
+        let frameworks = self.root.join("Contents/Frameworks");
+        std::fs::create_dir_all(&frameworks).unwrap();
+        std::fs::create_dir_all(frameworks.join(name)).unwrap();
+    }
+
+    fn add_empty_contents(&self) {
+        std::fs::create_dir_all(self.root.join("Contents")).unwrap();
+    }
+}
+
+impl Drop for FixtureBundle {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(self.root.parent().unwrap());
+    }
+}
+
+#[test]
+fn chromium_marker_in_bundle_is_true_for_an_electron_framework_entry() {
+    let bundle = FixtureBundle::new();
+    bundle.add_framework("Electron Framework.framework");
+
+    assert!(chromium_marker_in_bundle(&bundle.root));
+}
+
+#[test]
+fn chromium_marker_in_bundle_is_false_without_a_matching_framework() {
+    let bundle = FixtureBundle::new();
+    bundle.add_framework("Sparkle.framework");
+
+    assert!(!chromium_marker_in_bundle(&bundle.root));
+}
+
+#[test]
+fn chromium_marker_in_bundle_is_false_when_frameworks_dir_is_missing() {
+    let bundle = FixtureBundle::new();
+    bundle.add_empty_contents();
+
+    assert!(!chromium_marker_in_bundle(&bundle.root));
+}
 
 #[test]
 fn bundle_root_is_derived_from_the_conventional_executable_layout() {
