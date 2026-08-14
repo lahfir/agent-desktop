@@ -18,6 +18,10 @@ pub struct LaunchOptions {
     /// caller that needs a window has to ask for one; waiting without asking
     /// waits for an event that never fires.
     pub activate: bool,
+    /// The resolved, concrete DevTools protocol port. Core resolves a
+    /// requested `0` to a real free port before the adapter ever sees it, so
+    /// by the time `launch_app` runs, this is either absent or one exact port.
+    pub cdp_port: Option<u16>,
 }
 
 impl Default for LaunchOptions {
@@ -29,6 +33,7 @@ impl Default for LaunchOptions {
             timeout_ms: 5_000,
             attach_if_running: true,
             activate: false,
+            cdp_port: None,
         }
     }
 }

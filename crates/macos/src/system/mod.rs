@@ -21,6 +21,7 @@ pub(crate) mod process_apps;
 pub(crate) mod process_identity;
 pub(crate) mod process_state;
 pub(crate) mod renderer_activation;
+pub(crate) mod renderer_kind;
 pub(crate) mod screenshot;
 pub(crate) mod signals;
 pub(crate) mod wait;
