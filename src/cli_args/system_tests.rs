@@ -11,6 +11,43 @@ fn launch_arg_passthrough_accepts_a_hyphen_leading_value() {
     assert_eq!(args.args, vec!["--remote-debugging-port=9229"]);
 }
 
+/// `num_args(0..=1)` with `default_missing_value` makes `--cdp` alone mean
+/// "auto-pick a port" (represented as the sentinel `Some(0)`) so callers
+/// are not forced to invent a port number just to ask for the endpoint.
+#[test]
+fn launch_cdp_flag_defaults_to_auto_pick_when_bare() {
+    let args = LaunchArgs::try_parse_from(["launch", "X", "--cdp"]).unwrap();
+
+    assert_eq!(args.cdp, Some(0));
+}
+
+#[test]
+fn launch_cdp_flag_accepts_an_explicit_port() {
+    let args = LaunchArgs::try_parse_from(["launch", "X", "--cdp", "9229"]).unwrap();
+
+    assert_eq!(args.cdp, Some(9229));
+}
+
+#[test]
+fn launch_cdp_flag_is_absent_when_not_given() {
+    let args = LaunchArgs::try_parse_from(["launch", "X"]).unwrap();
+
+    assert_eq!(args.cdp, None);
+}
+
+#[test]
+fn launch_cdp_batch_json_parses_an_explicit_zero_and_an_absent_field() {
+    let auto: LaunchArgs = serde_json::from_value(serde_json::json!({
+        "app": "X",
+        "cdp": 0
+    }))
+    .unwrap();
+    let absent: LaunchArgs = serde_json::from_value(serde_json::json!({ "app": "X" })).unwrap();
+
+    assert_eq!(auto.cdp, Some(0));
+    assert_eq!(absent.cdp, None);
+}
+
 /// God-object regression: `WaitModeArgs` used to carry 9 flat fields;
 /// `event`/`window_id` now live in `WaitEventArgs`, flattened onto
 /// `WaitArgs` as a sibling of `mode`/`predicate` (nesting it inside

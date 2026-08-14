@@ -14,6 +14,7 @@ mod app_error;
 mod app_info;
 mod app_lookup;
 pub mod capability;
+pub mod cdp_endpoint;
 mod clipboard_content;
 mod clipboard_format;
 pub mod commands;

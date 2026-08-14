@@ -133,11 +133,17 @@ fn launched_display_name(window: Option<&WindowInfo>, id: &str) -> String {
 
 #[cfg(target_os = "macos")]
 fn result_from_app(app: &AppInfo, window: Option<WindowInfo>) -> LaunchResult {
+    let renderer = crate::system::process_identity::to_pid_t(app.pid)
+        .ok()
+        .and_then(crate::system::renderer_kind::detect_chromium);
     LaunchResult {
         app: app.name.clone(),
         pid: app.pid,
         process_instance: app.process_instance.clone(),
         window,
+        cdp: None,
+        renderer,
+        suggestion: None,
     }
 }
 
@@ -147,12 +153,16 @@ fn result_from_launched(
     window: Option<WindowInfo>,
     id: &str,
 ) -> Result<LaunchResult, AdapterError> {
+    let renderer = crate::system::renderer_kind::detect_chromium(launched.0);
     Ok(LaunchResult {
         app: launched_display_name(window.as_ref(), id),
         pid: agent_desktop_core::ProcessId::try_from(launched.0)
             .map_err(|_| AdapterError::internal("Launched process identifier is out of range"))?,
         process_instance: Some(launched.1.clone()),
         window,
+        cdp: None,
+        renderer,
+        suggestion: None,
     })
 }
 

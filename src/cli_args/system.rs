@@ -51,6 +51,15 @@ pub(crate) struct LaunchArgs {
     )]
     #[serde(default)]
     pub activate: bool,
+    #[arg(
+        long,
+        value_name = "PORT",
+        num_args = 0..=1,
+        default_missing_value = "0",
+        help = "Expose the app's DevTools protocol endpoint on this port (0 or omitted picks a free port)"
+    )]
+    #[serde(default)]
+    pub cdp: Option<u16>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
