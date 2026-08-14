@@ -9,6 +9,7 @@ use crate::{AdapterError, AppError, Deadline, ErrorCode};
 const MAX_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(500);
 const READ_TIMEOUT: Duration = Duration::from_millis(500);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
+const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
 /// A DevTools protocol endpoint verified on a launched process, not merely
 /// requested of it. `port` and `http_endpoint` come from the launch itself;
@@ -64,9 +65,49 @@ fn attempt(port: u16, timeout: Duration) -> Option<CdpEndpoint> {
     stream
         .write_all(b"GET /json/version HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
         .ok()?;
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).ok()?;
+    let raw = read_http_response(&mut stream)?;
     Some(parse_response(port, &raw))
+}
+
+/// Chromium's DevTools server answers and then holds the connection open,
+/// ignoring `Connection: close`, so reading to EOF waits for a close that
+/// never comes and times out on every live endpoint. The response is done
+/// once the headers' Content-Length bytes of body arrive; EOF and a
+/// post-headers read timeout are accepted as a server's way of ending it.
+fn read_http_response(stream: &mut TcpStream) -> Option<Vec<u8>> {
+    let mut raw = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(received) => {
+                raw.extend_from_slice(&chunk[..received]);
+                if response_complete(&raw) || raw.len() > MAX_RESPONSE_BYTES {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    if raw.is_empty() { None } else { Some(raw) }
+}
+
+fn response_complete(raw: &[u8]) -> bool {
+    let Some(header_end) = raw.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return false;
+    };
+    let body_received = raw.len() - (header_end + 4);
+    content_length(&raw[..header_end]).is_some_and(|expected| body_received >= expected)
+}
+
+fn content_length(headers: &[u8]) -> Option<usize> {
+    String::from_utf8_lossy(headers).lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.trim()
+            .eq_ignore_ascii_case("content-length")
+            .then(|| value.trim().parse::<usize>().ok())
+            .flatten()
+    })
 }
 
 fn parse_response(port: u16, raw: &[u8]) -> CdpEndpoint {

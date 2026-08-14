@@ -48,6 +48,44 @@ fn probe_parses_websocket_url_and_product_from_a_live_http_response() {
     );
 }
 
+/// Chromium's real DevTools server never closes the connection, even when
+/// asked to — the launch-blocking bug this pins was a probe that read to EOF
+/// and timed out on every live endpoint. The server here answers and then
+/// holds the socket open, so this test fails if the probe ever needs EOF.
+#[test]
+fn probe_completes_against_a_server_that_never_closes_the_connection() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0_u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = r#"{"Browser":"Chrome/142.0.0.0","webSocketDebuggerUrl":"ws://127.0.0.1/devtools/browser/def"}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).unwrap();
+        let _ = done_rx.recv_timeout(Duration::from_secs(10));
+        drop(stream);
+    });
+
+    let started = std::time::Instant::now();
+    let endpoint = probe(port, Deadline::after(5_000).unwrap()).unwrap();
+    let elapsed = started.elapsed();
+    done_tx.send(()).unwrap();
+    server.join().unwrap();
+
+    assert!(elapsed < Duration::from_secs(2), "probe took {elapsed:?}");
+    assert_eq!(endpoint.product.as_deref(), Some("Chrome/142.0.0.0"));
+    assert_eq!(
+        endpoint.websocket_url.as_deref(),
+        Some("ws://127.0.0.1/devtools/browser/def")
+    );
+}
+
 #[test]
 fn probe_returns_the_unavailable_error_quickly_when_nothing_is_listening() {
     let port = pick_free_port().unwrap();
