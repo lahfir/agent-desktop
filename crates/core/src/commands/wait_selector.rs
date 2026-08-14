@@ -173,10 +173,11 @@ fn observe_selector(
     query: &crate::LocatorQuery,
     deadline: crate::Deadline,
 ) -> Result<Option<bool>, AppError> {
-    let window = snapshot::resolve_window(
+    let window = snapshot::resolve_window_for_surface(
         adapter,
         input.app.as_deref(),
         input.window_id.as_deref(),
+        input.opts.surface,
         deadline,
     )?;
     let resolution = resolve_query(
@@ -187,6 +188,8 @@ fn observe_selector(
             selection: LocatorSelection::First,
             deadline,
             max_raw_depth: 50,
+            surface: (input.opts.surface != crate::SnapshotSurface::Window)
+                .then_some(input.opts.surface),
             materialization: LocatorMaterialization::None,
         },
     )?;

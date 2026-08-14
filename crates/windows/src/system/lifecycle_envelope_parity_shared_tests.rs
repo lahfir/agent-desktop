@@ -40,6 +40,7 @@ fn shared_timeout_after_close_delivery_pins_the_windows_envelope() {
             pid,
             bundle_id: None,
             process_instance: Some(token),
+            presentation: None,
         };
         let error = close_app_impl(&app, false, Deadline::after(200).expect("deadline"))
             .expect_err("timeout");

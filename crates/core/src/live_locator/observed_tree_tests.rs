@@ -10,18 +10,21 @@ use crate::{
 use super::test_support::evidence;
 
 fn source() -> ObservationSource {
-    ObservationSource::Window(WindowInfo {
-        id: "w-1".into(),
-        title: "Fixture".into(),
-        app: "FixtureApp".into(),
-        pid: crate::ProcessId::new(42),
-        process_instance: Some("test-instance".into()),
-        bounds: None,
-        state: crate::WindowState {
-            is_focused: true,
-            ..Default::default()
+    ObservationSource::Window {
+        surface: crate::SnapshotSurface::Window,
+        window: WindowInfo {
+            id: "w-1".into(),
+            title: "Fixture".into(),
+            app: "FixtureApp".into(),
+            pid: crate::ProcessId::new(42),
+            process_instance: Some("test-instance".into()),
+            bounds: None,
+            state: crate::WindowState {
+                is_focused: true,
+                ..Default::default()
+            },
         },
-    })
+    }
 }
 
 fn subtree(role: &str, name: &str, children: Vec<ObservedSubtree>) -> ObservedSubtree {
@@ -190,6 +193,7 @@ fn snapshot_projection_and_find_share_the_same_observation() {
             selection: LocatorSelection::Count,
             deadline: crate::Deadline::from_duration(std::time::Duration::from_secs(1)).unwrap(),
             max_raw_depth: 50,
+            surface: None,
             materialization: LocatorMaterialization::None,
         },
     )

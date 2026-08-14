@@ -1,9 +1,11 @@
 use accessibility_sys::{
     kAXErrorAPIDisabled, kAXErrorActionUnsupported, kAXErrorAttributeUnsupported,
-    kAXErrorCannotComplete, kAXErrorIllegalArgument, kAXErrorInvalidUIElement, kAXErrorNoValue,
-    kAXErrorNotImplemented, kAXErrorSuccess,
+    kAXErrorCannotComplete, kAXErrorFailure, kAXErrorIllegalArgument, kAXErrorInvalidUIElement,
+    kAXErrorNoValue, kAXErrorNotImplemented, kAXErrorSuccess,
 };
 use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
+
+pub(crate) const PERFORM_API: &str = "AXUIElementPerformAction";
 
 pub(crate) fn classify_result(
     _element: &crate::tree::AXElement,
@@ -15,8 +17,21 @@ pub(crate) fn classify_result(
 }
 
 fn classify(operation: &str, api: &str, error: i32) -> Result<bool, AdapterError> {
+    signal_or_error(operation, api, error).map(|signal| signal == PerformSignal::ReportedDelivered)
+}
+
+fn signal_or_error(operation: &str, api: &str, error: i32) -> Result<PerformSignal, AdapterError> {
     if error == kAXErrorSuccess {
-        return Ok(true);
+        return Ok(PerformSignal::ReportedDelivered);
+    }
+    if error == kAXErrorActionUnsupported
+        || error == kAXErrorNotImplemented
+        || error == kAXErrorFailure
+    {
+        return Ok(PerformSignal::ReportedUnsupported);
+    }
+    if error == kAXErrorAttributeUnsupported || error == kAXErrorNoValue {
+        return Ok(PerformSignal::Uninformative);
     }
     if error == kAXErrorAPIDisabled {
         return Err(AdapterError::permission_denied()
@@ -24,13 +39,6 @@ fn classify(operation: &str, api: &str, error: i32) -> Result<bool, AdapterError
                 "{api}({operation}) failed with kAXErrorAPIDisabled"
             ))
             .with_disposition(DeliverySemantics::not_delivered()));
-    }
-    if error == kAXErrorActionUnsupported
-        || error == kAXErrorAttributeUnsupported
-        || error == kAXErrorNoValue
-        || error == kAXErrorNotImplemented
-    {
-        return Ok(false);
     }
     if error == kAXErrorInvalidUIElement {
         return Err(AdapterError::new(
@@ -77,11 +85,25 @@ fn classify(operation: &str, api: &str, error: i32) -> Result<bool, AdapterError
     ))
 }
 
+/// How much a perform return code proves. Responders break the contract in both
+/// directions — a code that reports failure after acting, and success after
+/// doing nothing — so delivery is settled by observation, not by the code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerformSignal {
+    ReportedDelivered,
+    ReportedUnsupported,
+    Uninformative,
+}
+
+pub(crate) fn classify_perform(operation: &str, error: i32) -> Result<PerformSignal, AdapterError> {
+    signal_or_error(operation, PERFORM_API, error)
+}
+
 #[cfg(test)]
 mod tests {
     use accessibility_sys::{
-        kAXErrorAPIDisabled, kAXErrorActionUnsupported, kAXErrorCannotComplete,
-        kAXErrorInvalidUIElement, kAXErrorSuccess,
+        kAXErrorAPIDisabled, kAXErrorActionUnsupported, kAXErrorAttributeUnsupported,
+        kAXErrorCannotComplete, kAXErrorInvalidUIElement, kAXErrorSuccess,
     };
     use agent_desktop_core::{DeliveryDisposition, ErrorCode, RetryDisposition};
 
@@ -97,6 +119,43 @@ mod tests {
     fn unsupported_action_remains_safe_non_delivery() {
         let result = classify("AXPress", "perform", kAXErrorActionUnsupported);
         assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn perform_codes_are_graded_by_how_much_they_prove() {
+        use super::{PerformSignal, classify_perform};
+
+        assert_eq!(
+            classify_perform("AXPress", kAXErrorSuccess).unwrap(),
+            PerformSignal::ReportedDelivered
+        );
+        assert_eq!(
+            classify_perform("AXPress", kAXErrorActionUnsupported).unwrap(),
+            PerformSignal::ReportedUnsupported
+        );
+        assert_eq!(
+            classify_perform("AXOpen", kAXErrorAttributeUnsupported).unwrap(),
+            PerformSignal::Uninformative
+        );
+    }
+
+    /// `tree::action_list` reads `kAXErrorFailure` as "this element implements
+    /// no such action". A perform must not read the same code as a failure, or
+    /// an element the reader called action-less becomes an error when acted on.
+    #[test]
+    fn perform_and_capability_reads_agree_on_the_appkit_absence_code() {
+        assert_eq!(
+            super::classify_perform("AXScrollToVisible", accessibility_sys::kAXErrorFailure)
+                .unwrap(),
+            super::PerformSignal::ReportedUnsupported
+        );
+    }
+
+    #[test]
+    fn perform_keeps_reporting_transport_failures_as_errors() {
+        let error = super::classify_perform("AXOpen", kAXErrorInvalidUIElement)
+            .expect_err("a stale element must still fail closed");
+        assert_eq!(error.code, ErrorCode::StaleRef);
     }
 
     #[test]

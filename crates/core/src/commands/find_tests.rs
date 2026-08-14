@@ -130,6 +130,9 @@ fn limit_conflicts_with_single_result_modes_for_batch_too() {
     let err = validate_find_mode(&FindArgs {
         app: None,
         window_id: None,
+        root: None,
+        snapshot: None,
+        surface: crate::SnapshotSurface::Window,
         filter: no_filter(),
         states: vec![],
         selection: FindSelectionArgs {
@@ -176,6 +179,9 @@ fn role_alias_is_preserved_until_live_validation() {
     let query = query_from_args(&FindArgs {
         app: None,
         window_id: None,
+        root: None,
+        snapshot: None,
+        surface: crate::SnapshotSurface::Window,
         filter: FindFilterArgs {
             role: Some("textarea".into()),
             ..no_filter()
@@ -197,6 +203,9 @@ fn unknown_role_is_preserved_until_validation() {
     let query = query_from_args(&FindArgs {
         app: None,
         window_id: None,
+        root: None,
+        snapshot: None,
+        surface: crate::SnapshotSurface::Window,
         filter: FindFilterArgs {
             role: Some("navbar".into()),
             ..no_filter()
@@ -224,6 +233,9 @@ fn empty_role_filtered_result_reports_roles_present_from_tree() {
     let query = query_from_args(&FindArgs {
         app: None,
         window_id: None,
+        root: None,
+        snapshot: None,
+        surface: crate::SnapshotSurface::Window,
         filter: FindFilterArgs {
             role: Some("navbar".into()),
             ..no_filter()
@@ -247,6 +259,9 @@ fn roles_present_hint_is_omitted_when_a_match_is_found() {
     let query = query_from_args(&FindArgs {
         app: None,
         window_id: None,
+        root: None,
+        snapshot: None,
+        surface: crate::SnapshotSurface::Window,
         filter: FindFilterArgs {
             role: Some("textfield".into()),
             ..no_filter()
@@ -268,6 +283,9 @@ fn find_args_scoped_to_window(window_id: &str) -> FindArgs {
     FindArgs {
         app: None,
         window_id: Some(window_id.into()),
+        root: None,
+        snapshot: None,
+        surface: crate::SnapshotSurface::Window,
         filter: FindFilterArgs {
             name: Some("OnlyInWindowTwo".into()),
             ..no_filter()
@@ -281,7 +299,7 @@ fn find_args_scoped_to_window(window_id: &str) -> FindArgs {
 fn find_scopes_matches_to_requested_window_id() {
     let _guard = HomeGuard::new();
     let context = CommandContext::default();
-    let adapter = super::live_tests::LiveFindAdapter::complete();
+    let adapter = super::test_support::LiveFindAdapter::complete();
 
     let from_window_two = execute(find_args_scoped_to_window("w-2"), &adapter, &context)
         .expect("find scoped to w-2 should succeed");

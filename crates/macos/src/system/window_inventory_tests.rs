@@ -174,3 +174,43 @@ fn record(app_name: &str, pid: i32, title: &str, window_number: i64) -> WindowRe
         process_instance: Some(format!("instance-{pid}")),
     }
 }
+
+fn window_with_state(id: &str, visible: Option<bool>, minimized: Option<bool>) -> WindowInfo {
+    WindowInfo {
+        id: id.to_owned(),
+        title: "w".into(),
+        app: "Fixture".into(),
+        pid: agent_desktop_core::ProcessId::new(42),
+        process_instance: Some("fixture-42".into()),
+        bounds: None,
+        state: agent_desktop_core::WindowState {
+            is_focused: false,
+            minimized,
+            visible,
+        },
+    }
+}
+
+#[test]
+fn narrowing_drops_bookkeeping_panels_but_keeps_a_minimized_window() {
+    let mut windows = vec![
+        window_with_state("panel", Some(false), Some(false)),
+        window_with_state("never-drawn", Some(false), None),
+        window_with_state("minimized", Some(false), Some(true)),
+        window_with_state("onscreen", Some(true), Some(false)),
+    ];
+
+    narrow_to_real_windows(&mut windows);
+
+    let kept = windows.iter().map(|w| w.id.as_str()).collect::<Vec<_>>();
+    assert_eq!(kept, vec!["minimized", "onscreen"]);
+}
+
+#[test]
+fn narrowing_leaves_nothing_when_an_application_has_only_panels() {
+    let mut windows = vec![window_with_state("panel", Some(false), Some(false))];
+
+    narrow_to_real_windows(&mut windows);
+
+    assert!(windows.is_empty());
+}

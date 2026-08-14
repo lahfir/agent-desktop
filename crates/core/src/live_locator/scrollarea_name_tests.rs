@@ -29,6 +29,7 @@ fn exact_named_scroll_area_is_unique_among_unnamed_scroll_containers() {
         selection: LocatorSelection::Strict,
         deadline: crate::Deadline::after(500).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::None,
     };
 

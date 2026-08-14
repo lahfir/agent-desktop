@@ -6,6 +6,47 @@ use crate::tree::AXElement;
 
 const MAX_SCROLL_AMOUNT: u32 = 1_000;
 
+/// A responder can serve a page action while answering an uninformative code
+/// for it, which leaves the return value unable to prove anything. The content
+/// position is the observable that can, so the scroll is judged by whether the
+/// first child actually moved.
+fn paged_scroll_moved_content(
+    target: &AXElement,
+    direction: &Direction,
+    amount: u32,
+    deadline: Deadline,
+) -> Result<bool, AdapterError> {
+    let Some(before) = first_child_origin(target, deadline)? else {
+        return Ok(false);
+    };
+    for _ in 0..amount.max(1) {
+        try_action(target, page_action(direction), deadline)?;
+    }
+    let Some(after) = first_child_origin(target, deadline)? else {
+        return Ok(false);
+    };
+    Ok((before.0 - after.0).abs() > f64::EPSILON || (before.1 - after.1).abs() > f64::EPSILON)
+}
+
+fn first_child_origin(
+    target: &AXElement,
+    deadline: Deadline,
+) -> Result<Option<(f64, f64)>, AdapterError> {
+    let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+    let Some(child) =
+        crate::tree::attributes::copy_ax_array_prefix_result(target, "AXChildren", 1, instant)
+            .ok()
+            .flatten()
+            .and_then(|children| children.into_iter().next())
+    else {
+        return Ok(None);
+    };
+    Ok(
+        crate::tree::element_bounds::read_bounds_with_deadline(&child, instant)?
+            .map(|bounds| (bounds.x, bounds.y)),
+    )
+}
+
 pub(crate) fn ax_scroll(
     element: &AXElement,
     direction: &Direction,
@@ -37,11 +78,20 @@ pub(crate) fn ax_scroll(
     if perform_repeated_action(target, page_action(direction), amount, deadline)? {
         return Ok((StepMechanism::SemanticApi, false));
     }
+    if paged_scroll_moved_content(target, direction, amount, deadline)? {
+        return Ok((StepMechanism::SemanticApi, true));
+    }
     Err(AdapterError::new(
         ErrorCode::ActionNotSupported,
-        "No scroll mechanism found on element",
+        "Element advertises Scroll but no scroll mechanism moved its content",
     )
-    .with_suggestion("Element may not be scrollable, or try the parent container."))
+    .with_details(serde_json::json!({
+        "kind": "scroll_advertised_but_inert",
+    }))
+    .with_suggestion(
+        "The application publishes the scroll actions without implementing them. \
+         Try the parent container, or use '--headed' for a physical wheel scroll.",
+    ))
 }
 
 fn accept_optional_visibility_result(

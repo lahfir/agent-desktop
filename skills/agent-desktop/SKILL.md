@@ -102,8 +102,8 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 
 Every command returns a JSON envelope on stdout:
 
-**Success:** `{ "version": "2.2", "ok": true, "command": "snapshot", "data": { ... } }`
-**Error:** `{ "version": "2.2", "ok": false, "command": "click", "error": { "code": "STALE_REF", "message": "...", "suggestion": "..." } }`
+**Success:** `{ "version": "2.3", "ok": true, "command": "snapshot", "data": { ... } }`
+**Error:** `{ "version": "2.3", "ok": false, "command": "click", "error": { "code": "STALE_REF", "message": "...", "suggestion": "..." } }`
 
 The `error` object may also carry an optional `details` object (e.g. the actionability report on an actionability failure, candidate summaries on `AMBIGUOUS_TARGET`, or the last observed state on a `wait` `TIMEOUT`). Parse errors leniently — `details` and future fields are additive, so do not reject responses with unknown keys.
 
@@ -144,6 +144,8 @@ agent-desktop snapshot --app "App" -i                       # Full tree (simple 
 agent-desktop snapshot --app "App" --surface menu -i        # Surface snapshot
 agent-desktop screenshot --app "App" out.png                # PNG screenshot
 agent-desktop find --app "App" --role button                # Search elements
+agent-desktop find --root @s8f3k2p9:e3 --role button        # Search one region only
+agent-desktop find --app "App" --surface menubar --name "Save" --first  # Search a menu
 agent-desktop get @e1 --snapshot <snapshot_id> --property text       # Read element property
 agent-desktop is @e1 --snapshot <snapshot_id> --property enabled     # Check element state
 agent-desktop list-surfaces --app "App"                     # Available surfaces
@@ -184,9 +186,11 @@ agent-desktop --headed mouse-move --xy 100,200  # Move cursor
 
 ### App & Window
 ```
-agent-desktop launch "System Settings"          # macOS: launch by display name
+agent-desktop launch "System Settings"          # macOS: launch by display name; returns once running
 agent-desktop launch "notepad.exe"              # Windows: system-directory bare name (A21-1)
+agent-desktop launch "TextEdit" --activate      # Also bring it forward and wait for a window
 agent-desktop close-app "TextEdit"              # Quit; success only after verified exit
+agent-desktop close-app "TextEdit" --force      # Force quit; SIGKILL if SIGTERM does not exit
 agent-desktop close-app "notepad.exe" --force   # Windows force terminate
 agent-desktop list-windows --app "Finder"       # List windows
 agent-desktop list-apps                         # List running GUI apps
@@ -261,9 +265,10 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 5. **Use `wait` for async UI.** After launch/dialog triggers, wait for expected state.
 6. **Check permissions first.** Run `permissions` on first use; screenshots also need Screen Recording.
 7. **Handle errors.** Branch on `error.code` only — `error.message` and `error.suggestion` text is informational and may change between versions.
-8. **Use `find` for targeted searches.** Faster than any snapshot when you know role/name.
-9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused.
-10. **Batch for performance.** Multiple commands in one invocation.
-11. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use `--headed` only when exact-window focus or physical delivery is intended; raw coordinates never imply focus.
-12. **Start a session once per run.** `session start` creates the manifest; pass its returned ID through `AGENT_DESKTOP_SESSION` for the run or `--session <id>` for one command. It does not activate later processes implicitly.
-13. **Trace hard failures.** With an active trace-enabled session, segments are written automatically. Add `--trace /tmp/agent-desktop.jsonl` only when you need a single override file (CI, one-offs). Check `status` when unsure whether tracing is active.
+8. **Use `find` for targeted searches, and scope it.** Faster than any snapshot when you know role/name. Narrow it with `--root @ref` for one region or `--surface menubar` for a menu — an unscoped find on a dense tree returns hundreds of refs and can exhaust its budget.
+9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused. Reach one item inside an overlay with `find --surface`, not a full surface snapshot.
+10. **Read `data.surfaces` after acting.** An action that opens a sheet, menu, or alert reports it there. Target that overlay next instead of searching windows for what changed.
+11. **Batch for performance.** Multiple commands in one invocation.
+12. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use `--headed` only when exact-window focus or physical delivery is intended; raw coordinates never imply focus.
+13. **Start a session once per run.** `session start` creates the manifest; pass its returned ID through `AGENT_DESKTOP_SESSION` for the run or `--session <id>` for one command. It does not activate later processes implicitly.
+14. **Trace hard failures.** With an active trace-enabled session, segments are written automatically. Add `--trace /tmp/agent-desktop.jsonl` only when you need a single override file (CI, one-offs). Check `status` when unsure whether tracing is active.

@@ -145,7 +145,7 @@ pub fn walk_from_root<S: TreeSource>(
     let root_subtree = root_subtree.ok_or_else(|| root_missing_error(&stats))?;
     let tree = ObservedTree::from_roots(
         vec![root_subtree],
-        ObservationSource::from_root(root_source),
+        ObservationSource::from_root(root_source, root_source.surface()),
         stats.clone(),
         structurally_complete,
     )?;

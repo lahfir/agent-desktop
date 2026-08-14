@@ -101,6 +101,7 @@ fn role_only_selected_hydration_anchors_before_hydrating_without_rewalking_large
         selection: LocatorSelection::First,
         deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 50,
+        surface: None,
         materialization: LocatorMaterialization::SelectedMatches,
     };
 
@@ -232,7 +233,7 @@ fn hydrated_button_tree(root: ObservationRoot<'_>) -> ObservedTree {
         vec![0],
         true,
     );
-    tree.source = ObservationSource::from_root(&root);
+    tree.source = ObservationSource::from_root(&root, crate::SnapshotSurface::Window);
     tree.stats.traversal.nodes_visited = 1;
     tree.stats.reads.counts.attribute_batches = 1;
     tree.stats.reads.counts.attributes_requested = 23;

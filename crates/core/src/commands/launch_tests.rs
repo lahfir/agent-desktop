@@ -27,15 +27,20 @@ impl SystemOps for LaunchAdapter {
         _id: &str,
         _options: &LaunchOptions,
         _lease: &InteractionLease,
-    ) -> Result<WindowInfo, AdapterError> {
-        Ok(WindowInfo {
-            id: "w-1".into(),
-            title: "Fixture".into(),
+    ) -> Result<crate::launch_result::LaunchResult, AdapterError> {
+        Ok(crate::launch_result::LaunchResult {
             app: "Fixture".into(),
             pid: ProcessId::new(42),
             process_instance: Some("42:1".into()),
-            bounds: None,
-            state: WindowState::default(),
+            window: Some(WindowInfo {
+                id: "w-1".into(),
+                title: "Fixture".into(),
+                app: "Fixture".into(),
+                pid: ProcessId::new(42),
+                process_instance: Some("42:1".into()),
+                bounds: None,
+                state: WindowState::default(),
+            }),
         })
     }
 }

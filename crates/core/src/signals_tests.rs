@@ -25,6 +25,7 @@ fn app_with_instance(name: &str, pid: u32, instance: &str) -> AppInfo {
         pid: crate::ProcessId::new(pid),
         bundle_id: None,
         process_instance: Some(instance.into()),
+        presentation: None,
     }
 }
 

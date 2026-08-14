@@ -3,7 +3,7 @@ use super::{
     KillOnDrop, copy_probe_binary, copy_system_exe, deadline, full_image_path, matching_pids,
     probe_launch_options, scratch_dir, start_named_windowless, start_windowed_probe,
 };
-use agent_desktop_core::{Deadline, DeliveryDisposition, ErrorCode, ProcessId};
+use agent_desktop_core::{Deadline, DeliveryDisposition, ErrorCode};
 use std::sync::Mutex;
 
 static NOTEPAD_LAUNCH_LOCK: Mutex<()> = Mutex::new(());
@@ -92,8 +92,9 @@ fn attach_true_windowless_does_not_launch_second_process() {
     let probe = copy_system_exe("ping.exe", &dir, "launchprobe_ping.exe");
     let image = "launchprobe_ping.exe";
     let _ping = start_named_windowless(&probe, &["-n", "60", "127.0.0.1"]);
-    assert_eq!(matching_pids(image).len(), 1);
-    let error = launch_app_impl(
+    let running = matching_pids(image);
+    assert_eq!(running.len(), 1);
+    let result = launch_app_impl(
         probe.to_str().expect("utf8 path"),
         &LaunchOptions {
             attach_if_running: true,
@@ -102,13 +103,20 @@ fn attach_true_windowless_does_not_launch_second_process() {
         },
         Deadline::after(1_000).expect("deadline"),
     )
-    .expect_err("windowless attach times out waiting for a window");
-    assert_eq!(error.code, ErrorCode::WindowNotFound);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::DeliveredUnverified
+    .expect("attaching to a windowless process is a successful launch, not a failure");
+    assert!(
+        result.window.is_none(),
+        "a windowless process reports no window rather than an error: {result:?}"
     );
-    assert_eq!(matching_pids(image).len(), 1);
+    assert_eq!(
+        result.pid, running[0],
+        "attach returns the already-running process rather than starting one"
+    );
+    assert_eq!(
+        matching_pids(image).len(),
+        1,
+        "attach must not spawn a second process"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -153,20 +161,12 @@ fn cwd_is_honored_for_create_process() {
         timeout_ms: 0,
         ..Default::default()
     };
-    let error = launch_app_impl(probe.to_str().expect("utf8 path"), &options, deadline())
-        .expect_err("probe is windowless");
-    if let Some(pid) = error
-        .details
-        .as_ref()
-        .and_then(|details| details.get("pid"))
-        .and_then(|value| value.as_u64())
-    {
-        let _guard = KillOnDrop(ProcessId::from(pid as u32));
-    }
-    assert_eq!(error.code, ErrorCode::WindowNotFound);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::DeliveredUnverified
+    let result = launch_app_impl(probe.to_str().expect("utf8 path"), &options, deadline())
+        .expect("a windowless probe is a successful launch");
+    let _guard = KillOnDrop(result.pid);
+    assert!(
+        result.window.is_none(),
+        "the probe presents no window: {result:?}"
     );
     let written = poll_read_marker(&marker, Deadline::after(5_000).expect("deadline"));
     let normalized_written = written.trim().trim_end_matches('\\').to_ascii_lowercase();
@@ -200,7 +200,7 @@ fn poll_read_marker(marker: &std::path::Path, deadline: Deadline) -> String {
 fn timeout_zero_checks_once_for_process_without_window() {
     let dir = scratch_dir("timeout0");
     let probe = copy_system_exe("ping.exe", &dir, "launchprobe_timeout.exe");
-    let error = launch_app_impl(
+    let result = launch_app_impl(
         probe.to_str().expect("utf8 path"),
         &LaunchOptions {
             args: vec!["-n".into(), "30".into(), "127.0.0.1".into()],
@@ -210,19 +210,11 @@ fn timeout_zero_checks_once_for_process_without_window() {
         },
         deadline(),
     )
-    .expect_err("no window");
-    if let Some(pid) = error
-        .details
-        .as_ref()
-        .and_then(|details| details.get("pid"))
-        .and_then(|value| value.as_u64())
-    {
-        let _guard = KillOnDrop(ProcessId::from(pid as u32));
-    }
-    assert_eq!(error.code, ErrorCode::WindowNotFound);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::DeliveredUnverified
+    .expect("a windowless process is a successful launch");
+    let _guard = KillOnDrop(result.pid);
+    assert!(
+        result.window.is_none(),
+        "timeout 0 observes once and reports no window rather than polling: {result:?}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

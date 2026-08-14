@@ -11,6 +11,7 @@ impl ObservationOps for ProtectiveAdapter {
             pid: crate::ProcessId::new(42),
             bundle_id: Some("com.apple.TextEdit".into()),
             process_instance: Some("textedit-instance".into()),
+            presentation: None,
         }])
     }
 }
@@ -45,6 +46,7 @@ impl ObservationOps for FailingAdapter {
             pid: crate::ProcessId::new(77),
             bundle_id: None,
             process_instance: Some("ghost-instance".into()),
+            presentation: None,
         }])
     }
 }

@@ -13,6 +13,30 @@ Ref-based actions run in two modes, Playwright-style:
 
 `--headed` is a global flag and also applies to every `batch` entry.
 
+### Reading the result of an action
+
+A successful action reports what happened, not just that it ran:
+
+| Field | Meaning |
+|-------|---------|
+| `data.steps` | Each mechanism attempted, in order, with `outcome` (`succeeded`/`skipped`) and `verified` |
+| `data.disposition.delivery` | `delivered_verified` when the effect was observed, `delivered_unverified` when the application claimed success without an observable change |
+| `data.post_state` | The target element's state after the action, when the action has one |
+| `data.surfaces` | Overlays the application had open once the action settled |
+
+Check `data.surfaces` before assuming an action finished the job. An action that
+opens a sheet, menu, or alert leaves the application waiting on that overlay, and
+the next command must target it:
+
+```json
+{ "ok": true, "command": "set-value",
+  "data": { "action": "set-value", "surfaces": [{ "id": "focused-window", "type": "sheet" }] } }
+```
+
+Reach into that overlay with `find --surface sheet` rather than searching the
+window. A `delivered_unverified` result with a surface still open usually means
+the application is waiting for a confirmation the action did not deliver.
+
 ### `--wait-for` / `--wait-for-gone` (global)
 
 Three global flags poll the accessibility tree until a compact selector matches (or, with `--wait-for-gone`, until it no longer matches), then return a snapshot envelope:
@@ -81,7 +105,7 @@ Click commands use semantic accessibility activation in strict headless mode. Pa
 agent-desktop click @s8f3k2p9:e5
 agent-desktop click @e5 --snapshot <snapshot_id>
 ```
-Primary activation. Headless uses the platform's semantic activate (macOS `AXPress`; Windows `InvokePattern.Invoke` or `LegacyIAccessible.DoDefaultAction` when Invoke is absent — A19-6). `--headed` performs a physical click first where that rung exists and reports `physical_synthetic` in `data.steps`.
+Primary activation. Headless uses the activation the element actually publishes — on macOS `AXPress`, `AXOpen`, or `AXConfirm`, and for a row whose activation is selection it writes the container's selection instead; on Windows `InvokePattern.Invoke`, or `LegacyIAccessible.DoDefaultAction` when Invoke is absent (A19-6). `--headed` performs a physical click first where that rung exists and reports `physical_synthetic` in `data.steps`. Delivery is judged by observing the application, not by the accessibility return code, so `data.steps` reports each attempt and `disposition.delivery` distinguishes `delivered_verified` from `delivered_unverified`.
 
 ### double-click
 ```bash

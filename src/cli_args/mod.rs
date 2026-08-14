@@ -176,6 +176,25 @@ pub(crate) struct FindArgs {
     #[serde(flatten)]
     pub filter: FindFilterArgs,
     #[arg(
+        long,
+        help = "Search only inside this ref's subtree, not the whole window"
+    )]
+    pub root: Option<String>,
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Snapshot ID to use when resolving --root"
+    )]
+    pub snapshot: Option<String>,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = Surface::Window,
+        help = "Surface to search (menubar, menu, sheet ...) instead of the window"
+    )]
+    #[serde(default)]
+    pub surface: Surface,
+    #[arg(
         long = "state",
         value_name = "TOKEN[=BOOL]",
         help = "Filter by state token (repeatable); append =true or =false"

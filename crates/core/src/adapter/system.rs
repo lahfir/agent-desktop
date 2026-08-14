@@ -66,7 +66,7 @@ pub trait SystemOps: Send + Sync {
         _id: &str,
         _options: &crate::launch_options::LaunchOptions,
         _lease: &InteractionLease,
-    ) -> Result<WindowInfo, AdapterError> {
+    ) -> Result<crate::launch_result::LaunchResult, AdapterError> {
         Err(AdapterError::not_supported("launch_app"))
     }
 

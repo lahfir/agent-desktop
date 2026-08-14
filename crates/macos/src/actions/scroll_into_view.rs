@@ -66,8 +66,9 @@ mod imp {
         let instant = crate::tree::locator_deadline::from_operation(deadline)?;
         let bounds = crate::tree::element_bounds::read_bounds_with_deadline(element, instant)?
             .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target has no bounds"))?;
-        let window = crate::tree::surface_read::element(element, "AXWindow", instant)?
-            .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target has no window"))?;
+        let Some(window) = crate::tree::surface_read::element(element, "AXWindow", instant)? else {
+            return Ok(None);
+        };
         let window_bounds = crate::tree::element_bounds::read_bounds_with_deadline(
             &window, instant,
         )?

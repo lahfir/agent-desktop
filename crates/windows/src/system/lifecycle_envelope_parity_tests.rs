@@ -134,6 +134,7 @@ fn windowless_close_live_error() -> AdapterError {
         pid,
         bundle_id: None,
         process_instance: Some(token),
+        presentation: None,
     };
     close_app_impl(&app, false, Deadline::after(5_000).expect("deadline"))
         .expect_err("windowless alive")

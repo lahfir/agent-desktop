@@ -243,6 +243,8 @@ agent-desktop wait --element @e10 --snapshot <snapshot_id> --timeout 10000
 ```bash
 # Full lifecycle
 agent-desktop launch "Calculator"
+# Read data.window: present means the app already drew one. If it is absent and
+# you need a window, launch --activate or wait --event window-opened.
 # Simple app → full snapshot is fine
 agent-desktop snapshot --app "Calculator" -i
 

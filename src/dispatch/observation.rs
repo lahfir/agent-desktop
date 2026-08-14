@@ -50,6 +50,9 @@ pub(super) fn find(
         find_command::FindArgs {
             app: args.scope.app,
             window_id: args.scope.window_id,
+            root: args.root,
+            snapshot: args.snapshot,
+            surface: args.surface.to_core(),
             filter: find_command::FindFilterArgs {
                 role: args.filter.role,
                 name: args.filter.name,

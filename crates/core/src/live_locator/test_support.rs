@@ -62,7 +62,10 @@ pub(crate) fn tree(
     ObservedTree {
         nodes,
         roots,
-        source: ObservationSource::Window(window()),
+        source: ObservationSource::Window {
+            window: window(),
+            surface: crate::SnapshotSurface::Window,
+        },
         stats: LocatorStats::default(),
         structurally_complete,
     }

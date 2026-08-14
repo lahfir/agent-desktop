@@ -53,6 +53,7 @@ fn find_count_and_materialized_find_agree_on_the_same_query() {
             deadline: deadline(),
             max_raw_depth: 50,
             materialization: LocatorMaterialization::None,
+            surface: None,
         },
     )
     .expect("count-mode resolution succeeds on the fixture");
@@ -66,6 +67,7 @@ fn find_count_and_materialized_find_agree_on_the_same_query() {
             deadline: deadline(),
             max_raw_depth: 50,
             materialization: LocatorMaterialization::SelectedMatches,
+            surface: None,
         },
     )
     .expect("materialized resolution succeeds on the fixture");

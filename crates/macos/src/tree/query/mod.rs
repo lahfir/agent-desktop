@@ -89,7 +89,7 @@ fn resolve_root(
     request: &ObservationRequest,
     deadline: std::time::Instant,
 ) -> Result<ResolvedRoot, AdapterError> {
-    let source = ObservationSource::from_root(&root);
+    let source = ObservationSource::from_root(&root, request.surface);
     match root {
         ObservationRoot::Window(window) => {
             let pid = crate::system::process_identity::to_pid_t(window.pid)?;

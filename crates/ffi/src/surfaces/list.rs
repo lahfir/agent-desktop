@@ -268,6 +268,7 @@ mod tests {
             pid: agent_desktop_core::ProcessId::new(pid),
             bundle_id: None,
             process_instance: Some(instance.into()),
+            presentation: None,
         }
     }
 

@@ -1269,8 +1269,9 @@ AdResult ad_close_app(const struct AdAdapter *adapter, const char *id, bool forc
 /**
  * Launches the application identified by `id` (bundle id on macOS,
  * executable path on other platforms) and, on success, writes the
- * first window that becomes available into `*out`. Waits up to
- * `timeout_ms` for the window to appear; zero means "no wait".
+ * first window that becomes available into `*out`. Waits for the windows
+ * the launch itself produces, bounded by `timeout_ms`; zero means "no wait".
+ * An application that presents no window fails with `WINDOW_NOT_FOUND`.
  *
  * The returned `AdWindowInfo` owns heap-allocated interior strings that
  * must be released with `ad_release_window_fields` once done. On error
@@ -1420,7 +1421,7 @@ AdResult ad_execute_by_ref_timeout(const struct AdAdapter *adapter,
  * to disk, and writes the JSON envelope into `*out`.
  *
  * The JSON shape matches `agent-desktop snapshot`:
- * `{"version":"2.2","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
+ * `{"version":"2.3","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
  *
  * `data.complete` is always present. A snapshot that exhausts its observation
  * budget still succeeds with `"complete":false` and the tree it did observe,

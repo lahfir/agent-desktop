@@ -17,6 +17,7 @@ fn request(max_raw_depth: u8) -> LocatorResolveRequest {
         selection: LocatorSelection::All { limit: None },
         deadline: crate::Deadline::from_duration(std::time::Duration::from_secs(5)).unwrap(),
         max_raw_depth,
+        surface: None,
         materialization: LocatorMaterialization::None,
     }
 }

@@ -5,12 +5,26 @@ use crate::convert::window::{
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdExactWindowInfo, AdWindowInfo};
+use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo, launch_result::LaunchResult};
 use std::os::raw::c_char;
+
+/// The C entry points hand back one window, so a launch that produced none is
+/// an error at this boundary even though it is a valid result in core.
+fn launched_window(launched: LaunchResult) -> Result<WindowInfo, AdapterError> {
+    launched.window.ok_or_else(|| {
+        AdapterError::new(
+            ErrorCode::WindowNotFound,
+            "Application is running, but it has presented no window",
+        )
+        .with_suggestion("Launch with activation, or wait for the window before reading it.")
+    })
+}
 
 /// Launches the application identified by `id` (bundle id on macOS,
 /// executable path on other platforms) and, on success, writes the
-/// first window that becomes available into `*out`. Waits up to
-/// `timeout_ms` for the window to appear; zero means "no wait".
+/// first window that becomes available into `*out`. Waits for the windows
+/// the launch itself produces, bounded by `timeout_ms`; zero means "no wait".
+/// An application that presents no window fails with `WINDOW_NOT_FOUND`.
 ///
 /// The returned `AdWindowInfo` owns heap-allocated interior strings that
 /// must be released with `ad_release_window_fields` once done. On error
@@ -57,7 +71,11 @@ pub unsafe extern "C" fn ad_launch_app(
                 return crate::error::last_error_code();
             }
         };
-        match adapter.inner.launch_app(&id_str, &options, &lease) {
+        match adapter
+            .inner
+            .launch_app(&id_str, &options, &lease)
+            .and_then(launched_window)
+        {
             Ok(win) => {
                 *out = window_info_to_c(&win);
                 AdResult::Ok
@@ -112,7 +130,11 @@ pub unsafe extern "C" fn ad_launch_app_exact(
                 return crate::error::last_error_code();
             }
         };
-        match adapter.inner.launch_app(&id, &options, &lease) {
+        match adapter
+            .inner
+            .launch_app(&id, &options, &lease)
+            .and_then(launched_window)
+        {
             Ok(window) => match validate_exact_window_info(&window) {
                 Ok(()) => {
                     *out = exact_window_info_to_c(&window);
@@ -181,19 +203,24 @@ mod tests {
             _id: &str,
             options: &LaunchOptions,
             _lease: &InteractionLease,
-        ) -> Result<WindowInfo, AdapterError> {
+        ) -> Result<LaunchResult, AdapterError> {
             self.probe.calls.fetch_add(1, Ordering::SeqCst);
             self.probe
                 .timeout_ms
                 .store(options.timeout_ms, Ordering::SeqCst);
-            Ok(WindowInfo {
-                id: "w-launch".into(),
-                title: "Launched".into(),
+            Ok(LaunchResult {
                 app: "Fixture".into(),
                 pid: ProcessId::new(42),
                 process_instance: Some("fixture-42".into()),
-                bounds: None,
-                state: WindowState::default(),
+                window: Some(WindowInfo {
+                    id: "w-launch".into(),
+                    title: "Launched".into(),
+                    app: "Fixture".into(),
+                    pid: ProcessId::new(42),
+                    process_instance: Some("fixture-42".into()),
+                    bounds: None,
+                    state: WindowState::default(),
+                }),
             })
         }
     }

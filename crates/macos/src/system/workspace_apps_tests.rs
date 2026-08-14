@@ -184,7 +184,7 @@ fn owner_snapshot_equality_detects_generation_and_frontmost_changes() {
 }
 
 #[test]
-fn app_inventory_keeps_only_regular_activation_policy() {
+fn app_inventory_labels_menu_bar_apps_and_drops_headless_services() {
     let bytes = br#"{
         "applications":[
             {"name":"Mail","pid":10,"launch_time":100.25,"activation_policy":"regular"},
@@ -206,9 +206,18 @@ fn app_inventory_keeps_only_regular_activation_policy() {
     )
     .unwrap();
 
-    assert_eq!(probed, [10]);
-    assert_eq!(apps.len(), 1);
+    assert_eq!(probed, [10, 11]);
+    assert_eq!(apps.len(), 2);
     assert_eq!(apps[0].name, "Mail");
+    assert_eq!(
+        apps[0].presentation,
+        Some(agent_desktop_core::AppPresentation::Foreground)
+    );
+    assert_eq!(apps[1].name, "Palette");
+    assert_eq!(
+        apps[1].presentation,
+        Some(agent_desktop_core::AppPresentation::Background)
+    );
 }
 
 #[test]

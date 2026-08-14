@@ -43,12 +43,14 @@ fn matching_apps_filters_by_name_case_insensitively() {
                 pid: agent_desktop_core::ProcessId::new(42),
                 bundle_id: None,
                 process_instance: None,
+                presentation: None,
             },
             AppInfo {
                 name: "Finder".into(),
                 pid: agent_desktop_core::ProcessId::new(7),
                 bundle_id: None,
                 process_instance: None,
+                presentation: None,
             },
         ],
     );
@@ -65,6 +67,7 @@ fn app_filter_with_no_constraints_preserves_the_complete_inventory() {
         pid: agent_desktop_core::ProcessId::new(7),
         bundle_id: None,
         process_instance: None,
+        presentation: None,
     }];
 
     let filtered = filter_apps(&filter, apps);
@@ -82,6 +85,7 @@ fn surfaces_for_apps_is_empty_without_an_app_or_pid_filter() {
         pid: agent_desktop_core::ProcessId::new(1),
         bundle_id: None,
         process_instance: None,
+        presentation: None,
     }];
     let deadline = Instant::now() + Duration::from_secs(5);
     let surfaces =

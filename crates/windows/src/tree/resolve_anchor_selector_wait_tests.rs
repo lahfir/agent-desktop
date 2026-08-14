@@ -75,6 +75,7 @@ fn selector_matches(
             deadline: deadline(),
             max_raw_depth: 50,
             materialization: LocatorMaterialization::None,
+            surface: None,
         },
     )
     .expect("a poll attempt against a live fixture window succeeds");

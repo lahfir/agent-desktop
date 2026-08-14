@@ -11,20 +11,42 @@ agent-desktop launch "com.apple.Safari" --timeout 10000
 agent-desktop launch "TextEdit" --arg /tmp/notes.txt
 agent-desktop launch "MyTool" --arg --flag --arg value --env KEY=VALUE --cwd /tmp
 agent-desktop launch "MyTool" --no-attach
+agent-desktop launch "TextEdit" --activate
 agent-desktop launch "notepad.exe"                 # Windows: system-directory bare name
 agent-desktop launch "C:\\Windows\\System32\\notepad.exe"
 ```
-Launches an application and waits until its window is visible. On macOS the identifier is a display name or bundle ID. On Windows the identifier is an absolute path (drive + backslash, UNC, or `\\?\`) or a bare executable name that resolves only under `System32` / the Windows directory (A21-1) — display-name and AUMID launch are not on this path.
+Launches an application and returns once the process is running. On macOS the identifier is a display name or bundle ID. On Windows the identifier is an absolute path (drive + backslash, UNC, or `\\?\`) or a bare executable name that resolves only under `System32` / the Windows directory (A21-1) — display-name and AUMID launch are not on this path.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--timeout` | 30000 | Max wait time in ms for window to appear |
+| `--timeout` | 30000 | Upper bound in ms for the whole launch |
 | `--arg` | | Command-line argument passed to the launched app; repeatable, order preserved |
 | `--env` | | `KEY=VALUE` environment variable for the launched process; repeatable |
 | `--cwd` | | Working directory for the launched process (honored on Windows; rejected by macOS Launch Services) |
 | `--no-attach` | false | Require a fresh launch instead of the default attach-if-running behavior |
+| `--activate` | false | Bring the app forward so it presents a window, and wait for that window |
 
-By default, `launch` attaches to an already-running instance and returns its visible window. `--no-attach` rejects an already-running app with `ACTION_FAILED`; otherwise it starts a fresh instance and still waits for a real visible window. Windowless, menu-bar-only, or background apps return `WINDOW_NOT_FOUND` rather than a fabricated empty window response; use `list-apps` to observe those processes. On Windows, attach matches by image name across the process snapshot — multiple matches are `AMBIGUOUS_TARGET` (dogfood J2 against multi-instance `explorer.exe`); a launcher whose visible window belongs to a child pid times out to `WINDOW_NOT_FOUND` (A21-1).
+The process starting and the app presenting a window are separate outcomes, so the response reports them separately:
+
+```json
+{ "app": "TextEdit", "pid": 611, "process_instance": "macos-proc-v1:...",
+  "window": { "id": "w-110407", "title": "Open", "visible": true } }
+```
+
+`window` is present when the app already has one and **omitted when it does not**. Its absence is a fact, not a failure — `launch` still returns `ok: true`.
+
+A launch waits only for the windows the launch itself causes. It polls until the app reports that it finished starting up, plus a short grace for the first window to reach the window server. Most apps therefore return their window in one step. An app that opens its first window only when brought forward — any document-based app — returns without one instead of waiting out `--timeout`.
+
+A launch that finds its process gone before any window appears fails with `APP_UNRESPONSIVE` rather than reporting a windowless success.
+
+When you need the window:
+
+- `--activate` asks the app to present one and waits for it up to `--timeout`, because activation is what causes the window. This brings the app forward, so it is not headless. Pair it with a small `--timeout` for an app that may have no window at all.
+- `wait --event window-opened` waits on your terms after you trigger the window some other way.
+
+Windowless, menu-bar-only, and background apps simply report no `window`; use `list-apps` to observe those processes and read their `presentation`. `--no-attach` rejects an already-running app with `ACTION_FAILED` and starts a fresh instance.
+
+On Windows, attach matches by image name across the process snapshot, so multiple running instances are `AMBIGUOUS_TARGET` (dogfood J2 against multi-instance `explorer.exe`). A launcher process whose visible window belongs to a child pid reports no `window` for the pid it launched (A21-1); `list-windows` finds the child's window.
 
 ### close-app
 ```bash
@@ -44,7 +66,17 @@ On Windows, a steady-state windowless process is `APP_NOT_FOUND` via `list-apps`
 agent-desktop list-apps
 agent-desktop list-apps --app "Text"
 ```
-Lists running GUI applications, optionally filtered by a case-insensitive name substring. Returns array of `{ name, pid, bundle_id }`.
+Lists running GUI applications, optionally filtered by a case-insensitive name substring. Returns array of `{ name, pid, bundle_id, presentation }`.
+
+`presentation` tells a foreground app from one that only appears on a hotkey or lives in the menu bar:
+
+| Value | Meaning |
+|-------|---------|
+| `foreground` | Owns ordinary windows and appears in the Dock |
+| `background` | No Dock entry — menu-bar and tray items, and overlays summoned by a hotkey. Their windows may exist only while shown |
+| omitted | Not registered as an application (helper processes and daemons found through the process table) |
+
+Applications with no user interface at all are excluded.
 
 ## Window Management
 
@@ -54,6 +86,12 @@ agent-desktop list-windows
 agent-desktop list-windows --app "Finder"
 ```
 Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds, is_focused }`. Focus is detected through the platform's frontmost/focused-window APIs, not window stacking order.
+
+The inventory comes from the window server, which knows more windows than the
+accessibility layer exposes. Targeting one an application never published
+returns `ACTION_NOT_SUPPORTED` with `kind: "window_without_accessibility_element"`
+— the window exists and still accepts screenshots and coordinate input, but no
+semantic command can reach it. Choose another window from this list.
 
 ### focus-window
 ```bash
@@ -344,7 +382,7 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 **Per-entry failure shape:**
 ```json
 {
-  "version": "2.2",
+  "version": "2.3",
   "ok": false,
   "command": "click",
   "error": {

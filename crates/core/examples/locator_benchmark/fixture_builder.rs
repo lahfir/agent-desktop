@@ -13,7 +13,10 @@ pub(crate) fn live_tree(
     live_tree_from_roots(
         fixture,
         &fixture.roots,
-        ObservationSource::Window(fixture.window.clone()),
+        ObservationSource::Window {
+            window: fixture.window.clone(),
+            surface: agent_desktop_core::SnapshotSurface::Window,
+        },
         requirements,
     )
 }

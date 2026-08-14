@@ -107,6 +107,33 @@ fn bridge_error(operation: &str, status: u8, delivery_started: bool) -> AdapterE
     .with_disposition(disposition)
 }
 
+/// Where a process is in its startup. `NoRecord` covers both a process that
+/// exited and one that has not registered with the window server yet, so it
+/// answers neither question on its own and the caller has to ask libproc which
+/// of the two it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StartupState {
+    Starting,
+    Finished,
+    NoRecord,
+}
+
+/// An application that finished starting up has already created whatever
+/// windows its launch produces.
+#[cfg(target_os = "macos")]
+pub(crate) fn startup_state(pid: i32) -> StartupState {
+    match unsafe { agent_desktop_app_finished_launching(pid) } {
+        0 => StartupState::Starting,
+        1 => StartupState::Finished,
+        _ => StartupState::NoRecord,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn startup_state(_pid: i32) -> StartupState {
+    StartupState::NoRecord
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn agent_desktop_terminate_application(
@@ -114,6 +141,7 @@ unsafe extern "C" {
         expected_launch_time: f64,
         force: u8,
     ) -> TerminateResult;
+    fn agent_desktop_app_finished_launching(pid: i32) -> i32;
     fn agent_desktop_ensure_cocoa_multithreaded() -> u8;
     fn agent_desktop_copy_workspace_snapshot_json() -> BytesResult;
     fn agent_desktop_free_bridge_bytes(bytes: *mut u8);

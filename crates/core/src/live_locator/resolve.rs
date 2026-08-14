@@ -210,6 +210,7 @@ pub fn find_first_entry(
             selection: super::LocatorSelection::First,
             deadline: crate::Deadline::from_duration(timeout)?,
             max_raw_depth: 50,
+            surface: None,
             materialization: super::LocatorMaterialization::SelectedMatches,
         },
     )

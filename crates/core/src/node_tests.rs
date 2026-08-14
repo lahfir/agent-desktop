@@ -84,6 +84,7 @@ fn app_info_bundle_id_none_omitted_from_json() {
         pid: crate::ProcessId::new(42),
         bundle_id: None,
         process_instance: Some("test-instance".into()),
+        presentation: None,
     };
     let json = serde_json::to_string(&info).unwrap();
     assert!(
@@ -100,6 +101,7 @@ fn app_info_bundle_id_some_present_in_json() {
         pid: crate::ProcessId::new(7),
         bundle_id: Some("com.apple.Safari".into()),
         process_instance: Some("test-instance".into()),
+        presentation: None,
     };
     let json = serde_json::to_string(&info).unwrap();
     assert!(
@@ -117,6 +119,7 @@ fn app_info_roundtrip_preserves_all_fields() {
         pid: crate::ProcessId::new(1234),
         bundle_id: Some("com.apple.TextEdit".into()),
         process_instance: Some("test-instance".into()),
+        presentation: None,
     };
     let json = serde_json::to_string(&original).unwrap();
     let back: AppInfo = serde_json::from_str(&json).unwrap();

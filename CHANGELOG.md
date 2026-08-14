@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/lahfir/agent-desktop/compare/v0.7.0...v0.8.0) (2026-08-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* the response envelope is version 2.3. launch returns { app, pid, process_instance, window? } instead of a bare window object, and an application that presents no window is ok:true with window omitted rather than WINDOW_NOT_FOUND. The C ABI is unchanged: it still writes one window and reports WINDOW_NOT_FOUND when there is none.
+
+### Features
+
+* decide macOS delivery by observation and stop launch waiting on an uncaused event ([#125](https://github.com/lahfir/agent-desktop/issues/125)) ([298f1ff](https://github.com/lahfir/agent-desktop/commit/298f1ff21530958d765adf3834cdadccd4816a7a))
+
 ## [0.7.0](https://github.com/lahfir/agent-desktop/compare/v0.6.0...v0.7.0) (2026-08-02)
 
 

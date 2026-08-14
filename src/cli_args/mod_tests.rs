@@ -105,6 +105,16 @@ fn find_args_cli_flags_still_resolve_through_flattened_groups() {
 }
 
 #[test]
+fn find_accepts_a_drill_down_root_and_leaves_it_unset_by_default() {
+    let scoped =
+        FindArgs::try_parse_from(["find", "--root", "@s1:e4", "--role", "button"]).unwrap();
+    assert_eq!(scoped.root.as_deref(), Some("@s1:e4"));
+
+    let unscoped = FindArgs::try_parse_from(["find", "--role", "button"]).unwrap();
+    assert!(unscoped.root.is_none());
+}
+
+#[test]
 fn find_args_selection_conflicts_still_enforced_across_the_flatten_boundary() {
     let err = FindArgs::try_parse_from(["find", "--first", "--last"]).unwrap_err();
 

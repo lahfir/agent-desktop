@@ -134,5 +134,9 @@ mod process_state_tests;
 mod app_not_found_tests;
 
 #[cfg(test)]
+#[path = "ref_action_wait_success_tests.rs"]
+mod success_tests;
+
+#[cfg(test)]
 #[path = "ref_action_exactly_once_tests.rs"]
 mod exactly_once_tests;

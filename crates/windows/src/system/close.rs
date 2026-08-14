@@ -387,3 +387,7 @@ fn after_termination(error: AdapterError) -> AdapterError {
 #[cfg(test)]
 #[path = "close_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "close_fanout_tests.rs"]
+mod fanout_tests;

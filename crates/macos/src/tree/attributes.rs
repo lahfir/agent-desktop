@@ -6,7 +6,7 @@ mod imp {
     };
 
     const MALFORMED_AX_VALUE: i32 = i32::MIN;
-    use accessibility_sys::{kAXErrorAttributeUnsupported, kAXErrorNoValue, kAXErrorSuccess};
+    use accessibility_sys::kAXErrorSuccess;
     use core_foundation::{
         array::CFArray,
         base::{CFType, CFTypeRef, TCFType},
@@ -131,7 +131,7 @@ mod imp {
     }
 
     fn is_absent_error(error: i32) -> bool {
-        error == kAXErrorAttributeUnsupported || error == kAXErrorNoValue
+        crate::tree::ax_absence::is_absent_attribute_error(error)
     }
 }
 

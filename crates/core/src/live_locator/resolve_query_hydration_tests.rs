@@ -73,6 +73,7 @@ fn hydration_retry_preserves_failed_attempt_statistics() {
         selection: LocatorSelection::Strict,
         deadline: crate::Deadline::after(5_000).unwrap(),
         max_raw_depth: 10,
+        surface: None,
         materialization: LocatorMaterialization::SelectedMatches,
     };
 
@@ -134,6 +135,7 @@ fn selected_hydration_rejects_incomplete_snapshot_evidence() {
         selection: LocatorSelection::Strict,
         deadline: crate::Deadline::after(35).unwrap(),
         max_raw_depth: 10,
+        surface: None,
         materialization: LocatorMaterialization::SelectedMatches,
     };
 

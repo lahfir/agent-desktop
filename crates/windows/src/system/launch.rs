@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, WindowFilter, WindowInfo,
-    launch_options::LaunchOptions,
+    launch_options::LaunchOptions, launch_result::LaunchResult,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -19,7 +19,7 @@ pub(crate) fn launch_app_impl(
     id: &str,
     options: &LaunchOptions,
     parent_deadline: Deadline,
-) -> Result<WindowInfo, AdapterError> {
+) -> Result<LaunchResult, AdapterError> {
     validate_app_identifier(id).map_err(before_launch)?;
     validate_launch_options(options).map_err(before_launch)?;
     let deadline = if options.timeout_ms == 0 {
@@ -43,40 +43,87 @@ pub(crate) fn launch_app_impl(
                         "Running process has no exact process instance token",
                     ))
                 })?;
-            return wait_for_window(id, row.pid, &token, options.timeout_ms, deadline);
+            let window = observe_window(row.pid, &token, options, deadline)?;
+            return Ok(launch_result(id, row.pid, token, window));
         }
     } else if let Some(row) = matches.first() {
         return Err(before_launch(already_running_error(row.pid, &matches)));
     }
     let executable = resolve_executable(id).map_err(before_launch)?;
     let (pid, token) = create_process(&executable, options, deadline)?;
-    wait_for_window(id, pid, &token, options.timeout_ms, deadline)
+    let window = observe_window(pid, &token, options, deadline)?;
+    Ok(launch_result(id, pid, token, window))
 }
 
-fn wait_for_window(
-    id: &str,
+/// The window a launch actually caused, or `None`. A process that presents no
+/// window is a fact the caller reads from `LaunchResult.window`, not a failure:
+/// a background or windowless process is a legitimate launch outcome, and
+/// erroring on it made every such launch spend its whole timeout first.
+fn observe_window(
     pid: ProcessId,
     process_instance: &str,
-    timeout_ms: u64,
+    options: &LaunchOptions,
     deadline: Deadline,
-) -> Result<WindowInfo, AdapterError> {
+) -> Result<Option<WindowInfo>, AdapterError> {
     let mut poll_interval = Duration::from_millis(50);
     loop {
-        if let Some(window) = exact_window(pid, process_instance, deadline).map_err(after_launch)? {
-            return Ok(window);
+        if let Some(window) = observe_window_once(pid, process_instance, deadline)? {
+            return Ok(Some(window));
         }
-        if !should_poll_after_first_observation(timeout_ms) || deadline.remaining().is_zero() {
-            return Err(launch_no_window_error(
-                id,
-                timeout_ms,
-                pid,
-                process_instance,
-            ));
+        if !should_poll_after_first_observation(options.timeout_ms)
+            || deadline.remaining().is_zero()
+        {
+            return Ok(None);
         }
         let remaining = deadline.remaining();
         std::thread::sleep(poll_interval.min(remaining));
         poll_interval = (poll_interval * 3 / 2).min(Duration::from_millis(250));
     }
+}
+
+fn launch_result(
+    id: &str,
+    pid: ProcessId,
+    process_instance: String,
+    window: Option<WindowInfo>,
+) -> LaunchResult {
+    LaunchResult {
+        app: window
+            .as_ref()
+            .map(|window| window.app.clone())
+            .unwrap_or_else(|| image_file_name(id).to_string()),
+        pid,
+        process_instance: Some(process_instance),
+        window,
+    }
+}
+
+/// How many times a racing window inventory is re-read before the launch
+/// accepts "no window observed" as its answer.
+const LISTING_RACE_ATTEMPTS: u32 = 5;
+
+/// One window observation, tolerant of the inventory's mid-walk identity race.
+///
+/// `list_windows_live` fails the whole listing when any window's owning process
+/// changes while it is being assembled, and a launch is exactly the moment that
+/// race is most reachable — a process was just created or terminated. That
+/// refusal says the desktop could not be read coherently, not that this launch
+/// failed, so it is re-read a bounded number of times and then reported as no
+/// window observed. Every other failure still propagates: a target whose
+/// process instance changed underneath the launch is a real answer, not a race.
+fn observe_window_once(
+    pid: ProcessId,
+    process_instance: &str,
+    deadline: Deadline,
+) -> Result<Option<WindowInfo>, AdapterError> {
+    for _ in 0..LISTING_RACE_ATTEMPTS {
+        match exact_window(pid, process_instance, deadline) {
+            Ok(window) => return Ok(window),
+            Err(error) if error.code == ErrorCode::WindowNotFound => continue,
+            Err(error) => return Err(after_launch(error)),
+        }
+    }
+    Ok(None)
 }
 
 fn exact_window(
@@ -323,30 +370,6 @@ fn ambiguous_apps(matches: &[ProcessRow]) -> AdapterError {
         .with_details(serde_json::json!({
             "candidate_pids": matches.iter().map(|row| row.pid).collect::<Vec<_>>(),
         }))
-}
-
-fn launch_no_window_error(
-    id: &str,
-    timeout_ms: u64,
-    pid: ProcessId,
-    process_instance: &str,
-) -> AdapterError {
-    AdapterError::new(
-        ErrorCode::WindowNotFound,
-        format!(
-            "Application started, but no exact accessible window appeared within {timeout_ms} ms"
-        ),
-    )
-    .with_details(serde_json::json!({
-        "app_name": id,
-        "pid": pid,
-        "process_instance": process_instance,
-        "retry_safe": false,
-    }))
-    .with_disposition(DeliverySemantics::delivered_unverified())
-    .with_suggestion(
-        "Inspect list-apps and list-windows for the returned process; do not repeat the launch blindly.",
-    )
 }
 
 fn before_launch(error: AdapterError) -> AdapterError {

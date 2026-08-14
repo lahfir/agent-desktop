@@ -94,7 +94,9 @@ pub(crate) enum Commands {
     MouseUp(MousePointArgs),
     #[command(about = "Scroll the mouse wheel at absolute coordinates (requires --headed)")]
     MouseWheel(MouseWheelArgs),
-    #[command(about = "Launch application and wait until its window is visible")]
+    #[command(
+        about = "Launch application and return once its process is running; --activate waits for a window"
+    )]
     Launch(LaunchArgs),
     #[command(about = "Quit an application gracefully (--force to terminate)")]
     CloseApp(CloseAppArgs),

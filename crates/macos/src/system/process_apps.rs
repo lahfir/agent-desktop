@@ -107,6 +107,7 @@ fn parse_apps(text: &str) -> Result<Vec<AppInfo>, AdapterError> {
                 pid: crate::system::process_identity::from_pid_t(pid)?,
                 bundle_id: None,
                 process_instance: None,
+                presentation: None,
             });
         }
     }

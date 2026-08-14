@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     Action, AdapterError, Deadline, ElementState, ErrorCode, EvidenceRequirements, LiveElement,
-    LiveIdentity, LocatorField, ObservationBudget, Rect,
+    LiveIdentity, LocatorField, Rect,
 };
 use std::time::{Duration, Instant};
 
@@ -138,7 +138,7 @@ fn essential_live_evidence_complete(evidence: &agent_desktop_core::LocatorEviden
 }
 
 fn new_usage() -> crate::tree::observation_usage::ObservationUsage {
-    crate::tree::observation_usage::ObservationUsage::new(ObservationBudget::default())
+    crate::tree::observation_usage::ObservationUsage::with_defaults()
 }
 
 fn owning_window_bounds(
@@ -159,17 +159,14 @@ fn owning_window_bounds(
     crate::tree::element_bounds::read_bounds_with_deadline(&window, deadline_instant(deadline)?)
 }
 
+/// The viewport an element is clipped by. `AXTopLevelUIElement` is not a
+/// substitute: for menu content it resolves to the menu bar, a 29-point strip
+/// that reports every open menu item as offscreen. An element with no window is
+/// drawn on its own surface, so its clipping viewport is simply unknown.
 fn first_owning_container(
     mut read: impl FnMut(&'static str) -> Result<Option<AXElement>, i32>,
 ) -> Result<Option<AXElement>, (&'static str, i32)> {
-    for attribute in ["AXWindow", "AXTopLevelUIElement"] {
-        match read(attribute) {
-            Ok(Some(element)) => return Ok(Some(element)),
-            Ok(None) => {}
-            Err(error) => return Err((attribute, error)),
-        }
-    }
-    Ok(None)
+    read("AXWindow").map_err(|error| ("AXWindow", error))
 }
 
 fn known_role(role: &LocatorField<String>) -> Result<String, AdapterError> {
@@ -212,7 +209,7 @@ fn element_state_from_attrs(
     let states = crate::tree::state_reader::states_from_element(element, &attrs, &role, &context);
     let enabled = Some(attrs.states.enabled);
     let hidden = hidden_state(attrs.states.semantic.hidden);
-    let offscreen = offscreen(attrs.bounds, window_bounds);
+    let offscreen = crate::tree::state_reader::offscreen(attrs.bounds, window_bounds);
     Ok(ElementState {
         role,
         states,
@@ -225,16 +222,6 @@ fn element_state_from_attrs(
 
 fn hidden_state(reported: Option<bool>) -> Option<bool> {
     reported
-}
-
-fn offscreen(bounds: Option<Rect>, window: Option<Rect>) -> Option<bool> {
-    let (bounds, window) = bounds.zip(window)?;
-    Some(
-        bounds.x + bounds.width <= window.x
-            || bounds.x >= window.x + window.width
-            || bounds.y + bounds.height <= window.y
-            || bounds.y >= window.y + window.height,
-    )
 }
 
 #[cfg(test)]

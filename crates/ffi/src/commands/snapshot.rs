@@ -15,7 +15,7 @@ use std::ptr;
 /// to disk, and writes the JSON envelope into `*out`.
 ///
 /// The JSON shape matches `agent-desktop snapshot`:
-/// `{"version":"2.2","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
+/// `{"version":"2.3","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
 ///
 /// `data.complete` is always present. A snapshot that exhausts its observation
 /// budget still succeeds with `"complete":false` and the tree it did observe,

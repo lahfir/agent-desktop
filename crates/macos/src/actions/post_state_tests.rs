@@ -111,18 +111,20 @@ fn element_visibility_preserves_live_hidden_evidence_for_every_role() {
     assert_eq!(hidden_state(Some(true)), Some(true));
 }
 
+/// A menu item's `AXTopLevelUIElement` is the menu bar, whose 29-point height
+/// clips every open menu item. A window-less element therefore reports no
+/// clipping viewport rather than a wrong one.
 #[test]
-fn top_level_container_is_used_only_when_window_is_authoritatively_absent() {
+fn a_window_less_element_reports_no_clipping_viewport() {
     let mut attributes = Vec::new();
     let container = first_owning_container(|attribute| {
         attributes.push(attribute);
-        Ok((attribute == "AXTopLevelUIElement")
-            .then(|| crate::tree::AXElement(std::ptr::null_mut())))
+        Ok(None)
     })
     .unwrap();
 
-    assert!(container.is_some());
-    assert_eq!(attributes, ["AXWindow", "AXTopLevelUIElement"]);
+    assert!(container.is_none());
+    assert_eq!(attributes, ["AXWindow"]);
 }
 
 #[test]

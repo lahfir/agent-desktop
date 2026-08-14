@@ -80,7 +80,7 @@ fn show_menu_on_element(
     let Some(pid) = crate::system::app_ops::pid_from_element(element, deadline) else {
         return Ok(DeliveryOutcome::NotDelivered);
     };
-    if menu_is_open(pid, deadline)? {
+    if menu_probe(pid, deadline) {
         return Ok(DeliveryOutcome::NotDelivered);
     }
     prepare(element, deadline)?;
@@ -102,7 +102,7 @@ fn show_menu_or_press(
     let Some(pid) = crate::system::app_ops::pid_from_element(element, deadline) else {
         return Ok(DeliveryOutcome::NotDelivered);
     };
-    if menu_is_open(pid, deadline)? {
+    if menu_probe(pid, deadline) {
         return Ok(DeliveryOutcome::NotDelivered);
     }
     for action in ["AXShowMenu", "AXPress"] {
@@ -120,7 +120,7 @@ fn show_menu_or_press(
 fn wait_for_new_menu(pid: i32, deadline: Deadline) -> Result<bool, AdapterError> {
     let local_end = std::time::Instant::now() + std::time::Duration::from_millis(600);
     loop {
-        if menu_is_open(pid, deadline)? {
+        if menu_probe(pid, deadline) {
             return Ok(true);
         }
         if deadline.is_expired() || std::time::Instant::now() >= local_end {
@@ -131,8 +131,13 @@ fn wait_for_new_menu(pid: i32, deadline: Deadline) -> Result<bool, AdapterError>
     }
 }
 
-fn menu_is_open(pid: i32, deadline: Deadline) -> Result<bool, AdapterError> {
-    crate::tree::surfaces::is_menu_open(pid, instant(deadline)?)
+/// An application in menu tracking stops answering child reads, so a failed
+/// probe is the expected shape of "a menu is up" rather than an application
+/// fault. Verification must never turn a delivered action into an error.
+fn menu_probe(pid: i32, deadline: Deadline) -> bool {
+    instant(deadline)
+        .and_then(|instant| crate::tree::surfaces::is_menu_open(pid, instant))
+        .unwrap_or(false)
 }
 
 fn select_containing_item(element: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {

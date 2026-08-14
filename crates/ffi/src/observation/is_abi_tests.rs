@@ -26,7 +26,10 @@ impl ObservationOps for DuplicateAdapter {
         };
         ObservedTree::from_roots(
             vec![button(Vec::new()), button(vec!["disabled".into()])],
-            ObservationSource::Window(window.clone()),
+            ObservationSource::Window {
+                window: window.clone(),
+                surface: agent_desktop_core::SnapshotSurface::Window,
+            },
             Default::default(),
             true,
         )
