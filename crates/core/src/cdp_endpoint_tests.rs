@@ -50,8 +50,8 @@ fn probe_parses_websocket_url_and_product_from_a_live_http_response() {
     assert_eq!(endpoint.http_endpoint, format!("http://127.0.0.1:{port}"));
     assert_eq!(endpoint.product.as_deref(), Some("Chrome/120.0.0.0"));
     assert_eq!(
-        endpoint.websocket_url.as_deref(),
-        Some("ws://127.0.0.1/devtools/browser/abc")
+        endpoint.websocket_url,
+        "ws://127.0.0.1/devtools/browser/abc"
     );
 }
 
@@ -88,8 +88,8 @@ fn probe_completes_against_a_server_that_never_closes_the_connection() {
     assert!(elapsed < Duration::from_secs(2), "probe took {elapsed:?}");
     assert_eq!(endpoint.product.as_deref(), Some("Chrome/142.0.0.0"));
     assert_eq!(
-        endpoint.websocket_url.as_deref(),
-        Some("ws://127.0.0.1/devtools/browser/def")
+        endpoint.websocket_url,
+        "ws://127.0.0.1/devtools/browser/def"
     );
 }
 
@@ -108,7 +108,75 @@ fn probe_returns_the_unavailable_error_quickly_when_nothing_is_listening() {
                 inner.details.as_ref().and_then(|d| d.get("kind")),
                 Some(&serde_json::json!("cdp_endpoint_unavailable"))
             );
+            assert_eq!(
+                inner
+                    .details
+                    .as_ref()
+                    .and_then(|d| d.get("responder_without_devtools_body")),
+                None,
+                "nothing answered at all, so the responder flag must not be set"
+            );
         }
         other => panic!("expected an adapter error, got {other:?}"),
     }
+}
+
+/// A responder that answers HTTP with a body `serde_json` cannot parse into
+/// `webSocketDebuggerUrl` must not be mistaken for success — the port may
+/// still be settling into its DevTools state, so the probe keeps polling and
+/// only reports it once the deadline runs out, with a detail flag distinguishing
+/// this from a port nothing ever answered on.
+#[test]
+fn probe_keeps_polling_a_responder_without_a_devtools_body_and_flags_it_on_expiry() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        while let Ok((mut stream, _)) = listener.accept() {
+            let mut buf = [0_u8; 1024];
+            let _ = stream.read(&mut buf);
+            let body = "not devtools json";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+
+    let error = probe(port, Deadline::after(300).unwrap()).unwrap_err();
+
+    match error {
+        AppError::Adapter(inner) => {
+            assert_eq!(inner.code, ErrorCode::ActionFailed);
+            assert_eq!(
+                inner.details.as_ref().and_then(|d| d.get("kind")),
+                Some(&serde_json::json!("cdp_endpoint_unavailable"))
+            );
+            assert_eq!(
+                inner
+                    .details
+                    .as_ref()
+                    .and_then(|d| d.get("responder_without_devtools_body")),
+                Some(&serde_json::json!(true))
+            );
+        }
+        other => panic!("expected an adapter error, got {other:?}"),
+    }
+}
+
+#[test]
+fn merge_object_details_favors_extra_on_key_collision_and_passes_through_non_objects() {
+    let merged = merge_object_details(
+        serde_json::json!({ "kind": "cdp_endpoint_unavailable", "port": 9001 }),
+        serde_json::json!({ "pid": 42, "port": 9002 }),
+    );
+
+    assert_eq!(
+        merged,
+        serde_json::json!({ "kind": "cdp_endpoint_unavailable", "port": 9002, "pid": 42 })
+    );
+
+    let unchanged = merge_object_details(serde_json::json!(null), serde_json::json!({ "pid": 1 }));
+    assert_eq!(unchanged, serde_json::json!(null));
 }

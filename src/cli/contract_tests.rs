@@ -10,6 +10,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "helpers",
     "helpers_test_support",
     "input_hold_policy",
+    "launch_cdp_test_support",
     "mod",
     "notification_identity",
     "notification_policy",

@@ -1,8 +1,14 @@
+use std::time::Duration;
+
 use crate::{
     AdapterError, AppError, DeliverySemantics, ErrorCode, adapter::PlatformAdapter, cdp_endpoint,
     launch_options::LaunchOptions, launch_result::LaunchResult,
 };
 use serde_json::Value;
+
+/// The largest slice of the overall deadline set aside for verifying the
+/// DevTools endpoint once the process is launched.
+const MAX_PROBE_RESERVE: Duration = Duration::from_millis(5_000);
 
 pub struct LaunchArgs {
     pub app: String,
@@ -25,15 +31,32 @@ pub fn execute(args: LaunchArgs, adapter: &dyn PlatformAdapter) -> Result<Value,
         options
             .args
             .push(format!("--remote-debugging-port={resolved_port}"));
+        options
+            .args
+            .push("--remote-debugging-address=127.0.0.1".to_owned());
         options.cdp_port = Some(resolved_port);
     }
-    let lease = adapter.acquire_interaction_lease(deadline)?;
+    let probe_budget = requested_cdp_port.map(|_| probe_reserve(deadline.remaining()));
+    let launch_deadline = probe_budget.map_or(deadline, |reserve| {
+        deadline.capped(deadline.remaining().saturating_sub(reserve))
+    });
+    let lease = adapter.acquire_interaction_lease(launch_deadline)?;
     let mut launched = adapter.launch_app(&app, &options, &lease)?;
     if let Some(port) = options.cdp_port {
-        launched.cdp = Some(verify_cdp_endpoint(port, deadline, &launched)?);
+        let reserve = probe_budget.unwrap_or_default();
+        launched.cdp = Some(verify_cdp_endpoint(port, deadline, reserve, &launched)?);
     }
     launched.suggestion = launch_suggestion(requested_cdp_port.is_some(), &launched);
     Ok(serde_json::to_value(launched)?)
+}
+
+/// The probe needs some of the overall deadline reserved for itself, or a
+/// generous overall timeout would let the launch step spend it all and leave
+/// nothing to verify the endpoint with. Reserving a quarter of the total,
+/// capped at `MAX_PROBE_RESERVE`, keeps the split proportionate for short
+/// deadlines and bounded for long ones.
+fn probe_reserve(total: Duration) -> Duration {
+    (total / 4).min(MAX_PROBE_RESERVE)
 }
 
 /// Guidance the calling agent reads at the moment of use, not prose it has
@@ -63,14 +86,18 @@ fn launch_suggestion(cdp_requested: bool, launched: &LaunchResult) -> Option<Str
     None
 }
 
-/// Our own `--remote-debugging-port` switch is how `--cdp` works; a caller
-/// who also passes one by hand would silently race it, so this is rejected
-/// before launch rather than left to whichever switch Launch Services keeps.
+/// Our own `--remote-debugging-port`, `--remote-debugging-address`, and
+/// `--remote-allow-origins` switches are how `--cdp` pins the DevTools
+/// surface to loopback and works at all; a caller who also passes any of
+/// them by hand would silently race or widen it, so this is rejected before
+/// launch rather than left to whichever switch Launch Services keeps.
 fn reject_conflicting_cdp_switch(options: &LaunchOptions) -> Result<(), AppError> {
-    let conflicts = options
-        .args
-        .iter()
-        .any(|arg| arg.starts_with("--remote-debugging-port") || arg == "--remote-debugging-pipe");
+    let conflicts = options.args.iter().any(|arg| {
+        arg.starts_with("--remote-debugging-port")
+            || arg == "--remote-debugging-pipe"
+            || arg.starts_with("--remote-debugging-address")
+            || arg.starts_with("--remote-allow-origins")
+    });
     if !conflicts {
         return Ok(());
     }
@@ -80,7 +107,10 @@ fn reject_conflicting_cdp_switch(options: &LaunchOptions) -> Result<(), AppError
             "Launch already specifies a DevTools remote-debugging switch",
         )
         .with_details(serde_json::json!({ "kind": "cdp_switch_conflict" }))
-        .with_suggestion("Pass either --cdp or your own --remote-debugging-port, not both.")
+        .with_suggestion(
+            "--cdp owns the remote-debugging switches (port, address, allow-origins) — pass \
+             --cdp instead of setting them yourself.",
+        )
         .with_disposition(DeliverySemantics::not_delivered()),
     ))
 }
@@ -143,32 +173,44 @@ fn resolve_cdp_port(requested: u16) -> Result<u16, AppError> {
 
 /// Verifies the endpoint by observation instead of trusting the switch: the
 /// app is left running either way, so a probe failure reports what exists
-/// (pid, process instance) rather than merely that the flag was honored.
+/// (pid, process instance, the budget the probe was given) layered onto the
+/// probe's own message and evidence rather than a second, separately worded
+/// error that could drift from what was actually observed.
 fn verify_cdp_endpoint(
     port: u16,
     deadline: crate::Deadline,
+    probe_budget: Duration,
     launched: &LaunchResult,
 ) -> Result<cdp_endpoint::CdpEndpoint, AppError> {
-    cdp_endpoint::probe(port, deadline).map_err(|_| {
-        AppError::Adapter(
-            AdapterError::new(
-                ErrorCode::ActionFailed,
-                "The launched application never opened its DevTools endpoint",
-            )
-            .with_details(serde_json::json!({
-                "kind": "cdp_endpoint_unavailable",
-                "pid": launched.pid,
-                "port": port,
-                "process_instance": launched.process_instance,
-            }))
-            .with_suggestion(
-                "The app is running but never opened its DevTools endpoint — it may not be \
-                 Chromium-based, or it strips debugging switches. Drive it with accessibility \
-                 commands, or close-app it if it is unwanted.",
-            )
-            .with_disposition(DeliverySemantics::delivered_unverified()),
-        )
-    })
+    cdp_endpoint::probe(port, deadline)
+        .map_err(|error| augment_probe_error(error, launched, probe_budget))
+}
+
+fn augment_probe_error(
+    error: AppError,
+    launched: &LaunchResult,
+    probe_budget: Duration,
+) -> AppError {
+    let AppError::Adapter(inner) = error else {
+        return error;
+    };
+    let extra = serde_json::json!({
+        "pid": launched.pid,
+        "process_instance": launched.process_instance,
+        "probe_budget_ms": probe_budget.as_millis(),
+    });
+    let merged = cdp_endpoint::merge_object_details(
+        inner
+            .details
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({})),
+        extra,
+    );
+    AppError::Adapter(inner.with_details(merged).with_suggestion(
+        "The app is running but no DevTools endpoint answered on this port. It may not be \
+         Chromium-based, may strip debugging switches, or may still be starting. Drive it with \
+         accessibility commands, or close-app it if it is unwanted.",
+    ))
 }
 
 #[cfg(test)]
@@ -176,5 +218,13 @@ fn verify_cdp_endpoint(
 mod tests;
 
 #[cfg(test)]
+#[path = "launch_cdp_test_support.rs"]
+mod cdp_test_support;
+
+#[cfg(test)]
 #[path = "launch_cdp_tests.rs"]
 mod cdp_tests;
+
+#[cfg(test)]
+#[path = "launch_cdp_switch_tests.rs"]
+mod cdp_switch_tests;
