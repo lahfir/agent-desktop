@@ -43,8 +43,8 @@ pub fn execute(args: LaunchArgs, adapter: &dyn PlatformAdapter) -> Result<Value,
     let lease = adapter.acquire_interaction_lease(launch_deadline)?;
     let mut launched = adapter.launch_app(&app, &options, &lease)?;
     if let Some(port) = options.cdp_port {
-        let reserve = probe_budget.unwrap_or_default();
-        launched.cdp = Some(verify_cdp_endpoint(port, deadline, reserve, &launched)?);
+        let granted = deadline.remaining();
+        launched.cdp = Some(verify_cdp_endpoint(port, deadline, granted, &launched)?);
     }
     launched.suggestion = launch_suggestion(requested_cdp_port.is_some(), &launched);
     Ok(serde_json::to_value(launched)?)
@@ -173,6 +173,9 @@ fn resolve_cdp_port(requested: u16) -> Result<u16, AppError> {
 /// (pid, process instance, the budget the probe was given) layered onto the
 /// probe's own message and evidence rather than a second, separately worded
 /// error that could drift from what was actually observed.
+/// `probe_budget` is the time the probe actually received: the deadline's
+/// remainder at probe start, not the pre-launch reserve, which a fast launch
+/// leaves far behind.
 fn verify_cdp_endpoint(
     port: u16,
     deadline: crate::Deadline,
