@@ -179,6 +179,7 @@ Some apps don't expose full accessibility trees:
 - Remove `-i` flag to see all elements including non-interactive ones
 - Increase `--max-depth` to explore deeper
 - Use `screenshot` as a visual fallback
+- For a Chromium-based app's web contents specifically, `launch --cdp` plus a CDP client is a faster path than a deep accessibility walk — see `references/commands-system.md`. Accessibility remains the only attach story for an app already running, and the only path to native surfaces even when `--cdp` is in use.
 
 ### STALE_REF / SNAPSHOT_NOT_FOUND
 

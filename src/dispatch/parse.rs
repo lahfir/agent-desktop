@@ -150,6 +150,7 @@ pub(crate) fn build_launch_options(
         timeout_ms: launch.timeout,
         attach_if_running: !launch.no_attach,
         activate: launch.activate,
+        cdp_port: launch.cdp,
     })
 }
 

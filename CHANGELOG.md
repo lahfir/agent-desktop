@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/lahfir/agent-desktop/compare/v0.8.0...v0.8.1) (2026-08-14)
+
+
+### Features
+
+* drive Chromium apps through a verified DevTools endpoint from launch --cdp ([#129](https://github.com/lahfir/agent-desktop/issues/129)) ([366d348](https://github.com/lahfir/agent-desktop/commit/366d34803992d0595f31b19c8347bf7b26f5f277))
+
 ## [0.8.0](https://github.com/lahfir/agent-desktop/compare/v0.7.0...v0.8.0) (2026-08-13)
 
 
