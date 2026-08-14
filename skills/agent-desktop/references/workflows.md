@@ -83,6 +83,44 @@ agent-desktop snapshot --root @e1 --snapshot <snapshot_id> -i --compact
 - Re-drilling the same root replaces only that root's subtree refs
 - Interactive elements (buttons, textfields) within skeleton depth still get normal refs
 
+## Pattern: Task in a Chromium App (Two Tools, Hand in Hand)
+
+Task: open Slack and send a message to a person. Slack is Chromium-based, so this pattern hands the web-content step to a CDP client while agent-desktop keeps every native surface.
+
+```bash
+# 1. Launch normally first — no --cdp yet
+agent-desktop launch "Slack"
+# Response includes: "renderer": "chromium", "suggestion": "For web-content work: close-app, ..."
+# The suggestion is a fact to read, not an order — the accessibility path still works here.
+
+# 2. Decide the task needs web-content work (composing and sending a message
+#    lives in Slack's web contents, which are dense through the accessibility tree).
+#    A fresh launch is required for --cdp, so close the app first.
+agent-desktop close-app "Slack"
+agent-desktop wait --event app-terminated --app "Slack" --timeout 10000
+
+# 3. Relaunch with a verified CDP port
+agent-desktop launch "Slack" --cdp
+# Response: data.cdp.port = 9231
+
+# 4. Hand off to a CDP client — check agent-browser first
+command -v agent-browser
+# If present:
+agent-browser connect 9231
+# Then its normal workflow: snapshot, find the person, click, type the message, send.
+# agent-browser skills get electron   # Electron-specific guidance if needed
+
+# 5. Anything native happens on agent-desktop meanwhile, over the same launch —
+#    a menu bar item, a file-attach dialog, or a delivered notification:
+agent-desktop snapshot --app "Slack" --surface menubar -i
+agent-desktop --headed list-notifications --app "Slack"
+
+# 6. Cleanup: close-app ends the port along with the app when the task is done
+agent-desktop close-app "Slack"
+```
+
+**Fallback when `agent-browser` is not installed:** ask the user to run `npm install -g agent-browser`, or skip `--cdp` and keep working through agent-desktop's accessibility path — `snapshot --skeleton --app "Slack" -i --compact` and drill into the message composer the same way as any other dense app. Accessibility always works; `--cdp` is the opt-in fast path when a fresh launch is acceptable and the client is available.
+
 ## Pattern: Fill a Form
 
 ```bash

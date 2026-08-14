@@ -12,6 +12,8 @@ agent-desktop launch "TextEdit" --arg /tmp/notes.txt
 agent-desktop launch "MyTool" --arg --flag --arg value --env KEY=VALUE --cwd /tmp
 agent-desktop launch "MyTool" --no-attach
 agent-desktop launch "TextEdit" --activate
+agent-desktop launch "Obsidian" --cdp
+agent-desktop launch "Obsidian" --cdp 9229
 ```
 Launches an application by name or bundle ID and returns once the process is running.
 
@@ -23,6 +25,7 @@ Launches an application by name or bundle ID and returns once the process is run
 | `--cwd` | | Working directory for the launched process |
 | `--no-attach` | false | Require a fresh launch instead of the default attach-if-running behavior |
 | `--activate` | false | Bring the app forward so it presents a window, and wait for that window |
+| `--cdp` | | Launch fresh with a Chrome DevTools Protocol port, verified before return; optional `[PORT]`, `0` or omitted picks a free port |
 
 The process starting and the app presenting a window are separate outcomes, so the response reports them separately:
 
@@ -32,6 +35,17 @@ The process starting and the app presenting a window are separate outcomes, so t
 ```
 
 `window` is present when the app already has one and **omitted when it does not**. Its absence is a fact, not a failure — `launch` still returns `ok: true`.
+
+When the launched app's bundle is built on Chromium — detected from the bundle's frameworks, not the app's name — the response also carries `renderer: "chromium"` and a `suggestion` string:
+
+```json
+{ "app": "Slack", "pid": 2201, "process_instance": "macos-proc-v1:...",
+  "window": { "id": "w-8891", "title": "Slack | general", "visible": true },
+  "renderer": "chromium",
+  "suggestion": "Chromium app: for web-content work, quit with close-app and relaunch with --cdp, then drive the web contents with a CDP client (agent-browser if installed). Accessibility commands still cover everything, including native menus and dialogs." }
+```
+
+`renderer` and `suggestion` are both optional and omitted on a non-Chromium app. Read `suggestion` as a hint the response carries, not an instruction the command enforces — a plain `launch` still succeeds and the accessibility path still works on a Chromium app; the field only names the faster option for the web-content case. See "Driving the web contents of a Chromium app" below for the `--cdp` flow the suggestion points at.
 
 A launch waits only for the windows the launch itself causes. It polls until the app reports that it finished starting up, plus a short grace for the first window to reach the window server. Most apps therefore return their window in one step. An app that opens its first window only when brought forward — any document-based app — returns without one instead of waiting out `--timeout`.
 
@@ -43,6 +57,54 @@ When you need the window:
 - `wait --event window-opened` waits on your terms after you trigger the window some other way.
 
 Windowless, menu-bar-only, and background apps simply report no `window`; use `list-apps` to observe those processes and read their `presentation`. `--no-attach` rejects an already-running app with `ACTION_FAILED` and starts a fresh instance.
+
+### Driving the web contents of a Chromium app
+```bash
+agent-desktop launch "Obsidian" --cdp
+agent-desktop launch "Obsidian" --cdp 9229
+```
+Use `--cdp` on Electron and other Chromium-based apps — Slack, VS Code, Discord, Obsidian, Notion, and similar — whose web contents are dense or slow to walk through the accessibility tree. It launches the app fresh with `--remote-debugging-port=<port>` and polls `http://127.0.0.1:<port>/json/version` until the endpoint answers, before the command returns. Pass a port number for an explicit choice; omit it or pass `0` to let the OS pick a free one.
+
+The port exists only for a fresh process, so `--cdp` requires a fresh launch. `launch` never quits a running app for you — a silent quit loses the user's state — so an already-running target returns `ACTION_FAILED` with `details.kind: "cdp_requires_fresh_launch"` instead. Run `close-app` first, confirm the process exited, then launch again with `--cdp`.
+
+On success, the response adds a `cdp` object and a `suggestion` string naming the next step:
+
+```json
+{ "app": "Obsidian", "pid": 4821, "cdp": {
+  "port": 9229,
+  "http_endpoint": "http://127.0.0.1:9229",
+  "websocket_url": "ws://127.0.0.1:9229/devtools/browser/<id>",
+  "product": "Chrome/142.0.7444.265"
+},
+  "suggestion": "Drive the web contents with a CDP client: agent-browser connect <port> if installed (or ask the user to install agent-browser). Native menus, dialogs, windows, and screenshots stay with agent-desktop." }
+```
+
+`suggestion` is informational, the same way `data.cdp` itself is — read it, do not treat it as a command the process enforces.
+
+Errors:
+
+| Code | `details.kind` | Meaning | Recovery |
+|------|-----------------|---------|----------|
+| `ACTION_FAILED` | `cdp_requires_fresh_launch` | The app was already running | `close-app`, confirm it exited, then `launch --cdp` again |
+| `INVALID_ARGS` | `cdp_port_in_use` | The explicit port you named is already bound | Name a different port, or omit the number and let agent-desktop pick a free one |
+| `INVALID_ARGS` | `cdp_switch_conflict` | `--arg` also carried `--remote-debugging-port` | Drop that `--arg`; `--cdp` owns the switch |
+| `ACTION_FAILED` | `cdp_endpoint_unavailable` | The port never answered — a non-Chromium app, or one that strips debugging switches from its main process | `details.pid` names the running process; the app is left running. Fall back to the accessibility path |
+
+Security: while the port is open, any local process can reach the DevTools endpoint on `127.0.0.1` and gain full control of the app's web contents. Request `--cdp` only for the step that needs it; `close-app` ends the exposure along with the app itself.
+
+**Handoff:** once `data.cdp` is present, drive the app's web contents with a CDP client — agent-desktop never talks to that port itself. Check for `agent-browser` first (`command -v agent-browser`):
+
+- If it is installed, connect with `agent-browser connect <port>`, then use its normal snapshot/click/type workflow. It ships an `electron` skill: `agent-browser skills get electron`.
+- If it is not installed, ask the user to run `npm install -g agent-browser`, or keep using agent-desktop's accessibility commands — those always work, on this app or any other.
+
+agent-desktop never invokes `agent-browser` itself; the calling agent does. Even with CDP connected, these stay on the accessibility path, because CDP cannot reach them:
+
+- The native menu bar (`snapshot --surface menubar`)
+- File dialogs and sheets
+- Window management (`list-windows`, `focus-window`, `resize-window`, and related commands)
+- Notifications
+- Screenshots
+- Any app you did not launch yourself — CDP cannot attach to an already-running process, so the accessibility path is the only attach story there
 
 ### close-app
 ```bash

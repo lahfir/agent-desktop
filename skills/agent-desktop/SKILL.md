@@ -44,8 +44,8 @@ Detailed documentation is split into focused reference files. Read them as neede
 |-----------|----------|
 | `references/commands-observation.md` | snapshot, find, get, is, screenshot, list-surfaces — all flags, output examples |
 | `references/commands-interaction.md` | click, type, set-value, select, toggle, scroll, drag, keyboard, mouse — choosing the right command |
-| `references/commands-system.md` | launch, close, windows, clipboard, wait, batch, session, status, permissions, version |
-| `references/workflows.md` | 12 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
+| `references/commands-system.md` | launch (including `--cdp` for Chromium web contents), close, windows, clipboard, wait, batch, session, status, permissions, version |
+| `references/workflows.md` | 16 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
 | `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, Notification Center, troubleshooting |
 
 ## The Observe-Act Loop (Progressive Skeleton Traversal)
@@ -188,6 +188,7 @@ agent-desktop --headed mouse-move --xy 100,200  # Move cursor
 ```
 agent-desktop launch "System Settings"          # Launch; returns once running
 agent-desktop launch "TextEdit" --activate       # Also bring it forward and wait for a window
+agent-desktop launch "Obsidian" --cdp            # Fresh launch + verified Chrome DevTools Protocol port for web contents
 agent-desktop close-app "TextEdit"              # Quit gracefully
 agent-desktop close-app "TextEdit" --force      # Force quit; SIGKILL if SIGTERM does not exit
 agent-desktop list-windows --app "Finder"       # List windows
@@ -270,3 +271,4 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 12. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use `--headed` only when exact-window focus or physical delivery is intended; raw coordinates never imply focus.
 13. **Start a session once per run.** `session start` creates the manifest; pass its returned ID through `AGENT_DESKTOP_SESSION` for the run or `--session <id>` for one command. It does not activate later processes implicitly.
 14. **Trace hard failures.** With an active trace-enabled session, segments are written automatically. Add `--trace /tmp/agent-desktop.jsonl` only when you need a single override file (CI, one-offs). Check `status` when unsure whether tracing is active.
+15. **Chromium-app strategy.** The accessibility path is the default, and the only option for already-running apps and for native surfaces (menus, dialogs, windows). `launch --cdp` plus a CDP client is the opt-in fast path for a Chromium app's web contents, when a fresh launch is acceptable.
