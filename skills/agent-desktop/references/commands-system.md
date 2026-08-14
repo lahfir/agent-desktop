@@ -42,7 +42,7 @@ When the launched app's bundle is built on Chromium — detected from the bundle
 { "app": "Slack", "pid": 2201, "process_instance": "macos-proc-v1:...",
   "window": { "id": "w-8891", "title": "Slack | general", "visible": true },
   "renderer": "chromium",
-  "suggestion": "Chromium app: for web-content work, quit with close-app and relaunch with --cdp, then drive the web contents with a CDP client (agent-browser if installed). Accessibility commands still cover everything, including native menus and dialogs." }
+  "suggestion": "Chromium app: for web-content work, run close-app and then launch --cdp, and drive the web contents with agent-browser. Accessibility commands still cover everything, including native menus and dialogs." }
 ```
 
 `renderer` and `suggestion` are both optional and omitted on a non-Chromium app. Read `suggestion` as a hint the response carries, not an instruction the command enforces — a plain `launch` still succeeds and the accessibility path still works on a Chromium app; the field only names the faster option for the web-content case. See "Driving the web contents of a Chromium app" below for the `--cdp` flow the suggestion points at.
@@ -76,7 +76,7 @@ On success, the response adds a `cdp` object and a `suggestion` string naming th
   "websocket_url": "ws://127.0.0.1:9229/devtools/browser/<id>",
   "product": "Chrome/142.0.7444.265"
 },
-  "suggestion": "Drive the web contents with a CDP client: agent-browser connect <port> if installed (or ask the user to install agent-browser). Native menus, dialogs, windows, and screenshots stay with agent-desktop." }
+  "suggestion": "Next: run `agent-browser connect 9229` and drive the web contents with its snapshot/click/type workflow (`agent-browser skills get electron` has the guide). If agent-browser is not installed, ask the user to install it or use accessibility commands. Do not hand-roll raw CDP or call app-internal APIs — that path is unverified and app-specific. Native menus, dialogs, windows, and screenshots stay with agent-desktop." }
 ```
 
 `suggestion` is informational, the same way `data.cdp` itself is — read it, do not treat it as a command the process enforces.

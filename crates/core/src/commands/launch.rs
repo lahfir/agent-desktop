@@ -41,19 +41,22 @@ pub fn execute(args: LaunchArgs, adapter: &dyn PlatformAdapter) -> Result<Value,
 /// flag that opens the web-content door, and a verified endpoint is handed
 /// off to a CDP client instead of left for the caller to rediscover.
 fn launch_suggestion(cdp_requested: bool, launched: &LaunchResult) -> Option<String> {
-    if launched.cdp.is_some() {
-        return Some(
-            "Drive the web contents with a CDP client: agent-browser connect <port> if \
-             installed (or ask the user to install agent-browser). Native menus, dialogs, \
-             windows, and screenshots stay with agent-desktop."
-                .to_owned(),
-        );
+    if let Some(cdp) = &launched.cdp {
+        return Some(format!(
+            "Next: run `agent-browser connect {}` and drive the web contents with its \
+             snapshot/click/type workflow (`agent-browser skills get electron` has the guide). \
+             If agent-browser is not installed, ask the user to install it or use accessibility \
+             commands. Do not hand-roll raw CDP or call app-internal APIs — that path is \
+             unverified and app-specific. Native menus, dialogs, windows, and screenshots stay \
+             with agent-desktop.",
+            cdp.port
+        ));
     }
     if !cdp_requested && launched.renderer.as_deref() == Some("chromium") {
         return Some(
-            "Chromium app: for web-content work, quit with close-app and relaunch with --cdp, \
-             then drive the web contents with a CDP client (agent-browser if installed). \
-             Accessibility commands still cover everything, including native menus and dialogs."
+            "Chromium app: for web-content work, run close-app and then launch --cdp, and \
+             drive the web contents with agent-browser. Accessibility commands still cover \
+             everything, including native menus and dialogs."
                 .to_owned(),
         );
     }
