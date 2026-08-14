@@ -25,6 +25,7 @@ pub(crate) struct LaunchArgs {
     pub timeout: u64,
     #[arg(
         long = "arg",
+        allow_hyphen_values = true,
         help = "Command-line argument passed to the launched app"
     )]
     #[serde(default)]

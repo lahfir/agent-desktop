@@ -1,5 +1,16 @@
 use super::*;
 
+/// Chromium switches all start with `--`, and `--arg` passthrough exists
+/// specifically to forward them; clap rejects a hyphen-leading value on a
+/// plain option unless `allow_hyphen_values` says otherwise.
+#[test]
+fn launch_arg_passthrough_accepts_a_hyphen_leading_value() {
+    let args = LaunchArgs::try_parse_from(["launch", "X", "--arg", "--remote-debugging-port=9229"])
+        .unwrap();
+
+    assert_eq!(args.args, vec!["--remote-debugging-port=9229"]);
+}
+
 /// God-object regression: `WaitModeArgs` used to carry 9 flat fields;
 /// `event`/`window_id` now live in `WaitEventArgs`, flattened onto
 /// `WaitArgs` as a sibling of `mode`/`predicate` (nesting it inside
