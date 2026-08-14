@@ -77,7 +77,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - Surface snapshots (menus, sheets, alerts) — these are already focused
 
 **When skeleton shines:**
-- Dense Electron apps (Slack, VS Code, Discord, Notion) that are **already running** — for one you are launching fresh, `launch --cdp` plus a CDP client reads the web contents faster than any skeleton walk (see principle 15)
+- Dense Electron apps (Slack, VS Code, Discord, Notion) that are **already running** — for one you are launching fresh, `launch --cdp` plus a CDP client (agent-browser preferred) reads the web contents faster than any skeleton walk (see principle 15)
 - Any app where full snapshot exceeds ~50 refs
 - Multi-region workflows (sidebar + main content + toolbar)
 
@@ -271,4 +271,4 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 12. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use `--headed` only when exact-window focus or physical delivery is intended; raw coordinates never imply focus.
 13. **Start a session once per run.** `session start` creates the manifest; pass its returned ID through `AGENT_DESKTOP_SESSION` for the run or `--session <id>` for one command. It does not activate later processes implicitly.
 14. **Trace hard failures.** With an active trace-enabled session, segments are written automatically. Add `--trace /tmp/agent-desktop.jsonl` only when you need a single override file (CI, one-offs). Check `status` when unsure whether tracing is active.
-15. **Chromium-app strategy.** The accessibility path is the default, and the only option for already-running apps and for native surfaces (menus, dialogs, windows). `launch --cdp` plus a CDP client is the opt-in fast path for a Chromium app's web contents, when a fresh launch is acceptable.
+15. **Chromium-app strategy.** The accessibility path is the default, and the only option for already-running apps and for native surfaces (menus, dialogs, windows). `launch --cdp` plus a CDP client (agent-browser preferred; any CDP client works) is the opt-in fast path for a Chromium app's web contents, when a fresh launch is acceptable.

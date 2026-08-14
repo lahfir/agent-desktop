@@ -85,7 +85,7 @@ agent-desktop snapshot --root @e1 --snapshot <snapshot_id> -i --compact
 
 ## Pattern: Task in a Chromium App (Two Tools, Hand in Hand)
 
-Task: open Slack and send a message to a person. Slack is Chromium-based, so this pattern hands the web-content step to a CDP client while agent-desktop keeps every native surface.
+Task: open Slack and send a message to a person. Slack is Chromium-based, so this pattern hands the web-content step to a CDP client — any framework that speaks CDP works, agent-browser preferred — while agent-desktop keeps every native surface.
 
 ```bash
 # 1. Launch normally first — no --cdp yet
@@ -103,12 +103,13 @@ agent-desktop wait --event app-terminated --app "Slack" --timeout 10000
 agent-desktop launch "Slack" --cdp
 # Response: data.cdp.port = 9231
 
-# 4. Hand off to a CDP client — check agent-browser first
+# 4. Hand off to a CDP client — agent-browser preferred, any CDP client works
 command -v agent-browser
 # If present:
 agent-browser connect 9231
 # Then its normal workflow: snapshot, find the person, click, type the message, send.
 # agent-browser skills get electron   # Electron-specific guidance if needed
+# If absent, connect with Playwright, Puppeteer, chrome-remote-interface, or another CDP client instead.
 
 # 5. Anything native happens on agent-desktop meanwhile, over the same launch —
 #    a menu bar item, a file-attach dialog, or a delivered notification:
@@ -119,7 +120,7 @@ agent-desktop --headed list-notifications --app "Slack"
 agent-desktop close-app "Slack"
 ```
 
-**Fallback when `agent-browser` is not installed:** ask the user to run `npm install -g agent-browser`, or skip `--cdp` and keep working through agent-desktop's accessibility path — `snapshot --skeleton --app "Slack" -i --compact` and drill into the message composer the same way as any other dense app. Accessibility always works; `--cdp` is the opt-in fast path when a fresh launch is acceptable and the client is available.
+**Fallback when no CDP client is installed:** ask the user to run `npm install -g agent-browser`, or skip `--cdp` and keep working through agent-desktop's accessibility path — `snapshot --skeleton --app "Slack" -i --compact` and drill into the message composer the same way as any other dense app. Accessibility always works; `--cdp` is the opt-in fast path when a fresh launch is acceptable and a CDP client is available.
 
 ## Pattern: Fill a Form
 
@@ -347,4 +348,4 @@ agent-desktop batch '[
 8. **Snapshotting the full window when an overlay is open.** Use `--surface sheet/alert/popover/menu` instead. Never `--skeleton` for surfaces — they're already focused.
 9. **Re-snapshotting everything after one action.** Use scoped re-drill (`--root @ref`) to refresh only the affected region. Other refs stay valid.
 10. **Assuming headed and headless have the same side effects.** Headless ref actions block implicit focus/cursor input. Headed ref actions intentionally focus the exact source window when required, and headed pointer actions may move the cursor; raw coordinates never infer focus.
-11. **Hand-rolling raw CDP for a Chromium app.** After `launch --cdp`, use `agent-browser connect <port>` — never a hand-written WebSocket client, `Runtime.evaluate` DOM edits, or app-internal APIs (e.g. an app's own JS globals). Those bypass real input, verify nothing, and are app-specific; they break silently on the next app update. If agent-browser is missing, ask the user to install it or stay on accessibility commands.
+11. **Hand-rolling raw CDP for a Chromium app.** After `launch --cdp`, connect a real CDP client — `agent-browser connect <port>` (preferred), or Playwright, Puppeteer, `chrome-remote-interface`, and similar — never a hand-written WebSocket client, `Runtime.evaluate` DOM edits, or app-internal APIs (e.g. an app's own JS globals). Those bypass real input, verify nothing, and are app-specific; they break silently on the next app update. If no CDP client is available, ask the user to install agent-browser or stay on accessibility commands.
