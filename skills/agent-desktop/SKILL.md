@@ -77,7 +77,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - Surface snapshots (menus, sheets, alerts) — these are already focused
 
 **When skeleton shines:**
-- Dense Electron apps (Slack, VS Code, Discord, Notion)
+- Dense Electron apps (Slack, VS Code, Discord, Notion) that are **already running** — for one you are launching fresh, `launch --cdp` plus a CDP client reads the web contents faster than any skeleton walk (see principle 15)
 - Any app where full snapshot exceeds ~50 refs
 - Multi-region workflows (sidebar + main content + toolbar)
 
@@ -257,7 +257,7 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 
 ## Key Principles for Agents
 
-1. **Skeleton first, drill second.** Start with `--skeleton -i --compact` for dense apps. Drill into regions with `--root @ref`. Full snapshot only for simple apps.
+1. **Skeleton first, drill second.** Start with `--skeleton -i --compact` for dense apps. Drill into regions with `--root @ref`. Full snapshot only for simple apps. For a Chromium app you are launching fresh, prefer `launch --cdp` + a CDP client for the web contents instead (principle 15).
 2. **Use `-i --compact` flags.** Filters to interactive elements and collapses empty wrappers, minimizing tokens.
 3. **Refs are snapshot-scoped.** Keep `snapshot_id` for deterministic multi-step use; re-drill the affected region after any UI-changing action. Scoped invalidation keeps other refs intact.
 4. **Prefer refs over coordinates.** `click @s8f3k2p9:e5` > `agent-desktop --headed mouse-click --xy 500,300`.
