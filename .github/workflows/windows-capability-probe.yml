@@ -18,6 +18,10 @@ on:
       - 'probes/windows/20-input-synthesis/**'
       - 'probes/windows/21-system-lifecycle/**'
       - 'probes/windows/22-capture-clipboard/**'
+      - 'probes/windows/23-signals-menus/**'
+      - 'probes/windows/FINDINGS.md'
+      - 'probes/windows/13-ledger-check.ps1'
+      - 'probes/windows/13-ledger-content.ps1'
       - '.github/workflows/windows-capability-probe.yml'
   workflow_dispatch:
 
@@ -87,6 +91,22 @@ jobs:
         run: |
           .\probes\windows\22-capture-clipboard\probe.ps1 -Label ci
 
+      - name: Run the signals-menus probe
+        shell: powershell
+        run: |
+          .\probes\windows\23-signals-menus\probe.ps1 -Label ci
+
+      # Runs after the area probes so the ledger it audits reflects every
+      # capture this job just wrote. Registered here rather than the main CI
+      # lane (ci.yml) per KTD12: the gate reads the probe corpus and diffs
+      # docs/phases.md against another branch, which is this capability lane's
+      # concern, not the per-PR compile-and-test lane's. Its own PROBE-RESULT
+      # line, not just its exit code, is what names which rule failed.
+      - name: Run the ledger completeness gate
+        shell: powershell
+        run: |
+          .\probes\windows\13-ledger-check.ps1
+
       # Uploads on failure as well as success. A probe that fails its mandatory
       # measurement gate has already written the placeholder captures naming
       # what did not measure, and on a red run those are the entire evidence
@@ -109,6 +129,8 @@ jobs:
             probes/windows/20-input-synthesis/captures/*-ci.json
             probes/windows/21-system-lifecycle/captures/*-ci.json
             probes/windows/22-capture-clipboard/captures/*-ci.json
+            probes/windows/23-signals-menus/captures/*-ci.json
+            probes/windows/captures/13-ledger-check/*.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were
           # found" failure on top of the real one and read as the cause. What

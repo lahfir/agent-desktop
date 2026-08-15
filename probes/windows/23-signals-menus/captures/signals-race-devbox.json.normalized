@@ -1,0 +1,36 @@
+{
+    "probe":  "23-signals-menus",
+    "question":  "mid-walk owning-process identity race rate on an idle desktop and while a fixture spawns/terminates windows, and how many re-walks (budget 5, per KTD3/LISTING_RACE_ATTEMPTS) clear it",
+    "methodology_cites":  [
+                              "KTD3",
+                              "window_ops.rs LISTING_RACE_ATTEMPTS"
+                          ],
+    "idle_desktop":  {
+                         "iterations":  60,
+                         "windows_examined_total":  240,
+                         "race_hits_total":  0,
+                         "iterations_with_race":  0,
+                         "rewalk_cleared_by_attempt":  [
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0
+                                                       ],
+                         "rewalk_uncleared_after_budget":  0
+                     },
+    "churn_spawn_terminate":  {
+                                  "iterations":  60,
+                                  "windows_examined_total":  286,
+                                  "race_hits_total":  0,
+                                  "iterations_with_race":  0,
+                                  "rewalk_cleared_by_attempt":  [
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0
+                                                                ],
+                                  "rewalk_uncleared_after_budget":  0
+                              }
+}
