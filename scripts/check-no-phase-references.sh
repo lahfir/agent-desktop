@@ -46,6 +46,12 @@ failed=0
 TOKEN_SCAN_MODE=""
 TOKEN_SCAN_LINE=""
 TOKEN_SCAN_FAILED=0
+# The roots the tree scan walks, overridable so the self-test can drive the real
+# scan against a planted fixture tree. Without that override the tree branch has
+# no coverage at all and only the line branch is ever exercised, which is how a
+# tree scan that could not fail reported clean over real violations.
+TOKEN_SCAN_RS_ROOTS="crates src"
+TOKEN_SCAN_MD_ROOTS="skills"
 
 token_rule() {
     local pattern="$1"
@@ -57,7 +63,14 @@ token_rule() {
         fi
         return 0
     fi
-    if matches="$( { grep -rnE --include='*.rs' "$pattern" crates src 2>/dev/null; grep -rnE --include='*.md' "$pattern" skills 2>/dev/null; } )"; then
+    # Test the collected text, never the substitution's exit status. A grouped
+    # substitution exits with the status of its LAST command, so testing it made
+    # a hit in crates/ or src/ invisible whenever the skills/ grep found nothing
+    # - which is the usual case, and is how three plan-decision ids reached
+    # shipped source with this gate reporting clean.
+    # shellcheck disable=SC2086
+    matches="$( { grep -rnE --include='*.rs' "$pattern" $TOKEN_SCAN_RS_ROOTS 2>/dev/null; grep -rnE --include='*.md' "$pattern" $TOKEN_SCAN_MD_ROOTS 2>/dev/null; } )"
+    if [ -n "$matches" ]; then
         printf '%s\n' "$matches" >&2
         printf '  ^ %s - describe what is true, not when it was built\n\n' "$description" >&2
         TOKEN_SCAN_FAILED=1
@@ -404,6 +417,32 @@ wrap.rs:2:/// planned fast-follow to the current read'
         printf 'self-test FAIL (false positive): two adjacent doc-comment lines joined into a reference\n' >&2
         failures=1
     fi
+    local tree_root planted_rs
+    tree_root="$(mktemp -d)"
+    mkdir -p "$tree_root/crates/x/src" "$tree_root/skills"
+    planted_rs="$tree_root/crates/x/src/planted.rs"
+    printf '/// see KTD7 for the decision
+pub fn f() {}
+' > "$planted_rs"
+    TOKEN_SCAN_RS_ROOTS="$tree_root/crates $tree_root/src"
+    TOKEN_SCAN_MD_ROOTS="$tree_root/skills"
+    if token_check 2>/dev/null; then
+        printf 'self-test FAIL (missed): the tree scan passed a planted plan-decision id
+' >&2
+        failures=1
+    fi
+    printf '/// describes what the code does
+pub fn f() {}
+' > "$planted_rs"
+    if ! token_check 2>/dev/null; then
+        printf 'self-test FAIL (false positive): the tree scan failed a clean fixture tree
+' >&2
+        failures=1
+    fi
+    TOKEN_SCAN_RS_ROOTS="crates src"
+    TOKEN_SCAN_MD_ROOTS="skills"
+    rm -rf "$tree_root"
+
     if [ "$failures" -ne 0 ]; then
         printf 'The delivery-plan reference rules do not behave as documented.\n' >&2
         return 1

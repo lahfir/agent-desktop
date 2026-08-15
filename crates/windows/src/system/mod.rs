@@ -33,6 +33,7 @@ pub(crate) mod process_state;
 #[cfg(target_os = "windows")]
 pub(crate) mod screenshot;
 pub(crate) mod session;
+pub(crate) mod signal_inventory;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod test_support;
 pub(crate) mod window_activate;
