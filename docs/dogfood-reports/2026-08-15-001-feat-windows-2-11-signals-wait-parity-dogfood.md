@@ -240,6 +240,49 @@ this sub-phase deflecting work. F2 is the only accepted finding, and it is
 accepted because acting on one unreproducible observation would be
 guessing, not because it is unimportant.
 
+## Second pass - adversarial
+
+The first pass fixed nothing in product code and routed four of five
+findings onward. That is a weak result for a gate whose whole purpose is to
+find what this sub-phase got wrong, so a second, deliberately hostile pass
+ran against the same release binary along three axes: deadline and
+degenerate-input boundaries, load/churn/concurrency, and the calling-agent
+view. The concurrency axis alone ran ~120 churn trials, 100 concurrent
+invocations, ~550 combined polls under handle and memory sampling, and 15
+menu open/close rounds against live waits.
+
+| id | finding | disposition |
+|---|---|---|
+| F6 | `wait --menu`/`--menu-closed` reported a target that died mid-wait with `disposition: {delivery: unknown, retry: unknown}` and no `suggestion` - while every other stale-reference error in the same binary sets both. `DeliverySemantics` defaults to unknown, and `stale_process_error` never opted out of that default, so an agent whose target exited during an ordinary churn scenario got no machine-readable signal about whether to retry or re-resolve. This project's envelope contract permits reading `recovery` only when the retry disposition is `safe`, which a defaulted `unknown` never is | **fixed here** - `crates/windows/src/system/wait.rs` now sets `not_delivered` and a process-oriented recovery, deliberately not core's ref-and-snapshot wording, which names a refresh this surface has no refs for. Pinned by `a_target_that_died_mid_wait_reports_a_disposition_and_a_recovery`, invert-verified: removing the disposition fails it |
+| F7 | `wait_for_menu`'s doc comment promised the predicate is evaluated at least once "even for a near-zero timeout", so `--menu-closed` against an already-closed menu succeeds immediately. True of the function, false of the command: the caller resolves the application first, and on a budget smaller than that resolution costs the command returns the generic deadline error without ever reaching the loop. Measured at `--timeout 0` and `--timeout 1` | **fixed here** - the doc now states the guarantee as the function's rather than the command's, and says plainly that a loop handed an already-spent budget cannot rescue it. A comment that promises behaviour the shipped path cannot deliver is a defect in the same way a wrong assertion is |
+| F8 | A scoped wait for a **disappearance** event fails `APP_NOT_FOUND` instead of observing the disappearance, when the target dies before application resolution completes. Deterministic when the target is already gone; racy and non-monotonic when it dies during resolution (5ms miss, 20ms hit, 60ms miss). The discriminating pair isolates it: the identical transition **unscoped** hits at the same timing where `--app`-scoped fails. `APP_NOT_FOUND` tells an agent "no such application", implying a bad `--app` value, when the truth is the opposite - the app existed and the disappearance the agent asked to observe is what broke the lookup | **owned elsewhere - §2.15** - `crates/core/src/commands/wait_event.rs`'s `signal_filter` gates every non-`app-launched` wait on `resolve_app` before the poll loop begins and treats its failure as fatal. Its `AppTerminated` escape hatch requires a seeded baseline, which a plain CLI invocation never has, so on this path it is dead code. Platform-neutral and shared with macOS |
+| F9 | Concurrent waits launched through a PowerShell job broker returned `APP_NOT_FOUND` in 40 of 48 trials against a stable, untouched target; the identical scenario driven by direct process spawning was clean across 100+ invocations | **accepted** - not reproducible against the binary under genuine OS-level concurrency, so the effect tracks the job broker rather than `agent-desktop.exe`. Recorded because it is the same shape as F3 (a background caller observing what a foreground caller never does) and an orchestrating agent may well drive waits this way |
+
+**One code-level asymmetry was attacked and not confirmed**, and is recorded
+rather than dropped: `list_apps_live` has none of the retry and
+self-consistency hardening `signal_inventory.rs` was purpose-built with for
+conceptually the same mid-walk identity race, and it can return `INTERNAL` -
+a code outside the set core's poll loop retries. Forty trials sweeping the
+kill offset from 0 to 800ms produced a clean threshold and zero `INTERNAL`
+codes, so the risk is latent rather than demonstrated.
+
+**What held up under hostile load**, stated because a dogfood that only
+lists failures misrepresents what was tested: rapid open/close churn across
+25 cycles, concurrent waits against multiple targets with no
+cross-contamination, capture cost inside the 200ms budget with 27 live
+windows, the tool-window exclusion holding end-to-end so 15 menu open/close
+rounds never fabricated a `window-opened`, focus churn across 20
+alternations, three-instance ambiguity degrading correctly as instances
+died, and flat handle, thread and working-set counts across ~550 polls -
+including the snapshot open/close cycle that runs every 50ms on the menu
+path.
+
+**The consumer axis did not complete** - it lost its session mid-run. The
+shipped skill documentation, batch-mode parity, session and trace
+interaction, and macOS envelope parity for this surface are therefore
+unaudited by this pass, and that is a gap in coverage rather than a clean
+result.
+
 ## Notes (do not implement here)
 
 1. Across roughly a dozen `TIMEOUT` envelopes recorded in this run, none

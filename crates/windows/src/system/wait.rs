@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use agent_desktop_core::{AdapterError, Deadline, ErrorCode, ProcessId, ProcessIdentity};
+use agent_desktop_core::{
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, ProcessIdentity,
+};
 
 use super::menu_state::menu_is_open;
 use super::process_identity;
@@ -15,8 +17,16 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// iteration and a second time immediately before success is declared - the
 /// macOS double-check that closes the window where the target dies between
 /// the read and the return. The deadline is consulted only after a mismatch,
-/// so the predicate is evaluated at least once even for a near-zero timeout
-/// and `--menu-closed` against an already-closed menu succeeds immediately.
+/// so the predicate is evaluated at least once **once this loop is reached**,
+/// and an already-closed menu satisfies a wait-for-closed on that first read.
+///
+/// That guarantee is this function's, not the command's, and the difference
+/// is observable: the caller resolves the target application before calling
+/// here, and on a budget smaller than that resolution costs the command
+/// refuses with the generic deadline error without ever reaching this loop.
+/// A timeout that must survive application resolution has to be larger than
+/// resolution costs; this loop cannot rescue a budget that is already spent
+/// when it is handed one.
 ///
 /// Core makes exactly one call here and owns no retry of its own
 /// (`crates/core/src/commands/wait.rs:123-129`), so every condition this
@@ -80,11 +90,24 @@ fn verify_process_alive(process: &ProcessIdentity) -> Result<(), AdapterError> {
     }
 }
 
+/// A target that died mid-wait is a fully understood outcome at the moment
+/// this error is built, so it carries the disposition and recovery an agent
+/// needs rather than defaulting to `unknown`. Nothing was delivered - the wait
+/// only ever observed - and retrying the same wait against the same process
+/// instance can never succeed, because that instance is gone for good; the
+/// caller has to resolve the application again. The wording is
+/// process-specific rather than borrowed from the ref-oriented core helper,
+/// which tells the caller to re-run a snapshot for a fresh ref - advice this
+/// surface has no refs for.
 fn stale_process_error(process: &ProcessIdentity) -> AdapterError {
     AdapterError::new(
         ErrorCode::StaleRef,
         "Target process instance is no longer running",
     )
+    .with_suggestion(
+        "The application exited during the wait. Re-resolve it with list-apps and retry          against the new process instance, or treat its exit as the outcome.",
+    )
+    .with_disposition(DeliverySemantics::not_delivered())
     .with_details(serde_json::json!({
         "pid": u32::from(process.pid),
         "process_instance": process.instance,

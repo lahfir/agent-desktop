@@ -261,3 +261,32 @@ fn the_poll_loop_does_not_spin_over_a_fixed_timeout() {
         "poll count {polls} over a 500ms wait suggests the loop is not sleeping between reads"
     );
 }
+
+/// A target that dies mid-wait must carry the disposition and recovery an
+/// agent acts on. `DeliverySemantics` defaults to unknown/unknown, so an
+/// error built without an explicit disposition tells a caller nothing about
+/// whether the wait delivered anything or whether retrying is safe - and this
+/// failure is completely understood at the point it is constructed. The
+/// project's own envelope contract says a consumer may read `recovery` only
+/// when the retry disposition is `safe`, which a defaulted `unknown` never is.
+#[test]
+fn a_target_that_died_mid_wait_reports_a_disposition_and_a_recovery() {
+    let error = stale_process_error(&ProcessIdentity::new(ProcessId::from(4321u32), "gone"));
+
+    assert_eq!(error.code, ErrorCode::StaleRef);
+    assert_eq!(
+        error.disposition.delivery(),
+        agent_desktop_core::DeliveryDisposition::NotDelivered,
+        "a wait only observes, so a dead target delivered nothing"
+    );
+    assert!(
+        error.suggestion.is_some(),
+        "a dead target is a recoverable condition and must say how to recover"
+    );
+    let suggestion = error.suggestion.unwrap_or_default();
+    assert!(
+        !suggestion.contains("snapshot") && !suggestion.contains("ref"),
+        "the recovery must be process-oriented; this surface has no refs or \
+         snapshots to refresh, got {suggestion}"
+    );
+}
