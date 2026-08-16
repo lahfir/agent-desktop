@@ -386,6 +386,20 @@ agent-desktop wait --event window-opened --window "Untitled" --timeout 10000
 ```
 Blocks until a desktop lifecycle signal is observed, detected by diffing a baseline captured at wait start against fresh reads — no need to know a new window's id or title up front. `--window-id`/`--window` are optional narrowing filters on top of `--event`, never a requirement by themselves (bare `--window` without `--event` instead selects the `wait (window)` mode above).
 
+**`--app` resolves once, at wait start, and that has three consequences worth
+knowing before you rely on it.** The application must already be running:
+every event except `app-launched` resolves the target before the first poll,
+so scoping to a process that does not exist yet returns `APP_NOT_FOUND`
+immediately rather than waiting out the timeout. Use `app-launched` — or an
+unscoped wait — when you are racing a launch. The wait then pins to the one
+process instance it resolved, so a *second* process of the same name starting
+later is invisible to it; if you need any instance of a name, run the wait
+unscoped and filter the event yourself. And a target that dies before that
+resolution completes also reports `APP_NOT_FOUND`, which reads like a bad
+`--app` value but means the opposite: the application existed and its
+disappearance is what broke the lookup. For a disappearance you expect,
+prefer an unscoped wait.
+
 | Token | Fires when |
 |-------|------------|
 | `window-opened` | A window not present in the baseline appears |
@@ -415,7 +429,7 @@ Transient errors (timeouts, element-not-found) are retried within the `--timeout
 | `--event` | | Desktop lifecycle signal to wait for: `window-opened`, `window-closed`, `app-launched`, `app-terminated`, `focus-changed`, `surface-appeared`, `surface-dismissed` |
 | `--window-id` | | Narrows `--event` to one window ID (window/focus events only) |
 | `--timeout` | 30000 | Timeout in ms (for element/window/text/menu/event waits) |
-| `--app` | | Scope the wait to a specific application |
+| `--app` | | Scope the wait to **one already-running process instance**, resolved once at wait start — not to every process of that name for the wait's duration. See the note below |
 
 ## Batch
 

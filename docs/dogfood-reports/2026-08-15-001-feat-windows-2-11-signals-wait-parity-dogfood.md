@@ -277,11 +277,25 @@ died, and flat handle, thread and working-set counts across ~550 polls -
 including the snapshot open/close cycle that runs every 50ms on the menu
 path.
 
-**The consumer axis did not complete** - it lost its session mid-run. The
-shipped skill documentation, batch-mode parity, session and trace
-interaction, and macOS envelope parity for this surface are therefore
-unaudited by this pass, and that is a gap in coverage rather than a clean
-result.
+**The consumer axis was re-run after losing its session mid-run**, and it was
+the most productive of the three - six further findings, including the two
+shipped-documentation defects below. Its results are recorded here rather
+than left as the coverage gap the first attempt produced.
+
+| id | finding | disposition |
+|---|---|---|
+| F10 | In batch mode, `launch` followed by a disappearance-event wait for the same app can never fire. Batch pre-seeds the baseline for an event wait *before the preceding entry runs*, so for `[launch, wait window-closed]` the seed is captured before the app exists: baseline has zero windows, the post-close state has zero windows, and the diff sees no net change. A full-timeout `TIMEOUT` reporting `baseline_counts.apps: 0` immediately after a `launch` succeeded in the same batch reads as though the app was never observed at all | **owned elsewhere - §2.15**. The pre-seed lives in `src/batch/execution.rs`, the platform-agnostic binary crate, and the same defect is reachable on macOS through the identical path. Note the pre-seed is a genuine *improvement* for `[launch, wait window-opened]`, which is why it exists - it is one entry too early, not wrong in principle |
+| F11 | Every event except `app-launched` resolves `--app` before the poll loop, so scoping to an application that is not running yet returns `APP_NOT_FOUND` in under 100ms while ignoring `--timeout` entirely. An agent racing a concurrent launch against a scoped wait - a normal orchestration pattern, and this dogfood's own methodology - gets an immediate hard failure instead of the budget it asked for | **owned elsewhere - §2.15** for the core gate (same `signal_filter` mechanism as F8), **fixed here** for the documentation half: the shipped `--app` flag description and a new note now state that the application must already be running and point at `app-launched` or an unscoped wait for the racing case |
+| F12 | A scoped wait pins to the one process instance resolved at wait start, so a second process of the same image name starting mid-wait is invisible - a silent miss indistinguishable from nothing happening. The unscoped wait catches the same transition. The flag read "Scope the wait to a specific application", which a reasonable agent takes to mean processes named X | **owned elsewhere - §2.15** for the core behaviour, **fixed here** for the documentation: the flag now says it scopes to one already-running process instance resolved once at wait start, and the note tells a caller who needs any instance of a name to run unscoped and filter the event |
+| F13 | `wait --event surface-appeared` reports `"surface": "menu"` on Windows, and the obvious follow-up `snapshot --surface menu` returns `PLATFORM_NOT_SUPPORTED`. The shipped docs tell agents to use `--surface menu` with no platform caveat, and `agent-desktop skills` serves that text from the Windows binary | **fixed here**. This is the asymmetry §2.14 owns closing, but an undocumented asymmetry is a defect now: the observation doc marks `--surface menu` macOS-only, tells callers to read `supported_surfaces` from `status` first, and names this exact case - the event says a menu opened; it is not an invitation to snapshot it as a surface on Windows |
+| F14 | The global snapshot namespace can be left unusable by a file-ownership mismatch, breaking `status` and `snapshot` with an `INTERNAL` error carrying no suggestion. Verified not to affect this surface: neither `wait --event` nor `wait --menu` touches `RefStore` | **accepted** for this sub-phase - outside the 2.11 surface, pre-existing, and reachable identically on either adapter. Recorded so it is not rediscovered as new |
+| F15 | `SKILL.md`'s platform-universal sections are not Windows-aware, and that text is served verbatim by `agent-desktop skills` from the Windows binary | **owned elsewhere - §2.15**, whose scope already names docs and skills sync. The 2.11-specific half - the surface asymmetry and the `--app` semantics - is fixed here rather than deferred, because those are the lines this sub-phase's own behaviour made wrong |
+
+**Two documentation defects were fixed here rather than routed.** Shipped
+skill markdown is `include_str!`d into the binary and served to agents by
+`agent-desktop skills`, so a wrong line in it is a shipped defect in the same
+sense as a wrong error code - and both of these lines were made wrong by what
+this sub-phase shipped.
 
 ## Notes (do not implement here)
 
