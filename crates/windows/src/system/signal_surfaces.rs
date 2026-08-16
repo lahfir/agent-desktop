@@ -6,9 +6,11 @@ use agent_desktop_core::{
     AdapterError, AppInfo, Deadline, ErrorCode, ProcessId, SnapshotSurface, SurfaceSignal,
 };
 
-use super::menu_state::menu_is_open;
+use super::listing_retry::narrow_to_permitted_codes;
+use super::menu_state;
 use super::permissions::ensure_budget;
 use super::window_enum::{WindowHandle, enumerate_top_level};
+use super::window_identity;
 use super::window_ops::passes_filter;
 use crate::tree::automation::root_from_hwnd;
 use crate::tree::surfaces::window_is_modal_sheet;
@@ -45,11 +47,10 @@ pub(crate) fn app_scoped_surfaces(
         return Ok(Vec::new());
     }
     let mut surfaces = sheet_surfaces(&targets, deadline)?;
-    for (index, target) in targets.values().enumerate() {
-        if index > 0 {
-            ensure_budget(deadline)?;
-        }
-        if menu_is_open(target.pid, deadline)? {
+    let pids: Vec<ProcessId> = targets.values().map(|target| target.pid).collect();
+    let menus_open = menu_state::menus_open_for(&pids, deadline)?;
+    for target in targets.values() {
+        if menus_open.get(&target.pid).copied().unwrap_or(false) {
             surfaces.push(menu_signal(target));
         }
     }
@@ -116,14 +117,14 @@ fn sheet_surfaces(
         }
         true
     })
-    .map_err(narrow_to_closed_set)?;
+    .map_err(narrow_to_permitted_codes)?;
 
     let mut surfaces = Vec::new();
     for (index, handle) in candidates.into_iter().enumerate() {
         if index > 0 {
             ensure_budget(deadline)?;
         }
-        let Some(pid) = owning_pid(handle) else {
+        let Some(pid) = window_identity::live_window_owner(handle) else {
             continue;
         };
         let Some(target) = targets.get(&pid) else {
@@ -135,7 +136,7 @@ fn sheet_surfaces(
             }
             Ok(_) => {}
             Err(error) if error.code == ErrorCode::WindowNotFound => {}
-            Err(error) => return Err(narrow_to_closed_set(error)),
+            Err(error) => return Err(narrow_to_permitted_codes(error)),
         }
     }
     Ok(surfaces)
@@ -151,37 +152,11 @@ fn sheet_surfaces(
 }
 
 #[cfg(target_os = "windows")]
-fn owning_pid(handle: WindowHandle) -> Option<ProcessId> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    let mut pid: u32 = 0;
-    unsafe { GetWindowThreadProcessId(handle, &mut pid) };
-    if pid == 0 {
-        None
-    } else {
-        Some(ProcessId::from(pid))
-    }
-}
-
-#[cfg(target_os = "windows")]
 fn has_owner(handle: WindowHandle) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GET_WINDOW_CMD, GW_OWNER, GetWindow};
 
     let command: GET_WINDOW_CMD = GW_OWNER;
     !unsafe { GetWindow(handle, command) }.is_null()
-}
-
-/// Narrows any surface-read failure onto the two codes a filtered capture
-/// may return: `TIMEOUT` passes through unchanged, everything else -
-/// `EnumWindows` failing outright, or a UI Automation read other than the
-/// vanished-window and non-pumping cases already handled by their own
-/// callers - becomes `APP_UNRESPONSIVE`, the code the Error and Disposition
-/// table assigns to "a surface read was blocked."
-fn narrow_to_closed_set(mut error: AdapterError) -> AdapterError {
-    if error.code != ErrorCode::Timeout {
-        error.code = ErrorCode::AppUnresponsive;
-    }
-    error
 }
 
 #[cfg(test)]

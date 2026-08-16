@@ -282,3 +282,58 @@ fn a_non_pumping_candidate_returns_app_unresponsive_without_hanging() {
         started.elapsed()
     );
 }
+
+/// A snapshot handle opened inside the walk must be closed on the deadline
+/// exit as well as the normal one. `wait --event` polls this path every
+/// 200ms, so an exit that skips the close leaks one handle per expired
+/// capture and exhausts the process over a long wait.
+#[test]
+fn an_expired_deadline_mid_walk_still_closes_the_snapshot_handle() {
+    let _opens = thread_snapshot_calls::take();
+    let _closes = thread_snapshot_closes::take();
+
+    let expired = Deadline::after(1).expect("deadline builds");
+    while !expired.is_expired() {
+        std::thread::yield_now();
+    }
+    let outcome = classic_menu_mode_active(ProcessId::from(std::process::id()), expired);
+
+    assert!(
+        outcome.is_err(),
+        "an expired deadline must refuse rather than complete the walk"
+    );
+    assert_eq!(
+        thread_snapshot_calls::take(),
+        thread_snapshot_closes::take(),
+        "every ToolHelp snapshot opened by the walk must be closed on every exit path"
+    );
+}
+
+/// The multi-target path takes one whole-desktop thread snapshot per call,
+/// not one per target. `TH32CS_SNAPTHREAD` is unscoped, so a filter naming
+/// several processes - two instances of one image name is ordinary - would
+/// otherwise re-walk every thread on the desktop once per process on every
+/// poll.
+#[test]
+fn menus_open_for_takes_one_snapshot_regardless_of_target_count() {
+    let live: Vec<ProcessId> = crate::system::app_ops::process_snapshot()
+        .expect("the process snapshot enumerates")
+        .into_iter()
+        .map(|row| row.pid)
+        .filter(|pid| u32::from(*pid) != 0)
+        .take(3)
+        .collect();
+    if live.len() < 2 {
+        return;
+    }
+
+    let _drain = thread_snapshot_calls::take();
+    let _outcome = menus_open_for(&live, deadline());
+
+    assert_eq!(
+        thread_snapshot_calls::take(),
+        1,
+        "{} targets must still cost exactly one thread snapshot",
+        live.len()
+    );
+}

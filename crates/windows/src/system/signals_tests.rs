@@ -1,5 +1,5 @@
 use super::*;
-use agent_desktop_core::{AppInfo, ProcessId, WindowInfo, WindowState};
+use agent_desktop_core::{AppInfo, ErrorCode, ProcessId, WindowInfo, WindowState};
 
 fn deadline() -> Deadline {
     Deadline::after(10_000).expect("signals tests use a generous deadline")

@@ -1,7 +1,8 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, ErrorCode, SignalBaseline, SignalCompleteness, SignalFilter,
+    AdapterError, Deadline, SignalBaseline, SignalCompleteness, SignalFilter,
 };
 
+use super::listing_retry::narrow_to_permitted_codes;
 use super::permissions::ensure_budget;
 use super::signal_filter_apply::apply_signal_filter;
 use super::signal_inventory::{SignalWindowInventory, capture_windows_and_apps};
@@ -58,19 +59,6 @@ fn assemble(
             surfaces: scan_requested,
         },
     })
-}
-
-/// The one place R5's closed error set is enforced for the whole composed
-/// capture. `TIMEOUT` passes through unchanged; every other code - whatever
-/// any current or future callee raises - becomes `APP_UNRESPONSIVE`, the
-/// code core retries for "the desktop could not be read right now". A
-/// fourth code reaching core would abort the entire wait, so this mapping
-/// has no fallthrough that could let one through.
-fn narrow_to_permitted_codes(mut error: AdapterError) -> AdapterError {
-    if error.code != ErrorCode::Timeout {
-        error.code = ErrorCode::AppUnresponsive;
-    }
-    error
 }
 
 #[cfg(test)]

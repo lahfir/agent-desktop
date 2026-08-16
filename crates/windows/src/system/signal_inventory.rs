@@ -10,7 +10,7 @@ use super::app_ops;
 use super::listing_retry::{LISTING_RACE_ATTEMPTS, retry_transient_window_race};
 use super::permissions::ensure_budget;
 use super::process_identity;
-use super::window_enum::{EnumeratedWindow, WindowHandle, enumerate_top_level};
+use super::window_enum::{EnumeratedWindow, enumerate_top_level};
 use super::window_identity;
 use super::window_ops;
 
@@ -143,7 +143,7 @@ fn walk_phase(
         if index > 0 {
             ensure_budget(deadline)?;
         }
-        let Some(pid) = pid_for_handle(window.handle) else {
+        let Some(pid) = window_identity::live_window_owner(window.handle) else {
             continue;
         };
         let token = cached_token(&mut cache, pid)?;
@@ -184,7 +184,7 @@ fn assembly_phase(
         if index > 0 {
             ensure_budget(deadline)?;
         }
-        let Some(current_pid) = pid_for_handle(entry.window.handle) else {
+        let Some(current_pid) = window_identity::live_window_owner(entry.window.handle) else {
             continue;
         };
         if current_pid != entry.pid {
@@ -260,24 +260,6 @@ fn token_for_pid_seamed(pid: ProcessId) -> Result<Option<String>, AdapterError> 
         return Ok(None);
     }
     process_identity::token_for_pid(pid)
-}
-
-#[cfg(target_os = "windows")]
-fn pid_for_handle(handle: WindowHandle) -> Option<ProcessId> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    let mut pid: u32 = 0;
-    unsafe { GetWindowThreadProcessId(handle, &mut pid) };
-    if pid == 0 {
-        None
-    } else {
-        Some(ProcessId::from(pid))
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn pid_for_handle(_handle: WindowHandle) -> Option<ProcessId> {
-    None
 }
 
 /// Narrows any native-call failure onto the closed error set. `TIMEOUT`

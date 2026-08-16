@@ -6,6 +6,9 @@ use super::permissions::ensure_budget;
 use super::process_state::hresult_from_win32;
 use super::window_enum::{enumerate_top_level, window_is_responsive};
 
+#[cfg(target_os = "windows")]
+use super::listing_retry::narrow_to_permitted_codes;
+
 /// Whether a menu is open right now for `pid`, composed from the two sources
 /// A23-1 and A23-11 measured as covering every stack the corpus could stage:
 /// classic `GetGUIThreadInfo` menu-mode flags, read per thread of the target
@@ -26,19 +29,9 @@ pub(crate) fn menu_is_open(pid: ProcessId, deadline: Deadline) -> Result<bool, A
     uia_menu_reachable(pid, deadline)
 }
 
-/// Narrows any failure this module raises onto the two codes both of its
-/// callers may return: `wait_for_menu` (no retryable class of its own) and
-/// the app-scoped surface scan feeding `capture_signal_baseline` (R5's
-/// closed set). `TIMEOUT` passes through unchanged; everything else becomes
-/// `APP_UNRESPONSIVE`, the one "could not examine the target" code both
-/// callers accept.
-#[cfg(target_os = "windows")]
-fn close_error_set(mut error: AdapterError) -> AdapterError {
-    if error.code != ErrorCode::Timeout {
-        error.code = ErrorCode::AppUnresponsive;
-    }
-    error
-}
+#[path = "menu_state_multi.rs"]
+mod multi;
+pub(crate) use multi::menus_open_for;
 
 #[cfg(target_os = "windows")]
 fn process_not_found_error(pid: ProcessId) -> AdapterError {
@@ -107,7 +100,7 @@ fn classic_menu_mode_active(pid: ProcessId, deadline: Deadline) -> Result<bool, 
     let target = u32::from(pid);
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
     if snapshot.is_null() {
-        return Err(close_error_set(win32_last_error(
+        return Err(narrow_to_permitted_codes(win32_last_error(
             "CreateToolhelp32Snapshot failed for classic menu-mode detection",
         )));
     }
@@ -120,7 +113,12 @@ fn classic_menu_mode_active(pid: ProcessId, deadline: Deadline) -> Result<bool, 
     let mut ok = unsafe { Thread32First(snapshot, &mut entry) };
     while ok != 0 {
         if !first {
-            ensure_budget(deadline)?;
+            if let Err(error) = ensure_budget(deadline) {
+                unsafe { CloseHandle(snapshot) };
+                #[cfg(test)]
+                thread_snapshot_closes::record();
+                return Err(error);
+            }
         }
         first = false;
         if entry.th32OwnerProcessID == target && thread_reports_menu_mode(entry.th32ThreadID) {
@@ -130,6 +128,8 @@ fn classic_menu_mode_active(pid: ProcessId, deadline: Deadline) -> Result<bool, 
         ok = unsafe { Thread32Next(snapshot, &mut entry) };
     }
     unsafe { CloseHandle(snapshot) };
+    #[cfg(test)]
+    thread_snapshot_closes::record();
     Ok(found)
 }
 
@@ -175,7 +175,7 @@ fn uia_menu_reachable(pid: ProcessId, deadline: Deadline) -> Result<bool, Adapte
     if candidates.is_empty() {
         return Ok(false);
     }
-    let client = crate::tree::automation::automation_client().map_err(close_error_set)?;
+    let client = crate::tree::automation::automation_client().map_err(narrow_to_permitted_codes)?;
     let condition = menu_family_condition(&client)?;
     for (index, handle) in candidates.into_iter().enumerate() {
         if index > 0 {
@@ -196,19 +196,14 @@ fn uia_menu_reachable(_pid: ProcessId, deadline: Deadline) -> Result<bool, Adapt
 
 #[cfg(target_os = "windows")]
 fn tool_window_candidates(pid: ProcessId) -> Result<Vec<isize>, AdapterError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    let target = u32::from(pid);
     let mut handles = Vec::new();
     enumerate_top_level(|window| {
-        let mut owner = 0u32;
-        unsafe { GetWindowThreadProcessId(window.handle, &mut owner) };
-        if owner == target && window.tool {
+        if super::window_identity::live_window_owner(window.handle) == Some(pid) && window.tool {
             handles.push(window.handle as isize);
         }
         true
     })
-    .map_err(close_error_set)?;
+    .map_err(narrow_to_permitted_codes)?;
     Ok(handles)
 }
 
@@ -223,7 +218,7 @@ fn menu_family_condition(
         client
             .create_property_condition(UIProperty::ControlType, Variant::from(control as i32), None)
             .map_err(|error| {
-                close_error_set(crate::tree::automation::uia_error(
+                narrow_to_permitted_codes(crate::tree::automation::uia_error(
                     &error,
                     "build the menu-family search condition",
                 ))
@@ -235,7 +230,7 @@ fn menu_family_condition(
     let menu_or_bar = client
         .create_or_condition(menu, menu_bar)
         .map_err(|error| {
-            close_error_set(crate::tree::automation::uia_error(
+            narrow_to_permitted_codes(crate::tree::automation::uia_error(
                 &error,
                 "combine the menu-family search condition",
             ))
@@ -243,7 +238,7 @@ fn menu_family_condition(
     client
         .create_or_condition(menu_or_bar, menu_item)
         .map_err(|error| {
-            close_error_set(crate::tree::automation::uia_error(
+            narrow_to_permitted_codes(crate::tree::automation::uia_error(
                 &error,
                 "combine the menu-family search condition",
             ))
@@ -292,9 +287,9 @@ fn probe_step(error: &uiautomation::Error, context: &str) -> Result<bool, Adapte
     if failure.is_exhaustion() || is_vanished(failure) {
         return Ok(false);
     }
-    Err(close_error_set(crate::tree::automation::uia_failure_error(
-        failure, context,
-    )))
+    Err(narrow_to_permitted_codes(
+        crate::tree::automation::uia_failure_error(failure, context),
+    ))
 }
 
 #[cfg(target_os = "windows")]
@@ -327,6 +322,31 @@ fn adapter_error_from_win32(error: u32, message: &str) -> AdapterError {
         err = err.with_suggestion(suggestion);
     }
     err
+}
+
+/// Counts snapshot handle closes so a test can prove every opened ToolHelp
+/// snapshot is closed on every exit path. The deadline check inside the walk
+/// returns early, and an early return that skips the close leaks a handle per
+/// expired capture on a loop that polls every 200ms.
+#[cfg(test)]
+pub(super) mod thread_snapshot_closes {
+    use std::cell::Cell;
+
+    thread_local! {
+        static COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(super) fn record() {
+        COUNT.with(|cell| cell.set(cell.get() + 1));
+    }
+
+    pub(super) fn take() -> usize {
+        COUNT.with(|cell| {
+            let value = cell.get();
+            cell.set(0);
+            value
+        })
+    }
 }
 
 #[cfg(test)]
