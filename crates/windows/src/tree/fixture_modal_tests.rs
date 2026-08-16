@@ -1,3 +1,12 @@
+//! Every `ModalFixture` spawned below is a re-exec'd child of this same test
+//! binary, so it shares its process image name with every other such
+//! fixture in this crate. Each test that spawns one holds
+//! `test_support::FIXTURE_APP_NAME_LOCK` for the fixture's entire lifetime,
+//! exactly as `system::signal_surfaces_tests` and
+//! `system::wait_surface_live_tests` hold it around theirs, so this file's
+//! own fixture cannot coexist with a concurrently running
+//! `list_apps`-by-name-resolving test and defeat that test's resolution.
+
 use super::*;
 
 use agent_desktop_core::Deadline;
@@ -5,6 +14,8 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GET_WINDOW_CMD, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongPtrW, IsWindow,
 };
+
+use crate::system::test_support::FIXTURE_APP_NAME_LOCK;
 
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -28,6 +39,9 @@ fn modal_fixture_host_process_entry() {
 #[test]
 fn the_modal_fixture_window_is_owned_and_carries_the_measured_modal_properties() {
     crate::tree::fixture::bootstrap();
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = ModalFixture::spawn().expect("the modal fixture starts");
     assert_ne!(fixture.process_id(), std::process::id());
     assert!(
@@ -75,6 +89,9 @@ fn the_modal_fixture_window_is_owned_and_carries_the_measured_modal_properties()
 /// the fixture's own bookkeeping.
 #[test]
 fn the_modal_fixture_cleans_up_owner_and_modal_on_drop() {
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = ModalFixture::spawn().expect("the modal fixture starts");
     let owner = fixture.owner_handle();
     let modal = fixture.modal_handle();

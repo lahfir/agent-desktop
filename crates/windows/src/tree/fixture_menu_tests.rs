@@ -1,3 +1,12 @@
+//! Every `MenuFixture` spawned below is a re-exec'd child of this same test
+//! binary, so it shares its process image name with every other such
+//! fixture in this crate. Each test that spawns one holds
+//! `test_support::FIXTURE_APP_NAME_LOCK` for the fixture's entire lifetime,
+//! exactly as `system::wait_tests` and `system::menu_state_tests` hold it
+//! around theirs, so this file's own fixture cannot coexist with a
+//! concurrently running `list_apps`-by-name-resolving test and defeat that
+//! test's resolution.
+
 use super::*;
 
 use windows_sys::Win32::Foundation::CloseHandle;
@@ -8,6 +17,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GUI_INMENUMODE, GUI_POPUPMENUMODE, GUI_SYSTEMMENUMODE, GUITHREADINFO, GetGUIThreadInfo,
     IsWindow,
 };
+
+use crate::system::test_support::FIXTURE_APP_NAME_LOCK;
 
 const SETTLE: Duration = Duration::from_millis(250);
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -29,6 +40,9 @@ fn menu_fixture_host_process_entry() {
 /// `TrackPopupMenu` tracking loop into and out of the tracked state.
 #[test]
 fn the_menu_fixture_opens_and_closes_the_context_menu_independently_of_any_predicate() {
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     assert!(
         !fixture.menu_is_up(),
@@ -55,6 +69,9 @@ fn the_menu_fixture_opens_and_closes_the_context_menu_independently_of_any_predi
 /// same-process artifact.
 #[test]
 fn opening_the_fixture_menu_does_not_put_the_test_process_into_menu_mode() {
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
 
     fixture.open_context_menu();
@@ -84,6 +101,9 @@ fn opening_the_fixture_menu_does_not_put_the_test_process_into_menu_mode() {
 /// internal flag cannot pass this test.
 #[test]
 fn the_menu_fixture_cleans_up_its_window_on_drop() {
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let handle = fixture.handle();
     assert!(

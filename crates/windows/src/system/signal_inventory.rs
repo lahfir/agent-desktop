@@ -7,16 +7,12 @@ use agent_desktop_core::{
 };
 
 use super::app_ops;
+use super::listing_retry::{LISTING_RACE_ATTEMPTS, retry_transient_window_race};
 use super::permissions::ensure_budget;
 use super::process_identity;
 use super::window_enum::{EnumeratedWindow, WindowHandle, enumerate_top_level};
 use super::window_identity;
 use super::window_ops;
-
-/// How many times a whole pass is re-walked when it catches its own identity
-/// inconsistent mid-assembly. Named and sized to match `launch.rs`'s
-/// `observe_window_once`, which absorbs the same race over the same inventory.
-const LISTING_RACE_ATTEMPTS: u32 = 5;
 
 /// One coherent instant's windows and apps, assembled from a single
 /// `EnumWindows` pass plus one `ToolHelp` process snapshot.
@@ -58,33 +54,41 @@ enum PassOutcome {
     Truncated,
 }
 
-enum PassError {
-    Race,
-    Fatal(AdapterError),
-}
-
 /// The single-pass, mutually-coherent windows+apps observation `wait --event`
-/// polls. A mid-walk identity race is absorbed internally, because surfacing it
-/// would abort the whole wait: core retries only `TIMEOUT`, `ELEMENT_NOT_FOUND`
-/// and `APP_UNRESPONSIVE`. A truncated walk is reported rather than retried,
-/// since retrying it would spend the same exhausted budget again.
+/// polls. A mid-walk identity race is absorbed internally by the shared
+/// listing-retry helper, because surfacing it would abort the whole wait:
+/// core retries only `TIMEOUT`, `ELEMENT_NOT_FOUND` and `APP_UNRESPONSIVE`. A
+/// truncated walk is reported rather than retried, since retrying it would
+/// spend the same exhausted budget again.
 pub(crate) fn capture_windows_and_apps(
     deadline: Deadline,
 ) -> Result<SignalWindowInventory, AdapterError> {
-    ensure_budget(deadline)?;
-    for _attempt in 0..LISTING_RACE_ATTEMPTS {
-        ensure_budget(deadline)?;
-        match single_pass(deadline) {
-            Ok(PassOutcome::Coherent(inventory)) => return Ok(inventory),
-            Ok(PassOutcome::Truncated) => return Ok(SignalWindowInventory::truncated()),
-            Err(PassError::Race) => continue,
-            Err(PassError::Fatal(error)) => return Err(error),
+    match retry_transient_window_race(deadline, is_mid_walk_race, || single_pass(deadline)) {
+        Ok(PassOutcome::Coherent(inventory)) => Ok(inventory),
+        Ok(PassOutcome::Truncated) => Ok(SignalWindowInventory::truncated()),
+        Err(error) if is_mid_walk_race(&error) => {
+            Err(mid_walk_identity_race_error(LISTING_RACE_ATTEMPTS))
         }
+        Err(error) => Err(error),
     }
-    Err(mid_walk_identity_race_error(LISTING_RACE_ATTEMPTS))
 }
 
-fn single_pass(deadline: Deadline) -> Result<PassOutcome, PassError> {
+/// `WINDOW_NOT_FOUND` is otherwise never produced on this path -
+/// `remap_native_failure` never yields it and neither does
+/// `process_identity::token_for_pid` - so it is an unambiguous internal
+/// race marker the shared retry helper can classify without a bespoke type.
+fn is_mid_walk_race(error: &AdapterError) -> bool {
+    error.code == ErrorCode::WindowNotFound
+}
+
+fn mid_walk_race_signal() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::WindowNotFound,
+        "internal: mid-walk identity race",
+    )
+}
+
+fn single_pass(deadline: Deadline) -> Result<PassOutcome, AdapterError> {
     #[cfg(test)]
     enum_windows_calls::record();
 
@@ -100,7 +104,7 @@ fn single_pass(deadline: Deadline) -> Result<PassOutcome, PassError> {
         }
         true
     })
-    .map_err(|error| PassError::Fatal(remap_native_failure(error)))?;
+    .map_err(remap_native_failure)?;
 
     if truncated {
         return Ok(PassOutcome::Truncated);
@@ -108,7 +112,7 @@ fn single_pass(deadline: Deadline) -> Result<PassOutcome, PassError> {
 
     #[cfg(all(test, target_os = "windows"))]
     if force_race::consume_if_armed() {
-        return Err(PassError::Race);
+        return Err(mid_walk_race_signal());
     }
 
     let walk_entries = walk_phase(candidates, deadline)?;
@@ -132,17 +136,17 @@ fn walk_budget_ok(deadline: Deadline) -> bool {
 fn walk_phase(
     candidates: Vec<EnumeratedWindow>,
     deadline: Deadline,
-) -> Result<Vec<WalkEntry>, PassError> {
+) -> Result<Vec<WalkEntry>, AdapterError> {
     let mut cache: HashMap<ProcessId, Option<String>> = HashMap::new();
     let mut entries = Vec::new();
     for (index, window) in candidates.into_iter().enumerate() {
         if index > 0 {
-            ensure_budget(deadline).map_err(PassError::Fatal)?;
+            ensure_budget(deadline)?;
         }
         let Some(pid) = pid_for_handle(window.handle) else {
             continue;
         };
-        let token = cached_token(&mut cache, pid).map_err(PassError::Fatal)?;
+        let token = cached_token(&mut cache, pid)?;
         entries.push(WalkEntry { window, pid, token });
     }
     Ok(entries)
@@ -158,10 +162,12 @@ fn walk_phase(
 /// pid with a different generation token - is the race this pass re-walks for.
 /// A token unreadable on both reads is a deterministic exclusion: counted, and
 /// never emitted as `None`, which the diff drops and a filtered wait aborts on.
-fn assembly_phase(entries: Vec<WalkEntry>, deadline: Deadline) -> Result<PassOutcome, PassError> {
-    ensure_budget(deadline).map_err(PassError::Fatal)?;
-    let snapshot = app_ops::process_snapshot()
-        .map_err(|error| PassError::Fatal(remap_native_failure(error)))?;
+fn assembly_phase(
+    entries: Vec<WalkEntry>,
+    deadline: Deadline,
+) -> Result<PassOutcome, AdapterError> {
+    ensure_budget(deadline)?;
+    let snapshot = app_ops::process_snapshot().map_err(remap_native_failure)?;
     let name_by_pid: HashMap<ProcessId, String> = snapshot
         .into_iter()
         .map(|row| (row.pid, row.name))
@@ -176,15 +182,15 @@ fn assembly_phase(entries: Vec<WalkEntry>, deadline: Deadline) -> Result<PassOut
 
     for (index, entry) in entries.into_iter().enumerate() {
         if index > 0 {
-            ensure_budget(deadline).map_err(PassError::Fatal)?;
+            ensure_budget(deadline)?;
         }
         let Some(current_pid) = pid_for_handle(entry.window.handle) else {
             continue;
         };
         if current_pid != entry.pid {
-            return Err(PassError::Race);
+            return Err(mid_walk_race_signal());
         }
-        let fresh_token = cached_token(&mut cache, current_pid).map_err(PassError::Fatal)?;
+        let fresh_token = cached_token(&mut cache, current_pid)?;
         let token = match (entry.token.as_deref(), fresh_token.as_deref()) {
             (None, None) => {
                 excluded_window_count += 1;
@@ -193,7 +199,7 @@ fn assembly_phase(entries: Vec<WalkEntry>, deadline: Deadline) -> Result<PassOut
             (Some(walk_token), Some(assembly_token)) if walk_token == assembly_token => {
                 walk_token.to_string()
             }
-            _ => return Err(PassError::Race),
+            _ => return Err(mid_walk_race_signal()),
         };
         let Some(app_name) = name_by_pid.get(&current_pid).cloned() else {
             excluded_window_count += 1;
@@ -301,98 +307,17 @@ fn mid_walk_identity_race_error(attempts: u32) -> AdapterError {
     }))
 }
 
+#[path = "signal_inventory_test_seams.rs"]
+mod test_seams;
 #[cfg(test)]
-pub(super) mod enum_windows_calls {
-    use std::cell::Cell;
-
-    thread_local! {
-        static COUNT: Cell<usize> = const { Cell::new(0) };
-    }
-
-    pub(super) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
-    }
-}
-
-#[cfg(test)]
-pub(super) mod force_token_none {
-    use std::cell::Cell;
-
-    use agent_desktop_core::ProcessId;
-
-    thread_local! {
-        static TARGET: Cell<Option<u32>> = const { Cell::new(None) };
-    }
-
-    struct ResetOnDrop;
-
-    impl Drop for ResetOnDrop {
-        fn drop(&mut self) {
-            TARGET.with(|cell| cell.set(None));
-        }
-    }
-
-    pub(super) fn with<R>(pid: ProcessId, run: impl FnOnce() -> R) -> R {
-        TARGET.with(|cell| cell.set(Some(u32::from(pid))));
-        let _reset = ResetOnDrop;
-        run()
-    }
-
-    pub(super) fn matches(pid: ProcessId) -> bool {
-        TARGET.with(|cell| cell.get() == Some(u32::from(pid)))
-    }
-}
-
+use test_seams::{enum_windows_calls, force_token_none};
 #[cfg(all(test, target_os = "windows"))]
-pub(super) mod force_race {
-    use std::cell::Cell;
-
-    thread_local! {
-        static REMAINING: Cell<usize> = const { Cell::new(0) };
-    }
-
-    pub(super) fn with<R>(times: usize, run: impl FnOnce() -> R) -> R {
-        crate::system::test_support::with_usize_flag(&REMAINING, times, run)
-    }
-
-    pub(super) fn consume_if_armed() -> bool {
-        REMAINING.with(|cell| {
-            let remaining = cell.get();
-            if remaining == 0 {
-                false
-            } else {
-                cell.set(remaining - 1);
-                true
-            }
-        })
-    }
-}
-
-#[cfg(all(test, target_os = "windows"))]
-pub(super) mod force_truncation {
-    use std::cell::Cell;
-
-    thread_local! {
-        static ACTIVE: Cell<bool> = const { Cell::new(false) };
-    }
-
-    pub(super) fn with<R>(run: impl FnOnce() -> R) -> R {
-        crate::system::test_support::with_flag(&ACTIVE, true, run)
-    }
-
-    pub(super) fn is_active() -> bool {
-        ACTIVE.with(Cell::get)
-    }
-}
+use test_seams::{force_race, force_truncation};
 
 #[cfg(test)]
 #[path = "signal_inventory_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "signal_inventory_command_live_tests.rs"]
+mod command_live_tests;

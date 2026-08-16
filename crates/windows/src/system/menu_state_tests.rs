@@ -1,0 +1,284 @@
+//! Windows-only: drives real classic Win32 menus (`MenuFixture`) and a
+//! non-pumping window (`StalledFixture`) against both measured sources
+//! (A23-1, A23-11) and their union. A23-10 grounds the no-GUI-thread and
+//! nonexistent-pid cases.
+//!
+//! Every `MenuFixture` here is a re-exec'd child of this same test binary, so
+//! it shares its process image name with every other such fixture in this
+//! crate. Each test that spawns one holds `test_support::FIXTURE_APP_NAME_LOCK`
+//! for its fixture's entire lifetime so it cannot coexist with another
+//! lock-holding test's fixture and defeat that test's `list_apps`-by-name
+//! resolution.
+//!
+//! `menu_is_open_is_isolated_to_the_queried_process` additionally forces OS
+//! foreground onto its fixture via `raise_handle`
+//! (`AttachThreadInput`/`SetForegroundWindow`), which can stall an unrelated
+//! thread's message pump while the input queues are attached. It therefore
+//! also holds `fixture_window::on_screen_stage` for as long as it forces
+//! foreground, the same DESKTOP/FOREGROUND-state guard
+//! `window_ops_tests.rs`'s focused-filter test and `key_dispatch_tests.rs`
+//! already take. Where a test needs both locks, `FIXTURE_APP_NAME_LOCK` is
+//! always acquired first and `on_screen_stage` second - taking them in the
+//! opposite order anywhere in this crate would deadlock the suite against a
+//! test that acquires them the mandated way.
+//!
+//! Win32 menu mode is canceled by activation change: any other window
+//! gaining OS foreground sends the menu's owner `WM_CANCELMODE` and the
+//! fixture's context menu dismisses out from under whichever test opened it.
+//! `classic_source_detects_the_fixtures_context_menu_open_and_closed`,
+//! `uia_source_detects_the_fixtures_context_menu_open_and_closed`, and
+//! `menu_is_open_reports_the_fixtures_transition_in_both_directions` each
+//! hold a menu open across an assertion window, so each also takes
+//! `fixture_window::on_screen_stage` for that span even though none of them
+//! stages anything itself - the same "guards screen state, not only screen
+//! real estate" reasoning `window_ops_tests.rs`'s focused-filter test
+//! documents. The two directions that never expect a transition
+//! (`a_pid_with_no_gui_threads_reports_closed_rather_than_erroring` and the
+//! never-*opens* half of `wait_tests.rs`'s timeout test) are unaffected by a
+//! foreign dismissal and do not need the lock.
+#![cfg(target_os = "windows")]
+
+use super::*;
+
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+use crate::system::test_support::FIXTURE_APP_NAME_LOCK;
+use crate::tree::fixture::{StalledFixture, bootstrap};
+use crate::tree::fixture_menu::MenuFixture;
+
+const SETTLE: Duration = Duration::from_millis(250);
+const STATE_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn deadline() -> Deadline {
+    Deadline::after(10_000).expect("bounded deadline")
+}
+
+/// Forces `handle` to the OS foreground window even from a background
+/// process, mirroring `key_dispatch_tests.rs::raise_handle` (private to that
+/// module, so duplicated here rather than imported).
+fn raise_handle(handle: isize) {
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+    };
+
+    let hwnd = handle as _;
+    let foreground = unsafe { GetForegroundWindow() };
+    let mut foreground_tid = 0_u32;
+    if !foreground.is_null() {
+        unsafe {
+            GetWindowThreadProcessId(foreground, &mut foreground_tid);
+        }
+    }
+    let current_tid = unsafe { GetCurrentThreadId() };
+    let attached = foreground_tid != 0
+        && foreground_tid != current_tid
+        && unsafe { AttachThreadInput(current_tid, foreground_tid, 1) } != FALSE;
+    unsafe {
+        let _ = SetForegroundWindow(hwnd);
+    }
+    if attached {
+        unsafe {
+            let _ = AttachThreadInput(current_tid, foreground_tid, 0);
+        }
+    }
+}
+
+#[test]
+fn an_already_expired_deadline_returns_timeout_before_any_native_work() {
+    thread_snapshot_calls::take();
+    let expired = Deadline::after(0).expect("a zero-timeout deadline is constructible");
+
+    let error =
+        menu_is_open(ProcessId::from(std::process::id()), expired).expect_err("must refuse");
+
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert_eq!(
+        thread_snapshot_calls::take(),
+        0,
+        "an already-expired deadline must perform no thread enumeration"
+    );
+}
+
+#[test]
+fn a_pid_with_no_gui_threads_reports_closed_rather_than_erroring() {
+    let mut child = Command::new("cmd.exe")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("a bare console process starts");
+    let pid = ProcessId::from(child.id());
+
+    let open =
+        menu_is_open(pid, deadline()).expect("a console-only process must not error the predicate");
+
+    assert!(!open, "a process with no GUI thread has no menu open");
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Windows process ids are always multiples of 4 (0 is the Idle process, 4
+/// is the System process), so an odd id is never assigned to a real process
+/// on any Windows build - a deterministic structural fact, not a race
+/// against pid reuse from a spawned-and-killed process.
+#[test]
+fn a_nonexistent_pid_returns_a_classified_error_not_a_panic_or_false_closed() {
+    let pid = ProcessId::from(1u32);
+
+    let error = menu_is_open(pid, deadline())
+        .expect_err("a nonexistent pid must not silently report closed");
+
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+}
+
+#[test]
+fn classic_source_detects_the_fixtures_context_menu_open_and_closed() {
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let fixture = MenuFixture::spawn().expect("the menu fixture starts");
+    let pid = ProcessId::from(fixture.process_id());
+
+    assert!(
+        !classic_menu_mode_active(pid, deadline()).expect("classic probe reads the fixture"),
+        "the fixture must not be in menu mode before any command is sent"
+    );
+
+    fixture.open_context_menu();
+    assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
+    std::thread::sleep(SETTLE);
+    assert!(
+        classic_menu_mode_active(pid, deadline()).expect("classic probe reads the fixture"),
+        "A23-1: classic menu-mode flags must report open while the fixture's context menu is up"
+    );
+
+    fixture.dismiss_context_menu();
+    assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
+    std::thread::sleep(SETTLE);
+    assert!(
+        !classic_menu_mode_active(pid, deadline()).expect("classic probe reads the fixture"),
+        "classic menu-mode flags must report closed once the fixture's menu is dismissed"
+    );
+}
+
+#[test]
+fn uia_source_detects_the_fixtures_context_menu_open_and_closed() {
+    bootstrap();
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let fixture = MenuFixture::spawn().expect("the menu fixture starts");
+    let pid = ProcessId::from(fixture.process_id());
+
+    assert!(
+        !uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
+        "no root-level tool window with a reachable menu family exists before any command is sent"
+    );
+
+    fixture.open_context_menu();
+    assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
+    std::thread::sleep(SETTLE);
+    assert!(
+        uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
+        "A23-11: an open Win32 context menu promotes a root-level tool window with a reachable \
+         menu family"
+    );
+
+    fixture.dismiss_context_menu();
+    assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
+    std::thread::sleep(SETTLE);
+    assert!(
+        !uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
+        "the promoted tool window must be gone once the fixture's menu is dismissed"
+    );
+}
+
+#[test]
+fn menu_is_open_reports_the_fixtures_transition_in_both_directions() {
+    bootstrap();
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let fixture = MenuFixture::spawn().expect("the menu fixture starts");
+    let pid = ProcessId::from(fixture.process_id());
+
+    assert!(!menu_is_open(pid, deadline()).expect("predicate reads the fixture"));
+
+    fixture.open_context_menu();
+    assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
+    std::thread::sleep(SETTLE);
+    assert!(menu_is_open(pid, deadline()).expect("predicate reads the fixture"));
+
+    fixture.dismiss_context_menu();
+    assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
+    std::thread::sleep(SETTLE);
+    assert!(!menu_is_open(pid, deadline()).expect("predicate reads the fixture"));
+}
+
+/// The isolation property: another process's open menu must never leak into
+/// the pid actually being queried. `raise_handle` deterministically makes
+/// the fixture the OS foreground window before its menu opens, so a
+/// `GetGUIThreadInfo(0, ..)` implementation - which reads whichever thread
+/// owns the foreground window, ignoring the pid argument entirely - would
+/// answer `true` for `self_pid` here too. Manually swapping
+/// `classic_menu_mode_active`'s per-thread call to `GetGUIThreadInfo(0, ..)`
+/// and re-running this test is the invert-verification for this property;
+/// the shipped code takes no seam for it because the bug shape only exists
+/// in the call site itself.
+#[test]
+fn menu_is_open_is_isolated_to_the_queried_process() {
+    bootstrap();
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let fixture = MenuFixture::spawn().expect("the menu fixture starts");
+    let fixture_pid = ProcessId::from(fixture.process_id());
+    let self_pid = ProcessId::from(std::process::id());
+
+    raise_handle(fixture.handle());
+    fixture.open_context_menu();
+    assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
+    std::thread::sleep(SETTLE);
+
+    assert!(
+        menu_is_open(fixture_pid, deadline()).expect("predicate reads the fixture"),
+        "the fixture's own pid must report its menu open"
+    );
+    assert!(
+        !menu_is_open(self_pid, deadline()).expect("predicate reads this process"),
+        "another process's open menu must not leak into this process's own pid"
+    );
+
+    fixture.dismiss_context_menu();
+    assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
+}
+
+#[test]
+fn a_non_pumping_candidate_returns_app_unresponsive_without_hanging() {
+    bootstrap();
+    let _app_name_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let stalled = StalledFixture::create().expect("stalled fixture starts");
+    let client = crate::tree::automation::automation_client().expect("automation client builds");
+    let condition = menu_family_condition(&client).expect("menu-family condition builds");
+
+    let started = Instant::now();
+    let error = probe_candidate(&client, &condition, stalled.handle())
+        .expect_err("a non-pumping window must be refused before a UI Automation read");
+
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "the pump probe must bound the refusal, elapsed {:?}",
+        started.elapsed()
+    );
+}

@@ -101,43 +101,46 @@ fn launch_result(
     }
 }
 
-/// How many times a racing window inventory is re-read before the launch
-/// accepts "no window observed" as its answer.
-const LISTING_RACE_ATTEMPTS: u32 = 5;
-
 /// One window observation, tolerant of the inventory's mid-walk identity race.
 ///
-/// `list_windows_live` fails the whole listing when any window's owning process
-/// changes while it is being assembled, and a launch is exactly the moment that
-/// race is most reachable — a process was just created or terminated. That
-/// refusal says the desktop could not be read coherently, not that this launch
-/// failed, so it is re-read a bounded number of times and then reported as no
-/// window observed. Every other failure still propagates: a target whose
-/// process instance changed underneath the launch is a real answer, not a race.
+/// `list_windows_live` now absorbs that race itself (the shared listing-retry
+/// budget every caller on this path shares), retrying internally before ever
+/// returning `WINDOW_NOT_FOUND` — so this function no longer re-reads the
+/// inventory itself. A launch is exactly the moment that race is most
+/// reachable, since a process was just created or terminated, but a race that
+/// still survives the shared budget, and a budget that runs out entirely
+/// (`TIMEOUT`), both say the desktop could not be read coherently in time —
+/// not that this launch failed — so both are reported as no window observed.
+/// Every other failure still propagates: a target whose process instance
+/// changed underneath the launch is a real answer, not a race.
 fn observe_window_once(
     pid: ProcessId,
     process_instance: &str,
     deadline: Deadline,
 ) -> Result<Option<WindowInfo>, AdapterError> {
-    for _ in 0..LISTING_RACE_ATTEMPTS {
-        match exact_window(pid, process_instance, deadline) {
-            Ok(window) => return Ok(window),
-            Err(error) if error.code == ErrorCode::WindowNotFound => continue,
-            Err(error) => return Err(after_launch(error)),
-        }
+    match exact_window(pid, process_instance, deadline) {
+        Ok(window) => Ok(window),
+        Err(error) if is_unobservable_within_budget(&error) => Ok(None),
+        Err(error) => Err(after_launch(error)),
     }
-    Ok(None)
+}
+
+fn is_unobservable_within_budget(error: &AdapterError) -> bool {
+    matches!(error.code, ErrorCode::WindowNotFound | ErrorCode::Timeout)
 }
 
 fn exact_window(
     pid: ProcessId,
     process_instance: &str,
-    _deadline: Deadline,
+    deadline: Deadline,
 ) -> Result<Option<WindowInfo>, AdapterError> {
-    let windows = list_windows_live(&WindowFilter {
-        focused_only: false,
-        app: None,
-    })?;
+    let windows = list_windows_live(
+        &WindowFilter {
+            focused_only: false,
+            app: None,
+        },
+        deadline,
+    )?;
     let Some(window) = windows.into_iter().find(|window| window.pid == pid) else {
         return Ok(None);
     };
