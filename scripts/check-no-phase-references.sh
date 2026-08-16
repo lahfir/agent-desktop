@@ -86,7 +86,13 @@ token_rules() {
     # it points into a plan document that renumbers, and means nothing to a reader
     # without that plan open. Anchored to a word boundary so a register name or a
     # hex literal never trips it.
-    token_rule '\(R[0-9]+\)|\bR[0-9]+ ' 'plan requirement id'
+    # A requirement id is unambiguous in only two shapes: parenthesised, or
+    # introduced by a citation verb. A bare `R2` is NOT bannable - it is a CPU
+    # register name and the tail of "Windows Server 2012 R2", both of which a
+    # Windows adapter crate writes legitimately. Matching bare ids failed in
+    # both directions at once: it rejected that OS version string while missing
+    # every real citation that ended in a period or a comma.
+    token_rule '\(R[0-9]+\)|(per|See|see|governs|Governs|required by|forces|satisfies) R[0-9]+([^A-Za-z0-9]|$)' 'plan requirement id'
     token_rule '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id'
 }
 
@@ -338,6 +344,10 @@ self_test() {
     # rather than a command substitution the shell already ran.
     # shellcheck disable=SC2016
     must_catch='/// see phase-2.4 for details
+/// on (R5): any other code aborts the wait
+/// this behavior is required by R7.
+/// see R7, the requirement that forces this
+/// Governs R11 and R12
 /// 2.2 ships the seam
 /// the 2.4 evidence field
 /// as of 2.10 this is owned elsewhere
@@ -362,6 +372,10 @@ self_test() {
 /// the roadmap moves this to a later owner'
     # shellcheck disable=SC2016
     must_pass='/// pre-1.0 and sub-1.0 readings
+/// the R2 register holds the return value
+/// Windows Server 2012 R2 is the floor
+/// R2 and R3 are scratch registers
+/// see A23-1 for the measurement that forced this
 /// v0.5.0 deleted the layer
 /// the envelope is "2.1" on the wire
 /// collapsing a failed read to `1.0` is a claim

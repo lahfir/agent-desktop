@@ -30,7 +30,11 @@ pub(crate) fn walk_gui_threads<T>(
     #[cfg(test)]
     thread_snapshot_calls::record();
 
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+    let snapshot = if force_open_failure::is_active() {
+        INVALID_HANDLE_VALUE
+    } else {
+        unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) }
+    };
     if snapshot == INVALID_HANDLE_VALUE {
         return Err(open_failure_error());
     }
@@ -134,5 +138,42 @@ pub(crate) mod thread_snapshot_closes {
             cell.set(0);
             value
         })
+    }
+}
+
+/// Substitutes the documented failure return of `CreateToolhelp32Snapshot` so
+/// a test can drive the guard against the value the API actually reports.
+/// Without this the guard is only assertable as a claim about a constant, and
+/// a guard rewritten to compare against the null handle would keep every test
+/// green while never firing on a real failure.
+#[cfg(test)]
+pub(super) mod force_open_failure {
+    use std::cell::Cell;
+
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(super) fn is_active() -> bool {
+        ACTIVE.with(Cell::get)
+    }
+
+    pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                ACTIVE.with(|cell| cell.set(false));
+            }
+        }
+        ACTIVE.with(|cell| cell.set(true));
+        let _reset = Reset;
+        run()
+    }
+}
+
+#[cfg(not(test))]
+mod force_open_failure {
+    pub(super) fn is_active() -> bool {
+        false
     }
 }

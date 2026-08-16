@@ -339,24 +339,32 @@ fn menus_open_for_takes_one_snapshot_regardless_of_target_count() {
 }
 
 /// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`, which
-/// is `-1`, never as a null handle. A guard written as `is_null()` therefore
-/// cannot fire: the failing call falls through, the enumeration loop never
-/// runs, and the walk returns "no thread reported menu mode" - a masked native
-/// failure reported as a confident negative. Source B does not cover classic
-/// Win32 menu-bar dropdowns, so on that stack there is no second opinion to
-/// catch it. This pins the two sentinels apart so the guard cannot silently
-/// revert to the unreachable one.
+/// is `-1`, never as a null handle. A guard written as `is_null()` cannot fire:
+/// the failing call falls through, the enumeration loop never runs, and the
+/// walk returns "no thread reported menu mode" - a masked native failure
+/// reported as a confident negative. The classic source is the only one that
+/// covers Win32 menu-bar dropdowns, so on that stack there is no second
+/// opinion to catch it.
+///
+/// This drives the real guard with the value the API actually returns on
+/// failure. Asserting facts about the constant alone would pass forever
+/// regardless of what the guard compares against, which is the shape that let
+/// the wrong guard survive three reviews.
 #[test]
-fn the_toolhelp_failure_sentinel_is_not_the_null_handle() {
-    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+fn a_failed_snapshot_open_is_an_error_not_an_empty_enumeration() {
+    let outcome = crate::system::thread_walk::force_open_failure::with(|| {
+        menu_is_open(ProcessId::from(std::process::id()), deadline())
+    });
 
-    assert!(
-        !INVALID_HANDLE_VALUE.is_null(),
-        "INVALID_HANDLE_VALUE must not be the null handle, or an is_null guard \
-         would appear to work while never firing on a real failure"
+    let error = outcome.expect_err(
+        "a snapshot the OS refused to open must surface as an error, never as          a walk that completed and found no menu",
     );
-    assert_eq!(
-        INVALID_HANDLE_VALUE as isize, -1,
-        "the documented ToolHelp failure sentinel is -1"
+    assert!(
+        matches!(
+            error.code,
+            ErrorCode::AppUnresponsive | ErrorCode::Timeout | ErrorCode::ElementNotFound
+        ),
+        "the failure must stay inside the closed set the poll loop retries, got {:?}",
+        error.code
     );
 }

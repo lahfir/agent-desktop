@@ -61,7 +61,9 @@ pub(crate) fn wait_for_menu(
                 .timeout_error()
                 .with_platform_detail(direction_message(open)));
         }
-        let pause = deadline.remaining_slice(POLL_INTERVAL)?;
+        let pause = deadline
+            .remaining_slice(POLL_INTERVAL)
+            .map_err(|error| error.with_platform_detail(direction_message(open)))?;
         std::thread::sleep(pause);
     }
 }
