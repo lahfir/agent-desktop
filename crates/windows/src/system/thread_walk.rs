@@ -19,7 +19,7 @@ pub(crate) fn walk_gui_threads<T>(
     deadline: Deadline,
     mut on_thread: impl FnMut(&THREADENTRY32) -> Option<T>,
 ) -> Result<Option<T>, AdapterError> {
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, Thread32First, Thread32Next,
     };
@@ -28,7 +28,10 @@ pub(crate) fn walk_gui_threads<T>(
     thread_snapshot_calls::record();
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-    if snapshot.is_null() {
+    // `CreateToolhelp32Snapshot` reports failure as INVALID_HANDLE_VALUE (-1),
+    // never as a null handle, so an `is_null` guard can never fire and the
+    // failure reads as an empty enumeration instead of an error.
+    if snapshot == INVALID_HANDLE_VALUE {
         return Err(open_failure_error());
     }
     let mut entry = THREADENTRY32 {

@@ -43,13 +43,17 @@ pub(crate) struct ProcessRow {
 /// Snapshots every running process's image name from the ToolHelp table.
 #[cfg(target_os = "windows")]
 pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
     };
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snapshot.is_null() {
+    // `CreateToolhelp32Snapshot` reports failure as INVALID_HANDLE_VALUE (-1),
+    // never as a null handle, so an `is_null` guard can never fire and the
+    // failure reads as an empty enumeration instead of an error.
+    if snapshot == INVALID_HANDLE_VALUE {
         return Err(AdapterError::internal(
             "CreateToolhelp32Snapshot failed to enumerate processes",
         ));

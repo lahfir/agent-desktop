@@ -82,6 +82,11 @@ token_rules() {
     token_rule '[Ss]ub-?[Pp]hase' 'sub-phase reference'
     token_rule '[Pp]hase[[:space:]]+[0-9]' 'phase number reference'
     token_rule 'KTD[0-9]' 'plan decision id'
+    # A bare `R4`/`(R11)` requirement id is the same reference as the ids above:
+    # it points into a plan document that renumbers, and means nothing to a reader
+    # without that plan open. Anchored to a word boundary so a register name or a
+    # hex literal never trips it.
+    token_rule '\(R[0-9]+\)|\bR[0-9]+ ' 'plan requirement id'
     token_rule '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id'
 }
 

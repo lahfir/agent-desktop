@@ -88,12 +88,12 @@ fn an_identity_exclusion_never_flips_completeness() {
 
     assert!(
         baseline.completeness.windows,
-        "an identity exclusion must not flip completeness.windows (R11) even though the \
+        "an identity exclusion must not flip completeness.windows even though the \
          source inventory carries a non-zero excluded_window_count"
     );
     assert!(
         baseline.completeness.apps,
-        "an identity exclusion must not flip completeness.apps (R11)"
+        "an identity exclusion must not flip completeness.apps"
     );
 }
 

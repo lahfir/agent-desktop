@@ -9,7 +9,7 @@
 
 use super::*;
 
-use windows_sys::Win32::Foundation::CloseHandle;
+use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
 };
@@ -129,7 +129,10 @@ fn window_exists(handle: isize) -> bool {
 /// any shipped menu predicate.
 fn any_thread_reports_menu_mode(pid: u32) -> bool {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-    if snapshot.is_null() {
+    // `CreateToolhelp32Snapshot` reports failure as INVALID_HANDLE_VALUE (-1),
+    // never as a null handle, so an `is_null` guard can never fire and the
+    // failure reads as an empty enumeration instead of an error.
+    if snapshot == INVALID_HANDLE_VALUE {
         return false;
     }
     let mut entry = THREADENTRY32 {

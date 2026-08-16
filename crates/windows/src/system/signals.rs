@@ -17,7 +17,7 @@ use super::signal_surfaces::app_scoped_surfaces;
 /// Every failure this function or anything it calls can raise is narrowed to
 /// exactly `TIMEOUT` or `APP_UNRESPONSIVE` before it leaves this function,
 /// which is the boundary that closes the error set core's poll loop depends
-/// on (R5): any other code aborts the whole wait instead of being retried.
+/// on: any other code aborts the whole wait instead of being retried.
 pub(crate) fn capture_signal_baseline_impl(
     filter: &SignalFilter,
     deadline: Deadline,

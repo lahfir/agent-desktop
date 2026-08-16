@@ -233,7 +233,7 @@ mod windows_only {
         );
         assert!(
             inventory.windows_complete && inventory.apps_complete,
-            "an identity exclusion must not flip completeness (R11)"
+            "an identity exclusion must not flip completeness"
         );
     }
 

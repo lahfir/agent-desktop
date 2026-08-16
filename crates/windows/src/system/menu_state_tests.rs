@@ -337,3 +337,26 @@ fn menus_open_for_takes_one_snapshot_regardless_of_target_count() {
         live.len()
     );
 }
+
+/// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`, which
+/// is `-1`, never as a null handle. A guard written as `is_null()` therefore
+/// cannot fire: the failing call falls through, the enumeration loop never
+/// runs, and the walk returns "no thread reported menu mode" - a masked native
+/// failure reported as a confident negative. Source B does not cover classic
+/// Win32 menu-bar dropdowns, so on that stack there is no second opinion to
+/// catch it. This pins the two sentinels apart so the guard cannot silently
+/// revert to the unreachable one.
+#[test]
+fn the_toolhelp_failure_sentinel_is_not_the_null_handle() {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+
+    assert!(
+        !INVALID_HANDLE_VALUE.is_null(),
+        "INVALID_HANDLE_VALUE must not be the null handle, or an is_null guard \
+         would appear to work while never firing on a real failure"
+    );
+    assert_eq!(
+        INVALID_HANDLE_VALUE as isize, -1,
+        "the documented ToolHelp failure sentinel is -1"
+    );
+}

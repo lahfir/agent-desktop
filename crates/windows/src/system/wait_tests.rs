@@ -238,7 +238,7 @@ fn a_target_that_exits_mid_wait_returns_stale_ref_not_a_satisfied_wait_or_a_time
 }
 
 /// A loose upper bound derived from the interval, not a timing literal
-/// (R12): a spinning loop that ignored `remaining_slice` would blow past it
+///: a spinning loop that ignored `remaining_slice` would blow past it
 /// by orders of magnitude inside the same wall-clock budget.
 const SPIN_GUARD_MAX_POLLS: usize = 40;
 

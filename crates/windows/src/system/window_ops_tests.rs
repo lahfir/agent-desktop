@@ -62,7 +62,7 @@ mod windows_only {
     /// The live half of the census: a hosted fixture window appears in
     /// `list_windows` with a parseable id, the fixture's pid, and a
     /// non-empty process token. Rule-shaped: no window count or desktop
-    /// shape is asserted (R11).
+    /// shape is asserted.
     ///
     /// The inventory refuses the whole listing when any window's owning
     /// process changes mid-walk, and a suite that spawns and terminates
@@ -147,7 +147,7 @@ mod windows_only {
     /// the desktop's foreground window and nothing else.
     ///
     /// Whether a foreground window exists at all is machine state, so
-    /// nothing here assumes one (R11): the answer is checked against the
+    /// nothing here assumes one: the answer is checked against the
     /// same OS fact the filter itself consults, which is a real assertion
     /// when a window is returned and vacuously true when none is. The
     /// inventory's own mid-listing refusal - a window whose owning process
