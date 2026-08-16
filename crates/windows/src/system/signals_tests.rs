@@ -298,22 +298,26 @@ mod windows_only {
         bootstrap();
         let _stage = fixture_window::on_screen_stage();
 
+        let parking = HostedFixture::spawn().expect("the parking fixture starts");
+        if !crate::system::test_support::stage_foreground(parking.handle()) {
+            eprintln!(concat!(
+                "skip composed focus transition: this desktop declines foreground even to a ",
+                "raw SetForegroundWindow, so no transition can be staged at all",
+            ));
+            return;
+        }
+
         let before = capture_signal_baseline_impl(&SignalFilter::default(), deadline())
             .expect("the composed baseline capture must succeed on a live desktop");
 
         let transition = HostedFixture::spawn().expect("the transition fixture starts");
         let transition_pid = ProcessId::from(transition.process_id());
-        if let Err(error) = focus_window(&window_info_for(&transition), &lease()) {
-            assert_eq!(
-                error.code,
-                ErrorCode::ActionFailed,
-                "the only refusal a focus attempt may report here is the OS declining it"
-            );
-            eprintln!(
-                "skip composed focus transition: the OS declined the fixture window the                  foreground, so no focus transition exists to observe"
-            );
-            return;
-        }
+
+        focus_window(&window_info_for(&transition), &lease()).expect(concat!(
+            "foreground was granted to the parking window before the baseline was taken, so ",
+            "the product's own activation must succeed here - a refusal is a regression, not ",
+            "an environment decline",
+        ));
         std::thread::sleep(SETTLE);
 
         let after = capture_signal_baseline_impl(&SignalFilter::default(), deadline())

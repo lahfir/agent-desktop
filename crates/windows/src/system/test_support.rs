@@ -63,3 +63,51 @@ pub(crate) fn with_usize_flag<R>(
     let _reset = ResetOnDrop(flag);
     run()
 }
+
+/// Stages the desktop so a window owns the foreground, using raw Win32 rather
+/// than the product's own activation path, and reports whether the OS granted
+/// it.
+///
+/// A live test that needs a focused window has to answer two different
+/// questions, and answering them with one call conflates them: *will this
+/// desktop grant foreground at all* is an environment fact, while *does
+/// `focus_window` work* is the thing under test. `SetForegroundWindow` is
+/// advisory - Windows refuses it unless the caller already owns the foreground
+/// or the most recent input event, and a hosted runner routinely declines - so
+/// the environment question is real and a leg that cannot stage its
+/// precondition must say so rather than fail. But deciding that from the
+/// product's own refusal makes the subject of the test its own oracle: a
+/// regression that broke activation outright would report exactly the same
+/// error as a declining desktop, and every leg would skip green. This stages
+/// independently, so a caller can skip on a false answer and then *insist* the
+/// product succeeds.
+#[cfg(target_os = "windows")]
+pub(crate) fn stage_foreground(handle: isize) -> bool {
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+    };
+
+    let hwnd = handle as _;
+    let foreground = unsafe { GetForegroundWindow() };
+    let mut foreground_tid = 0_u32;
+    if !foreground.is_null() {
+        unsafe {
+            GetWindowThreadProcessId(foreground, &mut foreground_tid);
+        }
+    }
+    let current_tid = unsafe { GetCurrentThreadId() };
+    let attached = foreground_tid != 0
+        && foreground_tid != current_tid
+        && unsafe { AttachThreadInput(current_tid, foreground_tid, 1) } != FALSE;
+    unsafe {
+        let _ = SetForegroundWindow(hwnd);
+    }
+    if attached {
+        unsafe {
+            let _ = AttachThreadInput(current_tid, foreground_tid, 0);
+        }
+    }
+    crate::system::window_ops::is_foreground_window(hwnd)
+}

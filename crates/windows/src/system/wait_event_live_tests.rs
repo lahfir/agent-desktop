@@ -38,7 +38,7 @@ use std::time::Duration;
 
 use agent_desktop_core::commands::wait::{self, WaitArgs, WaitModeArgs, WaitPredicateArgs};
 use agent_desktop_core::{
-    AppError, CommandContext, Deadline, ErrorCode, InteractionLease, ProcessId, ProcessIdentity,
+    AppError, CommandContext, Deadline, InteractionLease, ProcessId, ProcessIdentity,
     SignalBaseline, SignalFilter, SystemOps, WindowInfo, WindowState, diff_signals,
 };
 use serde_json::Value;
@@ -273,6 +273,14 @@ fn focus_changed_fires_when_the_fixtures_window_is_focused_mid_wait() {
     bootstrap();
     let _stage = crate::tree::fixture_window::on_screen_stage();
     let fixture = HostedFixture::spawn().expect("a fixture host starts");
+    let parking = HostedFixture::spawn().expect("a parking fixture host starts");
+    if !crate::system::test_support::stage_foreground(parking.handle()) {
+        eprintln!(concat!(
+            "skip focus-changed: this desktop declines foreground even to a raw ",
+            "SetForegroundWindow, so no focus transition can be staged at all",
+        ));
+        return;
+    }
     let window_id = format!("w-{}", fixture.handle() as usize);
     let receiver = spawn_event_wait(
         "focus-changed",
@@ -284,17 +292,11 @@ fn focus_changed_fires_when_the_fixtures_window_is_focused_mid_wait() {
     );
 
     thread::sleep(TRANSITION_AFTER);
-    if let Err(error) = focus_window(&window_info_for(&fixture), &lease()) {
-        assert_eq!(
-            error.code,
-            ErrorCode::ActionFailed,
-            "the only refusal a focus attempt may report here is the OS declining it"
-        );
-        eprintln!(
-            "skip focus-changed: the OS declined the fixture window the foreground, so no              focus transition exists for the wait to observe"
-        );
-        return;
-    }
+    focus_window(&window_info_for(&fixture), &lease()).expect(concat!(
+        "this desktop was proven to grant foreground before the wait started, so the ",
+        "product's own activation must succeed here - a refusal is a regression, not an ",
+        "environment decline",
+    ));
 
     let outcome = receiver
         .recv_timeout(RECV_TIMEOUT)
