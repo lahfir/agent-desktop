@@ -102,6 +102,17 @@ jobs:
       # docs/phases.md against another branch, which is this capability lane's
       # concern, not the per-PR compile-and-test lane's. Its own PROBE-RESULT
       # line, not just its exit code, is what names which rule failed.
+      # The hunk-index metric diffs docs/phases.md against main, and a pull
+      # request checkout has no main ref at all. Fetching it lets the gate
+      # measure here instead of reporting the metric unavailable. Best-effort:
+      # the gate degrades honestly without a base ref rather than failing, so a
+      # network hiccup must not turn a ledger gate red.
+      - name: Fetch the base ref for the hunk-index metric
+        shell: powershell
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+
       - name: Run the ledger completeness gate
         shell: powershell
         run: |

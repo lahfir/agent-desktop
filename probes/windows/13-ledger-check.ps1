@@ -154,9 +154,23 @@ try {
     $sessionRowCount = @($rows | Where-Object { $_.Area -eq 'R6' }).Count
     if ($sessionRowCount -lt 1) { [void]$failures.Add('no R6 session-evidence rows found') }
 
-    $gitDiff = & git -C $repoRoot diff -U0 main -- docs/phases.md
-    if ($LASTEXITCODE -ne 0) { throw ('git diff -U0 main -- docs/phases.md failed with exit code ' + $LASTEXITCODE) }
-    $measuredHunkCount = @($gitDiff | Where-Object { "$_" -match '^@@ -[0-9]' }).Count
+    # A CI checkout of a pull request has no local `main`, so the base is
+    # resolved rather than assumed: the local branch first, then the
+    # remote-tracking ref. Neither existing is not a gate failure - the hunk
+    # metrics simply cannot be computed there, and reporting that honestly
+    # beats throwing on an environment difference that says nothing about the
+    # ledger. The checks that carry this invariant's value do not need the base.
+    $baseRef = ''
+    foreach ($candidate in @('main', 'origin/main')) {
+        & git -C $repoRoot rev-parse --verify --quiet ($candidate + '^{commit}') > $null 2>&1
+        if ($LASTEXITCODE -eq 0) { $baseRef = $candidate; break }
+    }
+    $measuredHunkCount = -1
+    if ($baseRef) {
+        $gitDiff = & git -C $repoRoot diff -U0 $baseRef -- docs/phases.md
+        if ($LASTEXITCODE -ne 0) { throw ('git diff -U0 ' + $baseRef + ' -- docs/phases.md failed with exit code ' + $LASTEXITCODE) }
+        $measuredHunkCount = @($gitDiff | Where-Object { "$_" -match '^@@ -[0-9]' }).Count
+    }
 
 # The index-completeness half of the bijection is reported, not enforced, and the
 # reason is structural rather than a backlog someone forgot. This diff is taken
@@ -170,7 +184,7 @@ try {
 # backed by a hunk - so a doc change still cannot claim evidence it does not have.
 # Bringing the index current across the whole phase belongs to the gate that
 # reviews the assembled branch (docs/phases.md sub-phase 2.15, Docs/skills sync).
-    $hunkIndexShortfall = $measuredHunkCount - $hunkRows.Count
+    $hunkIndexShortfall = if ($measuredHunkCount -lt 0) { -1 } else { $measuredHunkCount - $hunkRows.Count }
 
     $mappedRowIds = @{}
     $hunksWithoutBacking = 0
@@ -266,7 +280,7 @@ try {
         Write-ProbeResult -Probe $Probe -Status 'fail' -Message ([string]$failures.Count + ' ledger completeness failure(s); first: ' + $failures[0] + '; ' + $coverageNote) -Data $summary
         exit 1
     }
-    Write-ProbeResult -Probe $Probe -Status 'ok' -Message ('ledger complete: all 11 evidence areas covered, zero UNKNOWN verdicts, every DEFERRED row names a Phase 2 closure sub-phase, every row carries stack and scope, every indexed phases.md hunk names a ledger row and every CONTRADICTS row is backed by a hunk (index lists ' + $hunkRows.Count + ' of ' + $measuredHunkCount + ' measured hunk(s); completeness is reported, not enforced - see 2.15 docs sync); ' + $coverageNote) -Data $summary
+    Write-ProbeResult -Probe $Probe -Status 'ok' -Message ('ledger complete: all 11 evidence areas covered, zero UNKNOWN verdicts, every DEFERRED row names a Phase 2 closure sub-phase, every row carries stack and scope, every indexed phases.md hunk names a ledger row and every CONTRADICTS row is backed by a hunk (' + $(if ($measuredHunkCount -lt 0) { 'no base ref available here, so hunk completeness was not measured' } else { 'index lists ' + $hunkRows.Count + ' of ' + $measuredHunkCount + ' measured hunk(s); completeness is reported, not enforced - see 2.15 docs sync' }) + '); ' + $coverageNote) -Data $summary
     exit 0
 } catch {
     Write-ProbeResult -Probe $Probe -Status 'fail' -Message ('unhandled error: ' + $_.Exception.Message)
