@@ -41,6 +41,8 @@ pub(crate) mod signal_surfaces;
 pub(crate) mod signals;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod test_support;
+#[cfg(target_os = "windows")]
+pub(crate) mod thread_walk;
 pub(crate) mod wait;
 pub(crate) mod window_activate;
 pub(crate) mod window_enum;

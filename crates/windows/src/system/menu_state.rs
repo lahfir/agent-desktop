@@ -3,11 +3,13 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, ProcessId};
 
 use super::permissions::ensure_budget;
-use super::process_state::hresult_from_win32;
 use super::window_enum::{enumerate_top_level, window_is_responsive};
 
 #[cfg(target_os = "windows")]
 use super::listing_retry::narrow_to_permitted_codes;
+
+#[cfg(all(test, target_os = "windows"))]
+use crate::system::thread_walk::{thread_snapshot_calls, thread_snapshot_closes};
 
 /// Whether a menu is open right now for `pid`, composed from the two sources
 /// A23-1 and A23-11 measured as covering every stack the corpus could stage:
@@ -89,48 +91,15 @@ fn ensure_process_exists(_pid: ProcessId) -> Result<(), AdapterError> {
 /// one of that pid's threads is read individually instead.
 #[cfg(target_os = "windows")]
 fn classic_menu_mode_active(pid: ProcessId, deadline: Deadline) -> Result<bool, AdapterError> {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
-    };
-
-    #[cfg(test)]
-    thread_snapshot_calls::record();
-
     let target = u32::from(pid);
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-    if snapshot.is_null() {
-        return Err(narrow_to_permitted_codes(win32_last_error(
-            "CreateToolhelp32Snapshot failed for classic menu-mode detection",
-        )));
-    }
-    let mut entry = THREADENTRY32 {
-        dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
-        ..Default::default()
-    };
-    let mut found = false;
-    let mut first = true;
-    let mut ok = unsafe { Thread32First(snapshot, &mut entry) };
-    while ok != 0 {
-        if !first {
-            if let Err(error) = ensure_budget(deadline) {
-                unsafe { CloseHandle(snapshot) };
-                #[cfg(test)]
-                thread_snapshot_closes::record();
-                return Err(error);
-            }
-        }
-        first = false;
+    let found = crate::system::thread_walk::walk_gui_threads(deadline, |entry| {
         if entry.th32OwnerProcessID == target && thread_reports_menu_mode(entry.th32ThreadID) {
-            found = true;
-            break;
+            Some(())
+        } else {
+            None
         }
-        ok = unsafe { Thread32Next(snapshot, &mut entry) };
-    }
-    unsafe { CloseHandle(snapshot) };
-    #[cfg(test)]
-    thread_snapshot_closes::record();
-    Ok(found)
+    })?;
+    Ok(found.is_some())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -301,73 +270,6 @@ fn is_vanished(failure: crate::tree::automation::UiaFailure) -> bool {
         UiaFailure::Hresult(super::hresult::UIA_E_ELEMENTNOTAVAILABLE)
             | UiaFailure::Sentinel(ERR_NOTFOUND)
     )
-}
-
-/// Win32 `GetLastError` -> `HRESULT_FROM_WIN32` into the shared HRESULT
-/// table, the convention `launch.rs`/`process_state.rs`/`window_op.rs`
-/// already use for their own native failures.
-#[cfg(target_os = "windows")]
-fn win32_last_error(message: &str) -> AdapterError {
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    adapter_error_from_win32(error, message)
-}
-
-#[cfg(target_os = "windows")]
-fn adapter_error_from_win32(error: u32, message: &str) -> AdapterError {
-    let hresult = hresult_from_win32(error);
-    let record = super::hresult::hresult_record(hresult);
-    let mut err = AdapterError::new(record.code, message)
-        .with_platform_detail(super::hresult::com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
-}
-
-/// Counts snapshot handle closes so a test can prove every opened ToolHelp
-/// snapshot is closed on every exit path. The deadline check inside the walk
-/// returns early, and an early return that skips the close leaks a handle per
-/// expired capture on a loop that polls every 200ms.
-#[cfg(test)]
-pub(super) mod thread_snapshot_closes {
-    use std::cell::Cell;
-
-    thread_local! {
-        static COUNT: Cell<usize> = const { Cell::new(0) };
-    }
-
-    pub(super) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
-    }
-}
-
-#[cfg(test)]
-pub(super) mod thread_snapshot_calls {
-    use std::cell::Cell;
-
-    thread_local! {
-        static COUNT: Cell<usize> = const { Cell::new(0) };
-    }
-
-    pub(super) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
-    }
-
-    pub(super) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
-    }
 }
 
 #[cfg(test)]

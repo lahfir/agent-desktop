@@ -45,52 +45,27 @@ pub(crate) fn menus_open_for(
 }
 
 /// The multi-pid form of the classic source: one `TH32CS_SNAPTHREAD`
-/// snapshot, walked once, with each thread's owner tested against every pid
-/// in `pids` rather than one snapshot walk per pid. `GetGUIThreadInfo` is
-/// still read per thread through the same
-/// [`super::thread_reports_menu_mode`] the single-pid source uses; only the
-/// snapshot enumeration is shared.
+/// snapshot, walked once by [`crate::system::thread_walk::walk_gui_threads`],
+/// with each thread's owner tested against every pid in `pids` rather than
+/// one snapshot walk per pid. `GetGUIThreadInfo` is still read per thread
+/// through the same [`super::thread_reports_menu_mode`] the single-pid
+/// source uses; only the snapshot enumeration is shared. The walk never
+/// short-circuits here - every thread on the desktop still owes a look,
+/// since a later thread could belong to a pid this walk has not yet
+/// resolved true.
 #[cfg(target_os = "windows")]
 fn classic_menu_mode_for_many(
     pids: &[ProcessId],
     deadline: Deadline,
 ) -> Result<HashMap<ProcessId, bool>, AdapterError> {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
-    };
-
-    #[cfg(test)]
-    super::thread_snapshot_calls::record();
-
     let mut found: HashMap<ProcessId, bool> = pids.iter().map(|&pid| (pid, false)).collect();
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-    if snapshot.is_null() {
-        return Err(super::narrow_to_permitted_codes(super::win32_last_error(
-            "CreateToolhelp32Snapshot failed for classic menu-mode detection",
-        )));
-    }
-    let mut entry = THREADENTRY32 {
-        dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
-        ..Default::default()
-    };
-    let mut first = true;
-    let mut ok = unsafe { Thread32First(snapshot, &mut entry) };
-    while ok != 0 {
-        if !first {
-            if let Err(error) = ensure_budget(deadline) {
-                unsafe { CloseHandle(snapshot) };
-                return Err(error);
-            }
-        }
-        first = false;
+    crate::system::thread_walk::walk_gui_threads(deadline, |entry| {
         if let Some(slot) = found.get_mut(&ProcessId::from(entry.th32OwnerProcessID)) {
             if !*slot && super::thread_reports_menu_mode(entry.th32ThreadID) {
                 *slot = true;
             }
         }
-        ok = unsafe { Thread32Next(snapshot, &mut entry) };
-    }
-    unsafe { CloseHandle(snapshot) };
+        None::<()>
+    })?;
     Ok(found)
 }

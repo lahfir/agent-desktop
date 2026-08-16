@@ -34,7 +34,7 @@ use super::*;
 
 use std::sync::mpsc::channel;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::system::test_support::FIXTURE_APP_NAME_LOCK;
 use crate::tree::fixture::bootstrap;
@@ -285,8 +285,54 @@ fn a_target_that_died_mid_wait_reports_a_disposition_and_a_recovery() {
     );
     let suggestion = error.suggestion.unwrap_or_default();
     assert!(
+        !suggestion.contains("  "),
+        "the suggestion is delivered verbatim in the JSON envelope, so a wrapped string          literal must not leave a run of indentation inside it, got {suggestion:?}"
+    );
+    assert!(
         !suggestion.contains("snapshot") && !suggestion.contains("ref"),
         "the recovery must be process-oriented; this surface has no refs or \
          snapshots to refresh, got {suggestion}"
+    );
+}
+
+/// The predicate's own `Timeout` is deliberately absorbed and retried (the
+/// loop's deadline check is the thing that should end that direction), but
+/// every other error is a decided answer and must return on the first
+/// occurrence. `forced_predicate_error` stands in for a real non-pumping
+/// target the way `window_ops.rs`'s `force_window_not_found` stands in for a
+/// real identity race elsewhere in this crate - both let a test pin the
+/// loop's error-handling branch without staging the live condition. A
+/// regression that widened the absorbed set to include this code, or that
+/// kept retrying after the first non-`Timeout` error, would drive
+/// `poll_calls` past one and the elapsed time toward the 10s deadline; this
+/// test targets the current process, so no fixture or lock is needed.
+#[test]
+fn a_non_timeout_predicate_error_propagates_on_the_first_poll_without_spinning_to_the_deadline() {
+    let pid = ProcessId::from(std::process::id());
+    let token = process_identity::token_for_pid(pid)
+        .expect("token read for this process")
+        .expect("this process has a live process instance token");
+    let identity = ProcessIdentity::new(pid, token);
+    poll_calls::take();
+    forced_predicate_error::arm(AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "forced test predicate failure",
+    ));
+
+    let started = Instant::now();
+    let result = wait_for_menu(identity, true, Deadline::after(10_000).expect("deadline"));
+
+    let error = result.expect_err("a non-Timeout predicate error must propagate, not be absorbed");
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(
+        poll_calls::take(),
+        1,
+        "the loop must return on the first predicate read rather than retrying"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "a swallowed error would spin toward the 10s deadline instead of returning immediately, \
+         elapsed {:?}",
+        started.elapsed()
     );
 }

@@ -79,6 +79,10 @@ fn direction_message(open: bool) -> &'static str {
 fn evaluate_menu_state(pid: ProcessId, deadline: Deadline) -> Result<bool, AdapterError> {
     #[cfg(test)]
     poll_calls::record();
+    #[cfg(test)]
+    if let Some(error) = forced_predicate_error::take() {
+        return Err(error);
+    }
     menu_is_open(pid, deadline)
 }
 
@@ -104,9 +108,10 @@ fn stale_process_error(process: &ProcessIdentity) -> AdapterError {
         ErrorCode::StaleRef,
         "Target process instance is no longer running",
     )
-    .with_suggestion(
-        "The application exited during the wait. Re-resolve it with list-apps and retry          against the new process instance, or treat its exit as the outcome.",
-    )
+    .with_suggestion(concat!(
+        "The application exited during the wait. Re-resolve it with list-apps ",
+        "and retry against the new process instance, or treat its exit as the outcome.",
+    ))
     .with_disposition(DeliverySemantics::not_delivered())
     .with_details(serde_json::json!({
         "pid": u32::from(process.pid),
@@ -132,6 +137,30 @@ pub(super) mod poll_calls {
             cell.set(0);
             value
         })
+    }
+}
+
+/// Arms a predicate error for exactly one future [`evaluate_menu_state`]
+/// call, so a test can prove the loop's non-`Timeout` propagation without a
+/// live GUI fixture: the forced error is consumed on the first read that
+/// finds it armed, leaving every later read on the same thread to fall
+/// through to the real predicate.
+#[cfg(test)]
+pub(super) mod forced_predicate_error {
+    use std::cell::RefCell;
+
+    use agent_desktop_core::AdapterError;
+
+    thread_local! {
+        static FORCED: RefCell<Option<AdapterError>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn arm(error: AdapterError) {
+        FORCED.with(|cell| *cell.borrow_mut() = Some(error));
+    }
+
+    pub(super) fn take() -> Option<AdapterError> {
+        FORCED.with(|cell| cell.borrow_mut().take())
     }
 }
 
