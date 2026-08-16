@@ -3,6 +3,9 @@ use agent_desktop_core::{AdapterError, Deadline};
 use super::permissions::ensure_budget;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::THREADENTRY32;
 
+/// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`
+/// (`-1`), never as a null handle, so an `is_null` guard can never fire and
+/// a failed call would read as an empty enumeration rather than an error.
 /// One `TH32CS_SNAPTHREAD` walk of every thread on the desktop, feeding each
 /// entry to `on_thread` until it returns `Some`, the walk runs out of
 /// threads, or `deadline` expires. A caller that short-circuits on the first
@@ -28,9 +31,6 @@ pub(crate) fn walk_gui_threads<T>(
     thread_snapshot_calls::record();
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-    // `CreateToolhelp32Snapshot` reports failure as INVALID_HANDLE_VALUE (-1),
-    // never as a null handle, so an `is_null` guard can never fire and the
-    // failure reads as an empty enumeration instead of an error.
     if snapshot == INVALID_HANDLE_VALUE {
         return Err(open_failure_error());
     }

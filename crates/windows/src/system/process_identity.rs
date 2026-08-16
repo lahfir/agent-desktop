@@ -77,6 +77,9 @@ impl ProcessIdentity {
     }
 }
 
+/// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`
+/// (`-1`), never as a null handle, so an `is_null` guard can never fire and
+/// a failed call would read as an empty enumeration rather than an error.
 pub(crate) fn token_for_pid(pid: ProcessId) -> Result<Option<String>, AdapterError> {
     Ok(ProcessIdentity::capture(pid)?.map(ProcessIdentity::token))
 }
@@ -96,9 +99,6 @@ pub(crate) fn process_image_name(pid: ProcessId) -> Option<String> {
     };
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    // `CreateToolhelp32Snapshot` reports failure as INVALID_HANDLE_VALUE (-1),
-    // never as a null handle, so an `is_null` guard can never fire and the
-    // failure reads as an empty enumeration instead of an error.
     if snapshot == INVALID_HANDLE_VALUE {
         return None;
     }
