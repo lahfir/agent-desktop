@@ -77,15 +77,16 @@ impl ProcessIdentity {
     }
 }
 
-/// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`
-/// (`-1`), never as a null handle, so an `is_null` guard can never fire and
-/// a failed call would read as an empty enumeration rather than an error.
 pub(crate) fn token_for_pid(pid: ProcessId) -> Result<Option<String>, AdapterError> {
     Ok(ProcessIdentity::capture(pid)?.map(ProcessIdentity::token))
 }
 
 /// The image name (executable filename) of the process at `pid`, read from
 /// the ToolHelp process table.
+///
+/// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`
+/// (`-1`), never as a null handle, so an `is_null` guard can never fire and
+/// a failed call would read as an empty enumeration rather than an error.
 ///
 /// The single walk both window identity checks corroborate `app` against:
 /// `window_ops.rs` and `window_identity.rs` each carried their own verbatim

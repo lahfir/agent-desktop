@@ -57,6 +57,20 @@ fn deadline() -> Deadline {
 /// Forces `handle` to the OS foreground window even from a background
 /// process, mirroring `key_dispatch_tests.rs::raise_handle` (private to that
 /// module, so duplicated here rather than imported).
+/// Whether the OS actually granted the fixture window the foreground.
+///
+/// `SetForegroundWindow` is advisory: Windows refuses it unless the calling
+/// process already owns the foreground or owns the most recent input event,
+/// and a hosted CI session routinely declines. That matters here because
+/// `TrackPopupMenu` on a window that is not foreground has its popup
+/// dismissed immediately, so the fixture reports that it *called* the API
+/// while no menu is on screen for the predicate to find. Asserting through an
+/// ungranted foreground tests the OS's focus policy rather than the predicate,
+/// so a leg that cannot stage its precondition says so and stops.
+fn foreground_granted(handle: isize) -> bool {
+    crate::system::window_ops::is_foreground_window(handle as _)
+}
+
 fn raise_handle(handle: isize) {
     use windows_sys::Win32::Foundation::FALSE;
     use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -244,6 +258,12 @@ fn menu_is_open_is_isolated_to_the_queried_process() {
     let self_pid = ProcessId::from(std::process::id());
 
     raise_handle(fixture.handle());
+    if !foreground_granted(fixture.handle()) {
+        eprintln!(
+            "skip menu isolation: the OS declined the fixture window the foreground, so a              tracked popup menu is dismissed before it can be observed"
+        );
+        return;
+    }
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
     std::thread::sleep(SETTLE);

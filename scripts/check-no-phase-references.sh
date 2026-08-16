@@ -86,13 +86,21 @@ token_rules() {
     # it points into a plan document that renumbers, and means nothing to a reader
     # without that plan open. Anchored to a word boundary so a register name or a
     # hex literal never trips it.
-    # A requirement id is unambiguous in only two shapes: parenthesised, or
-    # introduced by a citation verb. A bare `R2` is NOT bannable - it is a CPU
-    # register name and the tail of "Windows Server 2012 R2", both of which a
-    # Windows adapter crate writes legitimately. Matching bare ids failed in
-    # both directions at once: it rejected that OS version string while missing
-    # every real citation that ended in a period or a comma.
-    token_rule '\(R[0-9]+\)|(per|See|see|governs|Governs|required by|forces|satisfies) R[0-9]+([^A-Za-z0-9]|$)' 'plan requirement id'
+    # A requirement id is mechanically catchable in two shapes and no more.
+    # Parenthesised is unambiguous, and so is one introduced by a citation verb
+    # with a word boundary on both sides. A BARE id is not, and this rule
+    # deliberately does not try: `R2` is a CPU register, the tail of "Windows
+    # Server 2012 R2", and a plan requirement, and nothing in the text
+    # separates them. Two earlier versions of this rule tried and were wrong in
+    # both directions at once - the first rejected that OS version string while
+    # missing every citation ending in a period, the second missed every
+    # sentence-initial "Required by R7" while flagging "the helper R2 queue".
+    # The residue is one shape: a bare id with no citation verb, of the ten real
+    # violations found in this tree exactly one looked like that. Review catches
+    # that one; a regex that claimed to would be lying in one direction or the
+    # other. Both sides of the verb are boundary-anchored so a word merely
+    # ENDING in per/see - helper, wrapper, oversee - cannot trip it.
+    token_rule '\(R[0-9]+\)|(^|[^A-Za-z])([Pp]er|[Ss]ee|[Gg]overns|[Rr]equired by|[Ff]orces|[Ss]atisfies) R[0-9]+([^A-Za-z0-9]|$)' 'plan requirement id'
     token_rule '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id'
 }
 
@@ -348,6 +356,9 @@ self_test() {
 /// this behavior is required by R7.
 /// see R7, the requirement that forces this
 /// Governs R11 and R12
+/// Required by R7, this waits.
+/// Per R7 the wait must abort.
+/// Forces R3 to hold.
 /// 2.2 ships the seam
 /// the 2.4 evidence field
 /// as of 2.10 this is owned elsewhere
@@ -375,6 +386,9 @@ self_test() {
 /// the R2 register holds the return value
 /// Windows Server 2012 R2 is the floor
 /// R2 and R3 are scratch registers
+/// the helper R2 queue drains first
+/// the wrapper R2 forwards unchanged
+/// oversee R2 allocation
 /// see A23-1 for the measurement that forced this
 /// v0.5.0 deleted the layer
 /// the envelope is "2.1" on the wire
