@@ -1,0 +1,278 @@
+{
+  "note": "Redacted per corpus safety envelope: window titles, pids, window_ids, and process_instance tokens replaced with placeholders. Shapes, codes, counts, booleans, and elapsed times are exact.",
+  "binary": "target/release/agent-desktop.exe",
+  "binary_size_bytes": 2363392,
+  "version": "0.8.1",
+  "envelope_version": "2.3",
+  "legs": [
+    {
+      "id": "L1-pos",
+      "command": "wait --event window-opened --timeout 15000",
+      "context": "notepad.exe launched 2s into the wait",
+      "elapsed_wall_ms": 2314,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2256, "found": true, "event": {"kind": "window_opened", "app": "notepad.exe", "pid": "<pid>", "title": "<title>", "window_id": "<window-id>"}}}
+    },
+    {
+      "id": "L1-neg",
+      "command": "wait --event window-opened --timeout 4000",
+      "context": "no transition caused",
+      "elapsed_wall_ms": 4107,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "message": "Event 'window-opened' did not occur within 4000ms", "suggestion": "The target application may be busy or unresponsive", "details": {"app": null, "event": "window-opened", "kind": "wait_timeout", "predicate": "event", "timeout_ms": 4000, "baseline_counts": {"apps": 3, "windows": 3, "surfaces": 0}}, "disposition": {"delivery": "unknown", "retry": "unknown"}}}
+    },
+    {
+      "id": "L2-pos",
+      "command": "wait --event window-closed --timeout 15000",
+      "context": "pre-opened notepad.exe killed 2s into the wait (window present in seed baseline)",
+      "elapsed_wall_ms": 2318,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2260, "found": true, "event": {"kind": "window_closed", "app": "notepad.exe", "pid": "<pid>", "title": "<title>", "window_id": "<window-id>"}}}
+    },
+    {
+      "id": "L2-neg",
+      "command": "wait --event window-closed --timeout 4000",
+      "context": "no transition caused",
+      "elapsed_wall_ms": 4127,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "message": "Event 'window-closed' did not occur within 4000ms", "details": {"baseline_counts": {"apps": 3, "windows": 3, "surfaces": 0}, "timeout_ms": 4000}}}
+    },
+    {
+      "id": "L2-miss-1",
+      "command": "wait --event window-closed --timeout 20000",
+      "context": "mspaint.exe launched AFTER wait start (not in seed baseline), then killed, amid calc.exe/notepad.exe noise",
+      "elapsed_wall_ms": 20059,
+      "outcome": "MISS - real termination confirmed post-hoc via process list; event never fired",
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "message": "Event 'window-closed' did not occur within 20000ms", "details": {"app": null, "baseline_counts": {"apps": 3, "windows": 3, "surfaces": 0}, "timeout_ms": 20000}}}
+    },
+    {
+      "id": "L2-miss-2",
+      "command": "wait --event window-closed --timeout 10000",
+      "context": "repeat of L2-miss-1 scenario",
+      "elapsed_wall_ms": 10057,
+      "outcome": "MISS - reproduced",
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"baseline_counts": {"apps": 3, "windows": 3, "surfaces": 0}, "timeout_ms": 10000}}}
+    },
+    {
+      "id": "L2-miss-3-isolated",
+      "command": "wait --event window-closed --timeout 10000",
+      "context": "mspaint.exe alone opened after wait start, then killed 2s later, no other concurrent opens (real background desktop windows present in baseline)",
+      "elapsed_wall_ms": 10058,
+      "outcome": "MISS - reproduced a third time",
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"baseline_counts": {"apps": 5, "windows": 5, "surfaces": 0}, "timeout_ms": 10000}}}
+    },
+    {
+      "id": "L2-hit-preopened",
+      "command": "wait --event window-closed --timeout 10000",
+      "context": "mspaint.exe already open before wait start (in seed baseline), then killed 2s into the wait",
+      "elapsed_wall_ms": 2159,
+      "outcome": "HIT",
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2067, "found": true, "event": {"kind": "window_closed", "app": "mspaint.exe", "pid": "<pid>", "title": "<title>", "window_id": "<window-id>"}}}
+    },
+    {
+      "id": "L2-discriminator-a-mid-wait-open-close",
+      "command": "wait --event window-closed --timeout 8000",
+      "context": "control test: mspaint.exe opened 800ms into the wait (not in seed baseline) and killed 1.5s later, no other noise",
+      "elapsed_wall_ms": 8055,
+      "outcome": "MISS - confirms baseline-absence hypothesis",
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"baseline_counts": {"apps": 3, "windows": 3, "surfaces": 0}, "timeout_ms": 8000}}}
+    },
+    {
+      "id": "L2-discriminator-b-preopened",
+      "command": "wait --event window-closed --timeout 8000",
+      "context": "control test: mspaint.exe opened, wait started 2s later (present in seed baseline), killed 2s into wait",
+      "elapsed_wall_ms": 2321,
+      "outcome": "HIT - confirms baseline-absence hypothesis",
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2257, "found": true, "event": {"kind": "window_closed", "app": "mspaint.exe"}}}
+    },
+    {
+      "id": "L3-pos",
+      "command": "wait --event app-launched --timeout 15000",
+      "context": "mspaint.exe launched 2s into the wait",
+      "elapsed_wall_ms": 2552,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2491, "found": true, "event": {"kind": "app_launched", "app": "mspaint.exe", "pid": "<pid>"}}}
+    },
+    {
+      "id": "L3-neg",
+      "command": "wait --event app-launched --timeout 4000",
+      "elapsed_wall_ms": 4129,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"baseline_counts": {"apps": 4, "windows": 4, "surfaces": 0}, "timeout_ms": 4000}}}
+    },
+    {
+      "id": "L4-pos",
+      "command": "wait --event app-terminated --timeout 15000",
+      "context": "mspaint.exe killed 2s into the wait",
+      "elapsed_wall_ms": 2324,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2265, "found": true, "event": {"kind": "app_terminated", "app": "mspaint.exe", "pid": "<pid>"}}}
+    },
+    {
+      "id": "L4-neg",
+      "command": "wait --event app-terminated --timeout 4000",
+      "elapsed_wall_ms": 4100,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"baseline_counts": {"apps": 3, "windows": 3, "surfaces": 0}, "timeout_ms": 4000}}}
+    },
+    {
+      "id": "L5-pos",
+      "command": "wait --event focus-changed --timeout 15000",
+      "context": "notepad.exe launched 2s into the wait, grabs foreground focus",
+      "elapsed_wall_ms": 2329,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2255, "found": true, "event": {"kind": "focus_changed_window", "app": "notepad.exe", "pid": "<pid>", "title": "<title>", "window_id": "<window-id>"}}}
+    },
+    {
+      "id": "L5-neg",
+      "command": "wait --event focus-changed --timeout 4000",
+      "elapsed_wall_ms": 4110,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"baseline_counts": {"apps": 4, "windows": 4, "surfaces": 0}, "timeout_ms": 4000}}}
+    },
+    {
+      "id": "L6-no-app-appeared",
+      "command": "wait --event surface-appeared --timeout 4000",
+      "context": "no --app supplied",
+      "elapsed_wall_ms": 97,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "INVALID_ARGS", "message": "--event surface-appeared requires --app", "suggestion": "Add --app <name> so the adapter can inspect that application's surfaces.", "disposition": {"delivery": "not_delivered", "retry": "safe"}}}
+    },
+    {
+      "id": "L6-no-app-dismissed",
+      "command": "wait --event surface-dismissed --timeout 4000",
+      "context": "no --app supplied",
+      "elapsed_wall_ms": 53,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "INVALID_ARGS", "message": "--event surface-dismissed requires --app", "suggestion": "Add --app <name> so the adapter can inspect that application's surfaces.", "disposition": {"delivery": "not_delivered", "retry": "safe"}}}
+    },
+    {
+      "id": "L7-pos-simple",
+      "command": "wait --event surface-appeared --app notepad.exe --timeout 15000",
+      "context": "fresh notepad.exe, no menu pre-opened; background job opens Help menu via alt+h then invokes About via 'a', 2s into the wait",
+      "elapsed_wall_ms": 2245,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2187, "found": true, "event": {"kind": "surface_appeared", "app": "notepad.exe", "pid": "<pid>", "surface": "menu"}}},
+      "note": "surface reported is 'menu' (the intermediate Help-menu opening), not 'sheet' (the About dialog) - the diff matched the earliest surface-appeared transition, which was the menu, not the dialog the test intended to observe."
+    },
+    {
+      "id": "L7-pos-menu-to-dialog-x5",
+      "command": "wait --event surface-appeared --app notepad.exe --timeout {8000-15000}",
+      "context": "Help menu pre-opened (in seed baseline), background job presses 'a' to close the menu and open the About dialog (sheet)",
+      "outcomes": [
+        {"attempt": 1, "elapsed_wall_ms": 15093, "result": "MISS - TIMEOUT despite the About dialog being confirmed open via list-windows immediately after"},
+        {"attempt": 2, "elapsed_wall_ms": 2298, "result": "HIT - surface: sheet"},
+        {"attempt": 3, "elapsed_wall_ms": 2260, "result": "HIT - surface: sheet"},
+        {"attempt": 4, "elapsed_wall_ms": 2253, "result": "HIT - surface: sheet"},
+        {"attempt": 5, "elapsed_wall_ms": 2293, "result": "HIT - surface: sheet"},
+        {"attempt": 6, "elapsed_wall_ms": 2242, "result": "HIT - surface: sheet"}
+      ],
+      "note": "1 miss in 6 identical attempts (attempt 1). The 'a' keystroke that both closes the menu and opens the dialog was delivered by a background PowerShell job process in every attempt, including the 5 that hit - so the miss is not fully explained by job-process key delivery alone. Flagged with the same confound named in the wait --menu-closed finding (F3) since the mechanism (a background-job-delivered keystroke into a native menu/dialog transition) is identical."
+    },
+    {
+      "id": "L8-pos-dismissed",
+      "command": "wait --event surface-dismissed --app notepad.exe --timeout 15000",
+      "context": "About dialog open (in seed baseline), background job presses escape 2s into the wait",
+      "elapsed_wall_ms": 2258,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2201, "found": true, "event": {"kind": "surface_dismissed", "app": "notepad.exe", "pid": "<pid>", "surface": "sheet"}}}
+    },
+    {
+      "id": "L8-neg",
+      "command": "wait --event surface-dismissed --app notepad.exe --timeout 4000",
+      "elapsed_wall_ms": 4095,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"app": "notepad.exe", "baseline_counts": {"apps": 1, "windows": 1, "surfaces": 0}, "timeout_ms": 4000}}}
+    },
+    {
+      "id": "L7-neg",
+      "command": "wait --event surface-appeared --app notepad.exe --timeout 4000",
+      "elapsed_wall_ms": 4051,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"app": "notepad.exe", "baseline_counts": {"apps": 1, "windows": 1, "surfaces": 0}, "timeout_ms": 4000}}}
+    },
+    {
+      "id": "L9-menu-pos",
+      "command": "wait --menu --app notepad.exe --timeout 15000",
+      "context": "background job opens Help menu via alt+h 2s into the wait",
+      "elapsed_wall_ms": 2205,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2145, "found": true}}
+    },
+    {
+      "id": "L9-menu-neg",
+      "command": "wait --menu --app NOTEPAD.EXE --timeout 500",
+      "context": "no menu opened",
+      "elapsed_wall_ms": null,
+      "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "message": "Operation exceeded its deadline", "platform_detail": "No menu opened before the deadline", "details": {"elapsed_ms": 500, "kind": "deadline", "timeout_ms": 500}}}
+    },
+    {
+      "id": "L10-menu-closed-miss-x3",
+      "command": "wait --menu-closed --app notepad.exe --timeout {6000-15000}",
+      "context": "Help menu pre-opened via interactive alt+h; background PowerShell job (Start-Job) presses escape 2s into the wait",
+      "outcomes": [
+        {"attempt": 1, "elapsed_wall_ms": 15061, "result": "MISS - platform_detail 'Menu did not close before the deadline'"},
+        {"attempt": 2, "elapsed_wall_ms": 6055, "result": "MISS - reproduced"},
+        {"attempt": 3, "elapsed_wall_ms": 6047, "result": "MISS - reproduced"},
+        {"attempt": 4, "elapsed_wall_ms": 6087, "result": "MISS - reproduced"}
+      ],
+      "root_cause_isolated": "Verified via a direct probe (job escape, then a short wait --menu poll outside the timing wait) that the menu genuinely remained open after the background job's escape - the job's keystroke did not dismiss it. The identical 'press escape --app notepad.exe' command run interactively (from the same foreground console invoking the CLI directly, not via Start-Job) DID dismiss the menu every time it was tried. wait --menu-closed's TIMEOUT was an honest report of true platform state (menu still open); the defect is upstream in key delivery from a background/non-interactive process context, not in the menu detector.",
+      "envelope_sample": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "message": "Operation exceeded its deadline", "platform_detail": "Menu did not close before the deadline", "details": {"kind": "deadline"}, "disposition": {"delivery": "unknown", "retry": "unknown"}}},
+      "press_response_when_delivery_silently_failed": {"ok": true, "command": "press", "data": {"action": "press_key", "disposition": {"delivery": "delivered_unverified", "retry": "unsafe"}}}
+    },
+    {
+      "id": "L11-app-contract",
+      "commands": [
+        {"cmd": "wait --menu --app notepad.exe --timeout 500", "result": "resolves; honest TIMEOUT 'No menu opened before the deadline'"},
+        {"cmd": "wait --menu --app NOTEPAD.EXE --timeout 500", "result": "resolves case-insensitively; same honest TIMEOUT"},
+        {"cmd": "wait --menu --app Notepad --timeout 500", "result": "APP_NOT_FOUND", "envelope": {"ok": false, "command": "wait", "error": {"code": "APP_NOT_FOUND", "message": "Application 'Notepad' was not found with exact process identity", "disposition": {"delivery": "unknown", "retry": "unknown"}}}},
+        {"cmd": "wait --event surface-appeared --app Notepad --timeout 500", "result": "APP_NOT_FOUND", "envelope": {"ok": false, "command": "wait", "error": {"code": "APP_NOT_FOUND", "message": "Application 'Notepad' was not found with exact process identity", "disposition": {"delivery": "unknown", "retry": "unknown"}}}}
+      ],
+      "observation": "APP_NOT_FOUND carries no `suggestion` field at all (contrast INVALID_ARGS above, which does) - nothing in the error tells the caller that the accepted form is the process image name."
+    },
+    {
+      "id": "L12-two-instances",
+      "context": "two notepad.exe processes running, neither has a menu open",
+      "commands": [
+        {"cmd": "wait --menu --app notepad.exe --timeout 800", "result": "AMBIGUOUS_TARGET"},
+        {"cmd": "wait --event surface-appeared --app notepad.exe --timeout 800", "result": "AMBIGUOUS_TARGET"},
+        {"cmd": "wait --event app-launched --app notepad.exe --timeout 800", "result": "honest TIMEOUT, not ambiguous - app-launched intentionally leaves process unresolved (matches R4)", "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "details": {"app": "notepad.exe", "baseline_counts": {"apps": 2, "windows": 2, "surfaces": 0}, "timeout_ms": 800}}}}
+      ],
+      "ambiguous_envelope": {"ok": false, "command": "wait", "error": {"code": "AMBIGUOUS_TARGET", "message": "Multiple application instances matched 'notepad.exe'", "suggestion": "Re-run a snapshot to refresh refs, then retry with a more specific ref", "details": {"candidate_count": 2, "candidate_summaries_truncated": false, "candidates": [{"name": "notepad.exe", "pid": "<pid>", "process_instance": "<process_instance>"}, {"name": "notepad.exe", "pid": "<pid>", "process_instance": "<process_instance>"}]}, "disposition": {"delivery": "not_delivered", "retry": "safe"}}},
+      "observation": "the suggestion text references 'refs' and 'snapshot', concepts that do not exist for wait --menu or wait --event; details.candidates carries a disambiguating pid and process_instance per candidate, but no wait flag accepts either as a selector (checked --help: only --app, --window, --window-id exist, and --window-id only narrows --event window-opened/window-closed/focus-changed per its help text)."
+    },
+    {
+      "id": "L13-electron-window-opened",
+      "command": "wait --event window-opened --timeout 20000",
+      "context": "Obsidian.exe launched 2s into the wait",
+      "elapsed_wall_ms": 4822,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 4675, "found": true, "event": {"kind": "window_opened", "app": "Obsidian.exe", "pid": "<pid>", "title": "<title-contains-vault-name>", "window_id": "<window-id>"}}}
+    },
+    {
+      "id": "L13-electron-app-terminated",
+      "command": "wait --event app-terminated --app Obsidian.exe --timeout 15000",
+      "context": "all 4 Obsidian.exe processes killed together 2s into the wait",
+      "elapsed_wall_ms": 2249,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2191, "found": true, "event": {"kind": "app_terminated", "app": "Obsidian.exe", "pid": "<pid>"}}}
+    },
+    {
+      "id": "L14-electron-identity-menu-surface",
+      "context": "4 processes shared the Obsidian.exe image name (main + helpers); no AMBIGUOUS_TARGET was raised for --app Obsidian.exe, unlike the two-genuine-notepad-instances case",
+      "commands": [
+        {"cmd": "wait --menu --app Obsidian.exe --timeout 1500", "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "message": "Operation exceeded its deadline", "platform_detail": "No menu opened before the deadline", "details": {"elapsed_ms": 1500, "kind": "deadline", "timeout_ms": 1500}}}},
+        {"cmd": "wait --event surface-appeared --app Obsidian.exe --timeout 1500", "envelope": {"ok": false, "command": "wait", "error": {"code": "TIMEOUT", "message": "Event 'surface-appeared' did not occur within 1500ms", "details": {"app": "Obsidian.exe", "baseline_counts": {"apps": 1, "windows": 1, "surfaces": 0}, "timeout_ms": 1500}}}}
+      ],
+      "observation": "apps count in baseline is 1 despite 4 OS processes named Obsidian.exe, indicating window-owning-process filtering resolves the app identity to the single window-owning process rather than ambiguating across helper/renderer processes that own no top-level window. Both waits returned honest TIMEOUTs (no menu/surface was open), not APP_NOT_FOUND or AMBIGUOUS_TARGET."
+    },
+    {
+      "id": "L15-explorer-window-opened",
+      "command": "wait --event window-opened --timeout 15000",
+      "context": "new Explorer window opened 2s into the wait",
+      "elapsed_wall_ms": 2557,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2498, "found": true, "event": {"kind": "window_opened", "app": "explorer.exe", "pid": "<pid>", "title": "<title>", "window_id": "<window-id>"}}}
+    },
+    {
+      "id": "L15-explorer-window-closed",
+      "command": "wait --event window-closed --timeout 15000",
+      "context": "Explorer window pre-opened (in seed baseline) via COM Shell.Application.Windows(), closed 2s into the wait",
+      "elapsed_wall_ms": 2329,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 2271, "found": true, "event": {"kind": "window_closed", "app": "explorer.exe", "pid": "<pid>", "title": "<title>", "window_id": "<window-id>"}}}
+    },
+    {
+      "id": "L16-busy-desktop-window-opened",
+      "command": "wait --event window-opened --timeout 20000",
+      "context": "job opens calc, then cmd, then mspaint(closed), then notepad in sequence with delays; wait matched the first opened window",
+      "elapsed_wall_ms": 1082,
+      "envelope": {"ok": true, "command": "wait", "data": {"elapsed_ms": 1027, "found": true, "event": {"kind": "window_opened", "app": "win32calc.exe", "pid": "<pid>", "title": "<title>", "window_id": "<window-id>"}}}
+    }
+  ],
+  "cross_run_observations": {
+    "timeout_overhead_ms": "consistently ~50-130ms above the requested --timeout across all TIMEOUT legs (e.g. 4000 requested -> ~4095-4129 wall; 8000 -> 8055; 10000 -> 10057-10058; 15000 -> 15061-15093; 20000 -> 20059)",
+    "last_error_breadcrumb_observed": false,
+    "last_error_note": "across roughly a dozen TIMEOUT envelopes recorded in this run, none carried a `last_error` breadcrumb - no retryable capture failure (APP_UNRESPONSIVE / ELEMENT_NOT_FOUND) was observed on this desktop during the run",
+    "focus_changed_event_kind": "focus_changed_window (not focus_changed) - matches the --event token family naming, noted for shape-parity awareness only"
+  }
+}
