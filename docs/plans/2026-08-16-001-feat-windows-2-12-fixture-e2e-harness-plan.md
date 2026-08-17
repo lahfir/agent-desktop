@@ -893,17 +893,47 @@ No file under `tests/e2e-windows/` exceeds 400 lines (U8 rule 13), so the harnes
 
 | Area | Hand-written LOC (est.) |
 |---|---|
-| WinForms fixture (`tests/fixture-app-windows/**`, C# 5 - including the `WM_GETOBJECT` providers for the zero-bounds, switch, menubutton and cell targets, and the id manifest) | ~1,050 |
-| PowerShell harness (`tests/e2e-windows/**`: modules ~1,500 **plus** scenarios ~900, including `ConvertFrom-AgentJson`, `Enter-DesktopLease` with its adoption branch, the restricted-token staging helper and the self-test stub) | ~2,400 |
-| Contract gate plus its **committed** fixtures - thirteen rules, MUST-CATCH per pattern, the `-SelfTest` half (`scripts/**`); rule 13's 401/399-line size fixtures are generated at gate-run time and are not in this figure | ~550 |
-| Capture-redaction gate and phases.md citation gate, each with fixtures (`scripts/**`) | ~200 |
-| Windows lease and its tests (`crates/windows/src/system/interaction_lease*.rs`, adapter, core visibility changes) | ~360 |
-| Off-screen origin module, `roles.rs` refinement and role-set pin, plus tests | ~180 |
-| Workflows, run script, runbook | ~220 |
-| **Total product code** | **~4,900** |
+| WinForms fixture (`tests/fixture-app-windows/**`, C# 5 - including the `WM_GETOBJECT` providers for the zero-bounds, switch, menubutton and cell targets, and the id manifest) | 2,274 (est. ~1,050) |
+| PowerShell harness (`tests/e2e-windows/**`): modules 3,586, scenarios 2,505, self-test corpus 1,118 | 7,318 (est. ~2,400) |
+| Contract gate plus its **committed** fixtures - thirteen rules, MUST-CATCH per pattern, the `-SelfTest` half, alongside the capture-redaction and citation gates (`scripts/**`, of which 362 is the fixture corpus) | 2,156 (est. ~750 across two rows) |
+| Workflows, run script, runbook (`.github/**`) | 231 (est. ~220) |
+| Rust: the Windows lease, the off-screen origin module, the `roles.rs` refinement and their tests (`crates/**`) - 1,068 of it test code | 2,673 (est. ~540) |
+| - | - |
+| - | - |
+| **Total product code** | **~14,600 (measured)** |
 | Probe scripts and dogfood/captures (not product code) | ~800 |
 
-This exceeds the 2,000-LOC sub-phase guidance by roughly two and a half times, and exceeds the ~2.5k `docs/phases.md` currently sanctions by about the same margin; U1 item 11 corrects that estimate to ~4.9k, the same figure the Goal Capsule quotes. **`docs/phases.md` sanctions an overage only when the plan says so explicitly - this paragraph is that statement.** The sanction's reasoning holds - only ~540 LOC of the total is Rust; the rest is C#, PowerShell and workflow YAML. The overage above the sanction is the harness itself plus the gates that make it falsifiable: the macOS equivalent is 4,783 LOC across shell and Python helpers, the Windows driver can reuse none of it (KTD1), and the review rounds that produced this revision added roughly 1,000 lines of self-tests, stubs, per-pattern fixtures and gate halves whose absence is precisely what let three unfalsifiable gates ship in the previous sub-phase. **The owner has decided the split question: one PR, all fifteen units, U1 through U15.** The alternative considered and declined was cutting U11–U13 (the three measurement units) into a follow-on; taking it would have moved deferral items 1, 4 and 5's evidence with it and required its own `docs/phases.md` edit, and it would separate the fixture from the harness that is its only consumer, or the harness from the lease it cannot run without - neither being a reviewable unit on its own. Scope reduction is the owner's call, not the implementer's; the call was taken, and this plan carries it rather than re-opening it.
+The build measured **~14,600** lines of product code against this plan's own
+~4,900 estimate - roughly three times it, and seven times the 2,000-LOC
+sub-phase guidance. The estimate is left in each row beside what was measured
+rather than quietly replaced, because the gap is the useful part.
+
+**`docs/phases.md` sanctions an overage only when the plan says so explicitly -
+this paragraph is that statement**, and it now states the measured figure rather
+than a forecast.
+
+Two of the estimate's assumptions are worth recording as wrong, since the next
+sub-phase to size a harness will make them again. The first is that the Rust
+portion would be small: ~540 was projected and 2,673 landed, 1,068 of it tests,
+because a cross-process lease needs directory validation, DACL construction, SID
+handling, identity checks and an adoption path, and each of those needs its own
+coverage. The second is that a gate is cheap: ~750 was projected across two rows
+and 2,156 landed, because a gate that must be able to fail needs a MUST-CATCH
+and a MUST-PASS fixture per rule, and a self-test half that runs them. That cost
+is the direct answer to three unfalsifiable gates shipping in the previous
+sub-phase, and it is the part of this overage least worth regretting.
+
+The harness itself is the bulk at 7,318. The macOS equivalent is 4,783 lines
+across shell and Python and the Windows driver reuses none of it, so a harness
+larger than its macOS counterpart was expected; three times the estimate was
+not. **The owner has decided the split question: one PR, all fifteen units, U1
+through U15.** The alternative considered and declined was cutting U11-U13 into
+a follow-on; taking it would have moved deferral items 1, 4 and 5's evidence
+with it, and would separate the fixture from the harness that is its only
+consumer, or the harness from the lease it cannot run without. Scope reduction
+is the owner's call, not the implementer's; the call was taken against a ~4,900
+figure, and the measured figure is recorded here so it can be revisited on
+accurate numbers rather than discovered later.
 
 ---
 
