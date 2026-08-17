@@ -76,7 +76,6 @@ mod private_file_ops;
 mod private_file_parent;
 mod process_id;
 mod process_identity;
-#[cfg(unix)]
 mod process_lease_guard;
 pub mod process_state;
 mod recovery_hint;
@@ -238,6 +237,7 @@ pub use private_file_ops::{
 };
 pub use process_id::ProcessId;
 pub use process_identity::ProcessIdentity;
+pub use process_lease_guard::ProcessLeaseGuard;
 pub use recovery_hint::RecoveryHint;
 pub use rect::Rect;
 pub use ref_capabilities::RefCapabilities;

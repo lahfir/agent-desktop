@@ -27,10 +27,10 @@ const ES_PASSWORD: u32 = 0x0020;
 /// `E_FAIL`.
 const WM_FIXTURE_READY: u32 = 0x0400 + 1;
 const CONTROL_BORDER: u32 = 0x0080_0000;
-pub(crate) const OFFSCREEN_LEFT: i32 = 2_000;
-pub(crate) const OFFSCREEN_TOP: i32 = 2_000;
 pub(crate) const WINDOW_WIDTH: i32 = 420;
 pub(crate) const WINDOW_HEIGHT: i32 = 320;
+
+pub(crate) use crate::tree::offscreen_origin::{on_screen_origin, on_screen_stage};
 
 /// The `comctl32` v6 side-by-side manifest. Without an activation context the
 /// v5 common controls are bound, and the standard controls the fixture creates
@@ -189,13 +189,23 @@ fn control(parent: HWND, class: &str, text: &str, style: u32, top: i32) -> HWND 
 }
 
 pub(crate) fn host_window(class_name: &str, ready: Sender<Result<PumpHandle, String>>) {
-    host_window_at(class_name, ready, OFFSCREEN_LEFT, OFFSCREEN_TOP);
+    let stage = offscreen_stage();
+    let (left, top) = stage.origin();
+    host_window_at(class_name, ready, left, top);
+}
+
+/// Resolves where the default fixture window should park: off-screen when
+/// the live virtual-screen rect leaves room, the serialized on-screen stage
+/// otherwise. The returned `Stage` must be held for as long as the fixture
+/// window it parks is alive.
+pub(crate) fn offscreen_stage() -> crate::tree::offscreen_origin::Stage {
+    crate::tree::offscreen_origin::stage(None, WINDOW_WIDTH, WINDOW_HEIGHT)
 }
 
 /// Creates the fixture window at a caller-chosen origin, then pumps until
 /// destroyed. Live hit-test legs need an origin inside the virtual screen
-/// rect; the default off-screen parking at (2000,2000) is refused by that
-/// guard (A18-6).
+/// rect; the default off-screen parking resolves against the live
+/// virtual-screen rect rather than a box-sized constant (A18-6).
 pub(crate) fn host_window_at(
     class_name: &str,
     ready: Sender<Result<PumpHandle, String>>,
@@ -236,63 +246,6 @@ pub(crate) fn host_window_at(
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     unsafe { PostMessageW(window, WM_FIXTURE_READY, 0, 0) };
     pump_until_destroyed(window as isize, ready);
-}
-
-/// Serializes the live legs that stage on-screen windows and then read the
-/// desktop's z-order.
-///
-/// Slot rotation alone is not enough: the slot counter wraps once placements
-/// exceed the display's slot grid, and a short or remote display can offer
-/// only one row, so two parallel legs can hold the same rect. Even on distinct
-/// rects the legs are not independent — one of them deliberately raises a
-/// topmost window over a point a neighbour is about to probe.
-///
-/// The legs read Win32's opinion of their point on both sides of the probe, so
-/// a neighbour moving the z-order underneath one cannot make it assert against
-/// a desktop it never saw; what it can still do is own the point on both
-/// readings, which turns the leg's assertion into an honest skip and takes the
-/// coverage with it. Holding this while a leg stages and probes is what keeps
-/// those assertions running rather than merely truthful.
-///
-/// A poisoned lock is adopted rather than propagated: the mutex guards screen
-/// real estate, not data, so one failing leg must not cascade into every other
-/// leg reporting a lock error instead of its own verdict.
-pub(crate) fn on_screen_stage() -> std::sync::MutexGuard<'static, ()> {
-    static STAGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    STAGE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-/// An origin inset inside the virtual screen so live hit-test fixtures clear
-/// the virtual-screen membership guard. Each call advances a slot so parallel
-/// live tests do not park on the same screen rect (A18-4 foreign-window
-/// contamination shape). Slot pitch and wrap keep the full window rect inside
-/// the virtual screen — a tall-slot layout on a short display would park below
-/// the fold and the hit-test guard would honestly answer `Unknown`.
-pub(crate) fn on_screen_origin() -> (i32, i32) {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN,
-    };
-    const INSET: i32 = 48;
-    const SLOT_DX: i32 = WINDOW_WIDTH + 24;
-    const SLOT_DY: i32 = WINDOW_HEIGHT + 24;
-    static SLOT: AtomicU32 = AtomicU32::new(0);
-    let (vx, vy, vw, vh) = unsafe {
-        (
-            GetSystemMetrics(SM_XVIRTUALSCREEN),
-            GetSystemMetrics(SM_YVIRTUALSCREEN),
-            GetSystemMetrics(SM_CXVIRTUALSCREEN),
-            GetSystemMetrics(SM_CYVIRTUALSCREEN),
-        )
-    };
-    let cols = ((vw - INSET * 2 - WINDOW_WIDTH).max(0) / SLOT_DX + 1).max(1);
-    let rows = ((vh - INSET * 2 - WINDOW_HEIGHT).max(0) / SLOT_DY + 1).max(1);
-    let slot = SLOT.fetch_add(1, Ordering::SeqCst) as i32;
-    let col = slot % cols;
-    let row = (slot / cols) % rows;
-    (vx + INSET + col * SLOT_DX, vy + INSET + row * SLOT_DY)
 }
 
 /// Locates the fixture's primary `BUTTON` by its window text.

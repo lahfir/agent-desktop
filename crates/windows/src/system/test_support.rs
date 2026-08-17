@@ -32,6 +32,23 @@ use std::sync::Mutex;
 
 pub(crate) static FIXTURE_APP_NAME_LOCK: Mutex<()> = Mutex::new(());
 
+/// Serializes every test that reaches the real, machine-global interaction
+/// lease - `ProcessLeaseGuard`'s `AtomicBool` is process-wide, so two lease
+/// tests in different OS threads of the same `cargo test` binary contend on
+/// it even when each targets its own scratch lock-file root. Held for the
+/// entire body of any such test, never just around one call.
+pub(crate) static INTERACTION_LEASE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Runs `body` under [`INTERACTION_LEASE_TEST_LOCK`], recovering from a
+/// poisoned mutex rather than propagating it - one earlier test's panic must
+/// not fail every later lease test the same run happens to reach.
+pub(crate) fn with_interaction_lease_test_lock<R>(body: impl FnOnce() -> R) -> R {
+    let _guard = INTERACTION_LEASE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    body()
+}
+
 pub(crate) fn with_flag<R>(
     flag: &'static std::thread::LocalKey<Cell<bool>>,
     value: bool,

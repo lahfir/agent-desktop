@@ -229,9 +229,11 @@ fn host_menu_window() {
         return;
     }
     let name = fixture_window::wide(&class_name);
+    let stage = fixture_window::offscreen_stage();
+    let (left, top) = stage.origin();
     let geometry = (
-        fixture_window::OFFSCREEN_LEFT,
-        fixture_window::OFFSCREEN_TOP,
+        left,
+        top,
         fixture_window::WINDOW_WIDTH,
         fixture_window::WINDOW_HEIGHT,
     );

@@ -1,0 +1,4 @@
+@{
+    'chromium-target-absent'    = 'No Electron/Chromium target is guaranteed on an arbitrary runner; Edge is absent under this grounding (G5). Declared for the Chromium/renderer scenario so a target-less host reports a visible skip rather than a silent pass.'
+    'foreground-grant-declined' = 'A raw SetForegroundWindow (AttachThreadInput + AllowSetForegroundWindow) staged from the long-lived harness process itself can be declined by this desktop even after every documented workaround, the same escape hatch crate/windows/src/system/wait_event_live_tests.rs already takes for focus_changed ("this desktop declines foreground even to a raw SetForegroundWindow"). Declared for the contended focus-steal control (R17b(c)) so an unstageable host reports a visible skip rather than a silent pass; the N-trial rate leg is never reached when the control cannot be established.'
+}

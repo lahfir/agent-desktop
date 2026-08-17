@@ -38,6 +38,67 @@ jobs:
       - name: Validate GitHub Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.11
 
+      # R21: windows-e2e.yml's live-run captures are never committed, so the
+      # only thing standing between them and a public download is the
+      # ordering inside this one file - and the workflow itself cannot be
+      # executed to prove that ordering, since no runner is registered
+      # (deferral item 6). This is a text-level static check for exactly
+      # that reason: the gate must not be a claim resting on a job nobody
+      # can run. Checked: the checkout sets persist-credentials: false; a
+      # step named redaction-gate exists and runs
+      # scripts/check-capture-redaction.ps1; no step in the file carries
+      # continue-on-error (which would let the gate step "fail" without
+      # failing the job); and the upload-artifact step's `if:` requires
+      # both !cancelled() and steps.redaction-gate.outcome == 'success' -
+      # not job success alone, which would either skip the gate on a red
+      # suite (losing the debugging payload) or upload regardless of the
+      # gate's own result.
+      - name: Static check - windows-e2e.yml gates its capture upload
+        run: |
+          set -euo pipefail
+          file='.github/workflows/windows-e2e.yml'
+          failed=0
+
+          if ! grep -q 'persist-credentials: false' "$file"; then
+            echo "FAIL: $file checkout does not set persist-credentials: false"
+            failed=1
+          fi
+
+          if ! grep -q 'id: redaction-gate' "$file"; then
+            echo "FAIL: $file has no step with id: redaction-gate"
+            failed=1
+          fi
+
+          if ! awk '/id: redaction-gate/,/^$/' "$file" | grep -q 'check-capture-redaction.ps1'; then
+            echo "FAIL: $file's redaction-gate step does not run check-capture-redaction.ps1"
+            failed=1
+          fi
+
+          if grep -q 'continue-on-error' "$file"; then
+            echo "FAIL: $file sets continue-on-error somewhere - the gate step must be able to fail the job"
+            failed=1
+          fi
+
+          upload_if="$(awk '/name: Upload/,/^$/' "$file" | grep '^\s*if:' || true)"
+          if [ -z "$upload_if" ]; then
+            echo "FAIL: $file's upload step has no if: condition"
+            failed=1
+          else
+            if ! printf '%s' "$upload_if" | grep -q "steps.redaction-gate.outcome == 'success'"; then
+              echo "FAIL: $file's upload step's if: does not require steps.redaction-gate.outcome == 'success': $upload_if"
+              failed=1
+            fi
+            if ! printf '%s' "$upload_if" | grep -q '!cancelled()'; then
+              echo "FAIL: $file's upload step's if: does not require !cancelled(): $upload_if"
+              failed=1
+            fi
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+          echo "OK: $file gates upload-artifact behind the redaction-gate step's own outcome"
+
   msrv:
     name: Rust 1.89 MSRV
     runs-on: ubuntu-latest
@@ -367,6 +428,68 @@ jobs:
 
       - name: Build stripped release binary
         run: cargo build --locked --release -p agent-desktop
+
+      # The Windows analog of native-e2e.yml's exclusive suite gate: what a
+      # hosted windows-latest runner can actually execute today, run on
+      # every PR touching the tree - the harness's own assertion
+      # primitives, the failing-leg-to-exit-code wire, the redaction gate,
+      # the phases.md/FINDINGS.md citation gate, and a fixture compile
+      # smoke. The live suite itself still needs a real desktop and is
+      # proven separately by the local exclusive run (§2.12's own gate);
+      # this is what keeps the harness's structural half from rotting
+      # unexecuted between local runs.
+      - name: Windows E2E contract gate (scan and self-test halves)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-e2e-windows-contract.ps1 -SelfTest
+
+      # R10/R9: a failing leg must reach a non-zero process exit code.
+      # -SelfTestSeedFailure always fails one leg and nothing else, so this
+      # is the one place that proves the exit-code wire itself rather than
+      # asserting it indirectly through the live suite's own pass/fail mix.
+      - name: Seeded-failure run asserts a non-zero exit code
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e-windows\Run-E2E.ps1 -SelfTestSeedFailure
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'FAIL: Run-E2E.ps1 -SelfTestSeedFailure exited 0; a failing leg must reach a non-zero exit code'
+            exit 1
+          }
+          Write-Host "OK: Run-E2E.ps1 -SelfTestSeedFailure exited $LASTEXITCODE"
+
+      - name: Capture redaction gate
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-capture-redaction.ps1
+
+      - name: phases.md / FINDINGS.md citation gate
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-phases-ledger-citations.ps1
+
+      # R9's refusal-guard self-test: with AGENT_DESKTOP_NATIVE_E2E_RUNNER
+      # unset, run-windows-e2e-ci.ps1 must refuse before touching cargo, the
+      # desktop lease, or any process. Placed after the release binary
+      # above exists, so the unchanged-mtime predicate is not vacuously
+      # true (see the fixture's own header comment).
+      - name: run-windows-e2e-ci.ps1 refusal-guard self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\fixtures\run-windows-e2e-ci-refusal-selftest.ps1
+
+      # csc.exe is in-box on windows-latest (A24-1's pinned compiler), so a
+      # fixture that fails to compile here is caught on every PR rather
+      # than only on the one dev box that has ever built it.
+      - name: E2E fixture compile smoke
+        shell: powershell
+        run: |
+          $smokeOut = Join-Path $env:RUNNER_TEMP 'agent-desktop-fixture-smoke'
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\fixture-app-windows\build.ps1 -OutputDir $smokeOut
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FAIL: tests\fixture-app-windows\build.ps1 exited $LASTEXITCODE"
+            exit 1
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $smokeOut 'AgentDeskFixture.exe'))) {
+            Write-Host 'FAIL: build.ps1 reported success but AgentDeskFixture.exe is missing'
+            exit 1
+          }
+          Write-Host 'OK: the E2E fixture compiles under the pinned in-box csc.exe'
 
       # The macOS lane's stat -f%z is BSD-only and fails under Git Bash, so the
       # size gate is native pwsh. There is no helper binary on Windows — the cap

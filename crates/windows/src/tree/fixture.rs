@@ -179,14 +179,21 @@ pub(crate) struct LocalFixture {
     pump_thread_id: u32,
     class_name: String,
     pump: Option<JoinHandle<()>>,
+    origin: (i32, i32),
+    _stage: Option<std::sync::MutexGuard<'static, ()>>,
 }
 
 impl LocalFixture {
     pub(crate) fn create() -> Result<Self, String> {
-        Self::create_at(
-            fixture_window::OFFSCREEN_LEFT,
-            fixture_window::OFFSCREEN_TOP,
-        )
+        let stage = fixture_window::offscreen_stage();
+        let (left, top) = stage.origin();
+        let guard = match stage {
+            crate::tree::offscreen_origin::Stage::Parked { .. } => None,
+            crate::tree::offscreen_origin::Stage::OnScreen { guard, .. } => Some(guard),
+        };
+        let mut fixture = Self::create_at(left, top)?;
+        fixture._stage = guard;
+        Ok(fixture)
     }
 
     /// Parks the fixture at a caller-chosen origin so live hit-test legs can
@@ -203,17 +210,32 @@ impl LocalFixture {
             Ok(Err(error)) => return Err(error),
             Err(_) => return Err(String::from("the fixture window never became ready")),
         };
-        await_walkable(running.window)?;
+        if let Err(error) = await_walkable(running.window) {
+            fixture_window::close_window(running.window);
+            fixture_window::quit_pump(running.thread_id);
+            let _ = pump.join();
+            fixture_window::destroy_window(running.window);
+            fixture_window::unregister_class(&class_name);
+            return Err(error);
+        }
         Ok(Self {
             handle: running.window,
             pump_thread_id: running.thread_id,
             class_name,
             pump: Some(pump),
+            origin: (left, top),
+            _stage: None,
         })
     }
 
     pub(crate) fn handle(&self) -> isize {
         self.handle
+    }
+
+    /// The origin this fixture actually parked at, so a caller asserting a
+    /// point relative to the window never has to re-derive it.
+    pub(crate) fn origin(&self) -> (i32, i32) {
+        self.origin
     }
 
     pub(crate) fn geometry(&self) -> fixture_window::WindowGeometry {
@@ -309,14 +331,16 @@ fn stalled_window(class_name: &str, ready: Sender<Result<isize, String>>, stop: 
     }
     let name = fixture_window::wide(class_name);
     let title = fixture_window::wide("agent-desktop stalled fixture");
+    let stage = fixture_window::offscreen_stage();
+    let (left, top) = stage.origin();
     let window = unsafe {
         CreateWindowExW(
             0,
             name.as_ptr(),
             title.as_ptr(),
             WS_OVERLAPPEDWINDOW,
-            fixture_window::OFFSCREEN_LEFT,
-            fixture_window::OFFSCREEN_TOP,
+            left,
+            top,
             420,
             320,
             std::ptr::null_mut(),

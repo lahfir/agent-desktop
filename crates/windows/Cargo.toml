@@ -40,6 +40,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_Security_Authorization",
   "Win32_System_ApplicationInstallationAndServicing",
   "Win32_System_LibraryLoader",
+  "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_DataExchange",
