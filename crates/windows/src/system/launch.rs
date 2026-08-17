@@ -1,25 +1,28 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, WindowFilter, WindowInfo,
-    launch_options::LaunchOptions,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, RendererKind, WindowFilter,
+    WindowInfo, launch_options::LaunchOptions, launch_result::LaunchResult,
 };
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
 use super::app_ops::{ProcessRow, process_snapshot};
+#[cfg(target_os = "windows")]
+use super::hresult::win32_last_error;
 use super::launch_path::{
-    image_file_name, resolve_executable, validate_app_identifier, validate_launch_options,
+    child_environment_block, image_file_name, resolve_executable, validate_app_identifier,
+    validate_launch_options,
 };
 use super::permissions::ensure_budget;
 use super::process_identity;
-use super::process_state::hresult_from_win32;
 use super::window_ops::list_windows_live;
 
 pub(crate) fn launch_app_impl(
     id: &str,
     options: &LaunchOptions,
     parent_deadline: Deadline,
-) -> Result<WindowInfo, AdapterError> {
+) -> Result<LaunchResult, AdapterError> {
     validate_app_identifier(id).map_err(before_launch)?;
     validate_launch_options(options).map_err(before_launch)?;
     let deadline = if options.timeout_ms == 0 {
@@ -43,35 +46,37 @@ pub(crate) fn launch_app_impl(
                         "Running process has no exact process instance token",
                     ))
                 })?;
-            return wait_for_window(id, row.pid, &token, options.timeout_ms, deadline);
+            let window = observe_window(row.pid, &token, options, deadline)?;
+            return Ok(launch_result(id, row.pid, token, window));
         }
     } else if let Some(row) = matches.first() {
         return Err(before_launch(already_running_error(row.pid, &matches)));
     }
     let executable = resolve_executable(id).map_err(before_launch)?;
     let (pid, token) = create_process(&executable, options, deadline)?;
-    wait_for_window(id, pid, &token, options.timeout_ms, deadline)
+    let window = observe_window(pid, &token, options, deadline)?;
+    Ok(launch_result(id, pid, token, window))
 }
 
-fn wait_for_window(
-    id: &str,
+/// The window a launch actually caused, or `None`. A process that presents no
+/// window is a fact the caller reads from `LaunchResult.window`, not a failure:
+/// a background or windowless process is a legitimate launch outcome, and
+/// erroring on it made every such launch spend its whole timeout first.
+fn observe_window(
     pid: ProcessId,
     process_instance: &str,
-    timeout_ms: u64,
+    options: &LaunchOptions,
     deadline: Deadline,
-) -> Result<WindowInfo, AdapterError> {
+) -> Result<Option<WindowInfo>, AdapterError> {
     let mut poll_interval = Duration::from_millis(50);
     loop {
-        if let Some(window) = exact_window(pid, process_instance, deadline).map_err(after_launch)? {
-            return Ok(window);
+        if let Some(window) = observe_window_once(pid, process_instance, deadline)? {
+            return Ok(Some(window));
         }
-        if !should_poll_after_first_observation(timeout_ms) || deadline.remaining().is_zero() {
-            return Err(launch_no_window_error(
-                id,
-                timeout_ms,
-                pid,
-                process_instance,
-            ));
+        if !should_poll_after_first_observation(options.timeout_ms)
+            || deadline.remaining().is_zero()
+        {
+            return Ok(None);
         }
         let remaining = deadline.remaining();
         std::thread::sleep(poll_interval.min(remaining));
@@ -79,15 +84,84 @@ fn wait_for_window(
     }
 }
 
+fn launch_result(
+    id: &str,
+    pid: ProcessId,
+    process_instance: String,
+    window: Option<WindowInfo>,
+) -> LaunchResult {
+    let renderer = window.as_ref().and_then(detect_renderer_from_window);
+    LaunchResult {
+        app: window
+            .as_ref()
+            .map(|window| window.app.clone())
+            .unwrap_or_else(|| image_file_name(id).to_string()),
+        pid,
+        process_instance: Some(process_instance),
+        window,
+        cdp: None,
+        renderer,
+        suggestion: None,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn detect_renderer_from_window(window: &WindowInfo) -> Option<RendererKind> {
+    const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
+    let handle = super::window_ops::parse_handle(&window.id);
+    if handle.is_null() {
+        return None;
+    }
+    super::window_ops::window_class_name(handle)
+        .filter(|class| class == CHROMIUM_WINDOW_CLASS)
+        .map(|_| RendererKind::Chromium)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_renderer_from_window(_window: &WindowInfo) -> Option<RendererKind> {
+    None
+}
+
+/// One window observation, tolerant of the inventory's mid-walk identity race.
+///
+/// `list_windows_live` now absorbs that race itself (the shared listing-retry
+/// budget every caller on this path shares), retrying internally before ever
+/// returning `WINDOW_NOT_FOUND` — so this function no longer re-reads the
+/// inventory itself. A launch is exactly the moment that race is most
+/// reachable, since a process was just created or terminated, but a race that
+/// still survives the shared budget, and a budget that runs out entirely
+/// (`TIMEOUT`), both say the desktop could not be read coherently in time —
+/// not that this launch failed — so both are reported as no window observed.
+/// Every other failure still propagates: a target whose process instance
+/// changed underneath the launch is a real answer, not a race.
+fn observe_window_once(
+    pid: ProcessId,
+    process_instance: &str,
+    deadline: Deadline,
+) -> Result<Option<WindowInfo>, AdapterError> {
+    match exact_window(pid, process_instance, deadline) {
+        Ok(window) => Ok(window),
+        Err(error) if is_unobservable_within_budget(&error) => Ok(None),
+        Err(error) => Err(after_launch(error)),
+    }
+}
+
+fn is_unobservable_within_budget(error: &AdapterError) -> bool {
+    matches!(error.code, ErrorCode::WindowNotFound | ErrorCode::Timeout)
+}
+
 fn exact_window(
     pid: ProcessId,
     process_instance: &str,
-    _deadline: Deadline,
+    deadline: Deadline,
 ) -> Result<Option<WindowInfo>, AdapterError> {
-    let windows = list_windows_live(&WindowFilter {
-        focused_only: false,
-        app: None,
-    })?;
+    let windows = list_windows_live(
+        &WindowFilter {
+            focused_only: false,
+            app: None,
+        },
+        deadline,
+    )?;
     let Some(window) = windows.into_iter().find(|window| window.pid == pid) else {
         return Ok(None);
     };
@@ -108,6 +182,22 @@ fn matching_processes(image: &str) -> Result<Vec<ProcessRow>, AdapterError> {
         .collect())
 }
 
+/// Refuses a relative working directory before it reaches `CreateProcessW`.
+///
+/// The child's current directory sits early in the default DLL search order,
+/// so it picks which copy of a dependency loads; a relative path resolves
+/// against whatever directory this process happens to hold, not the caller's.
+#[cfg(target_os = "windows")]
+fn absolute_cwd(cwd: &Path) -> Result<&Path, AdapterError> {
+    if cwd.is_absolute() {
+        return Ok(cwd);
+    }
+    Err(before_launch(AdapterError::new(
+        ErrorCode::InvalidArgs,
+        "The launch working directory must be an absolute path",
+    )))
+}
+
 #[cfg(target_os = "windows")]
 fn create_process(
     executable: &Path,
@@ -124,14 +214,14 @@ fn create_process(
     let command_line = command_line_for(executable, &options.args).map_err(before_launch)?;
     let mut command_wide = to_wide_str(&command_line).map_err(before_launch)?;
     let cwd_wide = match &options.cwd {
-        Some(cwd) => Some(to_wide(cwd).map_err(before_launch)?),
+        Some(cwd) => Some(to_wide(absolute_cwd(cwd)?).map_err(before_launch)?),
         None => None,
     };
-    let env_block = if options.env.is_empty() {
-        None
-    } else {
-        Some(environment_block(&options.env).map_err(before_launch)?)
-    };
+    let env_block = child_environment_block(
+        &options.env,
+        crate::system::interaction_lease::INTERACTION_LEASE_HANDLE_ENV,
+    )
+    .map_err(before_launch)?;
     let startup = STARTUPINFOW {
         cb: std::mem::size_of::<STARTUPINFOW>() as u32,
         ..Default::default()
@@ -235,34 +325,15 @@ fn quote_arg(value: &str) -> String {
     out
 }
 
-/// Windows environment variable names are case-insensitive: a caller
-/// overriding `Path` while the parent process carries `PATH` must replace
-/// that entry outright, or the child inherits both and resolves whichever
-/// one happens to sort first. Keys are folded to ASCII uppercase only to
-/// detect that collision; the spelling that lands in the block is always
-/// the caller's own for an override, or the inherited spelling otherwise.
+/// Pass-through kept here, under this module's own name, purely so this
+/// module's own tests (`launch_tests.rs`) can call it unqualified through
+/// their `use super::*;`; the merge itself lives in `launch_path` beside
+/// every other input-shape rule a launch enforces, and `create_process`
+/// reaches it through `child_environment_block` rather than this name. Only
+/// that test caller remains, so this exists for `#[cfg(test)]` builds alone.
+#[cfg(test)]
 fn environment_block(overrides: &BTreeMap<String, String>) -> Result<Vec<u16>, AdapterError> {
-    let mut merged: BTreeMap<String, (String, String)> = std::env::vars()
-        .map(|(key, value)| (key.to_ascii_uppercase(), (key, value)))
-        .collect();
-    for (key, value) in overrides {
-        merged.insert(key.to_ascii_uppercase(), (key.clone(), value.clone()));
-    }
-    let mut block = Vec::new();
-    for (key, value) in merged.into_values() {
-        if key.contains('=') || key.contains('\0') || value.contains('\0') {
-            return Err(AdapterError::new(
-                ErrorCode::InvalidArgs,
-                "Launch environment entries must not contain NUL or '=' in the key",
-            ));
-        }
-        for unit in format!("{key}={value}").encode_utf16() {
-            block.push(unit);
-        }
-        block.push(0);
-    }
-    block.push(0);
-    Ok(block)
+    super::launch_path::environment_block(overrides)
 }
 
 #[cfg(target_os = "windows")]
@@ -292,23 +363,6 @@ fn to_wide_str(value: &str) -> Result<Vec<u16>, AdapterError> {
     Ok(wide)
 }
 
-#[cfg(target_os = "windows")]
-fn win32_last_error(message: &str) -> AdapterError {
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    adapter_error_from_win32(error, message)
-}
-
-fn adapter_error_from_win32(error: u32, message: &str) -> AdapterError {
-    let hresult = hresult_from_win32(error);
-    let record = super::hresult::hresult_record(hresult);
-    let mut err = AdapterError::new(record.code, message)
-        .with_platform_detail(super::hresult::com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
-}
-
 fn already_running_error(pid: ProcessId, matches: &[ProcessRow]) -> AdapterError {
     AdapterError::new(ErrorCode::ActionFailed, "Application is already running")
         .with_details(serde_json::json!({
@@ -319,33 +373,9 @@ fn already_running_error(pid: ProcessId, matches: &[ProcessRow]) -> AdapterError
 }
 
 fn ambiguous_apps(matches: &[ProcessRow]) -> AdapterError {
-    AdapterError::ambiguous_target("More than one application instance matches the launch target")
-        .with_details(serde_json::json!({
-            "candidate_pids": matches.iter().map(|row| row.pid).collect::<Vec<_>>(),
-        }))
-}
-
-fn launch_no_window_error(
-    id: &str,
-    timeout_ms: u64,
-    pid: ProcessId,
-    process_instance: &str,
-) -> AdapterError {
-    AdapterError::new(
-        ErrorCode::WindowNotFound,
-        format!(
-            "Application started, but no exact accessible window appeared within {timeout_ms} ms"
-        ),
-    )
-    .with_details(serde_json::json!({
-        "app_name": id,
-        "pid": pid,
-        "process_instance": process_instance,
-        "retry_safe": false,
-    }))
-    .with_disposition(DeliverySemantics::delivered_unverified())
-    .with_suggestion(
-        "Inspect list-apps and list-windows for the returned process; do not repeat the launch blindly.",
+    AdapterError::ambiguous_process_target(
+        "More than one application instance matches the launch target",
+        &matches.iter().map(|row| row.pid).collect::<Vec<_>>(),
     )
 }
 
@@ -364,3 +394,7 @@ fn should_poll_after_first_observation(timeout_ms: u64) -> bool {
 #[cfg(test)]
 #[path = "launch_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "launch_lease_isolation_tests.rs"]
+mod launch_lease_isolation_tests;

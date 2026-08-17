@@ -36,7 +36,7 @@ impl<'a> WindowIdentityEvidence<'a> {
     /// receives: pid, token, app, and title must all match the live window.
     ///
     /// A recycled HWND whose process no longer matches fails closed as
-    /// `WINDOW_NOT_FOUND`, never resolving to the new occupant (R4).
+    /// `WINDOW_NOT_FOUND`, never resolving to the new occupant.
     pub(crate) fn verify_strict(&self) -> Result<(), AdapterError> {
         if !process_identity::matches_instance(self.pid, self.process_instance)? {
             return Err(window_identity_mismatch(self.handle));

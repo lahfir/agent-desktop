@@ -1,8 +1,6 @@
 use super::*;
-use agent_desktop_core::{Deadline, DeliveryDisposition, ErrorCode};
+use agent_desktop_core::{Deadline, DeliveryDisposition, ErrorCode, ProcessId};
 
-#[cfg(target_os = "windows")]
-use agent_desktop_core::ProcessId;
 #[cfg(target_os = "windows")]
 use std::path::{Path, PathBuf};
 
@@ -14,6 +12,28 @@ mod live;
 fn zero_wait_never_polls_after_first_observation() {
     assert!(!should_poll_after_first_observation(0));
     assert!(should_poll_after_first_observation(1));
+}
+
+/// The `Timeout` arm of [`is_unobservable_within_budget`], mirroring the
+/// `WindowNotFound` arm's tolerance: an already-expired deadline makes
+/// `list_windows_live`'s shared retry budget (`retry_transient_window_race`'s
+/// own `ensure_budget` preamble) refuse before any native enumeration runs,
+/// so `exact_window` returns `Err(Timeout)` deterministically and needs no
+/// fixture. A launch racing its own deadline must still resolve to "no
+/// window observed" here - the deadline itself is what ends `observe_window`'s
+/// polling loop one level up, not this one read.
+#[test]
+fn observe_window_once_tolerates_an_expired_deadline_as_no_window_observed() {
+    let pid = ProcessId::from(std::process::id());
+    let expired = Deadline::after(0).expect("a zero-timeout deadline is constructible");
+
+    let observed = observe_window_once(pid, "irrelevant-instance", expired)
+        .expect("a Timeout from the inventory must be tolerated, not propagated");
+
+    assert!(
+        observed.is_none(),
+        "an expired deadline must report no window observed rather than an error"
+    );
 }
 
 #[test]

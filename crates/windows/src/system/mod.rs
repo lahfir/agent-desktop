@@ -23,6 +23,8 @@ pub(crate) mod key_dispatch;
 pub(crate) mod launch;
 mod launch_path;
 pub(crate) mod lifecycle_envelope_parity;
+pub(crate) mod listing_retry;
+pub(crate) mod menu_state;
 pub(crate) mod permissions;
 #[cfg(target_os = "windows")]
 pub(crate) mod png_codec;
@@ -33,8 +35,15 @@ pub(crate) mod process_state;
 #[cfg(target_os = "windows")]
 pub(crate) mod screenshot;
 pub(crate) mod session;
+pub(crate) mod signal_filter_apply;
+pub(crate) mod signal_inventory;
+pub(crate) mod signal_surfaces;
+pub(crate) mod signals;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod test_support;
+#[cfg(target_os = "windows")]
+pub(crate) mod thread_walk;
+pub(crate) mod wait;
 pub(crate) mod window_activate;
 pub(crate) mod window_enum;
 pub(crate) mod window_identity;

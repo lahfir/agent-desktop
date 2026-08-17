@@ -46,6 +46,12 @@ failed=0
 TOKEN_SCAN_MODE=""
 TOKEN_SCAN_LINE=""
 TOKEN_SCAN_FAILED=0
+# The roots the tree scan walks, overridable so the self-test can drive the real
+# scan against a planted fixture tree. Without that override the tree branch has
+# no coverage at all and only the line branch is ever exercised, which is how a
+# tree scan that could not fail reported clean over real violations.
+TOKEN_SCAN_RS_ROOTS="crates src"
+TOKEN_SCAN_MD_ROOTS="skills"
 
 token_rule() {
     local pattern="$1"
@@ -57,7 +63,14 @@ token_rule() {
         fi
         return 0
     fi
-    if matches="$( { grep -rnE --include='*.rs' "$pattern" crates src 2>/dev/null; grep -rnE --include='*.md' "$pattern" skills 2>/dev/null; } )"; then
+    # Test the collected text, never the substitution's exit status. A grouped
+    # substitution exits with the status of its LAST command, so testing it made
+    # a hit in crates/ or src/ invisible whenever the skills/ grep found nothing
+    # - which is the usual case, and is how three plan-decision ids reached
+    # shipped source with this gate reporting clean.
+    # shellcheck disable=SC2086
+    matches="$( { grep -rnE --include='*.rs' "$pattern" $TOKEN_SCAN_RS_ROOTS 2>/dev/null; grep -rnE --include='*.md' "$pattern" $TOKEN_SCAN_MD_ROOTS 2>/dev/null; } )"
+    if [ -n "$matches" ]; then
         printf '%s\n' "$matches" >&2
         printf '  ^ %s - describe what is true, not when it was built\n\n' "$description" >&2
         TOKEN_SCAN_FAILED=1
@@ -69,6 +82,25 @@ token_rules() {
     token_rule '[Ss]ub-?[Pp]hase' 'sub-phase reference'
     token_rule '[Pp]hase[[:space:]]+[0-9]' 'phase number reference'
     token_rule 'KTD[0-9]' 'plan decision id'
+    # A bare `R4`/`(R11)` requirement id is the same reference as the ids above:
+    # it points into a plan document that renumbers, and means nothing to a reader
+    # without that plan open. Anchored to a word boundary so a register name or a
+    # hex literal never trips it.
+    # A requirement id is mechanically catchable in two shapes and no more.
+    # Parenthesised is unambiguous, and so is one introduced by a citation verb
+    # with a word boundary on both sides. A BARE id is not, and this rule
+    # deliberately does not try: `R2` is a CPU register, the tail of "Windows
+    # Server 2012 R2", and a plan requirement, and nothing in the text
+    # separates them. Two earlier versions of this rule tried and were wrong in
+    # both directions at once - the first rejected that OS version string while
+    # missing every citation ending in a period, the second missed every
+    # sentence-initial "Required by R7" while flagging "the helper R2 queue".
+    # The residue is one shape: a bare id with no citation verb, of the ten real
+    # violations found in this tree exactly one looked like that. Review catches
+    # that one; a regex that claimed to would be lying in one direction or the
+    # other. Both sides of the verb are boundary-anchored so a word merely
+    # ENDING in per/see - helper, wrapper, oversee - cannot trip it.
+    token_rule '\(R[0-9]+\)|(^|[^A-Za-z])([Pp]er|[Ss]ee|[Gg]overns|[Rr]equired by|[Ff]orces|[Ss]atisfies) R[0-9]+([^A-Za-z0-9]|$)' 'plan requirement id'
     token_rule '[Uu]nit[[:space:]]+U?[0-9]' 'plan implementation-unit id'
 }
 
@@ -320,6 +352,13 @@ self_test() {
     # rather than a command substitution the shell already ran.
     # shellcheck disable=SC2016
     must_catch='/// see phase-2.4 for details
+/// on (R5): any other code aborts the wait
+/// this behavior is required by R7.
+/// see R7, the requirement that forces this
+/// Governs R11 and R12
+/// Required by R7, this waits.
+/// Per R7 the wait must abort.
+/// Forces R3 to hold.
 /// 2.2 ships the seam
 /// the 2.4 evidence field
 /// as of 2.10 this is owned elsewhere
@@ -344,6 +383,13 @@ self_test() {
 /// the roadmap moves this to a later owner'
     # shellcheck disable=SC2016
     must_pass='/// pre-1.0 and sub-1.0 readings
+/// the R2 register holds the return value
+/// Windows Server 2012 R2 is the floor
+/// R2 and R3 are scratch registers
+/// the helper R2 queue drains first
+/// the wrapper R2 forwards unchanged
+/// oversee R2 allocation
+/// see A23-1 for the measurement that forced this
 /// v0.5.0 deleted the layer
 /// the envelope is "2.1" on the wire
 /// collapsing a failed read to `1.0` is a claim
@@ -404,6 +450,35 @@ wrap.rs:2:/// planned fast-follow to the current read'
         printf 'self-test FAIL (false positive): two adjacent doc-comment lines joined into a reference\n' >&2
         failures=1
     fi
+    # A fixed fixture path, reused and overwritten every run rather than a fresh
+    # mktemp per run. The harness contract forbids `rm` in these scripts, so the
+    # fixture cannot clean up after itself; a stable path bounds what it leaves
+    # behind at one directory instead of one per invocation.
+    local tree_root planted_rs
+    tree_root="${TMPDIR:-/tmp}/agent-desktop-phase-reference-selftest"
+    mkdir -p "$tree_root/crates/x/src" "$tree_root/skills"
+    planted_rs="$tree_root/crates/x/src/planted.rs"
+    printf '/// see KTD7 for the decision
+pub fn f() {}
+' > "$planted_rs"
+    TOKEN_SCAN_RS_ROOTS="$tree_root/crates $tree_root/src"
+    TOKEN_SCAN_MD_ROOTS="$tree_root/skills"
+    if token_check 2>/dev/null; then
+        printf 'self-test FAIL (missed): the tree scan passed a planted plan-decision id
+' >&2
+        failures=1
+    fi
+    printf '/// describes what the code does
+pub fn f() {}
+' > "$planted_rs"
+    if ! token_check 2>/dev/null; then
+        printf 'self-test FAIL (false positive): the tree scan failed a clean fixture tree
+' >&2
+        failures=1
+    fi
+    TOKEN_SCAN_RS_ROOTS="crates src"
+    TOKEN_SCAN_MD_ROOTS="skills"
+
     if [ "$failures" -ne 0 ]; then
         printf 'The delivery-plan reference rules do not behave as documented.\n' >&2
         return 1

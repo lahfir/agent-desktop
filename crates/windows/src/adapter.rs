@@ -160,13 +160,13 @@ impl ObservationOps for WindowsAdapter {
     fn list_windows(
         &self,
         filter: &WindowFilter,
-        _deadline: Deadline,
+        deadline: Deadline,
     ) -> Result<Vec<WindowInfo>, AdapterError> {
-        crate::system::window_ops::list_windows_live(filter)
+        crate::system::window_ops::list_windows_live(filter, deadline)
     }
 
-    fn list_apps(&self, _deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
-        crate::system::app_ops::list_apps_live()
+    fn list_apps(&self, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+        crate::system::app_ops::list_apps_live(deadline)
     }
 }
 impl ActionOps for WindowsAdapter {

@@ -1,5 +1,9 @@
-use agent_desktop_core::{AdapterError, ProcessId, WindowFilter, WindowInfo, WindowState};
+use agent_desktop_core::{
+    AdapterError, Deadline, ErrorCode, ProcessId, WindowFilter, WindowInfo, WindowState,
+};
 
+use super::listing_retry::retry_transient_window_race;
+use super::permissions::ensure_budget;
 use super::process_identity;
 use super::window_enum::{EnumeratedWindow, enumerate_top_level};
 use super::window_identity::WindowIdentityEvidence;
@@ -50,7 +54,7 @@ fn window_info_from(
 ) -> Result<WindowInfo, AdapterError> {
     let (pid, token, _) = process_facts(window.handle).ok_or_else(|| {
         AdapterError::new(
-            agent_desktop_core::ErrorCode::WindowNotFound,
+            ErrorCode::WindowNotFound,
             "could not identify the window's owning process",
         )
     })?;
@@ -71,17 +75,54 @@ fn window_info_from(
 
 /// The live top-level window inventory an agent means, per the A16-1 filter.
 ///
+/// Bounds every native call under `deadline` and absorbs the transient
+/// mid-walk identity race internally, up to the shared listing-retry budget:
+/// a caller polling this entry point - `wait --window` chief among them -
+/// cannot retry a refusal itself, since `WindowNotFound` is not in its
+/// retryable set. A race that survives the whole budget still returns the
+/// same `WindowNotFound` refusal this inventory has always reported, so the
+/// shipped refusal semantics are unchanged in kind.
+pub(crate) fn list_windows_live(
+    filter: &WindowFilter,
+    deadline: Deadline,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    retry_transient_window_race(deadline, is_window_identity_race, || {
+        list_windows_live_once(filter, deadline)
+    })
+}
+
+fn is_window_identity_race(error: &AdapterError) -> bool {
+    error.code == ErrorCode::WindowNotFound
+}
+
+/// One single-shot walk of the live top-level window inventory.
+///
 /// Verification re-runs on both sides of the read (the two-sided rule macOS's
 /// `window_inventory.rs:91-155` carries): the owning process is re-checked
 /// after assembly, and a window whose process changed mid-listing fails the
-/// whole inventory rather than emitting a half-identified entry.
-pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+/// whole walk rather than emitting a half-identified entry - the race
+/// `list_windows_live` retries this whole function for.
+fn list_windows_live_once(
+    filter: &WindowFilter,
+    deadline: Deadline,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    #[cfg(test)]
+    enumeration_calls::record();
+
     let mut windows = Vec::new();
     let mut focused_seen = false;
     let app_filter = filter.app.as_deref().unwrap_or("").to_ascii_lowercase();
-    let verify_failure = std::cell::RefCell::new(None);
+    let failure = std::cell::RefCell::new(None);
+    let mut seen = 0usize;
 
     enumerate_top_level(|window| {
+        if seen > 0 {
+            if let Err(error) = ensure_budget(deadline) {
+                *failure.borrow_mut() = Some(error);
+                return false;
+            }
+        }
+        seen += 1;
         if !passes_filter(&window) {
             return true;
         }
@@ -99,7 +140,7 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
         focused_seen |= focused;
         if let Ok(info) = window_info_from(window, &title, &app, focused) {
             if let Err(error) = re_verify(&info) {
-                *verify_failure.borrow_mut() = Some(error);
+                *failure.borrow_mut() = Some(error);
                 return false;
             }
             windows.push(info);
@@ -107,11 +148,21 @@ pub(crate) fn list_windows_live(filter: &WindowFilter) -> Result<Vec<WindowInfo>
         true
     })?;
 
-    if let Some(error) = verify_failure.into_inner() {
+    if let Some(error) = failure.into_inner() {
         return Err(error);
     }
 
+    #[cfg(all(test, target_os = "windows"))]
+    if force_window_not_found::consume_if_armed() {
+        return Err(forced_race_signal());
+    }
+
     Ok(windows)
+}
+
+#[cfg(all(test, target_os = "windows"))]
+fn forced_race_signal() -> AdapterError {
+    AdapterError::new(ErrorCode::WindowNotFound, "forced test identity race")
 }
 
 /// Whether a handle is the desktop's foreground window right now.
@@ -182,200 +233,51 @@ pub(crate) fn parse_handle(id: &str) -> super::window_enum::WindowHandle {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use agent_desktop_core::Rect;
+pub(super) mod enumeration_calls {
+    use std::cell::Cell;
 
-    #[test]
-    fn the_filter_excludes_invisible_zero_sized_cloaked_and_tool_windows() {
-        let sample = EnumeratedWindow {
-            handle: std::ptr::null_mut(),
-            visible: true,
-            iconic: false,
-            cloaked: false,
-            tool: false,
-            rect: Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 100.0,
-                height: 40.0,
-            },
-        };
-        assert!(passes_filter(&sample));
-
-        assert!(!passes_filter(&EnumeratedWindow {
-            visible: false,
-            ..sample
-        }));
-        assert!(!passes_filter(&EnumeratedWindow {
-            rect: Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
-            },
-            ..sample
-        }));
-        assert!(!passes_filter(&EnumeratedWindow {
-            cloaked: true,
-            ..sample
-        }));
-        assert!(!passes_filter(&EnumeratedWindow {
-            tool: true,
-            ..sample
-        }));
+    thread_local! {
+        static COUNT: Cell<usize> = const { Cell::new(0) };
     }
 
-    #[test]
-    fn the_window_id_is_the_hwnd_with_the_w_prefix() {
-        let parsed = parse_handle("w-1000");
-        assert_eq!(parsed as usize, 1000);
+    pub(super) fn record() {
+        COUNT.with(|cell| cell.set(cell.get() + 1));
     }
 
-    #[cfg(target_os = "windows")]
-    mod windows_only {
-        use super::*;
-        use agent_desktop_core::WindowFilter;
-
-        /// How many times a live listing is re-attempted before its
-        /// mid-walk identity refusal is accepted as the desktop's answer.
-        const LISTING_RACE_ATTEMPTS: u32 = 5;
-
-        /// The live half of the census: a hosted fixture window appears in
-        /// `list_windows` with a parseable id, the fixture's pid, and a
-        /// non-empty process token. Rule-shaped: no window count or desktop
-        /// shape is asserted (R11).
-        ///
-        /// The inventory refuses the whole listing when any window's owning
-        /// process changes mid-walk, and a suite that spawns and terminates
-        /// real processes makes that transient refusal reachable here. It is
-        /// retried rather than tolerated on the first miss, so the identity
-        /// assertions below still run on any desktop where the race is not
-        /// permanent; only a refusal that survives every attempt is accepted,
-        /// and then only as the exact refusal the listing exists to report.
-        #[test]
-        fn the_fixture_window_appears_in_list_windows_with_identity() {
-            crate::tree::fixture::ensure_test_apartment();
-            let fixture =
-                crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
-
-            let mut listed = None;
-            let mut last_refusal = None;
-            for _ in 0..LISTING_RACE_ATTEMPTS {
-                match list_windows_live(&WindowFilter::default()) {
-                    Ok(windows) => {
-                        listed = Some(windows);
-                        break;
-                    }
-                    Err(error) => {
-                        assert_eq!(
-                            error.code,
-                            agent_desktop_core::ErrorCode::WindowNotFound,
-                            "the only refusal this inventory may report is the mid-listing identity race"
-                        );
-                        last_refusal = Some(error);
-                    }
-                }
-            }
-            let Some(windows) = listed else {
-                let refusal = last_refusal.expect(
-                    "the loop ran at least once, so an exhausted retry budget always carries a refusal",
-                );
-                assert_eq!(
-                    refusal.code,
-                    agent_desktop_core::ErrorCode::WindowNotFound,
-                    "a permanently-refusing inventory must still be refusing the documented \
-                     mid-listing race, not failing some other way"
-                );
-                if let Some(kind) = refusal
-                    .details
-                    .as_ref()
-                    .and_then(|details| details.get("kind"))
-                {
-                    assert!(
-                        kind.is_string(),
-                        "a details.kind on the exhausted refusal must be a string, got {kind:?}"
-                    );
-                }
-                return;
-            };
-
-            let matching = windows.iter().find(|window| {
-                window.pid == agent_desktop_core::ProcessId::from(fixture.process_id())
-            });
-            assert!(
-                matching.is_some(),
-                "the fixture's process must appear among listed windows; found {} windows",
-                windows.len()
-            );
-            let window = matching.expect("just checked");
-
-            assert!(
-                window
-                    .process_instance
-                    .as_deref()
-                    .is_some_and(|token| !token.is_empty()),
-                "a listed window carries a process-generation token"
-            );
-            assert!(
-                !parse_handle(&window.id).is_null(),
-                "the fixture's id parses back to a handle"
-            );
-        }
-
-        /// `focused_window` composition: the focused-only filter answers with
-        /// the desktop's foreground window and nothing else.
-        ///
-        /// Whether a foreground window exists at all is machine state, so
-        /// nothing here assumes one (R11): the answer is checked against the
-        /// same OS fact the filter itself consults, which is a real assertion
-        /// when a window is returned and vacuously true when none is. The
-        /// inventory's own mid-listing refusal - a window whose owning process
-        /// changed while it was being assembled - is asserted as the refusal it
-        /// is rather than failing the test, because that race is a condition
-        /// the listing exists to catch and can fire on any busy desktop.
-        ///
-        /// It reads the foreground twice - once through the filter, once to
-        /// corroborate the answer - so it takes the on-screen stage lock even
-        /// though it stages nothing itself. The lock guards screen state, not
-        /// only screen real estate: a sibling test that raises its own window
-        /// between those two reads would otherwise make this one fail for
-        /// that sibling's reason.
-        #[test]
-        fn the_focused_filter_answers_with_the_foreground_window_and_nothing_else() {
-            crate::tree::fixture::ensure_test_apartment();
-            let _stage = crate::tree::fixture_window::on_screen_stage();
-            let filter = WindowFilter {
-                focused_only: true,
-                app: None,
-            };
-
-            let focused = match list_windows_live(&filter) {
-                Ok(focused) => focused,
-                Err(error) => {
-                    assert_eq!(
-                        error.code,
-                        agent_desktop_core::ErrorCode::WindowNotFound,
-                        "the only refusal this inventory may report is the mid-listing identity race"
-                    );
-                    return;
-                }
-            };
-
-            assert!(
-                focused.len() <= 1,
-                "the focused-only filter returns at most one window"
-            );
-            for window in &focused {
-                assert!(
-                    window.state.is_focused,
-                    "the window the focused-only filter returns is stamped focused"
-                );
-                assert!(
-                    is_foreground_window(parse_handle(&window.id)),
-                    "the window the focused-only filter returns is the foreground window"
-                );
-            }
-        }
+    pub(super) fn take() -> usize {
+        COUNT.with(|cell| {
+            let value = cell.get();
+            cell.set(0);
+            value
+        })
     }
 }
+
+#[cfg(all(test, target_os = "windows"))]
+pub(super) mod force_window_not_found {
+    use std::cell::Cell;
+
+    thread_local! {
+        static REMAINING: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(super) fn with<R>(times: usize, run: impl FnOnce() -> R) -> R {
+        crate::system::test_support::with_usize_flag(&REMAINING, times, run)
+    }
+
+    pub(super) fn consume_if_armed() -> bool {
+        REMAINING.with(|cell| {
+            let remaining = cell.get();
+            if remaining == 0 {
+                false
+            } else {
+                cell.set(remaining - 1);
+                true
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+#[path = "window_ops_tests.rs"]
+mod tests;

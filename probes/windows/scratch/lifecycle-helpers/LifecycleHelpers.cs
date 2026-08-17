@@ -93,6 +93,25 @@ namespace AgentDesktop.LifecycleHelpers
                 Application.Run(form);
                 return 0;
             }
+            if (mode == "modal")
+            {
+                // A real Win32 MessageBox: owned by a visible top-level Form, blocks the
+                // calling thread in its own modal loop until dismissed (WM_CLOSE posted to
+                // the dialog by an external caller unblocks it). Windows applies
+                // WS_EX_DLGMODALFRAME and an owner relationship to a MessageBox by
+                // construction, which is exactly the property area 23's modal-classification
+                // leg needs to observe from outside the process.
+                Application.EnableVisualStyles();
+                Form owner = new Form();
+                owner.Text = "a23-modal-owner";
+                owner.StartPosition = FormStartPosition.Manual;
+                owner.Bounds = new System.Drawing.Rectangle(160, 160, 320, 220);
+                owner.ShowInTaskbar = false;
+                owner.Show();
+                MessageBox.Show(owner, "a23-modal-body", "a23-modal-title", MessageBoxButtons.OKCancel);
+                owner.Close();
+                return 0;
+            }
 
             Thread.Sleep(sleepMs);
             return 0;
