@@ -267,7 +267,7 @@ namespace AgentDesktopProbe.A24 {
         private const uint CREATE_NO_WINDOW = 0x08000000;
         private const uint NORMAL_PRIORITY_CLASS = 0x00000020;
 
-        public static int LaunchWithRestrictedLowToken(string commandLine, string workingDirectory, out string errorDetail) {
+        public static int LaunchWithRestrictedToken(string commandLine, string workingDirectory, string integritySid, out string errorDetail) {
             errorDetail = "";
             IntPtr hSelf = IntPtr.Zero, hRestricted = IntPtr.Zero, pSid = IntPtr.Zero, pLabel = IntPtr.Zero;
             try {
@@ -279,7 +279,7 @@ namespace AgentDesktopProbe.A24 {
                     errorDetail = "CreateRestrictedToken failed, error " + Marshal.GetLastWin32Error();
                     return -1;
                 }
-                if (!ConvertStringSidToSid("S-1-16-4096", out pSid)) {
+                if (!ConvertStringSidToSid(integritySid, out pSid)) {
                     errorDetail = "ConvertStringSidToSid failed, error " + Marshal.GetLastWin32Error();
                     return -1;
                 }
@@ -541,7 +541,8 @@ function Measure-RouteC-ScheduledTaskLimited {
         # needs for runas' "program" parameter.
         $innerCombined = (ConvertTo-Win32Arg $exe) + ' ' + ((Get-A24TargetArgs) -join ' ')
         $trValue = ConvertTo-Win32Arg $innerCombined
-        $createArgs = '/Create /TN ' + $taskName + ' /TR ' + $trValue + ' /SC ONCE /ST 00:00 /RL LIMITED /F'
+        $startAt = (Get-Date).AddMinutes(30).ToString('HH:mm')
+        $createArgs = '/Create /TN ' + $taskName + ' /TR ' + $trValue + ' /SC ONCE /ST ' + $startAt + ' /RL LIMITED /F'
         $create = Invoke-A24Process -FilePath $schtasksPath -Arguments $createArgs -Wait -TimeoutMs 10000
         if ($create.ExitCode -ne 0) {
             return [ordered]@{
@@ -603,22 +604,47 @@ function Measure-RouteD-CreateRestrictedToken {
     $exe = New-A24ScratchCopy -Leaf $leaf
     try {
         $commandLine = '"' + $exe + '" ' + ((Get-A24TargetArgs) -join ' ')
-        $errorDetail = ''
-        $foundPid = [AgentDesktopProbe.A24.RestrictedTokenLauncher]::LaunchWithRestrictedLowToken(
-            $commandLine, $script:ScratchDir, [ref]$errorDetail)
-        if ($foundPid -le 0) {
-            return [ordered]@{
-                measurable   = $true
-                branch       = 'launch_command_failed'
-                launch_error = Get-BoundedErrorText -Text $errorDetail
-                staged       = $false
+        $levels = @(
+            [pscustomobject]@{ Label = 'Medium'; Sid = 'S-1-16-8192' },
+            [pscustomobject]@{ Label = 'Low'; Sid = 'S-1-16-4096' }
+        )
+        $legs = [ordered]@{}
+        $anyStaged = $false
+        foreach ($level in $levels) {
+            $errorDetail = ''
+            $foundPid = [AgentDesktopProbe.A24.RestrictedTokenLauncher]::LaunchWithRestrictedToken(
+                $commandLine, $script:ScratchDir, $level.Sid, [ref]$errorDetail)
+            if ($foundPid -le 0) {
+                $legs[$level.Label] = [ordered]@{
+                    measurable   = $true
+                    branch       = 'launch_command_failed'
+                    requested    = $level.Sid
+                    launch_error = Get-BoundedErrorText -Text $errorDetail
+                    staged       = $false
+                }
+                continue
             }
+            Register-SpawnedPid -ProcessId $foundPid
+            $legVerdict = Get-A24IntegrityVerdict -ProcessId $foundPid
+            try { Stop-ScratchProcess -ProcessId $foundPid } catch { }
+            $leg = [ordered]@{ measurable = $true; branch = (Get-A24BranchForVerdict $legVerdict); requested = $level.Sid }
+            $leg = Merge-A24Verdict -Result $leg -Verdict $legVerdict
+            $legs[$level.Label] = $leg
+            if ($leg.staged) { $anyStaged = $true }
         }
-        Register-SpawnedPid -ProcessId $foundPid
-        $verdict = Get-A24IntegrityVerdict -ProcessId $foundPid
-        try { Stop-ScratchProcess -ProcessId $foundPid } catch { }
-        $result = [ordered]@{ measurable = $true; branch = (Get-A24BranchForVerdict $verdict) }
-        return (Merge-A24Verdict -Result $result -Verdict $verdict)
+        $mediumLeg = $legs['Medium']
+        $mediumStaged = ($null -ne $mediumLeg) -and [bool]$mediumLeg.staged
+        $routeBranch = 'no_requested_level_confirmed'
+        if ($anyStaged) { $routeBranch = 'staged_non_high_integrity_confirmed' }
+        return [ordered]@{
+            measurable                = $true
+            branch                    = $routeBranch
+            requested_levels           = @($levels | ForEach-Object { $_.Sid })
+            legs                      = $legs
+            medium_confirmed          = $mediumStaged
+            staged                    = $anyStaged
+            note                      = 'the documented boundary is Medium->High; a Low result is a stricter barrier but is not the documented level, so each requested level is reported on its own rather than folded into one verdict'
+        }
     } catch {
         return [ordered]@{
             measurable   = $true

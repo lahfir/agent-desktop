@@ -38,21 +38,56 @@
                                                       },
                    "route_c_scheduled_task_limited":  {
                                                           "measurable":  true,
-                                                          "branch":  "launch_command_failed",
-                                                          "launch_error":  "WARNING: Task may not run because /ST is earlier than current time.",
+                                                          "branch":  "staged_but_still_high_integrity",
+                                                          "create_exit_code":  0,
+                                                          "run_exit_code":  0,
+                                                          "process_observed":  true,
+                                                          "integrity_read_ok":  true,
+                                                          "integrity_error":  null,
+                                                          "integrity_sid":  "S-1-16-12288",
+                                                          "integrity_rid":  12288,
+                                                          "integrity_label":  "High",
+                                                          "verified_non_high":  false,
                                                           "staged":  false
                                                       },
                    "route_d_createrestrictedtoken":  {
                                                          "measurable":  true,
                                                          "branch":  "staged_non_high_integrity_confirmed",
-                                                         "process_observed":  true,
-                                                         "integrity_read_ok":  true,
-                                                         "integrity_error":  null,
-                                                         "integrity_sid":  "S-1-16-4096",
-                                                         "integrity_rid":  4096,
-                                                         "integrity_label":  "Low",
-                                                         "verified_non_high":  true,
-                                                         "staged":  true
+                                                         "requested_levels":  [
+                                                                                  "S-1-16-8192",
+                                                                                  "S-1-16-4096"
+                                                                              ],
+                                                         "legs":  {
+                                                                      "Medium":  {
+                                                                                     "measurable":  true,
+                                                                                     "branch":  "staged_non_high_integrity_confirmed",
+                                                                                     "requested":  "S-1-16-8192",
+                                                                                     "process_observed":  true,
+                                                                                     "integrity_read_ok":  true,
+                                                                                     "integrity_error":  null,
+                                                                                     "integrity_sid":  "S-1-16-8192",
+                                                                                     "integrity_rid":  8192,
+                                                                                     "integrity_label":  "Medium",
+                                                                                     "verified_non_high":  true,
+                                                                                     "staged":  true
+                                                                                 },
+                                                                      "Low":  {
+                                                                                  "measurable":  true,
+                                                                                  "branch":  "staged_non_high_integrity_confirmed",
+                                                                                  "requested":  "S-1-16-4096",
+                                                                                  "process_observed":  true,
+                                                                                  "integrity_read_ok":  true,
+                                                                                  "integrity_error":  null,
+                                                                                  "integrity_sid":  "S-1-16-4096",
+                                                                                  "integrity_rid":  4096,
+                                                                                  "integrity_label":  "Low",
+                                                                                  "verified_non_high":  true,
+                                                                                  "staged":  true
+                                                                              }
+                                                                  },
+                                                         "medium_confirmed":  true,
+                                                         "staged":  true,
+                                                         "note":  "the documented boundary is Medium-\u003eHigh; a Low result is a stricter barrier but is not the documented level, so each requested level is reported on its own rather than folded into one verdict"
                                                      }
                },
     "verdict":  {
