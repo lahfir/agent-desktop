@@ -1,0 +1,69 @@
+{
+    "probe":  "24-fixture-e2e/02-split-integrity-staging",
+    "question":  "can a genuinely split-integrity boundary (a live process independently confirmed below High integrity) be staged on this box, and by which of four independent routes",
+    "methodology":  "every route targets a renamed copy of cmd.exe running a harmless multi-second no-op (ping -n 6 127.0.0.1); success is never taken from the launcher\u0027s own reported exit code - the process, once observed, has its token integrity level read back via GetTokenInformation(TokenIntegrityLevel) and classified by RID before being counted as staged",
+    "environment":  {
+                        "self_integrity_sid":  "S-1-16-12288",
+                        "self_integrity_rid":  12288,
+                        "self_integrity_label":  "High",
+                        "seclogon_service":  "Stopped",
+                        "schedule_service":  "Running"
+                    },
+    "routes":  {
+                   "route_a_runas_trustlevel":  {
+                                                    "measurable":  true,
+                                                    "branch":  "staged_but_still_high_integrity",
+                                                    "process_observed":  true,
+                                                    "integrity_read_ok":  true,
+                                                    "integrity_error":  null,
+                                                    "integrity_sid":  "S-1-16-12288",
+                                                    "integrity_rid":  12288,
+                                                    "integrity_label":  "High",
+                                                    "verified_non_high":  false,
+                                                    "staged":  false
+                                                },
+                   "route_b_icacls_mandatory_label":  {
+                                                          "measurable":  true,
+                                                          "branch":  "staged_non_high_integrity_confirmed",
+                                                          "icacls_exit_code":  0,
+                                                          "process_observed":  true,
+                                                          "integrity_read_ok":  true,
+                                                          "integrity_error":  null,
+                                                          "integrity_sid":  "S-1-16-4096",
+                                                          "integrity_rid":  4096,
+                                                          "integrity_label":  "Low",
+                                                          "verified_non_high":  true,
+                                                          "staged":  true,
+                                                          "note":  "a file mandatory label restricts who may write/execute the file; it does not itself set the integrity level of a process launched from an already-High caller, which is what this leg either confirms or refutes empirically"
+                                                      },
+                   "route_c_scheduled_task_limited":  {
+                                                          "measurable":  true,
+                                                          "branch":  "launch_command_failed",
+                                                          "launch_error":  "WARNING: Task may not run because /ST is earlier than current time.",
+                                                          "staged":  false
+                                                      },
+                   "route_d_createrestrictedtoken":  {
+                                                         "measurable":  true,
+                                                         "branch":  "staged_non_high_integrity_confirmed",
+                                                         "process_observed":  true,
+                                                         "integrity_read_ok":  true,
+                                                         "integrity_error":  null,
+                                                         "integrity_sid":  "S-1-16-4096",
+                                                         "integrity_rid":  4096,
+                                                         "integrity_label":  "Low",
+                                                         "verified_non_high":  true,
+                                                         "staged":  true
+                                                     }
+               },
+    "verdict":  {
+                    "staged":  true,
+                    "staged_by":  [
+                                      "route_b_icacls_mandatory_label",
+                                      "route_d_createrestrictedtoken"
+                                  ],
+                    "routes_attempted":  4,
+                    "routes_total":  4,
+                    "routes_succeeded":  2,
+                    "reason":  "at least one route produced a live process independently confirmed below High integrity by GetTokenInformation(TokenIntegrityLevel); split-integrity verification is deliverable on this box without a dedicated rig"
+                }
+}

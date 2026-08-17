@@ -23,12 +23,22 @@
     launch success but yields a High-integrity process is recorded as a
     failed staging, not a success, per the calling instructions.
 
+    Every native process this probe starts (runas, icacls, schtasks, and
+    each route's target) goes through raw System.Diagnostics.ProcessStartInfo
+    with a hand-built .Arguments string, not Start-Process -ArgumentList:
+    that cmdlet's array-to-string joining behavior for elements that already
+    contain embedded quotes is not something this probe can verify by
+    inspection across PowerShell versions, and a route that silently
+    receives a mis-quoted command line would under-report what this box can
+    actually do. A plain .Arguments string this probe built itself with the
+    standard Win32 quoting algorithm has none of that ambiguity.
+
     Captures under captures\ as split-integrity-staging-{devbox,ci}.json
     (+ .normalized twin). Corpus safety: only route names, booleans, exit
-    codes, integrity SIDs/RIDs and bounded/redacted Win32 error strings are
-    ever handed to ConvertTo-Json - no window titles, file paths, pids,
-    machine names, user names or message text. Every renamed scratch binary
-    and scheduled task this probe creates is removed on every exit path.
+    codes, integrity SIDs/RIDs and bounded/redacted error strings are ever
+    handed to ConvertTo-Json - no window titles, file paths, pids, machine
+    names, user names or message text. Every renamed scratch binary and
+    scheduled task this probe creates is removed on every exit path.
 #>
 [CmdletBinding()]
 param(
@@ -117,6 +127,76 @@ function Get-IntegrityRidForSid {
     $rid = 0
     if ([int]::TryParse($parts[$parts.Length - 1], [ref]$rid)) { return $rid }
     return $null
+}
+
+<#
+    The standard Win32 command-line quoting algorithm (the same one .NET's
+    own argument builder applies internally): a token with no whitespace or
+    quote characters is left bare; otherwise it is wrapped in quotes, with
+    every run of backslashes immediately before a literal quote doubled and
+    the quote itself escaped. Applying it twice - once to quote an inner
+    path, once more to fold that already-quoted string into an outer token
+    - is what produces the nested `"\"C:\...\foo.exe\" args"` shape both
+    runas and schtasks /TR document for a target whose own path may contain
+    spaces. Called exactly once per value that needs it; a value already
+    built this way must never be run through it again; that would escape
+    its own quotes a second time.
+#>
+function ConvertTo-Win32Arg {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    $backslashes = 0
+    foreach ($ch in $Value.ToCharArray()) {
+        if ($ch -eq '\') { $backslashes++; continue }
+        if ($ch -eq '"') {
+            [void]$sb.Append('\', ($backslashes * 2 + 1))
+            [void]$sb.Append('"')
+            $backslashes = 0
+            continue
+        }
+        if ($backslashes -gt 0) { [void]$sb.Append('\', $backslashes); $backslashes = 0 }
+        [void]$sb.Append($ch)
+    }
+    if ($backslashes -gt 0) { [void]$sb.Append('\', ($backslashes * 2)) }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+}
+
+<#
+    Every native process this probe starts goes through here: a plain
+    System.Diagnostics.ProcessStartInfo with .Arguments set to a string this
+    probe built itself, never through Start-Process -ArgumentList's array
+    joining. -Wait blocks up to TimeoutMs and kills on timeout; omitting it
+    (route A's runas launch) returns immediately so the caller can poll for
+    the spawned target concurrently, which matters if runas itself blocks
+    until its child exits.
+#>
+function Invoke-A24Process {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Arguments,
+        [switch]$Wait,
+        [int]$TimeoutMs = 15000
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    if ($Wait) {
+        $exited = $proc.WaitForExit($TimeoutMs)
+        if (-not $exited) { try { $proc.Kill() } catch { } }
+        return [ordered]@{
+            Process  = $proc
+            Exited   = $exited
+            ExitCode = if ($exited) { $proc.ExitCode } else { -1 }
+        }
+    }
+    return [ordered]@{ Process = $proc; Exited = $false; ExitCode = $null }
 }
 
 <#
@@ -323,84 +403,100 @@ function Get-A24AbsentProcessResult {
     }
 }
 
+function Get-A24BranchForVerdict {
+    param([Parameter(Mandatory = $true)]$Verdict)
+    if ($Verdict.verified_non_high) { return 'staged_non_high_integrity_confirmed' }
+    if (-not $Verdict.integrity_read_ok) { return 'integrity_read_failed' }
+    return 'staged_but_still_high_integrity'
+}
+
+function Merge-A24Verdict {
+    param([Parameter(Mandatory = $true)][System.Collections.Specialized.OrderedDictionary]$Result, [Parameter(Mandatory = $true)]$Verdict)
+    foreach ($k in $Verdict.Keys) { $Result[$k] = $Verdict[$k] }
+    $Result.staged = [bool]$Verdict.verified_non_high
+    return $Result
+}
+
 # ---------------------------------------------------------------- route A: runas /trustlevel:0x20000
 
 function Measure-RouteA-RunasTrustlevel {
-    $runas = Get-Command 'runas.exe' -ErrorAction SilentlyContinue
-    if (-not $runas) {
+    $runasPath = Join-Path $env:WINDIR 'System32\runas.exe'
+    if (-not (Test-Path -LiteralPath $runasPath)) {
         return [ordered]@{
             measurable = $true
             branch     = 'route_prerequisite_missing'
-            detail     = 'runas.exe not found on PATH'
+            detail     = 'runas.exe not found'
             staged     = $false
         }
     }
     $leaf = 'adprobe-route-a'
     $exe = New-A24ScratchCopy -Leaf $leaf
-    $outFile = Join-Path $env:TEMP ('a24-runas-stdout-' + [guid]::NewGuid().ToString('N') + '.txt')
-    $errFile = Join-Path $env:TEMP ('a24-runas-stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
     $launcherPid = 0
     try {
-        $commandAndArgs = '"' + $exe + '" ' + (Get-A24TargetArgs -join ' ')
-        $proc = Start-Process -FilePath 'runas.exe' `
-            -ArgumentList @('/trustlevel:0x20000', $commandAndArgs) `
-            -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-        $launcherPid = $proc.Id
+        # runas' own usage line takes exactly one trailing positional value -
+        # "program" - so the quoted path plus its arguments has to reach it as
+        # ONE token: quote the path for spaces, then quote that whole
+        # "path args" unit again so it arrives at runas as a single value.
+        $innerCombined = (ConvertTo-Win32Arg $exe) + ' ' + ((Get-A24TargetArgs) -join ' ')
+        $outerProgramToken = ConvertTo-Win32Arg $innerCombined
+        $arguments = '/trustlevel:0x20000 ' + $outerProgramToken
+
+        $launch = Invoke-A24Process -FilePath $runasPath -Arguments $arguments
+        $launcherPid = $launch.Process.Id
         Register-SpawnedPid -ProcessId $launcherPid
 
         $target = Wait-A24ProcessByName -Name $leaf -TimeoutMs 6000
         if (-not $target) {
-            $stderrText = ''
-            if (Test-Path -LiteralPath $errFile) { $stderrText = (Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue) }
             $result = Get-A24AbsentProcessResult -Branch 'process_not_observed_within_timeout'
-            $result.launcher_exit_code = $proc.ExitCode
-            $result.launch_error = Get-BoundedErrorText -Text $stderrText
             return $result
         }
         Register-SpawnedPid -ProcessId $target.Id
         $verdict = Get-A24IntegrityVerdict -ProcessId $target.Id
         try { Stop-ScratchProcess -ProcessId $target.Id } catch { }
-        $branch = if ($verdict.verified_non_high) { 'staged_non_high_integrity_confirmed' }
-        elseif (-not $verdict.integrity_read_ok) { 'integrity_read_failed' }
-        else { 'staged_but_still_high_integrity' }
-        $result = [ordered]@{ measurable = $true; branch = $branch }
-        foreach ($k in $verdict.Keys) { $result[$k] = $verdict[$k] }
-        $result.staged = [bool]$verdict.verified_non_high
-        return $result
+        $result = [ordered]@{ measurable = $true; branch = (Get-A24BranchForVerdict $verdict) }
+        return (Merge-A24Verdict -Result $result -Verdict $verdict)
     } catch {
         return [ordered]@{
-            measurable  = $true
-            branch      = 'launch_command_failed'
+            measurable   = $true
+            branch       = 'launch_command_failed'
             launch_error = Get-BoundedErrorText -Text $_.Exception.Message
-            staged      = $false
+            staged       = $false
         }
     } finally {
         if ($launcherPid -gt 0) { try { Stop-ScratchProcess -ProcessId $launcherPid } catch { } }
-        Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     }
 }
 
 # ---------------------------------------------------------------- route B: icacls mandatory label
 
 function Measure-RouteB-IcaclsLabel {
+    $icaclsPath = Join-Path $env:WINDIR 'System32\icacls.exe'
+    if (-not (Test-Path -LiteralPath $icaclsPath)) {
+        return [ordered]@{
+            measurable = $true
+            branch     = 'route_prerequisite_missing'
+            detail     = 'icacls.exe not found'
+            staged     = $false
+        }
+    }
     $leaf = 'adprobe-route-b'
     $exe = New-A24ScratchCopy -Leaf $leaf
     try {
-        $icaclsOut = & icacls.exe $exe '/setintegritylevel' '(OI)(CI)' 'Low' 2>&1 | ForEach-Object { "$_" }
-        $icaclsExit = $LASTEXITCODE
-        if ($icaclsExit -ne 0) {
+        # A single file, not a container, so no (OI)(CI) inheritance flags -
+        # those propagate a label onto children an ordinary file does not have.
+        $icaclsArgs = (ConvertTo-Win32Arg $exe) + ' /setintegritylevel Low'
+        $icacls = Invoke-A24Process -FilePath $icaclsPath -Arguments $icaclsArgs -Wait -TimeoutMs 10000
+        if ($icacls.ExitCode -ne 0) {
             return [ordered]@{
-                measurable   = $true
-                branch       = 'icacls_setintegritylevel_failed'
-                icacls_exit_code = $icaclsExit
-                launch_error = Get-BoundedErrorText -Text ($icaclsOut -join ' ')
-                staged       = $false
+                measurable        = $true
+                branch            = 'icacls_setintegritylevel_failed'
+                icacls_exit_code  = $icacls.ExitCode
+                staged            = $false
             }
         }
 
-        $proc = Start-Process -FilePath $exe -ArgumentList (Get-A24TargetArgs) -WindowStyle Hidden -PassThru
+        $launch = Invoke-A24Process -FilePath $exe -Arguments (((Get-A24TargetArgs) -join ' '))
+        $proc = $launch.Process
         Register-SpawnedPid -ProcessId $proc.Id
         Start-Sleep -Milliseconds 400
         $proc.Refresh()
@@ -409,20 +505,16 @@ function Measure-RouteB-IcaclsLabel {
         }
         $verdict = Get-A24IntegrityVerdict -ProcessId $proc.Id
         try { Stop-ScratchProcess -ProcessId $proc.Id } catch { }
-        $branch = if ($verdict.verified_non_high) { 'staged_non_high_integrity_confirmed' }
-        elseif (-not $verdict.integrity_read_ok) { 'integrity_read_failed' }
-        else { 'staged_but_still_high_integrity' }
-        $result = [ordered]@{ measurable = $true; branch = $branch; icacls_exit_code = $icaclsExit }
-        foreach ($k in $verdict.Keys) { $result[$k] = $verdict[$k] }
-        $result.staged = [bool]$verdict.verified_non_high
+        $result = [ordered]@{ measurable = $true; branch = (Get-A24BranchForVerdict $verdict); icacls_exit_code = $icacls.ExitCode }
+        $result = Merge-A24Verdict -Result $result -Verdict $verdict
         $result.note = 'a file mandatory label restricts who may write/execute the file; it does not itself set the integrity level of a process launched from an already-High caller, which is what this leg either confirms or refutes empirically'
         return $result
     } catch {
         return [ordered]@{
-            measurable  = $true
-            branch      = 'launch_command_failed'
+            measurable   = $true
+            branch       = 'launch_command_failed'
             launch_error = Get-BoundedErrorText -Text $_.Exception.Message
-            staged      = $false
+            staged       = $false
         }
     }
 }
@@ -430,12 +522,12 @@ function Measure-RouteB-IcaclsLabel {
 # ---------------------------------------------------------------- route C: scheduled task /RL LIMITED
 
 function Measure-RouteC-ScheduledTaskLimited {
-    $schtasks = Get-Command 'schtasks.exe' -ErrorAction SilentlyContinue
-    if (-not $schtasks) {
+    $schtasksPath = Join-Path $env:WINDIR 'System32\schtasks.exe'
+    if (-not (Test-Path -LiteralPath $schtasksPath)) {
         return [ordered]@{
             measurable = $true
             branch     = 'route_prerequisite_missing'
-            detail     = 'schtasks.exe not found on PATH'
+            detail     = 'schtasks.exe not found'
             staged     = $false
         }
     }
@@ -444,28 +536,30 @@ function Measure-RouteC-ScheduledTaskLimited {
     $taskName = 'AgentDesktopProbe-SplitIntegrity-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
     [void]$script:ScratchTasks.Add($taskName)
     try {
-        $trValue = '"' + $exe + '" ' + (Get-A24TargetArgs -join ' ')
-        $createOut = & schtasks.exe '/Create' '/TN' $taskName '/TR' $trValue '/SC' 'ONCE' '/ST' '00:00' '/RL' 'LIMITED' '/F' 2>&1 | ForEach-Object { "$_" }
-        $createExit = $LASTEXITCODE
-        if ($createExit -ne 0) {
+        # /TR takes exactly one value token, which itself may need nested
+        # quoting for a path with spaces - the same double-quote fold route A
+        # needs for runas' "program" parameter.
+        $innerCombined = (ConvertTo-Win32Arg $exe) + ' ' + ((Get-A24TargetArgs) -join ' ')
+        $trValue = ConvertTo-Win32Arg $innerCombined
+        $createArgs = '/Create /TN ' + $taskName + ' /TR ' + $trValue + ' /SC ONCE /ST 00:00 /RL LIMITED /F'
+        $create = Invoke-A24Process -FilePath $schtasksPath -Arguments $createArgs -Wait -TimeoutMs 10000
+        if ($create.ExitCode -ne 0) {
             return [ordered]@{
                 measurable       = $true
                 branch           = 'schtasks_create_failed'
-                create_exit_code = $createExit
-                launch_error     = Get-BoundedErrorText -Text ($createOut -join ' ')
+                create_exit_code = $create.ExitCode
                 staged           = $false
             }
         }
 
-        $runOut = & schtasks.exe '/Run' '/TN' $taskName 2>&1 | ForEach-Object { "$_" }
-        $runExit = $LASTEXITCODE
-        if ($runExit -ne 0) {
+        $runArgs = '/Run /TN ' + $taskName
+        $run = Invoke-A24Process -FilePath $schtasksPath -Arguments $runArgs -Wait -TimeoutMs 10000
+        if ($run.ExitCode -ne 0) {
             return [ordered]@{
                 measurable       = $true
                 branch           = 'schtasks_run_failed'
-                create_exit_code = $createExit
-                run_exit_code    = $runExit
-                launch_error     = Get-BoundedErrorText -Text ($runOut -join ' ')
+                create_exit_code = $create.ExitCode
+                run_exit_code    = $run.ExitCode
                 staged           = $false
             }
         }
@@ -473,34 +567,31 @@ function Measure-RouteC-ScheduledTaskLimited {
         $target = Wait-A24ProcessByName -Name $leaf -TimeoutMs 8000
         if (-not $target) {
             $result = Get-A24AbsentProcessResult -Branch 'process_not_observed_within_timeout'
-            $result.create_exit_code = $createExit
-            $result.run_exit_code = $runExit
+            $result.create_exit_code = $create.ExitCode
+            $result.run_exit_code = $run.ExitCode
             return $result
         }
         Register-SpawnedPid -ProcessId $target.Id
         $verdict = Get-A24IntegrityVerdict -ProcessId $target.Id
         try { Stop-ScratchProcess -ProcessId $target.Id } catch { }
-        $branch = if ($verdict.verified_non_high) { 'staged_non_high_integrity_confirmed' }
-        elseif (-not $verdict.integrity_read_ok) { 'integrity_read_failed' }
-        else { 'staged_but_still_high_integrity' }
         $result = [ordered]@{
             measurable       = $true
-            branch           = $branch
-            create_exit_code = $createExit
-            run_exit_code    = $runExit
+            branch           = (Get-A24BranchForVerdict $verdict)
+            create_exit_code = $create.ExitCode
+            run_exit_code    = $run.ExitCode
         }
-        foreach ($k in $verdict.Keys) { $result[$k] = $verdict[$k] }
-        $result.staged = [bool]$verdict.verified_non_high
-        return $result
+        return (Merge-A24Verdict -Result $result -Verdict $verdict)
     } catch {
         return [ordered]@{
-            measurable  = $true
-            branch      = 'launch_command_failed'
+            measurable   = $true
+            branch       = 'launch_command_failed'
             launch_error = Get-BoundedErrorText -Text $_.Exception.Message
-            staged      = $false
+            staged       = $false
         }
     } finally {
-        try { & schtasks.exe '/Delete' '/TN' $taskName '/F' 2>&1 | Out-Null } catch { }
+        try {
+            Invoke-A24Process -FilePath $schtasksPath -Arguments ('/Delete /TN ' + $taskName + ' /F') -Wait -TimeoutMs 10000 | Out-Null
+        } catch { }
     }
 }
 
@@ -511,7 +602,7 @@ function Measure-RouteD-CreateRestrictedToken {
     $leaf = 'adprobe-route-d'
     $exe = New-A24ScratchCopy -Leaf $leaf
     try {
-        $commandLine = '"' + $exe + '" ' + (Get-A24TargetArgs -join ' ')
+        $commandLine = '"' + $exe + '" ' + ((Get-A24TargetArgs) -join ' ')
         $errorDetail = ''
         $foundPid = [AgentDesktopProbe.A24.RestrictedTokenLauncher]::LaunchWithRestrictedLowToken(
             $commandLine, $script:ScratchDir, [ref]$errorDetail)
@@ -526,19 +617,14 @@ function Measure-RouteD-CreateRestrictedToken {
         Register-SpawnedPid -ProcessId $foundPid
         $verdict = Get-A24IntegrityVerdict -ProcessId $foundPid
         try { Stop-ScratchProcess -ProcessId $foundPid } catch { }
-        $branch = if ($verdict.verified_non_high) { 'staged_non_high_integrity_confirmed' }
-        elseif (-not $verdict.integrity_read_ok) { 'integrity_read_failed' }
-        else { 'staged_but_still_high_integrity' }
-        $result = [ordered]@{ measurable = $true; branch = $branch }
-        foreach ($k in $verdict.Keys) { $result[$k] = $verdict[$k] }
-        $result.staged = [bool]$verdict.verified_non_high
-        return $result
+        $result = [ordered]@{ measurable = $true; branch = (Get-A24BranchForVerdict $verdict) }
+        return (Merge-A24Verdict -Result $result -Verdict $verdict)
     } catch {
         return [ordered]@{
-            measurable  = $true
-            branch      = 'launch_command_failed'
+            measurable   = $true
+            branch       = 'launch_command_failed'
             launch_error = Get-BoundedErrorText -Text $_.Exception.Message
-            staged      = $false
+            staged       = $false
         }
     }
 }
@@ -547,10 +633,10 @@ function Measure-RouteD-CreateRestrictedToken {
 
 function Get-A24Environment {
     $selfSid = [AgentDesktopProbe.Native]::GetIntegritySid($PID)
-    $seclogon = $null
-    $schedule = $null
-    try { $seclogon = (Get-Service -Name 'Seclogon' -ErrorAction Stop).Status.ToString() } catch { $seclogon = 'unknown' }
-    try { $schedule = (Get-Service -Name 'Schedule' -ErrorAction Stop).Status.ToString() } catch { $schedule = 'unknown' }
+    $seclogon = 'unknown'
+    $schedule = 'unknown'
+    try { $seclogon = (Get-Service -Name 'Seclogon' -ErrorAction Stop).Status.ToString() } catch { }
+    try { $schedule = (Get-Service -Name 'Schedule' -ErrorAction Stop).Status.ToString() } catch { }
     return [ordered]@{
         self_integrity_sid   = $selfSid
         self_integrity_rid   = Get-IntegrityRidForSid -Sid $selfSid
@@ -563,10 +649,10 @@ function Get-A24Environment {
 function Measure-SplitIntegrityStaging {
     $environment = Get-A24Environment
     $routes = [ordered]@{
-        route_a_runas_trustlevel        = Measure-RouteA-RunasTrustlevel
-        route_b_icacls_mandatory_label  = Measure-RouteB-IcaclsLabel
-        route_c_scheduled_task_limited  = Measure-RouteC-ScheduledTaskLimited
-        route_d_createrestrictedtoken   = Measure-RouteD-CreateRestrictedToken
+        route_a_runas_trustlevel       = Measure-RouteA-RunasTrustlevel
+        route_b_icacls_mandatory_label = Measure-RouteB-IcaclsLabel
+        route_c_scheduled_task_limited = Measure-RouteC-ScheduledTaskLimited
+        route_d_createrestrictedtoken  = Measure-RouteD-CreateRestrictedToken
     }
     $stagedBy = New-Object System.Collections.ArrayList
     $attempted = 0
@@ -606,7 +692,12 @@ try {
 } finally {
     Stop-AllSpawned
     foreach ($taskName in @($script:ScratchTasks)) {
-        try { & schtasks.exe '/Delete' '/TN' $taskName '/F' 2>&1 | Out-Null } catch { }
+        try {
+            $schtasksPath = Join-Path $env:WINDIR 'System32\schtasks.exe'
+            if (Test-Path -LiteralPath $schtasksPath) {
+                Invoke-A24Process -FilePath $schtasksPath -Arguments ('/Delete /TN ' + $taskName + ' /F') -Wait -TimeoutMs 10000 | Out-Null
+            }
+        } catch { }
     }
     foreach ($file in @($script:ScratchFiles)) {
         try { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue } catch { }

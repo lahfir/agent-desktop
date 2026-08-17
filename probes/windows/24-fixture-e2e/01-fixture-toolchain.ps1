@@ -176,11 +176,33 @@ function Measure-LangVersionAcceptance {
     }
 }
 
+function Get-RowField {
+    param($Row, [Parameter(Mandatory = $true)][string]$Name)
+    if ($null -eq $Row) { return $null }
+    if ($Row -is [System.Collections.IDictionary]) {
+        if ($Row.Contains($Name)) { return $Row[$Name] }
+        return $null
+    }
+    if ($Row.PSObject.Properties.Name -contains $Name) { return $Row.$Name }
+    return $null
+}
+
+function Test-LangVersionAccepted {
+    param(
+        [Parameter(Mandatory = $false)]$Rows,
+        [Parameter(Mandatory = $true)][string]$Requested
+    )
+    foreach ($row in @($Rows)) {
+        if ((Get-RowField -Row $row -Name 'requested_langversion') -ne $Requested) { continue }
+        return [bool](Get-RowField -Row $row -Name 'accepted')
+    }
+    return $false
+}
+
 function Get-HighestAcceptedNumericLangVersion {
     param($Rows)
     foreach ($v in @('7.3', '7', '6', '5', '3')) {
-        $row = @($Rows) | Where-Object { $_.requested_langversion -eq $v }
-        if ($row -and $row[0].accepted) { return $v }
+        if (Test-LangVersionAccepted -Rows $Rows -Requested $v) { return $v }
     }
     return 'none_of_the_sampled_numeric_versions_accepted'
 }
@@ -507,16 +529,18 @@ try {
                 automationid_readable_with_app_config       = [bool]$readableWithConfig
                 app_config_required_for_automationid        = ((-not $readableNoConfig) -and $readableWithConfig)
                 highest_accepted_sampled_langversion        = (Get-HighestAcceptedNumericLangVersion -Rows $langSweep.rows)
-                latest_alias_accepted                       = [bool]((@($langSweep.rows) | Where-Object { $_.requested_langversion -eq 'Latest' })[0].accepted)
+                latest_alias_accepted                       = [bool](Test-LangVersionAccepted -Rows $langSweep.rows -Requested 'Latest')
             }
         }
     }
 } catch {
     $result = [ordered]@{
-        probe       = $script:Probe
-        measurable  = $false
-        branch      = 'probe_threw'
-        error_class = $_.Exception.GetType().Name
+        probe        = $script:Probe
+        measurable   = $false
+        branch       = 'probe_threw'
+        error_class  = $_.Exception.GetType().Name
+        error_line   = [int]$_.InvocationInfo.ScriptLineNumber
+        error_source = (Protect-ProbeText -Text ([string]$_.InvocationInfo.Line).Trim())
     }
 } finally {
     Stop-AllSpawned
