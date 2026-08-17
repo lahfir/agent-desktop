@@ -312,19 +312,38 @@ fn focus_changed_fires_when_the_fixtures_window_is_focused_mid_wait() {
 /// positive-only suite structurally cannot see.
 ///
 /// The fixture itself is scoped by `(pid, process_instance)`
-/// (`scoped_baseline`), so it needs no `FIXTURE_APP_NAME_LOCK`. But a sibling
-/// test elsewhere in this crate can hand OS foreground around between the two
-/// captures below as part of its own teardown, and that is a real focus
-/// change this test's own predicate has no way to distinguish from a bug -
-/// asserting it away would be a semantic weakening, not an isolation fix. It
-/// holds `fixture_window::on_screen_stage` across both captures instead, the
-/// same DESKTOP/FOREGROUND-state guard `window_ops_tests.rs`'s focused-filter
-/// test takes even though it stages nothing itself.
+/// (`scoped_baseline`), so it needs no `FIXTURE_APP_NAME_LOCK`. Two separate
+/// things can still move the foreground across the two captures below, and
+/// both produce a real focus change this test's own predicate cannot
+/// distinguish from a bug - asserting either away would be a semantic
+/// weakening rather than an isolation fix, so each is excluded at its source.
+///
+/// A sibling test elsewhere in this crate can hand OS foreground around as
+/// part of its own teardown; `fixture_window::on_screen_stage` held across
+/// both captures excludes that, the same DESKTOP/FOREGROUND-state guard
+/// `window_ops_tests.rs`'s focused-filter test takes even though it stages
+/// nothing itself.
+///
+/// The fixture's *own* window is the second, and it is not a sibling's fault:
+/// Windows grants a newly created top-level window the foreground a short and
+/// variable time after creation, so on a loaded machine the first capture lands
+/// before that grant and the second after it. The transition is therefore
+/// forced to completion up front - staged with raw Win32 and then waited out
+/// until the foreground stops moving - so that by the first capture the fixture
+/// is steady in fact and not merely by assumption.
 #[test]
 fn two_captures_with_no_transition_on_a_steady_fixture_produce_no_event_of_any_kind() {
     bootstrap();
     let _stage = crate::tree::fixture_window::on_screen_stage();
     let fixture = HostedFixture::spawn().expect("a fixture host starts");
+    crate::system::test_support::stage_foreground(fixture.handle());
+    if !crate::system::test_support::wait_for_foreground_to_settle() {
+        eprintln!(concat!(
+            "skip steady-fixture no-event: the desktop's foreground never stopped moving, so ",
+            "the premise that nothing changes between the two captures cannot be established",
+        ));
+        return;
+    }
     let identity = process_identity_for(fixture.process_id());
     let before = scoped_baseline(&identity);
     thread::sleep(SETTLE);

@@ -111,3 +111,45 @@ pub(crate) fn stage_foreground(handle: isize) -> bool {
     }
     crate::system::window_ops::is_foreground_window(hwnd)
 }
+
+/// Waits until the desktop's foreground stops moving, reporting whether it
+/// settled inside the budget. Raw `GetForegroundWindow` rather than any product
+/// read, so a test can establish *nothing is changing* without asking the code
+/// under test whether anything changed.
+///
+/// A freshly spawned window is not steady. Windows hands a newly created
+/// top-level window the foreground a short and variable time after creation, so
+/// a capture taken as soon as the spawn call returns and a capture taken a
+/// settle interval later straddle a genuine focus change. A test whose premise
+/// is "nothing happened between these two captures" has to establish that
+/// premise by observation; inferring it from the spawn having returned is an
+/// assumption that holds on an idle machine and fails on a loaded one, which
+/// makes the resulting failure look like a defect in the diff rather than in
+/// the test's setup.
+#[cfg(target_os = "windows")]
+pub(crate) fn wait_for_foreground_to_settle() -> bool {
+    use std::time::{Duration, Instant};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+
+    const REQUIRED_STABLE_READS: u32 = 5;
+    const POLL: Duration = Duration::from_millis(50);
+    const BUDGET: Duration = Duration::from_secs(15);
+
+    let deadline = Instant::now() + BUDGET;
+    let mut last = unsafe { GetForegroundWindow() };
+    let mut stable = 0_u32;
+    while Instant::now() < deadline {
+        std::thread::sleep(POLL);
+        let current = unsafe { GetForegroundWindow() };
+        if current == last {
+            stable += 1;
+            if stable >= REQUIRED_STABLE_READS {
+                return true;
+            }
+        } else {
+            stable = 0;
+            last = current;
+        }
+    }
+    false
+}
