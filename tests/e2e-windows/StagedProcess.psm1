@@ -19,6 +19,7 @@ Set-StrictMode -Version 2.0
 Import-Module (Join-Path $PSScriptRoot 'NativeTypes.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'Native.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'NativeToken.psm1') -Force -Global
+Import-Module (Join-Path $PSScriptRoot 'Harness.psm1') -Force -Global
 
 $script:LeaseHandleEnvName = 'AGENT_DESKTOP_INTERACTION_LEASE_HANDLE'
 $script:HandleReportExePath = $null
@@ -326,7 +327,7 @@ function Start-StagedIntegrityProcess {
                used as-is; a scalar JSON result (an empty array or one bare
                number) is still normalized to an array with ,@(). #>
             try {
-                $parsed = ConvertFrom-Json -InputObject $stdoutTask.Result
+                $parsed = ConvertFrom-AgentJson -Json $stdoutTask.Result
                 if ($null -eq $parsed) { $childReportedHandles = @() }
                 elseif ($parsed -is [array]) { $childReportedHandles = $parsed }
                 else { $childReportedHandles = , $parsed }
@@ -364,4 +365,33 @@ function Start-StagedIntegrityProcess {
     }
 }
 
-Export-ModuleMember -Function @('Get-HandleReportExePath', 'New-StagedEnvironmentBlock', 'Start-StagedIntegrityProcess')
+function Invoke-StagedAgentDesktop {
+    <# The Medium/Low counterpart of Lib.psm1's Invoke-AgentDesktop: caller-
+       supplied staged binary (never Lib.psm1's Get-TargetBinary, so this
+       module gains no dependency on it), ConvertFrom-AgentJson only
+       (rule11), routed through Start-StagedIntegrityProcess so the call
+       runs under the requested integrity level. Lives here, not in
+       scenarios/SplitIntegrity.ps1, for the reason Invoke-AgentDesktop
+       lives in Lib.psm1: rule09 exempts modules that wrap these primitives
+       from the Enter-Stage enclosure it requires of scenario call sites,
+       because a generic wrapper called from every lock depth
+       SplitIntegrity.ps1 uses cannot commit to one Enter-Stage lock of its
+       own without throwing on a caller already holding a different depth. #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('Medium', 'Low')][string]$IntegrityLevel,
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Nullable[long]]$InheritLeaseHandle,
+        [int]$TimeoutSeconds = 20
+    )
+    $result = Start-StagedIntegrityProcess -IntegrityLevel $IntegrityLevel -FilePath $FilePath `
+        -ArgumentList $Arguments -InheritLeaseHandle $InheritLeaseHandle -TimeoutSeconds $TimeoutSeconds
+    if ([string]::IsNullOrWhiteSpace($result.StdOut)) {
+        throw "Invoke-StagedAgentDesktop: staged '$($Arguments -join ' ')' at $IntegrityLevel produced no stdout (ExitCode=$($result.ExitCode), TimedOut=$($result.TimedOut)); stderr: $($result.StdErr.Trim())"
+    }
+    $envelope = ConvertFrom-AgentJson -Json $result.StdOut
+    return [pscustomobject]@{ Envelope = $envelope; Staging = $result }
+}
+
+Export-ModuleMember -Function @('Get-HandleReportExePath', 'New-StagedEnvironmentBlock', 'Start-StagedIntegrityProcess', 'Invoke-StagedAgentDesktop')

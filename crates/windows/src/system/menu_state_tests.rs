@@ -39,6 +39,7 @@
 #![cfg(target_os = "windows")]
 
 use super::*;
+use crate::system::test_support::settles_to;
 
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -48,33 +49,6 @@ use crate::tree::fixture::{StalledFixture, bootstrap};
 use crate::tree::fixture_menu::MenuFixture;
 
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
-
-const SETTLE_POLL: Duration = Duration::from_millis(25);
-
-/// Waits for an OS-side menu source to agree with a menu state the fixture has
-/// already confirmed, reporting whether it did inside the budget.
-///
-/// `wait_for_menu_state` observes the fixture's own flag, set around its
-/// `TrackPopupMenu` call. The classic menu-mode bits and the UIA tool-window
-/// promotion are the OS's separate views of that same transition and reach
-/// their new value a short, variable time afterwards. Sleeping a fixed span
-/// between the two is a guess at that lag: it holds on an idle machine and
-/// fails under parallel load, where the failure reads as the detector being
-/// wrong rather than as the assertion having asked too early. Waiting on the
-/// value itself removes the guess without weakening what is asserted - a source
-/// that never reaches the expected state still exhausts the budget and fails.
-fn settles_to(expected: bool, mut read: impl FnMut() -> bool) -> bool {
-    let budget = std::time::Instant::now() + STATE_TIMEOUT;
-    loop {
-        if read() == expected {
-            return true;
-        }
-        if std::time::Instant::now() >= budget {
-            return false;
-        }
-        std::thread::sleep(SETTLE_POLL);
-    }
-}
 
 fn deadline() -> Deadline {
     Deadline::after(10_000).expect("bounded deadline")
@@ -184,24 +158,23 @@ fn classic_source_detects_the_fixtures_context_menu_open_and_closed() {
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let pid = ProcessId::from(fixture.process_id());
 
+    let classic = || classic_menu_mode_active(pid, deadline()).expect("classic probe reads it");
     assert!(
-        !classic_menu_mode_active(pid, deadline()).expect("classic probe reads the fixture"),
+        !classic(),
         "the fixture must not be in menu mode before any command is sent"
     );
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
     assert!(
-        settles_to(true, || classic_menu_mode_active(pid, deadline())
-            .expect("classic probe reads the fixture")),
+        settles_to(STATE_TIMEOUT, true, classic),
         "A23-1: classic menu-mode flags must report open while the fixture's context menu is up"
     );
 
     fixture.dismiss_context_menu();
     assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
     assert!(
-        settles_to(false, || classic_menu_mode_active(pid, deadline())
-            .expect("classic probe reads the fixture")),
+        settles_to(STATE_TIMEOUT, false, classic),
         "classic menu-mode flags must report closed once the fixture's menu is dismissed"
     );
 }
@@ -220,12 +193,12 @@ fn uia_source_detects_the_fixtures_context_menu_open_and_closed() {
         !uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
         "no root-level tool window with a reachable menu family exists before any command is sent"
     );
+    let reachable = || uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture");
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
     assert!(
-        settles_to(true, || uia_menu_reachable(pid, deadline())
-            .expect("uia probe reads the fixture")),
+        settles_to(STATE_TIMEOUT, true, reachable),
         "A23-11: an open Win32 context menu promotes a root-level tool window with a reachable \
          menu family"
     );
@@ -233,8 +206,7 @@ fn uia_source_detects_the_fixtures_context_menu_open_and_closed() {
     fixture.dismiss_context_menu();
     assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
     assert!(
-        settles_to(false, || uia_menu_reachable(pid, deadline())
-            .expect("uia probe reads the fixture")),
+        settles_to(STATE_TIMEOUT, false, reachable),
         "the promoted tool window must be gone once the fixture's menu is dismissed"
     );
 }
@@ -253,13 +225,19 @@ fn menu_is_open_reports_the_fixtures_transition_in_both_directions() {
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
-    assert!(settles_to(true, || menu_is_open(pid, deadline())
-        .expect("predicate reads the fixture")));
+    assert!(settles_to(STATE_TIMEOUT, true, || menu_is_open(
+        pid,
+        deadline()
+    )
+    .expect("predicate reads the fixture")));
 
     fixture.dismiss_context_menu();
     assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
-    assert!(settles_to(false, || menu_is_open(pid, deadline())
-        .expect("predicate reads the fixture")));
+    assert!(settles_to(STATE_TIMEOUT, false, || menu_is_open(
+        pid,
+        deadline()
+    )
+    .expect("predicate reads the fixture")));
 }
 
 /// The isolation property: another process's open menu must never leak into
@@ -293,8 +271,11 @@ fn menu_is_open_is_isolated_to_the_queried_process() {
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
     assert!(
-        settles_to(true, || menu_is_open(fixture_pid, deadline())
-            .expect("predicate reads the fixture")),
+        settles_to(STATE_TIMEOUT, true, || menu_is_open(
+            fixture_pid,
+            deadline()
+        )
+        .expect("predicate reads the fixture")),
         "the fixture's own pid must report its menu open"
     );
     assert!(

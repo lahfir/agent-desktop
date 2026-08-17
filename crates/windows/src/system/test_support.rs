@@ -170,3 +170,34 @@ pub(crate) fn wait_for_foreground_to_settle() -> bool {
     }
     false
 }
+
+/// Waits for a live source to reach an expected value, reporting whether it did
+/// inside the budget, reporting whether it did inside the budget.
+///
+/// `wait_for_menu_state` observes the fixture's own flag, set around its
+/// `TrackPopupMenu` call. The classic menu-mode bits and the UIA tool-window
+/// promotion are the OS's separate views of that same transition and reach
+/// their new value a short, variable time afterwards. Sleeping a fixed span
+/// between the two is a guess at that lag: it holds on an idle machine and
+/// fails under parallel load, where the failure reads as the detector being
+/// wrong rather than as the assertion having asked too early. Waiting on the
+/// value itself removes the guess without weakening what is asserted - a source
+/// that never reaches the expected state still exhausts the budget and fails.
+pub(crate) fn settles_to(
+    budget: std::time::Duration,
+    expected: bool,
+    mut read: impl FnMut() -> bool,
+) -> bool {
+    const POLL: std::time::Duration = std::time::Duration::from_millis(25);
+
+    let deadline = std::time::Instant::now() + budget;
+    loop {
+        if read() == expected {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(POLL);
+    }
+}

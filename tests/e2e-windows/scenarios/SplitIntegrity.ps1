@@ -34,29 +34,10 @@ $script:LowSid = 'S-1-16-4096'
 function Get-SplitIntegrityStagedBinary {
     <# The same staged, hash-verified agent-desktop.exe the High-side harness
        calls through Invoke-AgentDesktop (Lib.psm1's Get-TargetBinary), so a
-       Medium/Low spawn runs the identical artifact under test. #>
+       Medium/Low spawn runs the identical artifact under test. Passed
+       explicitly into StagedProcess.psm1's Invoke-StagedAgentDesktop below,
+       which must not itself depend on Lib.psm1. #>
     return (Get-TargetBinary).FilePath
-}
-
-function Invoke-StagedAgentDesktop {
-    <# The Medium/Low counterpart of Lib.psm1's Invoke-AgentDesktop: same
-       JSON-parse contract, same staged binary, routed through
-       Start-StagedIntegrityProcess instead of Invoke-GuardedAgent so the
-       call actually runs under the requested integrity level. #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)][ValidateSet('Medium', 'Low')][string]$IntegrityLevel,
-        [Parameter(Mandatory = $true)][string[]]$Arguments,
-        [Nullable[long]]$InheritLeaseHandle,
-        [int]$TimeoutSeconds = 20
-    )
-    $result = Start-StagedIntegrityProcess -IntegrityLevel $IntegrityLevel -FilePath (Get-SplitIntegrityStagedBinary) `
-        -ArgumentList $Arguments -InheritLeaseHandle $InheritLeaseHandle -TimeoutSeconds $TimeoutSeconds
-    if ([string]::IsNullOrWhiteSpace($result.StdOut)) {
-        throw "Invoke-StagedAgentDesktop: staged '$($Arguments -join ' ')' at $IntegrityLevel produced no stdout (ExitCode=$($result.ExitCode), TimedOut=$($result.TimedOut)); stderr: $($result.StdErr.Trim())"
-    }
-    $envelope = ConvertFrom-AgentJson -Json $result.StdOut
-    return [pscustomobject]@{ Envelope = $envelope; Staging = $result }
 }
 
 function Assert-StagingConfirmedMedium {
@@ -79,10 +60,19 @@ function Assert-StagingConfirmedMedium {
 }
 
 function Invoke-SplitIntegrityStagingLeg {
+    <# Runs before the scenario's main DesktopLease stage opens - spawns a
+       helper and reads its own token back, never touching the fixture or
+       lease. Its own top-level Enter-Stage -Lock DesktopLease, entered and
+       exited here before the scenario's stage opens (never nested inside
+       it), is rule09's requirement on this leg's Start-StagedIntegrityProcess
+       call - the same "two independent top-level blocks" shape
+       Observation.ps1/Chromium.ps1 use, since DesktopLease refuses reentry. #>
     param([Parameter(Mandatory = $true)][string]$App)
-    $result = Start-StagedIntegrityProcess -IntegrityLevel Medium -ReportOwnHandles -TimeoutSeconds 15
-    Assert-StagingConfirmedMedium -Staging $result
-    Add-Pass -Leg 'split-integrity-staging-confirmed'
+    Enter-Stage -Lock DesktopLease -Body {
+        $result = Start-StagedIntegrityProcess -IntegrityLevel Medium -ReportOwnHandles -TimeoutSeconds 15
+        Assert-StagingConfirmedMedium -Staging $result
+        Add-Pass -Leg 'split-integrity-staging-confirmed'
+    }
 }
 
 function Invoke-LeaseAdoptionPreconditionLeg {
@@ -106,7 +96,7 @@ function Invoke-LeaseAdoptionPreconditionLeg {
        lock_timeout. #>
     param([Parameter(Mandatory = $true)][string]$WindowId, [Parameter(Mandatory = $true)][long]$LeaseHandle)
 
-    $adopted = Invoke-StagedAgentDesktop -IntegrityLevel Medium -InheritLeaseHandle $LeaseHandle `
+    $adopted = Invoke-StagedAgentDesktop -IntegrityLevel Medium -FilePath (Get-SplitIntegrityStagedBinary) -InheritLeaseHandle $LeaseHandle `
         -Arguments @('focus-window', '--window-id', $WindowId) -TimeoutSeconds 20
     $adoptedKind = $null
     if ($adopted.Envelope['ok'] -eq $false) { $adoptedKind = $adopted.Envelope['error']['details']['kind'] }
@@ -114,7 +104,7 @@ function Invoke-LeaseAdoptionPreconditionLeg {
         throw "Invoke-LeaseAdoptionPreconditionLeg: lease-inheriting spawn still reported '$adoptedKind' - the staged process self-acquired instead of adopting"
     }
 
-    $selfAcquired = Invoke-StagedAgentDesktop -IntegrityLevel Medium `
+    $selfAcquired = Invoke-StagedAgentDesktop -IntegrityLevel Medium -FilePath (Get-SplitIntegrityStagedBinary) `
         -Arguments @('focus-window', '--window-id', $WindowId) -TimeoutSeconds 20
     $selfAcquiredKind = $null
     if ($selfAcquired.Envelope['ok'] -eq $false) { $selfAcquiredKind = $selfAcquired.Envelope['error']['details']['kind'] }
@@ -133,25 +123,30 @@ function Invoke-InheritedHandleSetLeg {
        other coincidence is a leaked harness handle. A handle the child
        reports that the harness never had inheritable is the child's own
        post-exec allocation (its console/CLR startup), not a leak, and is
-       not asserted on. #>
+       not asserted on. Its own Enter-Stage -Lock ForegroundStage wraps this
+       leg's entire body: called with only DesktopLease held (the lease-
+       adoption leg's own ForegroundStage use has already exited by here),
+       so entering ForegroundStage is the next stage in order. #>
     param([Parameter(Mandatory = $true)][long]$LeaseHandle)
-    $result = Start-StagedIntegrityProcess -IntegrityLevel Medium -ReportOwnHandles -InheritLeaseHandle $LeaseHandle -TimeoutSeconds 15
-    Assert-StagingConfirmedMedium -Staging $result
-    if ($null -eq $result.ChildReportedInheritableHandles) {
-        throw 'Invoke-InheritedHandleSetLeg: the staged child reported no handle set at all'
+    Enter-Stage -Lock ForegroundStage -Body {
+        $result = Start-StagedIntegrityProcess -IntegrityLevel Medium -ReportOwnHandles -InheritLeaseHandle $LeaseHandle -TimeoutSeconds 15
+        Assert-StagingConfirmedMedium -Staging $result
+        if ($null -eq $result.ChildReportedInheritableHandles) {
+            throw 'Invoke-InheritedHandleSetLeg: the staged child reported no handle set at all'
+        }
+        $leaked = @($result.ChildReportedInheritableHandles | Where-Object {
+                ($result.HarnessInheritableHandlesBeforeSpawn -contains $_) -and (-not ($result.ExpectedInheritableHandles -contains $_))
+            })
+        if ($leaked.Count -gt 0) {
+            throw "Invoke-InheritedHandleSetLeg: the staged child inherited $($leaked.Count) harness handle(s) beyond the lease and its own stdio: $($leaked -join ',')"
+        }
+        Add-Pass -Leg 'split-integrity-inherited-handle-set-bounded'
     }
-    $leaked = @($result.ChildReportedInheritableHandles | Where-Object {
-            ($result.HarnessInheritableHandlesBeforeSpawn -contains $_) -and (-not ($result.ExpectedInheritableHandles -contains $_))
-        })
-    if ($leaked.Count -gt 0) {
-        throw "Invoke-InheritedHandleSetLeg: the staged child inherited $($leaked.Count) harness handle(s) beyond the lease and its own stdio: $($leaked -join ',')"
-    }
-    Add-Pass -Leg 'split-integrity-inherited-handle-set-bounded'
 }
 
 function Invoke-SplitIntegrityReadLeg {
     param([Parameter(Mandatory = $true)][string]$App)
-    $result = Invoke-StagedAgentDesktop -IntegrityLevel Medium -Arguments @('snapshot', '--app', $App) -TimeoutSeconds 20
+    $result = Invoke-StagedAgentDesktop -IntegrityLevel Medium -FilePath (Get-SplitIntegrityStagedBinary) -Arguments @('snapshot', '--app', $App) -TimeoutSeconds 20
     Assert-StagingConfirmedMedium -Staging $result.Staging
     if ($result.Envelope['ok'] -ne $true) {
         throw "Invoke-SplitIntegrityReadLeg: Medium-side snapshot failed: $($result.Envelope['error']['code'])"
@@ -211,7 +206,7 @@ function Invoke-SplitIntegrityWriteLeg {
     $status = Require-Target -Target (Find-Target -App $App -NativeId 'text-status' -TimeoutSeconds 10) -Description 'text-status'
     $baseline = Get-Target -Target $status -Property 'value'
 
-    $medium = Invoke-StagedAgentDesktop -IntegrityLevel Medium -InheritLeaseHandle $LeaseHandle `
+    $medium = Invoke-StagedAgentDesktop -IntegrityLevel Medium -FilePath (Get-SplitIntegrityStagedBinary) -InheritLeaseHandle $LeaseHandle `
         -Arguments @('set-value', $input.RefId, '--snapshot', $input.SnapshotId, 'medium-write-attempt') -TimeoutSeconds 20
     Assert-StagingConfirmedMedium -Staging $medium.Staging
     Assert-MediumActionFailsClosed -Envelope $medium.Envelope -LegLabel 'Invoke-SplitIntegrityWriteLeg'
@@ -223,8 +218,12 @@ function Invoke-SplitIntegrityWriteLeg {
 
     <# Control: the same write from the High session must move the oracle,
        proving the unchanged-status re-read above is live evidence rather
-       than a status nothing ever updates. #>
-    Invoke-Target -Target $input -Action 'set-value' -ActionArgs @('high-write-control') -RequireOk -Description 'text-input (control)' | Out-Null
+       than a status nothing ever updates. Wrapped in its own
+       Enter-Stage -Lock ForegroundStage since only DesktopLease is held
+       here - the next stage in order, for this one Invoke-Target site. #>
+    Enter-Stage -Lock ForegroundStage -Body {
+        Invoke-Target -Target $input -Action 'set-value' -ActionArgs @('high-write-control') -RequireOk -Description 'text-input (control)' | Out-Null
+    }
     $afterControlWrite = Get-Target -Target $status -Property 'value'
     if ($afterControlWrite -eq $baseline) {
         throw "Invoke-SplitIntegrityWriteLeg: control write from the High session did not change text-status - the oracle itself is not falsifiable"
@@ -248,42 +247,49 @@ function Invoke-SplitIntegrityActivationLeg {
        PR; this leg asserts the measured behavior rather than the
        disproven one, with the same independent-oracle discipline every
        other leg here uses: a raw GetForegroundWindow read, not the
-       command's own envelope. #>
+       command's own envelope. The whole body runs inside its own
+       Enter-Stage -Lock ForegroundStage - only DesktopLease is held when
+       this leg is called (the write leg's own ForegroundStage use has
+       already exited), so this is the next stage in order, and rule09
+       requires every Native*/staged call site below to be inside it. #>
     param([Parameter(Mandatory = $true)][string]$App, [Parameter(Mandatory = $true)][long]$LeaseHandle)
-    $windowId = Get-MainFixtureWindowId -App $App
-    $fixtureHandle = ConvertTo-NativeWindowHandle -WindowId $windowId
+    Enter-Stage -Lock ForegroundStage -Body {
+        $windowId = Get-MainFixtureWindowId -App $App
+        $fixtureHandle = ConvertTo-NativeWindowHandle -WindowId $windowId
 
-    <# Unfalsifiable-precondition guard (Assert-Effect's own pattern): a
-       freshly-launched, non-activating fixture can still settle as
-       foreground with nothing else competing for it on this desktop, which
-       would make a Medium focus-window's `ok:true` ambiguous between "it
-       genuinely activated the window" and "it was already there." Any
-       other real top-level window on the desktop is stolen to the
-       foreground first, through the same raw Set-NativeForegroundWindow
-       this harness already uses for R14 preconditions - never through the
-       product - and the steal is verified before the leg proceeds. #>
-    $stealCandidate = Get-NativeTopLevelWindows | Where-Object { $_.Handle -ne $fixtureHandle -and $_.Handle -ne [IntPtr]::Zero } | Select-Object -First 1
-    if ($stealCandidate) {
-        [void](Set-NativeForegroundWindow -WindowHandle $stealCandidate.Handle)
-    }
-    $beforeForeground = Get-NativeForegroundWindowHandle
-    if ($beforeForeground -eq $fixtureHandle) {
-        throw 'Invoke-SplitIntegrityActivationLeg: could not steal foreground away from the fixture before the leg - the precondition would be unfalsifiable'
-    }
+        <# Unfalsifiable-precondition guard (Assert-Effect's own pattern): a
+           freshly-launched, non-activating fixture can still settle as
+           foreground with nothing else competing for it on this desktop,
+           which would make a Medium focus-window's `ok:true` ambiguous
+           between "it genuinely activated the window" and "it was already
+           there." Any other real top-level window on the desktop is stolen
+           to the foreground first, through the same raw
+           Set-NativeForegroundWindow this harness already uses for R14
+           preconditions - never through the product - and the steal is
+           verified before the leg proceeds. #>
+        $stealCandidate = Get-NativeTopLevelWindows | Where-Object { $_.Handle -ne $fixtureHandle -and $_.Handle -ne [IntPtr]::Zero } | Select-Object -First 1
+        if ($stealCandidate) {
+            [void](Set-NativeForegroundWindow -WindowHandle $stealCandidate.Handle)
+        }
+        $beforeForeground = Get-NativeForegroundWindowHandle
+        if ($beforeForeground -eq $fixtureHandle) {
+            throw 'Invoke-SplitIntegrityActivationLeg: could not steal foreground away from the fixture before the leg - the precondition would be unfalsifiable'
+        }
 
-    $medium = Invoke-StagedAgentDesktop -IntegrityLevel Medium -InheritLeaseHandle $LeaseHandle `
-        -Arguments @('focus-window', '--window-id', $windowId) -TimeoutSeconds 20
-    Assert-StagingConfirmedMedium -Staging $medium.Staging
-    if ($medium.Envelope['ok'] -ne $true) {
-        throw "Invoke-SplitIntegrityActivationLeg: expected Medium focus-window to succeed (measured behavior), got ok=false code=$($medium.Envelope['error']['code'])"
-    }
+        $medium = Invoke-StagedAgentDesktop -IntegrityLevel Medium -FilePath (Get-SplitIntegrityStagedBinary) -InheritLeaseHandle $LeaseHandle `
+            -Arguments @('focus-window', '--window-id', $windowId) -TimeoutSeconds 20
+        Assert-StagingConfirmedMedium -Staging $medium.Staging
+        if ($medium.Envelope['ok'] -ne $true) {
+            throw "Invoke-SplitIntegrityActivationLeg: expected Medium focus-window to succeed (measured behavior), got ok=false code=$($medium.Envelope['error']['code'])"
+        }
 
-    $afterForeground = Get-NativeForegroundWindowHandle
-    if ($afterForeground -ne $fixtureHandle) {
-        throw "Invoke-SplitIntegrityActivationLeg: focus-window reported ok=true but raw GetForegroundWindow ($afterForeground) never became the fixture ($fixtureHandle) - the envelope and the independent oracle disagree"
-    }
+        $afterForeground = Get-NativeForegroundWindowHandle
+        if ($afterForeground -ne $fixtureHandle) {
+            throw "Invoke-SplitIntegrityActivationLeg: focus-window reported ok=true but raw GetForegroundWindow ($afterForeground) never became the fixture ($fixtureHandle) - the envelope and the independent oracle disagree"
+        }
 
-    Add-Pass -Leg 'split-integrity-activation-recorded'
+        Add-Pass -Leg 'split-integrity-activation-recorded'
+    }
 }
 
 function Invoke-SplitIntegrityCaptureLeg {
@@ -293,7 +299,7 @@ function Invoke-SplitIntegrityCaptureLeg {
     $windowId = Get-MainFixtureWindowId -App $App
     $outputPath = Join-Path $env:TEMP ('split-integrity-capture-' + [guid]::NewGuid().ToString('N') + '.png')
 
-    $medium = Invoke-StagedAgentDesktop -IntegrityLevel Medium -InheritLeaseHandle $LeaseHandle `
+    $medium = Invoke-StagedAgentDesktop -IntegrityLevel Medium -FilePath (Get-SplitIntegrityStagedBinary) -InheritLeaseHandle $LeaseHandle `
         -Arguments @('screenshot', '--window-id', $windowId, $outputPath) -TimeoutSeconds 20
     Assert-StagingConfirmedMedium -Staging $medium.Staging
 
@@ -303,7 +309,7 @@ function Invoke-SplitIntegrityCaptureLeg {
     }
     Write-Host ("SplitIntegrity capture leg: ok={0} errorCode={1} pixelsProduced={2}" -f `
             $medium.Envelope['ok'], $(if ($medium.Envelope['ok'] -ne $true) { $medium.Envelope['error']['code'] } else { '<none>' }), $pixelsProduced)
-    Remove-Item -LiteralPath $outputPath -Force -ErrorAction SilentlyContinue
+    Remove-ItemRecoverable -Path $outputPath | Out-Null
 
     <# A failure to instrument (no envelope parsed at all) is the only
        failure this leg recognizes - whichever branch the product took is
@@ -366,13 +372,15 @@ function Invoke-SplitIntegrityScenario {
             throw
         }
 
-        Enter-Stage -Lock ForegroundStage -Body {
-            try {
-                Invoke-SplitIntegrityActivationLeg -App $App -LeaseHandle $leaseHandle
-            } catch {
-                Add-Fail -Leg 'split-integrity-activation-recorded' -Reason $_.Exception.Message
-                throw
-            }
+        <# No outer ForegroundStage wrap here (unlike lease-adoption above):
+           Invoke-SplitIntegrityActivationLeg opens ForegroundStage itself
+           around its whole body - a caller-side wrap does not lexically
+           enclose (rule09) the calls inside a separately-defined function. #>
+        try {
+            Invoke-SplitIntegrityActivationLeg -App $App -LeaseHandle $leaseHandle
+        } catch {
+            Add-Fail -Leg 'split-integrity-activation-recorded' -Reason $_.Exception.Message
+            throw
         }
 
         try {
