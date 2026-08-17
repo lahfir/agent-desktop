@@ -191,6 +191,8 @@ function Find-ItemsContainer {
     $queue = New-Object System.Collections.Generic.Queue[object]
     $queue.Enqueue($Root)
     $visited = 0
+    $best = $null
+    $bestCount = 0
     while ($queue.Count -gt 0 -and $visited -lt $MaxVisited) {
         $node = $queue.Dequeue()
         $visited++
@@ -198,14 +200,27 @@ function Find-ItemsContainer {
         try { $cur = $node.Current } catch { continue }
         if ($null -eq $cur) { continue }
         if ($cur.ControlType -eq $CT::List -or $cur.ControlType -eq $CT::DataGrid) {
-            $firstChild = $null
-            try { $firstChild = $ControlWalker.GetFirstChild($node) } catch { }
-            if ($null -ne $firstChild) {
+            # Details view puts a Header ahead of the rows, so a first-child-only
+            # test rejects the very container this probe exists to measure. Scan
+            # the child run for an item instead of assuming the item is first.
+            $scan = $null
+            try { $scan = $ControlWalker.GetFirstChild($node) } catch { }
+            $scanned = 0
+            $itemCount = 0
+            while ($null -ne $scan -and $scanned -lt 4000) {
+                $scanned++
                 $childType = $null
-                try { $childType = $firstChild.Current.ControlType } catch { }
-                if ($childType -eq $CT::ListItem -or $childType -eq $CT::DataItem) {
-                    return $node
-                }
+                try { $childType = $scan.Current.ControlType } catch { }
+                if ($childType -eq $CT::ListItem -or $childType -eq $CT::DataItem) { $itemCount++ }
+                try { $scan = $ControlWalker.GetNextSibling($scan) } catch { $scan = $null }
+            }
+            # Returning the first matching list finds the navigation pane, whose
+            # entry count is fixed and independent of the staged folder - a
+            # reading that looks measurable and answers a different question.
+            # Every candidate is scored and the richest one wins instead.
+            if ($itemCount -gt 0 -and $itemCount -gt $bestCount) {
+                $bestCount = $itemCount
+                $best = $node
             }
         }
         $k = $null
@@ -215,7 +230,7 @@ function Find-ItemsContainer {
             try { $k = $ControlWalker.GetNextSibling($k) } catch { $k = $null }
         }
     }
-    return $null
+    return $best
 }
 
 function Get-RealizedChildren {
@@ -484,7 +499,7 @@ $result = [ordered]@{
     question = $question
     cites    = @('2.7-dogfood-J3', 'A19-7', 'A18-2')
     overall  = $overall
-    runs     = @($runs)
+    runs     = $runs.ToArray()
 }
 
 $capturePath = Write-A24Capture -Name "explorer-below-fold-$Label.json" -Content (ConvertTo-Json -InputObject $result -Depth 18)
