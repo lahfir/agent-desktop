@@ -335,9 +335,11 @@ mod windows_only {
         assert!(
             events
                 .iter()
-                .any(|event| matches!(event.kind, EventKind::FocusChangedWindow)),
-            "the newly foregrounded fixture must be reported as a focus change through the \
-             composed capture: {events:?}"
+                .any(|event| matches!(event.kind, EventKind::FocusChangedWindow)
+                    && event.pid == Some(transition_pid)),
+            "the focus change must name the window activation was asked for, not merely \
+             report that the desktop's foreground moved - an activation that focused some \
+             other window would satisfy an unpinned assertion: {events:?}"
         );
     }
 
