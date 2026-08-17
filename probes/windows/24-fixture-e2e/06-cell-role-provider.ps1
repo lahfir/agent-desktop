@@ -166,31 +166,47 @@ function Measure-StockDataGridView {
         }
 
         $gridInfo = Get-ElementRoleShape -Element $grid
-        $row = $null
-        try { $row = $ControlWalker.GetFirstChild($grid) } catch { }
-        $rowInfo = $null
-        $cellInfo = $null
-        if ($null -ne $row) {
-            $rowInfo = Get-ElementRoleShape -Element $row
-            $cell = $null
-            try { $cell = $ControlWalker.GetFirstChild($row) } catch { }
-            if ($null -ne $cell) { $cellInfo = Get-ElementRoleShape -Element $cell }
+
+        <#
+            All direct children of the grid, not just the first: a .NET 4.8
+            DataGridView's first ControlView child is typically the column
+            header row, not a data row, and sampling only that would mislabel a
+            header as `row` and could falsely read as "matches A16-10" even if
+            data rows themselves carried GridItem/TableItem. Bounded at 12,
+            far above what a 2-column/3-row grid plus a header row and
+            scrollbars can realize.
+        #>
+        $rows = New-Object System.Collections.Generic.List[object]
+        $child = $null
+        try { $child = $ControlWalker.GetFirstChild($grid) } catch { }
+        $visited = 0
+        while ($null -ne $child -and $visited -lt 12) {
+            $visited++
+            $rowInfo = Get-ElementRoleShape -Element $child
+            $cellInfo = $null
+            $grandchild = $null
+            try { $grandchild = $ControlWalker.GetFirstChild($child) } catch { }
+            if ($null -ne $grandchild) { $cellInfo = Get-ElementRoleShape -Element $grandchild }
+            [void]$rows.Add([ordered]@{ row = $rowInfo; cell = $cellInfo })
+            try { $child = $ControlWalker.GetNextSibling($child) } catch { $child = $null }
         }
 
-        $rowHasShape = ($null -ne $rowInfo -and ($rowInfo.grid_item_pattern_try_get -or $rowInfo.table_item_pattern_try_get))
-        $cellHasShape = ($null -ne $cellInfo -and $cellInfo.control_type -eq 'DataItem' -and ($cellInfo.grid_item_pattern_try_get -or $cellInfo.table_item_pattern_try_get))
+        $rowHasShape = $false
+        $cellHasShape = $false
+        foreach ($entry in $rows) {
+            if ($null -ne $entry.row -and ($entry.row.grid_item_pattern_try_get -or $entry.row.table_item_pattern_try_get)) { $rowHasShape = $true }
+            if ($null -ne $entry.cell -and $entry.cell.control_type -eq 'DataItem' -and ($entry.cell.grid_item_pattern_try_get -or $entry.cell.table_item_pattern_try_get)) { $cellHasShape = $true }
+        }
         $matchesA1610 = (-not ($rowHasShape -or $cellHasShape))
 
         return [ordered]@{
             measurable                                 = $true
             branch                                      = if ($matchesA1610) { 'stock_dgv_matches_a16_10_no_griditem_tableitem' } else { 'stock_dgv_contradicts_a16_10_shape_present' }
             fixture_mode                                = 'host-providers: fixture custom collapse-to-Pane provider is switched off, dgvRows exposes its real WinForms UIA automation peer'
-            row_realized                                = ($null -ne $row)
-            cell_realized                               = ($null -ne $cellInfo)
+            grid_children_walked                        = $rows.Count
             matches_a16_10_no_griditem_tableitem_on_dgv = $matchesA1610
             grid                                        = $gridInfo
-            row                                         = $rowInfo
-            cell                                        = $cellInfo
+            rows                                        = @($rows)
         }
     } finally {
         if ($procId -gt 0) { try { Stop-ScratchProcess -ProcessId $procId } catch { } }
@@ -429,7 +445,7 @@ if ($custom.measurable -and $custom.branch -eq 'custom_provider_forces_dataitem_
     }
 } elseif (-not $custom.measurable) {
     $overall = [ordered]@{
-        measurable = $true
+        measurable = $false
         branch     = 'custom_provider_not_measurable'
         conclusion = 'the decisive leg could not run on this box; see custom_provider.branch for the specific reason (csc.exe absent, reference assemblies missing, compile failure with compiler_output, or the compiled host not answering as expected)'
     }
