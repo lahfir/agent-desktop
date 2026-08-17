@@ -28,8 +28,12 @@
     via P/Invoke against a scratch window class this probe registers and
     unregisters itself), and reports:
       - total windows created and how many distinct HWND values were seen
-      - how many HWND VALUES were reused (the same full 32-bit handle issued
-        twice for two different windows - the actual hazard) and the
+      - how many distinct HWND VALUES were reused (the same full 32-bit
+        handle issued twice or more for different windows - the actual
+        hazard: distinct_full_hwnd_values_reused counts values, and the
+        separate full_value_reuse_events count of repeat-issuance events is
+        reported alongside it, since the two diverge exactly in the wrap
+        regime where one value repeats three or more times) and the
         creation count at the first such reuse
       - how many creations reused only the low-16-bit index while the
         high-16-bit counter had advanced (expected, benign slot recycling)
@@ -309,13 +313,19 @@ function Measure-HwndWrapChurn {
     Initialize-ProbeNative
     Initialize-A24HwndChurnNative
 
+    # This measurement never shows or activates a window, so - unlike probe
+    # 23's Assert-Foreground, whose measurements DEPEND on a specific
+    # foreground pid - it does not depend on the foreground staying put
+    # either. A foreground change observed here can only be some other
+    # process on a shared console, not an effect of this probe, so it is
+    # recorded as a field in the capture rather than thrown as
+    # PROBE-INTERFERENCE: throwing here would discard a completed,
+    # already-measured churn result and emit no capture at all, which is
+    # exactly what rule 5 forbids.
     $fgBefore = [AgentDesktopProbe.Native]::GetForegroundProcessId()
     $native = [AgentDesktopProbe.A24.HwndChurn05]::RunChurn($MaxIterations, $MaxWallClockMs, $OriginX, $OriginY)
     $fgAfter = [AgentDesktopProbe.Native]::GetForegroundProcessId()
     $foregroundStable = ($fgBefore -eq $fgAfter)
-    if (-not $foregroundStable -and $fgBefore -ne 0 -and $fgAfter -ne 0) {
-        throw ('PROBE-INTERFERENCE: foreground pid changed during hwnd churn (before and after disagree)')
-    }
 
     if (-not $native.Success) {
         return [ordered]@{
@@ -357,6 +367,7 @@ function Measure-HwndWrapChurn {
         creation_failures                               = $native.CreationFailures
         elapsed_ms                                      = $native.ElapsedMs
         distinct_full_hwnd_values_seen                  = $native.DistinctFullValues
+        distinct_full_hwnd_values_reused                = $native.DistinctFullValuesReused
         full_value_reuse_events                         = $native.FullValueReuseEvents
         full_value_reuse_observed                       = $fullValueReuseObserved
         first_full_value_reuse_at_creation_count        = $(if ($native.FirstFullValueReuseAtCreationCount -ge 0) { $native.FirstFullValueReuseAtCreationCount } else { $null })
