@@ -59,7 +59,7 @@ Invoke-SelfTest 'legs registered but never dispositioned fail the run, and the a
     Add-Pass -Leg 'leg-elsewhere'
     Assert-True ((Write-Verdict) -eq $false) 'a registered leg with no disposition at all must fail the run even when an unrelated leg passed'
 
-    $originalText = (Get-Command Write-Verdict).ScriptBlock.ToString()
+    $originalText = ((Get-Command Write-Verdict).ScriptBlock.ToString()) -replace "`r`n", "`n"
     $noneDispositionedLine = "    if (`$script:RegisteredLegs.Count -gt 0 -and `$script:LegDispositions.Count -eq 0) { `$reasons.Add('legs were registered but none were dispositioned') }"
     $undisposedLine = "    if (`$undisposed.Count -gt 0) { `$reasons.Add(`"registered legs never dispositioned: `$(`$undisposed -join ', ')`") }"
     Assert-True ($originalText.Contains($noneDispositionedLine) -and $originalText.Contains($undisposedLine)) 'the invert target lines must actually be present in the real Write-Verdict - if this fails, Lib.psm1 drifted from what this test expects'
@@ -94,7 +94,7 @@ Invoke-SelfTest 'an all-skipped run fails because nothing passed, and the no-pas
     Add-Skip -Leg 'leg-a' -Token 'known-token'
     Assert-True ((Write-Verdict) -eq $false) 'a run where every leg skipped on a declared token must still fail - a whole-run skip is not legal'
 
-    $originalText = (Get-Command Write-Verdict).ScriptBlock.ToString()
+    $originalText = ((Get-Command Write-Verdict).ScriptBlock.ToString()) -replace "`r`n", "`n"
     $noPassLine = "    if (`$passed.Count -eq 0) { `$reasons.Add('no leg in the run passed') }"
     Assert-True ($originalText.Contains($noPassLine)) 'the invert target line must actually be present in the real Write-Verdict - if this fails, Lib.psm1 drifted from what this test expects'
     $strippedText = $originalText.Replace($noPassLine, '')

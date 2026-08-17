@@ -43,7 +43,10 @@ Invoke-SelfTest 'Invoke-AgentDesktop throws a diagnosable error on empty stdout,
     }
     Assert-True $threw 'Invoke-AgentDesktop must throw when the child produced no stdout'
 
-    $original = (Get-Command Invoke-AgentDesktop).ScriptBlock.ToString()
+    # Normalized to LF because the needles below are written with `n while git
+    # checks these files out CRLF on the CI runner - an exact match across that
+    # difference passes on a developer box and fails only on the lane.
+    $original = ((Get-Command Invoke-AgentDesktop).ScriptBlock.ToString()) -replace "`r`n", "`n"
     $guardLine = "    if ([string]::IsNullOrWhiteSpace(`$result.StdOut)) {`n        throw `"Invoke-AgentDesktop: '`$(`$Arguments -join ' ')' produced no stdout to parse (ExitCode=`$(`$result.ExitCode), TimedOut=`$(`$result.TimedOut), OutputLimited=`$(`$result.OutputLimited)); stderr: `$(`$result.StdErr.Trim())`"`n    }`n"
     Assert-True ($original.Contains($guardLine)) 'the invert target block must actually be present in the real Invoke-AgentDesktop - if this fails, Lib.psm1 drifted from what this test expects'
     $strippedText = $original.Replace($guardLine, '')
