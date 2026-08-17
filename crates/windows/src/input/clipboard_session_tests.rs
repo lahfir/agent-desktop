@@ -24,7 +24,11 @@ fn hidden_owner_window_never_appears_in_list_windows() {
     let _lock = clipboard_test_lock();
     let owner = owner_hwnd().expect("owner window");
     let expected_id = format!("w-{}", owner as usize);
-    let windows = list_windows_live(&WindowFilter::default()).expect("list windows");
+    let windows = list_windows_live(
+        &WindowFilter::default(),
+        Deadline::after(5_000).expect("deadline"),
+    )
+    .expect("list windows");
     assert!(
         windows.iter().all(|window| window.id != expected_id),
         "HWND_MESSAGE clipboard owner must not appear in top-level enumeration"

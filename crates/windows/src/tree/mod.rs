@@ -39,6 +39,10 @@ pub(crate) mod fixture;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture_clipboard;
 #[cfg(all(test, target_os = "windows"))]
+pub(crate) mod fixture_menu;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod fixture_modal;
+#[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture_overlay;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture_pattern;

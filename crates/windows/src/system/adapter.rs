@@ -1,8 +1,9 @@
 use agent_desktop_core::{
     ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, ImageBuffer,
     InteractionLease, InteractionPolicy, KeyCombo, ObservationOps, PermissionReport,
-    ProcessIdentity, ScreenshotTarget, SessionAffinity, SnapshotSurface, SystemOps, WindowFilter,
-    WindowInfo, WindowOp, launch_options::LaunchOptions, process_state::ProcessState,
+    ProcessIdentity, ScreenshotTarget, SessionAffinity, SignalBaseline, SignalFilter,
+    SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp, launch_options::LaunchOptions,
+    process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -186,6 +187,30 @@ impl SystemOps for WindowsAdapter {
     ) -> Result<Box<dyn AdapterSession>, AdapterError> {
         Ok(Box::new(crate::system::session::open(deadline)?))
     }
+
+    /// The other half of `wait`'s menu surface: a bounded poll over the
+    /// two-source menu predicate, structured as a port of the macOS poll
+    /// loop.
+    fn wait_for_menu(
+        &self,
+        process: ProcessIdentity,
+        open: bool,
+        deadline: Deadline,
+    ) -> Result<(), AdapterError> {
+        crate::system::wait::wait_for_menu(process, open, deadline)
+    }
+
+    /// The other half of `wait`'s baseline surface: the single-pass
+    /// windows+apps inventory composed with the app-scoped surface scan
+    /// under one shared deadline, with `completeness` derived from whether
+    /// each pass ran to completion.
+    fn capture_signal_baseline(
+        &self,
+        filter: &SignalFilter,
+        deadline: Deadline,
+    ) -> Result<SignalBaseline, AdapterError> {
+        crate::system::signals::capture_signal_baseline_impl(filter, deadline)
+    }
 }
 
 #[cfg(test)]
@@ -282,5 +307,25 @@ mod tests {
 
         assert!(adapter.is_blocked_combo(&dangerous));
         assert!(!adapter.is_blocked_combo(&harmless));
+    }
+
+    /// Pins the `wait_for_menu` override itself: the trait default fails
+    /// closed with `PLATFORM_NOT_SUPPORTED`, so an un-wired override would be
+    /// indistinguishable from the method never having been implemented at
+    /// all. A nonexistent pid still reaches the adapter's own real classified
+    /// error rather than the trait default, which is exactly what
+    /// distinguishes "wired" from "not wired" here.
+    #[test]
+    fn wait_for_menu_reaches_the_windows_override_instead_of_the_not_supported_default() {
+        use agent_desktop_core::{ErrorCode, ProcessIdentity};
+
+        let adapter = WindowsAdapter::new();
+        let process = ProcessIdentity::new(1u32, "windows-proc-v1:0:0");
+
+        let error =
+            SystemOps::wait_for_menu(&adapter, process, true, Deadline::after(1_000).unwrap())
+                .expect_err("a bogus process identity must not report a satisfied wait");
+
+        assert_ne!(error.code, ErrorCode::PlatformNotSupported);
     }
 }

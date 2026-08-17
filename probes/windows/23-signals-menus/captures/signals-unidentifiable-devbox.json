@@ -1,0 +1,11 @@
+{
+    "probe":  "23-signals-menus",
+    "question":  "across repeated agent-facing captures, how many distinct windows fail the owning-process identity read every time versus intermittently (sizes the R3 exclusion; grounds R11)",
+    "environment_dependency":  "measured while running at High integrity as a local Administrator (00-environment.ps1); token reads succeed against more processes here than on a standard-user desktop, so the persistent-failure count below is a floor, not an upper bound, for a lower-privilege caller",
+    "repeats":  15,
+    "interval_ms":  200,
+    "distinct_windows_seen":  4,
+    "never_failed":  4,
+    "persistent_failures":  0,
+    "intermittent_failures":  0
+}

@@ -8,7 +8,7 @@
 //! as 3 nodes against 26 on COM, so they cannot serve as COM expectations.
 //!
 //! Nothing in CI asserts what the captures contain - that would be an
-//! `app/provider` assertion R9 forbids. What is asserted here is the
+//! `app/provider` assertion the corpus rules forbid. What is asserted here is the
 //! **redaction rule**: a capture that leaks a process id, a provider id, a
 //! window handle or a user path is a defect regardless of what tree it holds.
 //!

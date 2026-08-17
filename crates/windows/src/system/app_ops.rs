@@ -1,5 +1,6 @@
-use agent_desktop_core::{AdapterError, AppInfo, ProcessId};
+use agent_desktop_core::{AdapterError, AppInfo, Deadline, ProcessId};
 
+use super::permissions::ensure_budget;
 use super::process_identity;
 use super::window_enum::{EnumeratedWindow, enumerate_top_level};
 use super::window_ops::passes_filter;
@@ -39,16 +40,20 @@ pub(crate) struct ProcessRow {
     pub(crate) name: String,
 }
 
+/// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`
+/// (`-1`), never as a null handle, so an `is_null` guard can never fire and
+/// a failed call would read as an empty enumeration rather than an error.
 /// Snapshots every running process's image name from the ToolHelp table.
 #[cfg(target_os = "windows")]
 pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
     };
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snapshot.is_null() {
+    if snapshot == INVALID_HANDLE_VALUE {
         return Err(AdapterError::internal(
             "CreateToolhelp32Snapshot failed to enumerate processes",
         ));
@@ -84,20 +89,40 @@ pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
 
 /// The owning processes of the agent-facing window set - the "apps with a
 /// window" population `list_apps` reports.
+///
+/// Checks `deadline` between windows, matching `process_state.rs:140-153`:
+/// the enumeration itself is cheap, but the budget still bounds however long
+/// the whole walk is allowed to take before the app assembly loop starts its
+/// own per-window process-handle work.
 #[cfg(target_os = "windows")]
-fn owning_processes() -> Result<Vec<EnumeratedWindow>, AdapterError> {
+fn owning_processes(deadline: Deadline) -> Result<Vec<EnumeratedWindow>, AdapterError> {
+    #[cfg(test)]
+    enumeration_calls::record();
+
     let mut owners = Vec::new();
+    let failure = std::cell::RefCell::new(None);
+    let mut seen = 0usize;
     enumerate_top_level(|window| {
+        if seen > 0 {
+            if let Err(error) = ensure_budget(deadline) {
+                *failure.borrow_mut() = Some(error);
+                return false;
+            }
+        }
+        seen += 1;
         if passes_filter(&window) {
             owners.push(window);
         }
         true
     })?;
+    if let Some(error) = failure.into_inner() {
+        return Err(error);
+    }
     Ok(owners)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn owning_processes() -> Result<Vec<EnumeratedWindow>, AdapterError> {
+fn owning_processes(_deadline: Deadline) -> Result<Vec<EnumeratedWindow>, AdapterError> {
     Ok(Vec::new())
 }
 
@@ -110,8 +135,13 @@ fn owning_processes() -> Result<Vec<EnumeratedWindow>, AdapterError> {
 /// generation the inventory captured is re-read at assembly time and compared,
 /// so a mid-listing generation change also fails the inventory. `bundle_id`
 /// has no Windows analogue and is recorded, not faked.
-pub(crate) fn list_apps_live() -> Result<Vec<AppInfo>, AdapterError> {
-    let owners = owning_processes()?;
+///
+/// Bounds every native call under `deadline`, refusing before any
+/// enumeration when the budget is already spent and checking it again
+/// between the per-window process-handle reads the assembly loop performs.
+pub(crate) fn list_apps_live(deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+    ensure_budget(deadline)?;
+    let owners = owning_processes(deadline)?;
     let snapshot = process_snapshot()?;
     let snapshot_by_pid: std::collections::HashMap<u32, &ProcessRow> = snapshot
         .iter()
@@ -120,7 +150,10 @@ pub(crate) fn list_apps_live() -> Result<Vec<AppInfo>, AdapterError> {
 
     let mut seen = std::collections::HashSet::new();
     let mut apps = Vec::new();
-    for window in owners {
+    for (index, window) in owners.into_iter().enumerate() {
+        if index > 0 {
+            ensure_budget(deadline)?;
+        }
         let Some((pid, token)) = process_token_of(window.handle) else {
             continue;
         };
@@ -177,8 +210,44 @@ fn process_token_of(
 }
 
 #[cfg(test)]
+pub(super) mod enumeration_calls {
+    use std::cell::Cell;
+
+    thread_local! {
+        static COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(super) fn record() {
+        COUNT.with(|cell| cell.set(cell.get() + 1));
+    }
+
+    pub(super) fn take() -> usize {
+        COUNT.with(|cell| {
+            let value = cell.get();
+            cell.set(0);
+            value
+        })
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_already_expired_deadline_returns_timeout_without_enumerating() {
+        enumeration_calls::take();
+        let expired = Deadline::after(0).expect("a zero-timeout deadline is constructible");
+
+        let error = list_apps_live(expired).expect_err("an expired deadline must refuse listing");
+
+        assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+        assert_eq!(
+            enumeration_calls::take(),
+            0,
+            "an already-expired deadline must perform no native enumeration"
+        );
+    }
 
     #[cfg(target_os = "windows")]
     #[test]

@@ -84,18 +84,23 @@ pub(crate) fn token_for_pid(pid: ProcessId) -> Result<Option<String>, AdapterErr
 /// The image name (executable filename) of the process at `pid`, read from
 /// the ToolHelp process table.
 ///
+/// `CreateToolhelp32Snapshot` reports failure as `INVALID_HANDLE_VALUE`
+/// (`-1`), never as a null handle, so an `is_null` guard can never fire and
+/// a failed call would read as an empty enumeration rather than an error.
+///
 /// The single walk both window identity checks corroborate `app` against:
 /// `window_ops.rs` and `window_identity.rs` each carried their own verbatim
 /// copy of this loop before it was pulled out from underneath them.
 #[cfg(target_os = "windows")]
 pub(crate) fn process_image_name(pid: ProcessId) -> Option<String> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
     };
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snapshot.is_null() {
+    if snapshot == INVALID_HANDLE_VALUE {
         return None;
     }
     let mut entry = PROCESSENTRY32W {

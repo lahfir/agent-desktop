@@ -57,7 +57,10 @@ fn settled_window_for(pid: agent_desktop_core::ProcessId) -> WindowInfo {
     let expiry = std::time::Instant::now() + SETTLED_INVENTORY_BUDGET;
     let mut last = String::from("no settled inventory listed a window of the fixture's process");
     loop {
-        match list_windows_live(&WindowFilter::default()) {
+        match list_windows_live(
+            &WindowFilter::default(),
+            Deadline::after(5_000).expect("deadline"),
+        ) {
             Ok(windows) => {
                 if let Some(listed) = windows.into_iter().find(|window| window.pid == pid) {
                     return listed;

@@ -2,7 +2,7 @@
 title: A verification gate is code and needs its own test
 date: 2026-08-01
 category: best-practices
-module: scripts/check-no-phase-references.sh, scripts/check-rust-file-size.sh
+module: scripts/check-no-phase-references.sh, scripts/check-rust-file-size.sh, probes/windows/13-ledger-check.ps1, probes/windows/13-ledger-content.ps1
 problem_type: process_gap
 component: tooling
 symptoms:
@@ -165,6 +165,28 @@ instead of discoverable only when a real commit happens to exercise the gap.
   answer a version probe as 3 or higher, and fails the gate when none does —
   and `self_test()` drives that rejection branch, failing if the probe ever
   reports success without a working interpreter behind it.
+- **A gate can also be blind to a shape nobody thought to ban, and its clean
+  verdict looks identical either way.** `check-no-phase-references.sh` banned
+  sub-phase references, phase numbers, `KTD<n>` and `unit U<n>`, and had no
+  rule for a bare requirement id — so `(R5)` and `(R11)` sat in shipped source
+  through a simplification pass, a three-axis adversarial dogfood, and a
+  nine-lens code review with the gate reporting clean every time. Adding the
+  rule found **eight** sites, twice what the review had reported, two of them
+  in files the sub-phase under review never touched. When a gate enumerates
+  banned shapes, the enumeration is itself an assertion about what the rule
+  covers, and it decays as new shapes appear — so a review finding of the
+  banned *class* is a reason to re-derive the enumeration, not just to delete
+  the instance.
+- **Coverage that is reported but never compared is the same failure wearing a
+  number.** The ledger's row-versus-capture check audited 20 of 165 rows and
+  reported no failures — accurate, and useless, because the 145 unaudited rows
+  were where the defect was. It exempted any row stating a measured value in
+  prose rather than as a quoted `field: value` pair, which is precisely the
+  phrasing of the row that had shipped contradicting its own capture. The fix
+  was to widen the predicate *and* to print audited-versus-total in the gate's
+  own verdict, so a coverage regression is visible in the output rather than
+  inferable only by reading the source. **A gate that reports a count it never
+  compares against a total has told you nothing.**
 - The general shape is **a check that runs, reports success, and asserted
   nothing**, and it is indistinguishable from a clean result at every level.
   The interpreter probe checking nothing is one face. Four probe harnesses

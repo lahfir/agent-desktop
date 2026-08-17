@@ -115,8 +115,23 @@ agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 
 **Tips:**
 - Always use `-i` to keep output compact for LLM context windows
-- Use `--surface menu` to capture open context menus or dropdown menus
-- Use `--surface sheet` for modal dialogs
+- Use `--surface menu` to capture open context menus or dropdown menus (**macOS only** — see the platform note below)
+- Use `--surface sheet` for modal dialogs (both platforms)
+
+**Surfaces are platform-specific, and the honest list is in `status`.** Run
+`agent-desktop status` and read `supported_surfaces` before requesting one:
+macOS serves `window`, `focused`, `menu`, `menubar`, `sheet`, `popover` and
+`alert`, while Windows currently serves `window`, `focused` and `sheet`. A
+surface the adapter does not serve returns `PLATFORM_NOT_SUPPORTED` with the
+supported list in `details`, so the failure is honest — but it is cheaper to
+read `status` first than to discover it from an error.
+
+One asymmetry is worth naming because an agent hits it naturally: on Windows,
+`wait --event surface-appeared` **can** report `"surface": "menu"` — the signal
+path detects an open menu — while `snapshot --surface menu` refuses it. The
+event is telling you a menu opened; it is not an invitation to snapshot that
+menu as a surface on Windows. Snapshot the owning window instead, or use
+`wait --menu` / `wait --menu-closed` to synchronise on menu state.
 - Use `--compact` with `-i` for maximum token efficiency
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
 - Use `--skeleton` first to get a high-level map, then `--root` to drill into specific regions
