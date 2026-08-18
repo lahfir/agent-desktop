@@ -455,6 +455,11 @@ jobs:
             exit 1
           }
           Write-Host "OK: Run-E2E.ps1 -SelfTestSeedFailure exited $LASTEXITCODE"
+          # The step verifies that a command fails, so it must not inherit that
+          # command's exit code as its own verdict: $LASTEXITCODE is still
+          # non-zero here and Write-Host does not clear it, which would fail the
+          # step on the very outcome it was written to require.
+          exit 0
 
       - name: Capture redaction gate
         shell: powershell
