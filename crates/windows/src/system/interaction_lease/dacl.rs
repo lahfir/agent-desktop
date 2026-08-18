@@ -95,6 +95,10 @@ fn sid_len(sid: &SidBuffer) -> usize {
 /// pointer rather than a proof of it. The read is the security check that
 /// decides whether the lock directory is trustworthy, so it fails closed on a
 /// pointer it cannot justify instead of dereferencing one.
+///
+/// The header is copied out as a fixed-size block rather than read field by
+/// field through the foreign pointer, so the size of every read is stated at
+/// the call site instead of being implied by the type being dereferenced.
 pub(super) fn dacl_grants_only(acl: *const ACL, accepted: &[&SidBuffer]) -> std::io::Result<bool> {
     if acl.is_null() {
         return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
@@ -108,7 +112,11 @@ pub(super) fn dacl_grants_only(acl: *const ACL, accepted: &[&SidBuffer]) -> std:
         if ace_ptr.is_null() {
             return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
         }
-        let ace_type = unsafe { *ace_ptr.cast::<u8>() };
+        let mut header = [0_u8; ACE_FIXED_LEN];
+        unsafe {
+            std::ptr::copy_nonoverlapping(ace_ptr.cast::<u8>(), header.as_mut_ptr(), header.len());
+        }
+        let ace_type = header[0];
         if ace_type != ACCESS_ALLOWED_ACE_TYPE {
             return Ok(false);
         }
