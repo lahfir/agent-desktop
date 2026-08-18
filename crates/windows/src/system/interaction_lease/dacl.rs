@@ -87,12 +87,26 @@ fn sid_len(sid: &SidBuffer) -> usize {
 /// `true` only when every ACE on `acl` is an `ACCESS_ALLOWED_ACE` whose SID
 /// matches one of the three accepted principals - any other ACE type
 /// (deny, audit, a fourth principal) fails the read-back closed.
+///
+/// Both pointers are checked before they are read even though the Win32
+/// contract already promises them: `acl` because this takes a raw pointer and
+/// must hold on its own rather than on a caller that happens to check, and the
+/// per-ACE pointer because `GetAce` reporting success is a claim about the
+/// pointer rather than a proof of it. The read is the security check that
+/// decides whether the lock directory is trustworthy, so it fails closed on a
+/// pointer it cannot justify instead of dereferencing one.
 pub(super) fn dacl_grants_only(acl: *const ACL, accepted: &[&SidBuffer]) -> std::io::Result<bool> {
+    if acl.is_null() {
+        return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+    }
     let count = ace_count(acl)?;
     for index in 0..count {
         let mut ace_ptr: *mut core::ffi::c_void = std::ptr::null_mut();
         if unsafe { GetAce(acl, index, &mut ace_ptr) } == 0 {
             return Err(std::io::Error::last_os_error());
+        }
+        if ace_ptr.is_null() {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
         }
         let ace_type = unsafe { *ace_ptr.cast::<u8>() };
         if ace_type != ACCESS_ALLOWED_ACE_TYPE {
