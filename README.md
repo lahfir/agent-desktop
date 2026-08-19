@@ -29,11 +29,11 @@
   <img src="docs/example.png" alt="agent-desktop real-world example — Slack accessibility tree with 97% token savings" width="900" />
 </p>
 
-<a href="https://star-history.com/#lahfir/agent-desktop&Date">
+<a href="https://star-history.dera.page/#lahfir/agent-desktop&type=Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=lahfir/agent-desktop&type=Date&theme=dark">
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=lahfir/agent-desktop&type=Date">
-    <img alt="Star history for lahfir/agent-desktop" src="https://api.star-history.com/svg?repos=lahfir/agent-desktop&type=Date">
+    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=lahfir/agent-desktop&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=lahfir/agent-desktop&type=Date">
+    <img alt="Star history for lahfir/agent-desktop" src="https://star-history.dera.page/svg?repos=lahfir/agent-desktop&type=Date">
   </picture>
 </a>
 
