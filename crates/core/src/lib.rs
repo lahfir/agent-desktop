@@ -130,6 +130,7 @@ pub mod snapshot_ref;
 pub mod snapshot_surface;
 pub mod state;
 mod state_predicate;
+pub(crate) mod state_root;
 pub mod step_mechanism;
 mod surface_info;
 mod surface_signal;
