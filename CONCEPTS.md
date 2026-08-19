@@ -49,6 +49,11 @@ Strict ref resolution rejects missing, stale, and ambiguous matches instead of g
 
 ## Coordination
 
+### State Root
+The single on-disk directory that owns everything the CLI persists: sessions, snapshot refmaps and their locks, trace segments, and the latest-snapshot inspection artifact. Default is `~/.agent-desktop`.
+
+`AGENT_DESKTOP_HOME` relocates the state root; the env value is the root itself, with no `.agent-desktop` suffix appended. Resolution lives in core and is identical across platforms. Explicit user-given output paths (`screenshot --out`, `--trace <path>`) are not re-rooted.
+
 ### Session
 An on-disk container under `~/.agent-desktop/sessions/<id>/` that owns snapshot refmaps, an optional trace directory, and a `session.json` manifest.
 
