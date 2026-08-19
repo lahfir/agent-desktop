@@ -44,6 +44,84 @@ fn version_has_exact_package_identity() {
     assert_eq!(envelope["data"]["version"], env!("CARGO_PKG_VERSION"));
 }
 
+#[test]
+fn relative_state_root_env_fails_version_before_dispatch() {
+    let output = binary()
+        .arg("version")
+        .env("AGENT_DESKTOP_HOME", "relative/not-absolute")
+        .output()
+        .expect("binary starts");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(envelope["ok"], false);
+    assert_eq!(envelope["command"], "version");
+    assert_eq!(envelope["error"]["code"], "INVALID_ARGS");
+}
+
+#[test]
+fn empty_state_root_env_fails_session_start_before_dispatch() {
+    let output = binary()
+        .args(["session", "start"])
+        .env("AGENT_DESKTOP_HOME", "")
+        .output()
+        .expect("binary starts");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(envelope["ok"], false);
+    assert_eq!(envelope["command"], "session");
+    assert_eq!(envelope["error"]["code"], "INVALID_ARGS");
+}
+
+#[test]
+fn valid_absolute_state_root_env_allows_version_and_creates_nothing() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-cli-process-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let output = binary()
+        .arg("version")
+        .env("AGENT_DESKTOP_HOME", &dir)
+        .output()
+        .expect("binary starts");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+
+    assert!(output.status.success());
+    assert_eq!(envelope["ok"], true);
+    assert!(
+        !dir.exists(),
+        "preflight validation must not create the state root directory"
+    );
+}
+
+#[test]
+fn invalid_state_root_env_fails_batch_as_single_envelope() {
+    let output = binary()
+        .args(["batch", "[]"])
+        .env("AGENT_DESKTOP_HOME", "relative/not-absolute")
+        .output()
+        .expect("binary starts");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(envelope["ok"], false);
+    assert_eq!(envelope["command"], "batch");
+    assert_eq!(envelope["error"]["code"], "INVALID_ARGS");
+    assert!(
+        envelope.get("data").is_none(),
+        "batch must fail as one error envelope, no entry results"
+    );
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn malformed_permission_helper_invocation_bypasses_clap_and_tracing() {

@@ -93,6 +93,10 @@ fn run() -> ExitCode {
 
     let cmd_name = cmd.name();
 
+    if let Err(err) = agent_desktop_core::validate_state_root_env() {
+        return finish(cmd_name, Err(pre_dispatch_error(err)));
+    }
+
     match cmd {
         Commands::Version => finish(
             cmd_name,

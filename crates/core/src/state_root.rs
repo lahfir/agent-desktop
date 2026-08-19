@@ -4,6 +4,30 @@ use std::path::{Path, PathBuf};
 const AGENT_DESKTOP_HOME_ENV: &str = "AGENT_DESKTOP_HOME";
 const STATE_DIR_NAME: &str = ".agent-desktop";
 
+/// Binary-level preflight: validates `AGENT_DESKTOP_HOME` without touching
+/// `HOME`/`USERPROFILE`. A no-op when the variable is unset, so legacy
+/// behavior (surfacing a missing-HOME error later, at first state touch)
+/// stays byte-identical to today.
+pub fn validate_state_root_env() -> Result<(), AppError> {
+    let override_active = crate::refs::home_override_active();
+    let env_value = std::env::var_os(AGENT_DESKTOP_HOME_ENV).map(PathBuf::from);
+    validate_state_root_env_value(override_active, env_value, is_owned_by_current_user)
+}
+
+fn validate_state_root_env_value(
+    override_active: bool,
+    env_value: Option<PathBuf>,
+    owned_by_current_user: impl Fn(&std::fs::Metadata) -> bool,
+) -> Result<(), AppError> {
+    if override_active {
+        return Ok(());
+    }
+    match env_value {
+        Some(path) => validate_env_root(&path, &owned_by_current_user),
+        None => Ok(()),
+    }
+}
+
 pub(crate) fn resolve_configured_state_root() -> Result<PathBuf, AppError> {
     let override_active = crate::refs::home_override_active();
     let env_value = std::env::var_os(AGENT_DESKTOP_HOME_ENV).map(PathBuf::from);
@@ -293,6 +317,48 @@ mod tests {
         )
         .expect_err("owner predicate reports mismatch");
         assert_eq!(err.code(), "INVALID_ARGS");
+    }
+
+    #[test]
+    fn preflight_env_unset_is_a_no_op() {
+        validate_state_root_env_value(false, None, always_owned).expect("unset env is a no-op");
+    }
+
+    #[test]
+    fn preflight_override_active_skips_env_validation() {
+        validate_state_root_env_value(true, Some(PathBuf::from("relative/bad")), always_owned)
+            .expect("test HOME override bypasses env validation, mirroring resolve_state_root");
+    }
+
+    #[test]
+    fn preflight_relative_env_value_is_invalid_args() {
+        let err = validate_state_root_env_value(
+            false,
+            Some(PathBuf::from("relative/path")),
+            always_owned,
+        )
+        .expect_err("must reject relative path");
+        assert_eq!(err.code(), "INVALID_ARGS");
+    }
+
+    #[test]
+    fn preflight_empty_env_value_is_invalid_args() {
+        let err = validate_state_root_env_value(false, Some(PathBuf::from("")), always_owned)
+            .expect_err("must reject empty path");
+        assert_eq!(err.code(), "INVALID_ARGS");
+    }
+
+    #[test]
+    fn preflight_nonexistent_absolute_leaf_does_not_require_home_and_is_valid() {
+        let dir = TempDir::new();
+        let missing = dir.path().join("does-not-exist-yet");
+
+        validate_state_root_env_value(false, Some(missing.clone()), always_owned)
+            .expect("nonexistent absolute leaf is valid without touching HOME");
+        assert!(
+            !missing.exists(),
+            "preflight validation must not create the state root directory"
+        );
     }
 
     #[cfg(unix)]

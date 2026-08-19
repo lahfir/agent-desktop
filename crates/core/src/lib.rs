@@ -253,6 +253,7 @@ pub use signal_filter::SignalFilter;
 pub use signals::diff_signals;
 pub use snapshot_surface::SnapshotSurface;
 pub use state_predicate::StatePredicate;
+pub use state_root::validate_state_root_env;
 pub use step_mechanism::StepMechanism;
 pub use surface_info::SurfaceInfo;
 pub use surface_signal::SurfaceSignal;
