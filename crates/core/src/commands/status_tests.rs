@@ -74,6 +74,23 @@ fn status_reports_tracing_false_when_writer_failed() {
 }
 
 #[test]
+fn status_reports_resolved_state_root_verbatim() {
+    let guard = crate::refs_test_support::HomeGuard::new();
+    let report = PermissionReport {
+        accessibility: PermissionState::Granted,
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+
+    let value =
+        execute_with_report_with_context(&DeniedAdapter, &report, &CommandContext::default())
+            .unwrap();
+
+    let expected = guard.path().join(".agent-desktop");
+    assert_eq!(value["state_root"], expected.to_string_lossy().as_ref());
+}
+
+#[test]
 fn status_surfaces_artifacts_mode_for_active_session() {
     let _guard = crate::refs_test_support::HomeGuard::new();
     let session = crate::session::start_session(crate::session::StartSessionOptions {
