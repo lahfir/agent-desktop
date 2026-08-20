@@ -453,7 +453,7 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 
 ## Session lifecycle
 
-Sessions are on-disk containers under `~/.agent-desktop/sessions/<id>/` with a `session.json` manifest, snapshot refmaps, and (when tracing is on) a `trace/` directory. Session selection is explicit; `session start` returns an ID but does not activate it for later processes.
+Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `session.json` manifest, snapshot refmaps, and (when tracing is on) a `trace/` directory. The state root defaults to `~/.agent-desktop`; setting `AGENT_DESKTOP_HOME` relocates it — the env value is the root itself, applied to every subcommand. A relative or empty value fails with `INVALID_ARGS` before dispatch, and `status` reports the resolved root as `state_root`. Session selection is explicit; `session start` returns an ID but does not activate it for later processes.
 
 ### session start
 ```bash
