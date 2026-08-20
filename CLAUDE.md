@@ -41,7 +41,54 @@ Bypass for an emergency commit with `git commit --no-verify` or `SKIP_PRECOMMIT=
 
 Cross-platform Rust CLI + MCP server enabling AI agents to observe and control desktop applications via native OS accessibility trees.
 
+## Source of Truth & Sync (Non-Negotiable)
+
+Two documents govern every phase, and they are never allowed to disagree.
+
+- **`docs/phases.md` is the source of truth for the product.** Scope, exit criteria, invariants, API mappings, dependency pins and phase order live there. What the product *is* and *will be* is settled by that document.
+- **The sub-phase plan under `docs/plans/` is the source of truth for implementation and review.** How a sub-phase is built, what its units are, and what its Verification Contract and Definition of Done require are settled by the plan.
+- **They must be in sync at every commit, and both must match the code.** A statement in one that contradicts the other, or contradicts what shipped, is a defect in its own right — not documentation debt to be tidied later. The next sub-phase's planner reads these documents as fact; a stale line becomes a wrong decision.
+
+### Planning: contradictions are corrected on discovery
+
+Research routinely disproves statements in `docs/phases.md`. When it does:
+
+- **Correct `docs/phases.md` in the same PR that discovered it.** Never plan around a statement known to be false, and never leave the correction to a later sub-phase.
+- **Correct in place; never annotate.** Rewrite the statement so the document reads true. No "previously said X", no "NOTE:", no changelog line — the document is the product's source of truth, not its history.
+- **Cite what disproved it** — a `probes/**/FINDINGS.md` row id, or the verified source.
+- The plan carries the correction as its own implementation unit, so it is reviewed alongside the work.
+
+### Implementation: build it, do not defer it
+
+**Deferral is the exception and the bar is high. The default is that the implementer makes it work.**
+
+- **Attempt the work fully before concluding it cannot be done.** "Harder than expected", "the plan underestimated it", "a later sub-phase touches this anyway", and "the PR is already large" are **not** grounds for deferral.
+- A deferral is justified only when the work is genuinely blocked: technically impossible on the platform, dependent on infrastructure that does not exist yet, or completable only by violating a stated invariant or safety property. Name which one applies.
+- **Measure before deferring.** If the obstacle is an unknown, settle it with a probe or an experiment first. A deferral resting on an assumption is not a deferral, it is a guess — and an assumption that turns out to be wrong has usually hidden work that was a few hours away.
+- Reducing scope is the owner's call, not the implementer's. If the work genuinely cannot land, say so explicitly and stop; do not narrow the deliverable quietly.
+
+### Every deferral updates `docs/phases.md` immediately
+
+When something is deferred — at planning time or at implementation time — the sub-phase that now owns it is updated in the **same PR**, before that PR is opened for review:
+
+- Write the deferred work into the **receiving** sub-phase's scope in `docs/phases.md`, in enough detail that its implementer can act on it without reading this PR or its plan.
+- State what was learned that forces it there, and cite the evidence.
+- If the deferral changes what the **originating** sub-phase delivers, correct that sub-phase's scope and exit criteria too, so it never claims work it did not ship.
+- A ledger row, a PR description, or a plan's residual list is **not** sufficient. Those are read by this PR's reviewer; `docs/phases.md` is read by the next sub-phase's planner, and that is who needs to know.
+
+**A PR that defers work without updating `docs/phases.md` is incomplete and must not be merged.**
+
 ## Git & Commits
+
+### Branching during a platform phase (Phase 2 = Windows, in progress)
+
+- **`feat/windows-adapter` is the base branch for all Windows work**, not `main`. Every sub-phase (2.0 → 2.15) is cut from it and merges back into it.
+- Sub-phase branches: `feat/windows-<n.n>-<slug>` (e.g. `feat/windows-2.0-probes`), PR'd into `feat/windows-adapter`.
+- **Never branch Windows work off `main`, never PR a sub-phase into `main`, never rebase a sub-phase onto `main`.**
+- `main` is the macOS-GA line for the whole phase. It gains Windows exactly once, at the end, when the adapter is production-solid as a whole — one release-noted `feat!` promotion after full-branch review, live e2e, and a perf baseline. Phase 3 repeats this with `feat/linux-adapter`.
+- Plan docs: historical plans and brainstorms are tracked on `main`. Every sub-phase's plan doc lands on
+  its own sub-phase branch, so each sub-phase PR reviews as one self-contained unit.
+- See `docs/phases.md` §Platform Delivery Model for the full rule.
 
 - All commits are authored by **Lahfir**
 - NEVER add `Co-Authored-By` lines, AI attribution badges, or "Generated with" footers
@@ -179,8 +226,9 @@ Later phases add adapters, transports, and production readiness work. Nothing in
 
 ### File Rules
 
-- **400 LOC hard limit per hand-written file.** If approaching 400, split by responsibility. The committed C header at `crates/ffi/include/agent_desktop.h` is generated by cbindgen and verified by the `ffi-header-drift` CI job; change the Rust ABI declarations or cbindgen configuration and regenerate it rather than hand-editing generated declarations.
+- **400 LOC hard limit per hand-written Rust file**, enforced by `scripts/check-rust-file-size.sh` on every `.rs` file in the repository. If approaching 400, split by responsibility. Probe-corpus scripts (`probes/**/*.ps1`) are organized by measurement area rather than line count and routinely exceed 400 lines; they are deliberately outside this cap. The committed C header at `crates/ffi/include/agent_desktop.h` is generated by cbindgen and verified by the `ffi-header-drift` CI job; change the Rust ABI declarations or cbindgen configuration and regenerate it rather than hand-editing generated declarations.
 - **No inline comments.** Code must be self-documenting through naming. Only Rust doc-comments (`///`) on public items when the name alone is insufficient.
+- **No delivery-plan references in shipped source.** `crates/**` and `src/**` must not mention a phase, a sub-phase, a plan decision id (`KTD<n>`) or a plan implementation-unit id (`U<n>`). Those answer *when this was written*, which stops being true the moment the roadmap moves and means nothing to a reader without the plan open. Write what is true about the code and why, in terms that survive the plan being rewritten — `"The seam is deliberately unfilled: filling it needs Chromium detection this module does not do"`, never `"Sub-phase 2.2 ships the seam, 2.4 fills it"`. Enforced by `scripts/check-no-phase-references.sh` in the pre-commit hook and on the CI lane. **Probe ledger row ids (`A15-7`) are exempt and encouraged** — they cite the measurement that forced a decision, the way a comment may cite a CVE, and stay true regardless of the roadmap. `docs/` and `probes/` are out of scope: `docs/phases.md` *is* the plan, and the probe corpus is organised by the areas that produced it.
 - **One struct/enum per file** for domain types. `node.rs` defines `AccessibilityNode`. `action.rs` defines `Action`.
 - **One command per file.** Each CLI command lives in its own file under `commands/`. Filename matches the command name.
 - **No God objects.** No struct with more than 7 fields. No function with more than 5 parameters. Use builder patterns or config structs.
@@ -225,7 +273,7 @@ SNAPSHOT_NOT_FOUND, POLICY_DENIED, APP_UNRESPONSIVE, INTERNAL
 
 ### Platform Crate Folder Structure
 
-All platform crates (`macos`, `windows`, `linux`) follow an identical subfolder layout. New files must be placed in the correct subfolder.
+All platform crates (`macos`, `windows`, `linux`) share the same top-level subfolder layout (`tree/`, `actions/`, `input/`, `system/`). New files must be placed in the correct subfolder. The file set inside `actions/` differs by platform: macOS ships a chain-family (`chain.rs`, `chain_*.rs`, `ax_mutation.rs`, `type_text.rs`, …), not a single `activate.rs`; Windows ships the semantic-dispatch set below.
 
 ```
 crates/{macos,windows,linux}/src/
@@ -241,16 +289,27 @@ crates/{macos,windows,linux}/src/
 │   └── surfaces.rs     # Surface detection
 ├── actions/            # Interacting with elements
 │   ├── mod.rs          # re-exports
-│   ├── dispatch.rs     # perform_action match arms
-│   ├── activate.rs     # Smart AX-first activation chain
-│   ├── extras.rs       # select_value helpers
-│   ├── scroll.rs       # scroll semantics and gated physical fallback
-│   └── type_text.rs    # headless text insertion and physical typing
+│   ├── dispatch.rs     # execute_action match arms
+│   ├── chain.rs        # policy-gated activation chain engine
+│   ├── mutation.rs     # write-path delivery classifier (macOS: ax_mutation.rs)
+│   ├── value_write.rs  # SetValue / Clear + secure-field gate
+│   ├── toggle_state.rs # Toggle / Check / Uncheck
+│   ├── disclosure.rs   # Expand / Collapse
+│   ├── select.rs       # Select by display value
+│   ├── scroll.rs       # scroll semantics
+│   ├── scroll_ladder.rs # ancestor ScrollPattern ladder
+│   ├── scroll_into_view.rs
+│   ├── focus.rs        # headed SetFocus + verification
+│   └── post_state.rs   # post-action state for ActionResult
 ├── input/              # Low-level OS input synthesis
 │   ├── mod.rs          # re-exports
-│   ├── keyboard.rs     # Key synthesis, text typing
-│   ├── mouse.rs        # Mouse events
-│   └── clipboard.rs    # Clipboard get/set
+│   ├── keyboard.rs     # Key synthesis, text typing (+ keyboard_event/map/send/text on Windows)
+│   ├── mouse.rs        # Mouse events (+ mouse_coord/send/modifier/click_guard on Windows)
+│   ├── drag.rs         # Drag with release guard (+ drag_state on Windows)
+│   ├── release_state.rs # Armed-and-counted guard state + delivery report (Windows)
+│   ├── elevation.rs    # UIPI integrity detection (Windows)
+│   ├── blocked_combo.rs # Platform-dangerous combo list (Windows)
+│   └── clipboard.rs    # Clipboard get/set (macOS and Windows)
 └── system/             # App lifecycle, windows, permissions
     ├── mod.rs          # re-exports
     ├── app_ops.rs      # launch, close, focus
@@ -293,10 +352,19 @@ Every command produces a response envelope:
     "app": "Finder",
     "window": { "id": "w-4521", "title": "Documents" },
     "ref_count": 14,
+    "snapshot_id": "s8f3k2p9",
+    "complete": true,
     "tree": { ... }
   }
 }
 ```
+
+`data.complete` is present on every snapshot. A snapshot that exhausts its
+observation budget succeeds with `"complete": false`, the tree it did observe,
+`"truncated": true`, and `"nodes_observed"`; each node whose descendants were
+cut short carries `"subtree_truncated": true`, serialized only when true. A
+`--root` drill-down replaces refs inside an existing snapshot, so an incomplete
+observation there returns `TIMEOUT` rather than a partial tree.
 
 Error responses:
 
@@ -402,7 +470,10 @@ contact with Windows and was deleted. See
 58 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
-All 58 are implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the
+All 58 are implemented on macOS (Phase 1). Windows ships observation, semantic
+actions, input synthesis, process/window lifecycle (`launch`, `close-app`,
+window ops, `press --app`), screenshot, and typed clipboard against the same
+surface; wait-event and shell surfaces remain ahead. Linux (Phase 3) targets the
 same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
@@ -421,4 +492,10 @@ same surface. Adding a command: see the Extensibility Pattern above.
 
 ## Definition of Done: Performance Baseline
 
-Every substantive change ends with a performance baseline check before merge: run `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) and review the generated `report.html` against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
+Every substantive change ends with a performance baseline check before merge, reviewed against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
+
+**The vehicle is platform-specific.** On macOS: `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) → `report.html`. On Windows that script does not run — it is structurally macOS-bound, opening the `.app` fixture bundle — so the vehicle is the probe corpus cost methodology: min-of-seven with the warm-up discarded, reported as min with median and max beside it (`probes/windows/FINDINGS.md` A15-13, applied in A18-7). Naming the macOS script in a Windows plan names a gate that platform cannot run.
+
+## Definition of Done: Dogfood Is a Gate
+
+Phase 2/3 sub-phases carry an additional, non-negotiable gate, stated in full under **Cross-cutting sub-phase DoD** in `docs/phases.md` and summarized here so it is not missed: every sub-phase drives its own surface against real software and commits a judged report; **a report with no findings is a failed dogfood, not a passed one**; and every finding takes exactly one of three dispositions — *fixed here* with a named test that is invert-verified (break the fix, watch that test fail, restore), *owned elsewhere* and written into the receiving sub-phase's scope in `docs/phases.md` in the same PR, or *accepted* with a stated reason. **"Recorded" is not a disposition.** A sub-phase's exit criteria must also enumerate every capability its scope names, and every requirement in its plan must map to at least one test that fails if that requirement is violated. `docs/phases.md` is authoritative if these ever diverge.

@@ -1,0 +1,35 @@
+[package]
+name = "capture-clipboard-surface-check"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone compile + WIC round-trip for the capture/clipboard feature set.
+# NOT a workspace member. Empty [workspace] keeps the parent repo workspace out.
+# Win32_UI_Shell is deliberately absent.
+[workspace]
+
+[dependencies]
+windows = { version = "0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Imaging",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Foundation",
+  "Graphics_Capture",
+  "Graphics_DirectX_Direct3D11",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture",
+  "Win32_System_Ole",
+] }
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_WindowsAndMessaging",
+] }

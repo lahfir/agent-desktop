@@ -21,30 +21,45 @@ pub fn run_from_ref(
     run_from_ref_with_context(
         adapter,
         opts,
-        root_ref_id,
-        snapshot_id,
+        &RefTarget {
+            root_ref_id,
+            snapshot_id,
+        },
         &CommandContext::default(),
+        crate::snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS,
     )
 }
 
+/// Which stored ref a drill-down snapshot resolves against: `root_ref_id`
+/// qualified by `snapshot_id`, or an unqualified ref against the session's
+/// latest snapshot when `snapshot_id` is `None`.
+pub struct RefTarget<'a> {
+    pub root_ref_id: &'a str,
+    pub snapshot_id: Option<&'a str>,
+}
+
+/// Drills into `target`'s stored ref, replacing that subtree's refs in the
+/// existing snapshot - `timeout_ms` is the observation deadline (A16-11),
+/// threaded into both the drill-down read and the strict re-resolution that
+/// precedes it.
 pub fn run_from_ref_with_context(
     adapter: &dyn PlatformAdapter,
     opts: &TreeOptions,
-    root_ref_id: &str,
-    snapshot_id: Option<&str>,
+    target: &RefTarget,
     context: &CommandContext,
+    timeout_ms: u64,
 ) -> Result<SnapshotResult, AppError> {
     let store = RefStore::for_session(context.session_id())?;
     let (active_snapshot_id, local_root_ref) =
-        crate::ref_token::resolve_ref_target(root_ref_id, snapshot_id)?;
+        crate::ref_token::resolve_ref_target(target.root_ref_id, target.snapshot_id)?;
     let refmap = store.load_snapshot(&active_snapshot_id)?;
 
     let entry = refmap
         .get(&local_root_ref)
-        .ok_or_else(|| AppError::stale_ref(root_ref_id))?
+        .ok_or_else(|| AppError::stale_ref(target.root_ref_id))?
         .clone();
 
-    let deadline = crate::Deadline::after(3_000)?;
+    let deadline = crate::Deadline::after(timeout_ms)?;
     let handle = adapter.resolve_element_strict(&entry, deadline)?;
 
     let observation_options = opts.with_ref_identity_bounds();
@@ -100,7 +115,7 @@ pub fn run_from_ref_with_context(
     crate::ref_token::qualify_tree_refs(&mut tree, &active_snapshot_id);
     context.trace_lazy("snapshot.root.saved", || {
         serde_json::json!({
-            "root_ref": root_ref_id,
+            "root_ref": target.root_ref_id,
             "snapshot_id": active_snapshot_id,
             "ref_count": refmap.len()
         })

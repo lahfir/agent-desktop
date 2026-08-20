@@ -76,3 +76,25 @@ fn trace_keeps_actionability_check_identifier_but_redacts_occluder_name() {
     assert_eq!(value["checks"][1]["occluder"]["role"], "AXSheet");
     assert_eq!(value["checks"][1]["occluder"]["name"]["redacted"], true);
 }
+
+/// The P2-O8 descriptor group rides evidence into trace sinks, and page-authored
+/// tokens must be masked wherever it does — the same rule that masks a
+/// placeholder. `subrole` and `dom_classes` tokenize to fragments this key list
+/// names; `placeholder` and `role_description` (the `description` token) were
+/// already covered.
+#[test]
+fn trace_redacts_descriptor_fields_alongside_placeholder() {
+    let value = sanitize_trace_value(json!({
+        "presentation": {
+            "subrole": "custom-role",
+            "role_description": "A button",
+            "placeholder": "Type here",
+            "dom_classes": ["panel", "pane"],
+        }
+    }));
+
+    assert_eq!(value["presentation"]["subrole"]["redacted"], true);
+    assert_eq!(value["presentation"]["role_description"]["redacted"], true);
+    assert_eq!(value["presentation"]["placeholder"]["redacted"], true);
+    assert_eq!(value["presentation"]["dom_classes"]["redacted"], true);
+}

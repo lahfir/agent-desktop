@@ -33,6 +33,8 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 | `--skeleton` | false | Clamp traversal to depth 3 and add `children_count` to truncated containers |
 | `--root <REF>` | | Drill down from a ref discovered in a previous snapshot. Cannot be combined with `--surface` |
 | `--snapshot <snapshot_id>` | embedded in qualified root | Required only when `--root` is a legacy bare ref |
+| `--timeout-ms <MS>` | 3000 | Observation deadline. A cold Chromium/Electron settle can take 10-25s; raise this when a fresh snapshot returns a shell-thin tree |
+| `--force-electron-a11y` | false | Assume Chromium renderer accessibility is already forced, so the adapter skips activation guidance and returns the observed tree |
 
 **Output structure:**
 ```json
@@ -45,6 +47,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
     "window": { "id": "w-4521", "title": "General" },
     "ref_count": 14,
     "snapshot_id": "s8f3k2p9",
+    "complete": true,
     "tree": {
       "role": "window",
       "name": "General",
@@ -74,10 +77,23 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 }
 ```
 
+**Partial snapshots (`data.complete`):**
+- `complete` is present on every snapshot. `true` means the whole tree was observed
+- A snapshot that exhausts its observation budget still succeeds: `ok: true` with `"complete": false`, the tree it did observe, `"truncated": true`, and `"nodes_observed"` — it is not a `TIMEOUT` error, so read `complete` rather than branching on an error code to detect an oversized tree
+- Every node whose descendants were cut short carries `"subtree_truncated": true`, emitted only when true, so you can walk from the root to each boundary and drill in with `--root`
+- Raise `--timeout-ms` or lower `--max-depth` to turn a partial tree into a complete one
+- A `--root` drill-down replaces refs inside an existing snapshot, so it is all-or-nothing: an incomplete observation returns `TIMEOUT` instead of a partial tree
+
 **Skeleton mode (`--skeleton`):**
 - Produces a shallow overview by clamping depth to `min(max_depth, 3)`
 - Truncated containers include a `children_count` field showing how many children were omitted
 - Named or described containers at the truncation boundary receive refs with empty `available_actions`, serving as drill-down targets for `--root`
+
+**Optional descriptor fields** (emitted by Windows; absent on macOS and Linux; all four are optional and omitted unless a provider produces them):
+- `subrole` — finer role refinement from UIA `AriaRole` (web content)
+- `role_description` — provider's localized control-type description
+- `placeholder` — `HelpText` where it is not already the description
+- `dom_classes` — DOM class list; no Windows producer yet, so always absent on Windows in the current phase
 
 **Root mode (`--root <REF>`):**
 - Starts tree traversal from the given ref instead of the window root
@@ -99,8 +115,23 @@ agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 
 **Tips:**
 - Always use `-i` to keep output compact for LLM context windows
-- Use `--surface menu` to capture open context menus or dropdown menus
-- Use `--surface sheet` for modal dialogs
+- Use `--surface menu` to capture open context menus or dropdown menus (**macOS only** — see the platform note below)
+- Use `--surface sheet` for modal dialogs (both platforms)
+
+**Surfaces are platform-specific, and the honest list is in `status`.** Run
+`agent-desktop status` and read `supported_surfaces` before requesting one:
+macOS serves `window`, `focused`, `menu`, `menubar`, `sheet`, `popover` and
+`alert`, while Windows currently serves `window`, `focused` and `sheet`. A
+surface the adapter does not serve returns `PLATFORM_NOT_SUPPORTED` with the
+supported list in `details`, so the failure is honest — but it is cheaper to
+read `status` first than to discover it from an error.
+
+One asymmetry is worth naming because an agent hits it naturally: on Windows,
+`wait --event surface-appeared` **can** report `"surface": "menu"` — the signal
+path detects an open menu — while `snapshot --surface menu` refuses it. The
+event is telling you a menu opened; it is not an invitation to snapshot that
+menu as a surface on Windows. Snapshot the owning window instead, or use
+`wait --menu` / `wait --menu-closed` to synchronise on menu state.
 - Use `--compact` with `-i` for maximum token efficiency
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
 - Use `--skeleton` first to get a high-level map, then `--root` to drill into specific regions
@@ -227,7 +258,7 @@ agent-desktop is @s8f3k2p9:e5 --property expanded
 
 ## screenshot
 
-Capture a PNG screenshot of an application window.
+Capture a PNG screenshot of an application window or display.
 
 ```bash
 agent-desktop screenshot --app "Finder"
@@ -243,9 +274,11 @@ agent-desktop screenshot --screen 0 display.png
 | `--screen` | Capture display by index instead of an app window (from `list-displays`; `0` = primary) |
 | (positional) | File path to save PNG (omit for base64 in JSON) |
 
-When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field.
+When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field. A positional PATH writes through the user-path atomic writer (not the private-file seam), so network shares and foreign-owned directories stay writable; omitting the path keeps bytes in the JSON envelope.
 
-Screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
+**macOS:** screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
+
+**Windows:** runtime precedence is Modern (`Windows.Graphics.Capture`) then Legacy (`PrintWindow` / `BitBlt`). Gate on the runtime `IsSupported` predicate and successful interop activation, not on OS build number (A22-1). When modern is unavailable or fails to activate — including hosts where `IsSupported` is true but interop cannot activate — the command attempts Legacy silently; a 200ms floor is reserved for the Legacy attempt out of the overall deadline, but budget exhaustion or a Legacy failure can still surface as an error rather than guaranteeing `ok: true` (`LEGACY_DEADLINE_FLOOR` in `capture_backend.rs`). Windows has no screen-recording consent gate; `permissions` reports `screen_recording` as `not_required` when capture works. Bare `screenshot PATH` (no `--app` / `--screen`) maps to the primary display, matching `--screen 0`.
 
 ## list-displays
 

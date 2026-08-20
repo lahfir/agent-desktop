@@ -48,6 +48,7 @@ fn button(states: Vec<String>) -> ObservedSubtree {
             ref_evidence: LocatorRefEvidence {
                 bounds: LocatorField::Absent,
                 available_actions: LocatorField::Known(vec!["Click".into()]),
+                descriptors: Default::default(),
             },
         },
         Vec::new(),

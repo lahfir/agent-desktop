@@ -165,6 +165,7 @@ fn optional_identity_gaps_do_not_poison_complete_actionability_evidence() {
                 height: 100.0,
             }),
             available_actions: LocatorField::Known(vec!["Scroll".into()]),
+            descriptors: Default::default(),
         },
     };
 

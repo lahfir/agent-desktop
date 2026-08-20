@@ -153,6 +153,7 @@ pub(crate) fn observed_tree(
                     .map(LocatorField::Known)
                     .unwrap_or(LocatorField::Absent),
                 available_actions: LocatorField::Known(node.presentation.available_actions),
+                descriptors: node.presentation.descriptors.clone(),
             },
         };
         let children = node.children.into_iter().map(subtree).collect();

@@ -56,8 +56,10 @@ mod mouse_click_count;
 mod mouse_event;
 mod mouse_event_kind;
 mod name_evidence;
+mod name_slot_status;
 pub mod native_handle;
 mod node;
+mod node_descriptor;
 mod node_identity;
 mod node_match_context;
 mod node_presentation;
@@ -70,6 +72,7 @@ pub mod permission_report;
 pub mod permission_state;
 mod point;
 mod private_file;
+mod private_file_ops;
 mod private_file_parent;
 mod process_id;
 mod process_identity;
@@ -137,6 +140,7 @@ mod surface_signal;
 pub(crate) mod trace;
 mod trace_artifact_budget;
 pub(crate) mod trace_artifacts;
+mod trace_file;
 pub mod trace_read;
 pub mod trace_sanitize;
 mod trace_state;
@@ -150,7 +154,7 @@ mod window_lookup;
 mod window_op;
 mod window_state;
 
-pub use accname::{compute_description, compute_name};
+pub use accname::{compute_description, compute_name, resolve_description, resolve_name};
 pub use action::Action;
 pub use action_request::ActionRequest;
 pub use action_result::ActionResult;
@@ -202,7 +206,7 @@ pub use live_locator::{
     LocatorIdentifierStats, LocatorLimitStats, LocatorMaterialization, LocatorReadCounts,
     LocatorReadHealth, LocatorReadStats, LocatorRefEvidence, LocatorResolution,
     LocatorResolveRequest, LocatorSelection, LocatorSemanticReadStats, LocatorStats,
-    LocatorTraversalStats, ObservationBudget, ObservationRequest, ObservationRoot,
+    LocatorTraversalStats, ObservationBudget, ObservationMode, ObservationRequest, ObservationRoot,
     ObservationSource, ObservedSubtree, ObservedTree, classify_query_result, evaluate_locator_tree,
     find_first_entry, require_unique, resolve_query,
 };
@@ -215,8 +219,10 @@ pub use mouse_click_count::{MAX_MOUSE_CLICK_COUNT, validate_mouse_click_count};
 pub use mouse_event::MouseEvent;
 pub use mouse_event_kind::MouseEventKind;
 pub use name_evidence::NameEvidence;
+pub use name_slot_status::{NameSlotStatus, SlotStatus};
 pub use native_handle::NativeHandle;
 pub use node::AccessibilityNode;
+pub use node_descriptor::NodeDescriptor;
 pub use node_identity::NodeIdentity;
 pub use node_match_context::NodeMatchContext;
 pub use node_presentation::NodePresentation;
@@ -228,6 +234,9 @@ pub use output::{ErrorPayload, Response};
 pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use point::Point;
+pub use private_file_ops::{
+    PrivateFileOps, bounded_read, install_private_file_ops, temporary_file_name,
+};
 pub use process_id::ProcessId;
 pub use process_identity::ProcessIdentity;
 pub use recovery_hint::RecoveryHint;

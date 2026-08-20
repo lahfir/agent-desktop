@@ -2,7 +2,7 @@
 title: Keep gesture capability in the platform adapter and policy in core
 date: 2026-07-11
 category: best-practices
-module: core actions and macos adapter
+module: core actions and macos/windows adapters
 problem_type: architecture_pattern
 component: tooling
 severity: high
@@ -10,7 +10,7 @@ applies_when:
   - "Adding a new action or physical fallback"
   - "Porting an action to Windows or Linux"
   - "Explaining a headless policy failure"
-tags: [interaction-policy, actions, macos, adapters, headless]
+tags: [interaction-policy, actions, macos, windows, adapters, headless]
 ---
 
 # Keep gesture capability in the platform adapter and policy in core
@@ -36,6 +36,27 @@ policy before resolving or moving the pointer. A semantic reorder capability,
 if a future platform offers one, is a distinct action contract rather than a
 hidden change to physical drag.
 
+Two different `receives_events` hit-tests exist and must not be conflated,
+because they answer different questions. The shared actionability battery
+(`crates/core/src/actionability/receives_events.rs`) tries **five** candidate
+points from the element's bounds — the center plus four quadrant points — and
+passes if *any* of them reaches the target; it is asking whether the element is
+reachable at all, so a partially occluded control still passes. The pointer
+pipeline calls `require_receives_events` with the **single** coordinate it has
+already resolved and will actually move the cursor to; it is asking whether
+*that exact point* is deliverable, so there is no second candidate to fall back
+on. A target that satisfies the battery can therefore still fail the pointer
+check. Keep the distinction when changing either path: widening the pointer
+check to multiple points would silently move the cursor somewhere the caller
+did not resolve.
+
+The core/adapter split has since held under a second, independently written
+implementation: Windows implements `PlatformAdapter::hit_test` in
+`crates/windows/src/tree/hit_test.rs` and `hit_test_classify.rs`, and both the
+battery and the pointer pipeline consume it through the same
+`receives_events_check` core already owned — neither gained a Windows-specific
+branch to accommodate it.
+
 Tests must verify the observed effect, not merely native API success. Native
 controls and accessibility implementations vary; a successful AX call is not
 proof that an application executed its handler.
@@ -51,4 +72,4 @@ proof that an application executed its handler.
 ## Related
 
 - [Preserve command policy semantics during refactor](preserve-command-policy-semantics-during-refactor-2026-05-12.md)
-- [Document pointer actions from their own reliability pipeline](../documentation-gaps/hover-drag-skip-the-actionability-battery.md)
+- [A test that cannot fail is not coverage](a-test-that-cannot-fail-is-not-coverage.md) — the Windows hit-test guard-mirror lesson: a `#[cfg(test)]` copy of a production expression is not a pin on it.

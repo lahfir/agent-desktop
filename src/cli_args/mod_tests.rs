@@ -248,3 +248,43 @@ fn screenshot_args_batch_json_rejects_scope_field_typo() {
     .unwrap_err();
     assert!(err.to_string().contains("`windo_id`"));
 }
+
+/// The `--timeout-ms` knob (A16-11): omitted on the CLI it stays `None` so
+/// the core `DEFAULT_SNAPSHOT_TIMEOUT_MS` (3 s) is preserved, and the
+/// `--force-electron-a11y` observation-mode flag defaults off.
+#[test]
+fn snapshot_args_cli_timeout_preserves_the_core_default_when_omitted() {
+    let args = SnapshotArgs::try_parse_from(["snapshot"]).unwrap();
+    assert_eq!(args.timeout_ms, None);
+    assert!(!args.force_electron_a11y);
+}
+
+#[test]
+fn snapshot_args_cli_raises_the_timeout_and_forces_electron_a11y() {
+    let args = SnapshotArgs::try_parse_from([
+        "snapshot",
+        "--timeout-ms",
+        "15000",
+        "--force-electron-a11y",
+    ])
+    .unwrap();
+    assert_eq!(args.timeout_ms, Some(15000));
+    assert!(args.force_electron_a11y);
+}
+
+/// Batch JSON omitting `timeout_ms`/`force_electron_a11y` (the shape every
+/// existing caller sends, since both fields are additive) must still
+/// deserialize `SnapshotArgs`, matching the CLI's own omitted-flag defaults:
+/// `None` so `DEFAULT_SNAPSHOT_TIMEOUT_MS` applies, and `force_electron_a11y`
+/// off.
+#[test]
+fn snapshot_args_batch_json_defaults_timeout_and_force_electron_a11y_when_absent() {
+    let args: SnapshotArgs = serde_json::from_value(serde_json::json!({
+        "app": "Finder",
+        "window_id": "w-2"
+    }))
+    .unwrap();
+
+    assert_eq!(args.timeout_ms, None);
+    assert!(!args.force_electron_a11y);
+}

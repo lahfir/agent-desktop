@@ -1421,7 +1421,15 @@ AdResult ad_execute_by_ref_timeout(const struct AdAdapter *adapter,
  * to disk, and writes the JSON envelope into `*out`.
  *
  * The JSON shape matches `agent-desktop snapshot`:
- * `{"version":"2.3","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
+ * `{"version":"2.3","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
+ *
+ * `data.complete` is always present. A snapshot that exhausts its observation
+ * budget still succeeds with `"complete":false` and the tree it did observe,
+ * and then also carries `"truncated":true` and `"nodes_observed":N`; each node
+ * whose descendants were cut short carries `"subtree_truncated":true`, a field
+ * that is emitted only when true. Callers must read `complete` to decide
+ * whether a tree is whole — an incomplete observation is not reported as a
+ * `TIMEOUT` error.
  *
  * **`*out` ownership and error behaviour:**
  * - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.

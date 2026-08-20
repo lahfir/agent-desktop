@@ -88,6 +88,12 @@ fn close_app_blocks_adapter_protected_process() {
         suggestion.contains("session-critical"),
         "suggestion should name session-critical processes, got: {suggestion}"
     );
+    for mac_name in ["loginwindow", "WindowServer", "Dock", "Finder", "launchd"] {
+        assert!(
+            !suggestion.contains(mac_name),
+            "protected-process suggestion must not name platform-specific processes; found {mac_name} in: {suggestion}"
+        );
+    }
 }
 
 #[test]

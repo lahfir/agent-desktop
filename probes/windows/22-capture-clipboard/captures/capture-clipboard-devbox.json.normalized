@@ -1,0 +1,55 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "clipboard contention, sequence number, CF_DIB/CF_DIBV5 shapes, registered PNG",
+    "holder_ready":  true,
+    "open_clipboard_returned":  false,
+    "open_clipboard_last_error":  5,
+    "holder_window_nonzero":  true,
+    "retry_attempts":  5,
+    "retry_successes":  0,
+    "retry_elapsed_ms":  [
+                             0,
+                             0,
+                             0,
+                             0,
+                             0
+                         ],
+    "seq_advanced_on_set":  true,
+    "seq_advanced_on_empty":  true,
+    "seq_advanced_on_noop":  false,
+    "dib_shapes":  [
+                       {
+                           "present":  true,
+                           "format_id":  8,
+                           "format_name":  "CF_DIB",
+                           "header_bytes":  40,
+                           "bi_width":  8,
+                           "bi_height":  6,
+                           "bi_bit_count":  32,
+                           "row_order":  "bottom_up",
+                           "payload_bytes":  192
+                       },
+                       {
+                           "present":  true,
+                           "format_id":  17,
+                           "format_name":  "CF_DIBV5",
+                           "header_bytes":  124,
+                           "bi_width":  8,
+                           "bi_height":  6,
+                           "bi_bit_count":  32,
+                           "row_order":  "bottom_up",
+                           "payload_bytes":  192
+                       },
+                       {
+                           "present":  false,
+                           "format_id":  49352,
+                           "format_name":  "PNG",
+                           "header_bytes":  0,
+                           "bi_width":  0,
+                           "bi_height":  0,
+                           "bi_bit_count":  0,
+                           "row_order":  "",
+                           "payload_bytes":  0
+                       }
+                   ]
+}

@@ -208,6 +208,7 @@ pub(crate) fn read_node(
                 LocatorField::Unknown
             },
             available_actions: actions,
+            descriptors: Default::default(),
         },
     };
     let evidence_complete = required_complete(&evidence, requirements)

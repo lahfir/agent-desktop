@@ -1,0 +1,18 @@
+{
+    "probe":  "23-signals-menus",
+    "question":  "what distinguishes a modal dialog from an ordinary top-level window: owner window, WS_EX_DLGMODALFRAME, UIA ControlType, UIA WindowIsModal (grounds U6 Sheet classification)",
+    "win32_messagebox":  {
+                             "measurable":  true,
+                             "branch":  "win32_messagebox_staged",
+                             "owner_present":  true,
+                             "ws_ex_dlgmodalframe":  true,
+                             "uia_control_type":  "ControlType.Window",
+                             "uia_window_is_modal":  true
+                         },
+    "chromium_modal":  {
+                           "measurable":  false,
+                           "branch":  "no_generic_trigger_available_this_session",
+                           "stack":  "obsidian",
+                           "note":  "no vault-independent, app-version-independent action was found in this session that reliably opens a native modal in Obsidian; staging one would require app-specific UI knowledge outside this leg is scope"
+                       }
+}
